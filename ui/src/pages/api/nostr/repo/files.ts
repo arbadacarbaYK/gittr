@@ -1,0 +1,282 @@
+import type { NextApiRequest, NextApiResponse } from "next";
+import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
+import { exec } from "child_process";
+import { promisify } from "util";
+import { join } from "path";
+import { existsSync, readdirSync, statSync, readFileSync } from "fs";
+
+const execAsync = promisify(exec);
+
+/**
+ * API endpoint to fetch repository files from git-nostr-bridge
+ * 
+ * Endpoint: GET /api/nostr/repo/files?ownerPubkey={pubkey}&repo={repoName}&branch={branch}
+ * 
+ * This endpoint reads files directly from the git repository on disk
+ * (managed by git-nostr-bridge) and returns the file tree.
+ * 
+ * CRITICAL: ownerPubkey must be the FULL 64-char hex pubkey (not npub, not 8-char prefix)
+ */
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Handle OPTIONS request for CORS
+  if (req.method === "OPTIONS") {
+    handleOptionsRequest(res);
+    return;
+  }
+
+  // Set CORS headers
+  setCorsHeaders(res);
+
+  if (req.method !== "GET") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const { ownerPubkey, repo: repoName, branch = "main" } = req.query;
+
+  // Validate inputs
+  if (!ownerPubkey || typeof ownerPubkey !== "string") {
+    return res.status(400).json({ error: "ownerPubkey is required" });
+  }
+
+  if (!repoName || typeof repoName !== "string") {
+    return res.status(400).json({ error: "repo is required" });
+  }
+
+  // CRITICAL: Validate ownerPubkey is full 64-char hex (not npub, not 8-char prefix)
+  if (!/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+    return res.status(400).json({ 
+      error: "ownerPubkey must be a full 64-char hex pubkey (not npub or 8-char prefix)",
+      received: ownerPubkey.length === 8 ? "8-char prefix" : ownerPubkey.startsWith("npub") ? "npub format" : `invalid format (${ownerPubkey.length} chars)`
+    });
+  }
+
+      // Get repository directory from environment or git-nostr-bridge config file
+      // Priority: env vars > config file > defaults
+      let reposDir = process.env.GIT_NOSTR_BRIDGE_REPOS_DIR ||
+                     process.env.REPOS_DIR ||
+                     process.env.GITNOSTR_REPOS_DIR;
+      
+      // If not set in env, try to read from git-nostr-bridge config file
+      // Try both root's home and git-nostr user's home
+      if (!reposDir) {
+        const configPaths = [
+          process.env.HOME ? `${process.env.HOME}/.config/git-nostr/git-nostr-bridge.json` : null,
+          "/home/git-nostr/.config/git-nostr/git-nostr-bridge.json"
+        ].filter(Boolean) as string[];
+        
+        for (const configPath of configPaths) {
+          try {
+            if (existsSync(configPath)) {
+              const configContent = readFileSync(configPath, "utf-8");
+              const config = JSON.parse(configContent);
+              if (config.repositoryDir) {
+                // Expand ~ to home directory if present
+                const homeDir = configPath.includes("/home/git-nostr") ? "/home/git-nostr" : (process.env.HOME || "");
+                reposDir = config.repositoryDir.replace(/^~/, homeDir);
+                console.log("📁 Using repositoryDir from config:", reposDir);
+                break;
+              }
+            }
+          } catch (error: any) {
+            console.warn(`⚠️ Failed to read git-nostr-bridge config from ${configPath}:`, error.message);
+          }
+        }
+      }
+      
+      // Fallback to common default locations
+      if (!reposDir) {
+        reposDir = process.env.HOME 
+          ? `${process.env.HOME}/git-nostr-repositories`  // Most common default
+          : "/tmp/gitnostr/repos";
+      }
+  
+  // Repository path: reposDir/{ownerPubkey}/{repoName}.git
+  const repoPath = join(reposDir, ownerPubkey, `${repoName}.git`);
+
+  try {
+    console.log("🔍 Checking repository path:", repoPath);
+    console.log("🔍 Repository directory exists:", existsSync(reposDir));
+    console.log("🔍 Owner directory exists:", existsSync(join(reposDir, ownerPubkey)));
+    
+    // Check if repository exists
+    if (!existsSync(repoPath)) {
+      console.error("❌ Repository not found at path:", repoPath);
+      return res.status(404).json({ 
+        error: "Repository not found",
+        path: repoPath,
+        reposDir,
+        ownerPubkey: ownerPubkey.slice(0, 8),
+        hint: "Repository may not be cloned yet by git-nostr-bridge. The bridge creates repos when it sees repository events on Nostr."
+      });
+    }
+
+    console.log("✅ Repository found, checking if it has commits...");
+    
+    // First check if repo has any commits (bare repos start empty)
+    try {
+      const { stdout: refs } = await execAsync(
+        `git --git-dir="${repoPath}" for-each-ref --format="%(refname)" refs/heads/`,
+        { timeout: 5000 }
+      );
+      
+      if (!refs.trim()) {
+        console.log("⚠️ Repository exists but has no branches (empty repo)");
+        return res.status(200).json({ 
+          files: [],
+          message: "Repository exists but is empty (no commits yet)"
+        });
+      }
+      
+      console.log("✅ Repository has branches:", refs.trim().split("\n").length);
+    } catch (refError: any) {
+      console.warn("⚠️ Could not check refs:", refError.message);
+      // Continue anyway - might still have files
+    }
+
+    // Use git ls-tree to get file tree (respects deletions - only shows current files)
+    // This gets the actual files in the repository, not from Nostr events
+    console.log(`🔍 Fetching file tree for branch: ${branch}`);
+    const { stdout, stderr } = await execAsync(
+      `git --git-dir="${repoPath}" ls-tree -r --name-only ${branch}`,
+      { timeout: 10000 }
+    );
+
+    if (stderr && !stderr.includes("warning") && !stderr.includes("fatal")) {
+      console.error("Git ls-tree error:", stderr);
+      return res.status(500).json({ error: "Failed to read repository", details: stderr });
+    }
+    
+    // Check if branch doesn't exist
+    if (stderr && stderr.includes("fatal: not a valid object name")) {
+      console.warn(`⚠️ Branch ${branch} not found, trying 'main'...`);
+      try {
+        const { stdout: mainStdout } = await execAsync(
+          `git --git-dir="${repoPath}" ls-tree -r --name-only main`,
+          { timeout: 10000 }
+        );
+        const filePaths = mainStdout.trim().split("\n").filter(Boolean);
+        console.log(`✅ Found ${filePaths.length} files in 'main' branch`);
+        
+        // Build full file tree with directories
+        const files: Array<{ type: string; path: string; size?: number }> = [];
+        const dirs = new Set<string>();
+        
+        for (const filePath of filePaths) {
+          // Add all parent directories
+          const parts = filePath.split("/");
+          for (let i = 1; i < parts.length; i++) {
+            dirs.add(parts.slice(0, i).join("/"));
+          }
+          
+          // Get file size
+          try {
+            const { stdout: sizeOutput } = await execAsync(
+              `git --git-dir="${repoPath}" cat-file -s main:${filePath}`,
+              { timeout: 5000 }
+            );
+            const size = parseInt(sizeOutput.trim(), 10);
+            files.push({ type: "file", path: filePath, size: isNaN(size) ? undefined : size });
+          } catch {
+            files.push({ type: "file", path: filePath });
+          }
+        }
+        
+        // Add directories
+        for (const dirPath of Array.from(dirs).sort()) {
+          files.push({ type: "dir", path: dirPath });
+        }
+        
+        // Sort: directories first, then files
+        files.sort((a, b) => {
+          if (a.type !== b.type) {
+            return a.type === "dir" ? -1 : 1;
+          }
+          return a.path.localeCompare(b.path);
+        });
+        
+        return res.status(200).json({ files });
+      } catch (mainError: any) {
+        console.error("❌ Failed to fetch from 'main' branch:", mainError.message);
+        return res.status(404).json({ 
+          error: "Branch not found",
+          branch,
+          hint: "Repository may be empty or branch doesn't exist"
+        });
+      }
+    }
+    
+    console.log("✅ Git ls-tree succeeded, parsing files...");
+
+    // Parse file list and build tree structure
+    const filePaths = stdout.trim().split("\n").filter(Boolean);
+    const files: Array<{ type: string; path: string; size?: number }> = [];
+    const dirs = new Set<string>();
+
+    for (const filePath of filePaths) {
+      // Add all parent directories
+      const parts = filePath.split("/");
+      for (let i = 1; i < parts.length; i++) {
+        dirs.add(parts.slice(0, i).join("/"));
+      }
+
+      // Get file size using git cat-file
+      try {
+        const { stdout: sizeOutput } = await execAsync(
+          `git --git-dir="${repoPath}" cat-file -s ${branch}:${filePath}`,
+          { timeout: 5000 }
+        );
+        const size = parseInt(sizeOutput.trim(), 10);
+        files.push({ type: "file", path: filePath, size: isNaN(size) ? undefined : size });
+      } catch {
+        // If size fetch fails, still include the file
+        files.push({ type: "file", path: filePath });
+      }
+    }
+
+    // Add directories
+    for (const dirPath of Array.from(dirs).sort()) {
+      files.push({ type: "dir", path: dirPath });
+    }
+
+    // Sort: directories first, then files
+    files.sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type === "dir" ? -1 : 1;
+      }
+      return a.path.localeCompare(b.path);
+    });
+
+    return res.status(200).json({ files });
+  } catch (error: any) {
+    console.error("Error fetching repository files:", error);
+    
+    // Handle specific git errors
+    if (error.code === "ENOENT") {
+      return res.status(404).json({ 
+        error: "Repository not found",
+        path: repoPath
+      });
+    }
+
+    if (error.message?.includes("not a git repository")) {
+      return res.status(400).json({ 
+        error: "Invalid git repository",
+        path: repoPath
+      });
+    }
+
+    if (error.message?.includes("fatal: ambiguous argument")) {
+      return res.status(400).json({ 
+        error: "Branch not found",
+        branch,
+        hint: "Try 'main' or 'master'"
+      });
+    }
+
+    return res.status(500).json({ 
+      error: "Failed to fetch repository files",
+      details: error.message
+    });
+  }
+}
+
