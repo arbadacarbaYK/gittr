@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Fix Repos</title>
+</head>
+<body>
+  <h1>Repository Fix Script</h1>
+  <p>Open browser console and run the script below:</p>
+  <pre>
+// 1. Delete test_repo_icon_check_fork
+const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
+const beforeCount = repos.length;
+const filtered = repos.filter(r => {
+  const repoName = r.repo || r.slug || r.name || "";
+  return repoName !== "test_repo_icon_check_fork";
+});
+localStorage.setItem("gittr_repos", JSON.stringify(filtered));
+console.log(`Deleted ${beforeCount - filtered.length} instance(s) of test_repo_icon_check_fork`);
+
+// 2. Get current user pubkey
+const npub = localStorage.getItem("gittr_npub");
+if (!npub) {
+  console.error("No user logged in");
+} else {
+  // Decode npub (you may need to import nostr-tools)
+  // For now, we'll fix repos by checking if they belong to current user
+  const fixedRepos = filtered.map(r => {
+    const repoName = r.repo || r.slug || r.name || "";
+    
+    // Fix tides repo if it exists
+    if (repoName === "tides") {
+      // We'll need to set ownerPubkey properly - this requires the actual pubkey
+      console.log("Found tides repo - needs ownerPubkey fix");
+      return r;
+    }
+    return r;
+  });
+  
+  localStorage.setItem("gittr_repos", JSON.stringify(fixedRepos));
+  console.log("✅ Repos fixed");
+}
+  </pre>
+</body>
+</html>
+

@@ -1,0 +1,441 @@
+/* Global page container - responsive width that uses browser space efficiently */
+.page-container {
+  width: 95%;
+  max-width: 95%;
+}
+
+@media (min-width: 1280px) {
+  .page-container {
+    width: 90%;
+    max-width: 90%;
+  }
+}
+
+@media (min-width: 1536px) {
+  .page-container {
+    width: 85%;
+    max-width: 85%;
+  }
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  /* Chrome, Safari and Opera */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+}
+
+/* CSS Custom Properties for Theming */
+:root {
+  /* Default (Classic) theme colors */
+  --color-bg-primary: #0E1116;
+  --color-bg-secondary: #22262C;
+  --color-bg-dark: #0F1217;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #9ca3af;
+  --color-accent-primary: #9333ea; /* purple-600 */
+  --color-accent-hover: #a855f7; /* purple-500 */
+  --color-accent-secondary: #22c55e; /* green-600 */
+  --color-border: #383B42;
+  --color-link: #a855f7;
+  --color-link-hover: #c084fc;
+  --font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Cypherpunk - Monospace font, neon green text on black, terminal aesthetic */
+:root[data-theme="cypherpunk"] {
+  --color-bg-primary: #000000; /* Pure black */
+  --color-bg-secondary: #0a0a0a; /* Near black */
+  --color-bg-dark: #050505;
+  --color-text-primary: #00ff41; /* Matrix/neon green */
+  --color-text-secondary: #39ff14; /* Bright green */
+  --color-accent-primary: #00ff41; /* Neon green */
+  --color-accent-hover: #39ff14; /* Brighter green */
+  --color-accent-secondary: #00ff41; /* Neon green for success */
+  --color-border: #00ff4140; /* Green with transparency */
+  --color-link: #00ff41; /* Neon green links */
+  --color-link-hover: #39ff14;
+  --font-family: 'Courier New', Courier, 'Lucida Console', Monaco, monospace;
+}
+
+/* Girly - Soft pink/purple pastels */
+:root[data-theme="girly"] {
+  --color-bg-primary: #1a0f1f; /* Dark purple-pink */
+  --color-bg-secondary: #251a2a;
+  --color-bg-dark: #150a1a;
+  --color-text-primary: #ffb6d9; /* Soft pink */
+  --color-text-secondary: #ffccdd;
+  --color-accent-primary: #ff69b4; /* Hot pink */
+  --color-accent-hover: #ff1493; /* Deep pink */
+  --color-accent-secondary: #ffb6d9; /* Soft pink */
+  --color-border: #ff69b440; /* Pink with transparency */
+  --color-link: #ff69b4;
+  --color-link-hover: #ff1493;
+  --font-family: 'Georgia', 'Times New Roman', serif;
+}
+
+/* 80s Arcade - Neon cyan/magenta, retro gaming */
+:root[data-theme="arcade80s"] {
+  --color-bg-primary: #000011; /* Deep blue-black */
+  --color-bg-secondary: #0a0a1a;
+  --color-bg-dark: #000008;
+  --color-text-primary: #00ffff; /* Neon cyan */
+  --color-text-secondary: #ff00ff; /* Neon magenta */
+  --color-accent-primary: #ff00ff; /* Neon magenta */
+  --color-accent-hover: #00ffff; /* Neon cyan */
+  --color-accent-secondary: #ffff00; /* Neon yellow */
+  --color-border: #ff00ff40; /* Magenta with transparency */
+  --color-link: #ff00ff;
+  --color-link-hover: #00ffff;
+  --font-family: 'Impact', 'Arial Black', sans-serif;
+}
+
+/* Apply theme colors and fonts globally */
+body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-family);
+}
+
+/* Theme-specific font family application */
+:root[data-theme="cypherpunk"] * {
+  font-family: var(--font-family);
+}
+
+:root[data-theme="girly"] * {
+  font-family: var(--font-family);
+}
+
+:root[data-theme="arcade80s"] * {
+  font-family: var(--font-family);
+}
+
+/* Utility classes that use theme variables */
+.theme-bg-primary {
+  background-color: var(--color-bg-primary);
+}
+
+.theme-bg-secondary {
+  background-color: var(--color-bg-secondary);
+}
+
+.theme-bg-dark {
+  background-color: var(--color-bg-dark);
+}
+
+.theme-text-primary {
+  color: var(--color-text-primary);
+}
+
+.theme-text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.theme-accent-primary {
+  color: var(--color-accent-primary);
+}
+
+.theme-accent-hover:hover {
+  color: var(--color-accent-hover);
+}
+
+.theme-bg-accent-primary {
+  background-color: var(--color-accent-primary);
+}
+
+.theme-bg-accent-primary:hover {
+  background-color: var(--color-accent-hover);
+}
+
+.theme-border {
+  border-color: var(--color-border);
+}
+
+/* Comprehensive theme overrides for all UI elements */
+
+/* Links */
+a {
+  color: var(--color-link);
+}
+
+a:hover {
+  color: var(--color-link-hover);
+}
+
+:root[data-theme="cypherpunk"] a,
+:root[data-theme="girly"] a,
+:root[data-theme="arcade80s"] a {
+  color: var(--color-link) !important;
+}
+
+:root[data-theme="cypherpunk"] a:hover,
+:root[data-theme="girly"] a:hover,
+:root[data-theme="arcade80s"] a:hover {
+  color: var(--color-link-hover) !important;
+}
+
+/* Text colors */
+:root[data-theme="cypherpunk"] .text-purple-500,
+:root[data-theme="cypherpunk"] .text-purple-400,
+:root[data-theme="girly"] .text-purple-500,
+:root[data-theme="girly"] .text-purple-400,
+:root[data-theme="arcade80s"] .text-purple-500,
+:root[data-theme="arcade80s"] .text-purple-400 {
+  color: var(--color-accent-primary) !important;
+}
+
+:root[data-theme="cypherpunk"] .hover\:text-purple-500:hover,
+:root[data-theme="cypherpunk"] .hover\:text-purple-400:hover,
+:root[data-theme="girly"] .hover\:text-purple-500:hover,
+:root[data-theme="girly"] .hover\:text-purple-400:hover,
+:root[data-theme="arcade80s"] .hover\:text-purple-500:hover,
+:root[data-theme="arcade80s"] .hover\:text-purple-400:hover {
+  color: var(--color-accent-hover) !important;
+}
+
+/* Borders */
+:root[data-theme="cypherpunk"] .border-purple-500,
+:root[data-theme="girly"] .border-purple-500,
+:root[data-theme="arcade80s"] .border-purple-500 {
+  border-color: var(--color-accent-primary) !important;
+}
+
+:root[data-theme="cypherpunk"] .border-gray-700,
+:root[data-theme="girly"] .border-gray-700,
+:root[data-theme="arcade80s"] .border-gray-700 {
+  border-color: var(--color-border) !important;
+}
+
+/* Buttons */
+:root[data-theme="cypherpunk"] button.border-purple-500.text-purple-400,
+:root[data-theme="cypherpunk"] .border-purple-500.text-purple-400 {
+  color: var(--color-accent-primary) !important;
+  border-color: var(--color-accent-primary) !important;
+}
+
+:root[data-theme="cypherpunk"] button.border-purple-500.hover\:text-purple-400:hover,
+:root[data-theme="cypherpunk"] .border-purple-500.hover\:text-purple-400:hover {
+  color: var(--color-accent-hover) !important;
+  border-color: var(--color-accent-hover) !important;
+}
+
+/* Keep outline buttons theme-colored for girly/arcade, but cypherpunk uses green */
+:root[data-theme="girly"] button.border-purple-500.text-purple-400,
+:root[data-theme="girly"] .border-purple-500.text-purple-400,
+:root[data-theme="girly"] button.border-purple-500.hover\:text-purple-400:hover,
+:root[data-theme="girly"] .border-purple-500.hover\:text-purple-400:hover,
+:root[data-theme="arcade80s"] button.border-purple-500.text-purple-400,
+:root[data-theme="arcade80s"] .border-purple-500.text-purple-400,
+:root[data-theme="arcade80s"] button.border-purple-500.hover\:text-purple-400:hover,
+:root[data-theme="arcade80s"] .border-purple-500.hover\:text-purple-400:hover {
+  color: var(--color-accent-primary) !important;
+  border-color: var(--color-accent-primary) !important;
+}
+
+/* Background colors */
+:root[data-theme="cypherpunk"] .bg-purple-600,
+:root[data-theme="girly"] .bg-purple-600,
+:root[data-theme="arcade80s"] .bg-purple-600 {
+  background-color: var(--color-accent-primary) !important;
+}
+
+:root[data-theme="cypherpunk"] .bg-purple-600:hover,
+:root[data-theme="girly"] .bg-purple-600:hover,
+:root[data-theme="arcade80s"] .bg-purple-600:hover {
+  background-color: var(--color-accent-hover) !important;
+}
+
+/* Background colors with opacity - theme-aware */
+:root[data-theme="cypherpunk"] .bg-purple-500\/20,
+:root[data-theme="girly"] .bg-purple-500\/20,
+:root[data-theme="arcade80s"] .bg-purple-500\/20 {
+  background-color: color-mix(in srgb, var(--color-accent-primary) 20%, transparent) !important;
+}
+
+:root[data-theme="cypherpunk"] .bg-purple-900\/20,
+:root[data-theme="girly"] .bg-purple-900\/20,
+:root[data-theme="arcade80s"] .bg-purple-900\/20 {
+  background-color: color-mix(in srgb, var(--color-accent-primary) 20%, transparent) !important;
+}
+
+:root[data-theme="cypherpunk"] .bg-purple-900\/30,
+:root[data-theme="girly"] .bg-purple-900\/30,
+:root[data-theme="arcade80s"] .bg-purple-900\/30 {
+  background-color: color-mix(in srgb, var(--color-accent-primary) 30%, transparent) !important;
+}
+
+/* Border colors with opacity - theme-aware */
+:root[data-theme="cypherpunk"] .border-purple-500\/50,
+:root[data-theme="girly"] .border-purple-500\/50,
+:root[data-theme="arcade80s"] .border-purple-500\/50 {
+  border-color: color-mix(in srgb, var(--color-accent-primary) 50%, transparent) !important;
+}
+
+/* Text colors - theme-aware */
+:root[data-theme="cypherpunk"] .text-purple-300,
+:root[data-theme="girly"] .text-purple-300,
+:root[data-theme="arcade80s"] .text-purple-300 {
+  color: var(--color-accent-primary) !important;
+}
+
+/* Green text (for cypherpunk success/status) */
+:root[data-theme="cypherpunk"] .text-green-600,
+:root[data-theme="cypherpunk"] .text-green-400,
+:root[data-theme="cypherpunk"] .text-green-500 {
+  color: var(--color-accent-secondary) !important;
+}
+
+/* Background utilities */
+:root[data-theme="cypherpunk"] .bg-dark,
+:root[data-theme="girly"] .bg-dark,
+:root[data-theme="arcade80s"] .bg-dark {
+  background-color: var(--color-bg-dark) !important;
+}
+
+:root[data-theme="cypherpunk"] .bg-\[#0E1116\],
+:root[data-theme="girly"] .bg-\[#0E1116\],
+:root[data-theme="arcade80s"] .bg-\[#0E1116\] {
+  background-color: var(--color-bg-primary) !important;
+}
+
+:root[data-theme="cypherpunk"] .bg-\[#171B21\],
+:root[data-theme="girly"] .bg-\[#171B21\],
+:root[data-theme="arcade80s"] .bg-\[#171B21\] {
+  background-color: var(--color-bg-secondary) !important;
+}
+
+:root[data-theme="cypherpunk"] .bg-\[#22262C\],
+:root[data-theme="girly"] .bg-\[#22262C\],
+:root[data-theme="arcade80s"] .bg-\[#22262C\] {
+  background-color: var(--color-bg-secondary) !important;
+}
+
+/* Text colors */
+:root[data-theme="cypherpunk"] .text-white,
+:root[data-theme="girly"] .text-white,
+:root[data-theme="arcade80s"] .text-white {
+  color: var(--color-text-primary) !important;
+}
+
+:root[data-theme="cypherpunk"] .text-gray-400,
+:root[data-theme="girly"] .text-gray-400,
+:root[data-theme="arcade80s"] .text-gray-400 {
+  color: var(--color-text-secondary) !important;
+}
+
+/* Radio buttons and checkboxes - NO BLUE, use theme colors */
+input[type="radio"],
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--color-border);
+  border-radius: 50%;
+  background-color: transparent;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+
+input[type="checkbox"] {
+  border-radius: 0.25rem;
+}
+
+/* Radio button selected state */
+input[type="radio"]:checked {
+  border-color: var(--color-accent-primary);
+  background-color: transparent;
+}
+
+input[type="radio"]:checked::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background-color: var(--color-accent-primary);
+}
+
+/* Checkbox selected state */
+input[type="checkbox"]:checked {
+  border-color: var(--color-accent-primary);
+  background-color: var(--color-accent-primary);
+}
+
+input[type="checkbox"]:checked::before {
+  content: "✓";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--color-bg-primary);
+  font-size: 0.75rem;
+  font-weight: bold;
+  line-height: 1;
+}
+
+/* Focus states */
+input[type="radio"]:focus,
+input[type="checkbox"]:focus {
+  outline: 2px solid var(--color-accent-primary);
+  outline-offset: 2px;
+}
+
+/* Hover states */
+input[type="radio"]:hover:not(:checked),
+input[type="checkbox"]:hover:not(:checked) {
+  border-color: var(--color-accent-hover);
+}
+
+/* Disabled states */
+input[type="radio"]:disabled,
+input[type="checkbox"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Override any blue browser defaults */
+input[type="radio"]::-webkit-outer-spin-button,
+input[type="radio"]::-webkit-inner-spin-button,
+input[type="checkbox"]::-webkit-outer-spin-button,
+input[type="checkbox"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Ensure no blue colors anywhere */
+input[type="radio"],
+input[type="checkbox"] {
+  accent-color: var(--color-accent-primary) !important;
+}
+
+/* For browsers that support accent-color but still show blue */
+@supports (accent-color: var(--color-accent-primary)) {
+  input[type="radio"],
+  input[type="checkbox"] {
+    accent-color: var(--color-accent-primary);
+  }
+}
+
+/* Tooltip styling - browser default tooltips (from title attribute) */
+[title] {
+  position: relative;
+}
+
+/* Note: Browser default tooltips cannot be fully styled with CSS alone.
+   For better control, consider using a custom tooltip component.
+   However, we can ensure the text is readable by using proper contrast. */

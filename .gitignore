@@ -1,0 +1,16 @@
+# dependencies
+node_modules
+dist
+build
+
+# editors
+.DS_Store
+
+# runtime
+data
+
+# env
+.env.local
+.env.*.local
+.env
+# Personal credentials - never commit
