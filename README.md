@@ -151,7 +151,6 @@ Configure in Settings → Account:
 
 - **[SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md)** - Complete production setup guide
 - **[LOCAL_SETUP.md](LOCAL_SETUP.md)** - Local development setup
-- **[Concept Document](docs/CONCEPT.md)** - Complete feature specification
 - **[Grasp Relay Setup](docs/GRASP_RELAY_SETUP.md)** - How to set up your own relay instance (Grasp protocol)
 - **[Testing Guide](MANUAL_TESTING_GUIDE.md)** - Manual testing procedures
 - **[Testing Status](TESTING_STATUS.md)** - Current testing status
