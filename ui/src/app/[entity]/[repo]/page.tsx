@@ -41,6 +41,7 @@ import {
   Upload,
 } from "lucide-react";
 import { RepoZapButton } from "@/components/ui/repo-zap-button";
+import { MermaidRenderer } from "@/components/ui/mermaid-renderer";
 import { FuzzyFileFinder } from "@/components/ui/fuzzy-file-finder";
 import { SSHGitHelp } from "@/components/ui/ssh-git-help";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
@@ -6170,14 +6171,25 @@ export default function RepoCodePage({
                       <img {...props} className="max-w-full h-auto rounded" alt={props.alt || ""} />
                     ),
                     code: ({ node, inline, className, children, ...props }: any) => {
-                      const match = /language-(\w+)/.exec(className || '');
-                      return !inline && match ? (
-                        <pre className="bg-gray-900 rounded p-4 overflow-x-auto">
-                          <code className={className} {...props}>
-                            {children}
-                          </code>
-                        </pre>
-                      ) : (
+                      const match = /language-([\w-]+)/.exec(className || "");
+                      const language = match?.[1]?.toLowerCase();
+                      const content = String(children).replace(/\n$/, "");
+
+                      if (!inline && language === "mermaid") {
+                        return <MermaidRenderer code={content} className="my-4" />;
+                      }
+
+                      if (!inline && match) {
+                        return (
+                          <pre className="bg-gray-900 rounded p-4 overflow-x-auto">
+                            <code className={className} {...props}>
+                              {children}
+                            </code>
+                          </pre>
+                        );
+                      }
+
+                      return (
                         <code className="bg-gray-900 px-1 rounded text-green-400" {...props}>
                           {children}
                         </code>

@@ -90,60 +90,60 @@ When a user opens a repository page, the system fetches the complete file tree u
 
 ```mermaid
 flowchart TD
-    Start([User Opens Repo Page<br/>Input: entity, repo, branch]) --> CheckCache{Check localStorage<br/>Input: entity, repo<br/>Output: cached files or null}
+    Start(["User Opens Repo Page\nInput: entity, repo, branch"]) --> CheckCache{"Check localStorage\nInput: entity, repo\nOutput: cached files or null"}
     
-    CheckCache -->|Files Found| CacheMatch{Entity + Repo Match?}
-    CacheMatch -->|Yes| UseCache[✅ Use Cached Files<br/>Output: files array<br/>Return: Display files]
+    CheckCache -->|Files Found| CacheMatch{"Entity + Repo Match?"}
+    CacheMatch -->|Yes| UseCache["✅ Use Cached Files\nOutput: files array\nReturn: Display files"]
     CacheMatch -->|No| CheckEmbedded
     
-    CheckCache -->|No Cache| CheckEmbedded{Check Embedded Files<br/>Input: repoData.files<br/>Output: files array or null}
+    CheckCache -->|No Cache| CheckEmbedded{"Check Embedded Files\nInput: repoData.files\nOutput: files array or null"}
     
-    CheckEmbedded -->|Files Found| UseEmbedded[✅ Use Embedded Files<br/>Output: files array<br/>Return: Display files]
-    CheckEmbedded -->|No Files| ResolveOwnerPubkey[Resolve ownerPubkey<br/>Input: params.entity npub<br/>Process: nip19.decode<br/>Output: 64-char hex pubkey]
+    CheckEmbedded -->|Files Found| UseEmbedded["✅ Use Embedded Files\nOutput: files array\nReturn: Display files"]
+    CheckEmbedded -->|No Files| ResolveOwnerPubkey["Resolve ownerPubkey\nInput: params.entity npub\nProcess: nip19.decode\nOutput: 64-char hex pubkey"]
     
-    ResolveOwnerPubkey --> TryBridge{Try git-nostr-bridge API<br/>Input: ownerPubkey, repo, branch<br/>GET /api/nostr/repo/files<br/>Output: files array or 404}
+    ResolveOwnerPubkey --> TryBridge{"Try git-nostr-bridge API\nInput: ownerPubkey, repo, branch\nGET /api/nostr/repo/files\nOutput: files array or 404"}
     
-    TryBridge -->|200 OK| BridgeSuccess[✅ Files from Bridge<br/>Output: files array<br/>Return: Display files]
-    TryBridge -->|404 Not Found| CheckGrasp{Is GRASP Server?<br/>Input: clone URLs<br/>Check: knownGraspServers list}
+    TryBridge -->|200 OK| BridgeSuccess["✅ Files from Bridge\nOutput: files array\nReturn: Display files"]
+    TryBridge -->|404 Not Found| CheckGrasp{"Is GRASP Server?\nInput: clone URLs\nCheck: knownGraspServers list"}
     
-    CheckGrasp -->|Yes| TriggerClone[Trigger Clone<br/>Input: cloneUrl, ownerPubkey, repo<br/>POST /api/nostr/repo/clone<br/>Output: clone started]
+    CheckGrasp -->|Yes| TriggerClone["Trigger Clone\nInput: cloneUrl, ownerPubkey, repo\nPOST /api/nostr/repo/clone\nOutput: clone started"]
     
-    TriggerClone --> WaitClone[Wait 3 seconds<br/>Process: setTimeout<br/>Output: time elapsed]
+    TriggerClone --> WaitClone["Wait 3 seconds\nProcess: setTimeout\nOutput: time elapsed"]
     
-    WaitClone --> RetryBridge{Retry Bridge API<br/>Input: ownerPubkey, repo, branch<br/>GET /api/nostr/repo/files<br/>Output: files array or 404}
+    WaitClone --> RetryBridge{"Retry Bridge API\nInput: ownerPubkey, repo, branch\nGET /api/nostr/repo/files\nOutput: files array or 404"}
     
     RetryBridge -->|200 OK| BridgeSuccess
-    RetryBridge -->|404| MultiSource
+    RetryBridge -->|404| MultiSource["Multi-Source Fetch\nInput: cloneUrls array, branch\nProcess: fetchFilesFromMultipleSources\nUses Promise.race for first success"]
     
-    CheckGrasp -->|No| MultiSource[Multi-Source Fetch<br/>Input: cloneUrls array, branch<br/>Process: fetchFilesFromMultipleSources<br/>Uses Promise.race for first success]
+    CheckGrasp -->|No| MultiSource
+
+    MultiSource --> ParseSources["Parse Git Sources\nInput: cloneUrls\nProcess: parseGitSource for each URL\nOutput: GitSource objects"]
+
+    ParseSources --> ParallelFetch["Parallel Fetch All Sources\nInput: GitSource array\nProcess: Promise.race\nOutput: First success or all failed"]
     
-    MultiSource --> ParseSources[Parse Git Sources<br/>Input: cloneUrls<br/>Process: parseGitSource for each URL<br/>Output: GitSource objects]
+    ParallelFetch --> GitHub{"Try GitHub\nInput: owner, repo, branch\nAPI: /repos/{owner}/{repo}/git/trees/{sha}\nOutput: files array or error"}
+
+    ParallelFetch --> GitLab{"Try GitLab\nInput: owner, repo, branch\nAPI: /api/v4/projects/{path}/repository/tree\nOutput: files array or error"}
+
+    ParallelFetch --> Codeberg{"Try Codeberg\nInput: owner, repo, branch\nAPI: /api/v1/repos/{owner}/{repo}/git/trees/{branch}\nOutput: files array or error"}
+
+    ParallelFetch --> GraspServers{"Try GRASP Servers\nInput: cloneUrl, npub, repo, branch\nProcess: fetchFromNostrGit\nOutput: files array or error"}
     
-    ParseSources --> ParallelFetch[Parallel Fetch All Sources<br/>Input: GitSource array<br/>Process: Promise.race<br/>Output: First success or all failed]
-    
-    ParallelFetch --> GitHub{Try GitHub<br/>Input: owner, repo, branch<br/>API: /repos/{owner}/{repo}/git/trees/{sha}<br/>Output: files array or error}
-    
-    ParallelFetch --> GitLab{Try GitLab<br/>Input: owner, repo, branch<br/>API: /api/v4/projects/{path}/repository/tree<br/>Output: files array or error}
-    
-    ParallelFetch --> Codeberg{Try Codeberg<br/>Input: owner, repo, branch<br/>API: /api/v1/repos/{owner}/{repo}/git/trees/{branch}<br/>Output: files array or error}
-    
-    ParallelFetch --> GraspServers{Try GRASP Servers<br/>Input: cloneUrl, npub, repo, branch<br/>Process: fetchFromNostrGit<br/>Output: files array or error}
-    
-    GitHub -->|Success| FirstSuccess[✅ First Success Found<br/>Output: files array<br/>Process: Update UI immediately<br/>Return: Display files]
+    GitHub -->|Success| FirstSuccess["✅ First Success Found\nOutput: files array\nProcess: Update UI immediately\nReturn: Display files"]
     GitLab -->|Success| FirstSuccess
     Codeberg -->|Success| FirstSuccess
     GraspServers -->|Success| FirstSuccess
     
-    GitHub -->|Error| ContinueBackground[Continue in Background<br/>Process: Update statuses<br/>Output: Final status for each source]
+    GitHub -->|Error| ContinueBackground["Continue in Background\nProcess: Update statuses\nOutput: Final status for each source"]
     GitLab -->|Error| ContinueBackground
     Codeberg -->|Error| ContinueBackground
     GraspServers -->|Error| ContinueBackground
     
-    FirstSuccess --> UpdateState[Update State & localStorage<br/>Input: files array<br/>Process: setRepoData, localStorage.setItem<br/>Output: UI updated, data persisted]
+    FirstSuccess --> UpdateState["Update State & localStorage\nInput: files array\nProcess: setRepoData, localStorage.setItem\nOutput: UI updated, data persisted"]
     
-    UpdateState --> End([✅ Files Displayed<br/>Output: File tree visible to user])
+    UpdateState --> End(["✅ Files Displayed\nOutput: File tree visible to user"])
     
-    ContinueBackground --> UpdateStatuses[Update Source Statuses<br/>Input: status for each source<br/>Output: Status display updated<br/>Shows: ✓ Fetched or ✗ No files found]
+    ContinueBackground --> UpdateStatuses["Update Source Statuses\nInput: status for each source\nOutput: Status display updated\nShows: ✓ Fetched or ✗ No files found"]
     
     style Start fill:#e1f5ff
     style UseCache fill:#c8e6c9
@@ -161,77 +161,77 @@ When a user clicks on a file to view its content, the system uses this flow:
 
 ```mermaid
 flowchart TD
-    Start([User Clicks File<br/>Input: filePath, branch]) --> CheckOverrides{Check Overrides<br/>Input: localStorage gittr_overrides<br/>Output: override content or null}
+    Start(["User Clicks File\nInput: filePath, branch"]) --> CheckOverrides{"Check Overrides\nInput: localStorage gittr_overrides\nOutput: override content or null"}
     
-    CheckOverrides -->|Override Found| UseOverride[✅ Use Override Content<br/>Output: fileContent string<br/>Return: Display file]
-    CheckOverrides -->|No Override| Strategy1[Strategy 1: Check Embedded Files<br/>Input: repoData.files array, filePath<br/>Process: find matching fileEntry<br/>Output: fileEntry with content or null]
+    CheckOverrides -->|Override Found| UseOverride["✅ Use Override Content\nOutput: fileContent string\nReturn: Display file"]
+    CheckOverrides -->|No Override| Strategy1["Strategy 1: Check Embedded Files\nInput: repoData.files array, filePath\nProcess: find matching fileEntry\nOutput: fileEntry with content or null"]
     
-    Strategy1 -->|File Found| CheckContentFields{Check Content Fields<br/>Input: fileEntry<br/>Check: content, data, body, text, fileContent<br/>Output: foundContent string or null}
+    Strategy1 -->|File Found| CheckContentFields{"Check Content Fields\nInput: fileEntry\nCheck: content, data, body, text, fileContent\nOutput: foundContent string or null"}
     
-    CheckContentFields -->|Content Found| CheckBinary{Is Binary?<br/>Input: fileEntry.isBinary, file extension<br/>Output: isBinary boolean}
+    CheckContentFields -->|Content Found| CheckBinary{"Is Binary?\nInput: fileEntry.isBinary, file extension\nOutput: isBinary boolean"}
     
-    CheckBinary -->|Yes| CreateDataURL[Create Data URL<br/>Input: base64 content, mimeType<br/>Process: data:{mimeType};base64,{content}<br/>Output: dataUrl string]
-    CreateDataURL --> ReturnEmbedded[✅ Return Embedded Content<br/>Output: {content: null, url: dataUrl, isBinary: true}<br/>Return: Display file]
+    CheckBinary -->|Yes| CreateDataURL["Create Data URL\nInput: base64 content, mimeType\nProcess: data:{mimeType};base64,{content}\nOutput: dataUrl string"]
+    CreateDataURL --> ReturnEmbedded["✅ Return Embedded Content\nOutput: {content: null, url: dataUrl, isBinary: true}\nReturn: Display file"]
     
-    CheckBinary -->|No| ReturnText[✅ Return Text Content<br/>Output: {content: foundContent, url: null, isBinary: false}<br/>Return: Display file]
+    CheckBinary -->|No| ReturnText["✅ Return Text Content\nOutput: {content: foundContent, url: null, isBinary: false}\nReturn: Display file"]
     
     CheckContentFields -->|No Content| Strategy2
-    Strategy1 -->|File Not Found| Strategy2[Strategy 2: git-nostr-bridge API<br/>Input: filePath, branch]
+    Strategy1 -->|File Not Found| Strategy2["Strategy 2: git-nostr-bridge API\nInput: filePath, branch"]
     
-    Strategy2 --> ResolveOwnerPubkey[Resolve ownerPubkey<br/>Priority 1: repoData.ownerPubkey<br/>Priority 2: localStorage matching repo<br/>Priority 3: Decode npub from params.entity<br/>Priority 4: resolveEntityToPubkey utility<br/>Output: 64-char hex pubkey]
+    Strategy2 --> ResolveOwnerPubkey["Resolve ownerPubkey\nPriority 1: repoData.ownerPubkey\nPriority 2: localStorage matching repo\nPriority 3: Decode npub from params.entity\nPriority 4: resolveEntityToPubkey utility\nOutput: 64-char hex pubkey"]
     
-    ResolveOwnerPubkey --> CallBridgeAPI{Call Bridge API<br/>Input: ownerPubkey, repo, path, branch<br/>GET /api/nostr/repo/file-content<br/>Output: 200 OK with content or 404}
+    ResolveOwnerPubkey --> CallBridgeAPI{"Call Bridge API\nInput: ownerPubkey, repo, path, branch\nGET /api/nostr/repo/file-content\nOutput: 200 OK with content or 404"}
     
-    CallBridgeAPI -->|200 OK| CheckResponseBinary{Is Binary Response?<br/>Input: response.isBinary<br/>Output: boolean}
+    CallBridgeAPI -->|200 OK| CheckResponseBinary{"Is Binary Response?\nInput: response.isBinary\nOutput: boolean"}
     
-    CheckResponseBinary -->|Yes| CreateBridgeDataURL[Create Data URL<br/>Input: base64 content from API<br/>Output: dataUrl string]
-    CreateBridgeDataURL --> ReturnBridgeBinary[✅ Return Bridge Binary<br/>Output: {content: null, url: dataUrl, isBinary: true}<br/>Return: Display file]
+    CheckResponseBinary -->|Yes| CreateBridgeDataURL["Create Data URL\nInput: base64 content from API\nOutput: dataUrl string"]
+    CreateBridgeDataURL --> ReturnBridgeBinary["✅ Return Bridge Binary\nOutput: {content: null, url: dataUrl, isBinary: true}\nReturn: Display file"]
     
-    CheckResponseBinary -->|No| ReturnBridgeText[✅ Return Bridge Text<br/>Output: {content: textContent, url: null, isBinary: false}<br/>Return: Display file]
+    CheckResponseBinary -->|No| ReturnBridgeText["✅ Return Bridge Text\nOutput: {content: textContent, url: null, isBinary: false}\nReturn: Display file"]
     
-    CallBridgeAPI -->|404 Not Found| CheckGrasp{Is GRASP Server?<br/>Input: cloneUrls, knownGraspServers<br/>Output: boolean}
+    CallBridgeAPI -->|404 Not Found| CheckGrasp{"Is GRASP Server?\nInput: cloneUrls, knownGraspServers\nOutput: boolean"}
     
-    CheckGrasp -->|Yes| TriggerClone[Trigger Clone<br/>Input: cloneUrl, ownerPubkey, repo<br/>POST /api/nostr/repo/clone<br/>Output: clone started]
+    CheckGrasp -->|Yes| TriggerClone["Trigger Clone\nInput: cloneUrl, ownerPubkey, repo\nPOST /api/nostr/repo/clone\nOutput: clone started"]
     
-    TriggerClone --> PollFile[Poll for File<br/>Input: apiUrl<br/>Process: Loop max 5 attempts, 1s delay<br/>GET /api/nostr/repo/file-content<br/>Output: 200 OK or timeout]
+    TriggerClone --> PollFile["Poll for File\nInput: apiUrl\nProcess: Loop max 5 attempts, 1s delay\nGET /api/nostr/repo/file-content\nOutput: 200 OK or timeout"]
     
-    PollFile -->|200 OK| CheckPollBinary{Is Binary?<br/>Input: response.isBinary<br/>Output: boolean}
+    PollFile -->|200 OK| CheckPollBinary{"Is Binary?\nInput: response.isBinary\nOutput: boolean"}
     
-    CheckPollBinary -->|Yes| CreatePollDataURL[Create Data URL<br/>Output: dataUrl string]
-    CreatePollDataURL --> ReturnPollBinary[✅ Return Polled Binary<br/>Output: {content: null, url: dataUrl, isBinary: true}<br/>Return: Display file]
+    CheckPollBinary -->|Yes| CreatePollDataURL["Create Data URL\nOutput: dataUrl string"]
+    CreatePollDataURL --> ReturnPollBinary["✅ Return Polled Binary\nOutput: {content: null, url: dataUrl, isBinary: true}\nReturn: Display file"]
     
-    CheckPollBinary -->|No| ReturnPollText[✅ Return Polled Text<br/>Output: {content: textContent, url: null, isBinary: false}<br/>Return: Display file]
+    CheckPollBinary -->|No| ReturnPollText["✅ Return Polled Text\nOutput: {content: textContent, url: null, isBinary: false}\nReturn: Display file"]
     
     PollFile -->|Timeout| Strategy3
-    CheckGrasp -->|No| Strategy3[Strategy 3: External Git Servers<br/>Input: sourceUrl, filePath, branch]
+    CheckGrasp -->|No| Strategy3["Strategy 3: External Git Servers\nInput: sourceUrl, filePath, branch"]
     
-    Strategy3 --> ResolveSourceUrl[Resolve sourceUrl<br/>Priority 1: repoData.sourceUrl<br/>Priority 2: repoData.forkedFrom<br/>Priority 3: clone URLs from repoData<br/>Priority 4: localStorage matching repo<br/>Output: sourceUrl string]
+    Strategy3 --> ResolveSourceUrl["Resolve sourceUrl\nPriority 1: repoData.sourceUrl\nPriority 2: repoData.forkedFrom\nPriority 3: clone URLs from repoData\nPriority 4: localStorage matching repo\nOutput: sourceUrl string"]
     
-    ResolveSourceUrl --> ParseSource{Parse Source Type<br/>Input: sourceUrl<br/>Process: Match regex patterns<br/>Output: githubMatch, gitlabMatch, codebergMatch}
+    ResolveSourceUrl --> ParseSource{"Parse Source Type\nInput: sourceUrl\nProcess: Match regex patterns\nOutput: githubMatch, gitlabMatch, codebergMatch"}
     
-    ParseSource -->|GitHub| CallGitHubAPI{Call GitHub API Proxy<br/>Input: sourceUrl, path, branch<br/>GET /api/git/file-content<br/>Backend: raw.githubusercontent.com<br/>Output: 200 OK with content or error}
+    ParseSource -->|GitHub| CallGitHubAPI{"Call GitHub API Proxy\nInput: sourceUrl, path, branch\nGET /api/git/file-content\nBackend: raw.githubusercontent.com\nOutput: 200 OK with content or error"}
     
-    ParseSource -->|GitLab| CallGitLabAPI{Call GitLab API Proxy<br/>Input: sourceUrl, path, branch<br/>GET /api/git/file-content<br/>Backend: GitLab API<br/>Output: 200 OK with content or error}
+    ParseSource -->|GitLab| CallGitLabAPI{"Call GitLab API Proxy\nInput: sourceUrl, path, branch\nGET /api/git/file-content\nBackend: GitLab API\nOutput: 200 OK with content or error"}
     
-    ParseSource -->|Codeberg| CallCodebergAPI{Call Codeberg API Proxy<br/>Input: sourceUrl, path, branch<br/>GET /api/git/file-content<br/>Backend: Codeberg API<br/>Output: 200 OK with content or error}
+    ParseSource -->|Codeberg| CallCodebergAPI{"Call Codeberg API Proxy\nInput: sourceUrl, path, branch\nGET /api/git/file-content\nBackend: Codeberg API\nOutput: 200 OK with content or error"}
     
-    CallGitHubAPI -->|200 OK| CheckAPIBinary{Is Binary?<br/>Input: response.isBinary<br/>Output: boolean}
+    CallGitHubAPI -->|200 OK| CheckAPIBinary{"Is Binary?\nInput: response.isBinary\nOutput: boolean"}
     CallGitLabAPI -->|200 OK| CheckAPIBinary
     CallCodebergAPI -->|200 OK| CheckAPIBinary
     
-    CheckAPIBinary -->|Yes| CreateAPIDataURL[Create Data URL<br/>Input: base64 content<br/>Output: dataUrl string]
-    CreateAPIDataURL --> ReturnAPIBinary[✅ Return API Binary<br/>Output: {content: null, url: dataUrl, isBinary: true}<br/>Return: Display file]
+    CheckAPIBinary -->|Yes| CreateAPIDataURL["Create Data URL\nInput: base64 content\nOutput: dataUrl string"]
+    CreateAPIDataURL --> ReturnAPIBinary["✅ Return API Binary\nOutput: {content: null, url: dataUrl, isBinary: true}\nReturn: Display file"]
     
-    CheckAPIBinary -->|No| ReturnAPIText[✅ Return API Text<br/>Output: {content: textContent, url: null, isBinary: false}<br/>Return: Display file]
+    CheckAPIBinary -->|No| ReturnAPIText["✅ Return API Text\nOutput: {content: textContent, url: null, isBinary: false}\nReturn: Display file"]
     
-    CallGitHubAPI -->|Error| TryNextBranch{Try Next Branch<br/>Input: branchesToTry array<br/>Process: Try main, master<br/>Output: success or all failed}
+    CallGitHubAPI -->|Error| TryNextBranch{"Try Next Branch\nInput: branchesToTry array\nProcess: Try main, master\nOutput: success or all failed"}
     CallGitLabAPI -->|Error| TryNextBranch
     CallCodebergAPI -->|Error| TryNextBranch
     
     TryNextBranch -->|Success| CheckAPIBinary
-    TryNextBranch -->|All Failed| ErrorState[❌ Unable to Load File<br/>Output: {content: null, url: null, isBinary: false}<br/>Return: Show error message]
+    TryNextBranch -->|All Failed| ErrorState["❌ Unable to Load File\nOutput: {content: null, url: null, isBinary: false}\nReturn: Show error message"]
     
-    ReturnEmbedded --> RenderFile[Render File Content<br/>Input: content or url, isBinary<br/>Process: CodeViewer, iframe, img, video, etc.<br/>Output: File displayed to user]
+    ReturnEmbedded --> RenderFile["Render File Content\nInput: content or url, isBinary\nProcess: CodeViewer, iframe, img, video, etc.\nOutput: File displayed to user"]
     ReturnText --> RenderFile
     ReturnBridgeBinary --> RenderFile
     ReturnBridgeText --> RenderFile
@@ -240,7 +240,7 @@ flowchart TD
     ReturnAPIBinary --> RenderFile
     ReturnAPIText --> RenderFile
     
-    RenderFile --> End([✅ File Displayed<br/>Output: File content visible to user])
+    RenderFile --> End(["✅ File Displayed\nOutput: File content visible to user"])
     
     ErrorState --> End
     
@@ -262,15 +262,13 @@ flowchart TD
 
 **Key Features of These Flows:**
 
-1. **Multi-Source Parallel Fetching**: File list fetching uses `Promise.race` to return the first successful source immediately, while other sources continue in the background to update their statuses.
+**Automatic Cloning**: GRASP repositories automatically trigger a clone when not found locally, then retry the API call.
 
-2. **Automatic Cloning**: GRASP repositories automatically trigger a clone when not found locally, then retry the API call.
+**Robust Fallback Chain**: Both flows have multiple fallback strategies, ensuring files can be fetched even if one source fails.
 
-3. **Robust Fallback Chain**: Both flows have multiple fallback strategies, ensuring files can be fetched even if one source fails.
+**Binary File Handling**: Binary files are detected, encoded as base64, and converted to data URLs for display in the browser.
 
-4. **Binary File Handling**: Binary files are detected, encoded as base64, and converted to data URLs for display in the browser.
-
-5. **OwnerPubkey Resolution**: The system uses multiple strategies to resolve the correct owner pubkey, ensuring consistency between file fetching and file opening.
+**OwnerPubkey Resolution**: The system uses multiple strategies to resolve the correct owner pubkey, ensuring consistency between file fetching and file opening.
 
 ## What's Stored WHERE
 
@@ -310,7 +308,7 @@ gittr.space supports multiple authentication methods:
 
 - **NIP-07**: Browser extension (e.g., Alby, Nos2x)
 - **Private Key (nsec)**: Direct private key login
-- **NIP-05**: Email-based verification
+- **NIP-05**: NIP05-ID-based verification
 
 ## 💰 Payment Configuration
 
@@ -324,10 +322,6 @@ Configure in Settings → Account:
 - **NWC Send**: Configure Nostr Wallet Connect string for client-side payments
 - **LNbits**: Server-side payments (requires LNbits instance)
 
-### Testing Payments
-Use small amounts (2-10 sats) during development. Test wallets:
-- LNbits: ~300 sats
-- NWC: ~84 sats
 
 ## 📚 Setup & Documentation
 
@@ -339,6 +333,10 @@ Use small amounts (2-10 sats) during development. Test wallets:
 - **[Testing Status](TESTING_STATUS.md)** - Current testing status
 - **[Open Issues](OPEN_ISSUES.md)** - Known issues and missing features
 
+### ⚠️ Repository import size limit
+
+Next.js API routes hard-cap responses at ~4 MB. When importing from GitHub/Codeberg we capture the entire file tree (including binaries/releases), so very large repositories will exceed that limit. When this happens the import dialog now shows a “repository is too large (>4 MB)” error. If you hit it, trim heavy artifacts (release archives, media, build outputs) before retrying, or import a smaller subset of the project.
+
 ## 🎨 Themes
 
 gittr.space supports multiple themes:
@@ -349,26 +347,6 @@ gittr.space supports multiple themes:
 
 Change theme in Settings → Appearance.
 
-## 🧪 Testing
-
-See `MANUAL_TESTING_GUIDE.md` for comprehensive test procedures.
-
-### Quick Test Checklist
-- [ ] Create repository
-- [ ] Import from GitHub
-- [ ] Create issue with bounty
-- [ ] Create and merge PR
-- [ ] Configure payments and test zap
-- [ ] Test theme switching
-- [ ] Verify search functionality
-
-## 🐛 Known Issues
-
-See `OPEN_ISSUES.md` for complete list of known issues and missing features.
-
-### Current Known Issues
-- Relay status indicators may show disconnected initially (my-relays page)
-- Some GitHub-imported repos may not show contributor icons
 
 ## 🚧 Roadmap
 
@@ -405,7 +383,6 @@ This project is licensed under the **GNU Affero General Public License v3.0 (AGP
 
 The `gitnostr` Go components (`ui/gitnostr/`) are licensed under the **MIT License** (see `ui/gitnostr/LICENSE.md` for details).
 
-See `ui/LICENSE` for the full AGPL-3.0 license text.
 
 ## 🙏 Acknowledgments
 
@@ -415,7 +392,7 @@ See `ui/LICENSE` for the full AGPL-3.0 license text.
 - Implements [GRASP Protocol](https://ngit.dev/grasp/) for distributed Git hosting (newer than original NostrGit)
 - Inspired by GitHub's developer experience
 
-**Note:** This project (`gittr.space`) is a fork of NostrGit that has been significantly developed and diverged from the original. It is a separate project and platform, not to be confused with other legacy NGIT forks. Key additions include:
+**Note:** This project (`gittr.space`) is a fork of NostrGit Page template that has been significantly developed. It is a separate project and platform. Key additions include:
 - ✅ GRASP protocol support (clone/relays tags, client-side proactive sync)
 - ✅ Bitcoin/Lightning payment integration (zaps, bounties)
 - ✅ Enhanced UI features (themes, activity tracking, explore page)
@@ -424,8 +401,7 @@ See `ui/LICENSE` for the full AGPL-3.0 license text.
 
 ## 📞 Support
 
-- Issues: [GitHub Issues](https://github.com/arbadacarbaYK/ngit/issues) (repo currently hosted under the legacy `ngit` name)
-- Discussions: [GitHub Discussions](https://github.com/arbadacarbaYK/ngit/discussions)
+Get into the NIP39-ident-match channel https://t.me/gittrspace, it is open to any other comments. 
 
 ---
 
