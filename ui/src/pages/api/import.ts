@@ -25,6 +25,8 @@ type Data = {
   pulls?: Array<{ number: number; title: string; body?: string; state: string; created_at?: string; updated_at?: string; html_url?: string; user?: { login: string; avatar_url?: string }; labels?: Array<{ name: string; color?: string }>; merged_at?: string; head?: { ref: string }; base?: { ref: string } }>;
   commits?: Array<{ sha: string; message: string; author?: { name?: string; email?: string; date?: string }; committer?: { name?: string; email?: string; date?: string }; html_url?: string }>;
   homepage?: string; // GitHub Pages or website URL
+  fileCount?: number;
+  approximateSizeBytes?: number;
 };
 
 async function fetchGithubTree(owner: string, repo: string, branch: string) {
@@ -482,12 +484,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       dirCount: finalFiles.filter((f: any) => f.type === "dir").length,
     });
     
-    return res.status(200).json({ 
-      status: "completed", 
-      slug, 
-      entity, 
-      repo, 
-      readme, 
+    const responsePayload: Data = {
+      status: "completed",
+      slug,
+      entity,
+      repo,
+      readme,
       files: finalFiles, // Always return files array (even if empty)
       description,
       contributors: contributors.slice(0, 20), // Limit to top 20
@@ -503,7 +505,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       pulls,
       commits,
       homepage, // Include GitHub Pages/website URL
-    });
+    };
+
+    // Next.js API routes have a 4MB body limit (after gzip). Large repositories (many files/binaries)
+    // can exceed this easily and cause 504s at the CDN. Detect and fail fast with friendly error.
+    const jsonPayload = JSON.stringify(responsePayload);
+    const payloadBytes = Buffer.byteLength(jsonPayload, "utf8");
+    const MAX_PAYLOAD_BYTES = 3.5 * 1024 * 1024; // ~3.5MB buffer before the hard 4MB limit
+
+    if (payloadBytes > MAX_PAYLOAD_BYTES) {
+      console.warn(
+        `⚠️ [Import API] Repository payload ${payloadBytes} bytes exceeds ${MAX_PAYLOAD_BYTES} byte limit. Failing with repo_too_large.`
+      );
+      return res.status(413).json({
+        status: "repo_too_large",
+        message:
+          "This repository contains too many or too large files (over 4MB of metadata). Please remove large release assets/binaries and try again.",
+        fileCount: responsePayload.files?.filter((f) => f.type === "file").length ?? 0,
+        approximateSizeBytes: payloadBytes,
+      });
+    }
+
+    return res.status(200).json(responsePayload);
   } catch (e) {
     return res.status(500).json({ status: "error" });
   }

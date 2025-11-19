@@ -841,8 +841,24 @@ export default function ImportPage() {
           });
 
           if (!importResponse.ok) {
-            const errorText = await importResponse.text();
-            console.error(`❌ [Import] Failed to import ${fullName}:`, importResponse.status, errorText);
+            const errorBody = await importResponse.text();
+            let errorMessage = `Failed to import ${fullName}: ${importResponse.status} ${importResponse.statusText}`;
+            if (errorBody) {
+              try {
+                const errorJson = JSON.parse(errorBody);
+                if (errorJson?.status === "repo_too_large") {
+                  errorMessage =
+                    errorJson.message ||
+                    "Repository is too large to import (>4MB of metadata). Remove large binaries/releases and try again.";
+                } else if (errorJson?.message) {
+                  errorMessage = errorJson.message;
+                }
+              } catch {
+                errorMessage = errorBody;
+              }
+            }
+            console.error(`❌ [Import] Failed to import ${fullName}:`, importResponse.status, errorMessage);
+            setStatus(errorMessage);
             skippedCount++;
             continue;
           }
@@ -856,8 +872,21 @@ export default function ImportPage() {
             filesLength: importData.files?.length || 0,
             firstFewFiles: Array.isArray(importData.files) ? importData.files.slice(0, 3) : undefined,
           });
+          if (importData.status === "repo_too_large") {
+            const largeMessage =
+              importData.message ||
+              `Cannot import ${fullName}: repository export exceeds the 4MB API limit. Remove large release assets/binaries and try again.`;
+            console.warn("⚠️ [Import] Repo too large:", largeMessage);
+            setStatus(largeMessage);
+            skippedCount++;
+            continue;
+          }
+
           if (importData.status !== "completed") {
             console.error(`❌ [Import] Import failed for ${fullName}:`, importData.status, importData);
+            if (importData.message) {
+              setStatus(importData.message);
+            }
             skippedCount++;
             continue;
           }
