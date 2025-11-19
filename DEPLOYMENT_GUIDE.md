@@ -122,9 +122,10 @@ curl -X GET https://blossom.gittr.space/nip96/info
 ### Step 3: Clone Repository and Install Dependencies
 
 ```bash
-# Clone repository (Gittr source repo is still hosted under the legacy 'ngit' name)
+# Clone repository
 git clone https://github.com/arbadacarbaYK/gittr.git 
-cd ngit
+cd gittr
+>>>>>>> 59046ae (Fix repo references: use 'gittr' instead of incorrect 'ngit' legacy name comments)
 
 # Install frontend dependencies
 cd ui
@@ -215,7 +216,7 @@ sudo su - git-nostr
 # As git-nostr user
 cd ~
 git clone https://github.com/arbadacarbaYK/gittr.git 
-cd ngit/ui/gitnostr
+cd gittr/ui/gitnostr
 make git-nostr-bridge
 
 # Verify binaries
@@ -293,8 +294,8 @@ After=network.target
 [Service]
 Type=simple
 User=git-nostr
-WorkingDirectory=/home/git-nostr/ngit/ui/gitnostr
-ExecStart=/home/git-nostr/ngit/ui/gitnostr/bin/git-nostr-bridge
+WorkingDirectory=/home/git-nostr/gittr/ui/gitnostr
+ExecStart=/home/git-nostr/gittr/ui/gitnostr/bin/git-nostr-bridge
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -677,6 +678,6 @@ cp /path/to/gittr/ui/.env.local "$BACKUP_DIR/"
 ---
 
 **Last Updated:** 2024-01-XX  
-**For Issues:** See [GitHub Issues](https://github.com/arbadacarbaYK/ngit/issues) (repo currently hosted under the legacy `ngit` name)  
+**For Issues:** See [GitHub Issues](https://github.com/arbadacarbaYK/gittr/issues)  
 **For Questions:** Contact the project maintainers
 
