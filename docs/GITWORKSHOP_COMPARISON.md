@@ -38,7 +38,7 @@ git commit --amend
 git push --force
 ```
 
-### Our ngit Approach
+### Our gittr Approach
 
 **Tools:**
 - **SSH-based Git operations** - Standard Git over SSH (like GitHub/GitLab)
@@ -105,7 +105,7 @@ These are **standard Git commands** that work with ANY Git repository, regardles
 The difference isn't about which Git commands work - **they all work!** The difference is:
 
 1. **gitworkshop.dev**: Uses `nostr://` protocol URLs → requires `git-remote-nostr` helper
-2. **Our ngit**: Uses SSH protocol URLs → standard Git SSH (no helper needed)
+2. **Our gittr**: Uses SSH protocol URLs → standard Git SSH (no helper needed)
 
 Both approaches support the same Git commands. The difference is the **protocol layer** (how Git connects to the server).  
 
@@ -117,7 +117,7 @@ Both approaches support the same Git commands. The difference is the **protocol 
 - **Distributed**: Each repo can be on different Grasp servers
 - **Lightweight**: Minimal web UI, mostly CLI
 
-### Our ngit
+### Our gittr
 - **SSH-based**: Uses standard Git SSH (familiar to developers)
 - **Web-first**: Full-featured web UI (like GitHub)
 - **Centralized Git server**: One server handles all Git operations

@@ -69,7 +69,7 @@ The following public instances are available:
    - Check Nostr relay: `wss://relay.yourdomain.com`
    - Check Git HTTP: `https://relay.yourdomain.com/<npub>/<repo>.git`
 
-### Integration with ngit Client
+### Integration with gittr Client
 
 Once your relay is running, add it to your client's relay configuration:
 
@@ -92,7 +92,7 @@ const DEFAULT_RELAYS = [
 
 ### ⚠️ Important: Relay Event Kind Configuration
 
-**Your relay and Blossom server MUST allow the following Nostr event kinds** for ngit to function properly:
+**Your relay and Blossom server MUST allow the following Nostr event kinds** for gittr to function properly:
 
 #### Required Event Kinds:
 
@@ -180,7 +180,7 @@ If you're running a Blossom server for file storage (Git pack files), ensure it:
 NEXT_PUBLIC_BLOSSOM_URL=https://blossom.yourdomain.com
 ```
 
-**⚠️ Security Note:** While allowing all kinds (0-65535) is simplest, you may want to restrict to only the kinds listed above for security. However, allowing all kinds ensures compatibility with future ngit features and other Nostr applications.
+**⚠️ Security Note:** While allowing all kinds (0-65535) is simplest, you may want to restrict to only the kinds listed above for security. However, allowing all kinds ensures compatibility with future gittr features and other Nostr applications.
 
 #### Verifying Configuration:
 
@@ -207,7 +207,7 @@ If events are rejected, check your relay logs for "event kind not allowed" error
 
 ```
 ┌─────────────┐
-│  ngit Client │
+│  gittr Client │
 └──────┬──────┘
        │
        ├─── Nostr Events (kind 51) ───┐
