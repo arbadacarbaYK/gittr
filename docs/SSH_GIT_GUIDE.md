@@ -27,7 +27,7 @@ Example:
 git clone git@gitnostr.com:9a83779e/Pixelbot.git
 ```
 
-**Note**: Even if a repository was imported from GitHub, once it's on ngit it becomes a native ngit repository accessible via our SSH infrastructure. The `forkedFrom` metadata is just for attribution - all git operations go through ngit's servers.
+**Note**: Even if a repository was imported from GitHub, once it's on gittr it becomes a native gittr repository accessible via our SSH infrastructure. The `forkedFrom` metadata is just for attribution - all git operations go through gittr's servers.
 
 ### 3. Push Changes
 
@@ -53,7 +53,7 @@ git push origin main
 
 When you run `git clone` or `git push`:
 
-1. SSH connects to the ngit server using your SSH key
+1. SSH connects to the gittr server using your SSH key
 2. The server authenticates you via your Nostr pubkey
 3. Permission is checked (read/write/admin based on repository permissions)
 4. Git operations execute on the server's repository storage
@@ -128,7 +128,7 @@ Where:
 - Verify the `git-nostr-bridge` service is running and has processed your key
 
 ### "Repository not found"
-- Check that the repository exists on ngit
+- Check that the repository exists on gittr
 - Verify the clone URL format is correct
 - Ensure you have read permission for the repository
 
@@ -208,7 +208,7 @@ Where:
 
 ## Infrastructure
 
-ngit uses the following services:
+gittr uses the following services:
 
 - **`git-nostr-ssh`**: SSH server that handles git operations
 - **`git-nostr-bridge`**: Service that watches Nostr for SSH key events and updates authorized keys
