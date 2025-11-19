@@ -123,7 +123,7 @@ curl -X GET https://blossom.gittr.space/nip96/info
 
 ```bash
 # Clone repository (Gittr source repo is still hosted under the legacy 'ngit' name)
-git clone https://github.com/arbadacarbaYK/ngit.git  # Gittr source repo (currently under legacy 'ngit' name)
+git clone https://github.com/arbadacarbaYK/gittr.git 
 cd ngit
 
 # Install frontend dependencies
@@ -214,7 +214,7 @@ sudo su - git-nostr
 ```bash
 # As git-nostr user
 cd ~
-git clone https://github.com/arbadacarbaYK/ngit.git  # Gittr source repo (currently under legacy 'ngit' name)
+git clone https://github.com/arbadacarbaYK/gittr.git 
 cd ngit/ui/gitnostr
 make git-nostr-bridge
 
