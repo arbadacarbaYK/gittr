@@ -50,7 +50,7 @@ make --version || sudo apt-get install -y build-essential
 ### Step 1: Clone Repository
 
 ```bash
-git clone https://github.com/arbadacarbaYK/ngit.git  # Gittr source repo (currently under legacy 'ngit' name)
+git clone https://github.com/arbadacarbaYK/gittr.git 
 cd ngit
 ```
 
@@ -126,7 +126,7 @@ sudo su - git-nostr
 ```bash
 # IMPORTANT: as git-nostr user
 cd ~
-git clone https://github.com/arbadacarbaYK/ngit.git  # Gittr source repo (currently under legacy 'ngit' name)
+git clone https://github.com/arbadacarbaYK/gittr.git 
 cd ngit/ui/gitnostr
 make git-nostr-bridge
 ```
