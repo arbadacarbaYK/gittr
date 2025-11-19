@@ -50,8 +50,8 @@ make --version || sudo apt-get install -y build-essential
 ### Step 1: Clone Repository
 
 ```bash
-git clone https://github.com/arbadacarbaYK/gittr.git 
-cd ngit
+git clone https://github.com/arbadacarbaYK/gittr.git  
+cd gittr
 ```
 
 ### Step 2: Install Frontend Dependencies
@@ -127,7 +127,7 @@ sudo su - git-nostr
 # IMPORTANT: as git-nostr user
 cd ~
 git clone https://github.com/arbadacarbaYK/gittr.git 
-cd ngit/ui/gitnostr
+cd gittr/ui/gitnostr
 make git-nostr-bridge
 ```
 
@@ -170,8 +170,8 @@ Edit `~/.config/git-nostr/git-nostr-bridge.json`:
 pkill -f git-nostr-bridge
 
 # Start it again (it will load config from ~/.config/git-nostr/git-nostr-bridge.json)
-# Replace /home/git-nostr/ngit with your actual path
-cd /home/git-nostr/ngit/ui/gitnostr
+# Replace /home/git-nostr/gittr with your actual path
+cd /home/git-nostr/gittr/ui/gitnostr
 nohup ./bin/git-nostr-bridge > /tmp/git-nostr-bridge.log 2>&1 &
 
 # Check logs to verify it's connecting to relays
@@ -223,8 +223,8 @@ After=network.target
 [Service]
 Type=simple
 User=git-nostr
-WorkingDirectory=/home/git-nostr/ngit/ui/gitnostr
-ExecStart=/home/git-nostr/ngit/ui/gitnostr/bin/git-nostr-bridge
+WorkingDirectory=/home/git-nostr/gittr/ui/gitnostr
+ExecStart=/home/git-nostr/gittr/ui/gitnostr/bin/git-nostr-bridge
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -277,7 +277,7 @@ Environment=NODE_ENV=production
 WantedBy=multi-user.target
 ```
 
-**Update `WorkingDirectory` to your actual path** (e.g., `/home/user/ngit/ui`).
+**Update `WorkingDirectory` to your actual path** (e.g., `/home/user/gittr/ui`).
 
 ```bash
 sudo systemctl daemon-reload
