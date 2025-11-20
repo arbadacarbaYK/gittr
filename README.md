@@ -94,6 +94,54 @@ gittr.space uses a sophisticated multi-source file fetching system that tries mu
 
 **OwnerPubkey Resolution**: The system uses multiple strategies to resolve the correct owner pubkey, ensuring consistency between file fetching and file opening.
 
+### File Fetching Flow Diagram
+
+```
+User clicks on a file
+  ↓
+Strategy 1: Check if file content is embedded in repoData.files array
+   ├─ If found with content → Use embedded content ✅
+   └─ If not found → Continue to Strategy 2
+  ↓
+Strategy 2: Try git-nostr-bridge API
+   ├─ Resolve ownerPubkey:
+   │   ├─ Check repoData.ownerPubkey
+   │   ├─ Check localStorage for matching repo
+   │   ├─ Decode npub from params.entity
+   │   └─ Fallback to resolveEntityToPubkey utility
+   ├─ Success → Use content from git-nostr-bridge ✅
+   ├─ 404 (not cloned) → Check if GRASP server
+   │   ├─ If GRASP → Trigger clone → Poll (max 10 attempts, 2s delay) ✅
+   │   └─ If not GRASP → Continue to Strategy 3
+   └─ Error → Continue to Strategy 3
+  ↓
+Strategy 3: Try external git servers via API proxy
+   ├─ GitHub → /api/git/file-content?sourceUrl=...&path=...&branch=...
+   ├─ GitLab → /api/git/file-content?sourceUrl=...&path=...&branch=...
+   ├─ Codeberg → /api/git/file-content?sourceUrl=...&path=...&branch=...
+   └─ GRASP → /api/git/file-content?sourceUrl=...&path=...&branch=...
+  ↓
+Handle binary vs text files
+   ├─ Binary → Return base64, frontend creates data URL
+   └─ Text → Return UTF-8 content
+```
+
+**Why This Order Matters:**
+
+- **Embedded files must be checked FIRST** because:
+  - Some GRASP repos have files embedded in Nostr events even when clone URLs exist
+  - Embedded content is the most reliable source (no network calls needed)
+  - Legacy repos store files directly in events
+
+- **git-nostr-bridge API is second** because:
+  - It's the primary method for repos that have been cloned locally
+  - For GRASP repos, it requires the repo to be cloned first
+  - It's faster than external API calls when available
+
+- **External git servers are last** because:
+  - They require network calls
+  - They're used as fallback when embedded content and git-nostr-bridge aren't available
+
 ## What's Stored WHERE
 
 #### ✅ Client-Side (Browser localStorage) - **ALL User Data**
@@ -151,7 +199,11 @@ Configure in Settings → Account:
 
 - **[SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md)** - Complete production setup guide
 - **[LOCAL_SETUP.md](LOCAL_SETUP.md)** - Local development setup
+- **[Concept Document](docs/CONCEPT.md)** - Complete feature specification
 - **[Grasp Relay Setup](docs/GRASP_RELAY_SETUP.md)** - How to set up your own relay instance (Grasp protocol)
+- **[Testing Guide](MANUAL_TESTING_GUIDE.md)** - Manual testing procedures
+- **[Testing Status](TESTING_STATUS.md)** - Current testing status
+- **[Open Issues](OPEN_ISSUES.md)** - Known issues and missing features
 
 ### ⚠️ Repository import size limit
 
@@ -221,6 +273,3 @@ The `gitnostr` Go components (`ui/gitnostr/`) are licensed under the **MIT Licen
 ## 📞 Support
 
 Get into the NIP39-ident-match channel https://t.me/gittrspace, it is open to any other comments. 
-
----
-

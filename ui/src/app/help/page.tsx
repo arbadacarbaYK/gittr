@@ -261,6 +261,18 @@ export default function HelpPage() {
               <h3 className="text-lg font-semibold text-white mb-2">SSH Keys</h3>
               <p>Manage your SSH keys in Settings → SSH Keys. You'll need these for Git operations over SSH.</p>
             </div>
+
+            <div className="mt-4 pt-4 border-t border-gray-700">
+              <p className="text-sm text-gray-400 mb-2">For complete documentation on SSH and Git operations:</p>
+              <a 
+                href="https://github.com/arbadacarbaYK/gittr/blob/main/docs/SSH_GIT_GUIDE.md" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-purple-400 hover:text-purple-300 underline text-sm"
+              >
+                📖 SSH & Git Access Guide →
+              </a>
+            </div>
           </div>
         </section>
 
