@@ -1,4 +1,4 @@
-I'm# gittr.space - Git over Nostr with Bitcoin Incentives
+# gittr.space - Git over Nostr with Bitcoin Incentives
 
 A decentralized Git platform built on Nostr with native Bitcoin/Lightning payment integration. Think GitHub, but censorship-resistant, with zaps, bounties, and decentralized storage.
 
