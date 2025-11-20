@@ -114,8 +114,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     const escapedFilePath = filePathStr.replace(/"/g, '\\"');
     
-    // CRITICAL: Try branch fallback if initial branch fails (main -> master)
-    let stdout: Buffer | string, stderr: string;
+        // CRITICAL: Try branch fallback if initial branch fails (main -> master)
+        let stdout: Buffer | string = Buffer.alloc(0), stderr: string = "";
     let actualBranch = branchStr;
     let branchNotFound = false;
     
@@ -130,7 +130,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       );
       stdout = result.stdout;
-      stderr = result.stderr || "";
+      stderr = (result.stderr ? (Buffer.isBuffer(result.stderr) ? result.stderr.toString() : result.stderr) : "") || "";
     } catch (error: any) {
       // execAsync throws when command fails - extract stderr from error
       stderr = error.stderr || error.message || String(error);
@@ -181,13 +181,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
           );
           stdout = result.stdout;
-          stderr = result.stderr || "";
+          stderr = (result.stderr ? (Buffer.isBuffer(result.stderr) ? result.stderr.toString() : result.stderr) : "") || "";
           
           // Check if we actually got content (not just an empty buffer)
-          if (stdout && (Buffer.isBuffer(stdout) ? stdout.length > 0 : stdout.length > 0)) {
+          // Note: stdout is always Buffer when encoding is 'buffer', but type is Buffer | string for compatibility
+          const stdoutLength = Buffer.isBuffer(stdout) ? stdout.length : ((stdout as string).length || 0);
+          if (stdout && stdoutLength > 0) {
             actualBranch = fallbackBranch;
             branchNotFound = false; // Reset flag - we found the file
-            console.log(`✅ Found file in '${fallbackBranch}' branch (${Buffer.isBuffer(stdout) ? stdout.length : stdout.length} bytes)`);
+            console.log(`✅ Found file in '${fallbackBranch}' branch (${stdoutLength} bytes)`);
             break; // Success - exit loop
           } else {
             console.warn(`⚠️ Fallback branch '${fallbackBranch}' returned empty content`);
