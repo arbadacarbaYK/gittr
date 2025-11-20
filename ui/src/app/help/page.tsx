@@ -48,10 +48,12 @@ export default function HelpPage() {
           },
           securityLevel: "loose",
           flowchart: {
-            useMaxWidth: true,
+            useMaxWidth: false,
             htmlLabels: true,
             curve: "basis",
-            padding: 20,
+            padding: 30,
+            nodeSpacing: 80,
+            rankSpacing: 100,
           },
         });
         (window as any).__mermaidInitialized = true;
@@ -341,7 +343,9 @@ export default function HelpPage() {
 
               <div className="mt-4 p-4 bg-gray-800/50 border border-gray-700 rounded">
                 <p className="text-sm font-semibold text-white mb-2">Bounty Flow Diagram:</p>
-                <div ref={mermaidRef} className="min-h-[400px] flex items-center justify-center"></div>
+                <div className="overflow-x-auto">
+                  <div ref={mermaidRef} className="min-h-[500px] flex items-center justify-center" style={{ minWidth: '1200px' }}></div>
+                </div>
               </div>
 
               <p className="mt-4"><strong>Bounty statuses:</strong></p>
