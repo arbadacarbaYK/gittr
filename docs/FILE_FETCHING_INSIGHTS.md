@@ -5,13 +5,14 @@ This document captures insights and patterns discovered while implementing file 
 ## Table of Contents
 
 1. [Complete File Fetching and Opening Flow](#complete-file-fetching-and-opening-flow)
-2. [Codeberg/Gitea API URL Encoding](#codeberggitea-api-url-encoding)
-3. [GRASP Server File Fetching](#grasp-server-file-fetching)
-4. [GRASP Server Automatic Cloning Mechanism](#grasp-server-automatic-cloning-mechanism)
-5. [localStorage Repository Matching](#localstorage-repository-matching)
-6. [File Opening Flow - Correct Strategy Order](#file-opening-flow---correct-strategy-order)
-7. [API Endpoint Patterns](#api-endpoint-patterns)
-8. [Testing Checklist](#testing-checklist)
+2. [SSH URL Normalization](#ssh-url-normalization)
+3. [Codeberg/Gitea API URL Encoding](#codeberggitea-api-url-encoding)
+4. [GRASP Server File Fetching](#grasp-server-file-fetching)
+5. [GRASP Server Automatic Cloning Mechanism](#grasp-server-automatic-cloning-mechanism)
+6. [localStorage Repository Matching](#localstorage-repository-matching)
+7. [File Opening Flow - Correct Strategy Order](#file-opening-flow---correct-strategy-order)
+8. [API Endpoint Patterns](#api-endpoint-patterns)
+9. [Testing Checklist](#testing-checklist)
 
 ---
 
@@ -25,6 +26,84 @@ This section documents the **complete flow** for fetching file lists and opening
 2. **File Opening** (`fetchGithubRaw` function in `page.tsx`) - Gets individual file content
 
 Both flows have multiple fallback strategies and must work together seamlessly.
+
+---
+
+## SSH URL Normalization
+
+### Problem
+
+Some repositories use SSH clone URLs (e.g., `git@github.com:owner/repo`) instead of HTTPS URLs. The system needs to handle these URLs consistently across all operations (file fetching, file opening, cloning, refetching, pushing to Nostr, importing).
+
+### Solution
+
+**SSH URLs are automatically normalized to HTTPS format** before processing. The normalization pattern is:
+- **SSH**: `git@github.com:owner/repo` → **HTTPS**: `https://github.com/owner/repo`
+- Works for all git hosts (GitHub, GitLab, Codeberg, custom servers)
+
+### Where Normalization Happens
+
+SSH URL normalization is implemented in **all critical paths**:
+
+1. **`parseGitSource()`** (`ui/src/lib/utils/git-source-fetcher.ts`)
+   - Normalizes SSH URLs when parsing clone URLs for file list fetching
+   - Ensures GitHub/GitLab/Codeberg detection works correctly
+
+2. **Clone API** (`ui/src/pages/api/nostr/repo/clone.ts`)
+   - Normalizes SSH URLs before executing `git clone` commands
+   - Ensures clone operations work with SSH clone URLs
+
+3. **File Opening** (`ui/src/app/[entity]/[repo]/page.tsx` - `fetchGithubRaw()`)
+   - Normalizes SSH URLs in 3 places:
+     - When extracting sourceUrl from localStorage clone URLs
+     - When extracting sourceUrl from repoData.clone URLs
+     - When iterating through sources to try (before URL matching)
+   - Ensures file content fetching works with SSH sourceUrls
+
+4. **File Fetch Initialization** (`ui/src/app/[entity]/[repo]/page.tsx`)
+   - Normalizes SSH URLs when adding sourceUrl to clone URLs array
+   - Ensures all clone URLs are in consistent format
+
+5. **Push to Nostr** (`ui/src/lib/nostr/push-repo-to-nostr.ts`)
+   - Normalizes SSH URLs when building clone URLs array for Nostr events
+   - Ensures clone URLs are stored as HTTPS in Nostr events
+
+6. **Import API** (`ui/src/pages/api/import.ts`)
+   - Normalizes SSH URLs before validation and GitHub API calls
+   - Enables refetch functionality to work with SSH sourceUrls
+
+7. **GRASP Clone Trigger** (`ui/src/lib/utils/git-source-fetcher.ts`)
+   - Normalizes SSH URLs before triggering clone API for GRASP servers
+   - Ensures automatic cloning works with SSH clone URLs
+
+### Implementation Pattern
+
+The normalization pattern is consistent across all files:
+
+```typescript
+// CRITICAL: Normalize SSH URLs (git@host:path) to HTTPS format
+const sshMatch = url.match(/^git@([^:]+):(.+)$/);
+if (sshMatch) {
+  const [, host, path] = sshMatch;
+  normalizedUrl = `https://${host}/${path}`;
+  console.log(`🔄 [Context] Normalized SSH URL to HTTPS: ${normalizedUrl}`);
+}
+```
+
+### Why This Matters
+
+- **Consistency**: All URLs are in HTTPS format for API calls and matching
+- **Compatibility**: Repos using SSH clone URLs (like fiatjaf's `gitstr`) work seamlessly
+- **Reliability**: No special handling needed - SSH URLs are treated like HTTPS URLs
+- **Future-proof**: Works with any git host that supports SSH URLs
+
+### Files Affected
+
+- ✅ `ui/src/lib/utils/git-source-fetcher.ts` - parseGitSource, GRASP clone trigger
+- ✅ `ui/src/pages/api/nostr/repo/clone.ts` - Clone API
+- ✅ `ui/src/app/[entity]/[repo]/page.tsx` - fetchGithubRaw, file fetch initialization
+- ✅ `ui/src/lib/nostr/push-repo-to-nostr.ts` - Push to Nostr
+- ✅ `ui/src/pages/api/import.ts` - Import/refetch API
 
 ---
 
@@ -192,8 +271,6 @@ Codeberg API returns 404 when the entire owner/repo path is URL-encoded together
 
 ```typescript
 const projectPath = encodeURIComponent(`${owner}/${repo}`);
-// Results in: DanConwayDev%2Fngit-cli (slash is encoded)
-// API returns: 404
 ```
 
 ### Correct Pattern ✅
@@ -521,10 +598,10 @@ const treeUrl = `${baseUrl}/api/v1/repos${fullPath}/git/trees/${branch}?recursiv
 1. **Test API Endpoints Manually**
    ```bash
    # Test file list endpoint
-   curl -H "User-Agent: ngit" "API_URL_FOR_FILE_LIST"
+   curl -H "User-Agent: gittr" "API_URL_FOR_FILE_LIST"
    
    # Test file content endpoint
-   curl -H "User-Agent: ngit" "API_URL_FOR_FILE_CONTENT"
+   curl -H "User-Agent: gittr" "API_URL_FOR_FILE_CONTENT"
    ```
 
 2. **Verify URL Encoding Requirements**

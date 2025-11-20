@@ -719,9 +719,17 @@ export default function RepoCodePage({
         const others = contributors.filter((_, index) => index !== ownerIndex);
         contributors = [ownerContributor, ...others];
       } else {
+        // CRITICAL: Use metadata for owner name if available
+        const ownerMeta = ownerMetadata[ownerPubkey.toLowerCase()] || ownerMetadata[ownerPubkey];
+        const ownerName = ownerMeta?.name || ownerMeta?.display_name || repo.entityDisplayName;
+        // Fallback to shortened npub if no name available
+        const fallbackName = params.entity && params.entity.startsWith("npub") 
+          ? params.entity.substring(0, 16) + "..." 
+          : params.entity;
         contributors.unshift({
           pubkey: ownerPubkey,
-          name: repo.entityDisplayName || params.entity,
+          name: ownerName || fallbackName,
+          picture: ownerMeta?.picture,
           weight: 100,
           role: "owner" as const,
         });
@@ -1402,6 +1410,15 @@ export default function RepoCodePage({
         if (sourceUrl) {
           // Convert sourceUrl to proper clone URL format if needed
           let cloneUrl = sourceUrl;
+          
+          // CRITICAL: Normalize SSH URLs (git@host:path) to HTTPS format
+          const sshMatch = cloneUrl.match(/^git@([^:]+):(.+)$/);
+          if (sshMatch) {
+            const [, host, path] = sshMatch;
+            cloneUrl = `https://${host}/${path}`;
+            console.log(`🔄 [File Fetch] Normalized SSH sourceUrl to HTTPS: ${cloneUrl}`);
+          }
+          
           // If sourceUrl doesn't start with http:// or https://, add https://
           if (!cloneUrl.startsWith('http://') && !cloneUrl.startsWith('https://')) {
             cloneUrl = `https://${cloneUrl}`;
@@ -2553,6 +2570,9 @@ export default function RepoCodePage({
                   // Check if already attempted or in progress
                   if (fileFetchAttemptedRef.current === repoKeyWithBranch || fileFetchInProgressRef.current) {
                     console.log("⏭️ [File Fetch] Already attempted or in progress, skipping EOSE clone URLs fetch:", repoKeyWithBranch);
+                    // CRITICAL: Still try git-nostr-bridge as fallback even if multi-source fetch was skipped
+                    console.log("⏭️ [File Fetch] Falling back to git-nostr-bridge (multi-source fetch was skipped)");
+                    fetchFromGitNostrBridge();
                     return;
                   }
                   
@@ -3142,7 +3162,20 @@ export default function RepoCodePage({
                 
                 if (data.files && Array.isArray(data.files) && data.files.length > 0) {
                   console.log("✅ [File Fetch] Setting files in repoData:", data.files.length, "files");
-                  setRepoData((prev: any) => prev ? ({ ...prev, files: data.files }) : prev);
+                  // CRITICAL: Update defaultBranch if API returned a different branch (e.g., master instead of main)
+                  const actualBranch = data.branch || selectedBranch || repoData?.defaultBranch || "main";
+                  setRepoData((prev: any) => {
+                    if (!prev) return prev;
+                    const updated = { ...prev, files: data.files };
+                    // Update defaultBranch if API returned a different branch
+                    if (data.branch && data.branch !== prev.defaultBranch) {
+                      console.log(`🔄 [File Fetch] Updating defaultBranch from '${prev.defaultBranch || 'none'}' to '${data.branch}' (from API response)`);
+                      updated.defaultBranch = data.branch;
+                      // Also update selectedBranch to match
+                      setSelectedBranch(data.branch);
+                    }
+                    return updated;
+                  });
                   
                   // CRITICAL: Store files separately to avoid localStorage quota issues
                   try {
@@ -3189,18 +3222,19 @@ export default function RepoCodePage({
                   // If git-nostr-bridge says repo doesn't exist, it might need to be cloned first
                   // For foreign repos, git-nostr-bridge clones them when it sees the repo event
                   // So we should check if the repo event exists and trigger a clone
-                  if (response.status === 404) {
-                    console.log("ℹ️ [File Fetch] Repository not found in git-nostr-bridge. It may need to be cloned first.");
+                  if (response.status === 404 || response.status === 500) {
+                    const errorType = response.status === 404 ? "not found" : "empty or corrupted";
+                    console.log(`ℹ️ [File Fetch] Repository ${errorType} in git-nostr-bridge (${response.status}). It may need to be cloned first.`);
                     console.log("ℹ️ [File Fetch] git-nostr-bridge clones repos automatically when it sees repository events on Nostr.");
                     console.log("ℹ️ [File Fetch] If this is a foreign repo, ensure the repository event has been published to Nostr.");
                   }
                 }
               } else {
                 console.error("❌ [File Fetch] API error:", response.status, data);
-                // If 404, the repo hasn't been cloned by git-nostr-bridge yet
+                // If 404 or 500, the repo hasn't been cloned by git-nostr-bridge yet OR is empty/corrupted
                 // Per NIP-34 architecture: Files are stored on git servers, not in Nostr events
                 // Nostr events only contain references. For foreign repos, we need to fetch from the sourceUrl (git server)
-                if (response.status === 404) {
+                if (response.status === 404 || response.status === 500) {
                   console.log("ℹ️ [File Fetch] Repository not found in git-nostr-bridge.");
                   console.log("ℹ️ [File Fetch] Per NIP-34: Files are stored on git servers, not in Nostr events.");
                   console.log("ℹ️ [File Fetch] Fetching from sourceUrl (git server) if available...");
@@ -4806,8 +4840,9 @@ export default function RepoCodePage({
           } else {
             console.log(`⚠️ [fetchGithubRaw] git-nostr-bridge API returned OK but no content: ${path}`, data);
           }
-        } else if (response.status === 404) {
-          // Repo not cloned yet - check if GRASP server and trigger clone
+        } else if (response.status === 404 || response.status === 500) {
+          // Repo not cloned yet OR repo exists but is empty/corrupted - check if GRASP server and trigger clone
+          // 500 errors can occur when repo exists but has no valid branches or is corrupted
           const cloneUrls = (repoData as any)?.clone || [];
           // Use centralized isGraspServer function which includes pattern matching (git., git-\d+.)
           const { isGraspServer: isGraspServerFn } = require("@/lib/utils/grasp-servers");
@@ -4817,7 +4852,8 @@ export default function RepoCodePage({
           );
           
           if (graspCloneUrl) {
-            console.log(`💡 [fetchGithubRaw] GRASP repo not cloned yet, triggering clone...`);
+            const errorType = response.status === 404 ? "not cloned yet" : "empty or corrupted";
+            console.log(`💡 [fetchGithubRaw] GRASP repo ${errorType} (${response.status}), triggering clone...`);
             try {
               const cloneResponse = await fetch("/api/nostr/repo/clone", {
                 method: "POST",
@@ -4912,6 +4948,16 @@ export default function RepoCodePage({
           ? (repoData as any).clone.find((url: string) => url.includes('github.com') || url.includes('gitlab.com') || url.includes('codeberg.org'))
           : null);
       
+      // CRITICAL: Normalize SSH URLs (git@host:path) to HTTPS format if found
+      if (sourceUrl) {
+        const sshMatch = sourceUrl.match(/^git@([^:]+):(.+)$/);
+        if (sshMatch) {
+          const [, host, path] = sshMatch;
+          sourceUrl = `https://${host}/${path}`.replace(/\.git$/, '');
+          console.log(`🔄 [fetchGithubRaw] Normalized SSH sourceUrl to HTTPS: ${sourceUrl}`);
+        }
+      }
+      
       // CRITICAL: If sourceUrl not in repoData, check localStorage directly
       if (!sourceUrl) {
         try {
@@ -4932,7 +4978,14 @@ export default function RepoCodePage({
                 url.includes('github.com') || url.includes('gitlab.com') || url.includes('codeberg.org')
               );
               if (gitCloneUrl) {
-                sourceUrl = gitCloneUrl.replace(/\.git$/, '');
+                // CRITICAL: Normalize SSH URLs (git@host:path) to HTTPS format
+                const sshMatch = gitCloneUrl.match(/^git@([^:]+):(.+)$/);
+                if (sshMatch) {
+                  const [, host, path] = sshMatch;
+                  sourceUrl = `https://${host}/${path}`.replace(/\.git$/, '');
+                } else {
+                  sourceUrl = gitCloneUrl.replace(/\.git$/, '');
+                }
               }
             }
             // Note: We don't use Nostr git server URLs (gittr.space, etc.) as sourceUrl
@@ -4964,8 +5017,16 @@ export default function RepoCodePage({
     
     // Try each source in order until one succeeds
     for (const sourceInfo of sourcesToTry) {
-      const sourceUrl = sourceInfo.sourceUrl;
+      let sourceUrl = sourceInfo.sourceUrl;
       if (!sourceUrl) continue;
+      
+      // CRITICAL: Normalize SSH URLs (git@host:path) to HTTPS format for matching
+      const sshMatch = sourceUrl.match(/^git@([^:]+):(.+)$/);
+      if (sshMatch) {
+        const [, host, path] = sshMatch;
+        sourceUrl = `https://${host}/${path}`;
+        console.log(`🔄 [fetchGithubRaw] Normalized SSH URL to HTTPS: ${sourceUrl}`);
+      }
       
       console.log(`🔍 [fetchGithubRaw] Trying source: ${sourceUrl}`, {
         sourceIndex: sourcesToTry.indexOf(sourceInfo) + 1,
@@ -5803,10 +5864,19 @@ export default function RepoCodePage({
                   const currentMetadata = ownerMetadataRef.current;
                       // Get owner picture from metadata - CRITICAL: Only use full pubkey, not 8-char prefix
                       const ownerMeta = ownerPubkeyForLink && ownerPubkeyForLink.length === 64 
-                    ? currentMetadata[ownerPubkeyForLink] 
+                    ? currentMetadata[ownerPubkeyForLink.toLowerCase()] || currentMetadata[ownerPubkeyForLink]
                         : undefined;
                       const ownerPicture = ownerMeta?.picture;
-                        const displayName = ownerMeta?.display_name || ownerMeta?.name || params.entity || "U";
+                      // CRITICAL: Use metadata name/display_name if available, otherwise fallback to shortened npub
+                      let displayName = ownerMeta?.display_name || ownerMeta?.name;
+                      if (!displayName || displayName.trim().length === 0 || displayName === "Anonymous Nostrich") {
+                        // Fallback to shortened npub format
+                        if (params.entity && params.entity.startsWith("npub")) {
+                          displayName = params.entity.substring(0, 16) + "...";
+                        } else {
+                          displayName = params.entity || "U";
+                        }
+                      }
                   const ownerNpub = ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) 
                     ? nip19.npubEncode(ownerPubkeyForLink) 
                     : null;

@@ -91,13 +91,22 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     // CRITICAL: Include GitHub/GitLab/Codeberg sourceUrl in clone array so it's preserved when syncing from Nostr
     const cloneUrls: string[] = [gitServerUrl];
     if (repo.sourceUrl) {
+      // CRITICAL: Normalize SSH URLs (git@host:path) to HTTPS format before checking
+      let normalizedSourceUrl = repo.sourceUrl;
+      const sshMatch = repo.sourceUrl.match(/^git@([^:]+):(.+)$/);
+      if (sshMatch) {
+        const [, host, path] = sshMatch;
+        normalizedSourceUrl = `https://${host}/${path}`;
+        console.log(`🔄 [Push Repo] Normalized SSH sourceUrl to HTTPS: ${normalizedSourceUrl}`);
+      }
+      
       // Check if sourceUrl is GitHub/GitLab/Codeberg and add it to clone URLs
-      const isGitHub = repo.sourceUrl.includes('github.com');
-      const isGitLab = repo.sourceUrl.includes('gitlab.com');
-      const isCodeberg = repo.sourceUrl.includes('codeberg.org');
+      const isGitHub = normalizedSourceUrl.includes('github.com');
+      const isGitLab = normalizedSourceUrl.includes('gitlab.com');
+      const isCodeberg = normalizedSourceUrl.includes('codeberg.org');
       if (isGitHub || isGitLab || isCodeberg) {
         // Convert sourceUrl to clone URL format (add .git if needed)
-        let cloneUrl = repo.sourceUrl;
+        let cloneUrl = normalizedSourceUrl;
         if (!cloneUrl.endsWith('.git')) {
           cloneUrl = `${cloneUrl}.git`;
         }

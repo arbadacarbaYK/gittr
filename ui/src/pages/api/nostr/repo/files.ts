@@ -136,73 +136,109 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Use git ls-tree to get file tree (respects deletions - only shows current files)
     // This gets the actual files in the repository, not from Nostr events
     console.log(`🔍 Fetching file tree for branch: ${branch}`);
-    const { stdout, stderr } = await execAsync(
-      `git --git-dir="${repoPath}" ls-tree -r --name-only ${branch}`,
-      { timeout: 10000 }
-    );
+    let stdout: string, stderr: string;
+    let branchNotFound = false;
+    let actualBranch = branch; // Track which branch was actually used
+    
+    try {
+      const result = await execAsync(
+        `git --git-dir="${repoPath}" ls-tree -r --name-only ${branch}`,
+        { timeout: 10000 }
+      );
+      stdout = result.stdout;
+      stderr = result.stderr || "";
+    } catch (error: any) {
+      // execAsync throws when command fails - extract stderr from error
+      stderr = error.stderr || error.message || String(error);
+      stdout = error.stdout || "";
+      
+      // Check if this is a "branch not found" error
+      if (stderr.includes("fatal: not a valid object name") || stderr.includes("fatal: Not a valid object name")) {
+        branchNotFound = true;
+      } else {
+        // Other error - return 500
+        console.error("Git ls-tree error:", stderr);
+        return res.status(500).json({ error: "Failed to read repository", details: stderr });
+      }
+    }
 
     if (stderr && !stderr.includes("warning") && !stderr.includes("fatal")) {
       console.error("Git ls-tree error:", stderr);
       return res.status(500).json({ error: "Failed to read repository", details: stderr });
     }
     
-    // Check if branch doesn't exist
-    if (stderr && stderr.includes("fatal: not a valid object name")) {
-      console.warn(`⚠️ Branch ${branch} not found, trying 'main'...`);
-      try {
-        const { stdout: mainStdout } = await execAsync(
-          `git --git-dir="${repoPath}" ls-tree -r --name-only main`,
-          { timeout: 10000 }
-        );
-        const filePaths = mainStdout.trim().split("\n").filter(Boolean);
-        console.log(`✅ Found ${filePaths.length} files in 'main' branch`);
-        
-        // Build full file tree with directories
-        const files: Array<{ type: string; path: string; size?: number }> = [];
-        const dirs = new Set<string>();
-        
-        for (const filePath of filePaths) {
-          // Add all parent directories
-          const parts = filePath.split("/");
-          for (let i = 1; i < parts.length; i++) {
-            dirs.add(parts.slice(0, i).join("/"));
-          }
+    // Check if branch doesn't exist - try common branch names
+    if (branchNotFound || (stderr && stderr.includes("fatal: not a valid object name"))) {
+      console.warn(`⚠️ Branch ${branch} not found, trying fallback branches...`);
+      
+      // Try common branch names: main, master
+      const fallbackBranches = branch === "main" ? ["master"] : branch === "master" ? ["main"] : ["main", "master"];
+      
+      for (const fallbackBranch of fallbackBranches) {
+        try {
+          console.log(`🔍 Trying fallback branch: ${fallbackBranch}`);
+          const { stdout: fallbackStdout, stderr: fallbackStderr } = await execAsync(
+            `git --git-dir="${repoPath}" ls-tree -r --name-only ${fallbackBranch}`,
+            { timeout: 10000 }
+          );
           
-          // Get file size
-          try {
-            const { stdout: sizeOutput } = await execAsync(
-              `git --git-dir="${repoPath}" cat-file -s main:${filePath}`,
-              { timeout: 5000 }
-            );
-            const size = parseInt(sizeOutput.trim(), 10);
-            files.push({ type: "file", path: filePath, size: isNaN(size) ? undefined : size });
-          } catch {
-            files.push({ type: "file", path: filePath });
+          if (!fallbackStderr || fallbackStderr.includes("warning") || !fallbackStderr.includes("fatal")) {
+            const filePaths = fallbackStdout.trim().split("\n").filter(Boolean);
+            console.log(`✅ Found ${filePaths.length} files in '${fallbackBranch}' branch`);
+            
+            // Build full file tree with directories
+            const files: Array<{ type: string; path: string; size?: number }> = [];
+            const dirs = new Set<string>();
+            
+            for (const filePath of filePaths) {
+              // Add all parent directories
+              const parts = filePath.split("/");
+              for (let i = 1; i < parts.length; i++) {
+                dirs.add(parts.slice(0, i).join("/"));
+              }
+              
+              // Get file size
+              try {
+                const { stdout: sizeOutput } = await execAsync(
+                  `git --git-dir="${repoPath}" cat-file -s ${fallbackBranch}:${filePath}`,
+                  { timeout: 5000 }
+                );
+                const size = parseInt(sizeOutput.trim(), 10);
+                files.push({ type: "file", path: filePath, size: isNaN(size) ? undefined : size });
+              } catch {
+                files.push({ type: "file", path: filePath });
+              }
+            }
+            
+            // Add directories
+            for (const dirPath of Array.from(dirs).sort()) {
+              files.push({ type: "dir", path: dirPath });
+            }
+            
+            // Sort: directories first, then files
+            files.sort((a, b) => {
+              if (a.type !== b.type) {
+                return a.type === "dir" ? -1 : 1;
+              }
+              return a.path.localeCompare(b.path);
+            });
+            
+            return res.status(200).json({ files, branch: fallbackBranch });
           }
+        } catch (fallbackError: any) {
+          console.warn(`⚠️ Failed to fetch from '${fallbackBranch}' branch:`, fallbackError.message);
+          // Continue to next fallback
         }
-        
-        // Add directories
-        for (const dirPath of Array.from(dirs).sort()) {
-          files.push({ type: "dir", path: dirPath });
-        }
-        
-        // Sort: directories first, then files
-        files.sort((a, b) => {
-          if (a.type !== b.type) {
-            return a.type === "dir" ? -1 : 1;
-          }
-          return a.path.localeCompare(b.path);
-        });
-        
-        return res.status(200).json({ files });
-      } catch (mainError: any) {
-        console.error("❌ Failed to fetch from 'main' branch:", mainError.message);
-        return res.status(404).json({ 
-          error: "Branch not found",
-          branch,
-          hint: "Repository may be empty or branch doesn't exist"
-        });
       }
+      
+      // All branches failed - return 404
+      console.error("❌ All branch attempts failed");
+      return res.status(404).json({ 
+        error: "Branch not found",
+        branch,
+        triedBranches: [branch, ...fallbackBranches],
+        hint: "Repository may be empty or branch doesn't exist"
+      });
     }
     
     console.log("✅ Git ls-tree succeeded, parsing files...");
@@ -245,8 +281,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       return a.path.localeCompare(b.path);
     });
-
-    return res.status(200).json({ files });
+    
+    // CRITICAL: Always return the branch used (may be different from requested branch due to fallback)
+    return res.status(200).json({ files, branch: actualBranch || branch });
   } catch (error: any) {
     console.error("Error fetching repository files:", error);
     

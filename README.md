@@ -86,6 +86,8 @@ gittr.space uses a sophisticated multi-source file fetching system that tries mu
 
 **Key Features of Flows:**
 
+**SSH URL Support**: SSH clone URLs (e.g., `git@github.com:owner/repo`) are automatically normalized to HTTPS format, ensuring compatibility with all git hosting providers.
+
 **Automatic Cloning**: GRASP repositories automatically trigger a clone when not found locally, then retry the API call.
 
 **Robust Fallback Chain**: Both flows have multiple fallback strategies, ensuring files can be fetched even if one source fails.
@@ -120,6 +122,7 @@ Strategy 3: Try external git servers via API proxy
    ├─ GitLab → /api/git/file-content?sourceUrl=...&path=...&branch=...
    ├─ Codeberg → /api/git/file-content?sourceUrl=...&path=...&branch=...
    └─ GRASP → /api/git/file-content?sourceUrl=...&path=...&branch=...
+   └─ Note: SSH URLs (git@host:path) are normalized to HTTPS before API calls
   ↓
 Handle binary vs text files
    ├─ Binary → Return base64, frontend creates data URL
@@ -141,6 +144,11 @@ Handle binary vs text files
 - **External git servers are last** because:
   - They require network calls
   - They're used as fallback when embedded content and git-nostr-bridge aren't available
+
+**SSH URL Normalization:**
+- SSH clone URLs (e.g., `git@github.com:owner/repo`) are automatically converted to HTTPS format (`https://github.com/owner/repo`) before processing
+- This normalization happens in all critical paths: file fetching, file opening, cloning, refetching, pushing to Nostr, and importing
+- Ensures seamless compatibility with repositories that use SSH clone URLs
 
 ## What's Stored WHERE
 

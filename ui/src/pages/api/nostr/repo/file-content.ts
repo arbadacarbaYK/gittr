@@ -108,28 +108,134 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // The filepath needs to be properly quoted to handle spaces and special characters
     // We'll use double quotes and escape any existing quotes in the path
     const filePathStr: string = Array.isArray(filePath) ? (filePath[0] || "") : (typeof filePath === "string" ? filePath : "");
-    const branchStr: string = Array.isArray(branch) ? (branch[0] || "main") : (typeof branch === "string" ? branch : "main");
+    let branchStr: string = Array.isArray(branch) ? (branch[0] || "main") : (typeof branch === "string" ? branch : "main");
     if (!filePathStr) {
       return res.status(400).json({ error: "path is required" });
     }
     const escapedFilePath = filePathStr.replace(/"/g, '\\"');
-    const escapedBranch = branchStr.replace(/"/g, '\\"');
     
-    // CRITICAL: Use encoding=buffer to get raw buffer to detect binary files
-    const { stdout, stderr } = await execAsync(
-      `git --git-dir="${repoPath}" show "${escapedBranch}:${escapedFilePath}"`,
-      { 
-        timeout: 10000, 
-        maxBuffer: 10 * 1024 * 1024, // 10MB max
-        encoding: 'buffer' as any // Get raw buffer to detect binary files
+    // CRITICAL: Try branch fallback if initial branch fails (main -> master)
+    let stdout: Buffer | string, stderr: string;
+    let actualBranch = branchStr;
+    let branchNotFound = false;
+    
+    try {
+      const escapedBranch = branchStr.replace(/"/g, '\\"');
+      const result = await execAsync(
+        `git --git-dir="${repoPath}" show "${escapedBranch}:${escapedFilePath}"`,
+        { 
+          timeout: 10000, 
+          maxBuffer: 10 * 1024 * 1024, // 10MB max
+          encoding: 'buffer' as any // Get raw buffer to detect binary files
+        }
+      );
+      stdout = result.stdout;
+      stderr = result.stderr || "";
+    } catch (error: any) {
+      // execAsync throws when command fails - extract stderr from error
+      stderr = error.stderr || error.message || String(error);
+      stdout = error.stdout || Buffer.alloc(0);
+      
+      // CRITICAL: Check if stdout exists in error - git sometimes outputs to stderr even on success
+      // If we have stdout content, treat it as success
+      if (stdout && (Buffer.isBuffer(stdout) ? stdout.length > 0 : (typeof stdout === 'string' && stdout.length > 0))) {
+        // We have content, treat as success (git might have warnings in stderr)
+        branchNotFound = false;
+        console.log(`✅ Got file content from '${branchStr}' branch (${Buffer.isBuffer(stdout) ? stdout.length : stdout.length} bytes, had error but stdout exists)`);
+      } else if (stderr.includes("fatal: not a valid object name") || 
+          stderr.includes("fatal: Not a valid object name") ||
+          stderr.includes("fatal: invalid object name") ||
+          stderr.includes("fatal: Invalid object name") ||
+          stderr.includes("fatal: ambiguous argument")) {
+        // This is a "branch not found" error (git uses different error message formats)
+        branchNotFound = true;
+      } else {
+        // Other error - might be file not found
+        if (stderr && !stdout) {
+          return res.status(404).json({ 
+            error: "File not found",
+            path: filePath,
+            branch: branchStr,
+          });
+        }
+        // Re-throw if it's not a branch issue and no stdout
+        throw error;
       }
-    );
+    }
+    
+    // If branch not found, try fallback branches
+    if (branchNotFound) {
+      console.warn(`⚠️ Branch ${branchStr} not found, trying fallback branches...`);
+      const fallbackBranches = branchStr === "main" ? ["master"] : branchStr === "master" ? ["main"] : ["main", "master"];
+      
+      for (const fallbackBranch of fallbackBranches) {
+        try {
+          console.log(`🔍 Trying fallback branch: ${fallbackBranch} for file: ${filePathStr}`);
+          const escapedFallbackBranch = fallbackBranch.replace(/"/g, '\\"');
+          const result = await execAsync(
+            `git --git-dir="${repoPath}" show "${escapedFallbackBranch}:${escapedFilePath}"`,
+            { 
+              timeout: 10000, 
+              maxBuffer: 10 * 1024 * 1024,
+              encoding: 'buffer' as any
+            }
+          );
+          stdout = result.stdout;
+          stderr = result.stderr || "";
+          
+          // Check if we actually got content (not just an empty buffer)
+          if (stdout && (Buffer.isBuffer(stdout) ? stdout.length > 0 : stdout.length > 0)) {
+            actualBranch = fallbackBranch;
+            branchNotFound = false; // Reset flag - we found the file
+            console.log(`✅ Found file in '${fallbackBranch}' branch (${Buffer.isBuffer(stdout) ? stdout.length : stdout.length} bytes)`);
+            break; // Success - exit loop
+          } else {
+            console.warn(`⚠️ Fallback branch '${fallbackBranch}' returned empty content`);
+            // Continue to next fallback
+          }
+        } catch (fallbackError: any) {
+          const fallbackStderr = fallbackError.stderr || fallbackError.message || String(fallbackError);
+          const fallbackStdout = fallbackError.stdout || Buffer.alloc(0);
+          console.warn(`⚠️ Failed to fetch from '${fallbackBranch}' branch:`, fallbackStderr.substring(0, 200));
+          
+          // If the error has stdout, it might still be valid (some git commands output to stderr even on success)
+          // Also check if the error message indicates branch not found (we should try next fallback)
+          const isBranchError = fallbackStderr.includes("fatal: not a valid object name") ||
+            fallbackStderr.includes("fatal: Not a valid object name") ||
+            fallbackStderr.includes("fatal: invalid object name") ||
+            fallbackStderr.includes("fatal: Invalid object name") ||
+            fallbackStderr.includes("fatal: ambiguous argument");
+          
+          if (fallbackStdout && (Buffer.isBuffer(fallbackStdout) ? fallbackStdout.length > 0 : (typeof fallbackStdout === 'string' && fallbackStdout.length > 0))) {
+            stdout = fallbackStdout;
+            actualBranch = fallbackBranch;
+            branchNotFound = false;
+            console.log(`✅ Found file in '${fallbackBranch}' branch (from error stdout, ${Buffer.isBuffer(fallbackStdout) ? fallbackStdout.length : fallbackStdout.length} bytes)`);
+            break;
+          } else if (!isBranchError) {
+            // Not a branch error and no stdout - file doesn't exist in this branch
+            console.warn(`⚠️ File not found in '${fallbackBranch}' branch (not a branch error)`);
+          }
+          // Continue to next fallback
+        }
+      }
+      
+      // If all branches failed
+      if (branchNotFound && (!stdout || (stderr && stderr.includes("fatal")))) {
+        return res.status(404).json({ 
+          error: "File not found in any branch",
+          path: filePath,
+          branch: branchStr,
+          triedBranches: [branchStr, ...fallbackBranches],
+        });
+      }
+    }
 
     if (stderr && !stdout) {
       return res.status(404).json({ 
         error: "File not found",
         path: filePath,
-        branch,
+        branch: actualBranch,
       });
     }
 
@@ -150,45 +256,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (isBinary) {
       // For binary files, encode as base64
       const base64Content = buffer.toString('base64');
-      return res.status(200).json({ 
-        content: base64Content,
-        path: filePath,
-        branch,
-        isBinary: true,
-      });
-    } else {
-      // For text files, return as UTF-8 string
-      // Try to decode as UTF-8, fallback to base64 if it fails
-      try {
-        const textContent = buffer.toString('utf8');
-        // Check if decoded content is valid UTF-8 text (no control characters except common ones)
-        if (/[\x00-\x08\x0E-\x1F]/.test(textContent)) {
-          // Contains control characters, likely binary - encode as base64
+        return res.status(200).json({ 
+          content: base64Content,
+          path: filePath,
+          branch: actualBranch, // Return actual branch used
+          isBinary: true,
+        });
+      } else {
+        // For text files, return as UTF-8 string
+        // Try to decode as UTF-8, fallback to base64 if it fails
+        try {
+          const textContent = buffer.toString('utf8');
+          // Check if decoded content is valid UTF-8 text (no control characters except common ones)
+          if (/[\x00-\x08\x0E-\x1F]/.test(textContent)) {
+            // Contains control characters, likely binary - encode as base64
+            const base64Content = buffer.toString('base64');
+            return res.status(200).json({ 
+              content: base64Content,
+              path: filePath,
+              branch: actualBranch, // Return actual branch used
+              isBinary: true,
+            });
+          }
+          return res.status(200).json({ 
+            content: textContent,
+            path: filePath,
+            branch: actualBranch, // Return actual branch used
+            isBinary: false,
+          });
+        } catch (e) {
+          // UTF-8 decoding failed, encode as base64
           const base64Content = buffer.toString('base64');
           return res.status(200).json({ 
             content: base64Content,
             path: filePath,
-            branch,
+            branch: actualBranch, // Return actual branch used
             isBinary: true,
           });
         }
-        return res.status(200).json({ 
-          content: textContent,
-          path: filePath,
-          branch,
-          isBinary: false,
-        });
-      } catch (e) {
-        // UTF-8 decoding failed, encode as base64
-        const base64Content = buffer.toString('base64');
-        return res.status(200).json({ 
-          content: base64Content,
-          path: filePath,
-          branch,
-          isBinary: true,
-        });
       }
-    }
   } catch (error: any) {
     console.error("Error fetching file content:", error);
     

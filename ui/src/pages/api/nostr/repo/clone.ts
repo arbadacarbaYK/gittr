@@ -60,11 +60,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 
-  // CRITICAL: Convert git:// URLs to https:// for git clone
-  // git:// protocol is used by some git servers (e.g., git://jb55.com/damus)
-  // Git clone command can handle both, but we normalize to https:// for consistency
+  // CRITICAL: Convert SSH URLs (git@host:owner/repo) to https:// for git clone
+  // SSH format: git@github.com:owner/repo or git@github.com:owner/repo.git
+  // We'll convert it to https:// for git clone
   let normalizedCloneUrl = cloneUrl;
-  if (cloneUrl.startsWith("git://")) {
+  const sshMatch = cloneUrl.match(/^git@([^:]+):(.+)$/);
+  if (sshMatch) {
+    const [, host, path] = sshMatch;
+    normalizedCloneUrl = `https://${host}/${path}`;
+    console.log(`🔄 [Clone API] Converting SSH URL to HTTPS: ${normalizedCloneUrl}`);
+  } else if (cloneUrl.startsWith("git://")) {
+    // CRITICAL: Convert git:// URLs to https:// for git clone
+    // git:// protocol is used by some git servers (e.g., git://jb55.com/damus)
+    // Git clone command can handle both, but we normalize to https:// for consistency
     normalizedCloneUrl = cloneUrl.replace(/^git:\/\//, "https://");
     console.log(`🔄 [Clone API] Converting git:// to https://: ${normalizedCloneUrl}`);
   }
@@ -73,7 +81,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // GRASP servers typically use HTTPS, but some custom git servers may use HTTP
   if (!normalizedCloneUrl.startsWith("https://") && !normalizedCloneUrl.startsWith("http://")) {
     return res.status(400).json({ 
-      error: "cloneUrl must be HTTPS, HTTP, or git:// (will be converted to https://)",
+      error: "cloneUrl must be HTTPS, HTTP, git://, or SSH format (git@host:path) - will be converted to https://",
       received: cloneUrl.substring(0, 20)
     });
   }
