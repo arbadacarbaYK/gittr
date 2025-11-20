@@ -202,7 +202,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   }
 
   if (req.method !== "POST") return res.status(405).json({ status: "method_not_allowed" });
-  const { sourceUrl } = req.body || {};
+  let { sourceUrl } = req.body || {};
+  
+  // CRITICAL: Normalize SSH URLs (git@host:path) to HTTPS format before validation
+  if (sourceUrl && typeof sourceUrl === "string") {
+    const sshMatch = sourceUrl.match(/^git@([^:]+):(.+)$/);
+    if (sshMatch) {
+      const [, host, path] = sshMatch;
+      sourceUrl = `https://${host}/${path}`;
+      console.log(`🔄 [Import API] Normalized SSH URL to HTTPS: ${sourceUrl}`);
+    }
+  }
   
   // Validate GitHub URL
   if (!sourceUrl || typeof sourceUrl !== "string") {

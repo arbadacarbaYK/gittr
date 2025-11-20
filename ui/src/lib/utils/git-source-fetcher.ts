@@ -51,12 +51,21 @@ export function parseGitSource(cloneUrl: string): GitSource {
     };
   }
   
-  // CRITICAL: Convert git:// URLs to https:// for processing
-  // git:// protocol is used by some git servers (e.g., git://jb55.com/damus)
-  // We'll convert it to https:// for the clone API, but preserve original for display
+  // CRITICAL: Convert SSH URLs (git@host:owner/repo) to https:// for processing
+  // SSH format: git@github.com:owner/repo or git@github.com:owner/repo.git
+  // We'll convert it to https:// for API calls
   let normalizedUrl = cloneUrl;
   let originalProtocol = "https";
-  if (cloneUrl.startsWith("git://")) {
+  const sshMatch = cloneUrl.match(/^git@([^:]+):(.+)$/);
+  if (sshMatch) {
+    const [, host, path] = sshMatch;
+    normalizedUrl = `https://${host}/${path}`;
+    originalProtocol = "ssh";
+    console.log(`🔄 [Git Source] Converting SSH URL to HTTPS for processing: ${normalizedUrl}`);
+  } else if (cloneUrl.startsWith("git://")) {
+    // CRITICAL: Convert git:// URLs to https:// for processing
+    // git:// protocol is used by some git servers (e.g., git://jb55.com/damus)
+    // We'll convert it to https:// for the clone API, but preserve original for display
     normalizedUrl = cloneUrl.replace(/^git:\/\//, "https://");
     originalProtocol = "git";
     console.log(`🔄 [Git Source] Converting git:// to https:// for processing: ${normalizedUrl}`);
@@ -698,8 +707,11 @@ async function fetchFromNostrGit(
       } else {
         const errorText = await response.text().catch(() => "");
         console.log(`⚠️ [Git Source] git-nostr-bridge API failed: ${response.status} - ${errorText.substring(0, 200)}`);
-        if (response.status === 404) {
-          console.log(`💡 [Git Source] Repository not cloned yet by git-nostr-bridge. Attempting to trigger clone...`);
+        if (response.status === 404 || response.status === 500) {
+          // 404: Repo not cloned yet
+          // 500: Repo exists but is empty/corrupted (no valid branches, git command failed)
+          const errorType = response.status === 404 ? "not cloned yet" : "empty or corrupted";
+          console.log(`💡 [Git Source] Repository ${errorType} (${response.status}). Attempting to trigger clone...`);
           
           // Try to trigger clone via API endpoint
           // GRASP servers don't expose REST APIs - they only work via git protocol
@@ -708,10 +720,15 @@ async function fetchFromNostrGit(
           // Use centralized isGraspServer function which includes pattern matching (git., git-\d+.)
           const isGraspServerCheck = cloneUrl && isGraspServerFn(cloneUrl);
           
-          // CRITICAL: Normalize git:// URLs to https:// for clone API
+          // CRITICAL: Normalize SSH URLs (git@host:path) and git:// URLs to https:// for clone API
           // The clone API will handle the conversion, but we need to pass https:// here
           let normalizedCloneUrl = cloneUrl;
-          if (cloneUrl.startsWith("git://")) {
+          const sshMatch = cloneUrl.match(/^git@([^:]+):(.+)$/);
+          if (sshMatch) {
+            const [, host, path] = sshMatch;
+            normalizedCloneUrl = `https://${host}/${path}`;
+            console.log(`🔄 [Git Source] Normalizing SSH URL to https:// for clone API: ${normalizedCloneUrl}`);
+          } else if (cloneUrl.startsWith("git://")) {
             normalizedCloneUrl = cloneUrl.replace(/^git:\/\//, "https://");
             console.log(`🔄 [Git Source] Normalizing git:// to https:// for clone API: ${normalizedCloneUrl}`);
           }
