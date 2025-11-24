@@ -747,8 +747,14 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
               if (!existing) {
                 dedupeMap.set(key, r);
               } else {
-                // Keep the one with the most recent createdAt
-                if ((r.createdAt || 0) > (existing.createdAt || 0)) {
+                // Keep the one with the most recent event date
+                const rLatest = (r as any).lastNostrEventCreatedAt 
+                  ? (r as any).lastNostrEventCreatedAt * 1000
+                  : ((r as any).updatedAt || r.createdAt || 0);
+                const existingLatest = (existing as any).lastNostrEventCreatedAt 
+                  ? (existing as any).lastNostrEventCreatedAt * 1000
+                  : ((existing as any).updatedAt || existing.createdAt || 0);
+                if (rLatest > existingLatest) {
                   dedupeMap.set(key, r);
                 }
               }
@@ -843,9 +849,22 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
           return true;
         });
         
+        // CRITICAL: Sort by latest event date (lastNostrEventCreatedAt) if available, otherwise by createdAt
+        // This ensures repos with recent updates appear first
+        // Note: lastNostrEventCreatedAt is in SECONDS (NIP-34 format), createdAt/updatedAt are in MILLISECONDS
+        const sortedRepos = filteredRepos.slice().sort((a: any, b: any) => {
+          const aLatest = a.lastNostrEventCreatedAt 
+            ? a.lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
+            : (a.updatedAt || a.createdAt || 0);
+          const bLatest = b.lastNostrEventCreatedAt 
+            ? b.lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
+            : (b.updatedAt || b.createdAt || 0);
+          return bLatest - aLatest; // Newest first
+        });
+        
         // Deduplicate repos by entity/repo combination (keep the most recent one)
         const dedupeMap = new Map<string, any>();
-        filteredRepos.forEach((r: any) => {
+        sortedRepos.forEach((r: any) => {
           const entity = (r.entity || '').trim();
           const repo = (r.repo || r.slug || '').trim();
           const key = `${entity}/${repo}`.toLowerCase(); // Case-insensitive comparison
@@ -853,8 +872,14 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
           if (!existing) {
             dedupeMap.set(key, r);
           } else {
-            // Keep the one with the most recent createdAt
-            if ((r.createdAt || 0) > (existing.createdAt || 0)) {
+            // Keep the one with the most recent event date
+            const rLatest = r.lastNostrEventCreatedAt 
+              ? r.lastNostrEventCreatedAt * 1000
+              : (r.updatedAt || r.createdAt || 0);
+            const existingLatest = existing.lastNostrEventCreatedAt 
+              ? existing.lastNostrEventCreatedAt * 1000
+              : (existing.updatedAt || existing.createdAt || 0);
+            if (rLatest > existingLatest) {
               dedupeMap.set(key, r);
             }
           }
@@ -1220,11 +1245,26 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
     
     setFollowingLoading(true);
     try {
-      const privateKey = await getNostrPrivateKey();
+      // Check for NIP-07 first (preferred method - will open signing modal)
+      const hasNip07 = typeof window !== "undefined" && window.nostr;
+      let privateKey: string | undefined;
+      let signerPubkey: string = currentUserPubkey;
+      
+      if (hasNip07 && window.nostr) {
+        // Use NIP-07 extension - this will trigger a popup for the user to sign
+        try {
+          signerPubkey = await window.nostr.getPublicKey();
+        } catch (error: any) {
+          console.warn("Failed to get pubkey from NIP-07, using current user pubkey:", error);
+        }
+      } else {
+        // Fallback to stored private key only if NIP-07 not available
+        privateKey = await getNostrPrivateKey() || undefined;
       if (!privateKey) {
-        alert("Private key not found. Please log in with your private key.");
+          alert("No signing method available.\n\nPlease use a NIP-07 extension (like Alby or nos2x) or configure a private key in Settings.");
         setFollowingLoading(false);
         return;
+        }
       }
       
       // Get current contact list
@@ -1251,13 +1291,24 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
         created_at: Math.floor(Date.now() / 1000),
         tags: newContacts.map(pubkey => ["p", pubkey]),
         content: JSON.stringify(contactListContent),
-        pubkey: currentUserPubkey,
+        pubkey: signerPubkey,
         id: "",
         sig: "",
       };
       
       event.id = getEventHash(event);
+      
+      // Sign with NIP-07 or private key
+      if (hasNip07 && window.nostr) {
+        // Use NIP-07 extension - this will open the signing modal
+        const signedEvent = await window.nostr.signEvent(event);
+        event.sig = signedEvent.sig;
+      } else if (privateKey) {
+        // Use private key (fallback)
       event.sig = signEvent(event, privateKey);
+      } else {
+        throw new Error("No signing method available");
+      }
       
       // Publish to relays
       publish(event, defaultRelays);
@@ -1269,7 +1320,13 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
       console.log(`✅ ${isFollowing ? 'Unfollowed' : 'Followed'} user ${fullPubkeyForMeta.slice(0, 8)}`);
     } catch (error: any) {
       console.error("Failed to follow/unfollow:", error);
-      alert(`Failed to ${isFollowing ? 'unfollow' : 'follow'}: ${error.message || 'Unknown error'}`);
+      const errorMessage = error?.message || error?.toString() || "Unknown error";
+      if (errorMessage.includes("cancel") || errorMessage.includes("reject") || errorMessage.includes("User rejected")) {
+        // User canceled signing - don't show error, just stop loading
+        console.log("Follow/unfollow canceled by user");
+      } else {
+        alert(`Failed to ${isFollowing ? 'unfollow' : 'follow'}: ${errorMessage}`);
+      }
     } finally {
       setFollowingLoading(false);
     }
@@ -1639,16 +1696,37 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 if (repo.logoUrl && repo.logoUrl.trim().length > 0) {
                   iconUrl = repo.logoUrl;
                 } else if (repo.files && repo.files.length > 0) {
-                  // Priority 2: Logo file from repo
-                  const logoFiles = repo.files
+                  // Priority 2: Logo/repo image file from repo
+                  const repoName = (repo.repo || repo.slug || repo.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                  const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
+                  
+                  // Find all potential icon files:
+                  // 1. Files with "logo" in name (highest priority)
+                  // 2. Files named after the repo (e.g., "tides.png" for tides repo)
+                  // 3. Common icon names in root (repo.png, icon.png, etc.)
+                  const iconFiles = repo.files
                     .map((f: any) => f.path)
                     .filter((p: string) => {
                       const fileName = p.split("/").pop() || "";
                       const baseName = fileName.replace(/\.[^.]+$/, "").toLowerCase();
                       const extension = fileName.split(".").pop()?.toLowerCase() || "";
-                      const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
-                      return baseName.includes("logo") && imageExts.includes(extension);
+                      const isRoot = p.split("/").length === 1;
+                      
+                      if (!imageExts.includes(extension)) return false;
+                      
+                      // Match logo files
+                      if (baseName.includes("logo")) return true;
+                      
+                      // Match repo-name-based files (e.g., "tides.png" for tides repo)
+                      if (repoName && baseName === repoName) return true;
+                      
+                      // Match common icon names in root directory
+                      if (isRoot && (baseName === "repo" || baseName === "icon" || baseName === "favicon")) return true;
+                      
+                      return false;
                     });
+                  
+                  const logoFiles = iconFiles;
                   if (logoFiles.length > 0) {
                     const logoPath = logoFiles[0];
                     if (repo.sourceUrl) {

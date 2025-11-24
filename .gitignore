@@ -14,3 +14,12 @@ data
 .env.*.local
 .env
 # Personal credentials - never commit
+
+# Server configs (contain server-specific paths/IPs)
+/etc/nginx/sites-available/gittr
+/etc/nginx/sites-enabled/gittr
+nginx.conf
+*.nginx
+nginx.gittr.conf.example
+upload_to_hetzner.sh
+PUSH_VERIFICATION_SUMMARY.md

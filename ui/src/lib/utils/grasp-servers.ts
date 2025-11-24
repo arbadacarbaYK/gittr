@@ -10,26 +10,27 @@
  * - Display GRASP servers separately in the UI
  */
 
+/**
+ * KNOWN_GRASP_DOMAINS: List of actual GRASP git servers (NOT regular Nostr relays)
+ * 
+ * GRASP servers are BOTH Nostr relays AND git servers that support NIP-34.
+ * They serve git repositories via HTTPS/SSH and can be cloned with standard git commands.
+ * 
+ * Regular Nostr relays (like relay.damus.io, nos.lol) are NOT GRASP servers
+ * and should NOT be included in clone URLs.
+ */
 export const KNOWN_GRASP_DOMAINS = [
-  'git.shakespeare.diy',
+  // Actual GRASP git servers (verified to serve git repos)
+  'relay.ngit.dev',
   'ngit-relay.nostrver.se',
+  'gitnostr.com',
+  'ngit.danconwaydev.com',
+  'git.shakespeare.diy',
   'git-01.uid.ovh',
   'git-02.uid.ovh',
-  'relay.ngit.dev',
-  'ngit.danconwaydev.com',
-  'gitnostr.com',
   'git.jb55.com',
-  'relay.damus.io',
-  'nos.lol',
-  'nostr.azzamo.net',
-  'relay.nostr.band',
-  'nostr.mom',
-  'nostr.wine',
-  'relay.snort.social',
-  'relay.nostr.info',
-  'relay.nostrgraph.net',
-  'nostrue.com',
-  'relay.noderunners.network',
+  // Add gittr.space if it's a GRASP server (our own server)
+  // Note: This will be added via NEXT_PUBLIC_GIT_SERVER_URL, but included here for completeness
 ] as const;
 
 /**

@@ -7,10 +7,12 @@ interface SSHGitHelpProps {
   entity: string;
   repo: string;
   sshUrl?: string;
+  httpsUrls?: string[];
+  nostrUrls?: string[];
   onClose?: () => void;
 }
 
-export function SSHGitHelp({ entity, repo, sshUrl, onClose }: SSHGitHelpProps) {
+export function SSHGitHelp({ entity, repo, sshUrl, httpsUrls, nostrUrls, onClose }: SSHGitHelpProps) {
   const handleClose = () => {
     if (onClose) {
       onClose();
@@ -71,8 +73,9 @@ export function SSHGitHelp({ entity, repo, sshUrl, onClose }: SSHGitHelpProps) {
               <GitBranch className="h-4 w-4" />
               2. Clone Repository
             </h3>
+            <div className="space-y-3">
             <div className="bg-gray-800 border border-gray-700 rounded p-3">
-              <p className="text-sm text-gray-400 mb-2">All gittr repositories:</p>
+                <p className="text-sm text-green-400 font-semibold mb-2">Option A: SSH (Standard Git - Recommended)</p>
               <code className="block text-green-400 font-mono text-sm break-all">
                 {sshUrl || `git clone git@gittr.space:${entity}/${repo}.git`}
               </code>
@@ -85,10 +88,45 @@ export function SSHGitHelp({ entity, repo, sshUrl, onClose }: SSHGitHelpProps) {
                   }}
                   className="mt-2 text-xs"
                 >
-                  Copy Clone Command
+                    Copy SSH Clone Command
                 </Button>
               )}
+                <p className="mt-2 text-xs text-gray-400">Standard Git approach, no additional tools needed. Requires SSH keys (see Step 1).</p>
+              </div>
+              <div className="bg-gray-800 border border-blue-700 rounded p-3">
+                <p className="text-sm text-blue-300 font-semibold mb-2">Option B: HTTPS (GRASP git servers)</p>
+                <code className="block text-blue-200 font-mono text-sm break-all">
+                  {httpsUrls && httpsUrls.length > 0
+                    ? `git clone ${httpsUrls[0]}`
+                    : `git clone https://relay.ngit.dev/${entity}/${repo}.git`}
+                </code>
+                {httpsUrls && httpsUrls.length > 1 && (
+                  <p className="mt-2 text-[11px] text-gray-400">
+                    Other mirrors: {httpsUrls.slice(1, 4).join(", ")}
+                  </p>
+                )}
+                <p className="mt-2 text-xs text-gray-400">
+                  Works anywhere Git is available (CI, Codespaces, etc.). Read-only unless the remote grants access.
+                </p>
+              </div>
+              
+              <div className="bg-gray-800 border border-purple-700 rounded p-3">
+                <p className="text-sm text-purple-400 font-semibold mb-2">Option C: nostr:// Protocol (Ecosystem Standard)</p>
+                {(nostrUrls && nostrUrls.length > 0 ? nostrUrls : [
+                  `nostr://${entity.substring(0, 12)}@relay.ngit.dev/${repo}`
+                ]).map((url, idx) => (
+                  <code key={idx} className="block text-purple-200 font-mono text-sm break-all">
+                    git clone {url}
+                  </code>
+                ))}
+                <p className="mt-2 text-xs text-gray-400">
+                  Requires <code className="bg-gray-900 px-1 rounded">git-remote-nostr</code>. Matches the format used by other NIP-34 clients.
+                </p>
+              </div>
             </div>
+            <p className="mt-3 text-xs text-gray-400">
+              All three formats are published in each NIP-34 repository event. Use whichever best fits your tooling.
+            </p>
           </div>
 
           {/* Push */}
@@ -135,7 +173,7 @@ export function SSHGitHelp({ entity, repo, sshUrl, onClose }: SSHGitHelpProps) {
           {/* Learn More */}
           <div className="pt-4 border-t border-gray-700">
             <p className="text-xs text-gray-400">
-              For detailed documentation, see <a href="https://github.com/arbadacarbaYK/ngit/blob/main/docs/SSH_GIT_GUIDE.md" className="text-purple-400 hover:underline" target="_blank" rel="noopener noreferrer">SSH & Git Guide</a>
+              For detailed documentation, see <a href="https://github.com/arbadacarbaYK/gittr/blob/main/docs/SSH_GIT_GUIDE.md" className="text-purple-400 hover:underline" target="_blank" rel="noopener noreferrer">SSH & Git Guide</a>
             </p>
           </div>
         </div>

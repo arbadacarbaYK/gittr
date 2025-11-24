@@ -1,0 +1,228 @@
+import type { NextApiRequest, NextApiResponse } from "next";
+import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
+import { rateLimiters } from "@/app/api/middleware/rate-limit";
+import { promisify } from "util";
+import { exec } from "child_process";
+import { existsSync, readFileSync } from "fs";
+import { mkdtemp, writeFile, mkdir, rm } from "fs/promises";
+import { dirname, join, normalize } from "path";
+import os from "os";
+
+const execAsync = promisify(exec);
+
+interface IncomingFile {
+  path: string;
+  content?: string;
+  isBinary?: boolean;
+}
+
+const sanitizePath = (input: string): string => {
+  const normalized = normalize(input).replace(/\\/g, "/");
+  const trimmed = normalized.replace(/^(\.\/)+/, "");
+  const parts = trimmed.split("/").filter((part) => part && part !== "." && part !== "..");
+  return parts.join("/");
+};
+
+async function resolveReposDir(): Promise<string> {
+  let reposDir =
+    process.env.GIT_NOSTR_BRIDGE_REPOS_DIR ||
+    process.env.REPOS_DIR ||
+    process.env.GITNOSTR_REPOS_DIR;
+
+  if (!reposDir) {
+    const configPaths = [
+      process.env.HOME ? `${process.env.HOME}/.config/git-nostr/git-nostr-bridge.json` : null,
+      "/home/git-nostr/.config/git-nostr/git-nostr-bridge.json",
+    ].filter(Boolean) as string[];
+
+    for (const configPath of configPaths) {
+      try {
+        if (existsSync(configPath)) {
+          const configContent = readFileSync(configPath, "utf-8");
+          const config = JSON.parse(configContent);
+          if (config.repositoryDir) {
+            const homeDir = configPath.includes("/home/git-nostr")
+              ? "/home/git-nostr"
+              : process.env.HOME || "";
+            reposDir = config.repositoryDir.replace(/^~/, homeDir);
+            break;
+          }
+        }
+      } catch (error) {
+        console.warn(`⚠️ Failed to read git-nostr config from ${configPath}:`, error);
+      }
+    }
+  }
+
+  if (!reposDir) {
+    reposDir = process.env.HOME
+      ? `${process.env.HOME}/git-nostr-repositories`
+      : "/tmp/gitnostr/repos";
+  }
+
+  return reposDir;
+}
+
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "25mb",
+    },
+  },
+};
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method === "OPTIONS") {
+    handleOptionsRequest(res);
+    return;
+  }
+
+  setCorsHeaders(res);
+
+  const rateLimitResult = await rateLimiters.api(req as any);
+  if (rateLimitResult) {
+    return res.status(429).json(JSON.parse(await rateLimitResult.text()));
+  }
+
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const { ownerPubkey, repo: repoName, branch = "main", files } = req.body || {};
+
+  if (!ownerPubkey || typeof ownerPubkey !== "string" || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+    return res.status(400).json({ error: "ownerPubkey must be a full 64-char hex string" });
+  }
+
+  if (!repoName || typeof repoName !== "string") {
+    return res.status(400).json({ error: "repo is required" });
+  }
+
+  if (!Array.isArray(files) || files.length === 0) {
+    return res.status(400).json({ error: "files array is required" });
+  }
+
+  const reposDir = await resolveReposDir();
+  const repoPath = join(reposDir, ownerPubkey, `${repoName}.git`);
+
+  let tempDir: string | null = null;
+  const missingFiles: string[] = [];
+
+  try {
+    await execAsync(`mkdir -p "${join(reposDir, ownerPubkey)}"`);
+    if (!existsSync(repoPath)) {
+      await execAsync(`git init --bare "${repoPath}"`);
+      // CRITICAL: Set HEAD to the branch we'll push (usually "main")
+      // This ensures git log and other commands work immediately
+      await execAsync(`git --git-dir="${repoPath}" symbolic-ref HEAD refs/heads/${branch}`);
+      
+      // CRITICAL: Set ownership to www-data:www-data so fcgiwrap (git-http-backend) can access it
+      // This is required for HTTPS git clones to work via git.gittr.space
+      // On local dev, this might fail if www-data doesn't exist, which is fine
+      try {
+        await execAsync(`chown -R www-data:www-data "${repoPath}"`);
+        console.log(`✅ Set ownership to www-data:www-data for ${repoPath}`);
+      } catch (chownError: any) {
+        // On local dev, www-data might not exist - that's okay
+        console.warn(`⚠️ Failed to set ownership to www-data (this is OK for local dev):`, chownError?.message);
+      }
+    }
+
+    tempDir = await mkdtemp(join(os.tmpdir(), "gittr-push-"));
+    await execAsync(`git init "${tempDir}"`);
+    await execAsync(`git -C "${tempDir}" config user.name "gittr push"`);
+    await execAsync(`git -C "${tempDir}" config user.email "push@gittr.space"`);
+
+    let writtenFiles = 0;
+    for (const file of files as IncomingFile[]) {
+      if (!file || typeof file.path !== "string") continue;
+      const safePath = sanitizePath(file.path);
+      if (!safePath) continue;
+
+      if (!file.content) {
+        missingFiles.push(safePath);
+        continue;
+      }
+
+      const targetPath = join(tempDir, safePath);
+      await mkdir(dirname(targetPath), { recursive: true });
+
+      const buffer = file.isBinary
+        ? Buffer.from(file.content, "base64")
+        : Buffer.from(file.content, "utf8");
+
+      await writeFile(targetPath, buffer as unknown as Uint8Array);
+      writtenFiles++;
+    }
+
+    if (writtenFiles === 0) {
+      return res.status(400).json({
+        error: "No file content provided for bridge push",
+        missingFiles,
+      });
+    }
+
+    await execAsync(`git -C "${tempDir}" add -A`);
+    await execAsync(
+      `git -C "${tempDir}" commit -m "Push from gittr (${new Date().toISOString()})"`
+    );
+    await execAsync(`git -C "${tempDir}" branch -M ${branch}`);
+    await execAsync(`git -C "${tempDir}" remote add origin "${repoPath}"`);
+    
+    // CRITICAL: Add the bare repo to git's safe.directory before pushing
+    // This prevents "dubious ownership" errors when pushing from temp dir to www-data-owned repo
+    try {
+      await execAsync(`git config --system --add safe.directory "${repoPath}"`);
+      console.log(`✅ Added ${repoPath} to git safe.directory`);
+    } catch (safeDirError: any) {
+      // If system config fails, try global for the current user
+      console.warn(`⚠️ Failed to add to system safe.directory, trying global:`, safeDirError?.message);
+      try {
+        await execAsync(`git config --global --add safe.directory "${repoPath}"`);
+        console.log(`✅ Added ${repoPath} to git global safe.directory`);
+      } catch (globalError: any) {
+        console.warn(`⚠️ Failed to add to global safe.directory (may cause push errors):`, globalError?.message);
+      }
+    }
+    
+    await execAsync(`git -C "${tempDir}" push --force origin ${branch}`);
+    
+    // CRITICAL: Update HEAD in bare repo to point to the branch we just pushed
+    // This ensures git log and other commands work correctly
+    await execAsync(`git --git-dir="${repoPath}" symbolic-ref HEAD refs/heads/${branch}`);
+    
+    // CRITICAL: Ensure ownership is correct after push (in case repo already existed)
+    // Set ownership to www-data:www-data so fcgiwrap (git-http-backend) can access it
+    // This is required for HTTPS git clones to work via git.gittr.space
+    // On local dev, this might fail if www-data doesn't exist, which is fine
+    try {
+      await execAsync(`chown -R www-data:www-data "${repoPath}"`);
+      console.log(`✅ Set ownership to www-data:www-data for ${repoPath} (after push)`);
+    } catch (chownError: any) {
+      // On local dev, www-data might not exist - that's okay
+      console.warn(`⚠️ Failed to set ownership to www-data (this is OK for local dev):`, chownError?.message);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Bridge push completed",
+      missingFiles,
+      pushedFiles: writtenFiles,
+    });
+  } catch (error: any) {
+    console.error("❌ Bridge push failed:", error);
+    return res.status(500).json({
+      error: error?.message || "Bridge push failed",
+      missingFiles,
+    });
+  } finally {
+    if (tempDir) {
+      try {
+        await rm(tempDir, { recursive: true, force: true });
+      } catch (cleanupError) {
+        console.warn("Failed to clean temp directory:", cleanupError);
+      }
+    }
+  }
+}
+

@@ -33,6 +33,8 @@ interface ChangedFile {
   status: "added" | "modified" | "deleted";
   before?: string;
   after?: string;
+  isBinary?: boolean;
+  mimeType?: string;
 }
 
 export default function NewPullRequestPage({ params }: { params: { entity: string; repo: string } }) {
@@ -116,6 +118,8 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
               path: upload.path,
               status: "added",
               after: upload.content,
+              isBinary: upload.isBinary,
+              mimeType: upload.mimeType,
             });
           }
         });

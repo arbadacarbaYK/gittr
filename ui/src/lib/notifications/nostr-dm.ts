@@ -162,7 +162,7 @@ function getDefaultRelays(): string[] {
     "wss://relay.damus.io",
     "wss://nostr.fmt.wiz.biz",
     "wss://nos.lol",
-    "wss://nostr.azzamo.net",
+    "wss://relay.azzamo.net",
     "wss://nostr.mom",
     "wss://relay.nostr.band",
     "wss://nostr.wine",

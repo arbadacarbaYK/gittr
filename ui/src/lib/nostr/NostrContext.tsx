@@ -156,7 +156,22 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   const publish = useCallback(
     (event: any, relays: string[]) => {
+      console.log(`📤 [NostrContext] Publishing event:`, {
+        eventId: event.id,
+        kind: event.kind,
+        pubkey: event.pubkey ? `${event.pubkey.substring(0, 8)}...` : 'none',
+        relays: relays.length,
+        relayList: relays,
+        tagsCount: event.tags?.length || 0,
+        cloneTags: event.tags?.filter((t: any[]) => Array.isArray(t) && t[0] === "clone").map((t: any[]) => t[1]) || [],
+      });
+      try {
       relayPool.publish(event, relays);
+        console.log(`✅ [NostrContext] Event published to relayPool (${relays.length} relays)`);
+      } catch (error) {
+        console.error(`❌ [NostrContext] Failed to publish event:`, error);
+        throw error;
+      }
     },
     []
   );

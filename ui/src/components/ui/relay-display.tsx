@@ -16,6 +16,7 @@ interface RelayDisplayProps {
   graspServers?: string[];
   userRelays?: string[]; // User-configured relays (added via addRelay or currently connected)
   gitSourceStatuses?: GitSourceStatus[]; // Status of git source fetches (GitHub, GitLab, Codeberg, etc.)
+  cloneUrls?: string[]; // Clone URLs from NIP-34 event
   className?: string;
 }
 

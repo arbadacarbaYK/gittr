@@ -182,7 +182,7 @@ NOSTR_NSEC_2=your_test_nsec_2_here
 1. Go to https://github.com/settings/developers
 2. Click **"New OAuth App"**
 3. Fill in:
-   - **Application name**: `ngit` (or your app name)
+   - **Application name**: `gittr` (or your app name)
    - **Homepage URL**: 
      - Development: `http://localhost:3000`
      - Production: `https://gittr.space`

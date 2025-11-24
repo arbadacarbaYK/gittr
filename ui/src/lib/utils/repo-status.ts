@@ -194,6 +194,7 @@ export function getStatusBadgeStyle(status: RepoStatus): { bg: string; text: str
 /**
  * Mark repository as having unpushed edits
  * Call this when repo is modified locally after being published
+ * Also ensures local repos stay as "local" status so push button appears
  */
 export function markRepoAsEdited(repoSlug: string, entity: string): void {
   try {
@@ -204,14 +205,26 @@ export function markRepoAsEdited(repoSlug: string, entity: string): void {
     
     if (repoIndex >= 0) {
       const repo = repos[repoIndex];
-      // Only mark as edited if it was previously live
-      if (repo.lastNostrEventId || repo.nostrEventId || repo.syncedFromNostr) {
+      const wasLive = !!(repo.lastNostrEventId || repo.nostrEventId || repo.syncedFromNostr);
+      
+      if (wasLive) {
+        // Repo was previously live - mark as having unpushed edits
         repos[repoIndex] = { 
           ...repo, 
           hasUnpushedEdits: true,
           lastModifiedAt: Date.now(),
         };
         localStorage.setItem("gittr_repos", JSON.stringify(repos));
+        console.log(`📝 [markRepoAsEdited] Marked live repo as having unpushed edits: ${repoSlug}`);
+      } else {
+        // Repo was never pushed - ensure it's marked as "local" so push button appears
+        repos[repoIndex] = { 
+          ...repo, 
+          status: "local", // Explicitly set to local
+          lastModifiedAt: Date.now(),
+        };
+        localStorage.setItem("gittr_repos", JSON.stringify(repos));
+        console.log(`📝 [markRepoAsEdited] Ensured local repo status is "local": ${repoSlug}`);
       }
     }
   } catch (error) {

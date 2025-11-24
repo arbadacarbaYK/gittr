@@ -1,6 +1,11 @@
-# Comparison: ngit vs gitworkshop.dev
+# Comparison: gittr vs gitworkshop.dev
 
-This document compares our ngit implementation with gitworkshop.dev's approach and documents what commands are available in each.
+This document compares our gittr implementation with gitworkshop.dev's approach and documents what commands are available in each.
+
+**Note**: 
+- **gittr** = Our platform (gittr.space)
+- **ngit** = The original CLI tool and ecosystem (ngit.dev, used by gitworkshop.dev)
+- **gitworkshop.dev** = The reference web interface for the ngit ecosystem
 
 ## Key Differences
 
@@ -41,17 +46,28 @@ git push --force
 ### Our gittr Approach
 
 **Tools:**
-- **SSH-based Git operations** - Standard Git over SSH (like GitHub/GitLab)
+- **Multi-protocol Git operations** - SSH, HTTPS, and `nostr://` support
 - **Web UI** - Full-featured web interface for all operations
+- **Bridge push automation** - "Push to Nostr" button automatically syncs to multiple GRASP servers
 - **No CLI tool** - All operations via web UI or standard Git commands
 
 **Git Commands:**
 ```bash
-# Clone using SSH (standard Git)
-git clone git@gitnostr.com:<owner-pubkey>/<repo-name>.git
+# Clone using SSH (standard Git - Recommended)
+git clone git@gittr.space:<owner-pubkey>/<repo-name>.git
 
 # Example:
-git clone git@gitnostr.com:9a83779e/Pixelbot.git
+git clone git@gittr.space:9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c/repo-name.git
+
+# Clone using HTTPS (from GRASP servers)
+git clone https://git.gittr.space/<owner-pubkey>/<repo-name>.git
+# Or from other GRASP servers:
+git clone https://relay.ngit.dev/<owner-pubkey>/<repo-name>.git
+git clone https://gitnostr.com/<owner-pubkey>/<repo-name>.git
+
+# Clone using nostr:// protocol (for ecosystem compatibility)
+git clone nostr://<author-name>@<relay-domain>/<repo-name>
+# Requires git-remote-nostr helper
 
 # Push changes (standard Git)
 git add .
@@ -67,12 +83,14 @@ git fetch origin
 
 ## What We Have
 
-✅ **SSH-based Git operations** - Standard Git commands work  
+✅ **Multi-protocol Git operations** - SSH, HTTPS, and `nostr://` clone URLs supported  
 ✅ **Web UI for PRs** - Create, review, merge PRs via web interface  
 ✅ **Web UI for Issues** - Create issues, add bounties, assign  
 ✅ **Repository management** - Create, import, fork repos  
-✅ **GRASP protocol support** - Client-side GRASP-01, GRASP-02 sync  
+✅ **GRASP protocol support** - Client-side GRASP-01 sync, publishes to multiple GRASP servers  
 ✅ **Nostr event subscriptions** - Subscribe to repos from Nostr relays  
+✅ **Automatic bridge sync** - Push to Nostr automatically syncs to all known GRASP servers  
+✅ **Distributed hosting** - Repos pushed to multiple GRASP servers (not just one centralized server)  
 
 ## Important Clarification: Git Commands vs CLI Tools
 
@@ -96,18 +114,20 @@ These are **standard Git commands** that work with ANY Git repository, regardles
 - It's similar to how `git-remote-https` works for HTTPS URLs
 
 **Our approach:**
-- Uses **standard Git over SSH** (no special CLI needed)
+- Uses **standard Git over SSH/HTTPS** (no special CLI needed)
+- Also publishes `nostr://` URLs for ecosystem compatibility
 - All Git commands work directly (no wrapper tool)
 - PRs/issues managed via web UI (like GitHub)
+- Automatically pushes to multiple GRASP servers when you "Push to Nostr"
 
-### The Real Difference: Protocol, Not Commands
+### The Real Difference: Protocol Priority, Not Commands
 
 The difference isn't about which Git commands work - **they all work!** The difference is:
 
-1. **gitworkshop.dev**: Uses `nostr://` protocol URLs → requires `git-remote-nostr` helper
-2. **Our gittr**: Uses SSH protocol URLs → standard Git SSH (no helper needed)
+1. **gitworkshop.dev**: Primarily uses `nostr://` protocol URLs → requires `git-remote-nostr` helper
+2. **Our gittr**: Primarily uses SSH/HTTPS URLs → standard Git (no helper needed), but also publishes `nostr://` URLs for compatibility
 
-Both approaches support the same Git commands. The difference is the **protocol layer** (how Git connects to the server).  
+Both approaches support the same Git commands. The difference is the **primary protocol** (SSH/HTTPS vs `nostr://`), but we support both for maximum compatibility.  
 
 ## Why Different Approaches?
 
@@ -118,77 +138,40 @@ Both approaches support the same Git commands. The difference is the **protocol 
 - **Lightweight**: Minimal web UI, mostly CLI
 
 ### Our gittr
-- **SSH-based**: Uses standard Git SSH (familiar to developers)
+- **Multi-protocol**: Primarily SSH/HTTPS, but also publishes `nostr://` URLs
 - **Web-first**: Full-featured web UI (like GitHub)
-- **Centralized Git server**: One server handles all Git operations
+- **Distributed Git hosting**: Pushes to multiple GRASP servers automatically
 - **Feature-rich**: Issues, PRs, bounties, payments, all in web UI
+- **Automatic sync**: "Push to Nostr" button syncs to all known GRASP servers
 
-## Should We Add gitworkshop.dev Features?
+## Implementation Details
 
-### Option 1: Keep SSH-based approach (Current)
-**Pros:**
-- Familiar to developers (same as GitHub/GitLab)
-- Standard Git commands work
-- No additional tools needed
-- Better for users who prefer web UI
+### gittr Implementation
+- **Primary clone protocol**: SSH (`git@gittr.space`)
+- **HTTPS support**: Available via `git.gittr.space` subdomain and other GRASP servers
+- **nostr:// URLs**: Published in NIP-34 events for ecosystem compatibility
+- **Bridge push**: Automatic sync to multiple GRASP servers on "Push to Nostr"
+- **Git server**: Runs own bridge at `git.gittr.space` with proper subdomain setup
+- **GRASP protocol**: Client-side GRASP-01 sync, publishes to all known GRASP servers
 
-**Cons:**
-- Requires git-nostr-bridge server setup
-- Not compatible with `nostr://` protocol
-- Can't use `ngit` CLI tool
+### gitworkshop.dev Implementation
+- **Primary clone protocol**: `nostr://` (requires `git-remote-nostr` helper)
+- **CLI tool**: `ngit` for Git operations
+- **Protocol-first**: Uses `nostr://` URLs directly
+- **Distributed**: Repos can be on different GRASP servers
+- **CLI-focused**: Minimal web UI, emphasizes command-line workflow
 
-### Option 2: Add `nostr://` protocol support
-**Pros:**
-- Compatible with gitworkshop.dev
-- Can use `ngit` CLI tool
-- More distributed (repos can be on different servers)
-- Protocol-first approach
+## Documentation
 
-**Cons:**
-- Requires `git-remote-nostr` helper installation
-- More complex setup for users
-- Need to maintain both SSH and `nostr://` support
+✅ **gittr documentation**:
+- [SSH_GIT_GUIDE.md](SSH_GIT_GUIDE.md) - Complete SSH/Git guide
+- [GIT_NOSTR_BRIDGE_SETUP.md](GIT_NOSTR_BRIDGE_SETUP.md) - Bridge setup
+- [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md) - Server admin setup
 
-### Option 3: Hybrid approach
-**Pros:**
-- Best of both worlds
-- Users can choose SSH or `nostr://`
-- Compatible with gitworkshop.dev ecosystem
-
-**Cons:**
-- More code to maintain
-- More complex documentation
-
-## Why We're Not Seeing Repos: It's NOT the Architecture!
-
-**Important**: The problem of not seeing repos from gitworkshop.dev is **NOT** because we use a centralized server vs distributed approach. The issue is likely:
-
-1. **Relay subscriptions**: We might not be subscribed to the same relays that gitworkshop.dev uses
-2. **GRASP-02 sync**: Our client-side relay discovery might not be working properly
-3. **Event filtering**: Repos might be getting filtered out (deleted/archived checks)
-
-**The architecture difference doesn't prevent repo discovery:**
-- Both approaches read from Nostr relays
-- Both can discover repos from any relay
-- The difference is just how Git operations work (SSH vs `nostr://`)
-
-**To fix repo discovery:**
-1. Ensure we're subscribed to Grasp relay instances (`wss://gitnostr.com`, `wss://relay.ngit.dev`)
-2. Verify GRASP-02 client-side sync is discovering relays from repo events
-3. Check browser console for `📦 [Explore] Repo event received` logs
-4. Verify repos aren't being filtered out incorrectly
-
-## Documentation Status
-
-✅ **We document SSH-based commands** in:
-- `docs/SSH_GIT_GUIDE.md` - Complete SSH/Git guide
-- `GIT_NOSTR_BRIDGE_SETUP.md` - Bridge setup (required for Git ops)
-- `SETUP_INSTRUCTIONS.md` - Server admin setup
-
-❌ **We don't document gitworkshop.dev commands** because:
-- We don't support `nostr://` protocol
-- We don't have `ngit` CLI tool
-- Different architecture (SSH vs protocol)
+✅ **gitworkshop.dev documentation**:
+- Quick Start: https://gitworkshop.dev/quick-start
+- ngit.dev: https://ngit.dev
+- GRASP Protocol: https://ngit.dev/grasp/
 
 ## References
 
