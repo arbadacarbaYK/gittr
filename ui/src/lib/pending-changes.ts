@@ -14,8 +14,10 @@ export interface PendingEdit {
 
 export interface PendingUpload {
   path: string;
-  content: string;
+  content: string; // For text files: text content, for binary files: base64-encoded string
   timestamp: number;
+  isBinary?: boolean; // Flag to indicate binary files (images, PDFs, etc.)
+  mimeType?: string; // Preserve MIME type so we can render preview (png, jpg, etc.)
 }
 
 const getPendingEditsKey = (entity: string, repo: string, pubkey: string) => 

@@ -1,11 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { addPendingUpload } from "@/lib/pending-changes";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
+import { loadStoredRepos, addFilesToRepo, normalizeFilePath } from "@/lib/repos/storage";
+import { isOwner } from "@/lib/repo-permissions";
+import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import { nip19 } from "nostr-tools";
 
 export default function NewFilePage({ params }: { params: { entity: string; repo: string } }) {
   const [path, setPath] = useState("");
@@ -14,6 +19,43 @@ export default function NewFilePage({ params }: { params: { entity: string; repo
   const router = useRouter();
   const { pubkey } = useNostrContext();
   const { isLoggedIn } = useSession();
+  const [isOwnerUser, setIsOwnerUser] = useState<boolean | null>(null);
+
+  // Check if user is owner
+  useEffect(() => {
+    if (!pubkey) {
+      setIsOwnerUser(false);
+      return;
+    }
+
+    try {
+      const repos = loadStoredRepos();
+      const repo = findRepoByEntityAndName(repos, params.entity, params.repo);
+
+      const entityMatchesCurrentUser = (() => {
+        if (!pubkey) return false;
+        const hex = pubkey.toLowerCase();
+        if (params.entity?.toLowerCase() === hex) return true;
+        try {
+          const npub = nip19.npubEncode(pubkey);
+          return params.entity === npub;
+        } catch {
+          return false;
+        }
+      })();
+
+      if (repo) {
+        const ownerPubkey = getRepoOwnerPubkey(repo, params.entity);
+        const userIsOwner = isOwner(pubkey, repo.contributors, ownerPubkey);
+        setIsOwnerUser(userIsOwner || entityMatchesCurrentUser);
+      } else {
+        setIsOwnerUser(entityMatchesCurrentUser);
+      }
+    } catch (error) {
+      console.error("Error checking owner status:", error);
+      setIsOwnerUser(false);
+    }
+  }, [pubkey, params.entity, params.repo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,18 +70,41 @@ export default function NewFilePage({ params }: { params: { entity: string; repo
       return;
     }
 
+    // Normalize path (remove leading/trailing slashes)
+    const normalizedPath = normalizeFilePath(path.trim());
+    if (!normalizedPath) {
+      setStatus("Error: Invalid file path. Path cannot be just '/' or empty.");
+      return;
+    }
+
     try {
-      // Add as pending upload (will be part of PR)
-      if (!pubkey) {
-        setStatus("Error: You must be logged in to create files");
-        return;
-      }
-      addPendingUpload(params.entity, params.repo, pubkey, { path: path.trim(), content, timestamp: Date.now() });
+      // If user is owner, add file directly to repo (immediate display)
+      if (isOwnerUser) {
+        const success = addFilesToRepo(params.entity, params.repo, [
+          { path: normalizedPath, content, type: "file" }
+        ], pubkey);
+        
+        if (success) {
+          setStatus("File created! Redirecting to repository...");
+          setTimeout(() => {
+            router.push(`/${params.entity}/${params.repo}`);
+          }, 1000);
+        } else {
+          setStatus("Error: Failed to add file to repository");
+        }
+      } else {
+        // Non-owners: Add as pending upload (requires PR)
+        addPendingUpload(params.entity, params.repo, pubkey, { 
+          path: normalizedPath, 
+          content, 
+          timestamp: Date.now() 
+        });
       
       setStatus("File added! Redirecting to create pull request...");
       setTimeout(() => {
         router.push(`/${params.entity}/${params.repo}/pulls/new`);
       }, 1000);
+      }
     } catch (error: any) {
       setStatus(`Error: ${error.message}`);
     }
@@ -68,6 +133,16 @@ export default function NewFilePage({ params }: { params: { entity: string; repo
           />
           <p className="text-sm text-gray-400 mt-1">
             Use forward slashes (/) to create directories. Example: src/components/Button.tsx
+            {isOwnerUser && (
+              <span className="block mt-1 text-green-400">
+                ✓ You are the owner - file will be added directly (no PR needed)
+              </span>
+            )}
+            {isOwnerUser === false && (
+              <span className="block mt-1 text-yellow-400">
+                ⚠ You are not the owner - file will require a Pull Request
+              </span>
+            )}
           </p>
         </div>
 

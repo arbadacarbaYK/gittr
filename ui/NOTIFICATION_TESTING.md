@@ -24,7 +24,7 @@ This guide explains how to test the notification system to verify that notificat
 Run the comprehensive test script:
 
 ```bash
-cd ui
+cd docs
 node test-notifications.js
 ```
 

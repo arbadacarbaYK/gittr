@@ -14,6 +14,7 @@ import { getUserActivities } from "@/lib/activity-tracking";
 import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
+import { pushFilesToBridge } from "@/lib/nostr/push-to-bridge";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { isOwner } from "@/lib/repo-permissions";
 import { nip19 } from "nostr-tools";
@@ -222,22 +223,37 @@ export default function RepositoriesPage() {
     
     // Priority 2: Logo file from repo (search all directories, handle multiple formats/names)
     if (repo.files && repo.files.length > 0) {
-      // Find all logo files - search in ALL directories, handle various naming patterns:
-      // - logo.png, Logo.png, LOGO.png (case-insensitive)
-      // - logo2.png, logo_v2.png, logo-alt.png (variants)
+      // Find all potential icon files - search in ALL directories, handle various naming patterns:
+      // 1. Files with "logo" in name (highest priority)
+      // 2. Files named after the repo (e.g., "tides.png" for tides repo)
+      // 3. Common icon names in root (repo.png, icon.png, etc.)
       // - Multiple formats: .png, .jpg, .jpeg, .gif, .webp, .svg, .ico
-      const logoFiles = repo.files
+      const repoName = (repo.repo || repo.slug || repo.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
+      
+      const iconFiles = repo.files
         .map(f => f.path)
         .filter(p => {
-          // Match files that contain "logo" in their name (case-insensitive)
-          // and end with image extensions, anywhere in the directory tree
           const fileName = p.split("/").pop() || "";
           const baseName = fileName.replace(/\.[^.]+$/, "").toLowerCase();
           const extension = fileName.split(".").pop()?.toLowerCase() || "";
-          const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
+          const isRoot = p.split("/").length === 1;
           
-          return baseName.includes("logo") && imageExts.includes(extension);
+          if (!imageExts.includes(extension)) return false;
+          
+          // Match logo files
+          if (baseName.includes("logo")) return true;
+          
+          // Match repo-name-based files (e.g., "tides.png" for tides repo)
+          if (repoName && baseName === repoName) return true;
+          
+          // Match common icon names in root directory
+          if (isRoot && (baseName === "repo" || baseName === "icon" || baseName === "favicon")) return true;
+          
+          return false;
         });
+      
+      const logoFiles = iconFiles;
       
       if (logoFiles.length > 0) {
         // Prioritize logo files
@@ -249,21 +265,23 @@ export default function RepositoriesPage() {
           const aIsRoot = aParts.length === 1;
           const bIsRoot = bParts.length === 1;
           
-          // Exact "logo" match is highest priority
+          // Priority 1: Exact "logo" match
           if (aName === "logo" && bName !== "logo") return -1;
           if (bName === "logo" && aName !== "logo") return 1;
           
-          // If both are "logo", prefer root
+          // Priority 2: Repo-name-based files (e.g., "tides.png")
+          if (repoName && aName === repoName && bName !== repoName && bName !== "logo") return -1;
+          if (repoName && bName === repoName && aName !== repoName && aName !== "logo") return 1;
+          
+          // Priority 3: Root directory files
           if (aName === "logo" && bName === "logo") {
             if (aIsRoot && !bIsRoot) return -1;
             if (!aIsRoot && bIsRoot) return 1;
           }
-          
-          // Otherwise prefer root directory
           if (aIsRoot && !bIsRoot) return -1;
           if (!aIsRoot && bIsRoot) return 1;
           
-          // Finally, prefer common formats (png, svg over others)
+          // Priority 4: Format preference
           const aExt = a.split(".").pop()?.toLowerCase() || "";
           const bExt = b.split(".").pop()?.toLowerCase() || "";
           const formatPriority = { png: 0, svg: 1, webp: 2, jpg: 3, jpeg: 3, gif: 4, ico: 5 };
@@ -514,6 +532,11 @@ export default function RepositoriesPage() {
     // Also query user's own repos to ensure they're included
     // NOTE: No time limit - get all repos from Nostr (historical repos are valuable)
     // Relays will handle pagination/limits if needed
+    
+    // CRITICAL: For NIP-34 replaceable events, collect ALL events per repo and pick the latest
+    // Map: repoKey (pubkey + d tag) -> array of events
+    const nip34EventsByRepo = new Map<string, Array<{event: any; relayURL?: string}>>();
+    
     const unsub = subscribe(
       [
         {
@@ -532,6 +555,23 @@ export default function RepositoriesPage() {
       ],
       defaultRelays,
       (event, isAfterEose, relayURL) => {
+        // CRITICAL: For NIP-34 replaceable events, collect ALL events first
+        // Don't process immediately - wait for EOSE to pick the latest one
+        if (event.kind === KIND_REPOSITORY_NIP34) {
+          const dTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "d");
+          const repoName = dTag?.[1];
+          if (repoName && event.pubkey) {
+            const repoKey = `${event.pubkey}/${repoName}`;
+            if (!nip34EventsByRepo.has(repoKey)) {
+              nip34EventsByRepo.set(repoKey, []);
+            }
+            nip34EventsByRepo.get(repoKey)!.push({ event, relayURL });
+            console.log(`📦 [Repos] Collected NIP-34 event for ${repoKey}: id=${event.id.slice(0, 8)}..., created_at=${event.created_at}, total=${nip34EventsByRepo.get(repoKey)!.length}`);
+            // Don't return - continue to process it normally too (for immediate display)
+            // But we'll ensure the latest one is used when storing
+          }
+        }
+        
         // Process ALL events, not just before EOSE (EOSE just means "end of stored events", but new events can still arrive)
         if (event.kind === KIND_REPOSITORY || event.kind === KIND_REPOSITORY_NIP34) {
           try {
@@ -550,6 +590,10 @@ export default function RepositoriesPage() {
                   else if (tagName === "clone" && tagValue) repoData.clone.push(tagValue);
                   else if (tagName === "relays" && tagValue) repoData.relays.push(tagValue);
                   else if (tagName === "t" && tagValue) repoData.topics.push(tagValue);
+                  else if (tagName === "r" && tagValue && tag[2] === "euc") {
+                    // Extract earliest unique commit from "r" tag with "euc" marker
+                    repoData.earliestUniqueCommit = tagValue;
+                  }
                 }
               }
               repoData.publicRead = true;
@@ -835,6 +879,19 @@ export default function RepositoriesPage() {
             // Merge with existing data
             // CRITICAL: Always update ownerPubkey even for existing repos (fixes repos synced before the fix)
             if (existingIndex >= 0 && existingRepos[existingIndex]) {
+              // CRITICAL: For NIP-34 replaceable events, only update if this event is newer
+              // Check if existing repo has a newer event already stored
+              // NIP-34 uses Unix timestamps in SECONDS - compare in seconds
+              const existingRepo = existingRepos[existingIndex];
+              const existingEventCreatedAtSeconds = (existingRepo as any)?.lastNostrEventCreatedAt || 
+                ((existingRepo as any)?.updatedAt ? Math.floor((existingRepo as any).updatedAt / 1000) : 0);
+              const newEventCreatedAtSeconds = event.created_at; // Already in seconds (Nostr format)
+              
+              if (event.kind === KIND_REPOSITORY_NIP34 && newEventCreatedAtSeconds <= existingEventCreatedAtSeconds) {
+                console.log(`⏭️ [Repos] Skipping older NIP-34 event: existing=${new Date(existingEventCreatedAtSeconds * 1000).toISOString()}, new=${new Date(newEventCreatedAtSeconds * 1000).toISOString()}`);
+                return; // Skip older events
+              }
+              
               // CRITICAL: Preserve existing sourceUrl if new one is not available
               // This prevents losing GitHub/GitLab/Codeberg sourceUrl when syncing from Nostr
               const preservedSourceUrl = repo.sourceUrl || existingRepos[existingIndex].sourceUrl;
@@ -846,9 +903,25 @@ export default function RepositoriesPage() {
                 // Force update ownerPubkey and contributors to fix old repos
                 ownerPubkey: event.pubkey,
                 contributors: contributors,
+                // Store latest event ID and created_at
+                // CRITICAL: Store in SECONDS (Nostr format) - not milliseconds
+                nostrEventId: event.id,
+                lastNostrEventId: event.id,
+                lastNostrEventCreatedAt: event.created_at, // Store in seconds (NIP-34 format)
+                // Extract earliest unique commit from "r" tag if present (may not be in Repo type but exists at runtime)
+                ...(repoData.earliestUniqueCommit || (existingRepos[existingIndex] as any)?.earliestUniqueCommit ? { earliestUniqueCommit: repoData.earliestUniqueCommit || (existingRepos[existingIndex] as any)?.earliestUniqueCommit } : {}),
               };
             } else {
-              existingRepos.push(repo);
+              // New repo - store with event ID and created_at
+              // CRITICAL: Store in SECONDS (Nostr format) - not milliseconds
+              const newRepo = {
+                ...repo,
+                nostrEventId: event.id,
+                lastNostrEventId: event.id,
+                lastNostrEventCreatedAt: event.created_at, // Store in seconds (NIP-34 format)
+                earliestUniqueCommit: repoData.earliestUniqueCommit,
+              };
+              existingRepos.push(newRepo);
             }
             
             // Save to localStorage
@@ -1784,7 +1857,19 @@ export default function RepositoriesPage() {
             return false;
           });
           
-          const sorted = filtered.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); // Sort by createdAt, newest first
+          // CRITICAL: Sort by latest event date (lastNostrEventCreatedAt) if available, otherwise by createdAt
+          // This ensures repos with recent updates appear first
+          // Note: lastNostrEventCreatedAt is in SECONDS (NIP-34 format), createdAt/updatedAt are in MILLISECONDS
+          const sorted = filtered.sort((a, b) => {
+            // Get latest event date in milliseconds for comparison
+            const aLatest = (a as any).lastNostrEventCreatedAt 
+              ? (a as any).lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
+              : ((a as any).updatedAt || a.createdAt || 0);
+            const bLatest = (b as any).lastNostrEventCreatedAt 
+              ? (b as any).lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
+              : ((b as any).updatedAt || b.createdAt || 0);
+            return bLatest - aLatest; // Newest first
+          });
           
           // Deduplicate repos by entity/repo combination
           // CRITICAL: Merge local and Nostr versions intelligently:
@@ -2020,6 +2105,30 @@ export default function RepositoriesPage() {
                             });
                             
                             if (result.success) {
+                              const shouldAutoBridge = !r.sourceUrl;
+                              if (
+                                shouldAutoBridge &&
+                                r.ownerPubkey &&
+                                result.filesForBridge &&
+                                result.filesForBridge.length > 0
+                              ) {
+                                try {
+                                  await pushFilesToBridge({
+                                    ownerPubkey: r.ownerPubkey.toLowerCase(),
+                                    repoSlug: repoForUrl,
+                                    entity,
+                                    branch: r.defaultBranch || "main",
+                                    files: result.filesForBridge,
+                                  });
+                                } catch (bridgeError: any) {
+                                  console.error("Bridge sync failed:", bridgeError);
+                                  alert(
+                                    `⚠️ Repository event published but bridge sync failed: ${
+                                      bridgeError?.message || bridgeError?.toString() || "Unknown error"
+                                    }`
+                                  );
+                                }
+                              }
                               // Reload repos to show updated status
                               const updatedRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
                               setRepos([...updatedRepos]);

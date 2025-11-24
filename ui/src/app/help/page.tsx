@@ -246,17 +246,88 @@ export default function HelpPage() {
           <div className="space-y-4 text-gray-300">
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Clone a Repository</h3>
-              <p>Use the SSH URL shown on the repository page to clone:</p>
-              <code className="block bg-[#0a0d11] p-2 rounded mt-2 text-sm">
+              <p>gittr.space repositories support multiple clone URL formats:</p>
+              
+              <div className="mt-3 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-green-400 mb-1">Option A: SSH (Standard Git - Recommended)</p>
+                  <code className="block bg-[#0a0d11] p-2 rounded text-sm">
                 git clone git@gittr.space:npub1.../repo-name.git
               </code>
-              <p className="mt-2 text-sm text-gray-400">For foreign repos (GitHub/GitLab), files are fetched from their source servers. The clone URL points to git-nostr-bridge for Nostr-native repos.</p>
+                  <p className="mt-1 text-xs text-gray-400">Requires SSH keys (Settings → SSH Keys). Works out of the box with any Git client.</p>
+                </div>
+                
+                <div>
+                  <p className="text-sm font-semibold text-blue-300 mb-1">Option B: HTTPS (GRASP git servers)</p>
+                  <code className="block bg-[#0a0d11] p-2 rounded text-sm">
+                    git clone https://relay.ngit.dev/&lt;owner-pubkey&gt;/repo-name.git
+                  </code>
+                  <p className="mt-1 text-xs text-gray-400">Read-only clones from our public mirrors (relay.ngit.dev, gitnostr.com, ngit-relay.nostrver.se, ...). Great for CI/CD or quick testing.</p>
+                </div>
+                
+                <div>
+                  <p className="text-sm font-semibold text-purple-400 mb-1">Option C: nostr:// Protocol (Ecosystem Standard)</p>
+                  <code className="block bg-[#0a0d11] p-2 rounded text-sm">
+                    git clone nostr://yourname@relay.ngit.dev/repo-name
+                  </code>
+                  <p className="mt-1 text-xs text-gray-400">
+                    Requires <code className="bg-gray-800 px-1 rounded">git-remote-nostr</code>. This helper translates <code className="bg-gray-800 px-1 rounded">nostr://</code> URLs into standard Git fetches and is used by other NIP-34 clients.
+                  </p>
+                  <div className="mt-2 text-[11px] text-gray-300 bg-[#0f172a] border border-purple-900/40 rounded p-2 space-y-1">
+                    <p className="font-semibold text-purple-300">Install git-remote-nostr (Nov 2025)</p>
+                    <ul className="list-disc list-inside space-y-1">
+                      <li>macOS/Linux: <code className="bg-gray-900 px-1 rounded">pip install git-remote-nostr</code> (Python 3.10+)</li>
+                      <li>or build from source: <a className="text-purple-300 underline" target="_blank" rel="noreferrer" href="https://github.com/aljazceru/git-remote-nostr">github.com/aljazceru/git-remote-nostr</a></li>
+                      <li>Add to PATH so Git can find the helper (verify with <code className="bg-gray-900 px-1 rounded">which git-remote-nostr</code>)</li>
+                    </ul>
+                    <p>Once installed, <code className="bg-gray-900 px-1 rounded">git clone nostr://…</code> works exactly like GitHub URLs.</p>
+                  </div>
+                </div>
+              </div>
+              
+              <p className="mt-3 text-sm text-gray-400">SSH, HTTPS, and nostr:// clone URLs all ship inside every NIP-34 repository event. Pick whichever matches your workflow.</p>
+            </div>
+
+            <div className="mt-6 space-y-3">
+              <h4 className="text-sm font-semibold text-white uppercase tracking-wide">Supported Git Commands</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-gray-200">
+                <div className="bg-[#11161f] border border-gray-700 rounded p-3 space-y-1">
+                  <p className="font-semibold text-white">Day-to-day</p>
+                  <code className="block bg-black/40 p-1 rounded">git pull / git fetch</code>
+                  <code className="block bg-black/40 p-1 rounded">git checkout &lt;branch&gt;</code>
+                  <code className="block bg-black/40 p-1 rounded">git status</code>
+                  <code className="block bg-black/40 p-1 rounded">git add / git commit</code>
+                </div>
+                <div className="bg-[#11161f] border border-gray-700 rounded p-3 space-y-2">
+                  <p className="font-semibold text-white">Publishing</p>
+                  <p className="text-sm text-gray-200">
+                    Use the <strong>Push to Nostr</strong> button in the repo UI. We publish the NIP‑34 event and automatically sync your repo to our git bridge so other clients can clone it immediately.
+                  </p>
+                  <p className="text-[11px] text-gray-400">
+                    CLI fan? You can still run <code className="bg-black/40 px-1 rounded">git push origin main</code>; it hits the same bridge endpoint.
+                  </p>
+                </div>
+                <div className="bg-[#11161f] border border-gray-700 rounded p-3 space-y-1">
+                  <p className="font-semibold text-white">Branches & Tags</p>
+                  <code className="block bg-black/40 p-1 rounded">git branch -a / git switch -c</code>
+                  <code className="block bg-black/40 p-1 rounded">git tag v1.2.3</code>
+                  <p className="text-[11px] text-gray-400">Releases and tags show up instantly in the UI.</p>
+                </div>
+                <div className="bg-[#11161f] border border-gray-700 rounded p-3 space-y-1">
+                  <p className="font-semibold text-white">Troubleshooting</p>
+                  <code className="block bg-black/40 p-1 rounded">git remote -v</code>
+                  <code className="block bg-black/40 p-1 rounded">git config --list</code>
+                  <code className="block bg-black/40 p-1 rounded">git log --oneline</code>
+                </div>
+              </div>
             </div>
 
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Push to Nostr</h3>
               <p>After making local changes, click "Push to Nostr" in your repository settings to publish updates.</p>
-              <p className="mt-2 text-sm text-gray-400">When pushing, files are stored on git-nostr-bridge (following NIP-34), and the Nostr event contains a reference via the clone URL. Only small metadata files (like README) are embedded in the event.</p>
+              <p className="mt-2 text-sm text-gray-400">
+                We sign the NIP‑34 event, publish it to your relays, and sync the Git repo to relay.ngit.dev/gittr.space automatically. Only small metadata files live inside the Nostr event; the real Git objects stay on the bridge.
+              </p>
             </div>
 
             <div>
@@ -344,7 +415,7 @@ export default function HelpPage() {
               <div className="mt-4 p-4 bg-gray-800/50 border border-gray-700 rounded">
                 <p className="text-sm font-semibold text-white mb-2">Bounty Flow Diagram:</p>
                 <div className="overflow-x-auto">
-                  <div ref={mermaidRef} className="min-h-[500px] flex items-center justify-center" style={{ minWidth: '1200px' }}></div>
+                  <div ref={mermaidRef} className="min-h-[500px] flex items-center justify-center w-full"></div>
                 </div>
               </div>
 
@@ -478,7 +549,7 @@ export default function HelpPage() {
               <h3 className="text-lg font-semibold text-white mb-2">Documentation</h3>
               <ul className="space-y-2">
                 <li>
-                  <a href="https://github.com/arbadacarbaYK/ngit" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 flex items-center gap-2">
+                  <a href="https://github.com/arbadacarbaYK/gittr" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 flex items-center gap-2">
                     <Github className="h-4 w-4" />
                     GitHub Repository
                   </a>

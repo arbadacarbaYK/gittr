@@ -16,6 +16,7 @@ export const KIND_DELETION = 5; // NIP-09: Deletion/Revocation events
 
 export interface RepositoryEvent {
   repositoryName: string;
+  name?: string; // NIP-34: Human-readable project name (for "name" tag)
   publicRead: boolean;
   publicWrite: boolean;
   gitSshBase?: string;
@@ -138,28 +139,98 @@ export function createRepositoryEvent(
 ): any {
   const pubkey = getPublicKey(privateKey);
   
-  // GRASP protocol: Add clone and relays tags if provided
+  // NIP-34: Build tags array with all required metadata
   const tags: string[][] = [
-    ["d", repo.repositoryName], // Replaceable event identifier
-    ...(repo.tags || []).map(tag => ["t", tag]),
+    ["d", repo.repositoryName], // Replaceable event identifier (NIP-34 required)
   ];
   
-  // GRASP-01: Add clone tags (git server URLs)
+  // NIP-34: Add name tag (human-readable project name)
+  // CRITICAL: Always include "name" tag for discoverability by other clients
+  // Use repo.name if available, otherwise fallback to repositoryName
+  const repoName = (repo as any).name || repo.repositoryName;
+  if (repoName) {
+    tags.push(["name", repoName]);
+  }
+  
+  // NIP-34: Add description tag
+  // CRITICAL: Always include "description" tag (other clients expect it)
+  const description = repo.description || `Repository: ${repoName || repo.repositoryName}`;
+  if (description) {
+    tags.push(["description", description]);
+  }
+  
+  // GRASP-01 / NIP-34: Add clone tags (git server URLs)
+  // CRITICAL: At least one clone tag is required for NIP-34 compliance
+  // Other clients need clone URLs to access the repository
   if (repo.clone && repo.clone.length > 0) {
     repo.clone.forEach(url => {
-      tags.push(["clone", url]);
+      if (url && typeof url === "string" && url.trim().length > 0) {
+        tags.push(["clone", url.trim()]);
+      }
     });
   }
   
-  // GRASP-01: Add relays tags (Nostr relay URLs)
+  // If no clone URLs provided, this is a warning but we'll still create the event
+  // (Some clients might handle repos without clone URLs differently)
+  
+  // GRASP-01 / NIP-34: Add relays tags (Nostr relay URLs)
   if (repo.relays && repo.relays.length > 0) {
     repo.relays.forEach(url => {
       tags.push(["relays", url]);
     });
   }
   
+  // NIP-34: Add topics/tags
+  if (repo.tags && repo.tags.length > 0) {
+    repo.tags.forEach(tag => {
+      tags.push(["t", tag]);
+    });
+  }
+  
+  // NIP-34: Add web tags (from logoUrl or links array)
+  if (repo.logoUrl && (repo.logoUrl.startsWith("http://") || repo.logoUrl.startsWith("https://"))) {
+    tags.push(["web", repo.logoUrl]);
+  }
+  if (repo.links && Array.isArray(repo.links)) {
+    repo.links.forEach(link => {
+      if (link.url && (link.url.startsWith("http://") || link.url.startsWith("https://"))) {
+        tags.push(["web", link.url]);
+      }
+    });
+  }
+  
+  // NIP-34: Add maintainers tags (from contributors + owner)
+  // CRITICAL: Always include event publisher (owner) as maintainer for discoverability
+  const maintainerPubkeys = new Set<string>();
+  
+  // Add event publisher (owner) as maintainer
+  if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
+    maintainerPubkeys.add(pubkey);
+  }
+  
+  // Add contributors as maintainers
+  if (repo.contributors && Array.isArray(repo.contributors)) {
+    repo.contributors.forEach(contributor => {
+      const contributorPubkey = contributor.pubkey;
+      // Only add if pubkey is valid (64 hex chars)
+      if (contributorPubkey && /^[0-9a-f]{64}$/i.test(contributorPubkey)) {
+        maintainerPubkeys.add(contributorPubkey);
+      }
+    });
+  }
+  
+  // Add all maintainers to tags
+  maintainerPubkeys.forEach(maintainerPubkey => {
+    tags.push(["maintainers", maintainerPubkey]);
+  });
+  
+  // NIP-34: Add "r" tag with "euc" marker for earliest unique commit (optional but recommended)
+  // This helps identify repos among forks and group related repos
+  // Note: We don't have commit history in RepositoryEvent interface, so this is skipped
+  // It can be added in push-repo-to-nostr.ts where we have access to commits
+  
   const event = {
-    kind: KIND_REPOSITORY,
+    kind: KIND_REPOSITORY_NIP34, // NIP-34: Use kind 30617 instead of 51
     created_at: Math.floor(Date.now() / 1000),
     tags,
     content: JSON.stringify({

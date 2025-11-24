@@ -2,7 +2,7 @@
 
 This guide explains how to access gittr.space repositories via SSH and Git command-line tools.
 
-**⚠️ Setup Required**: Git commands (`git clone`, `git push`, `git pull`) require the **git-nostr-bridge service** to be installed and running. See `GIT_NOSTR_BRIDGE_SETUP.md` for complete installation instructions.
+**⚠️ Setup Required**: Git commands (`git clone`, `git push`, `git pull`) require the **git-nostr-bridge service** to be installed and running. See [GIT_NOSTR_BRIDGE_SETUP.md](GIT_NOSTR_BRIDGE_SETUP.md) for complete installation instructions.
 
 ## Quick Start
 
@@ -16,29 +16,62 @@ This guide explains how to access gittr.space repositories via SSH and Git comma
 
 ### 2. Clone a Repository
 
-All gittr.space repositories (both native and imported from GitHub) use the same SSH infrastructure:
+gittr.space repositories support multiple clone URL formats for maximum compatibility:
 
+#### Option A: SSH (Standard Git - Recommended)
 ```bash
-git clone git@gitnostr.com:<owner-pubkey>/<repo-name>.git
+git clone git@gittr.space:<owner-pubkey>/<repo-name>.git
 ```
 
 Example:
 ```bash
-git clone git@gitnostr.com:9a83779e/Pixelbot.git
+git clone git@gittr.space:9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c/repo-name.git
 ```
+
+**Note**: SSH cloning requires SSH keys to be set up (see Step 1 above). This is the standard Git approach, familiar to developers who use GitHub/GitLab.
+
+#### Option B: HTTPS (GRASP Git Servers)
+```bash
+git clone https://git.gittr.space/<owner-pubkey>/<repo-name>.git
+```
+
+HTTPS clones work exactly like GitHub/GitLab. Every push publishes fresh NIP-34 events plus uploads the bare repo to our bridge at `git.gittr.space` and other GRASP servers (gitnostr.com, ngit-relay.nostrver.se, relay.ngit.dev, etc.). Use HTTPS when you want a dead-simple `git clone` that requires no SSH keys.
+
+#### Option C: nostr:// Protocol (Ecosystem Standard)
+```bash
+git clone nostr://<author-name>@<relay-domain>/<repo-name>
+```
+
+Example:
+```bash
+git clone nostr://alex@git.gittr.space/repo-name
+```
+
+**Note**: The `nostr://` format requires the `git-remote-nostr` helper tool to be installed. This is the format used by other NIP-34 clients. The helper translates `nostr://` URLs to actual git operations.
+
+**Which format to use?**
+- **SSH**: Preferred for contributors with keys configured (push + pull)
+- **HTTPS**: Good for quick read-only clones or CI systems without SSH keys
+- **nostr://**: Use when following guides from other NIP-34 clients or any tool that expects this scheme (requires `git-remote-nostr`)
 
 **Note**: Even if a repository was imported from GitHub, once it's on gittr it becomes a native gittr repository accessible via our SSH infrastructure. The `forkedFrom` metadata is just for attribution - all git operations go through gittr's servers.
 
-### 3. Push Changes
+### 3. Publish (Push to Nostr)
 
-After cloning and making changes:
+1. In the repository UI click **“Push to Nostr”**.  
+2. Confirm the prompt in your NIP‑07 wallet (or use your stored private key).  
+3. We'll publish the NIP‑34 event **and** automatically sync the full Git repository to our bridge at `git.gittr.space` and other GRASP servers. Other clients can clone it immediately—no extra CLI step required.
+
+#### Optional: push via Git CLI
+If you prefer a traditional workflow you can still push directly to the bridge:
+
 ```bash
 git add .
 git commit -m "Update code"
 git push origin main
 ```
 
-**Note**: Only repository owners can push. For collaborative changes, create a pull request via the web interface.
+Only repository owners can push. Collaborators should use pull requests from their own forks or local copies.
 
 ## How It Works
 
@@ -101,7 +134,7 @@ SSH keys are managed entirely client-side and published directly to Nostr:
   2. Checking relay logs for rejection messages
   3. Using a relay that explicitly supports gitnostr protocol (KIND 50-52)
 
-The gitnostr protocol (which ngit is based on) uses:
+The gitnostr protocol (which the original ngit ecosystem uses, and which gittr forked from) uses:
 - KIND_50: Repository Permissions
 - KIND_51: Repository metadata
 - KIND_52: SSH Keys
@@ -116,8 +149,8 @@ git@<gitSshBase>:<ownerPubkey>/<repoName>.git
 ```
 
 Where:
-- `<gitSshBase>`: Configured in repository event or defaults to `gitnostr.com`
-- `<ownerPubkey>`: Repository owner's Nostr pubkey (first 8 chars resp. username for display)
+- `<gitSshBase>`: Configured in repository event or defaults to `gittr.space`
+- `<ownerPubkey>`: Repository owner's Nostr pubkey (full 64-char hex)
 - `<repoName>`: Repository name/slug
 
 ## Troubleshooting

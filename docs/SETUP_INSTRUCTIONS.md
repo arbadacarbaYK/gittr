@@ -336,6 +336,37 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
+
+# Git bridge subdomain (for HTTPS git clones)
+# Assumes git.gittr.space DNS record points to this server
+server {
+    listen 80;
+    server_name git.gittr.space;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name git.gittr.space;
+    
+    ssl_certificate /etc/letsencrypt/live/git.gittr.space/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/git.gittr.space/privkey.pem;
+    
+    # Git bridge HTTP service (git-nostr-bridge)
+    # Default port is 8080, adjust if your bridge uses a different port
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        
+        # Git smart HTTP protocol requires these headers
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+}
 ```
 
 ```bash
@@ -348,7 +379,7 @@ sudo systemctl reload nginx
 
 ```bash
 sudo apt install certbot python3-certbot-nginx
-sudo certbot --nginx -d gittr.space
+sudo certbot --nginx -d gittr.space -d git.gittr.space
 ```
 
 This will automatically update the nginx config with SSL certificates.

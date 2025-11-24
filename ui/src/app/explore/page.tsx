@@ -559,18 +559,38 @@ export default function ExplorePage() {
       return repo.logoUrl;
     }
     
-    // Priority 2: Logo file from repo (search all directories, handle multiple formats/names)
+    // Priority 2: Logo/repo image file from repo (search all directories, handle multiple formats/names)
     if (repo.files && repo.files.length > 0) {
-      const logoFiles = repo.files
+      const repoName = (repo.repo || repo.slug || repo.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
+      
+      // Find all potential icon files:
+      // 1. Files with "logo" in name (highest priority)
+      // 2. Files named after the repo (e.g., "tides.png" for tides repo)
+      // 3. Common icon names in root (repo.png, icon.png, etc.)
+      const iconFiles = repo.files
         .map(f => f.path)
         .filter(p => {
           const fileName = p.split("/").pop() || "";
           const baseName = fileName.replace(/\.[^.]+$/, "").toLowerCase();
           const extension = fileName.split(".").pop()?.toLowerCase() || "";
-          const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
+          const isRoot = p.split("/").length === 1;
           
-          return baseName.includes("logo") && imageExts.includes(extension);
+          if (!imageExts.includes(extension)) return false;
+          
+          // Match logo files
+          if (baseName.includes("logo")) return true;
+          
+          // Match repo-name-based files (e.g., "tides.png" for tides repo)
+          if (repoName && baseName === repoName) return true;
+          
+          // Match common icon names in root directory
+          if (isRoot && (baseName === "repo" || baseName === "icon" || baseName === "favicon")) return true;
+          
+          return false;
         });
+      
+      const logoFiles = iconFiles;
       
       if (logoFiles.length > 0) {
         // Prioritize logo files
@@ -582,8 +602,15 @@ export default function ExplorePage() {
           const aIsRoot = aParts.length === 1;
           const bIsRoot = bParts.length === 1;
           
+          // Priority 1: Exact "logo" match
           if (aName === "logo" && bName !== "logo") return -1;
           if (bName === "logo" && aName !== "logo") return 1;
+          
+          // Priority 2: Repo-name-based files (e.g., "tides.png")
+          if (repoName && aName === repoName && bName !== repoName && bName !== "logo") return -1;
+          if (repoName && bName === repoName && aName !== repoName && aName !== "logo") return 1;
+          
+          // Priority 3: Root directory files
           if (aName === "logo" && bName === "logo") {
             if (aIsRoot && !bIsRoot) return -1;
             if (!aIsRoot && bIsRoot) return 1;
@@ -591,6 +618,7 @@ export default function ExplorePage() {
           if (aIsRoot && !bIsRoot) return -1;
           if (!aIsRoot && bIsRoot) return 1;
           
+          // Priority 4: Format preference
           const aExt = a.split(".").pop()?.toLowerCase() || "";
           const bExt = b.split(".").pop()?.toLowerCase() || "";
           const formatPriority = { png: 0, svg: 1, webp: 2, jpg: 3, jpeg: 3, gif: 4, ico: 5 };
@@ -886,6 +914,11 @@ export default function ExplorePage() {
     
     // CRITICAL: Use all relays (default + user) for repository discovery
     const allRelays = getAllRelays(defaultRelays);
+    
+    // CRITICAL: For NIP-34 replaceable events, collect ALL events per repo and pick the latest
+    // Map: repoKey (pubkey + d tag) -> array of events
+    const nip34EventsByRepo = new Map<string, Array<{event: any; relayURL?: string}>>();
+    
     const unsub = subscribe(
       filters,
       allRelays,
@@ -902,6 +935,23 @@ export default function ExplorePage() {
           pubkey: event.pubkey?.slice(0, 8),
           eventId: event.id?.slice(0, 8)
         });
+        
+        // CRITICAL: For NIP-34 replaceable events, collect ALL events first
+        // Don't process immediately - wait for EOSE to pick the latest one
+        if (event.kind === KIND_REPOSITORY_NIP34) {
+          const dTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "d");
+          const repoName = dTag?.[1];
+          if (repoName && event.pubkey) {
+            const repoKey = `${event.pubkey}/${repoName}`;
+            if (!nip34EventsByRepo.has(repoKey)) {
+              nip34EventsByRepo.set(repoKey, []);
+            }
+            nip34EventsByRepo.get(repoKey)!.push({ event, relayURL });
+            console.log(`📦 [Explore] Collected NIP-34 event for ${repoKey}: id=${event.id.slice(0, 8)}..., created_at=${event.created_at}, total=${nip34EventsByRepo.get(repoKey)!.length}`);
+            // Don't return - continue to process it normally too (for immediate display)
+            // But we'll ensure the latest one is used when storing
+          }
+        }
         
         // Handle NIP-09 deletion events (kind 5)
         if (event.kind === 5) {
@@ -1287,8 +1337,8 @@ export default function ExplorePage() {
               branches: repoData.branches || existingRepo?.branches,
               releases: repoData.releases || existingRepo?.releases,
               logoUrl: existingRepo?.logoUrl,
-              createdAt: existingRepo?.createdAt || (event.created_at * 1000),
-              updatedAt: event.created_at * 1000, // Track when repo was last updated from Nostr
+              createdAt: existingRepo?.createdAt || (event.created_at * 1000), // Keep in milliseconds for compatibility
+              updatedAt: event.created_at * 1000, // Track when repo was last updated from Nostr (in milliseconds)
               entityDisplayName: entityDisplayName,
               ownerPubkey: event.pubkey, // CRITICAL: Always store full pubkey
               deleted: repoData.deleted || false,
@@ -1336,6 +1386,18 @@ export default function ExplorePage() {
             });
             
             if (existingIndex >= 0) {
+              // CRITICAL: For NIP-34 replaceable events, only update if this event is newer
+              // Check if existing repo has a newer event already stored
+              // NIP-34 uses Unix timestamps in SECONDS - compare in seconds
+              const existingEventCreatedAtSeconds = existingRepo?.lastNostrEventCreatedAt || 
+                (existingRepo?.updatedAt ? Math.floor(existingRepo.updatedAt / 1000) : 0);
+              const newEventCreatedAtSeconds = event.created_at; // Already in seconds (Nostr format)
+              
+              if (event.kind === KIND_REPOSITORY_NIP34 && newEventCreatedAtSeconds <= existingEventCreatedAtSeconds) {
+                console.log(`⏭️ [Explore] Skipping older NIP-34 event: existing=${new Date(existingEventCreatedAtSeconds * 1000).toISOString()}, new=${new Date(newEventCreatedAtSeconds * 1000).toISOString()}`);
+                return; // Skip older events
+              }
+              
               // CRITICAL: Replace with newer version from Nostr (no merging for proper versioning)
               // Only preserve user-set logoUrl (not from Nostr events)
               const updatedRepo = {
@@ -1344,11 +1406,15 @@ export default function ExplorePage() {
                 logoUrl: existingRepo?.logoUrl && !existingRepo?.logoUrl?.startsWith('http') ? existingRepo.logoUrl : repo.logoUrl,
                 // Preserve local unpushed edits flag (local state)
                 hasUnpushedEdits: existingRepo?.hasUnpushedEdits || false,
-                // Use newest event ID
+                // Use newest event ID and created_at
+                // CRITICAL: Store in SECONDS (Nostr format) - not milliseconds
                 nostrEventId: event.id,
                 lastNostrEventId: event.id,
+                lastNostrEventCreatedAt: event.created_at, // Store in seconds (NIP-34 format)
                 // Keep original createdAt (when repo was first created)
                 createdAt: existingRepo?.createdAt || repo.createdAt,
+                // Extract earliest unique commit from "r" tag if present (may not be in Repo type but exists at runtime)
+                ...(repoData.earliestUniqueCommit || (existingRepo as any)?.earliestUniqueCommit ? { earliestUniqueCommit: repoData.earliestUniqueCommit || (existingRepo as any)?.earliestUniqueCommit } : {}),
               };
               existingRepos[existingIndex] = updatedRepo;
               console.log('🔄 [Explore] Updated existing repo with newer Nostr version:', {
@@ -1356,9 +1422,19 @@ export default function ExplorePage() {
                 oldUpdatedAt: existingRepo?.updatedAt ? new Date(existingRepo.updatedAt).toISOString() : 'unknown',
                 newUpdatedAt: repo.updatedAt ? new Date(repo.updatedAt).toISOString() : 'unknown',
                 eventId: event.id.slice(0, 16),
+                eventCreatedAt: new Date(event.created_at * 1000).toISOString(),
               });
             } else {
-              existingRepos.push(repo);
+              // New repo - store with event ID and created_at
+              // CRITICAL: Store in SECONDS (Nostr format) - not milliseconds
+              const newRepo = {
+                ...repo,
+                nostrEventId: event.id,
+                lastNostrEventId: event.id,
+                lastNostrEventCreatedAt: event.created_at, // Store in seconds (NIP-34 format)
+                earliestUniqueCommit: repoData.earliestUniqueCommit,
+              };
+              existingRepos.push(newRepo);
             }
             
             localStorage.setItem("gittr_repos", JSON.stringify(existingRepos));
@@ -1375,6 +1451,31 @@ export default function ExplorePage() {
       },
       undefined,
       (events, relayURL) => {
+        // CRITICAL: After EOSE, process the latest NIP-34 event for each repo
+        // This ensures we use the most recent version of replaceable events
+        if (nip34EventsByRepo.size > 0) {
+          console.log(`📡 [Explore] EOSE from ${relayURL} - processing latest NIP-34 events for ${nip34EventsByRepo.size} repos`);
+          
+          nip34EventsByRepo.forEach((eventList, repoKey) => {
+            if (eventList.length > 1) {
+              // Sort by created_at descending (latest first)
+              eventList.sort((a, b) => (b.event.created_at || 0) - (a.event.created_at || 0));
+              const latestEvent = eventList[0];
+              if (latestEvent && latestEvent.event) {
+                console.log(`✅ [Explore] Found ${eventList.length} NIP-34 events for ${repoKey} - using latest: id=${latestEvent.event.id.slice(0, 8)}..., created_at=${latestEvent.event.created_at} (${new Date(latestEvent.event.created_at * 1000).toISOString()})`);
+              }
+              
+              // Re-process the latest event to ensure it's stored
+              // The event callback above already processed it, but we want to make sure we're using the latest
+              // This is handled by checking created_at when storing, but we log it here for debugging
+            }
+          });
+          
+          // Clear the map after processing (events are already stored)
+          nip34EventsByRepo.clear();
+        }
+        
+        // Original EOSE handler
         // EOSE - end of stored events
         const relayName = typeof relayURL === 'string' ? relayURL : (relayURL === Infinity ? 'multiple' : String(relayURL));
         console.log('✅ [Explore] EOSE from relay:', relayName, 'events:', events?.length || 0);
@@ -1448,7 +1549,19 @@ export default function ExplorePage() {
       return r;
     });
     
-    return reposWithEntity.slice().sort((a,b)=> (b.createdAt || 0) - (a.createdAt || 0));
+    // CRITICAL: Sort by latest event date (lastNostrEventCreatedAt) if available, otherwise by createdAt
+    // This ensures repos with recent updates appear first
+    // Note: lastNostrEventCreatedAt is in SECONDS (NIP-34 format), createdAt/updatedAt are in MILLISECONDS
+    return reposWithEntity.slice().sort((a, b) => {
+      // Get latest event date in milliseconds for comparison
+      const aLatest = (a as any).lastNostrEventCreatedAt 
+        ? (a as any).lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
+        : (a.updatedAt || a.createdAt || 0);
+      const bLatest = (b as any).lastNostrEventCreatedAt 
+        ? (b as any).lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
+        : (b.updatedAt || b.createdAt || 0);
+      return bLatest - aLatest; // Newest first
+    });
   }, [repos]);
   
   const filteredRepos = useMemo(() => {
@@ -1771,8 +1884,12 @@ export default function ExplorePage() {
           // CRITICAL: Use ownerMetadata directly (not ref) so React re-renders when metadata loads
           // React will handle re-renders efficiently - we want updates when metadata arrives!
           // CRITICAL: Always use getEntityDisplayName to show username, not shortened pubkey
-          const entityDisplayName = ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
-              ? getEntityDisplayName(ownerPubkey, ownerMetadata, entity)
+          // CRITICAL: Normalize pubkey to lowercase for metadata lookup
+          const normalizedOwnerPubkey = ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
+            ? ownerPubkey.toLowerCase()
+            : null;
+          const entityDisplayName = normalizedOwnerPubkey
+              ? getEntityDisplayName(normalizedOwnerPubkey, ownerMetadata, entity)
             : (r.entityDisplayName || entity);
             
           // Resolve icons - always show fallback if icon fails (matches homepage pattern)
@@ -1780,10 +1897,9 @@ export default function ExplorePage() {
           let ownerPicture: string | undefined = undefined;
           try {
             iconUrl = resolveRepoIcon(r);
-            if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-              // Normalize pubkey to lowercase for metadata lookup
-              const normalizedPubkey = ownerPubkey.toLowerCase();
-              ownerPicture = ownerMetadata[normalizedPubkey]?.picture || ownerMetadata[ownerPubkey]?.picture;
+            if (normalizedOwnerPubkey) {
+              // CRITICAL: Use normalized pubkey for metadata lookup
+              ownerPicture = ownerMetadata[normalizedOwnerPubkey]?.picture || ownerMetadata[ownerPubkey]?.picture;
             }
           } catch (error) {
             console.error('⚠️ [Explore] Error resolving icons:', error);

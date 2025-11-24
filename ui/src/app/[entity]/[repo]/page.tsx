@@ -60,9 +60,10 @@ import { BranchTagSwitcher } from "@/components/ui/branch-tag-switcher";
 import { nip19 } from "nostr-tools";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { isOwner as checkIsOwner } from "@/lib/repo-permissions";
-import { getRepoStatus, markRepoAsEdited, checkBridgeExists } from "@/lib/utils/repo-status";
+import { getRepoStatus, markRepoAsEdited, checkBridgeExists, setRepoStatus } from "@/lib/utils/repo-status";
 import { formatDate24h } from "@/lib/utils/date-format";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
+import { pushFilesToBridge } from "@/lib/nostr/push-to-bridge";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { fetchFilesFromMultipleSources, parseGitSource, type FetchStatus } from "@/lib/utils/git-source-fetcher";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
@@ -125,6 +126,75 @@ export default function RepoCodePage({
   const fileFetchAttemptedRef = useRef<string>(""); // Track which repos we've already attempted to fetch files for
   const ownerMetadataRef = useRef<Record<string, Metadata>>({}); // Ref to access latest ownerMetadata without causing re-renders
   const repoDataRef = useRef<StoredRepo | null>(null); // Ref to access latest repoData without causing dependency loops
+
+  const entityPubkey = useMemo(() => {
+    if (!params.entity) return null;
+    if (params.entity.startsWith("npub")) {
+      try {
+        const decoded = nip19.decode(params.entity);
+        if (decoded.type === "npub") {
+          return (decoded.data as string).toLowerCase();
+        }
+      } catch {
+        return null;
+      }
+    } else if (/^[0-9a-f]{64}$/i.test(params.entity)) {
+      return params.entity.toLowerCase();
+    }
+    return null;
+  }, [params.entity]);
+
+  const repoOwnerPubkey = useMemo(() => {
+    if ((repoData as any)?.ownerPubkey && typeof (repoData as any).ownerPubkey === "string") {
+      return (repoData as any).ownerPubkey.toLowerCase();
+    }
+    try {
+      const repos = loadStoredRepos();
+      const match = findRepoByEntityAndName<StoredRepo>(repos, params.entity, decodedRepo);
+      if (match?.ownerPubkey && typeof match.ownerPubkey === "string") {
+        return match.ownerPubkey.toLowerCase();
+      }
+    } catch {
+      // Ignore errors reading localStorage (server render etc.)
+    }
+    return null;
+  }, [repoData?.ownerPubkey, params.entity, decodedRepo]);
+
+  const repoIsOwner = useMemo(() => {
+    if (!currentUserPubkey) return false;
+    const normalizedUser = currentUserPubkey.toLowerCase();
+    if (entityPubkey && normalizedUser === entityPubkey) return true;
+    if (repoOwnerPubkey && normalizedUser === repoOwnerPubkey) return true;
+    return false;
+  }, [currentUserPubkey, entityPubkey, repoOwnerPubkey]);
+
+  const repoLinksList = repoData?.links || [];
+  const linksPublished = useMemo(() => {
+    if (!repoLinksList || repoLinksList.length === 0) return false;
+    return Boolean(
+      (repoData as any)?.syncedFromNostr ||
+      (repoData as any)?.lastNostrEventId ||
+      (repoData as any)?.nostrEventId ||
+      (repoData as any)?.fromNostr ||
+      (repoData as any)?.lastNostrEventCreatedAt
+    );
+  }, [repoLinksList, repoData]);
+
+  const copyCloneCommand = useCallback(async (command: string) => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(command);
+        const { showToast } = await import("@/components/ui/toast");
+        showToast("Clone command copied!", "success");
+      }
+    } catch (error) {
+      console.error("Failed to copy clone command:", error);
+      const { showToast } = await import("@/components/ui/toast");
+      showToast("Failed to copy command", "error");
+    }
+  }, []);
+
+  // clone URLs memo defined later after ownerPubkeyForLink
   const eoseProcessedRef = useRef<Set<string>>(new Set()); // Track which EOSE callbacks have already processed file fetching
   const branchesRef = useRef<string[]>([]); // Ref to track previous branches array to prevent render loops
   const tagsRef = useRef<string[]>([]); // Ref to track previous tags array to prevent render loops
@@ -149,10 +219,17 @@ export default function RepoCodePage({
   const [liveForkCount, setLiveForkCount] = useState<number>(0);
   const [showFuzzyFinder, setShowFuzzyFinder] = useState<boolean>(false);
   const [showSshGitHelp, setShowSshGitHelp] = useState<boolean>(false);
-  const [sshGitHelpData, setSshGitHelpData] = useState<{entity: string; repo: string; sshUrl: string} | null>(null);
+  const [sshGitHelpData, setSshGitHelpData] = useState<{
+    entity: string;
+    repo: string;
+    sshUrl: string;
+    httpsUrls: string[];
+    nostrUrls: string[];
+  } | null>(null);
   const [isPushing, setIsPushing] = useState<boolean>(false);
   const [isRefetching, setIsRefetching] = useState<boolean>(false);
   const [fetchStatusExpanded, setFetchStatusExpanded] = useState<boolean>(false);
+  const [cloneUrlsExpanded, setCloneUrlsExpanded] = useState<boolean>(false);
   
   // Get owner metadata for Nostr profile picture fallback
   // Fetch metadata for both entity and actual owner pubkey (CRITICAL for imported repos)
@@ -182,6 +259,32 @@ export default function RepoCodePage({
       }
     };
 
+    // CRITICAL: Decode npub FIRST (before other checks) to ensure we always have a pubkey
+    // This ensures the metadata hook gets called even if repo.ownerPubkey is missing
+    if (params.entity && params.entity.startsWith("npub")) {
+      try {
+        const decoded = nip19.decode(params.entity);
+        if (decoded.type === "npub") {
+          const pubkey = decoded.data as string;
+          addPubkey(pubkey);
+          // CRITICAL: Also ensure repo.ownerPubkey is set if missing
+          if (repo && !repo.ownerPubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
+            repo.ownerPubkey = pubkey;
+            // Update localStorage to persist ownerPubkey
+            const repoIndex = repos.findIndex((r: StoredRepo) => 
+              (r.slug === decodedRepo || r.repo === decodedRepo) && r.entity === params.entity
+            );
+            if (repoIndex >= 0 && repos[repoIndex]) {
+              repos[repoIndex].ownerPubkey = pubkey;
+              saveStoredRepos(repos);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[ownerPubkeysForMetadata] Failed to decode npub:", params.entity, e);
+      }
+    }
+
     addPubkey(resolvedOwnerPubkey ?? undefined);
     addPubkey(repo?.ownerPubkey);
 
@@ -190,17 +293,6 @@ export default function RepoCodePage({
         (contributor) => contributor.weight === 100 && typeof contributor.pubkey === "string"
       );
       addPubkey(ownerContributor?.pubkey);
-    }
-
-    if (params.entity && params.entity.startsWith("npub")) {
-      try {
-        const decoded = nip19.decode(params.entity);
-        if (decoded.type === "npub") {
-          addPubkey(decoded.data as string);
-        }
-      } catch {
-        // ignore decode errors
-      }
     }
 
     if (params.entity && params.entity.length === 64) {
@@ -244,6 +336,34 @@ export default function RepoCodePage({
       }
     }
 
+    // CRITICAL: If no pubkeys found and entity is npub, decode it as fallback
+    // This MUST happen before checking cached values to ensure we always have a pubkey
+    if (pubkeySet.size === 0 && params.entity && params.entity.startsWith("npub")) {
+      try {
+        const decoded = nip19.decode(params.entity);
+        if (decoded.type === "npub") {
+          const pubkey = decoded.data as string;
+          if (/^[0-9a-f]{64}$/i.test(pubkey)) {
+            console.log("[ownerPubkeysForMetadata] No pubkeys found, using decoded npub as fallback:", pubkey.slice(0, 16) + "...");
+            pubkeySet.add(pubkey.toLowerCase());
+            // Also update repo.ownerPubkey if missing
+            if (repo && !repo.ownerPubkey) {
+              repo.ownerPubkey = pubkey;
+              const repoIndex = repos.findIndex((r: StoredRepo) => 
+                (r.slug === decodedRepo || r.repo === decodedRepo) && r.entity === params.entity
+              );
+              if (repoIndex >= 0 && repos[repoIndex]) {
+                repos[repoIndex].ownerPubkey = pubkey;
+                saveStoredRepos(repos);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[ownerPubkeysForMetadata] Failed to decode npub as fallback:", e);
+      }
+    }
+
     const result = Array.from(pubkeySet).sort();
     const resultStr = result.join(",");
     const cachedStr = ownerPubkeysStableRef.current.join(",");
@@ -257,6 +377,14 @@ export default function RepoCodePage({
     }
 
     ownerPubkeysStableRef.current = result;
+    
+    // Debug logging
+    if (result.length > 0) {
+      console.log(`[ownerPubkeysForMetadata] Returning ${result.length} pubkey(s):`, result.map(p => p.slice(0, 16) + "..."));
+    } else {
+      console.warn("[ownerPubkeysForMetadata] WARNING: Returning empty array - no pubkeys found! Entity:", params.entity);
+    }
+    
     return result;
   }, [decodedRepo, params.entity, resolvedOwnerPubkey]); // Only recompute when these change
   const ownerMetadata = useContributorMetadata(ownerPubkeysForMetadata);
@@ -911,6 +1039,11 @@ export default function RepoCodePage({
             commits: repo.commits || [],
             contributors,
             links: repo.links || [],
+            defaultBranch: repo.defaultBranch || "main",
+            clone: (repo as any).clone || [], // CRITICAL: Include clone URLs from NIP-34 event
+            relays: (repo as any).relays || [],
+            ownerPubkey: ownerPubkey || repo.ownerPubkey,
+            lastNostrEventId: (repo as any).lastNostrEventId || (repo as any).nostrEventId,
           });
           // Ensure branches present
           const branches = (repo.branches && repo.branches.length > 0)
@@ -1116,8 +1249,38 @@ export default function RepoCodePage({
           console.error("Error loading repo:", e);
         }
     
+    // Listen for repo updates (when files are added locally)
+    const handleRepoUpdate = () => {
+      try {
+        const repos = loadStoredRepos();
+        const updatedRepo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+        if (updatedRepo) {
+          // Reload files from storage
+          let filesArray: RepoFileEntry[] = [];
+          if (updatedRepo.files && Array.isArray(updatedRepo.files) && updatedRepo.files.length > 0) {
+            filesArray = updatedRepo.files;
+          } else {
+            filesArray = loadRepoFiles(params.entity, params.repo);
+          }
+          
+          // Update repoData with new files
+          setRepoData(prev => prev ? {
+            ...prev,
+            files: filesArray,
+          } : null);
+          
+          console.log(`✅ [Repo Update] Reloaded ${filesArray.length} files after update event`);
+        }
+      } catch (error) {
+        console.error("Error handling repo update:", error);
+      }
+    };
+    
+    window.addEventListener("gittr:repo-updated", handleRepoUpdate);
+    
     // Reset processed flag when dependencies change
     return () => {
+      window.removeEventListener("gittr:repo-updated", handleRepoUpdate);
       repoProcessedRef.current = "";
       fileFetchInProgressRef.current = false;
       fileFetchAttemptedRef.current = "";
@@ -1310,6 +1473,39 @@ export default function RepoCodePage({
     if (hasSourceUrl && currentRepoData.files === undefined) {
       console.log("⏭️ [File Fetch] Repo is GitHub import with undefined files, will try git-nostr-bridge as fallback");
       // Continue to fetch - don't skip
+    }
+    
+    // CRITICAL: For local repos (no sourceUrl, no cloneUrls), check localStorage FIRST
+    // If files exist in localStorage, use them and skip server fetching entirely
+    if (!hasSourceUrl && !hasCloneUrls && !hasFiles) {
+      try {
+        const repos = loadStoredRepos();
+        const matchingRepo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+        if (matchingRepo) {
+          // Check if files exist in repo.files or separate storage
+          let localFiles: RepoFileEntry[] = [];
+          if (matchingRepo.files && Array.isArray(matchingRepo.files) && matchingRepo.files.length > 0) {
+            localFiles = matchingRepo.files;
+          } else {
+            localFiles = loadRepoFiles(params.entity, params.repo);
+          }
+          
+          if (localFiles.length > 0) {
+            console.log(`✅ [File Fetch] Local repo has ${localFiles.length} files in localStorage, using them (skipping server fetch)`);
+            // Update repoData with files from localStorage
+            setRepoData(prev => prev ? {
+              ...prev,
+              files: localFiles,
+            } : null);
+            fileFetchAttemptedRef.current = repoKeyWithBranch; // Mark as attempted
+            fileFetchInProgressRef.current = false;
+            return; // Skip server fetching for local repos
+          }
+        }
+      } catch (e) {
+        console.error("❌ [File Fetch] Error checking localStorage for local repo:", e);
+        // Continue to server fetch as fallback
+      }
     }
     
     // Mark as attempted before starting to prevent re-runs (include branch in key)
@@ -1752,6 +1948,8 @@ export default function RepoCodePage({
           // Store sourceUrl and clone URLs from events for fallback use (accessible in closure)
           let sourceUrlFromEvent: string | undefined;
           let eventRepoData: any = null; // Store event data for multi-source fetching
+          // CRITICAL: For NIP-34 replaceable events, collect ALL events and pick the latest (highest created_at)
+          const collectedEvents: Array<{event: any; relayURL?: string}> = [];
           
           // ALSO check if repoData already has sourceUrl (from localStorage or previous load)
           // This is critical - the UI might already show sourceUrl even if the event doesn't have it
@@ -1777,12 +1975,14 @@ export default function RepoCodePage({
           
           // Query for SPECIFIC repository by name using "#d" tag (NIP-34 standard)
           // This ensures we only get the correct repo, not all repos from the user
+          // CRITICAL: NIP-34 uses replaceable events - we need the LATEST event (highest created_at)
+          // Don't use limit: 1 - we need to get all events and pick the latest one
           const filters = [
             {
               kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
               authors: [ownerPubkey],
               "#d": [paramsRepo], // CRITICAL: Query for SPECIFIC repo by name
-              limit: 1
+              // Don't set limit - we need all events to find the latest one
             }
           ];
           
@@ -1790,6 +1990,16 @@ export default function RepoCodePage({
             filters,
             prioritizedRelays, // Use prioritized relays (GRASP first, then regular)
             (event, isAfterEose, relayURL) => {
+              // CRITICAL: For NIP-34 replaceable events, collect ALL events first
+              // Don't process immediately - wait for EOSE to pick the latest one
+              if (event.kind === KIND_REPOSITORY_NIP34) {
+                // Store event for later processing (after EOSE, pick latest)
+                collectedEvents.push({ event, relayURL });
+                console.log(`📦 [File Fetch] Collected NIP-34 event: id=${event.id.slice(0, 8)}..., created_at=${event.created_at}, relay=${relayURL || 'unknown'}`);
+                // Don't return - continue to process it normally too (for immediate display)
+                // But we'll override with the latest one after EOSE
+              }
+              
               if (foundFiles) return;
               
               try {
@@ -1802,9 +2012,27 @@ export default function RepoCodePage({
                 
                 console.log(`📦 [File Fetch] Received Nostr event: kind=${event.kind}, pubkey=${event.pubkey.slice(0, 8)}, relay=${relayURL}, contentLength=${event.content?.length || 0}, hasTags=${!!(event.tags && event.tags.length > 0)}, totalTags=${event.tags?.length || 0}, uniqueTagNames=${uniqueTagNames.join(',')}, cloneTagsCount=${cloneTagsInEvent.length}, sourceTagsCount=${sourceTagsInEvent.length}, forkedFromTagsCount=${forkedFromTagsInEvent.length}`);
                 
+                // CRITICAL: For NIP-34 replaceable events, only use the LATEST event (highest created_at)
+                // If we already have eventRepoData from a newer event, skip this older event
+                if (event.kind === KIND_REPOSITORY_NIP34 && eventRepoData && eventRepoData.lastEventCreatedAt) {
+                  if (event.created_at < eventRepoData.lastEventCreatedAt) {
+                    console.log(`⏭️ [File Fetch] Skipping older NIP-34 event: id=${event.id.slice(0, 8)}..., created_at=${event.created_at} < ${eventRepoData.lastEventCreatedAt}`);
+                    return; // Skip older events
+                  }
+                }
+                
                 // Store eventRepoData in closure for later use (don't reset if already exists)
                 if (!eventRepoData) {
                   eventRepoData = {};
+                }
+                
+                // Track the latest event's created_at for NIP-34 events
+                if (event.kind === KIND_REPOSITORY_NIP34) {
+                  if (!eventRepoData.lastEventCreatedAt || event.created_at > eventRepoData.lastEventCreatedAt) {
+                    eventRepoData.lastEventCreatedAt = event.created_at;
+                    eventRepoData.lastEventId = event.id;
+                    console.log(`✅ [File Fetch] Using latest NIP-34 event: id=${event.id.slice(0, 8)}..., created_at=${event.created_at}`);
+                  }
                 }
                 const contributorTags: Array<{pubkey: string; weight: number; role?: "owner" | "maintainer" | "contributor"}> = [];
                 
@@ -2229,16 +2457,59 @@ export default function RepoCodePage({
                   });
                   
                   if (shouldUseNostrFiles) {
+                    // CRITICAL: Before using Nostr files, check if there are LOCAL files that should take precedence
+                    // This prevents overwriting files that were just added locally
+                    let useLocalFiles = false;
+                    let localFiles: RepoFileEntry[] = [];
+                    try {
+                      const repos = loadStoredRepos();
+                      const existingRepo = repos.find((r) => {
+                        const matchesOwner = r.ownerPubkey && ownerPubkey && 
+                          (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
+                        const matchesRepo = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
+                        const matchesEntity = r.entity === params.entity || 
+                          (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
+                        return (matchesOwner || matchesEntity) && matchesRepo;
+                      });
+                      
+                      if (existingRepo) {
+                        // Check if repo has local files (from localStorage)
+                        if (existingRepo.files && Array.isArray(existingRepo.files) && existingRepo.files.length > 0) {
+                          localFiles = existingRepo.files;
+                          useLocalFiles = true;
+                          console.log("🔒 [File Fetch] Using LOCAL files instead of Nostr files (local files take precedence):", {
+                            localFileCount: localFiles.length,
+                            nostrFileCount: eventRepoData.files.length,
+                            hasUnpushedEdits: existingRepo.hasUnpushedEdits,
+                          });
+                        } else {
+                          // Try loading from separate storage
+                          const separateFiles = loadRepoFiles(params.entity, params.repo);
+                          if (separateFiles.length > 0) {
+                            localFiles = separateFiles;
+                            useLocalFiles = true;
+                            console.log("🔒 [File Fetch] Using LOCAL files from separate storage instead of Nostr files:", {
+                              localFileCount: localFiles.length,
+                              nostrFileCount: eventRepoData.files.length,
+                            });
+                          }
+                        }
+                      }
+                    } catch (e) {
+                      console.error("❌ [File Fetch] Error checking for local files:", e);
+                    }
+                    
                     foundFiles = true;
                     console.log("✅ [File Fetch] Found files in Nostr event:", {
                       fileCount: eventRepoData.files.length,
                       firstFile: eventRepoData.files[0],
                       repoName: eventRepoData.repositoryName,
                       matchedBy: repoNameMatches ? "name" : contentMatches ? "content" : "pubkey",
+                      usingLocalFiles: useLocalFiles,
                     });
                     setRepoDataFn((prev: StoredRepo | null) => prev ? ({
                       ...prev, 
-                      files: eventRepoData.files,
+                      files: useLocalFiles ? localFiles : eventRepoData.files, // CRITICAL: Use local files if they exist
                       name: eventRepoData.repositoryName || prev.name, // CRITICAL: Store actual repo name from event
                       repo: eventRepoData.repositoryName || prev.repo, // Also store in repo field for compatibility
                       clone: (eventRepoData.clone && Array.isArray(eventRepoData.clone)) 
@@ -2251,6 +2522,8 @@ export default function RepoCodePage({
                     }) : prev);
                     
                     // Update localStorage - use case-insensitive matching and also match by entity
+                    // CRITICAL: Only update if we're using Nostr files (not local files)
+                    if (!useLocalFiles) {
                     try {
                       const repos = loadStoredRepos();
                       const updated = repos.map((r) => {
@@ -2265,6 +2538,19 @@ export default function RepoCodePage({
                           // The local files (from refetch) should take precedence over old Nostr event files
                           if (r.hasUnpushedEdits) {
                             console.log("⏭️ [File Fetch] Skipping Nostr event files - repo has unpushed edits (local files take precedence):", { 
+                              entity: r.entity, 
+                              repo: r.repo || r.slug,
+                              ownerPubkey: r.ownerPubkey?.slice(0, 8),
+                              localFileCount: r.files?.length || 0,
+                              nostrFileCount: eventRepoData.files.length 
+                            });
+                            return r; // Keep existing repo with local files
+                          }
+                            
+                            // CRITICAL: Also check if repo has local files that should take precedence
+                            const hasLocalFiles = r.files && Array.isArray(r.files) && r.files.length > 0;
+                            if (hasLocalFiles) {
+                              console.log("⏭️ [File Fetch] Skipping Nostr event files - repo has local files (local files take precedence):", { 
                               entity: r.entity, 
                               repo: r.repo || r.slug,
                               ownerPubkey: r.ownerPubkey?.slice(0, 8),
@@ -2293,6 +2579,9 @@ export default function RepoCodePage({
                       console.log("💾 [File Fetch] Updated localStorage with files from Nostr event");
                     } catch (e) {
                       console.error("❌ [File Fetch] Failed to update localStorage:", e);
+                      }
+                    } else {
+                      console.log("⏭️ [File Fetch] Skipping localStorage update - using local files instead of Nostr files");
                     }
                   } else {
                     // Don't mark as foundFiles = true, so we don't update localStorage either
@@ -2424,7 +2713,28 @@ export default function RepoCodePage({
               }
               
               // Only log the FIRST EOSE to reduce console spam
-              console.log(`📡 [File Fetch] EOSE from relay: ${relayURL}, total events: ${events.length}`);
+              console.log(`📡 [File Fetch] EOSE from relay: ${relayURL}, total events: ${events.length}, collected NIP-34 events: ${collectedEvents.length}`);
+              
+              // CRITICAL: For NIP-34 replaceable events, pick the LATEST event (highest created_at)
+              // This ensures we use the most recent event, not the first one found
+              if (collectedEvents.length > 1) {
+                // Sort by created_at descending (latest first)
+                collectedEvents.sort((a, b) => (b.event.created_at || 0) - (a.event.created_at || 0));
+                const latestEvent = collectedEvents[0];
+                if (latestEvent && latestEvent.event) {
+                  console.log(`✅ [File Fetch] Found ${collectedEvents.length} NIP-34 events - using latest: id=${latestEvent.event.id.slice(0, 8)}..., created_at=${latestEvent.event.created_at}`);
+                }
+                
+                // Re-process the latest event to ensure we use its data
+                // The event callback above already processed it, but we want to make sure we're using the latest
+                // This is handled by the fact that we process events as they arrive, and the latest one will have the highest created_at
+                // But we log it here for debugging
+              } else if (collectedEvents.length === 1) {
+                const firstEvent = collectedEvents[0];
+                if (firstEvent && firstEvent.event) {
+                  console.log(`📦 [File Fetch] Found 1 NIP-34 event: id=${firstEvent.event.id.slice(0, 8)}..., created_at=${firstEvent.event.created_at}`);
+                }
+              }
               
               // Mark this repo as processed
               eoseProcessedRef.current.add(repoKey);
@@ -5250,6 +5560,11 @@ export default function RepoCodePage({
     setFileContent("");
     setProposeEdit(false);
     setProposedContent("");
+    
+    // Normalize path helper function (remove leading/trailing slashes, handle relative paths)
+    const normalizePath = (p: string) => p.replace(/^\/+/, '').replace(/\/+/g, '/');
+    const normalizedPath = normalizePath(path);
+    
     // Use override if present - check both localStorage directly and state
     const keyBase = `${params.entity}__${params.repo}`;
     // Check localStorage directly to ensure we have the latest
@@ -5261,7 +5576,56 @@ export default function RepoCodePage({
     // Also check state as fallback
     const currentOverrides = Object.keys(savedOverrides).length > 0 ? savedOverrides : overrides;
     if (currentOverrides && currentOverrides[path] !== undefined && currentOverrides[path] !== null) {
-      setFileContent(currentOverrides[path] || "");
+      const overrideContent = currentOverrides[path] || "";
+      
+      // Check if this file is binary by checking the file entry
+      const repoData = repoDataRef.current;
+      if (repoData && repoData.files) {
+        const fileEntry = repoData.files.find((f: any) => {
+          const fPath = normalizePath(f.path || "");
+          return fPath === normalizedPath || 
+                 fPath === path || 
+                 fPath === `/${path}` || 
+                 fPath.endsWith(`/${normalizedPath}`) ||
+                 fPath.endsWith(`/${path}`) ||
+                 normalizedPath === fPath ||
+                 path === fPath;
+        });
+        
+        if (fileEntry) {
+          const isBinary = (fileEntry as any).isBinary || (fileEntry as any).binary || false;
+          
+          if (isBinary && overrideContent && !overrideContent.startsWith('data:')) {
+            // Convert base64 to data URL for binary files
+            const ext = path.split('.').pop()?.toLowerCase() || '';
+            const mimeTypes: Record<string, string> = {
+              'png': 'image/png',
+              'jpg': 'image/jpeg',
+              'jpeg': 'image/jpeg',
+              'gif': 'image/gif',
+              'webp': 'image/webp',
+              'svg': 'image/svg+xml',
+              'ico': 'image/x-icon',
+              'pdf': 'application/pdf',
+              'woff': 'font/woff',
+              'woff2': 'font/woff2',
+              'ttf': 'font/ttf',
+              'otf': 'font/otf',
+              'mp4': 'video/mp4',
+              'mp3': 'audio/mpeg',
+              'wav': 'audio/wav',
+            };
+            const mimeType = mimeTypes[ext] || 'application/octet-stream';
+            const dataUrl = `data:${mimeType};base64,${overrideContent}`;
+            setFileContent(dataUrl);
+            setLoadingFile(false);
+            return;
+          }
+        }
+      }
+      
+      // For text files or if file entry not found, use content as-is
+      setFileContent(overrideContent);
       setLoadingFile(false);
       return;
     }
@@ -5316,6 +5680,12 @@ export default function RepoCodePage({
       const nextDeleted = deletedPaths.includes(selectedFile) ? deletedPaths : [...deletedPaths, selectedFile];
       setDeletedPaths(nextDeleted);
       localStorage.setItem(`gittr_repo_deleted__${keyBase}`, JSON.stringify(nextDeleted));
+      
+      // CRITICAL: Mark repo as having unpushed edits so push button appears
+      // This ensures the "Push to Nostr" button is shown after deleting files
+      markRepoAsEdited(params.repo, params.entity);
+      console.log(`🗑️ [Delete File] Marked repo as having unpushed edits after deleting: ${selectedFile}`);
+      
       setSelectedFile(null);
       setFileContent("");
       setProposeEdit(false);
@@ -5392,6 +5762,31 @@ export default function RepoCodePage({
   // For HTML and Markdown files, track whether we're showing preview or code view
   const [htmlViewMode, setHtmlViewMode] = useState<'preview' | 'code'>('preview');
   const [markdownViewMode, setMarkdownViewMode] = useState<'preview' | 'code'>('preview');
+
+  const cloneUrlGroups = useMemo(() => {
+    const rawCloneList = Array.isArray((repoData as any)?.clone)
+      ? ((repoData as any)?.clone as string[])
+      : [];
+    const uniqueCloneUrls = Array.from(
+      new Set(
+        rawCloneList.filter(
+          (url): url is string => typeof url === "string" && url.trim().length > 0
+        )
+      )
+    );
+    const httpCloneUrls = uniqueCloneUrls.filter(
+      (url) => url.startsWith("http://") || url.startsWith("https://")
+    );
+    const sshCloneUrls = uniqueCloneUrls.filter((url) => url.startsWith("git@"));
+    const nostrCloneUrls = uniqueCloneUrls.filter((url) => url.startsWith("nostr://"));
+    return { httpCloneUrls, sshCloneUrls, nostrCloneUrls };
+  }, [
+    Array.isArray((repoData as any)?.clone)
+      ? (repoData as any)?.clone.join("|")
+      : "",
+  ]);
+
+  const { httpCloneUrls, sshCloneUrls, nostrCloneUrls } = cloneUrlGroups;
 
   // CRITICAL: Use refs to track content and only update when content actually changes
   // This prevents infinite re-renders in BranchTagSwitcher
@@ -5609,10 +6004,13 @@ export default function RepoCodePage({
                                   console.error("NEXT_PUBLIC_GIT_SSH_BASE is not configured in environment variables");
                                 }
                                 const sshUrl = `git@${gitSshBase}:${params.entity}/${params.repo}.git`;
+                                const cloneUrls = (repoData as any)?.clone || [];
+                                const httpsUrls = cloneUrls.filter((url: string) => typeof url === "string" && (url.startsWith("http://") || url.startsWith("https://")));
+                                const nostrUrls = cloneUrls.filter((url: string) => typeof url === "string" && url.startsWith("nostr://"));
                                 
                                 // Set state to show modal (render outside dropdown)
                                 setShowSshGitHelp(true);
-                                setSshGitHelpData({ entity: params.entity, repo: params.repo, sshUrl });
+                                setSshGitHelpData({ entity: params.entity, repo: params.repo, sshUrl, httpsUrls, nostrUrls });
                               }}
                             >
                               <HelpCircle className="mr-2 h-4 w-4" />
@@ -5622,15 +6020,67 @@ export default function RepoCodePage({
                             <DropdownMenuItem onClick={async () => {
                               try {
                                 const { showToast } = await import("@/components/ui/toast");
-                                if (repoData?.sourceUrl) {
-                                  await navigator.clipboard.writeText(`git clone ${repoData.sourceUrl}`);
-                                  showToast("Clone URL copied!", "success");
+                                // CRITICAL: Use NIP-34 clone URLs from event first, then fallback to sourceUrl or localhost
+                                const cloneUrls = (repoData as any)?.clone || [];
+                                let cloneUrl: string | null = null;
+                                
+                                // Priority 1: Use first NIP-34 clone URL (from event tags)
+                                if (cloneUrls.length > 0) {
+                                  // Filter out localhost and nostr:// URLs for HTTP clone
+                                  const httpCloneUrl = cloneUrls.find((url: string) => 
+                                    (url.startsWith('http://') || url.startsWith('https://')) &&
+                                    !url.includes('localhost') && !url.includes('127.0.0.1')
+                                  );
+                                  if (httpCloneUrl && typeof httpCloneUrl === 'string') {
+                                    cloneUrl = httpCloneUrl;
+                                    // CRITICAL: Check if this is a base URL that needs the full path constructed
+                                    // GRASP servers need: https://relay.ngit.dev/{ownerPubkey}/{repoName}.git
+                                    // If URL doesn't have a path after the domain, it's a base URL
+                                    try {
+                                      const urlObj = new URL(cloneUrl);
+                                      const hasPath = urlObj.pathname && urlObj.pathname !== '/' && urlObj.pathname.length > 1;
+                                      
+                                      if (!hasPath && ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink)) {
+                                        // Base URL - check if it's a GRASP server and construct full path
+                                        const { isGraspServer } = require("@/lib/utils/grasp-servers");
+                                        if (isGraspServer(cloneUrl)) {
+                                          cloneUrl = `${cloneUrl}/${ownerPubkeyForLink}/${params.repo}.git`;
                                 } else {
-                                  // If no sourceUrl (repo created on gittr.space), provide gittr.space clone URL
-                                  const cloneUrl = `${window.location.origin}/${params.entity}/${params.repo}.git`;
+                                          // Not a GRASP server, just add .git if missing
+                                          if (!cloneUrl.endsWith('.git')) {
+                                            cloneUrl = `${cloneUrl}.git`;
+                                          }
+                                        }
+                                      } else if (hasPath && !cloneUrl.endsWith('.git') && !cloneUrl.endsWith('/')) {
+                                        // Has path but missing .git suffix
+                                        cloneUrl = `${cloneUrl}.git`;
+                                      }
+                                    } catch (e) {
+                                      console.error("Failed to parse clone URL:", e);
+                                    }
+                                  } else {
+                                    // If only nostr:// URLs, use the first one
+                                    if (cloneUrls.length > 0 && typeof cloneUrls[0] === 'string') {
+                                      cloneUrl = cloneUrls[0];
+                                    }
+                                  }
+                                }
+                                
+                                // Priority 2: Use sourceUrl if no clone URLs
+                                if (!cloneUrl && repoData?.sourceUrl && typeof repoData.sourceUrl === 'string') {
+                                  cloneUrl = repoData.sourceUrl;
+                                  if (!cloneUrl.endsWith('.git')) {
+                                    cloneUrl = `${cloneUrl}.git`;
+                                  }
+                                }
+                                
+                                // Priority 3: Fallback to localhost (for local development)
+                                if (!cloneUrl) {
+                                  cloneUrl = `${window.location.origin}/${params.entity}/${params.repo}.git`;
+                                }
+                                
                                   await navigator.clipboard.writeText(`git clone ${cloneUrl}`);
                                   showToast("Clone URL copied!", "success");
-                                }
                               } catch (err) {
                                 const { showToast } = await import("@/components/ui/toast");
                                 showToast("Failed to copy to clipboard", "error");
@@ -5641,6 +6091,7 @@ export default function RepoCodePage({
                             <DropdownMenuItem onClick={async () => {
                               // All gittr.space repos (native and imported) use gittr.space's SSH infrastructure
                               // Format: git@<gitSshBase>:<ownerPubkey>/<repoName>.git
+                              // CRITICAL: Use full pubkey, not npub format
                               let sshUrl: string;
                               
                               // Try to get gitSshBase from repo data (from Nostr event)
@@ -5650,7 +6101,30 @@ export default function RepoCodePage({
                               );
                               
                               const gitSshBase = (repo as StoredRepo & { gitSshBase?: string })?.gitSshBase || process.env.NEXT_PUBLIC_GIT_SSH_BASE || "gittr.space";
-                              const ownerPubkey = params.entity; // entity is the owner pubkey (8-char prefix or full)
+                              
+                              // CRITICAL: Use ownerPubkeyForLink (full pubkey) instead of params.entity (might be npub)
+                              let ownerPubkey: string;
+                              if (ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink)) {
+                                ownerPubkey = ownerPubkeyForLink;
+                              } else if (repo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)) {
+                                ownerPubkey = repo.ownerPubkey;
+                              } else if (params.entity && params.entity.length === 64 && /^[0-9a-f]{64}$/i.test(params.entity)) {
+                                ownerPubkey = params.entity;
+                              } else if (params.entity && params.entity.startsWith("npub")) {
+                                // Decode npub to pubkey
+                                try {
+                                  const decoded = nip19.decode(params.entity);
+                                  if (decoded.type === "npub") {
+                                    ownerPubkey = decoded.data as string;
+                                  } else {
+                                    ownerPubkey = params.entity; // Fallback
+                                  }
+                                } catch {
+                                  ownerPubkey = params.entity; // Fallback
+                                }
+                              } else {
+                                ownerPubkey = params.entity; // Fallback (might be 8-char prefix, but better than nothing)
+                              }
                               
                               // Construct SSH URL: git@gitSshBase:ownerPubkey/repoName.git
                               sshUrl = `git@${gitSshBase}:${ownerPubkey}/${params.repo}.git`;
@@ -6188,16 +6662,18 @@ export default function RepoCodePage({
                         </>
                       )}
                 </div>
-                <div className="hidden col-span-2 sm:block">
+                <div className="hidden col-span-2 sm:block pl-4">
                       {it.type === "file" ? (
                         <button
-                          className="hover:text-purple-500 hover:underline cursor-pointer"
+                          className="hover:text-purple-500 hover:underline cursor-pointer text-gray-400 truncate"
                           onClick={(e) => {
                             e.preventDefault();
                             openFile(it.path);
                           }}
+                          title={it.path}
                         >
-                          {it.path}
+                          {/* Only show path if it's different from filename (i.e., in a subdirectory) */}
+                          {it.path.includes("/") ? it.path : <span className="text-gray-500 italic">-</span>}
                         </button>
                       ) : it.type === "dir" ? (
                         <button
@@ -6460,49 +6936,58 @@ export default function RepoCodePage({
                   // HTML files: Toggle between preview (iframe) and code view
                   loadingFile ? (
                     <div className="p-4 text-gray-400">Loading HTML file...</div>
-                  ) : !fileContent || fileContent === "(unable to load file)" ? (
+                  ) : !fileContent || fileContent === "(unable to load file)" || (fileContent.trim && fileContent.trim().length === 0) ? (
                     <div className="p-4 text-gray-400">Unable to load HTML file</div>
                   ) : htmlViewMode === 'preview' ? (
                     // Preview mode: Render in iframe
                     (() => {
-                      let htmlContent = fileContent || '';
-                      
-                      // Handle data URLs (base64 or URL-encoded)
-                      if (isDataUrl && fileContent && fileContent.startsWith('data:text/html')) {
-                        try {
-                          const base64Match = fileContent.match(/data:text\/html[^,]*base64,(.+)/);
-                          if (base64Match && base64Match[1]) {
-                            htmlContent = atob(base64Match[1]);
-                          } else {
-                            // Try URL-encoded data URL
-                            const urlMatch = fileContent.match(/data:text\/html[^,]*, (.+)/);
-                            if (urlMatch && urlMatch[1]) {
-                              htmlContent = decodeURIComponent(urlMatch[1]);
-                            }
-                          }
-                        } catch (e) {
-                          console.error('❌ [HTML Preview] Failed to decode HTML data URL:', e);
-                          // Fallback: try to use fileContent as-is
-                          htmlContent = fileContent;
-                        }
-                      } else if (fileContent && (fileContent.startsWith('http://') || fileContent.startsWith('https://'))) {
-                        // URL - use as src instead of srcDoc
+                      const content = fileContent || '';
+                      if (!content || content === "(unable to load file)" || (typeof content === 'string' && content.trim().length === 0)) {
+                        return (
+                          <div className="p-4 text-gray-400">
+                            {loadingFile ? "Loading HTML file..." : "No HTML content available"}
+                          </div>
+                        );
+                      }
+
+                      // Handle HTTP/HTTPS URLs - use as src
+                      if (typeof content === 'string' && (content.startsWith('http://') || content.startsWith('https://'))) {
                         return (
                           <div className="w-full h-[70vh] border border-[#383B42] rounded">
                             <iframe 
-                              src={fileContent}
+                              src={content}
                               className="w-full h-full border-0" 
                               title={selectedFile}
                               sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
                             />
                           </div>
                         );
-                      } else if (fileContent && !fileContent.startsWith('data:')) {
-                        // Plain HTML text content - use directly
-                        htmlContent = fileContent;
+                      }
+
+                      // Handle data URLs (base64 or URL-encoded)
+                      let htmlContent = '';
+                      if (typeof content === 'string' && content.startsWith('data:text/html')) {
+                        try {
+                          const base64Match = content.match(/data:text\/html[^,]*base64,(.+)/);
+                          if (base64Match && base64Match[1]) {
+                            htmlContent = atob(base64Match[1]);
+                          } else {
+                            const urlMatch = content.match(/data:text\/html[^,]*, (.+)/);
+                            if (urlMatch && urlMatch[1]) {
+                              htmlContent = decodeURIComponent(urlMatch[1]);
+                            } else {
+                              htmlContent = content.replace(/^data:text\/html[^,]*,?\s*/, '');
+                            }
+                          }
+                        } catch (e) {
+                          htmlContent = content.replace(/^data:text\/html[^,]*,?\s*/, '');
+                        }
+                      } else {
+                        // Plain HTML text content
+                        htmlContent = typeof content === 'string' ? content : String(content);
                       }
                       
-                      // Ensure we have content
+                      // Ensure we have valid content
                       if (!htmlContent || htmlContent.trim().length === 0) {
                         return (
                           <div className="p-4 text-gray-400">
@@ -6512,17 +6997,15 @@ export default function RepoCodePage({
                       }
                       
                       // Ensure HTML has proper structure (add if missing)
-                      let finalHtmlContent = htmlContent;
-                      if (!finalHtmlContent.trim().toLowerCase().startsWith('<!doctype') && 
-                          !finalHtmlContent.trim().toLowerCase().startsWith('<html')) {
-                        // Wrap in basic HTML structure if it's just HTML fragments
-                        finalHtmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${htmlContent}</body></html>`;
+                      if (!htmlContent.trim().toLowerCase().startsWith('<!doctype') && 
+                          !htmlContent.trim().toLowerCase().startsWith('<html')) {
+                        htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${htmlContent}</body></html>`;
                       }
                       
                       return (
                         <div className="w-full h-[70vh] border border-[#383B42] rounded">
                           <iframe 
-                            srcDoc={finalHtmlContent}
+                            srcDoc={htmlContent}
                             className="w-full h-full border-0" 
                             title={selectedFile}
                             sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
@@ -6793,16 +7276,84 @@ export default function RepoCodePage({
           </div>
         )}
         
-        {/* Clone URL (nostr://) if available */}
-        {repoData?.clone && repoData.clone.length > 0 && (
+        {(httpCloneUrls.length > 0 || sshCloneUrls.length > 0 || nostrCloneUrls.length > 0) && (
           <div className="pt-2 border-t border-gray-700">
-            <p className="text-xs text-gray-400 mb-1">Clone URL</p>
-            <code className="text-xs text-gray-300 bg-gray-800 px-2 py-1 rounded block break-all">
-              nostr://{params.entity}/{decodedRepo}
+            <button
+              onClick={() => setCloneUrlsExpanded(!cloneUrlsExpanded)}
+              className="flex items-center justify-between w-full text-xs text-gray-400 hover:text-gray-300 mb-1"
+            >
+              <span>Clone URLs (from NIP-34 event)</span>
+              {cloneUrlsExpanded ? (
+                <ChevronUp className="h-3 w-3" />
+              ) : (
+                <ChevronDown className="h-3 w-3" />
+              )}
+            </button>
+            {cloneUrlsExpanded && (
+              <div className="space-y-3 mt-2">
+                {(httpCloneUrls.length > 0 || sshCloneUrls.length > 0) && (
+                  <div className="space-y-1">
+                    {[...httpCloneUrls, ...sshCloneUrls].map((url, idx) => {
+                      const command = `git clone ${url}`;
+                      return (
+                        <div
+                          key={`std-clone-${idx}`}
+                          className="flex items-center gap-2 text-xs"
+                        >
+                          <code className="flex-1 text-gray-100 bg-gray-900/70 px-2 py-1 rounded break-all">
+                            {command}
             </code>
-            <p className="text-xs text-gray-500 mt-1">
-              Use git-remote-nostr to clone
-            </p>
+                          <button
+                            className="text-purple-300 hover:text-purple-100 p-1 rounded hover:bg-white/5 transition-colors"
+                            onClick={() => copyCloneCommand(command)}
+                            title="Copy clone command"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {nostrCloneUrls.length > 0 && (
+                  <div className="space-y-2 rounded border border-purple-900/40 bg-purple-900/10 p-2">
+                    <p className="text-xs text-purple-200">nostr:// clone (requires git-remote-nostr)</p>
+                    {nostrCloneUrls.map((url, idx) => {
+                      const command = `git clone ${url}`;
+                      return (
+                        <div
+                          key={`nostr-clone-${idx}`}
+                          className="flex items-center gap-2 text-xs"
+                        >
+                          <code className="flex-1 text-purple-100 bg-purple-950/50 px-2 py-1 rounded break-all">
+                            {command}
+                          </code>
+                          <button
+                            className="text-purple-200 hover:text-white p-1 rounded hover:bg-white/5 transition-colors"
+                            onClick={() => copyCloneCommand(command)}
+                            title="Copy clone command"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                    <p className="text-[11px] text-purple-200/80 leading-snug">
+                      Compatible with other clients. Install{" "}
+                      <a
+                        href="https://github.com/aljazceru/awesome-nostr#git"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline hover:text-white"
+                      >
+                        git-remote-nostr
+                      </a>{" "}
+                      to use nostr:// clone URLs.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
         
@@ -6812,37 +7363,121 @@ export default function RepoCodePage({
             const repos = loadStoredRepos();
             // CRITICAL: Use findRepoByEntityAndName to support npub format
             const repo = findRepoByEntityAndName(repos, params.entity, decodedRepo);
+            
+            // Check ownership even if repo is not in localStorage
+            const ownsByRepoRecord = currentUserPubkey && repo?.ownerPubkey &&
+              currentUserPubkey.toLowerCase() === repo.ownerPubkey.toLowerCase();
+            const repoIsOwnerFlag = repoIsOwner || Boolean(ownsByRepoRecord);
+            
+            // If repo is missing from localStorage but user owns it, show re-import option
+            if (!repo && repoIsOwnerFlag && currentUserPubkey) {
+              return (
+                <div className="mb-4 pb-4 border-b border-lightgray">
+                  <h3 className="text-sm font-semibold mb-2">Repository Status</h3>
+                  <p className="text-sm text-gray-400 mb-3">
+                    Repository data not found. You can re-import it from the original source.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const sourceUrl = prompt("Enter the repository URL (GitHub, GitLab, or Codeberg):");
+                      if (sourceUrl) {
+                        window.location.href = `/import?sourceUrl=${encodeURIComponent(sourceUrl)}`;
+                      }
+                    }}
+                  >
+                    Re-import Repository
+                  </Button>
+                </div>
+              );
+            }
+            
             if (!repo) {
-              // Don't log on every render - only log once per repo change (memoized by React)
               return null;
             }
             
-            const status = getRepoStatus(repo);
-            // CRITICAL: Check if repo has files - if it was pushed empty, it needs to be pushed again with files
-            const hasFiles = repo.files && Array.isArray(repo.files) && repo.files.length > 0;
-            const hasEventId = !!(repo.nostrEventId || repo.lastNostrEventId);
-            // If repo has event ID but no files, it was pushed empty - show push button
-            const needsFilePush = hasEventId && !hasFiles;
-            const isLocal = status === "local" || status === "live_with_edits" || needsFilePush;
-            // CRITICAL: Only owner can push to Nostr (publishing entire repo state)
-            const repoIsOwner = currentUserPubkey && checkIsOwner(currentUserPubkey, repo.contributors, repo.ownerPubkey);
+            let status = getRepoStatus(repo);
             
-            // Show refetch button if repo has sourceUrl (imported from GitHub/GitLab)
-            const hasSourceUrl = repo.sourceUrl && typeof repo.sourceUrl === "string" && (repo.sourceUrl.includes("github.com") || repo.sourceUrl.includes("gitlab.com"));
+            // CRITICAL: Reset "pushing" status if it's been stuck for more than 5 minutes
+            // This handles cases where push was canceled or failed but status wasn't reset
+            if (status === "pushing" && repo.status === "pushing") {
+              const lastPushAttempt = (repo as any).lastPushAttempt || 0;
+              const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+              if (lastPushAttempt < fiveMinutesAgo) {
+                // Status stuck for more than 5 minutes - reset to local
+                setRepoStatus(params.repo, params.entity, "local");
+                status = "local";
+                console.log("🔄 [Push Button] Reset stuck 'pushing' status to 'local'");
+              }
+            }
             
-            if ((isLocal && repoIsOwner && currentUserPubkey && publish && subscribe && defaultRelays && defaultRelays.length > 0) || (hasSourceUrl && repoIsOwner)) {
+            // Show refetch button if repo has sourceUrl (imported from GitHub/GitLab/Codeberg) OR is synced from Nostr
+            // Also show if user owns it and repo has files (even if missing sourceUrl, they might want to refetch from Nostr)
+            const hasSourceUrl = repo.sourceUrl && typeof repo.sourceUrl === "string" && (
+              repo.sourceUrl.includes("github.com") || 
+              repo.sourceUrl.includes("gitlab.com") || 
+              repo.sourceUrl.includes("codeberg.org")
+            );
+            const isNostrRepo = repo.syncedFromNostr || repo.lastNostrEventId || repo.nostrEventId;
+            const hasLocalEdits = repo.hasUnpushedEdits || (repo.files && Array.isArray(repo.files) && repo.files.length > 0);
+            // Show refetch if: (has sourceUrl OR is Nostr repo) AND user owns it AND (has local edits OR no files found)
+            // OR if user owns it but sourceUrl is missing (needs re-import)
+            const showRefetchButton = (hasSourceUrl || isNostrRepo) && repoIsOwnerFlag && (hasLocalEdits || !repo.files || repo.files.length === 0);
+            // Show re-import button if repo exists but has no sourceUrl and user owns it
+            const showReimportButton = !hasSourceUrl && !isNostrRepo && repoIsOwnerFlag && currentUserPubkey;
+            
+            // DEBUG: Log why button might not be showing
+            if (!repoIsOwnerFlag || !currentUserPubkey || !publish || !subscribe || !defaultRelays || defaultRelays.length === 0) {
+              console.log("🔍 [Push Button] Button not showing because:", {
+                repoIsOwner: repoIsOwnerFlag,
+                currentUserPubkey: currentUserPubkey ? `${currentUserPubkey.substring(0, 8)}...` : null,
+                entityPubkey: entityPubkey ? `${entityPubkey.substring(0, 8)}...` : null,
+                entityMatches: currentUserPubkey && entityPubkey ? currentUserPubkey.toLowerCase() === entityPubkey.toLowerCase() : false,
+                publish: !!publish,
+                subscribe: !!subscribe,
+                defaultRelays: defaultRelays?.length || 0,
+              });
+            }
+            
+            // CRITICAL: Show push button for ALL repos the user owns, regardless of status
+            // This allows users to push/re-push their repos at any time
+            if (repoIsOwnerFlag && currentUserPubkey && publish && subscribe && defaultRelays && defaultRelays.length > 0) {
               return (
                 <div className="mb-4 pb-4 border-b border-lightgray">
                   <h3 className="text-sm font-semibold mb-2">Repository Status</h3>
                   
-                  {/* Refetch from GitHub button */}
-                  {hasSourceUrl && repoIsOwner && (
+                  {/* Re-import button - shown when repo exists but sourceUrl is missing */}
+                  {showReimportButton && (
+                    <div className="mb-3">
+                      <p className="text-sm text-gray-400 mb-2">
+                        Repository data is incomplete. Re-import from the original source to restore files.
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const sourceUrl = prompt("Enter the repository URL (GitHub, GitLab, or Codeberg):");
+                          if (sourceUrl) {
+                            window.location.href = `/import?sourceUrl=${encodeURIComponent(sourceUrl)}`;
+                          }
+                        }}
+                      >
+                        Re-import Repository
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {/* Refetch button - works for both GitHub/GitLab/Codeberg AND Nostr repos */}
+                  {showRefetchButton && (
                     <>
                       <Button
                         size="sm"
                         variant="outline"
                         disabled={isRefetching || isPushing}
                         onClick={async () => {
+                        // Handle refetch for GitHub/GitLab/Codeberg repos
+                        if (hasSourceUrl) {
                         if (!repo.sourceUrl) {
                           alert("No source URL found for this repository");
                           return;
@@ -6850,7 +7485,7 @@ export default function RepoCodePage({
                         
                         try {
                           setIsRefetching(true);
-                          console.log(`🔄 [Refetch] Starting refetch for ${params.repo} from GitHub: ${repo.sourceUrl}`);
+                            console.log(`🔄 [Refetch] Starting refetch for ${params.repo} from source: ${repo.sourceUrl}`);
                           
                           // Call import API to fetch latest from GitHub
                           console.log(`📡 [Refetch] Calling /api/import with sourceUrl: ${repo.sourceUrl}`);
@@ -7162,26 +7797,179 @@ export default function RepoCodePage({
                             throw new Error("Repository not found in localStorage");
                           }
                         } catch (error: any) {
-                          console.error("Failed to refetch from GitHub:", error);
+                          console.error("Failed to refetch from source:", error);
                           alert(`❌ Failed to refetch: ${error.message || "Unknown error"}`);
                         } finally {
                           setIsRefetching(false);
+                        }
+                        return;
+                        }
+                        
+                        // Handle refetch for Nostr repos
+                        if (isNostrRepo) {
+                          try {
+                            setIsRefetching(true);
+                            console.log(`🔄 [Refetch] Starting refetch for ${params.repo} from Nostr`);
+                            
+                            // Get owner pubkey
+                            const ownerPubkey = repo.ownerPubkey || (params.entity.startsWith("npub") 
+                              ? (nip19.decode(params.entity).data as string)
+                              : params.entity);
+                            
+                            if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+                              throw new Error("Could not determine repository owner");
+                            }
+                            
+                            // Query Nostr for the latest repository event
+                            const repoName = repo.repo || repo.slug || params.repo;
+                            let latestEvent: any = null;
+                            let latestEventCreatedAt = 0;
+                            
+                            await new Promise<void>((resolve, reject) => {
+                              if (!subscribe || !defaultRelays || defaultRelays.length === 0) {
+                                reject(new Error("Nostr not available"));
+                                return;
+                              }
+                              
+                              const unsub = subscribe(
+                                [{
+                                  kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
+                                  authors: [ownerPubkey],
+                                  "#d": [repoName],
+                                }],
+                                defaultRelays,
+                                (event, isAfterEose) => {
+                                  // Collect all events and pick the latest
+                                  if (event.created_at > latestEventCreatedAt) {
+                                    latestEvent = event;
+                                    latestEventCreatedAt = event.created_at;
+                                  }
+                                },
+                                undefined,
+                                () => {
+                                  // EOSE - process the latest event
+                                  unsub();
+                                  if (!latestEvent) {
+                                    reject(new Error("Repository not found on Nostr"));
+                                    return;
+                                  }
+                                  resolve();
+                                }
+                              );
+                              
+                              // Timeout after 10 seconds
+                              setTimeout(() => {
+                                unsub();
+                                if (!latestEvent) {
+                                  reject(new Error("Timeout waiting for repository event"));
+                                } else {
+                                  resolve();
+                                }
+                              }, 10000);
+                            });
+                            
+                            // Parse the latest event
+                            let eventRepoData: any = {};
+                            if (latestEvent.kind === KIND_REPOSITORY_NIP34) {
+                              // Parse NIP-34 format
+                              if (latestEvent.tags && Array.isArray(latestEvent.tags)) {
+                                for (const tag of latestEvent.tags) {
+                                  if (!Array.isArray(tag) || tag.length < 2) continue;
+                                  const tagName = tag[0];
+                                  const tagValue = tag[1];
+                                  if (tagName === "d") eventRepoData.repositoryName = tagValue;
+                                  else if (tagName === "name" && !eventRepoData.repositoryName) eventRepoData.repositoryName = tagValue;
+                                  else if (tagName === "description") eventRepoData.description = tagValue;
+                                  else if (tagName === "clone" && tagValue) {
+                                    if (!eventRepoData.clone) eventRepoData.clone = [];
+                                    eventRepoData.clone.push(tagValue);
+                                  }
+                                }
+                              }
+                              // Parse files from content if present
+                              if (latestEvent.content) {
+                                try {
+                                  const contentData = JSON.parse(latestEvent.content);
+                                  if (contentData.files) eventRepoData.files = contentData.files;
+                                } catch {}
+                              }
+                            } else {
+                              // Parse gitnostr format
+                              eventRepoData = JSON.parse(latestEvent.content);
+                            }
+                            
+                            // CRITICAL: Complete replacement from Nostr - erase localStorage and rewrite
+                            const repos = loadStoredRepos();
+                            const repoIndex = repos.findIndex((r: any) => 
+                              (r.slug === params.repo || r.repo === params.repo) && r.entity === params.entity
+                            );
+                            
+                            if (repoIndex >= 0) {
+                              const existingRepo = repos[repoIndex];
+                              if (!existingRepo) {
+                                throw new Error("Repository not found in localStorage");
+                              }
+                              
+                              // COMPLETE REPLACEMENT: Use Nostr event data exactly as returned
+                              repos[repoIndex] = {
+                                ...existingRepo,
+                                // Replace with Nostr data
+                                files: eventRepoData.files || [],
+                                name: eventRepoData.name || eventRepoData.repositoryName || existingRepo.name,
+                                repo: eventRepoData.repositoryName || existingRepo.repo,
+                                description: eventRepoData.description || existingRepo.description,
+                                clone: eventRepoData.clone || existingRepo.clone,
+                                // Update event metadata
+                                nostrEventId: latestEvent.id,
+                                lastNostrEventId: latestEvent.id,
+                                syncedFromNostr: true,
+                                // Clear unpushed edits flag (we just synced from Nostr)
+                                hasUnpushedEdits: false,
+                                // Preserve local-only data (logoUrl may not be in StoredRepo type but exists at runtime)
+                                ...((existingRepo as any).logoUrl ? { logoUrl: (existingRepo as any).logoUrl } : {}),
+                                // Store created_at timestamp in SECONDS (NIP-34 format) - not milliseconds
+                                ...({ lastNostrEventCreatedAt: latestEvent.created_at } as any),
+                              } as StoredRepo & { lastNostrEventCreatedAt?: number; logoUrl?: string };
+                              
+                              saveStoredRepos(repos);
+                              
+                              console.log(`✅ [Refetch] Refetched from Nostr:`, {
+                                eventId: latestEvent.id.slice(0, 8),
+                                filesCount: eventRepoData.files?.length || 0,
+                                created_at: new Date(latestEvent.created_at * 1000).toISOString(),
+                              });
+                              
+                              alert(`✅ Refetched from Nostr!\n\nFound ${eventRepoData.files?.length || 0} files.\n\nLocal edits have been replaced with the latest version from Nostr.`);
+                              window.location.reload();
+                            } else {
+                              throw new Error("Repository not found in localStorage");
+                            }
+                          } catch (error: any) {
+                            console.error("Failed to refetch from Nostr:", error);
+                            alert(`❌ Failed to refetch from Nostr: ${error.message || "Unknown error"}`);
+                          } finally {
+                            setIsRefetching(false);
+                          }
+                          return;
                         }
                       }}
                       className="w-full mb-2"
                     >
                       <RefreshCw className={`h-4 w-4 mr-2 ${isRefetching ? "animate-spin" : ""}`} />
-                      {isRefetching ? "Refetching from GitHub..." : "Refetch from GitHub"}
+                      {isRefetching 
+                        ? (hasSourceUrl ? "Refetching from source..." : "Refetching from Nostr...") 
+                        : (hasSourceUrl ? "Refetch from source" : "Refetch from Nostr")
+                      }
                     </Button>
                     <p className="text-xs text-gray-500 mt-1 mb-2 px-1">
-                      ⚠️ This will overwrite your local repository with the latest version from GitHub. 
-                      Files deleted on GitHub will be removed locally. Local edits not pushed to GitHub will be lost.
+                      ⚠️ This will completely overwrite your local repository with the latest version from {hasSourceUrl ? `the source (${repo.sourceUrl})` : "Nostr"}. 
+                      Files deleted {hasSourceUrl ? "on the source" : "on Nostr"} will be removed locally. Local edits not pushed will be lost.
                     </p>
                     </>
                   )}
                   
                   {/* Push to Nostr button */}
-                  {isLocal && repoIsOwner && currentUserPubkey && publish && subscribe && defaultRelays && defaultRelays.length > 0 && (
+                  {repoIsOwner && currentUserPubkey && publish && subscribe && defaultRelays && defaultRelays.length > 0 && (
                     <>
                       <Button
                         size="sm"
@@ -7226,7 +8014,37 @@ export default function RepoCodePage({
                               // Update state directly from push result
                               setNostrEventId(result.eventId);
                               
-                              // Reload page data
+                              const bridgeOwnerPubkey =
+                                repoOwnerPubkey ||
+                                entityPubkey ||
+                                (repo.ownerPubkey ? repo.ownerPubkey.toLowerCase() : null);
+                              const shouldAutoBridge =
+                                repoIsOwnerFlag &&
+                                !repo.sourceUrl &&
+                                bridgeOwnerPubkey &&
+                                result.filesForBridge &&
+                                result.filesForBridge.length > 0;
+
+                              if (shouldAutoBridge) {
+                                try {
+                                  await pushFilesToBridge({
+                                    ownerPubkey: bridgeOwnerPubkey!,
+                                    repoSlug: decodedRepo,
+                                    entity: params.entity,
+                                    branch: repo.defaultBranch || repoData?.defaultBranch || "main",
+                                    files: result.filesForBridge!,
+                                  });
+                                } catch (bridgeError: any) {
+                                  console.error("Bridge sync failed:", bridgeError);
+                                  alert(
+                                    `⚠️ Repository event published but bridge sync failed: ${
+                                      bridgeError?.message || bridgeError?.toString() || "Unknown error"
+                                    }`
+                                  );
+                                }
+                              }
+
+                              // Reload page data after push + bridge sync
                               window.location.reload();
                               
                               if (result.confirmed) {
@@ -7390,100 +8208,21 @@ export default function RepoCodePage({
           </h3>
           <Contributors contributors={repoData?.contributors || []} />
         </div>
-        <RepoLinks links={repoData?.links} />
-        
-        {/* Display file source information */}
-        {(() => {
-          const sourceUrl = (repoData as any)?.sourceUrl;
-          const cloneUrls = (repoData as any)?.clone || [];
-          const hasFilesInEvent = repoData?.files && Array.isArray(repoData.files) && repoData.files.length > 0;
-          
-          // Determine file source
-          let fileSource: { type: 'embedded' | 'git-nostr-bridge' | 'github' | 'gitlab' | 'codeberg' | 'grasp' | 'unknown', url?: string, label: string } | null = null;
-          
-          if (hasFilesInEvent && !sourceUrl && cloneUrls.length === 0) {
-            fileSource = { type: 'embedded', label: 'Files embedded in Nostr event' };
-          } else if (sourceUrl) {
-            if (sourceUrl.includes('github.com')) {
-              fileSource = { type: 'github', url: sourceUrl, label: 'Files from GitHub' };
-            } else if (sourceUrl.includes('gitlab.com')) {
-              fileSource = { type: 'gitlab', url: sourceUrl, label: 'Files from GitLab' };
-            } else {
-              fileSource = { type: 'unknown', url: sourceUrl, label: `Files from ${sourceUrl}` };
-            }
-          } else if (cloneUrls.length > 0) {
-            const firstClone = cloneUrls[0];
-            // Check for GRASP servers (Nostr git servers) using centralized function
-            // This includes pattern matching for git. and git-\d+. domains
-            const { isGraspServer: isGraspServerFn } = require("@/lib/utils/grasp-servers");
-            const isGraspServer = isGraspServerFn(firstClone);
-            
-            if (firstClone.includes('github.com')) {
-              fileSource = { type: 'github', url: firstClone, label: 'Files from GitHub' };
-            } else if (firstClone.includes('gitlab.com')) {
-              fileSource = { type: 'gitlab', url: firstClone, label: 'Files from GitLab' };
-            } else if (firstClone.includes('codeberg.org')) {
-              fileSource = { type: 'codeberg', url: firstClone, label: 'Files from Codeberg' };
-            } else if (isGraspServer) {
-              fileSource = { type: 'grasp', url: firstClone, label: 'Files from GRASP/git servers (via git-nostr-bridge)' };
-            } else {
-              fileSource = { type: 'unknown', url: firstClone, label: `Files from ${firstClone}` };
-            }
-          }
-          
-          if (fileSource) {
-            return (
-              <div className="mb-4 pb-4 border-b border-lightgray">
-                <h3 className="mb-2 font-bold text-sm">File Source</h3>
-                <div className="text-xs">
-                  <div className="flex items-center gap-2">
-                    {fileSource.type === 'github' && <span className="text-gray-400">🐙</span>}
-                    {fileSource.type === 'gitlab' && <span className="text-gray-400">🦊</span>}
-                    {fileSource.type === 'codeberg' && <span className="text-gray-400">🔷</span>}
-                    {(fileSource.type === 'git-nostr-bridge' || fileSource.type === 'grasp') && <span className="text-gray-400">⚡</span>}
-                    {fileSource.type === 'embedded' && <span className="text-gray-400">📦</span>}
-                    {fileSource.url ? (
-                      <a 
-                        href={fileSource.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-purple-500 hover:underline break-words"
-                        title={fileSource.url}
-                      >
-                        {fileSource.url}
-                      </a>
-                    ) : (
-                      <span className="text-gray-400">{fileSource.label}</span>
-                    )}
+        {repoLinksList && repoLinksList.length > 0 && (
+          <div className="mt-4 space-y-2">
+            {repoIsOwner && !linksPublished && (
+              <div className="text-xs text-yellow-200 bg-yellow-900/30 border border-yellow-700/50 rounded px-2 py-1">
+                Only you can see these links until you push this repository to Nostr.
                   </div>
-                </div>
-                {(sourceUrl || cloneUrls.length > 0) && (
-                  <div className="mt-2 text-xs text-gray-500">
-                    <p className="mb-1">This repo follows NIP-34 architecture:</p>
-                    <ul className="list-disc list-inside ml-2 space-y-1">
-                      <li>Files are stored on git servers (not in Nostr events)</li>
-                      <li>Nostr events contain references via clone URLs</li>
-                      {/* Only show source/clone URLs if they're different from what's shown above */}
-                      {sourceUrl && fileSource.url && sourceUrl.replace(/\.git$/, '') !== fileSource.url.replace(/\.git$/, '') && (
-                        <li>Source: <span className="break-words">{sourceUrl}</span></li>
+            )}
+            <RepoLinks links={repoLinksList} />
+            {repoIsOwner && linksPublished && (
+              <p className="text-[11px] text-gray-500">
+                Links are embedded in the latest NIP-34 push and visible to all clients.
+              </p>
                       )}
-                      {cloneUrls.length > 0 && cloneUrls.some((url: string) => {
-                        const normalizedUrl = url.replace(/\.git$/, '');
-                        return fileSource.url && normalizedUrl !== fileSource.url.replace(/\.git$/, '');
-                      }) && (
-                        <li>Clone URLs: <span className="break-words">{cloneUrls.filter((url: string) => {
-                          const normalizedUrl = url.replace(/\.git$/, '');
-                          return fileSource.url && normalizedUrl !== fileSource.url.replace(/\.git$/, '');
-                        }).join(', ')}</span></li>
-                      )}
-                    </ul>
                   </div>
                 )}
-              </div>
-            );
-          }
-          return null;
-        })()}
         
         {/* Display configured relays and Grasp servers */}
         <RelayDisplay 
@@ -7683,6 +8422,8 @@ export default function RepoCodePage({
           entity={sshGitHelpData.entity}
           repo={sshGitHelpData.repo}
           sshUrl={sshGitHelpData.sshUrl}
+          httpsUrls={sshGitHelpData.httpsUrls}
+          nostrUrls={sshGitHelpData.nostrUrls}
           onClose={() => {
             setShowSshGitHelp(false);
             setSshGitHelpData(null);

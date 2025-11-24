@@ -41,7 +41,14 @@ export async function publishWithConfirmation(
     let unsub: (() => void) | undefined;
 
     // Publish the event
+    console.log(`📤 [Publish Confirmation] Publishing event ${eventId} to ${relays.length} relay(s):`, relays);
+    try {
     publish(event, relays);
+      console.log(`✅ [Publish Confirmation] Event ${eventId} sent to publish function`);
+    } catch (error) {
+      console.error(`❌ [Publish Confirmation] Failed to publish event ${eventId}:`, error);
+      // Still try to subscribe to see if it was published despite the error
+    }
 
     // Subscribe to confirm the event was accepted
     unsub = subscribe(

@@ -162,8 +162,19 @@ export default function HomePage() {
   }, [pubkey]); // Re-run when pubkey changes (login/logout)
 
   const recent = useMemo(() => {
-    // Sort by createdAt, newest first
-    const sorted = repos.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    // CRITICAL: Sort by latest event date (lastNostrEventCreatedAt) if available, otherwise by createdAt
+    // This ensures repos with recent updates appear first
+    // Note: lastNostrEventCreatedAt is in SECONDS (NIP-34 format), createdAt/updatedAt are in MILLISECONDS
+    const sorted = repos.slice().sort((a, b) => {
+      // Get latest event date in milliseconds for comparison
+      const aLatest = (a as any).lastNostrEventCreatedAt 
+        ? (a as any).lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
+        : ((a as any).updatedAt || a.createdAt || 0);
+      const bLatest = (b as any).lastNostrEventCreatedAt 
+        ? (b as any).lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
+        : ((b as any).updatedAt || b.createdAt || 0);
+      return bLatest - aLatest; // Newest first
+    });
     
     // Deduplicate repos by entity/repo combination (keep the most recent one)
     const dedupeMap = new Map<string, Repo>();
@@ -184,9 +195,17 @@ export default function HomePage() {
           dedupeMap.set(key, r);
         } else if (!rHasEventId && existingHasEventId) {
           // Keep existing (has event ID)
-        } else if ((r.createdAt || 0) > (existing.createdAt || 0)) {
-          // Both have or both don't have event ID - keep most recent
+        } else {
+          // Both have or both don't have event ID - compare by latest event date
+          const rLatest = (r as any).lastNostrEventCreatedAt 
+            ? (r as any).lastNostrEventCreatedAt * 1000
+            : ((r as any).updatedAt || r.createdAt || 0);
+          const existingLatest = (existing as any).lastNostrEventCreatedAt 
+            ? (existing as any).lastNostrEventCreatedAt * 1000
+            : ((existing as any).updatedAt || existing.createdAt || 0);
+          if (rLatest > existingLatest) {
           dedupeMap.set(key, r);
+          }
         }
       }
     });
@@ -331,17 +350,38 @@ export default function HomePage() {
       return repo.logoUrl;
     }
     
-    // Priority 2: Logo file from repo
+    // Priority 2: Logo/repo image file from repo
     if (repo.files && repo.files.length > 0) {
-      const logoFiles = repo.files
+      const repoName = (repo.repo || repo.slug || repo.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
+      
+      // Find all potential icon files:
+      // 1. Files with "logo" in name (highest priority)
+      // 2. Files named after the repo (e.g., "tides.png" for tides repo)
+      // 3. Common icon names in root (repo.png, icon.png, etc.)
+      const iconFiles = repo.files
         .map(f => f.path)
         .filter(p => {
           const fileName = p.split("/").pop() || "";
           const baseName = fileName.replace(/\.[^.]+$/, "").toLowerCase();
           const extension = fileName.split(".").pop()?.toLowerCase() || "";
-          const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
-          return baseName.includes("logo") && imageExts.includes(extension);
+          const isRoot = p.split("/").length === 1;
+          
+          if (!imageExts.includes(extension)) return false;
+          
+          // Match logo files
+          if (baseName.includes("logo")) return true;
+          
+          // Match repo-name-based files (e.g., "tides.png" for tides repo)
+          if (repoName && baseName === repoName) return true;
+          
+          // Match common icon names in root directory
+          if (isRoot && (baseName === "repo" || baseName === "icon" || baseName === "favicon")) return true;
+          
+          return false;
         });
+      
+      const logoFiles = iconFiles;
       
       if (logoFiles.length > 0) {
         const prioritized = logoFiles.sort((a, b) => {
@@ -352,8 +392,15 @@ export default function HomePage() {
           const aIsRoot = aParts.length === 1;
           const bIsRoot = bParts.length === 1;
           
+          // Priority 1: Exact "logo" match
           if (aName === "logo" && bName !== "logo") return -1;
           if (bName === "logo" && aName !== "logo") return 1;
+          
+          // Priority 2: Repo-name-based files (e.g., "tides.png")
+          if (repoName && aName === repoName && bName !== repoName && bName !== "logo") return -1;
+          if (repoName && bName === repoName && aName !== repoName && aName !== "logo") return 1;
+          
+          // Priority 3: Root directory files
           if (aName === "logo" && bName === "logo") {
             if (aIsRoot && !bIsRoot) return -1;
             if (!aIsRoot && bIsRoot) return 1;
@@ -361,6 +408,7 @@ export default function HomePage() {
           if (aIsRoot && !bIsRoot) return -1;
           if (!aIsRoot && bIsRoot) return 1;
           
+          // Priority 4: Format preference
           const aExt = a.split(".").pop()?.toLowerCase() || "";
           const bExt = b.split(".").pop()?.toLowerCase() || "";
           const formatPriority = { png: 0, svg: 1, webp: 2, jpg: 3, jpeg: 3, gif: 4, ico: 5 };
@@ -989,8 +1037,12 @@ export default function HomePage() {
                 }
                 
                 // Get display name from metadata
-                const displayName = ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
-                  ? getEntityDisplayName(ownerPubkey, userMetadata, entity)
+                // CRITICAL: Normalize pubkey to lowercase for metadata lookup
+                const normalizedOwnerPubkey = ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
+                  ? ownerPubkey.toLowerCase()
+                  : null;
+                const displayName = normalizedOwnerPubkey
+                  ? getEntityDisplayName(normalizedOwnerPubkey, userMetadata, entity)
                   : (r.entityDisplayName || entity);
                 
                 // Resolve icons - always show fallback if icon fails
@@ -998,8 +1050,9 @@ export default function HomePage() {
                 let ownerPicture: string | undefined = undefined;
                 try {
                   iconUrl = resolveRepoIcon(r);
-                  if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-                    ownerPicture = userMetadata[ownerPubkey]?.picture;
+                  if (normalizedOwnerPubkey) {
+                    // CRITICAL: Use normalized pubkey for metadata lookup
+                    ownerPicture = userMetadata[normalizedOwnerPubkey]?.picture || (ownerPubkey ? userMetadata[ownerPubkey]?.picture : undefined);
                   }
                 } catch (error) {
                   console.error('⚠️ [Home] Error resolving icons:', error);

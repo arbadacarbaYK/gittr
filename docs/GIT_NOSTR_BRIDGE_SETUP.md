@@ -75,8 +75,8 @@ While logged in as `git-nostr` user:
 
 ```bash
 cd ~
-git clone https://github.com/arbadacarbaYK/ngit.git
-cd ngit/ui/gitnostr
+git clone https://github.com/arbadacarbaYK/gittr.git
+cd gittr/ui/gitnostr
 
 # Build the bridge components
 make git-nostr-bridge
@@ -139,7 +139,7 @@ nano ~/.config/git-nostr/git-nostr-bridge.json
 - `repositoryDir`: Where Git repositories will be stored (use absolute path in production)
 - `relays`: List of Nostr relays to watch for events. **Recommended**: Include Grasp protocol relays:
   - `wss://gitnostr.com` - Public Grasp instance
-  - `wss://relay.ngit.dev` - gittr.space relay instance
+  - `wss://relay.ngit.dev` - gitworkshop.dev relay instance (part of ngit ecosystem)
   - See `docs/GRASP_RELAY_SETUP.md` for more Grasp instances and setting up your own
 - `gitRepoOwners`: List of Nostr pubkeys that can create repositories on this server
 
@@ -231,8 +231,8 @@ After=network.target
 [Service]
 Type=simple
 User=git-nostr
-WorkingDirectory=/home/git-nostr/ngit/ui/gitnostr
-ExecStart=/home/git-nostr/ngit/ui/gitnostr/bin/git-nostr-bridge
+WorkingDirectory=/home/git-nostr/gittr/ui/gitnostr
+ExecStart=/home/git-nostr/gittr/ui/gitnostr/bin/git-nostr-bridge
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -351,7 +351,7 @@ Edit `~/.config/git-nostr/git-nostr-cli.json`:
 
 **For Docker containers** (as in original NostrGit example), use `root@localhost` because Docker runs as root. For production, use `git-nostr@gittr.space` (the dedicated user you created).
 
-**See [SETUP_INSTRUCTIONS.md](../SETUP_INSTRUCTIONS.md) for complete server admin setup guide including Docker, relay configuration, and connecting all parts together.**
+**See [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md) for complete server admin setup guide including Docker, relay configuration, and connecting all parts together.**
 
 ### 2. Publish SSH Keys
 
@@ -504,7 +504,7 @@ Then use: `git clone git@localhost-git:<pubkey>/repo.git`
 
 ## Additional Resources
 
-- **[SETUP_INSTRUCTIONS.md](../SETUP_INSTRUCTIONS.md)**: Complete server admin setup guide (Docker, relays, Blossom, step-by-step order)
+- **[SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md)**: Complete server admin setup guide (Docker, relays, Blossom, step-by-step order)
 - Original gitnostr README: `ui/gitnostr/README.md`
 - Git Commands Test Plan: `GIT_COMMANDS_TEST_PLAN.md`
 - SSH & Git Guide: `docs/SSH_GIT_GUIDE.md`

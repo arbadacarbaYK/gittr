@@ -205,9 +205,11 @@ Configure in Settings → Account:
 
 ## 📚 Setup & Documentation
 
-- **[SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md)** - Complete production setup guide
-- **[LOCAL_SETUP.md](LOCAL_SETUP.md)** - Local development setup
+- **[SETUP_INSTRUCTIONS.md](docs/SETUP_INSTRUCTIONS.md)** - Complete production setup guide
+- **[LOCAL_SETUP.md](docs/LOCAL_SETUP.md)** - Local development setup
+- **[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Server deployment guide
 - **[Grasp Relay Setup](docs/GRASP_RELAY_SETUP.md)** - How to set up your own relay instance (Grasp protocol)
+- **[SSH & Git Guide](docs/SSH_GIT_GUIDE.md)** - SSH and Git operations guide
 
 
 ### ⚠️ Repository import size limit

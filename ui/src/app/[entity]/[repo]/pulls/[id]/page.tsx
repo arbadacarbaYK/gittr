@@ -26,7 +26,7 @@ import { Reactions } from "@/components/ui/reactions";
 import { FileDiffViewer } from "@/components/ui/file-diff-viewer";
 import { getRepoStorageKey, normalizeEntityForStorage } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { loadStoredRepos, saveStoredRepos, loadRepoOverrides, saveRepoOverrides, type StoredRepo, type StoredContributor } from "@/lib/repos/storage";
+import { loadStoredRepos, saveStoredRepos, loadRepoOverrides, saveRepoOverrides, saveRepoFiles, type StoredRepo, type StoredContributor, type RepoFileEntry } from "@/lib/repos/storage";
 import { detectConflicts } from "@/lib/git/conflict-detection";
 import { ConflictDetector } from "@/components/ui/conflict-detector";
 import { nip19 } from "nostr-tools";
@@ -44,6 +44,8 @@ interface ChangedFile {
   status: "added" | "modified" | "deleted";
   before?: string;
   after?: string;
+  isBinary?: boolean;
+  mimeType?: string;
 }
 
 interface PRData {
@@ -385,6 +387,49 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
       });
       
       saveRepoOverrides(params.entity, params.repo, overrides);
+      try {
+        const storedRepos = loadStoredRepos();
+        const repoIndex = storedRepos.findIndex((storedRepo: StoredRepo) => {
+          const repoMatches = storedRepo.repo === params.repo || storedRepo.slug === params.repo || storedRepo.name === params.repo;
+          const entityMatches =
+            storedRepo.entity === params.entity ||
+            storedRepo.entity?.toLowerCase() === params.entity.toLowerCase();
+          return repoMatches && entityMatches;
+        });
+
+        if (repoIndex >= 0) {
+          const repoRecord = { ...storedRepos[repoIndex] };
+          // Ensure entity is set (required by StoredRepo type)
+          if (!repoRecord.entity) {
+            repoRecord.entity = params.entity;
+          }
+          const existingFiles: RepoFileEntry[] = Array.isArray(repoRecord.files) ? [...repoRecord.files] : [];
+          const fileMap = new Map<string, RepoFileEntry>();
+          existingFiles.forEach((fileEntry) => fileMap.set(fileEntry.path, fileEntry));
+
+          changedFiles.forEach((file) => {
+            if (file.status === "deleted") {
+              fileMap.delete(file.path);
+              return;
+            }
+
+            fileMap.set(file.path, {
+              path: file.path,
+              type: "file",
+              isBinary: file.isBinary,
+            });
+          });
+
+          const updatedFilesArray = Array.from(fileMap.values()).sort((a, b) => a.path.localeCompare(b.path));
+          repoRecord.files = updatedFilesArray;
+          storedRepos[repoIndex] = repoRecord as StoredRepo;
+          saveStoredRepos(storedRepos);
+          saveRepoFiles(params.entity, params.repo, updatedFilesArray);
+          window.dispatchEvent(new Event("gittr:repo-updated"));
+        }
+      } catch (error) {
+        console.error("Failed to sync repo files after merge:", error);
+      }
 
       // 2. Create commit record
       const commitId = `commit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -1134,6 +1179,8 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
                         status={file.status}
                         before={file.before}
                         after={file.after}
+                        isBinary={file.isBinary}
+                        mimeType={file.mimeType}
                         ownerEdit={isOwner && pr.status === "open"}
                         onEdit={handleOwnerEdit}
                       />

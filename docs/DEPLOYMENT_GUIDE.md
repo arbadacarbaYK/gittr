@@ -368,6 +368,49 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
+
+# Git bridge subdomain (for HTTPS git clones)
+# Assumes git.gittr.space DNS record points to this server
+# Requires: apt-get install fcgiwrap && systemctl enable fcgiwrap && systemctl start fcgiwrap
+server {
+    listen 80;
+    server_name git.gittr.space;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name git.gittr.space;
+    
+    # SSL certificates (obtain with: certbot certonly --nginx -d git.gittr.space)
+    ssl_certificate /etc/letsencrypt/live/git.gittr.space/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/git.gittr.space/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    
+    # Git HTTP backend via FCGI (git-http-backend)
+    # URL format: https://git.gittr.space/{pubkey}/{repo}.git
+    # This allows git clone https://git.gittr.space/{pubkey}/{repo}.git
+    location ~ ^/([^/]+)/(.+\.git)(.*)$ {
+        root /home/git-nostr/git-nostr-repositories;
+        fastcgi_pass unix:/var/run/fcgiwrap.socket;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME /usr/lib/git-core/git-http-backend;
+        fastcgi_param GIT_HTTP_EXPORT_ALL "";
+        fastcgi_param GIT_PROJECT_ROOT /home/git-nostr/git-nostr-repositories;
+        fastcgi_param PATH_INFO $uri;
+        fastcgi_param REMOTE_USER $remote_user;
+    }
+}
+```
+
+**Install fcgiwrap for git-http-backend (required for git subdomain):**
+
+```bash
+sudo apt-get install fcgiwrap
+sudo systemctl enable fcgiwrap
+sudo systemctl start fcgiwrap
 ```
 
 Enable site:
@@ -388,8 +431,11 @@ sudo systemctl restart nginx
 # Install certbot
 sudo apt install certbot python3-certbot-nginx
 
-# Obtain certificate
+# Obtain certificate for main domain
 sudo certbot --nginx -d gittr.space
+
+# Obtain certificate for git subdomain (after DNS is configured)
+sudo certbot certonly --nginx -d git.gittr.space
 
 # Auto-renewal (should be set up automatically)
 sudo certbot renew --dry-run
@@ -413,8 +459,8 @@ After=network.target
 [Service]
 Type=simple
 User=www-data
-WorkingDirectory=/path/to/gittr/ui
-ExecStart=/usr/bin/npm run start
+WorkingDirectory=/opt/ngit/ui
+ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=10
 Environment=NODE_ENV=production
@@ -424,6 +470,12 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 ```
+
+**⚠️ CRITICAL**: 
+- **WorkingDirectory** must be the absolute path where the Next.js app is located (e.g., `/opt/ngit/ui` or `/root/ngit/ui`)
+- Ensure the path matches where you cloned/deployed the repository
+- The service will fail to start if the path is incorrect
+- Always verify the path exists: `ls -la /opt/ngit/ui` (or your chosen path)
 
 **Note**: Adjust paths and user as needed. You may want to use PM2 or another process manager instead.
 
@@ -511,13 +563,33 @@ git clone git@gittr.space:<pubkey>/<repo-name>.git
    curl http://localhost:3000
    ```
 
-2. **Check nginx configuration:**
+2. **Check WorkingDirectory path in systemd service:**
+   ```bash
+   # CRITICAL: Verify the WorkingDirectory in the service file matches your actual deployment path
+   sudo cat /etc/systemd/system/gittr-frontend.service | grep WorkingDirectory
+   
+   # Verify the path exists and contains the Next.js app
+   ls -la /opt/ngit/ui  # or /root/ngit/ui, or wherever you deployed
+   
+   # If path is wrong, update the service file:
+   sudo nano /etc/systemd/system/gittr-frontend.service
+   # Change WorkingDirectory to the correct path
+   sudo systemctl daemon-reload
+   sudo systemctl restart gittr-frontend
+   ```
+   
+   **Common issue**: Files uploaded to `/root/ngit/ui` but service runs from `/opt/ngit/ui` (or vice versa). Always ensure:
+   - The `WorkingDirectory` in the systemd service matches where you actually deployed the code
+   - When syncing files, use the same path that the service expects
+   - After syncing, always rebuild: `cd /path/to/ui && rm -rf .next && npm run build`
+
+3. **Check nginx configuration:**
    ```bash
    sudo nginx -t
    sudo systemctl status nginx
    ```
 
-3. **Check environment variables:**
+4. **Check environment variables:**
    ```bash
    cd ui
    cat .env.local  # Verify all required variables are set

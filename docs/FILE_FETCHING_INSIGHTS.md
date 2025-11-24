@@ -134,7 +134,7 @@ User opens repo page
 4. Try external git servers (GitHub, GitLab, Codeberg)
    ├─ Iterate through clone URLs in priority order:
    │   ├─ External git servers first (GitHub, GitLab, Codeberg)
-   │   └─ GRASP servers second (gitnostr.com, relay.ngit.dev, etc.)
+   │   └─ GRASP servers second (git.gittr.space, gitnostr.com, relay.ngit.dev, etc.)
    ├─ For each URL:
    │   ├─ GitHub → API: /repos/{owner}/{repo}/git/trees/{sha}?recursive=1
    │   ├─ GitLab → API: /api/v4/projects/{path}/repository/tree?recursive=true
@@ -299,17 +299,17 @@ const projectPath = `${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
 
 ### Problem
 
-GRASP servers (relay.ngit.dev, gitnostr.com, git-01.uid.ovh, etc.) were returning 404 when trying to fetch files via HTTP API.
+GRASP servers (git.gittr.space, gitnostr.com, relay.ngit.dev, git-01.uid.ovh, etc.) were returning 404 when trying to fetch files via HTTP API.
 
 ### Root Cause
 
 1. **API URL construction was incorrect**: GRASP servers use the full path from the clone URL in their API endpoints, not just the repo name.
-2. **Some GRASP servers don't expose HTTP API**: Some GRASP servers (like `relay.ngit.dev`) may not expose an HTTP API for file browsing - they only work through `git-nostr-bridge` (which clones repos locally) or through the git protocol.
+2. **Some GRASP servers don't expose HTTP API**: Some GRASP servers (like `relay.ngit.dev`, which is gitworkshop.dev's relay) may not expose an HTTP API for file browsing - they only work through `git-nostr-bridge` (which clones repos locally) or through the git protocol. Our server at `git.gittr.space` does expose HTTP API.
 
 ### Current Status
 
 - ✅ **GitHub/Codeberg**: Working correctly via HTTP API
-- ⚠️ **GRASP servers**: Some work via HTTP API (gitnostr.com, git-01.uid.ovh), others require `git-nostr-bridge` (relay.ngit.dev)
+- ⚠️ **GRASP servers**: Some work via HTTP API (git.gittr.space, gitnostr.com, git-01.uid.ovh), others require `git-nostr-bridge` (relay.ngit.dev - gitworkshop.dev's relay)
 - 🔄 **Solution**: For GRASP servers that don't expose HTTP API, we use `git-nostr-bridge` with automatic cloning
 
 ### Why This Matters
@@ -330,7 +330,7 @@ GRASP servers (relay.ngit.dev, gitnostr.com, git-01.uid.ovh, etc.) were returnin
 
 ### The Key Insight
 
-**Some GRASP servers (like `relay.ngit.dev`) don't expose an HTTP API for file browsing.** They only work through:
+**Some GRASP servers (like `relay.ngit.dev`, which is gitworkshop.dev's relay) don't expose an HTTP API for file browsing.** They only work through:
 
 - The `git` protocol (which web browsers can't use directly)
 - `git-nostr-bridge` (which requires repos to be cloned locally first)
@@ -342,7 +342,7 @@ GRASP servers (relay.ngit.dev, gitnostr.com, git-01.uid.ovh, etc.) were returnin
 Cloning is automatically triggered when:
 
 1. **`git-nostr-bridge` API returns 404** (repo not found locally)
-2. **The repo is from a GRASP server** (relay.ngit.dev, gitnostr.com, git-01.uid.ovh, git-02.uid.ovh, ngit.danconwaydev.com, git.shakespeare.diy)
+2. **The repo is from a GRASP server** (git.gittr.space, gitnostr.com, relay.ngit.dev, git-01.uid.ovh, git-02.uid.ovh, ngit.danconwaydev.com, git.shakespeare.diy)
 3. **A valid HTTP/HTTPS clone URL exists** in the repo's `clone` array
 4. **A valid ownerPubkey is available** (full 64-char hex pubkey)
 
@@ -355,7 +355,7 @@ Cloning is automatically triggered when:
    ↓
 3. API returns 404 (repo not cloned locally)
    ↓
-4. Check if repo has GRASP clone URL (e.g., https://relay.ngit.dev/npub.../repo.git)
+4. Check if repo has GRASP clone URL (e.g., https://git.gittr.space/npub.../repo.git or https://relay.ngit.dev/npub.../repo.git)
    ↓
 5. Call clone API: POST /api/nostr/repo/clone
    Body: { cloneUrl, ownerPubkey, repoName }
@@ -377,7 +377,7 @@ Cloning is automatically triggered when:
 **Request Body**:
 ```typescript
 {
-  cloneUrl: string,      // e.g., "https://relay.ngit.dev/npub1.../repo.git"
+  cloneUrl: string,      // e.g., "https://git.gittr.space/npub1.../repo.git" or "https://relay.ngit.dev/npub1.../repo.git"
   ownerPubkey: string,  // Full 64-char hex pubkey (validated)
   repoName: string       // Base repo name (e.g., "repo" from "gitnostr.com/repo")
 }
@@ -572,8 +572,9 @@ if (entityMatches && repoMatches && (repo.readme !== undefined || repo.files !==
 
 ```typescript
 // GRASP servers use the full path from clone URL in their API endpoints
-// Clone URL: https://relay.ngit.dev/npub1.../purplestore.git
-// API endpoint: https://relay.ngit.dev/npub1.../purplestore/api/v1/repos/npub1.../purplestore/git/trees/main?recursive=true
+// Clone URL: https://git.gittr.space/npub1.../purplestore.git
+// API endpoint: https://git.gittr.space/npub1.../purplestore/api/v1/repos/npub1.../purplestore/git/trees/main?recursive=true
+// Note: Some GRASP servers (like relay.ngit.dev) don't expose HTTP API and require git-nostr-bridge
 
 // Extract full path from clone URL
 const baseUrl = cloneUrl.replace(/\.git$/, '');

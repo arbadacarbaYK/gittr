@@ -6,7 +6,7 @@ To enable GitHub authentication, you need to:
    - Go to https://github.com/settings/developers
    - Click "New OAuth App"
    - Fill in:
-     - **Application name**: `ngit` (or any name you like)
+     - **Application name**: `gittr` (or any name you like)
      - **Homepage URL**: `http://localhost:3000` (or your production URL)
      - **Authorization callback URL**: `http://localhost:3000/api/github/callback` (or your production URL + `/api/github/callback`)
    - Click "Register application"

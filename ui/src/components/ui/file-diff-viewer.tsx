@@ -14,6 +14,8 @@ interface FileDiffViewerProps {
   editable?: boolean;
   onEdit?: (newContent: string) => void;
   ownerEdit?: boolean; // If true, owner can edit the "after" content
+  isBinary?: boolean;
+  mimeType?: string;
 }
 
 export function FileDiffViewer({
@@ -24,11 +26,53 @@ export function FileDiffViewer({
   editable = false,
   onEdit,
   ownerEdit = false,
+  isBinary = false,
+  mimeType,
 }: FileDiffViewerProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(after || "");
   // Prefer monospace for code, but use normal font for plain text like .txt
   const isMonospace = !/\.txt$/i.test(path || "");
+
+  const guessMimeType = (): string => {
+    if (mimeType) return mimeType;
+    const extension = path?.split(".").pop()?.toLowerCase() || "";
+    const imageTypes: Record<string, string> = {
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif",
+      webp: "image/webp",
+      svg: "image/svg+xml",
+      ico: "image/x-icon",
+      bmp: "image/bmp",
+      avif: "image/avif",
+    };
+    if (imageTypes[extension]) return imageTypes[extension];
+    const mimeMap: Record<string, string> = {
+      pdf: "application/pdf",
+      mp4: "video/mp4",
+      mp3: "audio/mpeg",
+      wav: "audio/wav",
+      zip: "application/zip",
+      gz: "application/gzip",
+      bz2: "application/x-bzip2",
+      tar: "application/x-tar",
+    };
+    if (mimeMap[extension]) return mimeMap[extension];
+    if (extension === "json" || extension === "txt") return "text/plain";
+    return "application/octet-stream";
+  };
+
+  const resolvedMimeType = guessMimeType();
+  const shouldRenderBinaryPreview = Boolean(isBinary && (after || before));
+  const binaryDataUrl =
+    shouldRenderBinaryPreview && after
+      ? after.startsWith("data:")
+        ? after
+        : `data:${resolvedMimeType};base64,${after}`
+      : null;
+  const isImage = !!binaryDataUrl && resolvedMimeType.startsWith("image/");
 
   const handleSave = () => {
     if (onEdit) {
@@ -164,6 +208,50 @@ export function FileDiffViewer({
           <p className="text-xs text-gray-400 mt-2">
             Edit the file content. Your changes will be applied when merging the PR.
           </p>
+        </div>
+      ) : shouldRenderBinaryPreview ? (
+        <div className="p-4 space-y-3">
+          <div className="text-sm text-gray-300">
+            Binary file ({resolvedMimeType || "binary"}) – diffs are not shown.
+          </div>
+          {isImage && binaryDataUrl ? (
+            <div className="rounded border border-gray-700 bg-black/40 p-2 flex justify-center">
+              <img
+                src={binaryDataUrl}
+                alt={path}
+                className="max-h-[50vh] object-contain"
+              />
+            </div>
+          ) : (
+            <div className="rounded border border-gray-700 bg-black/40 p-4 text-sm text-gray-400">
+              Preview not available.{" "}
+              {binaryDataUrl ? (
+                <a
+                  href={binaryDataUrl}
+                  download={path.split("/").pop() || "file.bin"}
+                  className="text-purple-400 hover:text-purple-300 underline"
+                >
+                  Download file
+                </a>
+              ) : (
+                <span>
+                  {status === "deleted"
+                    ? "File was deleted."
+                    : "No preview data available."}
+                </span>
+              )}
+            </div>
+          )}
+          {after && !isImage && (
+            <details className="text-xs text-gray-500">
+              <summary className="cursor-pointer text-purple-300">
+                View raw base64
+              </summary>
+              <pre className="mt-2 bg-[#0E1116] p-3 rounded max-h-[30vh] overflow-auto">
+                {after}
+              </pre>
+            </details>
+          )}
         </div>
       ) : (
         <>
