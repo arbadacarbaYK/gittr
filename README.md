@@ -1,8 +1,15 @@
-# gittr.space - Git over Nostr with Bitcoin Incentives
+# gittr.space - Host Your Repositories on Nostr for Better Discoverability
 
-A decentralized Git platform built on Nostr with native Bitcoin/Lightning payment integration. Think GitHub, but censorship-resistant, with zaps, bounties, and decentralized storage.
+Make your Git repositories discoverable on the Nostr network. Host your code on Nostr while keeping your existing GitHub/GitLab workflow. Enhance discoverability, enable decentralized access, and add Bitcoin/Lightning payment integration to your projects.
 
 **Platform**: [gittr.space](https://gittr.space)
+
+**Why gittr.space?**
+- ✅ **Enhanced Discoverability**: Make your repos discoverable across the Nostr network
+- ✅ **Keep Your Workflow**: Works alongside GitHub/GitLab - no need to migrate
+- ✅ **Decentralized Access**: Access your code through Nostr relays
+- ✅ **Bitcoin Integration**: Native Lightning payments, zaps, and bounties
+- ✅ **Open Protocol**: Built on NIP-34, compatible with the Nostr ecosystem
 
 ## 🚀 Features
 
@@ -80,9 +87,11 @@ gittr.space follows the **NIP-34 architecture** for repository file storage:
 
 The file source is displayed in the repository's "About" sidebar, making it clear where files are stored.
 
-### File Fetching Flows
+### Event Processing & File Fetching
 
-gittr.space uses a sophisticated multi-source file fetching system that tries multiple strategies in parallel to ensure fast and reliable file access. The system is designed to work with various git server types (GRASP servers, GitHub, GitLab, Codeberg) and handles both embedded files and files stored on remote servers.
+**Direct Event Submission (gittr.space enhancement)**: When you push a repository to Nostr, the event is sent directly to the git-nostr-bridge HTTP API (`POST /api/nostr/repo/event` → `POST http://localhost:8080/api/event`) for immediate processing, eliminating the typical 1-5 second relay propagation delay. The bridge still subscribes to relays to receive events from other clients, ensuring full decentralization. This dual-channel approach (direct API + relay subscription) provides the best of both worlds: instant processing for your own pushes and full compatibility with the decentralized Nostr network.
+
+**File Fetching Flows**: gittr.space uses a sophisticated multi-source file fetching system that tries multiple strategies in parallel to ensure fast and reliable file access. The system is designed to work with various git server types (GRASP servers, GitHub, GitLab, Codeberg) and handles both embedded files and files stored on remote servers.
 
 **Key Features of Flows:**
 
@@ -283,12 +292,25 @@ The `gitnostr` Go components (`ui/gitnostr/`) are licensed under the **MIT Licen
 - Implements [GRASP Protocol](https://ngit.dev/grasp/) for distributed Git hosting (newer than original NostrGit)
 - Inspired by GitHub's developer experience
 
-**Note:** This project (`gittr.space`) is a fork of NostrGit Page template that has been significantly developed. It is a separate project and platform. Key additions include:
+**Note:** This project (`gittr.space`) is a fork of NostrGit Page template that has been significantly developed. It is a separate project and platform. Key additions and modifications include:
+
+**Core Enhancements:**
 - ✅ GRASP protocol support (clone/relays tags, client-side proactive sync)
 - ✅ Bitcoin/Lightning payment integration (zaps, bounties)
 - ✅ Enhanced UI features (themes, activity tracking, explore page)
 - ✅ Notification system (Nostr DM, Telegram DM, channel announcements)
 - ✅ All original Go components (`git-nostr-bridge`, `git-nostr-cli`, `git-nostr-ssh`) are included and functional
+
+**Bridge Improvements (git-nostr-bridge):**
+- ✅ **HTTP API endpoint** (`POST /api/event`): Direct event submission for immediate processing (eliminates relay propagation delays)
+- ✅ **NIP-34 support**: Full support for kind 30617 repository events (in addition to legacy kind 51)
+- ✅ **Auto-cloning**: Automatically clones repositories from `sourceUrl` or `clone` URLs when not found locally
+- ✅ **Deletion handling**: Properly removes repositories and database entries when `deleted: true` events are received
+- ✅ **Event deduplication**: Merges events from both direct API and relay subscriptions with deduplication
+- ✅ **Unified deployment path**: Both frontend and bridge now use `/opt/ngit` for simplified deployment
+
+**Frontend API Routes:**
+- ✅ `/api/nostr/repo/event`: Proxies Nostr events directly to bridge HTTP API for immediate processing
 
 ## 📞 Support
 

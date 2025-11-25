@@ -249,7 +249,8 @@ Edit `~/.config/git-nostr/git-nostr-bridge.json`:
     "gitRepoOwners": [
         "<your-nostr-pubkey-here>",
         "<other-authorized-pubkeys>"
-    ]
+    ],
+    "ListenAddr": ":8080"
 }
 ```
 
@@ -257,6 +258,7 @@ Edit `~/.config/git-nostr/git-nostr-bridge.json`:
 - `relays`: Use your existing relays plus public Grasp instances
 - `gitRepoOwners`: List of Nostr pubkeys (64-char hex) that can create repositories
 - `repositoryDir`: Use absolute path in production
+- `ListenAddr`: (Optional) HTTP API listen address for direct event submission (default: `:8080`). This is a **gittr.space enhancement** that enables immediate event processing without relay propagation delays.
 
 #### 5.5: Configure SSH Server
 
@@ -300,10 +302,14 @@ Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
+# Optional: Configure HTTP server port for direct event submission (default: 8080)
+Environment=BRIDGE_HTTP_PORT=8080
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+**Note**: The bridge now includes an HTTP server (port 8080) for direct event submission. This is a **gittr.space enhancement** that allows immediate processing of your pushes without waiting for relay propagation (typically 1-5 seconds). The frontend automatically sends events to this endpoint via `/api/nostr/repo/event`, which proxies to the bridge's HTTP API. The bridge still subscribes to relays to receive events from other clients, ensuring full decentralization.
 
 Enable and start:
 
@@ -487,7 +493,8 @@ WantedBy=multi-user.target
 
 | Variable | Location | Required | Purpose |
 |----------|----------|----------|---------|
-| `NEXT_PUBLIC_NOSTR_RELAYS` | `ui/.env.local` | ✅ Yes | Comma-separated relay URLs |
+| `NEXT_PUBLIC_NOSTR_RELAYS` | `ui/.env.local` | ✅ Yes | Comma-separated **Nostr relay** URLs (WSS format, e.g., `wss://relay.example.com`) |
+| `NEXT_PUBLIC_GIT_SERVER_URL` | `ui/.env.local` | ❌ No | **Git server** URL for HTTPS clones (e.g., `https://git.gittr.space`) - **NOT a Nostr relay** |
 | `NEXT_PUBLIC_BLOSSOM_URL` | `ui/.env.local` | ✅ Yes | Blossom server URL (for Git pack files) |
 | `NEXT_PUBLIC_SITE_URL` | `ui/.env.local` | ❌ No | Site URL for SEO metadata and GRASP server API calls (defaults to `https://gittr.space`) |
 | `NEXT_PUBLIC_GIT_SSH_BASE` | `ui/.env.local` | ❌ No | Git SSH base hostname for clone URLs (defaults to `gittr.space`) |
@@ -495,8 +502,13 @@ WantedBy=multi-user.target
 | `NOSTR_NSEC` | `ui/.env.local` | ❌ No | Nostr private key for notifications |
 | `TELEGRAM_BOT_TOKEN` | `ui/.env.local` | ❌ No | Telegram bot token for notifications |
 | `TELEGRAM_CHAT_ID` | `ui/.env.local` | ❌ No | Telegram channel ID for notifications |
+| `BRIDGE_HTTP_PORT` | `ui/.env.local` | ❌ No | Bridge HTTP API port (defaults to `8080`) |
+| `BRIDGE_HTTP_HOST` | `ui/.env.local` | ❌ No | Bridge HTTP API hostname (defaults to `localhost`) |
 
-**⚠️ Security Note:** All sensitive values (tokens, keys, secrets) are in `.gitignore` and will NOT be committed to git. Only the server admin has access to these values.
+**⚠️ Important Distinction:**
+- **`NEXT_PUBLIC_NOSTR_RELAYS`**: Nostr relay URLs (WSS format) - used for publishing/subscribing to Nostr events
+- **`NEXT_PUBLIC_GIT_SERVER_URL`**: Git server URL (HTTPS format) - used for `git clone` operations, 
+-Note that `git.gittr.space` is a **Git server**, not a Nostr relay. It should only be in `NEXT_PUBLIC_GIT_SERVER_URL`, not `NEXT_PUBLIC_NOSTR_RELAYS`
 
 ### Port Configuration
 
@@ -504,8 +516,11 @@ WantedBy=multi-user.target
 |---------|-------------|-----------------|-------|
 | Next.js Frontend | 3000 | 3000 (internal) | Proxied through nginx on 443 |
 | git-nostr-bridge SSH | 22 | 22 | Standard SSH port |
+| git-nostr-bridge HTTP | 8080 | 8080 (internal) | Direct event submission API (localhost only) |
 | nginx HTTP | 80 | 80 | Redirects to HTTPS |
 | nginx HTTPS | 443 | 443 | Main entry point |
+
+**Note**: The bridge HTTP server (port 8080) is only accessible from localhost for security. The frontend API routes proxy requests to it.
 
 ---
 

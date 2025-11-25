@@ -131,7 +131,8 @@ nano ~/.config/git-nostr/git-nostr-bridge.json
     ],
     "gitRepoOwners": [
         "<your-nostr-pubkey-here>"
-    ]
+    ],
+    "ListenAddr": ":8080"
 }
 ```
 
@@ -142,6 +143,7 @@ nano ~/.config/git-nostr/git-nostr-bridge.json
   - `wss://relay.ngit.dev` - gitworkshop.dev relay instance (part of ngit ecosystem)
   - See `docs/GRASP_RELAY_SETUP.md` for more Grasp instances and setting up your own
 - `gitRepoOwners`: List of Nostr pubkeys that can create repositories on this server
+- `ListenAddr`: (Optional) HTTP API listen address for direct event submission (default: `:8080`). The bridge exposes a REST API endpoint at `/api/event` that accepts Nostr events directly, eliminating relay propagation delays.
 
 **⚠️ Relay Configuration Required:** Ensure your relays allow the following event kinds:
 - **Kind 50** (Repository Permissions) - Required for access control
@@ -206,12 +208,86 @@ sudo launchctl load /System/Library/LaunchDaemons/ssh.plist
 
 ### Step 6: Run the Bridge
 
+The bridge now includes an **HTTP server** for direct event submission, which eliminates relay propagation delays. Events are processed immediately when sent directly to the bridge, while the bridge still subscribes to relays for events from other clients.
+
+#### HTTP Server Configuration
+
+**NEW FEATURE (gittr.space enhancement)**: The bridge exposes a REST API endpoint (`POST /api/event`) that accepts Nostr events directly. This allows the frontend to submit events immediately after publishing to relays, eliminating the typical 1-5 second delay for relay propagation.
+
+The bridge HTTP server runs on port **8080** by default. You can configure it via:
+
+1. **Config file** (recommended): Add `"ListenAddr": ":8080"` to `~/.config/git-nostr/git-nostr-bridge.json`
+2. **Environment variable**: `export BRIDGE_HTTP_PORT=8080`
+3. **Systemd service file**: `Environment=BRIDGE_HTTP_PORT=8080`
+
+**HTTP Endpoint**: `POST http://localhost:8080/api/event`
+
+**Request format:**
+```json
+{
+  "id": "<event-id>",
+  "pubkey": "<pubkey>",
+  "created_at": <timestamp>,
+  "kind": 30617,
+  "tags": [
+    ["d", "<repo-name>"],
+    ["name", "<repo-name>"],
+    ["description", "<description>"],
+    ["clone", "https://relay.ngit.dev/<pubkey>/<repo>.git"],
+    ["clone", "nostr://<author>@<relay>/<repo>"],
+    ["relays", "wss://relay.damus.io"],
+    ["maintainers", "<pubkey>"],
+    ["t", "<topic>"],
+    ["web", "<logo-url>"],
+    ["web", "<link-url>"],
+    ["r", "<commit-id>", "euc"],
+    ["source", "<source-url>"],
+    ["forkedFrom", "<forked-from-url>"]
+  ],
+  "content": "{...JSON content with files, metadata...}",
+  "sig": "<signature>"
+}
+```
+
+**Tag Details:**
+
+**NIP-34 Standard Tags:**
+- **Required** (NIP-34 spec): `d`, `name`, `description`, `clone` (at least one), `relays` (at least one), `maintainers`
+- **Optional** (NIP-34 spec):
+  - `["t", "<topic>"]` - Repository topics/tags (multiple allowed)
+  - `["web", "<url>"]` - Web links (logoUrl, links array) - multiple allowed
+  - `["r", "<commit-id>", "euc"]` - Earliest unique commit (if commits exist)
+
+**gittr.space Extensions** (not in NIP-34 spec, but included for compatibility):
+- `["source", "<url>"]` - Source URL (if imported from GitHub/GitLab/Codeberg) - *gittr.space addition*
+- `["forkedFrom", "<url>"]` - Forked from URL (if repository is a fork) - *gittr.space addition*
+- `["link", "<type>", "<url>", "<label>"]` - Structured links with type and label (docs, discord, slack, youtube, twitter, github, other) - *gittr.space addition*
+
+**Note**: The bridge accepts the full NIP-34 event structure with all optional tags, including gittr.space extensions. These optional fields are included to make repository metadata available to other clients in the Nostr ecosystem. Standard NIP-34 clients will ignore unknown tags, so extensions are safe to include.
+
+**Response:**
+- `200 OK`: Event accepted and queued for processing
+- `400 Bad Request`: Invalid event (missing required fields, event ID mismatch, or malformed JSON)
+- `503 Service Unavailable`: Event queue full
+
+**Event Validation:**
+The bridge uses a **lenient validation approach** for direct API submissions:
+- ✅ **Event ID verification**: If the provided event ID matches the calculated hash, the event structure is valid
+- ✅ **Signature check**: Attempts to verify the event signature, but if it fails due to JSON serialization differences between JavaScript and Go libraries, the event is still accepted if the event ID is correct
+- ✅ **Relay trust**: Events that were successfully published to Nostr relays are trusted (relays validate signatures before accepting events)
+- ⚠️ **Note**: Signature check failures are logged as warnings but don't block processing, as serialization differences between `nostr-tools` (JS) and `go-nostr` (Go) can cause false negatives
+
+The frontend (`ui/src/pages/api/nostr/repo/event.ts`) automatically proxies events to this endpoint after publishing to Nostr relays, ensuring immediate processing without waiting for relay propagation.
+
 #### For Development (manual):
 
 ```bash
 # As git-nostr user
 cd ~/gittr/ui/gitnostr
 ./bin/git-nostr-bridge
+
+# You should see:
+# 🌐 [Bridge] Starting HTTP server on port 8080 for direct event submission
 ```
 
 #### For Production (systemd service - Linux):
@@ -237,6 +313,8 @@ Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
+# Optional: Configure HTTP server port (default: 8080)
+Environment=BRIDGE_HTTP_PORT=8080
 
 [Install]
 WantedBy=multi-user.target
@@ -371,6 +449,16 @@ sudo systemctl status git-nostr-bridge
 
 # Check logs
 sudo journalctl -u git-nostr-bridge -n 50
+
+# Verify HTTP server is running
+curl http://localhost:8080/api/event -X POST -H "Content-Type: application/json" -d '{}'
+# Should return error (expected - needs valid event), but confirms server is running
+```
+
+**Expected log output:**
+```
+🌐 [Bridge] Starting HTTP server on port 8080 for direct event submission
+✅ [Bridge API] Event accepted: kind=30617, id=...
 ```
 
 ### 2. Check Relay Connections
