@@ -23,14 +23,92 @@ export function getGithubProfile(pubkey: string): string | null {
   }
 }
 
+// Cache for GitHub username -> pubkey mappings from NIP-39 (queried from Nostr)
+let githubIdentityCache: Map<string, string> | null = null;
+let githubIdentityCacheTimestamp: number = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Query Nostr for GitHub identity mappings via NIP-39
+// This queries all Kind 0 events with "i" tags containing "github:username"
+export async function queryGithubIdentitiesFromNostr(
+  subscribe: (filters: any[], relays: string[], callback: (event: any, isAfterEose: boolean, relayURL?: string) => void) => () => void,
+  defaultRelays: string[],
+  githubLogins: string[]
+): Promise<Map<string, string>> {
+  if (typeof window === "undefined") return new Map();
+  
+  // Check cache first
+  const now = Date.now();
+  if (githubIdentityCache && (now - githubIdentityCacheTimestamp) < CACHE_TTL) {
+    return githubIdentityCache;
+  }
+  
+  const identityMap = new Map<string, string>();
+  const githubLoginsLower = new Set(githubLogins.map(l => l.toLowerCase()));
+  
+  return new Promise((resolve) => {
+    let resolved = false;
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        githubIdentityCache = identityMap;
+        githubIdentityCacheTimestamp = Date.now();
+        console.log(`✅ [GitHub Identity] Cached ${identityMap.size} GitHub identity mappings from Nostr`);
+        resolve(identityMap);
+      }
+    }, 10000); // 10 second timeout
+    
+    // Query all Kind 0 events (we'll filter by i tags in the callback)
+    // Note: We can't filter by i tags in the filter itself (not all relays support it)
+    const unsub = subscribe(
+      [{ kinds: [0] }],
+      defaultRelays,
+      (event, isAfterEose) => {
+        if (event.kind === 0 && event.tags && Array.isArray(event.tags)) {
+          // Look for "i" tags with "github:username" format
+          for (const tag of event.tags) {
+            if (Array.isArray(tag) && tag.length >= 2 && tag[0] === "i") {
+              const identityString = tag[1];
+              if (typeof identityString === "string" && identityString.startsWith("github:")) {
+                const githubUsername = identityString.substring(7).toLowerCase(); // Remove "github:" prefix
+                if (githubLoginsLower.has(githubUsername)) {
+                  identityMap.set(githubUsername, event.pubkey.toLowerCase());
+                  console.log(`🔗 [GitHub Identity] Found mapping: ${githubUsername} -> ${event.pubkey.slice(0, 8)}...`);
+                }
+              }
+            }
+          }
+        }
+        
+        if (isAfterEose && !resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          githubIdentityCache = identityMap;
+          githubIdentityCacheTimestamp = Date.now();
+          console.log(`✅ [GitHub Identity] Cached ${identityMap.size} GitHub identity mappings from Nostr (EOSE)`);
+          unsub();
+          resolve(identityMap);
+        }
+      }
+    );
+  });
+}
+
 // Get Nostr pubkey for a GitHub username
+// First checks localStorage, then queries Nostr for NIP-39 identity claims
 export function getPubkeyFromGithub(githubLogin: string): string | null {
   if (typeof window === "undefined") return null;
   try {
+    // First, check localStorage mappings
     const mappings = JSON.parse(localStorage.getItem("gittr_github_mappings") || "{}") as GitHubMapping;
-    // Search for matching GitHub profile
     // Regex to extract username from GitHub URLs (handles https://, http://, git@, www., etc.)
     const githubUrlRegex = /(?:git@|https?:\/\/)?(?:www\.)?github\.com[:/]?(?:\/)?([\w\-\.]+)/i;
+    
+    // DEBUG: Log all mappings to diagnose issues
+    const mappingCount = Object.keys(mappings).length;
+    if (mappingCount > 0) {
+      console.debug(`🔍 [GitHub Mapping] Checking ${mappingCount} localStorage mappings for login: ${githubLogin}`);
+    }
     
     for (const pubkey in mappings) {
       const githubUrlRaw = mappings[pubkey];
@@ -42,14 +120,38 @@ export function getPubkeyFromGithub(githubLogin: string): string | null {
       if (!match || !match[1]) continue;
       
       const username = match[1].toLowerCase();
+      const loginLower = githubLogin.toLowerCase();
       
-      // Check if extracted username matches the login
-      if (username === githubLogin.toLowerCase()) {
+      // CRITICAL: Only return pubkey if username EXACTLY matches login (case-insensitive)
+      // This prevents partial matches or incorrect assignments
+      if (username === loginLower) {
+        console.debug(`✅ [GitHub Mapping] Found exact match: ${githubLogin} -> ${pubkey.slice(0, 8)}...`);
         return pubkey;
+      } else {
+        // DEBUG: Log near-matches to diagnose issues
+        if (username.includes(loginLower) || loginLower.includes(username)) {
+          console.debug(`⚠️ [GitHub Mapping] Near-match (not using): ${githubLogin} vs ${username} (from ${githubUrlRaw})`);
+        }
       }
     }
+    
+    // Second, check NIP-39 identity cache (if available)
+    if (githubIdentityCache) {
+      const cachedPubkey = githubIdentityCache.get(githubLogin.toLowerCase());
+      if (cachedPubkey) {
+        console.debug(`✅ [GitHub Mapping] Found NIP-39 mapping: ${githubLogin} -> ${cachedPubkey.slice(0, 8)}...`);
+        return cachedPubkey;
+      }
+    }
+    
+    // DEBUG: Log when no mapping is found
+    if (mappingCount > 0 || githubIdentityCache) {
+      console.debug(`❌ [GitHub Mapping] No mapping found for: ${githubLogin} (checked ${mappingCount} localStorage + ${githubIdentityCache ? githubIdentityCache.size : 0} NIP-39)`);
+    }
+    
     return null;
-  } catch {
+  } catch (error) {
+    console.error(`❌ [GitHub Mapping] Error in getPubkeyFromGithub for ${githubLogin}:`, error);
     return null;
   }
 }
