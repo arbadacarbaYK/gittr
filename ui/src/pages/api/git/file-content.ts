@@ -507,8 +507,83 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       }
     } else {
+      // Check if it's a GRASP server - these use the bridge API
+      const { isGraspServer } = require("@/lib/utils/grasp-servers");
+      if (isGraspServer(sourceUrl)) {
+        // GRASP servers don't expose REST APIs - they require git-nostr-bridge
+        // Extract npub and repo from the URL
+        // Format: https://git.shakespeare.diy/npub1.../repo.git
+        const graspMatch = sourceUrl.match(/https?:\/\/[^\/]+\/(npub[a-z0-9]+)\/([^\/]+?)(?:\.git)?$/i);
+        if (graspMatch) {
+          const [, npub, repo] = graspMatch;
+          const branchStr: string = Array.isArray(branch) ? (branch[0] || "main") : (typeof branch === "string" ? branch : "main");
+          const filePathStr: string = Array.isArray(filePath) ? (filePath[0] || "") : (typeof filePath === "string" ? filePath : "");
+          
+          if (!filePathStr || !npub || !repo) {
+            return res.status(400).json({ error: "path, npub, and repo are required" });
+          }
+          
+          // Decode npub to get pubkey for bridge API
+          try {
+            const { nip19 } = require("nostr-tools");
+            const decoded = nip19.decode(npub);
+            if (decoded.type === "npub") {
+              const ownerPubkey = decoded.data as string;
+              
+              // Use bridge API to fetch file content
+              const bridgeUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repo)}&path=${encodeURIComponent(filePathStr)}&branch=${encodeURIComponent(branchStr)}`;
+              
+              // Forward the request to the bridge API
+              // Note: This is a server-side API route, so we need to construct the full URL
+              // Use environment variable or default to localhost for development
+              const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+              const fullBridgeUrl = `${baseUrl}${bridgeUrl}`;
+              
+              console.log(`🔍 [Git API] GRASP server detected, forwarding to bridge API: ${fullBridgeUrl}`);
+              
+              try {
+                const bridgeResponse = await fetch(fullBridgeUrl, {
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                });
+                if (bridgeResponse.ok) {
+                  const bridgeData = await bridgeResponse.json();
+                  return res.status(200).json(bridgeData);
+                } else {
+                  const errorText = await bridgeResponse.text().catch(() => "");
+                  console.error(`❌ [Git API] Bridge API failed: ${bridgeResponse.status} - ${errorText.substring(0, 200)}`);
+                  return res.status(bridgeResponse.status).json({ 
+                    error: "Failed to fetch file from GRASP server via bridge",
+                    status: bridgeResponse.status,
+                    details: errorText.substring(0, 200),
+                  });
+                }
+              } catch (bridgeError: any) {
+                console.error(`❌ [Git API] Error calling bridge API:`, bridgeError.message);
+                return res.status(500).json({ 
+                  error: "Failed to fetch file from GRASP server",
+                  details: bridgeError.message,
+                });
+              }
+            }
+          } catch (decodeError: any) {
+            console.error(`❌ [Git API] Failed to decode npub from GRASP URL:`, decodeError.message);
+            return res.status(400).json({ 
+              error: "Invalid npub in GRASP server URL",
+              details: decodeError.message,
+            });
+          }
+        }
+        
+        return res.status(400).json({ 
+          error: "Invalid GRASP server URL format. Expected: https://domain/npub.../repo.git",
+          sourceUrl,
+        });
+      }
+      
       return res.status(400).json({ 
-        error: "Unsupported git server. Only GitHub, GitLab, and Codeberg are supported.",
+        error: "Unsupported git server. Only GitHub, GitLab, Codeberg, and GRASP servers are supported.",
         sourceUrl,
       });
     }

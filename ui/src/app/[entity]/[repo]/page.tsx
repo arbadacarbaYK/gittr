@@ -230,6 +230,7 @@ export default function RepoCodePage({
   const [isRefetching, setIsRefetching] = useState<boolean>(false);
   const [fetchStatusExpanded, setFetchStatusExpanded] = useState<boolean>(false);
   const [cloneUrlsExpanded, setCloneUrlsExpanded] = useState<boolean>(false);
+  const [mounted, setMounted] = useState(false);
   
   // Get owner metadata for Nostr profile picture fallback
   // Fetch metadata for both entity and actual owner pubkey (CRITICAL for imported repos)
@@ -407,6 +408,11 @@ export default function RepoCodePage({
       lastMetadataKeyRef.current = ownerMetadataKey;
     }
   }, [ownerMetadataKey]); // Only depend on key, not the object itself
+  
+  // Track mount state to prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   // Resolve actual owner pubkey for profile links (handles imported repos and Nostr-synced repos)
   const ownerPubkeyForLink = useMemo(() => {
@@ -820,12 +826,13 @@ export default function RepoCodePage({
       }
     }
 
+    // CRITICAL: Remove owner's pubkey from any contributor that isn't the owner
+    // This prevents imported GitHub contributors from incorrectly getting the owner's pubkey
     contributors = contributors.map((contributor) => {
       if (
         contributor.pubkey &&
         ownerPubkey &&
-        contributor.pubkey === ownerPubkey.toLowerCase() &&
-        contributor.githubLogin &&
+        contributor.pubkey.toLowerCase() === ownerPubkey.toLowerCase() &&
         contributor.role !== "owner"
       ) {
         console.warn("⚠️ [Contributors] Removing incorrect pubkey assignment from contributor:", {
@@ -1426,9 +1433,7 @@ export default function RepoCodePage({
     
     // CRITICAL: Log only primitives to avoid React re-render loops
     // Logging objects can trigger serialization that causes re-renders
-    console.log("🔍 [File Fetch] Checking repo:", 
-      `repo=${repoKeyWithBranch}, branch=${currentBranch}, hasFiles=${hasFiles}, hasSourceUrl=${hasSourceUrl}, hasRepoData=${!!currentRepoData}, filesLength=${currentRepoData?.files?.length || 0}, isFileOpening=${isFileOpening}`
-    );
+    // console.log("🔍 [File Fetch] Checking repo:", `repo=${repoKeyWithBranch}, branch=${currentBranch}, hasFiles=${hasFiles}, hasSourceUrl=${hasSourceUrl}, hasRepoData=${!!currentRepoData}, filesLength=${currentRepoData?.files?.length || 0}, isFileOpening=${isFileOpening}`);
     
     // If file opening is in progress, skip file fetching to prevent re-render loops
     if (isFileOpening && hasFiles) {
@@ -4460,8 +4465,17 @@ export default function RepoCodePage({
                       // Codeberg is supported via multi-source fetcher and fetchGithubRaw
                       console.log("ℹ️ [File Fetch] Codeberg sourceUrl detected - files should be fetched via multi-source fetcher or fetchGithubRaw");
                     } else {
-                      console.log("ℹ️ [File Fetch] sourceUrl is not a GitHub, GitLab, or Codeberg URL:", sourceUrl);
-                      console.log("ℹ️ [File Fetch] Other git servers (self-hosted, etc.) not yet supported");
+                      // Check if it's a GRASP server
+                      const { isGraspServer } = require("@/lib/utils/grasp-servers");
+                      if (isGraspServer(sourceUrl)) {
+                        console.log("ℹ️ [File Fetch] GRASP server detected:", sourceUrl);
+                        console.log("ℹ️ [File Fetch] GRASP servers are handled via multi-source fetcher or bridge API");
+                        // GRASP servers are handled via the multi-source fetcher in fetchGithubRaw
+                        // or via the bridge API endpoint, so we don't need special handling here
+                      } else {
+                        console.log("ℹ️ [File Fetch] sourceUrl is not a GitHub, GitLab, Codeberg, or GRASP server URL:", sourceUrl);
+                        console.log("ℹ️ [File Fetch] Other git servers (self-hosted, etc.) not yet supported");
+                      }
                     }
                   } else {
                     console.log("ℹ️ [File Fetch] No sourceUrl found - files must be pushed to git-nostr-bridge via git push");
@@ -4935,11 +4949,7 @@ export default function RepoCodePage({
   }
 
   async function fetchGithubRaw(path: string): Promise<{ content: string | null; url: string | null; isBinary: boolean }> {
-    console.log(`🔍 [fetchGithubRaw] Fetching file: ${path}`, {
-      hasRepoData: !!repoData,
-      filesCount: repoData?.files?.length || 0,
-      ownerPubkey: (repoData as any)?.ownerPubkey ? (repoData as any).ownerPubkey.slice(0, 8) : null,
-    });
+    // console.log(`🔍 [fetchGithubRaw] Fetching file: ${path}`, { hasRepoData: !!repoData, filesCount: repoData?.files?.length || 0, ownerPubkey: (repoData as any)?.ownerPubkey ? (repoData as any).ownerPubkey.slice(0, 8) : null });
 
     // Strategy 1: Check if file content is embedded in repoData.files array
     // According to the working insights: "Files embedded in Nostr events are always checked first"
@@ -5115,13 +5125,7 @@ export default function RepoCodePage({
       const branch = selectedBranch || repoData?.defaultBranch || "main";
       const apiUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(branch)}`;
       
-      console.log(`🔍 [fetchGithubRaw] Trying git-nostr-bridge API: ${apiUrl}`, {
-        ownerPubkey: ownerPubkey.slice(0, 8) + "...",
-        actualRepoName: repoName,
-        decodedRepoFromUrl: decodedRepo,
-        branch,
-        path,
-      });
+      // console.log(`🔍 [fetchGithubRaw] Trying git-nostr-bridge API: ${apiUrl}`, { ownerPubkey: ownerPubkey.slice(0, 8) + "...", actualRepoName: repoName, decodedRepoFromUrl: decodedRepo, branch, path });
       
       try {
         const response = await fetch(apiUrl);
@@ -6342,24 +6346,37 @@ export default function RepoCodePage({
                         : undefined;
                       const ownerPicture = ownerMeta?.picture;
                       // CRITICAL: Use metadata name/display_name if available, otherwise fallback to shortened npub
-                      let displayName = ownerMeta?.display_name || ownerMeta?.name;
-                      if (!displayName || displayName.trim().length === 0 || displayName === "Anonymous Nostrich") {
-                        // Fallback to shortened npub format
+                      // Use safe initial displayName to prevent hydration mismatch
+                      let displayName: string;
+                      if (mounted) {
+                        // After mount, use metadata if available
+                        displayName = ownerMeta?.display_name || ownerMeta?.name || "";
+                        if (!displayName || displayName.trim().length === 0 || displayName === "Anonymous Nostrich") {
+                          // Fallback to shortened npub format
+                          if (params.entity && params.entity.startsWith("npub")) {
+                            displayName = params.entity.substring(0, 16) + "...";
+                          } else {
+                            displayName = params.entity || "U";
+                          }
+                        }
+                      } else {
+                        // On server/initial render, use consistent fallback
                         if (params.entity && params.entity.startsWith("npub")) {
                           displayName = params.entity.substring(0, 16) + "...";
                         } else {
                           displayName = params.entity || "U";
                         }
                       }
-                  const ownerNpub = ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) 
+                  const ownerNpub = mounted && ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) 
                     ? nip19.npubEncode(ownerPubkeyForLink) 
                     : null;
                   const profileUrl = ownerNpub ? `/${ownerNpub}` : `/${params.entity}`;
-                  const tooltipContent = [
+                  // Use safe initial tooltip content to prevent hydration mismatch
+                  const tooltipContent = mounted ? [
                     displayName,
                     ownerNpub ? `npub: ${ownerNpub}` : null,
                     ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `pubkey: ${ownerPubkeyForLink}` : null,
-                  ].filter(Boolean).join('\n');
+                  ].filter(Boolean).join('\n') : displayName; // On server/initial render, only show displayName
                   
                   return (
                     <Tooltip content={tooltipContent}>
@@ -7230,7 +7247,7 @@ export default function RepoCodePage({
         </main>
       </div>
 
-      <aside className="col-span-1 lg:col-span-1 xl:col-span-1 space-y-2">
+      <aside className="col-span-1 lg:col-span-1 xl:col-span-1 space-y-2" suppressHydrationWarning>
         <div className="flex justify-between">
           <h3 className="font-bold">About</h3>
           <a 
@@ -7240,8 +7257,8 @@ export default function RepoCodePage({
             <Settings className="text-gray-400 h-4 w-4 hover:text-purple-500 cursor-pointer" />
           </a>
         </div>
-        <div className="pb-2 prose prose-invert max-w-none prose-p:text-sm prose-p:text-gray-300 prose-a:text-purple-400 prose-a:no-underline hover:prose-a:underline">
-          {repoData?.description ? (
+        <div className="pb-2 prose prose-invert max-w-none prose-p:text-sm prose-p:text-gray-300 prose-a:text-purple-400 prose-a:no-underline hover:prose-a:underline" suppressHydrationWarning>
+          {mounted && repoData?.description ? (
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeRaw]}
@@ -7259,8 +7276,8 @@ export default function RepoCodePage({
         </div>
         
         {/* Source URL / Git Server Info */}
-        {repoData?.sourceUrl && (
-          <div className="pt-2 border-t border-gray-700">
+        {mounted && repoData?.sourceUrl ? (
+          <div className="pt-2 border-t border-gray-700" suppressHydrationWarning>
             <p className="text-xs text-gray-400 mb-1">Git Server</p>
             <a 
               href={repoData.sourceUrl} 
@@ -7274,9 +7291,9 @@ export default function RepoCodePage({
               Files are stored on this git server (per NIP-34 architecture)
             </p>
           </div>
-        )}
+        ) : null}
         
-        {(httpCloneUrls.length > 0 || sshCloneUrls.length > 0 || nostrCloneUrls.length > 0) && (
+        {mounted && (httpCloneUrls.length > 0 || sshCloneUrls.length > 0 || nostrCloneUrls.length > 0) ? (
           <div className="pt-2 border-t border-gray-700">
             <button
               onClick={() => setCloneUrlsExpanded(!cloneUrlsExpanded)}
@@ -7355,10 +7372,10 @@ export default function RepoCodePage({
               </div>
             )}
           </div>
-        )}
+        ) : null}
         
         {/* Push to Nostr button for local repos */}
-        {(() => {
+        {mounted ? (() => {
           try {
             const repos = loadStoredRepos();
             // CRITICAL: Use findRepoByEntityAndName to support npub format
@@ -7427,18 +7444,10 @@ export default function RepoCodePage({
             // Show re-import button if repo exists but has no sourceUrl and user owns it
             const showReimportButton = !hasSourceUrl && !isNostrRepo && repoIsOwnerFlag && currentUserPubkey;
             
-            // DEBUG: Log why button might not be showing
-            if (!repoIsOwnerFlag || !currentUserPubkey || !publish || !subscribe || !defaultRelays || defaultRelays.length === 0) {
-              console.log("🔍 [Push Button] Button not showing because:", {
-                repoIsOwner: repoIsOwnerFlag,
-                currentUserPubkey: currentUserPubkey ? `${currentUserPubkey.substring(0, 8)}...` : null,
-                entityPubkey: entityPubkey ? `${entityPubkey.substring(0, 8)}...` : null,
-                entityMatches: currentUserPubkey && entityPubkey ? currentUserPubkey.toLowerCase() === entityPubkey.toLowerCase() : false,
-                publish: !!publish,
-                subscribe: !!subscribe,
-                defaultRelays: defaultRelays?.length || 0,
-              });
-            }
+            // Debug log removed - too verbose on every render
+            // if (!repoIsOwnerFlag || !currentUserPubkey || !publish || !subscribe || !defaultRelays || defaultRelays.length === 0) {
+            //   console.log("🔍 [Push Button] Button not showing because:", {...});
+            // }
             
             // CRITICAL: Show push button for ALL repos the user owns, regardless of status
             // This allows users to push/re-push their repos at any time
@@ -8077,9 +8086,9 @@ export default function RepoCodePage({
             }
           } catch {}
           return null;
-        })()}
+        })() : null}
         
-        {showZap && currentUserPubkey && (
+        {mounted && showZap && currentUserPubkey && (
           <div className="mb-4 pb-4 border-b border-lightgray">
             <h3 className="text-sm font-semibold mb-2">Zap this repo</h3>
             <RepoZapButton
@@ -8365,7 +8374,7 @@ export default function RepoCodePage({
         />
         
         {/* Display last successful Nostr event ID (if available) */}
-        {nostrEventId ? (
+        {mounted && nostrEventId ? (
                 <div className="mt-4 pt-4 border-t border-lightgray">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-bold text-sm">Nostr Event ID</h3>

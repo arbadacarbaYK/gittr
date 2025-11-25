@@ -33,7 +33,7 @@ import { nip19 } from "nostr-tools";
 import { recordActivity } from "@/lib/activity-tracking";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import { hasWriteAccess, isOwner as checkIsOwner } from "@/lib/repo-permissions";
-import { getRepoOwnerPubkey, resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
+import { getRepoOwnerPubkey, resolveEntityToPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
 import { getNostrPrivateKey, getSecureItem } from "@/lib/security/encryptedStorage";
 import { sendNotification, formatNotificationMessage } from "@/lib/notifications";
 import { createBountyEvent, KIND_BOUNTY } from "@/lib/nostr/events";

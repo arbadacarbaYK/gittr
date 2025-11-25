@@ -1,9 +1,7 @@
-// server component wrapper that exports metadata
-// and imports the client layout component
-
 import { Metadata } from 'next';
-import ClientLayout from './layout-client';
 
+// Default metadata for the site
+// Next.js App Router will pick this up automatically
 export const metadata: Metadata = {
   title: {
     default: 'gittr - Decentralized Git Hosting on Nostr',
@@ -52,34 +50,4 @@ export const metadata: Metadata = {
     canonical: process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space',
   },
 };
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <html lang="en">
-      <head>
-        {/* Apply theme before React hydrates to prevent flash */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  const theme = localStorage.getItem('gittr_theme') || 'classic';
-                  document.documentElement.setAttribute('data-theme', theme);
-                  document.documentElement.classList.add('dark');
-                } catch (e) {}
-              })();
-            `,
-          }}
-        />
-      </head>
-      <body className="dark">
-        <ClientLayout>{children}</ClientLayout>
-      </body>
-    </html>
-  );
-}
 

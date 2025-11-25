@@ -1,4 +1,8 @@
 "use client";
+
+// Force dynamic rendering - this page uses localStorage which is not available during static generation
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";

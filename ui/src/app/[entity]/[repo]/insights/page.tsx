@@ -65,10 +65,16 @@ export default function InsightsPage() {
   const entity = params?.entity ?? "";
   const repoName = params?.repo ?? "";
   
+  const [mounted, setMounted] = useState(false);
   const [repoData, setRepoData] = useState<StoredRepoSummary | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Load repo data
   useEffect(() => {
+    if (!mounted) return; // Don't load from localStorage until mounted
     try {
       const repos = parseJsonArray<StoredRepoSummary>(localStorage.getItem("gittr_repos"));
       const foundRepo = repos.find((storedRepo) => {
@@ -87,11 +93,20 @@ export default function InsightsPage() {
       console.error("Error loading repo data for insights:", error);
       setRepoData(null);
     }
-  }, [entity, repoName]);
+  }, [mounted, entity, repoName]);
 
   // Load additional stats from localStorage and activity tracking
   const stats = useMemo<RepoStats | null>(() => {
-    if (!entity || !repoName) return null;
+    if (!mounted || !entity || !repoName) {
+      // Return default stats on server/initial render to prevent hydration mismatch
+      return {
+        issues: { total: 0, open: 0, closed: 0 },
+        prs: { total: 0, open: 0, merged: 0, closed: 0 },
+        commits: 0,
+        discussions: 0,
+        activities: 0,
+      };
+    }
     
     const repoId = `${entity}/${repoName}`;
     
@@ -144,7 +159,7 @@ export default function InsightsPage() {
         activities: 0,
       };
     }
-  }, [entity, repoName]);
+  }, [mounted, entity, repoName]);
 
   const languageEntries = getLanguageEntries(repoData?.languages);
   const hasLanguageData = languageEntries.length > 0;

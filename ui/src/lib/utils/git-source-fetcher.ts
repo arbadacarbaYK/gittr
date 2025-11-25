@@ -719,6 +719,13 @@ async function fetchFromNostrGit(
           // CRITICAL: Only trigger clone for GRASP servers, not GitHub/Codeberg/GitLab
           // Use centralized isGraspServer function which includes pattern matching (git., git-\d+.)
           const isGraspServerCheck = cloneUrl && isGraspServerFn(cloneUrl);
+          console.log(`🔍 [Git Source] Clone trigger check:`, {
+            hasOwnerPubkey: !!ownerPubkey,
+            hasCloneUrl: !!cloneUrl,
+            isGraspServer: isGraspServerCheck,
+            cloneUrl: cloneUrl?.substring(0, 50) + "...",
+            ownerPubkey: ownerPubkey?.slice(0, 16) + "..."
+          });
           
           // CRITICAL: Normalize SSH URLs (git@host:path) and git:// URLs to https:// for clone API
           // The clone API will handle the conversion, but we need to pass https:// here

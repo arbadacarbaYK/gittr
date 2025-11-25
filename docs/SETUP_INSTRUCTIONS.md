@@ -392,7 +392,13 @@ This will automatically update the nginx config with SSL certificates.
 ```
 NEXT_PUBLIC_DOMAIN=gittr.space
 NEXT_PUBLIC_GIT_SSH_BASE=gittr.space
+NEXT_PUBLIC_SITE_URL=https://gittr.space
 ```
+
+**Note:** `NEXT_PUBLIC_SITE_URL` is used for:
+- SEO metadata (sitemap, robots.txt, Open Graph tags)
+- GRASP server file fetching (internal API calls)
+- Defaults to `https://gittr.space` if not set
 
 **Note:** The `git-nostr-bridge` service doesn't use these environment variables - it uses its own JSON config file (`~/.config/git-nostr/git-nostr-bridge.json`). The frontend uses `NEXT_PUBLIC_GIT_SSH_BASE` to construct clone URLs displayed to users.
 

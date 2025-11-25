@@ -9,17 +9,24 @@ import { formatDate24h } from "@/lib/utils/date-format";
 import { loadDiscussions, type Discussion } from "@/lib/discussions/storage";
 
 export default function DiscussionsPage() {
+  const [mounted, setMounted] = useState(false);
   const params = useParams<{ entity: string; repo: string }>();
   const entity = params?.entity || "";
   const repo = params?.repo || "";
   
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const refreshDiscussions = useCallback(() => {
+    if (!mounted) return; // Don't load from localStorage until mounted
     setDiscussions(loadDiscussions(entity, repo));
-  }, [entity, repo]);
+  }, [mounted, entity, repo]);
 
   useEffect(() => {
+    if (!mounted) return;
     refreshDiscussions();
     
     // Listen for new discussion creation

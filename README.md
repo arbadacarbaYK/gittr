@@ -101,11 +101,32 @@ gittr.space uses a sophisticated multi-source file fetching system that tries mu
 ```
 User clicks on a file
   ↓
-Strategy 1: Check if file content is embedded in repoData.files array
-   ├─ If found with content → Use embedded content ✅
+Strategy 1: Check localStorage for local repos (no sourceUrl, no cloneUrls)
+   ├─ If files found in localStorage → Use local files ✅
    └─ If not found → Continue to Strategy 2
   ↓
-Strategy 2: Try git-nostr-bridge API
+Strategy 2: Check if file content is embedded in repoData.files array
+   ├─ If found with content → Use embedded content ✅
+   └─ If not found → Continue to Strategy 3
+  ↓
+Strategy 3: Multi-source fetch (if repo has clone URLs)
+   ├─ Try all clone URLs in parallel:
+   │   ├─ GRASP servers → /api/nostr/repo/files → git-nostr-bridge
+   │   │   ├─ If 404 → /api/nostr/repo/clone → Poll (max 10 attempts, 2s delay) ✅
+   │   │   └─ If success → Use files from bridge ✅
+   │   ├─ GitHub → /api/git/file-content?sourceUrl=...&path=...&branch=...
+   │   ├─ GitLab → /api/git/file-content?sourceUrl=...&path=...&branch=...
+   │   ├─ Codeberg → /api/git/file-content?sourceUrl=...&path=...&branch=...
+   │   └─ Other GRASP servers → /api/git/file-content?sourceUrl=... → forwards to bridge API
+   ├─ If GRASP server returns 404 → Trigger clone → Poll (max 10 attempts, 2s delay) ✅
+   └─ If all fail → Continue to Strategy 4
+  ↓
+Strategy 4: Query Nostr for NIP-34 repository events
+   ├─ Subscribe to kind 30617 events with "#d" tag matching repo name
+   ├─ Extract files from event content (if embedded)
+   └─ Extract clone URLs and sourceUrl from event tags
+  ↓
+Strategy 5: Try git-nostr-bridge API (fallback)
    ├─ Resolve ownerPubkey:
    │   ├─ Check repoData.ownerPubkey
    │   ├─ Check localStorage for matching repo
@@ -114,14 +135,13 @@ Strategy 2: Try git-nostr-bridge API
    ├─ Success → Use content from git-nostr-bridge ✅
    ├─ 404 (not cloned) → Check if GRASP server
    │   ├─ If GRASP → Trigger clone → Poll (max 10 attempts, 2s delay) ✅
-   │   └─ If not GRASP → Continue to Strategy 3
-   └─ Error → Continue to Strategy 3
+   │   └─ If not GRASP → Continue to Strategy 6
+   └─ Error → Continue to Strategy 6
   ↓
-Strategy 3: Try external git servers via API proxy
+Strategy 6: Try external git servers via API proxy (final fallback)
    ├─ GitHub → /api/git/file-content?sourceUrl=...&path=...&branch=...
    ├─ GitLab → /api/git/file-content?sourceUrl=...&path=...&branch=...
    ├─ Codeberg → /api/git/file-content?sourceUrl=...&path=...&branch=...
-   └─ GRASP → /api/git/file-content?sourceUrl=...&path=...&branch=...
    └─ Note: SSH URLs (git@host:path) are normalized to HTTPS before API calls
   ↓
 Handle binary vs text files
@@ -182,13 +202,6 @@ Handle binary vs text files
 
 **✅ Security**: Your credentials NEVER leave your device, regardless of deployment option!
 
-## 🔐 Authentication
-
-gittr.space supports multiple authentication methods:
-
-- **NIP-07**: Browser extension (e.g., Alby, Nos2x)
-- **Private Key (nsec)**: Direct private key login
-- **NIP-05**: NIP05-ID-based verification
 
 ## 💰 Payment Configuration
 
@@ -264,7 +277,7 @@ The `gitnostr` Go components (`ui/gitnostr/`) are licensed under the **MIT Licen
 
 ## 🙏 Acknowledgments
 
-- Built on [NostrGit](https://github.com/NostrGit/NostrGit) UI (forked from original)
+- Built upon [NostrGit](https://github.com/NostrGit/NostrGit) UI (forked from original)
 - Uses [nostr-relaypool](https://github.com/adamritter/nostr-relaypool) for relay management
 - Uses [gitnostr](https://github.com/spearson78/gitnostr) Go components for Git operations
 - Implements [GRASP Protocol](https://ngit.dev/grasp/) for distributed Git hosting (newer than original NostrGit)
