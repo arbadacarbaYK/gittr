@@ -526,6 +526,22 @@ export default function HelpPage() {
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Local Storage</h3>
               <p>All your data (repos, keys, settings) is stored locally in your browser. It never leaves your device unless you explicitly push to Nostr.</p>
+              
+              <div className="mt-3 p-3 bg-yellow-900/20 border border-yellow-700/50 rounded">
+                <p className="text-yellow-200 font-semibold mb-2">⚠️ Browser & Domain Isolation</p>
+                <p className="text-sm text-gray-300 mb-2">
+                  Your data is stored separately for each browser and domain:
+                </p>
+                <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside ml-2">
+                  <li><strong>Different browsers</strong> (Chrome, Brave, Firefox) have separate storage</li>
+                  <li><strong>Different domains</strong> (localhost:3000 vs gittr.space) have separate storage</li>
+                  <li>Repos, PRs, Issues, and edits are <strong>not shared</strong> between browsers/domains</li>
+                </ul>
+                <p className="text-sm text-gray-300 mt-2">
+                  <strong>If you're missing repos, PRs, or edits:</strong> They might be in a different browser or on a different domain. 
+                  Use the <Link href="/explore" className="text-purple-400 hover:text-purple-300">Explore page</Link> to see all repos from Nostr (consistent across browsers).
+                </p>
+              </div>
             </div>
 
             <div>

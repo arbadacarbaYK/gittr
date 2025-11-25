@@ -65,6 +65,7 @@ export default function RepositoriesPage() {
   const router = useRouter();
   const { name: userName, isLoggedIn } = useSession();
   const { subscribe, publish, defaultRelays, pubkey } = useNostrContext();
+  const canAccessLocalStorage = typeof window !== "undefined" && typeof localStorage !== "undefined";
   
   // Clear clicked repo state when navigation completes
   useEffect(() => {
@@ -345,6 +346,7 @@ export default function RepositoriesPage() {
   
   // Load from localStorage first and listen for updates
   const loadRepos = useCallback(() => {
+    if (!canAccessLocalStorage) return;
     try {
       const list = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as Repo[];
       
@@ -1720,6 +1722,11 @@ export default function RepositoriesPage() {
           return false;
         }).length === 0 && <p>No repositories yet.</p>}
         {(() => {
+          // Guard against SSR/localStorage unavailability
+          if (typeof window === "undefined" || typeof localStorage === "undefined") {
+            return <p className="text-gray-400">Loading repositories...</p>;
+          }
+          
           // Load list of locally-deleted repos (user deleted them, don't show)
           const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
           

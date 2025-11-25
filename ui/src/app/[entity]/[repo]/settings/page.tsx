@@ -390,7 +390,14 @@ export default function RepoSettingsPage() {
       
       // CRITICAL: Publish deletion marker to Nostr (if repo was published)
       // This notifies other clients that the owner has deleted the repo
-      if (publish && pubkey && repoToDelete) {
+      // Only publish if repo was actually committed to Nostr (has event ID)
+      const wasPublishedToNostr = repoToDelete && (
+        (repoToDelete as any).lastNostrEventId || 
+        (repoToDelete as any).nostrEventId || 
+        (repoToDelete as any).syncedFromNostr
+      );
+      
+      if (publish && pubkey && repoToDelete && wasPublishedToNostr) {
         try {
           // Get private key for signing
           const privateKey = await getNostrPrivateKey();
@@ -423,6 +430,8 @@ export default function RepoSettingsPage() {
           console.error("Failed to publish deletion marker to Nostr:", error);
           // Continue with local deletion even if publishing fails
         }
+      } else if (repoToDelete && !wasPublishedToNostr) {
+        console.log("ℹ️ Repo was not published to Nostr, skipping deletion event");
       }
       
       // CRITICAL: Mark repo as locally deleted so it won't be re-added from Nostr sync

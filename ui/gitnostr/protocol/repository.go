@@ -5,4 +5,6 @@ type Repository struct {
 	PublicRead     bool   `json:"publicRead"`
 	PublicWrite    bool   `json:"publicWrite"`
 	GitSshBase     string `json:"gitSshBase"`
+	Deleted        bool   `json:"deleted"`
+	Archived       bool   `json:"archived"`
 }
