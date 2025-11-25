@@ -1659,19 +1659,41 @@ export default function ExplorePage() {
           return matches;
         }
         
-        // Filter by search query
+        // Filter by search query (searches in name, description, and topics)
         if (q) {
           const entity = r.entity || "";
           const repo = r.repo || r.slug || "";
           const name = r.name || repo;
-          const matches = (
-            `${entity}/${repo}`.toLowerCase().includes(q) ||
-            name.toLowerCase().includes(q)
-          );
-          if (!matches) {
-            console.log('🔍 [Explore] Filtered out repo (search filter):', r.slug || r.repo || r.name);
+          const description = (r.description || "").toLowerCase();
+          const topics = (r.topics || []).map((t: string) => t.toLowerCase());
+          
+          // Build searchable text from all fields
+          const searchableText = [
+            entity.toLowerCase(),
+            repo.toLowerCase(),
+            name.toLowerCase(),
+            description,
+            ...topics
+          ].join(" ");
+          
+          // Split query into words for flexible matching
+          const queryWords = q.split(/\s+/).filter(w => w.length > 0);
+          
+          // Check if all query words appear in the searchable text
+          // This allows "nip-07 extension" to match repos with topics like ["nip-07", "browser", "extensions"]
+          const allWordsMatch = queryWords.every(word => {
+            // Direct match
+            if (searchableText.includes(word)) return true;
+            // Plural/singular variations
+            if (searchableText.includes(word + "s")) return true;
+            if (word.endsWith("s") && searchableText.includes(word.slice(0, -1))) return true;
+            return false;
+          });
+          
+          if (!allWordsMatch) {
+            console.log('🔍 [Explore] Filtered out repo (search filter):', r.slug || r.repo || r.name, 'query:', q, 'topics:', topics);
           }
-          return matches;
+          return allWordsMatch;
         }
         
         return true;
