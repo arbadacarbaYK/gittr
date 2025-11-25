@@ -18,6 +18,12 @@ data
 .env.*.local
 .env
 # Personal credentials - never commit
+*.key
+*.pem
+*.pkey
+tmpkey
+**/tmpkey
+ui/tmpkey
 
 # Server configs (contain server-specific paths/IPs)
 /etc/nginx/sites-available/gittr
