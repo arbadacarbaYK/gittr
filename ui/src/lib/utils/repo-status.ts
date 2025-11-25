@@ -89,26 +89,29 @@ export function getRepoStatus(repo: any): RepoStatus {
   // If event ID exists but bridge hasn't processed it, check if there are actual edits
   if (hasEventId && bridgeProcessed === true) {
     // Event published AND bridge processed - truly "live"
-  if (hasEventId && !hasFiles) {
+    if (!hasFiles) {
       return "live_with_edits"; // Pushed but no files yet
   }
     return hasUnpushedEdits ? "live_with_edits" : "live";
   }
   
-  // If event ID exists but bridge hasn't processed it yet:
+  // If event ID exists but bridge hasn't confirmed processing yet:
+  // We push directly to bridge API, but still need to verify it was processed
   // Only show "live" if bridge has explicitly confirmed it processed the event
   // BUT: For repos pushed days ago, assume they're live until bridge check says otherwise
-  // Only NEW pushes (recent eventCreatedAt) should show "awaiting bridge"
-  if (hasEventId && (bridgeProcessed === undefined || bridgeProcessed === false)) {
+  // Only NEW pushes (recent eventCreatedAt) should show "verifying" status
+  if (hasEventId && bridgeProcessed !== true) {
     // Check if this is a recent push (within last hour) or an old push (days ago)
     const eventCreatedAt = repo.lastNostrEventCreatedAt || repo.nostrEventCreatedAt;
     const isRecentPush = eventCreatedAt && (Date.now() / 1000 - eventCreatedAt) < 3600; // Within last hour
     
-    if (isRecentPush) {
-      // Recent push - bridge might not have processed it yet, show as "awaiting bridge"
-      return "live_with_edits"; // Show as "Published (Awaiting Bridge)" for recent pushes
+    // If bridgeProcessed is explicitly false (bridge was checked and repo doesn't exist), always show "verifying"
+    // If bridgeProcessed is undefined (not checked yet), only show "verifying" for recent pushes
+    if (bridgeProcessed === false || isRecentPush) {
+      // Bridge confirmed it doesn't exist, OR recent push - show as "verifying"
+      return "live_with_edits"; // Show as "Published (Verifying...)"
     } else {
-      // Old push (days ago) - assume it was processed by bridge, show as "live" optimistically
+      // Old push (days ago) and bridge not checked yet - assume it was processed by bridge, show as "live" optimistically
       // Bridge check will update this when it runs
       return hasUnpushedEdits ? "live_with_edits" : "live";
     }
@@ -180,7 +183,7 @@ export function getStatusBadgeStyle(status: RepoStatus): { bg: string; text: str
       return {
         bg: "bg-orange-600/30",
         text: "text-orange-300",
-        label: "Published (Awaiting Bridge)" // More accurate: published to Nostr but bridge hasn't processed yet
+        label: "Published (Verifying...)" // Published to Nostr and bridge API, verifying bridge processed it
       };
     default:
       return {

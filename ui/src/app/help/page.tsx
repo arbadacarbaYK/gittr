@@ -195,8 +195,8 @@ export default function HelpPage() {
               <ul className="list-disc list-inside space-y-1 ml-4">
                 <li><span className="text-yellow-400">Local</span> - Only exists on your device</li>
                 <li><span className="text-blue-400">Pushing...</span> - Currently being published to Nostr</li>
-                <li><span className="text-green-400">Live on Nostr</span> - Published and visible to others</li>
-                <li><span className="text-orange-400">Live (Unpushed Edits)</span> - Has local changes not yet published</li>
+                <li><span className="text-green-400">Live on Nostr</span> - Published to Nostr relays and processed by bridge</li>
+                <li><span className="text-orange-400">Published (Verifying...)</span> - Published to Nostr and sent to bridge, verifying bridge processed it</li>
                 <li><span className="text-red-400">Push Failed</span> - Publication attempt failed</li>
               </ul>
             </div>
