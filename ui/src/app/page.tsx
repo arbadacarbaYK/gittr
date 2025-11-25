@@ -105,8 +105,18 @@ type Repo = {
 };
 
 export default function HomePage() {
-  const { isLoggedIn, name } = useSession();
+  const { isLoggedIn: sessionIsLoggedIn, name: sessionName } = useSession();
   const { pubkey, defaultRelays, subscribe, addRelay } = useNostrContext();
+  
+  // Fix hydration mismatch: start with server-safe values, update after mount
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [name, setName] = useState<string | undefined>(undefined);
+  
+  useEffect(() => {
+    // Only update after mount to avoid hydration mismatch
+    setIsLoggedIn(sessionIsLoggedIn);
+    setName(sessionName);
+  }, [sessionIsLoggedIn, sessionName]);
   const [repos, setRepos] = useState<Repo[]>([]);
   const [topRepos, setTopRepos] = useState<RepoStats[]>([]);
   const [topDevs, setTopDevs] = useState<UserStats[]>([]);
@@ -193,9 +203,25 @@ export default function HomePage() {
             // Process events immediately (for responsive UI)
             if (event.kind === KIND_REPOSITORY || event.kind === KIND_REPOSITORY_NIP34) {
               try {
-                const repoData = event.kind === KIND_REPOSITORY_NIP34 
-                  ? parseNIP34Repository(event)
-                  : JSON.parse(event.content);
+                let repoData: any;
+                if (event.kind === KIND_REPOSITORY_NIP34) {
+                  repoData = parseNIP34Repository(event);
+                } else {
+                  // Kind 51: Try to parse as JSON, but handle non-JSON content gracefully
+                  if (event.content && event.content.trim().startsWith('{')) {
+                    try {
+                      repoData = JSON.parse(event.content);
+                    } catch (parseError) {
+                      // Content is not valid JSON - skip this event
+                      console.warn("⚠️ [Home] Kind 51 event content is not valid JSON, skipping:", event.id.slice(0, 8), event.content?.substring(0, 50));
+                      return;
+                    }
+                  } else {
+                    // Content is empty or not JSON - skip this event
+                    console.warn("⚠️ [Home] Kind 51 event has no JSON content, skipping:", event.id.slice(0, 8));
+                    return;
+                  }
+                }
                 
                 const existingRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
                 const repoName = repoData.repositoryName || repoData.name || "";
@@ -544,6 +570,31 @@ export default function HomePage() {
     
     // Return top 12 unique repos
     return filtered.slice(0, 12);
+  }, [repos]);
+
+  // Extract and count topics from all repos for tag cloud
+  const tagCloud = useMemo(() => {
+    const topicCounts = new Map<string, number>();
+    
+    // Count topics from all repos (not just recent)
+    repos.forEach((r: any) => {
+      if (r.topics && Array.isArray(r.topics)) {
+        r.topics.forEach((topic: string) => {
+          if (topic && typeof topic === 'string' && topic.trim().length > 0) {
+            const normalized = topic.trim().toLowerCase();
+            topicCounts.set(normalized, (topicCounts.get(normalized) || 0) + 1);
+          }
+        });
+      }
+    });
+    
+    // Convert to array and sort by frequency (descending)
+    const sorted = Array.from(topicCounts.entries())
+      .map(([topic, count]) => ({ topic, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 30); // Top 30 topics
+    
+    return sorted;
   }, [repos]);
 
   // Get metadata for user avatars (stats)
@@ -1462,12 +1513,39 @@ export default function HomePage() {
             </div>
           </div>
 
+          {tagCloud.length > 0 && (
           <div className="border border-[#383B42] rounded p-4">
-            <h3 className="font-semibold mb-2">Tips</h3>
-            <ul className="list-disc list-inside text-gray-400 text-sm space-y-1">
-              <li>Import from GitHub to populate code and README.</li>
-              <li>Enable zaps in Settings → Account.</li>
-              <li>Link your GitHub profile to show contributor icons.</li>
+              <h3 className="font-semibold mb-3">Popular Topics</h3>
+              <div className="flex flex-wrap gap-2">
+                {tagCloud.map(({ topic, count }) => {
+                  // Calculate size based on frequency (min 0.75rem, max 1.25rem)
+                  const maxCount = tagCloud[0]?.count || 1;
+                  const minSize = 0.75;
+                  const maxSize = 1.25;
+                  const size = minSize + ((count / maxCount) * (maxSize - minSize));
+                  
+                  return (
+                    <Link
+                      key={topic}
+                      href={`/explore?q=${encodeURIComponent(topic)}`}
+                      className="inline-block px-2 py-1 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 hover:text-purple-200 transition-all duration-200 hover:scale-105"
+                      style={{ fontSize: `${size}rem` }}
+                    >
+                      {topic}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="border border-[#383B42] rounded p-4">
+            <h3 className="font-semibold mb-2">💡 Quick Tips</h3>
+            <ul className="list-disc list-inside text-gray-400 text-sm space-y-1.5">
+              <li><span className="text-purple-400">💰 Bounties:</span> Post Lightning bounties on issues to incentivize contributions</li>
+              <li><span className="text-purple-400">⚡ Zaps:</span> Support repos and contributors directly with Lightning payments</li>
+              <li><span className="text-purple-400">🔍 Explore:</span> Discover repos by topic tags or browse all public repositories</li>
+              <li><span className="text-purple-400">🔗 Import:</span> Bring your GitHub repos to Nostr for decentralized hosting</li>
             </ul>
           </div>
         </aside>

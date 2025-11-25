@@ -18,6 +18,15 @@ export default function Login() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
+  // Use state for NIP-07 detection to prevent hydration mismatch
+  const [hasNip07, setHasNip07] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Check for NIP-07 extension after mount (prevents hydration mismatch)
+  useEffect(() => {
+    setMounted(true);
+    setHasNip07(typeof window !== "undefined" && typeof window.nostr !== "undefined");
+  }, []);
 
   // TODO : setAuthor needs to be tweaked (don't remove but tweak *_*)
 
@@ -154,8 +163,7 @@ export default function Login() {
                 </Button>
               </div>
             </form>
-            {typeof window !== "undefined" &&
-            typeof window.nostr !== "undefined" ? (
+            {mounted && hasNip07 ? (
               <div className="mt-6">
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
@@ -176,7 +184,41 @@ export default function Login() {
                   </Button>
                 </div>
               </div>
+            ) : mounted ? (
+              <div className="mt-6">
+                <div className="relative">
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-2">Or</span>
+                  </div>
+                </div>
+                <div className="mt-6">
+                  <div className="relative">
+                    <div className="relative flex justify-center text-center text-sm">
+                      <span className="px-2">
+                        <span className="mr-1">
+                          For better security, download a NIP-07 extension like
+                        </span>
+                        <a
+                          className="underline"
+                          href="https://www.getflamingo.org"
+                        >
+                          Flamingo
+                        </a>
+                        <span className="ml-1 mr-1">or</span>
+                        <a
+                          className="underline"
+                          href="https://addons.mozilla.org/en-US/firefox/addon/nos2x-fox/"
+                        >
+                          nos2x-fox
+                        </a>
+                        .
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             ) : (
+              // Server-side render: show placeholder to match client initial render
               <div className="mt-6">
                 <div className="relative">
                   <div className="relative flex justify-center text-sm">
