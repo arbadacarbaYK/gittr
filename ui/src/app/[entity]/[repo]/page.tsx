@@ -1690,14 +1690,58 @@ export default function RepoCodePage({
         const repoKeyWithBranch = `${repoKey}:${currentBranch}`;
         
         // Check if already attempted or in progress
-        if (fileFetchAttemptedRef.current === repoKeyWithBranch || fileFetchInProgressRef.current) {
-          console.log("⏭️ [File Fetch] Already attempted or in progress, skipping initial clone URLs fetch:", repoKeyWithBranch);
+        // CRITICAL: Still try clone URLs if no files were found yet (prevent blocking legitimate fetches)
+        const currentData = repoDataRef.current;
+        const hasFiles = currentData?.files && Array.isArray(currentData.files) && currentData.files.length > 0;
+        
+        if ((fileFetchAttemptedRef.current === repoKeyWithBranch || fileFetchInProgressRef.current) && hasFiles) {
+          console.log("⏭️ [File Fetch] Already attempted and files found, skipping initial clone URLs fetch:", repoKeyWithBranch);
           return;
         }
         
         if (initialCloneUrls.length > 0) {
           console.log(`🔍 [File Fetch] NIP-34: Found ${initialCloneUrls.length} clone URLs (including expanded), attempting multi-source fetch immediately`);
           const branch = String(initialRepoData?.defaultBranch || "main");
+          
+          // CRITICAL: Trigger clone IMMEDIATELY for GRASP servers when clone URLs are found
+          // Don't wait for bridge 404 - start cloning proactively
+          const { isGraspServer: isGraspServerFn } = require("@/lib/utils/grasp-servers");
+          const graspCloneUrl = initialCloneUrls.find((url: string) => 
+            isGraspServerFn(url) && 
+            (url.startsWith('http://') || url.startsWith('https://'))
+          );
+          
+          if (graspCloneUrl && resolvedOwnerPubkey && /^[0-9a-f]{64}$/i.test(resolvedOwnerPubkey)) {
+            const actualRepoName = initialRepoData?.name || initialRepoData?.repo || initialRepoData?.slug || String(decodedRepo || "");
+            console.log(`🚀 [File Fetch] Proactively triggering clone for GRASP server: ${graspCloneUrl.substring(0, 50)}...`);
+            
+            // Trigger clone in background (don't await - non-blocking)
+            fetch("/api/nostr/repo/clone", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ 
+                cloneUrl: graspCloneUrl, 
+                ownerPubkey: resolvedOwnerPubkey, 
+                repo: actualRepoName 
+              })
+            })
+              .then(async (cloneResponse) => {
+                if (cloneResponse.ok) {
+                  const cloneData = await cloneResponse.json();
+                  console.log(`✅ [File Fetch] Clone triggered successfully (proactive):`, cloneData);
+                } else {
+                  const cloneError = await cloneResponse.json().catch(() => ({ error: "Unknown error" }));
+                  if (cloneError.message?.includes("already exists")) {
+                    console.log(`ℹ️ [File Fetch] Repository already cloned (proactive check)`);
+                  } else {
+                    console.warn(`⚠️ [File Fetch] Proactive clone failed: ${cloneResponse.status} -`, cloneError);
+                  }
+                }
+              })
+              .catch((cloneError: any) => {
+                console.warn(`⚠️ [File Fetch] Failed to trigger proactive clone:`, cloneError.message);
+              });
+          }
           
           // Mark as attempted BEFORE starting to prevent other triggers
           fileFetchAttemptedRef.current = repoKeyWithBranch;
@@ -1947,7 +1991,8 @@ export default function RepoCodePage({
           // Capture variables in closure for use in nested callbacks
           const setRepoDataFn = setRepoData;
           const paramsEntity = params.entity;
-          const paramsRepo = params.repo;
+          // CRITICAL: Use decoded repo name for Nostr filter - URL-encoded names won't match events!
+          const paramsRepo = decodedRepo;
           let foundFiles = false;
           let unsub: (() => void) | undefined;
           // Store sourceUrl and clone URLs from events for fallback use (accessible in closure)
@@ -2068,12 +2113,28 @@ export default function RepoCodePage({
                       // GRASP protocol: Extract clone and relay tags
                       else if (tagName === "clone") {
                         // CRITICAL: Filter out localhost URLs - they're not real git servers
+                        console.log(`🔍 [File Fetch] Found clone tag: tagValue=${tagValue}, isValid=${!!tagValue}, isLocalhost=${tagValue?.includes('localhost') || tagValue?.includes('127.0.0.1')}`);
                         if (tagValue && !tagValue.includes('localhost') && !tagValue.includes('127.0.0.1')) {
                         if (!eventRepoData.clone) eventRepoData.clone = [];
                         if (!eventRepoData.clone.includes(tagValue)) {
                           eventRepoData.clone.push(tagValue);
                           console.log(`✅ [File Fetch] Added clone URL from event tag: ${tagValue} (total: ${eventRepoData.clone.length})`);
+                          // CRITICAL: Immediately save clone URLs to repoData state so they're available for fetching
+                          setRepoData((prev: any) => {
+                            if (!prev) return prev;
+                            const currentClone = prev.clone || [];
+                            if (!currentClone.includes(tagValue)) {
+                              const newClone = [...currentClone, tagValue];
+                              console.log(`💾 [File Fetch] Saving clone URL to repoData immediately: ${tagValue} (total: ${newClone.length})`);
+                              return { ...prev, clone: newClone };
+                            }
+                            return prev;
+                          });
+                          } else {
+                            console.log(`⏭️ [File Fetch] Clone URL already in array: ${tagValue}`);
                           }
+                        } else {
+                          console.log(`⚠️ [File Fetch] Skipping clone URL (localhost/invalid): ${tagValue}`);
                         }
                       }
                       else if (tagName === "relay" || tagName === "relays") {
@@ -2145,6 +2206,17 @@ export default function RepoCodePage({
                           // CRITICAL: Filter out localhost URLs - they're not real git servers
                           if (url && !url.includes('localhost') && !url.includes('127.0.0.1') && !eventRepoData.clone.includes(url)) {
                             eventRepoData.clone.push(url);
+                            // CRITICAL: Immediately save clone URLs to repoData state so they're available for fetching
+                            setRepoData((prev: any) => {
+                              if (!prev) return prev;
+                              const currentClone = prev.clone || [];
+                              if (!currentClone.includes(url)) {
+                                const newClone = [...currentClone, url];
+                                console.log(`💾 [File Fetch] Saving clone URL from content to repoData: ${url} (total: ${newClone.length})`);
+                                return { ...prev, clone: newClone };
+                              }
+                              return prev;
+                            });
                           }
                         });
                       }
@@ -2180,7 +2252,21 @@ export default function RepoCodePage({
                         // CRITICAL: Filter out localhost URLs - they're not real git servers
                         if (tagValue && !tagValue.includes('localhost') && !tagValue.includes('127.0.0.1')) {
                         if (!eventRepoData.clone) eventRepoData.clone = [];
-                        eventRepoData.clone.push(tagValue);
+                        if (!eventRepoData.clone.includes(tagValue)) {
+                          eventRepoData.clone.push(tagValue);
+                          console.log(`✅ [File Fetch] Added clone URL from Kind 51 event tag: ${tagValue} (total: ${eventRepoData.clone.length})`);
+                          // CRITICAL: Immediately save clone URLs to repoData state so they're available for fetching
+                          setRepoData((prev: any) => {
+                            if (!prev) return prev;
+                            const currentClone = prev.clone || [];
+                            if (!currentClone.includes(tagValue)) {
+                              const newClone = [...currentClone, tagValue];
+                              console.log(`💾 [File Fetch] Saving clone URL to repoData immediately (Kind 51): ${tagValue} (total: ${newClone.length})`);
+                              return { ...prev, clone: newClone };
+                            }
+                            return prev;
+                          });
+                        }
                         }
                       }
                       else if (tagName === "relay" || tagName === "relays") {
@@ -2611,13 +2697,16 @@ export default function RepoCodePage({
                   const eventContentPreview = event.content ? event.content.substring(0, 100) : "no content";
                   console.log(`⚠️ [File Fetch] Event found but files not accepted: reason=${reason}, eventRepoName=${eventRepoData.repositoryName || 'none'}, expectedRepoName=${params.repo}, repoNameMatches=${repoNameMatches}, contentMatches=${contentMatches}, pubkeyMatches=${pubkeyMatches}, hasFiles=${!!(eventRepoData.files && Array.isArray(eventRepoData.files))}, filesLength=${eventRepoData.files?.length || 0}, eventKeys=${eventKeys}, contentPreview=${eventContentPreview}`);
                   
-                  // CRITICAL: Even if event doesn't have files, we should still extract sourceUrl
+                  // CRITICAL: Even if event doesn't have files, we should still extract sourceUrl, clone URLs, and relays
                   // This is needed for the GitHub fallback when git-nostr-bridge returns 404
                   // Store in closure variable for immediate use, and update repoData
                   const allKeys = Object.keys(eventRepoData).join(',');
-                  console.log(`🔍 [File Fetch] Checking for sourceUrl in eventRepoData: hasSourceUrl=${!!eventRepoData.sourceUrl}, hasForkedFrom=${!!eventRepoData.forkedFrom}, sourceUrl=${eventRepoData.sourceUrl || 'none'}, forkedFrom=${eventRepoData.forkedFrom || 'none'}, allKeys=${allKeys}`);
+                  const hasClone = eventRepoData.clone && Array.isArray(eventRepoData.clone) && eventRepoData.clone.length > 0;
+                  console.log(`🔍 [File Fetch] Checking for sourceUrl/clone in eventRepoData: hasSourceUrl=${!!eventRepoData.sourceUrl}, hasForkedFrom=${!!eventRepoData.forkedFrom}, hasClone=${hasClone}, cloneCount=${hasClone ? eventRepoData.clone.length : 0}, sourceUrl=${eventRepoData.sourceUrl || 'none'}, forkedFrom=${eventRepoData.forkedFrom || 'none'}, allKeys=${allKeys}`);
                   
-                  if (eventRepoData.sourceUrl || eventRepoData.forkedFrom) {
+                  // CRITICAL: Always save clone URLs, relays, and other metadata even if no files or sourceUrl
+                  // This ensures NIP-34 repos with clone URLs can be fetched via multi-source fetcher
+                  if (eventRepoData.sourceUrl || eventRepoData.forkedFrom || hasClone || eventRepoData.relays) {
                     sourceUrlFromEvent = eventRepoData.sourceUrl || eventRepoData.forkedFrom;
                     // CRITICAL: Only update state if values actually changed (prevents unnecessary re-renders)
                     setRepoData((prev: any) => {
@@ -2641,7 +2730,7 @@ export default function RepoCodePage({
                         return prev;
                       }
                       
-                      console.log(`✅ [File Fetch] Event has sourceUrl - saving for fallback: sourceUrl=${eventRepoData.sourceUrl || 'none'}, forkedFrom=${eventRepoData.forkedFrom || 'none'}, storedForFallback=${sourceUrlFromEvent || 'none'}`);
+                      console.log(`✅ [File Fetch] Updating repoData with metadata from event (no files): sourceUrl=${eventRepoData.sourceUrl || 'none'}, forkedFrom=${eventRepoData.forkedFrom || 'none'}, cloneCount=${newClone?.length || 0}, relaysCount=${newRelays?.length || 0}`);
                       return {
                         ...prev,
                         name: newName,
@@ -2688,7 +2777,27 @@ export default function RepoCodePage({
                           };
                         });
                       } else {
+                        // CRITICAL: Even if clone URLs are from Nostr git servers, save them to repoData
+                        // They'll be used by the multi-source fetcher
                         console.log("ℹ️ [File Fetch] Event has clone URLs but none are GitHub/GitLab/Codeberg - will use multi-source fetcher for Nostr git servers");
+                        setRepoData((prev: any) => {
+                          if (!prev) return prev;
+                          const newClone = (eventRepoData.clone && Array.isArray(eventRepoData.clone)) 
+                            ? eventRepoData.clone.filter((url: string) => url && !url.includes('localhost') && !url.includes('127.0.0.1'))
+                            : prev.clone;
+                          // Skip update if clone URLs are already the same
+                          if (JSON.stringify(prev.clone) === JSON.stringify(newClone)) {
+                            return prev;
+                          }
+                          console.log(`✅ [File Fetch] Saving ${newClone.length} clone URLs to repoData (Nostr git servers)`);
+                          return {
+                            ...prev,
+                            clone: newClone,
+                            relays: eventRepoData.relays || prev.relays,
+                            name: eventRepoData.repositoryName || prev.name,
+                            repo: eventRepoData.repositoryName || prev.repo,
+                          };
+                        });
                       }
                     } else {
                       console.log("❌ [File Fetch] Event has NO sourceUrl or forkedFrom - cannot fetch from git server");
@@ -2753,7 +2862,7 @@ export default function RepoCodePage({
                   console.log("⏭️ [File Fetch] This is NORMAL for foreign repos - files are served from git servers, not from events");
                   
                   // Try multi-source fetching if we have clone URLs
-                  const currentData = repoDataRef.current;
+                  const eoseCurrentData = repoDataRef.current;
                   const cloneUrls: string[] = [];
                   
                   // Get clone URLs from event data (stored in closure) - PRIORITY 1
@@ -2768,9 +2877,9 @@ export default function RepoCodePage({
                   }
                   
                   // Also check repoData - PRIORITY 2
-                  if (currentData?.clone && Array.isArray(currentData.clone) && currentData.clone.length > 0) {
-                    console.log(`📋 [File Fetch] NIP-34: Found ${currentData.clone.length} clone URLs in repoData`);
-                    currentData.clone.forEach((url: string) => {
+                  if (eoseCurrentData?.clone && Array.isArray(eoseCurrentData.clone) && eoseCurrentData.clone.length > 0) {
+                    console.log(`📋 [File Fetch] NIP-34: Found ${eoseCurrentData.clone.length} clone URLs in repoData`);
+                    eoseCurrentData.clone.forEach((url: string) => {
                       // CRITICAL: Filter out localhost URLs - they're not real git servers
                       if (url && !url.includes('localhost') && !url.includes('127.0.0.1') && !cloneUrls.includes(url)) {
                         cloneUrls.push(url);
@@ -2807,7 +2916,7 @@ export default function RepoCodePage({
                   // CRITICAL: If we have a sourceUrl but it's not in clone URLs, add it!
                   // This handles cases where the repo exists on GitHub/Codeberg/GitLab but the clone URL wasn't in the NIP-34 event
                   // Check both repoDataRef and localStorage for sourceUrl
-                  let sourceUrl = currentData?.sourceUrl || currentData?.forkedFrom;
+                  let sourceUrl = eoseCurrentData?.sourceUrl || eoseCurrentData?.forkedFrom;
                   if (!sourceUrl && typeof window !== "undefined") {
                     try {
                       const repos = loadStoredRepos();
@@ -2879,21 +2988,67 @@ export default function RepoCodePage({
                   // If we have clone URLs, try multi-source fetching (NIP-34)
                   // CRITICAL: Check if we've already attempted this fetch to prevent multiple runs
                   const repoKey = `${params.entity}/${params.repo}`;
-                  const currentBranch = String(currentData?.defaultBranch || "main");
+                  const currentBranch = String(eoseCurrentData?.defaultBranch || "main");
                   const repoKeyWithBranch = `${repoKey}:${currentBranch}`;
                   
                   // Check if already attempted or in progress
-                  if (fileFetchAttemptedRef.current === repoKeyWithBranch || fileFetchInProgressRef.current) {
-                    console.log("⏭️ [File Fetch] Already attempted or in progress, skipping EOSE clone URLs fetch:", repoKeyWithBranch);
-                    // CRITICAL: Still try git-nostr-bridge as fallback even if multi-source fetch was skipped
-                    console.log("⏭️ [File Fetch] Falling back to git-nostr-bridge (multi-source fetch was skipped)");
-                    fetchFromGitNostrBridge();
+                  // CRITICAL: Still try clone URLs if no files found yet (prevent blocking legitimate fetches)
+                  const eoseHasFiles = eoseCurrentData?.files && Array.isArray(eoseCurrentData.files) && eoseCurrentData.files.length > 0;
+                  
+                  if ((fileFetchAttemptedRef.current === repoKeyWithBranch || fileFetchInProgressRef.current) && eoseHasFiles) {
+                    console.log("⏭️ [File Fetch] Already attempted and files found, skipping EOSE clone URLs fetch:", repoKeyWithBranch);
                     return;
+                  }
+                  
+                  // If already attempted but no files, still try clone URLs (they might work now)
+                  if (fileFetchAttemptedRef.current === repoKeyWithBranch || fileFetchInProgressRef.current) {
+                    console.log("⏭️ [File Fetch] Already attempted but no files found, will try clone URLs anyway:", repoKeyWithBranch);
+                    // Don't return - continue to try clone URLs below
                   }
                   
                   if (cloneUrls.length > 0) {
                     console.log(`🔍 [File Fetch] NIP-34: Found ${cloneUrls.length} clone URLs after EOSE, attempting multi-source fetch`);
-                    const branch = String(currentData?.defaultBranch || "main");
+                    const branch = String(eoseCurrentData?.defaultBranch || "main");
+                    
+                    // CRITICAL: Trigger clone IMMEDIATELY for GRASP servers when clone URLs are found
+                    // Don't wait for bridge 404 - start cloning proactively
+                    const { isGraspServer: isGraspServerFn } = require("@/lib/utils/grasp-servers");
+                    const graspCloneUrl = cloneUrls.find((url: string) => 
+                      isGraspServerFn(url) && 
+                      (url.startsWith('http://') || url.startsWith('https://'))
+                    );
+                    
+                    if (graspCloneUrl && resolvedOwnerPubkey && /^[0-9a-f]{64}$/i.test(resolvedOwnerPubkey)) {
+                      const actualRepoName = eoseCurrentData?.name || eoseCurrentData?.repo || eoseCurrentData?.slug || String(decodedRepo || "");
+                      console.log(`🚀 [File Fetch] Proactively triggering clone for GRASP server (EOSE): ${graspCloneUrl.substring(0, 50)}...`);
+                      
+                      // Trigger clone in background (don't await - non-blocking)
+                      fetch("/api/nostr/repo/clone", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ 
+                          cloneUrl: graspCloneUrl, 
+                          ownerPubkey: resolvedOwnerPubkey, 
+                          repo: actualRepoName 
+                        })
+                      })
+                        .then(async (cloneResponse) => {
+                          if (cloneResponse.ok) {
+                            const cloneData = await cloneResponse.json();
+                            console.log(`✅ [File Fetch] Clone triggered successfully (proactive EOSE):`, cloneData);
+                          } else {
+                            const cloneError = await cloneResponse.json().catch(() => ({ error: "Unknown error" }));
+                            if (cloneError.message?.includes("already exists")) {
+                              console.log(`ℹ️ [File Fetch] Repository already cloned (proactive EOSE check)`);
+                            } else {
+                              console.warn(`⚠️ [File Fetch] Proactive clone failed (EOSE): ${cloneResponse.status} -`, cloneError);
+                            }
+                          }
+                        })
+                        .catch((cloneError: any) => {
+                          console.warn(`⚠️ [File Fetch] Failed to trigger proactive clone (EOSE):`, cloneError.message);
+                        });
+                    }
                     
                     // Mark as attempted BEFORE starting to prevent other triggers
                     fileFetchAttemptedRef.current = repoKeyWithBranch;
@@ -3110,7 +3265,7 @@ export default function RepoCodePage({
                       fileFetchInProgressRef.current = false;
                       // CRITICAL: Mark as attempted to prevent re-fetching (files are now loaded)
                       const currentRepoKey = `${params.entity}/${params.repo}`;
-                      const currentBranch = String(currentData?.defaultBranch || "main");
+                      const currentBranch = String(eoseCurrentData?.defaultBranch || "main");
                       fileFetchAttemptedRef.current = `${currentRepoKey}:${currentBranch}`;
                       if (unsub) unsub();
                       return; // Success - exit early
@@ -4478,7 +4633,14 @@ export default function RepoCodePage({
                       }
                     }
                   } else {
-                    console.log("ℹ️ [File Fetch] No sourceUrl found - files must be pushed to git-nostr-bridge via git push");
+                    // Check if clone URLs exist - if so, they should have been tried already
+                    const currentData = repoDataRef.current;
+                    const hasCloneUrls = currentData?.clone && Array.isArray(currentData.clone) && currentData.clone.length > 0;
+                    if (hasCloneUrls) {
+                      console.log("ℹ️ [File Fetch] No sourceUrl but clone URLs exist - files should be available from git servers or bridge once cloned");
+                    } else {
+                      console.log("ℹ️ [File Fetch] No sourceUrl or clone URLs found - files must be pushed to git-nostr-bridge via git push");
+                    }
                   }
                 }
               }
