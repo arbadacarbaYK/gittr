@@ -3,6 +3,10 @@ node_modules
 dist
 build
 
+# build tools
+.vite
+.vite/**
+
 # editors
 .DS_Store
 
