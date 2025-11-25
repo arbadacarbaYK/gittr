@@ -60,7 +60,7 @@ git clone nostr://alex@git.gittr.space/repo-name
 
 1. In the repository UI click **“Push to Nostr”**.  
 2. Confirm the prompt in your NIP‑07 wallet (or use your stored private key).  
-3. We'll publish the NIP‑34 event **and** automatically sync the full Git repository to our bridge at `git.gittr.space` and other GRASP servers. Other clients can clone it immediately—no extra CLI step required.
+3. We'll publish the NIP‑34 event **and** automatically sync the full Git repository to our bridge at `git.gittr.space` and other GRASP servers so other clients can clone it immediately.
 
 #### Optional: push via Git CLI
 If you prefer a traditional workflow you can still push directly to the bridge:
