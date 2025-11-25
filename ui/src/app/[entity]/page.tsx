@@ -1513,7 +1513,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 <div className="flex items-center gap-2 text-gray-400 text-xs font-mono">
                   <span>npub: {displayPubkey}</span>
                   <a 
-                    href={`https://nostr.me/${displayPubkey}`}
+                    href={`https://nostr.com/${displayPubkey}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-purple-400 hover:text-purple-300"

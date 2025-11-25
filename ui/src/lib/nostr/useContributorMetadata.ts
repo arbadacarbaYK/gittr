@@ -131,9 +131,22 @@ export function useContributorMetadata(pubkeys: string[]) {
   const allRelays = useMemo(() => getAllRelays(defaultRelays), [defaultRelays]);
   
   // Initialize state from localStorage cache
+  // CRITICAL: On server and initial client render, return empty object to prevent hydration mismatches
+  // Only load from localStorage after mount (client-side only)
   const [metadataMap, setMetadataMap] = useState<Record<string, Metadata>>(() => {
-    return loadMetadataCache();
+    // On server, always return empty object
+    if (typeof window === "undefined") return {};
+    // On client, return empty object initially, will load after mount
+    return {};
   });
+  
+  // Load from localStorage after mount to prevent hydration mismatches
+  useEffect(() => {
+    const cached = loadMetadataCache();
+    if (Object.keys(cached).length > 0) {
+      setMetadataMap(cached);
+    }
+  }, []);
   // Memoize pubkeysKey to prevent unnecessary re-renders - use stable string comparison
   // CRITICAL: Only recompute when actual pubkey content changes, not array reference
   const pubkeysKeyRef = useRef<string>("");
@@ -211,18 +224,10 @@ export function useContributorMetadata(pubkeys: string[]) {
       ? missingFromCache  // Only subscribe for missing ones if they're a small subset
       : validPubkeys;     // Otherwise subscribe for all (first render or major change)
     
-    console.log(`🔍 [useContributorMetadata] Hook called with ${pubkeys.length} pubkeys`, {
-      hasSubscribe: !!subscribe,
-      hasRelays: !!defaultRelays && defaultRelays.length > 0,
-      relayCount: defaultRelays?.length || 0,
-      pubkeysLength: pubkeys.length,
-      pubkeysKey,
-      cachedKey: pubkeysKeyRef.current,
-      isFirstRender,
-      shouldSkip,
-      missingFromCache: missingFromCache.length,
-      validPubkeys: validPubkeys.length
-    });
+    // Only log on first render or when key changes significantly
+    if (isFirstRender || keyChanged) {
+      // console.log(`🔍 [useContributorMetadata] Hook called with ${pubkeys.length} pubkeys`);
+    }
     
     if (!subscribe || pubkeys.length === 0) {
       console.log(`⏭️ [useContributorMetadata] Skipping subscription: subscribe=${!!subscribe}, pubkeys.length=${pubkeys.length}`);
@@ -240,22 +245,10 @@ export function useContributorMetadata(pubkeys: string[]) {
       });
     }
     
-    console.log(`📡 [useContributorMetadata] Subscribing for ${pubkeysToSubscribe.length} pubkeys (${missingFromCache.length} missing from cache, ${validPubkeys.length} total)`, {
-      validPubkeys: validPubkeys.length,
-      pubkeysToSubscribe: pubkeysToSubscribe.length,
-      missingFromCache: missingFromCache.length,
-      invalidPubkeys: invalidPubkeys.length,
-      keyChanged,
-      isFirstRender,
-      samplePubkeys: pubkeysToSubscribe.slice(0, 3).map(p => ({
-        short: p.slice(0, 8),
-        length: p.length,
-        isValid: /^[0-9a-f]{64}$/i.test(p)
-      })),
-      RELAYS_COUNT: allRelays?.length || 0,
-      DEFAULT_RELAYS_COUNT: defaultRelays?.length || 0,
-      USER_RELAYS_COUNT: (allRelays?.length || 0) - (defaultRelays?.length || 0)
-    });
+    // Only log when actually subscribing (not skipping)
+    // if (!shouldSkip && pubkeysToSubscribe.length > 0) {
+    //   console.log(`📡 [useContributorMetadata] Subscribing for ${pubkeysToSubscribe.length} pubkeys (${missingFromCache.length} missing from cache)`);
+    // }
 
     if (pubkeysToSubscribe.length === 0) {
       console.warn('⚠️ [useContributorMetadata] No pubkeys to subscribe for!');
@@ -427,7 +420,7 @@ export function useContributorMetadata(pubkeys: string[]) {
     }
 
     return () => {
-      console.log(`🔄 [useContributorMetadata] Cleaning up subscription for ${validPubkeys.length} pubkeys`);
+      // console.log(`🔄 [useContributorMetadata] Cleaning up subscription for ${validPubkeys.length} pubkeys`);
       clearTimeout(timeout);
       if (subscriptionTimeoutRef.current) {
         clearTimeout(subscriptionTimeoutRef.current);

@@ -113,8 +113,9 @@ export default function RepoReleasesPage({ params }: { params: { entity: string;
       const repos = loadStoredRepos();
       const rec = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
       if (rec) {
-      // Releases are stored separately, not on the repo object
-      setReleases([]);
+      // Load releases from repo object (imported from GitHub or created natively)
+      const repoWithReleases = rec as StoredRepo & { releases?: Release[] };
+      setReleases((repoWithReleases.releases || []) as Release[]);
       setTags((rec.tags as string[] | undefined)?.map((t: string | { name: string }) => (typeof t === "string" ? t : t?.name)).filter(Boolean) || []);
       setSourceUrl(rec.sourceUrl);
         // Get repo logo if available

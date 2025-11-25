@@ -31,6 +31,7 @@ interface Commit {
 }
 
 export default function CommitsPage({ params }: { params: { entity: string; repo: string } }) {
+  const [mounted, setMounted] = useState(false);
   const searchParams = useSearchParams();
   const branch = searchParams?.get("branch") || "main";
   const fileFilter = searchParams?.get("file") || null;
@@ -38,6 +39,10 @@ export default function CommitsPage({ params }: { params: { entity: string; repo
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const { defaultRelays } = useNostrContext();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   // Get all unique author pubkeys from commits (only full 64-char pubkeys for metadata lookup)
   const authorPubkeys = useMemo(() => {
@@ -53,6 +58,7 @@ export default function CommitsPage({ params }: { params: { entity: string; repo
   const authorMetadata = useContributorMetadata(authorPubkeys);
 
   const loadCommits = useCallback(() => {
+    if (!mounted) return; // Don't load from localStorage until mounted
     try {
       // Load commits from localStorage
       const commitsKey = getRepoStorageKey("gittr_commits", params.entity, params.repo);
@@ -85,7 +91,7 @@ export default function CommitsPage({ params }: { params: { entity: string; repo
       console.error("Failed to load commits:", error);
       setLoading(false);
     }
-  }, [params.entity, params.repo, branch, fileFilter]);
+  }, [mounted, params.entity, params.repo, branch, fileFilter]);
 
   useEffect(() => {
     loadCommits();

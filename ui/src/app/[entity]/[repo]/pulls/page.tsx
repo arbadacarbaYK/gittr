@@ -12,6 +12,7 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_PULL_REQUEST } from "@/lib/nostr/events";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import { getRepoOwnerPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
 
 import { clsx } from "clsx";
 import {
@@ -47,6 +48,7 @@ interface IPullsData {
 }
 
 export default function RepoPullsPage({ params }: { params: { entity: string; repo: string } }) {
+  const [mounted, setMounted] = useState(false);
   const [issueStatus, setIssueStatus] = useState<"open" | "closed">("open");
   const [search, setSearch] = useState<string>(`is:open is:pr`);
   const [issues, setIssues] = useState<IPullsData[]>([]);
@@ -55,7 +57,11 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
   const pathname = usePathname() || "";
 
   useEffect(() => {
-    if (!params?.entity || !params?.repo) {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted || !params?.entity || !params?.repo) {
       setIssues([]);
       setAllPRs([]);
       return;
@@ -289,6 +295,26 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
   // Fetch Nostr metadata for all authors
   const authorMetadata = useContributorMetadata(authorPubkeys);
 
+  // Helper to get entity display name (username instead of npub)
+  const getEntityDisplayNameForRepo = useCallback((entity: string, repo: string) => {
+    try {
+      const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
+      const foundRepo = findRepoByEntityAndName(repos, entity, repo);
+      const ownerPubkey = foundRepo ? getRepoOwnerPubkey(foundRepo, entity) : null;
+      
+      // Get display name using the same logic as other pages
+      if (ownerPubkey) {
+        const displayName = getEntityDisplayName(ownerPubkey, authorMetadata, entity);
+        return displayName;
+      }
+    } catch {
+      // Fallback to entity if lookup fails
+    }
+    
+    // Fallback: use entity as-is (might be npub already, or 8-char prefix)
+    return entity.startsWith('npub') ? entity.slice(0, 16) + '...' : entity;
+  }, [authorMetadata]);
+
   return (
     <section className="mt-4">
       <div className="flex flex-col md:flex-row justify-between gap-4">
@@ -335,7 +361,7 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
                   })}
                   onClick={handleIssueStatusOpen}
                 >
-                  <CircleDot className="h-5 w-5 mr-2 mt-0.5" /> {issues.length} Open
+                  <CircleDot className="h-5 w-5 mr-2 mt-0.5" /> {mounted ? issues.length : 0} Open
                 </button>
                 <button
                   className={clsx("flex text-zinc-400 hover:text-zinc-200", {
@@ -343,7 +369,7 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
                   })}
                   onClick={handleIssueStatusClosed}
                 >
-                  <Check className="h-5 w-5 mr-2 mt-0.5" /> {allPRs.filter(pr => pr.status === "closed" || pr.status === "merged").length} Closed
+                  <Check className="h-5 w-5 mr-2 mt-0.5" /> {mounted ? allPRs.filter(pr => pr.status === "closed" || pr.status === "merged").length : 0} Closed
                 </button>
               </div>
               <div className="mt-2 flex text-gray-400 lg:mt-0 space-x-6">
@@ -389,7 +415,7 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
                           className="text-zinc-400 hover:text-purple-500"
                           href={`/${item.entity}/${item.repo}`}
                         >
-                          {item.entity}/{item.repo}
+                          {getEntityDisplayNameForRepo(item.entity, item.repo)}/{item.repo}
                         </Link>
                       </span>
 

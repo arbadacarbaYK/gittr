@@ -1,5 +1,8 @@
 "use client";
 
+// Force dynamic rendering - this page uses localStorage which is not available during static generation
+export const dynamic = 'force-dynamic';
+
 import Link from "next/link";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import useSession from "@/lib/nostr/useSession";
@@ -274,25 +277,41 @@ export default function HomePage() {
   ].filter((p, i, arr) => arr.indexOf(p) === i), [topDevs, topBountyTakers, topUsers]);
   
   // Get owner pubkeys from recent repos for metadata fetching
+  // CRITICAL: Normalize to lowercase to ensure consistent metadata lookup
   const recentRepoOwnerPubkeys = useMemo(() => {
     return recent
       .map(r => {
         const ownerPubkey = getRepoOwnerPubkey(r as any, r.entity);
-        return ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) ? ownerPubkey : null;
+        if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+          // CRITICAL: Normalize to lowercase for consistent metadata lookup
+          return ownerPubkey.toLowerCase();
+        }
+        return null;
       })
       .filter((p): p is string => p !== null);
   }, [recent]);
   
   // Combine all pubkeys for metadata fetching
-  const allPubkeys = useMemo(() => [
-    ...userPubkeys,
-    ...recentRepoOwnerPubkeys,
-  ].filter((p, i, arr) => arr.indexOf(p) === i), [userPubkeys, recentRepoOwnerPubkeys]);
+  // CRITICAL: Normalize all pubkeys to lowercase
+  const allPubkeys = useMemo(() => {
+    const normalized = [
+      ...userPubkeys.map(p => p.toLowerCase()),
+      ...recentRepoOwnerPubkeys,
+    ];
+    // Remove duplicates
+    return Array.from(new Set(normalized));
+  }, [userPubkeys, recentRepoOwnerPubkeys]);
   
   const userMetadata = useContributorMetadata(allPubkeys);
+  
+  // CRITICAL: useContributorMetadata already loads from cache, but we need to ensure
+  // it's available immediately. The hook loads from "nostr_metadata_cache" which is
+  // the same cache used by useContributorMetadata, so metadata should be available.
+  // However, we'll use userMetadata directly since the hook handles caching internally.
 
   const getDisplayName = (pubkey: string) => {
-    const meta = userMetadata[pubkey];
+    const normalizedPubkey = pubkey.toLowerCase();
+    const meta = userMetadata[normalizedPubkey] || userMetadata[pubkey];
     if (meta?.name || meta?.display_name) {
       return meta.name || meta.display_name;
     }
@@ -455,7 +474,9 @@ export default function HomePage() {
     // Priority 3: Owner Nostr profile picture
     const ownerPubkey = repo.entity ? getRepoOwnerPubkey(repo as any, repo.entity) : null;
     if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-      const metadata = userMetadata[ownerPubkey];
+      // CRITICAL: Normalize to lowercase for metadata lookup
+      const normalizedPubkey = ownerPubkey.toLowerCase();
+      const metadata = userMetadata[normalizedPubkey] || userMetadata[ownerPubkey];
       if (metadata?.picture) {
         const picture = metadata.picture;
         if (picture && picture.trim().length > 0 && picture.startsWith("http")) {
@@ -1010,7 +1031,7 @@ export default function HomePage() {
               {recent.filter((r: any) => {
                 // Filter out deleted repos
                 return !r.deleted && !r.archived;
-              }).map((r) => {
+              }).map((r, index) => {
                 const entity = r.entity;
                 const repo = r.repo || r.slug;
                 if (!entity || entity === "user") return null;
@@ -1041,18 +1062,26 @@ export default function HomePage() {
                 const normalizedOwnerPubkey = ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
                   ? ownerPubkey.toLowerCase()
                   : null;
-                const displayName = normalizedOwnerPubkey
-                  ? getEntityDisplayName(normalizedOwnerPubkey, userMetadata, entity)
-                  : (r.entityDisplayName || entity);
+                // CRITICAL: Use userMetadata (which includes cache) for lookup
+                const metadata = normalizedOwnerPubkey 
+                  ? (userMetadata[normalizedOwnerPubkey] || (ownerPubkey ? userMetadata[ownerPubkey.toLowerCase()] : undefined))
+                  : undefined;
+                const displayName = metadata?.name || metadata?.display_name
+                  ? (metadata.name || metadata.display_name)
+                  : (normalizedOwnerPubkey
+                    ? getEntityDisplayName(normalizedOwnerPubkey, userMetadata, entity)
+                    : (r.entityDisplayName || entity));
                 
                 // Resolve icons - always show fallback if icon fails
                 let iconUrl: string | null = null;
                 let ownerPicture: string | undefined = undefined;
                 try {
                   iconUrl = resolveRepoIcon(r);
-                  if (normalizedOwnerPubkey) {
-                    // CRITICAL: Use normalized pubkey for metadata lookup
-                    ownerPicture = userMetadata[normalizedOwnerPubkey]?.picture || (ownerPubkey ? userMetadata[ownerPubkey]?.picture : undefined);
+                  // CRITICAL: Use userMetadata for picture lookup (normalized to lowercase)
+                  if (metadata?.picture) {
+                    ownerPicture = metadata.picture;
+                  } else if (normalizedOwnerPubkey) {
+                    ownerPicture = userMetadata[normalizedOwnerPubkey]?.picture || (ownerPubkey ? userMetadata[ownerPubkey.toLowerCase()]?.picture : undefined);
                   }
                 } catch (error) {
                   console.error('⚠️ [Home] Error resolving icons:', error);
@@ -1062,17 +1091,17 @@ export default function HomePage() {
                   <li key={`${entity}-${repo}`} className="py-3">
                     <Link 
                       href={href} 
-                      className="flex items-center gap-3 hover:bg-gray-800/50 rounded p-2 -m-2 cursor-pointer"
+                      className="flex items-center gap-3 sm:gap-4 hover:bg-gray-800/50 rounded p-2 -m-2 cursor-pointer"
                     >
                       {/* Unified repo icon (circle): repo pic -> owner profile pic -> nostr default -> logo.svg */}
-                      <div className="flex-shrink-0">
-                        <div className="relative h-6 w-6 rounded-full overflow-hidden">
+                      <div className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10">
+                        <div className="relative h-8 w-8 sm:h-10 sm:w-10 rounded-full overflow-hidden ring-1 ring-gray-700">
                           {/* Priority 1: Repo icon */}
                           {iconUrl && (
                             <img 
                               src={iconUrl} 
                               alt="repo" 
-                              className="h-6 w-6 rounded-full object-cover absolute inset-0"
+                              className="h-8 w-8 sm:h-10 sm:w-10 rounded-full object-cover absolute inset-0"
                               loading="lazy"
                               onError={(e) => {
                                 e.currentTarget.style.display = 'none';
@@ -1084,7 +1113,7 @@ export default function HomePage() {
                             <img 
                               src={ownerPicture} 
                               alt={displayName}
-                              className="h-6 w-6 rounded-full object-cover absolute inset-0"
+                              className="h-8 w-8 sm:h-10 sm:w-10 rounded-full object-cover absolute inset-0"
                               loading="lazy"
                               onError={(e) => {
                                 e.currentTarget.style.display = 'none';
@@ -1096,7 +1125,7 @@ export default function HomePage() {
                             <img 
                               src="/logo.svg" 
                               alt="repo" 
-                              className="h-6 w-6 rounded-full object-contain absolute inset-0"
+                              className="h-8 w-8 sm:h-10 sm:w-10 rounded-full object-contain absolute inset-0 p-1"
                               loading="lazy"
                               onError={(e) => {
                                 e.currentTarget.style.display = 'none';
@@ -1104,12 +1133,12 @@ export default function HomePage() {
                             />
                           )}
                           {/* Final fallback: gray circle */}
-                          <span className="inline-block h-6 w-6 rounded-full bg-[#22262C]" />
+                          <span className="inline-block h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-[#22262C]" />
                         </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="text-purple-500 hover:underline font-semibold truncate">
+                      <div className="flex-1 min-w-0 min-w-[0]">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <div className="text-purple-500 hover:underline font-semibold truncate min-w-0">
                       {displayName}/{r.name || repo}
                           </div>
                           {/* Status badge */}

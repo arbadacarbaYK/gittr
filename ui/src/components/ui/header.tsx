@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState, useEffect } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -100,6 +100,13 @@ export function Header() {
   const { picture, name, initials, isLoggedIn } = useSession();
   const { signOut, pubkey } = useNostrContext();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+  
+  // Only render client-side content after hydration
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
   const handleSignOut = useCallback(() => {
     if (signOut) {
       signOut();
@@ -114,14 +121,14 @@ export function Header() {
     <header className="flex h-14 w-full items-center justify-between bg-[#171B21] px-8">
       <div className="flex items-center gap-4">
       <MainNav items={HeaderConfig.mainNav} />
-        {isLoggedIn && (
+        {mounted && isLoggedIn && (
           <Button variant="outline" className="max-h-8 min-w-max">
             <a href="/new" onClick={(e) => { e.preventDefault(); window.location.href = "/new"; }}>New</a>
           </Button>
         )}
       </div>
       <div className="hidden items-center md:inline">
-        {isLoggedIn ? (
+        {mounted && isLoggedIn ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <div className="flex items-center cursor-pointer">
@@ -183,13 +190,23 @@ export function Header() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : (
+        ) : mounted ? (
           <div className="flex gap-1 items-center">
             <Button variant="ghost" className="mr-2 max-h-8 min-w-max">
               <a href="/login" onClick={(e) => { e.preventDefault(); window.location.href = "/login"; }}>Sign in</a>
             </Button>
             <Button variant="outline" className="max-h-8 min-w-max">
               <a href="/signup" onClick={(e) => { e.preventDefault(); window.location.href = "/signup"; }}>Sign up</a>
+            </Button>
+          </div>
+        ) : (
+          // Server-side: render placeholder to match structure
+          <div className="flex gap-1 items-center">
+            <Button variant="ghost" className="mr-2 max-h-8 min-w-max">
+              <a href="/login">Sign in</a>
+            </Button>
+            <Button variant="outline" className="max-h-8 min-w-max">
+              <a href="/signup">Sign up</a>
             </Button>
           </div>
         )}

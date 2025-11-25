@@ -489,12 +489,12 @@ WantedBy=multi-user.target
 |----------|----------|----------|---------|
 | `NEXT_PUBLIC_NOSTR_RELAYS` | `ui/.env.local` | ✅ Yes | Comma-separated relay URLs |
 | `NEXT_PUBLIC_BLOSSOM_URL` | `ui/.env.local` | ✅ Yes | Blossom server URL (for Git pack files) |
+| `NEXT_PUBLIC_SITE_URL` | `ui/.env.local` | ❌ No | Site URL for SEO metadata and GRASP server API calls (defaults to `https://gittr.space`) |
+| `NEXT_PUBLIC_GIT_SSH_BASE` | `ui/.env.local` | ❌ No | Git SSH base hostname for clone URLs (defaults to `gittr.space`) |
 | `GITHUB_PLATFORM_TOKEN` | `ui/.env.local` | ❌ No | GitHub API token (higher rate limits) |
 | `NOSTR_NSEC` | `ui/.env.local` | ❌ No | Nostr private key for notifications |
 | `TELEGRAM_BOT_TOKEN` | `ui/.env.local` | ❌ No | Telegram bot token for notifications |
 | `TELEGRAM_CHAT_ID` | `ui/.env.local` | ❌ No | Telegram channel ID for notifications |
-| `TELEGRAM_BOT_TOKEN` | `ui/.env.local` | ❌ No | Telegram bot token |
-| `TELEGRAM_CHAT_ID` | `ui/.env.local` | ❌ No | Telegram chat ID |
 
 **⚠️ Security Note:** All sensitive values (tokens, keys, secrets) are in `.gitignore` and will NOT be committed to git. Only the server admin has access to these values.
 

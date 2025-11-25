@@ -2,7 +2,7 @@
 
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import { getRepoOwnerPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
 
 import * as React from "react";
 import { useCallback, useEffect, useState, useMemo } from "react";
@@ -47,12 +47,17 @@ interface IIssueData {
 }
 
 export default function RepoIssuesPage({ params }: { params: { entity: string; repo: string } }) {
+  const [mounted, setMounted] = useState(false);
   const [issueStatus, setIssueStatus] = useState<"open" | "closed">("open");
 
   const [search, setSearch] = useState<string>(`is:open is:issue`);
 
   const [issues, setIssues] = useState<IIssueData[]>([]);
   const { subscribe, defaultRelays } = useNostrContext();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const pathname = usePathname() || "";
 
@@ -222,28 +227,30 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
   // Fetch Nostr metadata for all authors
   const authorMetadata = useContributorMetadata(authorPubkeys);
 
-  // Helper to generate npub URL for repo
-  const getRepoUrl = useCallback((entity: string, repo: string) => {
-    // Try to find the repo and get ownerPubkey
+  // Helper to get entity display name (username instead of npub)
+  const getEntityDisplayNameForRepo = useCallback((entity: string, repo: string) => {
     try {
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
       const foundRepo = findRepoByEntityAndName(repos, entity, repo);
       const ownerPubkey = foundRepo ? getRepoOwnerPubkey(foundRepo, entity) : null;
       
-      // If we have a full pubkey, convert to npub format
-      if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-        try {
-          const npub = nip19.npubEncode(ownerPubkey);
-          return `/${npub}/${repo}`;
-        } catch {
-          // Fallback to entity if encoding fails
-        }
+      // Get display name using the same logic as other pages
+      if (ownerPubkey) {
+        const displayName = getEntityDisplayName(ownerPubkey, authorMetadata, entity);
+        return displayName;
       }
     } catch {
       // Fallback to entity if lookup fails
     }
     
     // Fallback: use entity as-is (might be npub already, or 8-char prefix)
+    return entity.startsWith('npub') ? entity.slice(0, 16) + '...' : entity;
+  }, [authorMetadata]);
+
+  // Helper to generate repo URL (keep entity as-is for routing, but display username)
+  const getRepoUrl = useCallback((entity: string, repo: string) => {
+    // URLs should use entity as-is (npub or pubkey) for routing
+    // The display will show username instead
     return `/${entity}/${repo}`;
   }, []);
 
@@ -293,7 +300,7 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
                   })}
                   onClick={handleIssueStatusOpen}
                 >
-                  <CircleDot className="h-5 w-5 mr-2 mt-0.5" /> {issues.length} Open
+                  <CircleDot className="h-5 w-5 mr-2 mt-0.5" /> {mounted ? issues.length : 0} Open
                 </button>
                 <button
                   className={clsx("flex text-zinc-400 hover:text-zinc-200", {
@@ -301,7 +308,7 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
                   })}
                   onClick={handleIssueStatusClosed}
                 >
-                  <Check className="h-5 w-5 mr-2 mt-0.5" /> {(() => {
+                  <Check className="h-5 w-5 mr-2 mt-0.5" /> {mounted ? (() => {
                     try {
                       const key = getRepoStorageKey("gittr_issues", params.entity, params.repo);
                       const list = JSON.parse(localStorage.getItem(key) || "[]");
@@ -309,7 +316,7 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
                     } catch {
                       return 0;
                     }
-                  })()} Closed
+                  })() : 0} Closed
                 </button>
               </div>
               <div className="mt-2 flex text-gray-400 lg:mt-0 space-x-6">
@@ -320,7 +327,7 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
                   Label <ChevronDown className="h-4 w-4 ml-1 mt-1.5" />
                 </span>
                 <span className="hidden md:flex text-zinc-400 hover:text-zinc-200 cursor-pointer">
-                  Projects <ChevronDown className="h-4 w-4 ml-1 mt-1.5" />
+                  ToDo <ChevronDown className="h-4 w-4 ml-1 mt-1.5" />
                 </span>
                 <span className="hidden md:flex text-zinc-400 hover:text-zinc-200 cursor-pointer">
                   Milestones <ChevronDown className="h-4 w-4 ml-1 mt-1.5" />
@@ -353,7 +360,7 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
                           className="text-zinc-400 hover:text-purple-500"
                           href={getRepoUrl(item.entity, item.repo)}
                         >
-                          {item.entity}/{item.repo}
+                          {getEntityDisplayNameForRepo(item.entity, item.repo)}/{item.repo}
                         </Link>
                       </span>
 

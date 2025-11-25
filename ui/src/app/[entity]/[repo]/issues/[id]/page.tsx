@@ -39,7 +39,7 @@ import { Reactions } from "@/components/ui/reactions";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { formatDateTime24h, formatDate24h, formatTime24h } from "@/lib/utils/date-format";
 import { sendNotification, formatNotificationMessage } from "@/lib/notifications";
-import { getRepoOwnerPubkey, resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
+import { getRepoOwnerPubkey, resolveEntityToPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
 import { createBountyEvent, KIND_BOUNTY, createCommentEvent, KIND_COMMENT } from "@/lib/nostr/events";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
@@ -924,7 +924,7 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
       {/* Breadcrumbs - Match URL format for consistency */}
       <nav className="mb-4 text-sm text-gray-400">
         <Link href={`/${params.entity}/${params.repo}`} className="hover:text-purple-400">
-          {params.entity}/{params.repo}
+          {repoOwnerPubkey ? getEntityDisplayName(repoOwnerPubkey, repoOwnerMetadata, params.entity) : (params.entity.startsWith('npub') ? params.entity.slice(0, 16) + '...' : params.entity)}/{params.repo}
         </Link>
         {" / "}
         <Link href={`/${params.entity}/${params.repo}/issues`} className="hover:text-purple-400">

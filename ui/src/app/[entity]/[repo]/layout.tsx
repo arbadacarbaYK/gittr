@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -82,7 +82,7 @@ const menuItems = [
   },
   {
     link: "projects",
-    name: "Projects",
+    name: "ToDo",
     icon: <Folder className="mr-2 h-4 w-4" />,
   },
   {
@@ -112,7 +112,8 @@ export default function RepoLayout({
 }) {
   const pathname = usePathname() || "";
   const searchParams = useSearchParams();
-  const [windowWidth, setWindowWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1920);
+  // Use consistent default width on server and initial client render to prevent hydration mismatch
+  const [windowWidth, setWindowWidth] = useState(1920);
   const { name: userName } = useSession();
   const { pubkey } = useNostrContext();
   const [isWatching, setIsWatching] = useState(false);
@@ -124,26 +125,52 @@ export default function RepoLayout({
   const [showRepoQR, setShowRepoQR] = useState(false);
   const [repo, setRepo] = useState<any>(null);
   const [repoLogo, setRepoLogo] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+  
+  // Calculate safe initial display name that matches on server and client
+  const safeInitialDisplayName = useMemo(() => {
+    if (params.entity?.startsWith("npub")) {
+      return `${params.entity.substring(0, 16)}...`;
+    }
+    return params.entity || "Unknown";
+  }, [params.entity]);
   
   // Resolve owner using utility hook (needs repo to be loaded)
-  const { ownerPubkey, ownerDisplayName, ownerPicture, ownerMetadata } = useEntityOwner({
+  // Note: ownerMetadata is fetched internally by the hook but not used directly here
+  const { ownerPubkey: rawOwnerPubkey, ownerDisplayName: rawOwnerDisplayName, ownerPicture: rawOwnerPicture } = useEntityOwner({
     entity: params.entity,
     repo: repo,
     repoName: params.repo,
   });
   
+  // Use safe initial values on server/initial render to prevent hydration mismatches
+  // After mount, use actual values from hook
+  const ownerPubkey = mounted ? rawOwnerPubkey : null;
+  const ownerDisplayName = mounted ? rawOwnerDisplayName : safeInitialDisplayName;
+  const ownerPicture = mounted ? rawOwnerPicture : null;
+  
   // Helper function to generate href for repo links (avoids duplication)
+  // Use consistent href on initial render to prevent hydration mismatches
   const getRepoLink = useCallback((subpath: string = "", includeSearchParams: boolean = false) => {
-    const basePath = ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) 
-      ? `/${nip19.npubEncode(ownerPubkey)}/${params.repo}${subpath ? `/${subpath}` : ""}`
+    // On initial render (before mount), always use params.entity to ensure consistency
+    const effectiveOwnerPubkey = mounted ? ownerPubkey : null;
+    const basePath = effectiveOwnerPubkey && /^[0-9a-f]{64}$/i.test(effectiveOwnerPubkey) 
+      ? `/${nip19.npubEncode(effectiveOwnerPubkey)}/${params.repo}${subpath ? `/${subpath}` : ""}`
       : `/${params.entity}/${params.repo}${subpath ? `/${subpath}` : ""}`;
     return includeSearchParams && searchParams?.toString() 
       ? `${basePath}?${searchParams.toString()}`
       : basePath;
-  }, [ownerPubkey, params.entity, params.repo, searchParams]);
+  }, [mounted, ownerPubkey, params.entity, params.repo, searchParams]);
+  
+  // Track mount state to prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   // Load repo data first (used by useEntityOwner hook)
   useEffect(() => {
+    if (!mounted) return; // Don't access localStorage until mounted
+    
     try {
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
       const foundRepo = findRepoByEntityAndName(repos, params.entity, params.repo);
@@ -182,7 +209,7 @@ export default function RepoLayout({
       // No repo logo found
       setRepoLogo(null);
     } catch {}
-  }, [params.entity, params.repo]);
+  }, [params.entity, params.repo, mounted]);
   
   // Load watch/star state from localStorage and star count from repo data
   useEffect(() => {
@@ -330,16 +357,30 @@ export default function RepoLayout({
   
 
   useEffect(() => {
+    // Set initial window width after mount to prevent hydration mismatch
+    setWindowWidth(window.innerWidth);
+    
+    // Debounce resize handler to prevent rapid recalculations and layout shifts
+    let resizeTimeout: NodeJS.Timeout;
     const handleWindowResize = () => {
-      setWindowWidth(window.innerWidth);
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        setWindowWidth(window.innerWidth);
+      }, 150); // Debounce by 150ms
     };
 
     window.addEventListener("resize", handleWindowResize);
 
     return () => {
+      clearTimeout(resizeTimeout);
       window.removeEventListener("resize", handleWindowResize);
     };
   }, []); // Add empty dependency array to prevent re-running on every render
+
+  // Memoize the number of visible menu items to prevent recalculation on every render
+  const visibleMenuItemsCount = useMemo(() => {
+    return mounted ? Math.floor(windowWidth / MENU_ITEM_WIDTH) : Math.floor(1920 / MENU_ITEM_WIDTH);
+  }, [mounted, windowWidth]);
 
   // Removed onClick handler that was interfering with navigation
 
@@ -352,48 +393,36 @@ export default function RepoLayout({
             {/* Unified repo icon (circle): repo pic -> owner profile pic -> logo.svg */}
             <div className="mr-2 flex-shrink-0">
               <div className="relative h-5 w-5 rounded-full overflow-hidden ring-2 ring-purple-500" style={{ maxWidth: "20px", maxHeight: "20px" }}>
-                {/* Priority 1: Repo icon */}
-                {repoLogo && (
+                {/* Always render a single img tag to avoid hydration mismatch */}
+                {/* On server and initial client render, always use /logo.svg to match */}
                   <img 
-                    src={repoLogo} 
-                    alt="repo logo" 
+                  src={mounted && repoLogo ? repoLogo : (mounted && !repoLogo && ownerPicture ? ownerPicture : "/logo.svg")}
+                  alt={mounted && repoLogo ? "repo logo" : (mounted && !repoLogo && ownerPicture ? ownerDisplayName : "repo")}
                     className="h-5 w-5 rounded-full object-cover absolute inset-0"
                     style={{ maxWidth: "20px", maxHeight: "20px" }}
                     onError={(e) => {
-                      e.currentTarget.style.display = 'none';
+                    const target = e.currentTarget;
+                    if (target.src !== "/logo.svg") {
+                      // If the current src is not the fallback, try the next fallback
+                      if (mounted && repoLogo) {
                       setRepoLogo(null);
+                        if (ownerPicture) {
+                          target.src = ownerPicture;
+                        } else {
+                          target.src = "/logo.svg";
+                        }
+                      } else if (mounted && !repoLogo && ownerPicture) {
+                        target.src = "/logo.svg";
+                      } else {
+                        target.style.display = 'none';
+                      }
+                    } else {
+                      target.style.display = 'none';
+                    }
                     }}
                     referrerPolicy="no-referrer"
-                  />
-                )}
-                {/* Priority 2: Owner profile picture */}
-                {!repoLogo && ownerPicture && (
-                  <img 
-                    src={ownerPicture} 
-                    alt={ownerDisplayName}
-                    className="h-5 w-5 rounded-full object-cover absolute inset-0"
-                    style={{ maxWidth: "20px", maxHeight: "20px" }}
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
-                )}
-                {/* Priority 3: logo.svg fallback */}
-                {!repoLogo && !ownerPicture && (
-                  <img 
-                    src="/logo.svg" 
-                    alt="repo" 
-                    className="h-5 w-5 rounded-full object-contain absolute inset-0"
-                    style={{ maxWidth: "20px", maxHeight: "20px" }}
-                    onError={(e) => {
-                      e.currentTarget.style.display = 'none';
-                    }}
-                  />
-                )}
-                {/* Final fallback */}
-                {!repoLogo && !ownerPicture && (
-                  <span className="inline-block h-5 w-5 rounded-full bg-[#22262C]" style={{ maxWidth: "20px", maxHeight: "20px" }} />
-                )}
+                  suppressHydrationWarning
+                />
               </div>
             </div>
             <a
@@ -403,6 +432,7 @@ export default function RepoLayout({
                 e.preventDefault();
                 window.location.href = ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) ? `/${nip19.npubEncode(ownerPubkey)}` : `/${params.entity}`;
               }}
+              suppressHydrationWarning
             >
               {ownerDisplayName}
             </a>
@@ -463,7 +493,8 @@ export default function RepoLayout({
                 className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
                 variant="outline"
                 onClick={handleWatch}
-                disabled={!pubkey}
+                disabled={!mounted || !pubkey}
+                suppressHydrationWarning
               >
                 <Eye className="mr-2 h-4 w-4" /> {isWatching ? "Unwatch" : "Watch"}
                 <Badge className="ml-2">{isWatching ? 1 : 0}</Badge>
@@ -482,7 +513,8 @@ export default function RepoLayout({
                 className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
                 variant="outline"
                 onClick={handleFork}
-                disabled={!pubkey}
+                disabled={!mounted || !pubkey}
+                suppressHydrationWarning
               >
                 <GitFork className="mr-2 h-4 w-4" /> Fork
                 <Badge className="ml-2">0</Badge>
@@ -491,7 +523,8 @@ export default function RepoLayout({
                 className={`h-8 !border-[#383B42] bg-[#22262C] text-xs ${isStarred ? "hover:bg-[#22262C]" : ""}`}
                 variant="outline"
                 onClick={handleStar}
-                disabled={!pubkey}
+                disabled={!mounted || !pubkey}
+                suppressHydrationWarning
               >
                 <Star className={`mr-2 h-4 w-4 ${isStarred ? "text-yellow-500 fill-yellow-500" : ""}`} /> {isStarred ? "Starred" : "Star"}
                 <Badge className="ml-2">{starCount}</Badge>
@@ -508,10 +541,10 @@ export default function RepoLayout({
         </div>
 
         <div className="flex justify-between items-center gap-4">
-          <div className="flex-1 overflow-x-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent">
+          <div className="flex-1 overflow-x-hidden">
             <ul className="my-4 flex items-center gap-x-4 min-w-max">
               {menuItems
-                .slice(0, Math.floor(windowWidth / MENU_ITEM_WIDTH))
+                .slice(0, visibleMenuItemsCount)
                 .map((item) => (
                   <li key={item.name} className="flex-shrink-0">
                     <a
@@ -545,7 +578,7 @@ export default function RepoLayout({
 
             <DropdownMenuTrigger asChild className={clsx("block", {
               "hidden":
-                (menuItems.length - Math.floor(windowWidth / MENU_ITEM_WIDTH)) === 0
+                (menuItems.length - visibleMenuItemsCount) === 0
             })}>
               <div className="flex items-center cursor-pointer">
                 <MoreHorizontal className="h-4 w-4 hover:text-white/80" />
@@ -561,7 +594,7 @@ export default function RepoLayout({
               {menuItems
                 .slice(
                   -(
-                    menuItems.length - Math.floor(windowWidth / MENU_ITEM_WIDTH)
+                    menuItems.length - visibleMenuItemsCount
                   )
                 )
                 .map((item) => (

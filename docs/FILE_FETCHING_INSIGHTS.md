@@ -191,7 +191,7 @@ Strategy 3: Try external git servers via API proxy
    ├─ GitHub → /api/git/file-content?sourceUrl=...&path=...&branch=...
    ├─ GitLab → /api/git/file-content?sourceUrl=...&path=...&branch=...
    ├─ Codeberg → /api/git/file-content?sourceUrl=...&path=...&branch=...
-   └─ GRASP → /api/git/file-content?sourceUrl=...&path=...&branch=...
+   └─ GRASP → /api/git/file-content?sourceUrl=...&path=...&branch=... (forwards to bridge API)
   ↓
 Handle binary vs text files
    ├─ Binary → Return base64, frontend creates data URL
@@ -213,6 +213,7 @@ Handle binary vs text files
 **External git servers are last** because:
 - They require network calls
 - They're used as fallback when embedded content and git-nostr-bridge aren't available
+- **Note**: For GRASP servers, `/api/git/file-content` detects them and forwards to bridge API (same as Strategy 2)
 
 ### OwnerPubkey Resolution (Strategy 2)
 
@@ -303,26 +304,57 @@ GRASP servers (git.gittr.space, gitnostr.com, relay.ngit.dev, git-01.uid.ovh, et
 
 ### Root Cause
 
-1. **API URL construction was incorrect**: GRASP servers use the full path from the clone URL in their API endpoints, not just the repo name.
-2. **Some GRASP servers don't expose HTTP API**: Some GRASP servers (like `relay.ngit.dev`, which is gitworkshop.dev's relay) may not expose an HTTP API for file browsing - they only work through `git-nostr-bridge` (which clones repos locally) or through the git protocol. Our server at `git.gittr.space` does expose HTTP API.
+1. **GRASP servers don't expose REST APIs**: GRASP servers only work through the git protocol (which web browsers can't use directly) or through `git-nostr-bridge` (which requires repos to be cloned locally first).
+2. **HTTP API attempts were failing**: Some GRASP servers may expose HTTP APIs (like `git.gittr.space`), but the standard approach is to use `git-nostr-bridge` for all GRASP servers.
 
-### Current Status
+### Current Solution
 
-- ✅ **GitHub/Codeberg**: Working correctly via HTTP API
-- ⚠️ **GRASP servers**: Some work via HTTP API (git.gittr.space, gitnostr.com, git-01.uid.ovh), others require `git-nostr-bridge` (relay.ngit.dev - gitworkshop.dev's relay)
-- 🔄 **Solution**: For GRASP servers that don't expose HTTP API, we use `git-nostr-bridge` with automatic cloning
+**All GRASP servers now use `git-nostr-bridge` API exclusively:**
+
+1. **File List Fetching** (`fetchFromNostrGit` in `git-source-fetcher.ts`):
+   - Calls `/api/nostr/repo/files?ownerPubkey=...&repo=...&branch=...`
+   - If 404 (repo not cloned), triggers clone via `/api/nostr/repo/clone`
+   - Retries bridge API after clone completes
+
+2. **File Content Fetching** (`/api/git/file-content.ts`):
+   - Detects GRASP servers using `isGraspServer()` function
+   - Extracts `npub` and `repo` from the URL
+   - Decodes `npub` to get `ownerPubkey`
+   - Forwards request to `/api/nostr/repo/file-content?ownerPubkey=...&repo=...&path=...&branch=...`
+   - The bridge API handles the actual file reading from the cloned repository
 
 ### Why This Matters
 
-- GRASP servers store repos with the full path (npub/repo) in their URL structure
-- The API endpoints need to include this full path, not just the repo name
-- Different GRASP servers may use different patterns, so we try multiple fallbacks
-- Some GRASP servers don't expose HTTP API and require `git-nostr-bridge` to clone repos locally
+- **Consistency**: All GRASP servers use the same method (bridge API), regardless of whether they expose HTTP APIs
+- **Reliability**: Bridge API reads from locally cloned repos, which are always up-to-date
+- **Automatic cloning**: If a repo isn't cloned yet, the system automatically clones it before fetching files
+- **Follows NIP-34 architecture**: Files are stored on git servers, Nostr events only contain references
+
+### Implementation Details
+
+**File List Fetching:**
+- Uses `fetchFromNostrGit()` in `git-source-fetcher.ts`
+- Tries bridge API first: `/api/nostr/repo/files`
+- If 404, triggers clone, then retries
+- Returns files array or `null` if all attempts fail
+
+**File Content Fetching:**
+- `/api/git/file-content.ts` detects GRASP servers
+- Extracts `npub` from URL pattern: `https://domain/npub.../repo.git`
+- Decodes `npub` to `ownerPubkey` using `nip19.decode()`
+- Forwards to `/api/nostr/repo/file-content` (bridge API)
+- Bridge API reads file from cloned repository
+
+**OwnerPubkey Resolution:**
+- **Preferred**: Use `eventPublisherPubkey` (from NIP-34 event) - this is what bridge uses
+- **Fallback**: Decode `npub` from clone URL
+- Bridge stores repos by event publisher's pubkey, not the clone URL's npub
 
 ### Files Affected
 
-- ✅ `ui/src/app/[entity]/[repo]/page.tsx` - GRASP server file list fetching (FIXED - now includes automatic cloning)
-- ✅ `ui/src/app/[entity]/[repo]/page.tsx` - GRASP server file opening (FIXED - uses git-nostr-bridge API)
+- ✅ `ui/src/lib/utils/git-source-fetcher.ts` - `fetchFromNostrGit()` function (uses bridge API)
+- ✅ `ui/src/pages/api/git/file-content.ts` - Detects GRASP servers and forwards to bridge API
+- ✅ `ui/src/app/[entity]/[repo]/page.tsx` - File opening uses bridge API via `/api/git/file-content` proxy
 
 ---
 
