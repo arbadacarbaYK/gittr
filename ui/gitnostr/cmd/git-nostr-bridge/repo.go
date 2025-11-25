@@ -29,6 +29,29 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 		return fmt.Errorf("invalid repository name: %v", repo.RepositoryName)
 	}
 
+	reposDir, err := gitnostr.ResolvePath(cfg.RepositoryDir)
+	if err != nil {
+		return fmt.Errorf("resolve repos path : %w", err)
+	}
+	repoParentPath := filepath.Join(reposDir, event.PubKey)
+
+	if repo.Deleted {
+		log.Printf("🗑️ [Bridge] Repository marked deleted: pubkey=%s repo=%s\n", event.PubKey, repo.RepositoryName)
+		_, err := db.Exec("DELETE FROM Repository WHERE OwnerPubKey=? AND RepositoryName=?;", event.PubKey, repo.RepositoryName)
+		if err != nil {
+			return fmt.Errorf("delete repository row failed: %w", err)
+		}
+		_, err = db.Exec("DELETE FROM RepositoryPermission WHERE OwnerPubKey=? AND RepositoryName=?;", event.PubKey, repo.RepositoryName)
+		if err != nil {
+			return fmt.Errorf("delete repository permissions failed: %w", err)
+		}
+		repoPath := filepath.Join(repoParentPath, repo.RepositoryName+".git")
+		if err := os.RemoveAll(repoPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("remove repository path failed: %w", err)
+		}
+		return nil
+	}
+
 	updatedAt := event.CreatedAt.Unix()
 	res, err := db.Exec("INSERT INTO Repository (OwnerPubKey,RepositoryName,PublicRead,PublicWrite,UpdatedAt) VALUES (?,?,?,?,?) ON CONFLICT DO UPDATE SET PublicRead=?,PublicWrite=?,UpdatedAt=? WHERE UpdatedAt<?;", event.PubKey, repo.RepositoryName, repo.PublicRead, repo.PublicWrite, updatedAt, repo.PublicRead, repo.PublicWrite, updatedAt, updatedAt)
 	if err != nil {
@@ -44,12 +67,6 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 		log.Println("repository updated", event.Content)
 	}
 
-	reposDir, err := gitnostr.ResolvePath(cfg.RepositoryDir)
-	if err != nil {
-		return fmt.Errorf("resolve repos path : %w", err)
-	}
-
-	repoParentPath := filepath.Join(reposDir, event.PubKey)
 	err = os.MkdirAll(repoParentPath, 0700)
 	if err != nil {
 		if errors.Is(err, fs.ErrExist) {

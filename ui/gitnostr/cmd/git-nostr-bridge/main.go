@@ -76,6 +76,20 @@ func connectNostr(relays []string) (*nostr.RelayPool, error) {
 	return pool, nil
 }
 
+func minTime(times ...*time.Time) *time.Time {
+	var min *time.Time
+	for _, t := range times {
+		if t == nil {
+			continue
+		}
+		if min == nil || t.Before(*min) {
+			tmp := *t
+			min = &tmp
+		}
+	}
+	return min
+}
+
 func updateSince(kind int, updatedAt int64, db *sql.DB) error {
 	_, err := db.Exec("INSERT INTO Since (Kind,UpdatedAt) VALUES (?,?) ON CONFLICT DO UPDATE SET UpdatedAt=? WHERE UpdatedAt<?;", kind, updatedAt, updatedAt, updatedAt)
 	if err != nil {
@@ -161,29 +175,32 @@ func main() {
 			log.Fatal(err)
 		}
 
-		// Build filter for repository events
-		// If gitRepoOwners is empty, watch ALL repository events (for decentralized operation)
-		// Otherwise, only watch events from specified owners (for controlled operation)
+		// Build filter for repository events (legacy kind 51 + NIP-34 kind 30617) and permissions
+		repoSince := minTime(since[protocol.KindRepository], since[protocol.KindRepositoryNIP34])
 		repoFilter := nostr.Filter{
-			Kinds:   []int{protocol.KindRepository, protocol.KindRepositoryPermission},
-			Since:   since[protocol.KindRepository],
+			Kinds: []int{
+				protocol.KindRepository,
+				protocol.KindRepositoryPermission,
+				protocol.KindRepositoryNIP34,
+			},
+			Since: repoSince,
 		}
 		if len(cfg.GitRepoOwners) > 0 {
 			repoFilter.Authors = cfg.GitRepoOwners
 		}
 		// If gitRepoOwners is empty, don't set Authors - this makes it watch ALL repos
-		
-		if since[protocol.KindRepository] != nil {
-			log.Printf("🔍 [Bridge] Subscribing to repository events since: %s (kind 51)\n", since[protocol.KindRepository].Format(time.RFC3339))
+
+		if repoSince != nil {
+			log.Printf("🔍 [Bridge] Subscribing to repository events since: %s (kinds 51 & 30617)\n", repoSince.Format(time.RFC3339))
 		} else {
-			log.Printf("🔍 [Bridge] Subscribing to ALL repository events (no Since filter, kind 51)\n")
+			log.Printf("🔍 [Bridge] Subscribing to ALL repository events (no Since filter, kinds 51 & 30617)\n")
 		}
 		if len(cfg.GitRepoOwners) > 0 {
 			log.Printf("🔍 [Bridge] Filtering by authors: %v\n", cfg.GitRepoOwners)
 		} else {
 			log.Printf("🔍 [Bridge] Watching ALL authors (decentralized mode)\n")
 		}
-		
+
 		_, gitNostrEvents := pool.Sub(nostr.Filters{
 			repoFilter,
 			{
@@ -197,8 +214,8 @@ func main() {
 		for event := range nostr.Unique(gitNostrEvents) {
 			log.Printf("📥 [Bridge] Received event: kind=%d, id=%s, pubkey=%s, created_at=%d\n", event.Kind, event.ID, event.PubKey, event.CreatedAt.Unix())
 			switch event.Kind {
-			case protocol.KindRepository:
-				log.Printf("📦 [Bridge] Processing repository event: id=%s, pubkey=%s\n", event.ID, event.PubKey)
+			case protocol.KindRepository, protocol.KindRepositoryNIP34:
+				log.Printf("📦 [Bridge] Processing repository event: kind=%d id=%s, pubkey=%s\n", event.Kind, event.ID, event.PubKey)
 				err := handleRepositoryEvent(event, db, cfg)
 				if err != nil {
 					log.Printf("❌ [Bridge] Failed to handle repository event: %v\n", err)
@@ -206,7 +223,7 @@ func main() {
 				}
 				log.Printf("✅ [Bridge] Successfully processed repository event: id=%s\n", event.ID)
 
-				err = updateSince(protocol.KindRepository, event.CreatedAt.Unix(), db)
+				err = updateSince(event.Kind, event.CreatedAt.Unix(), db)
 				if err != nil {
 					log.Printf("❌ [Bridge] Failed to update Since: %v\n", err)
 					continue

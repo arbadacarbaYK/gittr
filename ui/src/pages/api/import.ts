@@ -441,61 +441,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       }
     }
     
-    // Fetch actual file content for ALL files (including binary)
-    // This ensures complete repository is stored in Nostr events, not just links to GitHub
-    // OPTIMIZATION: Fetch files in parallel batches (10 at a time) to speed up large repos
-    const filesWithContent: Array<{ type: string; path: string; size?: number; content?: string; isBinary?: boolean }> = [];
+    // Return file metadata only (no content) to avoid 4MB response limit
+    // Frontend will fetch file content individually via /api/git/file-content when needed
+    // This allows importing large repositories without hitting Next.js body size limits
+    const filesWithMetadata: Array<{ type: string; path: string; size?: number; isBinary?: boolean }> = [];
     if (tree?.files) {
       const fileList = tree.files.filter((f: any) => f.type === "file");
       const dirList = tree.files.filter((f: any) => f.type === "dir");
       
       // Add directories first (no content needed)
-      filesWithContent.push(...dirList);
+      filesWithMetadata.push(...dirList);
       
-      console.log(`📥 [Import API] Fetching content for ${fileList.length} files in parallel batches (including binary files)...`);
-      let textCount = 0;
-      let binaryCount = 0;
-      let errorCount = 0;
-      
-      // Fetch files in parallel batches of 10
-      const BATCH_SIZE = 10;
-      for (let i = 0; i < fileList.length; i += BATCH_SIZE) {
-        const batch = fileList.slice(i, i + BATCH_SIZE);
-        const batchPromises = batch.map(async (file: any) => {
-          const fileData = await fetchFileContent(owner, repo, branchToUse, file.path);
-          if (fileData !== null) {
-            if (fileData.isBinary) {
-              binaryCount++;
-            } else {
-              textCount++;
-            }
-            return {
-              ...file,
-              content: fileData.content,
-              isBinary: fileData.isBinary,
-            };
-          } else {
-            errorCount++;
-            return file; // Include without content
-          }
+      // Add file metadata (detect binary from extension, no content fetching)
+      console.log(`📥 [Import API] Processing ${fileList.length} files (metadata only, no content to avoid 4MB limit)...`);
+      fileList.forEach((file: any) => {
+        const ext = file.path.split('.').pop()?.toLowerCase() || '';
+        const textExts = ['html', 'htm', 'xhtml', 'css', 'js', 'jsx', 'ts', 'tsx', 'json', 'xml', 'txt', 'md', 'markdown', 'yml', 'yaml', 'toml', 'ini', 'conf', 'config', 'log', 'csv', 'tsv'];
+        const isBinary = !textExts.includes(ext) && (file.size === undefined || file.size > 100000); // Assume binary if >100KB or unknown extension
+        filesWithMetadata.push({
+          ...file,
+          isBinary,
+          // content is excluded - frontend will fetch via /api/git/file-content
         });
-        
-        const batchResults = await Promise.all(batchPromises);
-        filesWithContent.push(...batchResults);
-        
-        // Log progress every batch
-        if ((i + BATCH_SIZE) % 50 === 0 || i + BATCH_SIZE >= fileList.length) {
-          console.log(`📥 [Import API] Progress: ${Math.min(i + BATCH_SIZE, fileList.length)}/${fileList.length} files processed (${textCount} text, ${binaryCount} binary, ${errorCount} errors)`);
-        }
-      }
-      
+      });
     }
     
     // Ensure we always return files, even if empty
-    const finalFiles = filesWithContent.length > 0 ? filesWithContent : (tree?.files || []);
+    const finalFiles = filesWithMetadata.length > 0 ? filesWithMetadata : (tree?.files || []);
     
-    console.log(`📦 [Import API] Final response:`, {
-      filesWithContentLength: filesWithContent.length,
+    console.log(`📦 [Import API] Final response (metadata only, no content):`, {
+      filesWithMetadataLength: filesWithMetadata.length,
       treeFilesLength: tree?.files?.length || 0,
       finalFilesLength: finalFiles.length,
       fileCount: finalFiles.filter((f: any) => f.type === "file").length,
@@ -525,8 +500,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       homepage, // Include GitHub Pages/website URL
     };
 
-    // Next.js API routes have a 4MB body limit (after gzip). Large repositories (many files/binaries)
-    // can exceed this easily and cause 504s at the CDN. Detect and fail fast with friendly error.
+    // Next.js API routes have a 4MB body limit (after gzip). 
+    // We exclude file content from the response to avoid this limit.
+    // Files are fetched individually when needed via /api/git/file-content.
     const jsonPayload = JSON.stringify(responsePayload);
     const payloadBytes = Buffer.byteLength(jsonPayload, "utf8");
     const MAX_PAYLOAD_BYTES = 3.5 * 1024 * 1024; // ~3.5MB buffer before the hard 4MB limit
@@ -538,7 +514,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       return res.status(413).json({
         status: "repo_too_large",
         message:
-          "This repository contains too many or too large files (over 4MB of metadata). Please remove large release assets/binaries and try again.",
+          "This repository contains too many files (over 4MB of metadata). Please try importing a smaller repository or contact support.",
         fileCount: responsePayload.files?.filter((f) => f.type === "file").length ?? 0,
         approximateSizeBytes: payloadBytes,
       });

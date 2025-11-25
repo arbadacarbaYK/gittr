@@ -11,12 +11,78 @@ import { getTopRepos, getTopDevsByPRs, getTopBountyTakers, getTopUsers, getLates
 import { backfillActivities, Activity } from "@/lib/activity-tracking";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getRepoOwnerPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
 import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
-import { formatDateTime24h } from "@/lib/utils/date-format";
 import { nip19 } from "nostr-tools";
 import { ZapButton } from "@/components/ui/zap-button";
 import { loadStoredRepos, type StoredRepo } from "@/lib/repos/storage";
+
+// Parse NIP-34 repository announcement format
+function parseNIP34Repository(event: any): any {
+  const repoData: any = {
+    repositoryName: "",
+    description: "",
+    clone: [],
+    relays: [],
+    topics: [],
+    maintainers: [],
+    web: [],
+  };
+  
+  if (!event.tags || !Array.isArray(event.tags)) {
+    return repoData;
+  }
+  
+  for (const tag of event.tags) {
+    if (!Array.isArray(tag) || tag.length < 2) continue;
+    
+    const tagName = tag[0];
+    const tagValue = tag[1];
+    
+    switch (tagName) {
+      case "d":
+        repoData.repositoryName = tagValue;
+        break;
+      case "name":
+        repoData.name = tagValue;
+        break;
+      case "description":
+        repoData.description = tagValue;
+        break;
+      case "clone":
+        if (tagValue) repoData.clone.push(tagValue);
+        break;
+      case "relays":
+        if (tagValue) repoData.relays.push(tagValue);
+        break;
+      case "web":
+        if (tagValue) repoData.web.push(tagValue);
+        break;
+      case "t":
+        if (tagValue) repoData.topics.push(tagValue);
+        break;
+      case "maintainers":
+        if (tagValue) repoData.maintainers.push(tagValue);
+        break;
+      case "r":
+        if (tagValue && tag[2] === "euc") {
+          repoData.earliestUniqueCommit = tagValue;
+        }
+        break;
+    }
+  }
+  
+  if (!repoData.repositoryName && repoData.name) {
+    repoData.repositoryName = repoData.name;
+  }
+  
+  repoData.publicRead = true;
+  repoData.publicWrite = false;
+  
+  return repoData;
+}
 
 type Repo = {
   slug: string;
@@ -25,6 +91,7 @@ type Repo = {
   name: string;
   sourceUrl?: string;
   createdAt: number;
+  description?: string;
   entityDisplayName?: string;
   ownerPubkey?: string; // Full 64-char pubkey
   logoUrl?: string;
@@ -39,7 +106,7 @@ type Repo = {
 
 export default function HomePage() {
   const { isLoggedIn, name } = useSession();
-  const { pubkey } = useNostrContext();
+  const { pubkey, defaultRelays, subscribe, addRelay } = useNostrContext();
   const [repos, setRepos] = useState<Repo[]>([]);
   const [topRepos, setTopRepos] = useState<RepoStats[]>([]);
   const [topDevs, setTopDevs] = useState<UserStats[]>([]);
@@ -54,6 +121,7 @@ export default function HomePage() {
   const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
   const [openPRsAndIssues, setOpenPRsAndIssues] = useState<{openPRs: number; openIssues: number; recentPRs: any[]; recentIssues: any[]} | null>(null);
   const [statsLoaded, setStatsLoaded] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   // Load repos and listen for updates from Nostr sync
   const loadRepos = useCallback(() => {
@@ -83,6 +151,205 @@ export default function HomePage() {
       window.removeEventListener("ngit:repo-imported", handleRepoUpdate);
     };
   }, [loadRepos]);
+
+  // Sync from Nostr relays - ensures homepage shows repos even when not signed in
+  // This makes the homepage consistent across browsers (unlike localStorage which is browser-specific)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!subscribe || !defaultRelays || !Array.isArray(defaultRelays) || defaultRelays.length === 0) {
+      return;
+    }
+    
+    try {
+      console.log('📡 [Home] Starting Nostr sync for homepage...');
+      setSyncing(true);
+      
+      const allRelays = getAllRelays(defaultRelays);
+      
+      // Map: repoKey (pubkey + d tag) -> array of events (for NIP-34 replaceable events)
+      const nip34EventsByRepo = new Map<string, Array<{event: any; relayURL?: string}>>();
+      
+      let eoseCount = 0;
+      const eoseReceived = new Set<string>();
+      
+      const unsub = subscribe(
+        [{ kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34], limit: 5000 }],
+        allRelays,
+        (event: any, isAfterEose: boolean, relayURL?: string) => {
+          try {
+            // Collect NIP-34 events for later processing (to pick latest)
+            if (event.kind === KIND_REPOSITORY_NIP34) {
+              const dTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "d");
+              const repoName = dTag?.[1];
+              if (repoName && event.pubkey) {
+                const repoKey = `${event.pubkey}/${repoName}`;
+                if (!nip34EventsByRepo.has(repoKey)) {
+                  nip34EventsByRepo.set(repoKey, []);
+                }
+                nip34EventsByRepo.get(repoKey)!.push({ event, relayURL });
+              }
+            }
+            
+            // Process events immediately (for responsive UI)
+            if (event.kind === KIND_REPOSITORY || event.kind === KIND_REPOSITORY_NIP34) {
+              try {
+                const repoData = event.kind === KIND_REPOSITORY_NIP34 
+                  ? parseNIP34Repository(event)
+                  : JSON.parse(event.content);
+                
+                const existingRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
+                const repoName = repoData.repositoryName || repoData.name || "";
+                const ownerPubkey = event.pubkey;
+                
+                if (!repoName || !ownerPubkey) return;
+                
+                const existingIndex = existingRepos.findIndex((r: any) => {
+                  const rOwner = r.ownerPubkey || (r.entity ? (() => {
+                    try {
+                      const decoded = nip19.decode(r.entity);
+                      return decoded.type === 'npub' ? decoded.data : null;
+                    } catch { return null; }
+                  })() : null);
+                  return rOwner && rOwner.toLowerCase() === ownerPubkey.toLowerCase() &&
+                         (r.repo === repoName || r.slug === repoName || r.slug === `${r.entity}/${repoName}`);
+                });
+                
+                const repoEntry: any = {
+                  slug: repoName,
+                  entity: ownerPubkey ? (() => {
+                    try {
+                      return nip19.npubEncode(ownerPubkey);
+                    } catch {
+                      return ownerPubkey.slice(0, 8);
+                    }
+                  })() : undefined,
+                  repo: repoName,
+                  name: repoData.name || repoName,
+                  description: repoData.description || "",
+                  createdAt: event.created_at * 1000,
+                  updatedAt: Date.now(),
+                  ownerPubkey: ownerPubkey,
+                  lastNostrEventId: event.id,
+                  lastNostrEventCreatedAt: event.created_at,
+                  syncedFromNostr: true,
+                  clone: repoData.clone || [],
+                  relays: repoData.relays || [],
+                  topics: repoData.topics || [],
+                };
+                
+                if (existingIndex >= 0) {
+                  const existing = existingRepos[existingIndex];
+                  const existingLatest = (existing as any).lastNostrEventCreatedAt || 0;
+                  if (event.created_at > existingLatest) {
+                    existingRepos[existingIndex] = { ...existing, ...repoEntry };
+                    localStorage.setItem("gittr_repos", JSON.stringify(existingRepos));
+                    window.dispatchEvent(new CustomEvent("storage"));
+                  }
+                } else {
+                  existingRepos.push(repoEntry);
+                  localStorage.setItem("gittr_repos", JSON.stringify(existingRepos));
+                  window.dispatchEvent(new CustomEvent("storage"));
+                }
+              } catch (err) {
+                console.error("❌ [Home] Failed to process repo event:", err);
+              }
+            }
+            
+            // Handle EOSE
+            if (isAfterEose && typeof relayURL === 'string') {
+              if (!eoseReceived.has(relayURL)) {
+                eoseReceived.add(relayURL);
+                eoseCount++;
+                
+                // Process latest NIP-34 events after EOSE
+                if (nip34EventsByRepo.size > 0) {
+                  nip34EventsByRepo.forEach((eventList, repoKey) => {
+                    if (eventList.length > 1) {
+                      // Sort by created_at descending (latest first)
+                      eventList.sort((a, b) => (b.event.created_at || 0) - (a.event.created_at || 0));
+                      const latestEvent = eventList[0]?.event;
+                      if (!latestEvent) return;
+                      
+                      // Update with latest event
+                      try {
+                        const repoData = parseNIP34Repository(latestEvent);
+                        const existingRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
+                        const repoName = repoData.repositoryName || repoData.name || "";
+                        const ownerPubkey = latestEvent.pubkey;
+                        
+                        if (repoName && ownerPubkey) {
+                          const existingIndex = existingRepos.findIndex((r: any) => {
+                            const rOwner = r.ownerPubkey || (r.entity ? (() => {
+                              try {
+                                const decoded = nip19.decode(r.entity);
+                                return decoded.type === 'npub' ? decoded.data : null;
+                              } catch { return null; }
+                            })() : null);
+                            return rOwner && rOwner.toLowerCase() === ownerPubkey.toLowerCase() &&
+                                   (r.repo === repoName || r.slug === repoName || r.slug === `${r.entity}/${repoName}`);
+                          });
+                          
+                          if (existingIndex >= 0) {
+                            const existing = existingRepos[existingIndex];
+                            const existingLatest = (existing as any).lastNostrEventCreatedAt || 0;
+                            if (latestEvent.created_at > existingLatest) {
+                              const repoEntry: any = {
+                                slug: repoName,
+                                entity: ownerPubkey ? (() => {
+                                  try {
+                                    return nip19.npubEncode(ownerPubkey);
+                                  } catch {
+                                    return ownerPubkey.slice(0, 8);
+                                  }
+                                })() : undefined,
+                                repo: repoName,
+                                name: repoData.name || repoName,
+                                description: repoData.description || "",
+                                createdAt: latestEvent.created_at * 1000,
+                                updatedAt: Date.now(),
+                                ownerPubkey: ownerPubkey,
+                                lastNostrEventId: latestEvent.id,
+                                lastNostrEventCreatedAt: latestEvent.created_at,
+                                syncedFromNostr: true,
+                                clone: repoData.clone || [],
+                                relays: repoData.relays || [],
+                                topics: repoData.topics || [],
+                              };
+                              existingRepos[existingIndex] = { ...existing, ...repoEntry };
+                              localStorage.setItem("gittr_repos", JSON.stringify(existingRepos));
+                              window.dispatchEvent(new CustomEvent("storage"));
+                            }
+                          }
+                        }
+                      } catch (err) {
+                        console.error("❌ [Home] Failed to process latest NIP-34 event:", err);
+                      }
+                    }
+                  });
+                  nip34EventsByRepo.clear();
+                }
+                
+                if (eoseCount >= Math.min(3, allRelays.length)) {
+                  setSyncing(false);
+                }
+              }
+            }
+          } catch (err) {
+            console.error("❌ [Home] Error in subscribe callback:", err);
+          }
+        }
+      );
+      
+      setTimeout(() => setSyncing(false), 10000);
+      
+      return () => {
+        if (unsub) unsub();
+      };
+    } catch (err) {
+      console.error("❌ [Home] Failed to start Nostr sync:", err);
+      setSyncing(false);
+    }
+  }, [subscribe, defaultRelays]);
 
   // Backfill activities on first load (if not already done)
   useEffect(() => {
@@ -164,6 +431,8 @@ export default function HomePage() {
     };
   }, [pubkey]); // Re-run when pubkey changes (login/logout)
 
+  const canAccessLocalStorage = typeof window !== "undefined" && typeof localStorage !== "undefined";
+
   const recent = useMemo(() => {
     // CRITICAL: Sort by latest event date (lastNostrEventCreatedAt) if available, otherwise by createdAt
     // This ensures repos with recent updates appear first
@@ -215,7 +484,15 @@ export default function HomePage() {
     
     // Load list of locally-deleted repos (user deleted them, don't show)
     // CRITICAL: Use same key as explore page for consistency
-    const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
+    // Only access localStorage if available (client-side only)
+    let deletedRepos: Array<{entity: string; repo: string; deletedAt: number}> = [];
+    if (canAccessLocalStorage) {
+      try {
+        deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]");
+      } catch (error) {
+        console.warn("Failed to parse gittr_deleted_repos from localStorage:", error);
+      }
+    }
     
     // Filter out deleted/archived repos AND locally-deleted repos
     const filtered = Array.from(dedupeMap.values()).filter((r: any) => {
@@ -1028,10 +1305,7 @@ export default function HomePage() {
             <div className="text-gray-400">No repositories yet. Create or import one to get started.</div>
           ) : (
             <ul className="divide-y divide-[#383B42]">
-              {recent.filter((r: any) => {
-                // Filter out deleted repos
-                return !r.deleted && !r.archived;
-              }).map((r, index) => {
+              {recent.map((r, index) => {
                 const entity = r.entity;
                 const repo = r.repo || r.slug;
                 if (!entity || entity === "user") return null;
@@ -1139,7 +1413,7 @@ export default function HomePage() {
                       <div className="flex-1 min-w-0 min-w-[0]">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <div className="text-purple-500 hover:underline font-semibold truncate min-w-0">
-                      {displayName}/{r.name || repo}
+                            {displayName}/{r.name || repo}
                           </div>
                           {/* Status badge */}
                           {pubkey && (r as any).ownerPubkey === pubkey && (() => {
@@ -1152,13 +1426,14 @@ export default function HomePage() {
                             );
                           })()}
                         </div>
-                    <div className="text-gray-400 text-sm">
-                      {r.sourceUrl ? (
-                        <>Imported from {r.sourceUrl}</>
-                      ) : (
-                        <>Created {formatDateTime24h(r.createdAt)}</>
-                      )}
-                    </div>
+                        {r.description && (
+                          <div className="text-sm opacity-60 mt-1 truncate">{r.description}</div>
+                        )}
+                        {r.sourceUrl && (
+                          <div className="text-sm opacity-70 mt-1 break-words overflow-hidden">
+                            <span className="break-all line-clamp-2">Imported from {r.sourceUrl}</span>
+                          </div>
+                        )}
                       </div>
                     </Link>
                   </li>
