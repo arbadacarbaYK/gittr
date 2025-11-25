@@ -675,6 +675,21 @@ export default function RepoCodePage({
             contributions: contributor.contributions ?? 0,
           }));
 
+        // CRITICAL: Query Nostr for GitHub identity mappings (NIP-39) before mapping contributors
+        if (gitHostContributors.length > 0 && subscribe && defaultRelays && defaultRelays.length > 0) {
+          const githubLogins = gitHostContributors.map(c => c.login).filter(Boolean);
+          (async () => {
+            try {
+              const { queryGithubIdentitiesFromNostr } = await import("@/lib/github-mapping");
+              await queryGithubIdentitiesFromNostr(subscribe, defaultRelays, githubLogins);
+              console.log(`✅ [Contributors] Queried Nostr for ${githubLogins.length} GitHub identities (from stored repo)`);
+            } catch (identityError) {
+              console.warn("⚠️ [Contributors] Failed to query GitHub identities from Nostr:", identityError);
+              // Continue anyway - will use localStorage mappings only
+            }
+          })();
+        }
+
         contributors = mapGithubContributors(
           gitHostContributors,
           effectiveUserPubkey || undefined,
@@ -725,6 +740,20 @@ export default function RepoCodePage({
             }));
           if (parsed.length === 0) {
             return;
+          }
+
+          // CRITICAL: Query Nostr for GitHub identity mappings (NIP-39) before mapping contributors
+          // This ensures contributors get their correct Nostr pubkeys instead of all getting the owner's pubkey
+          const githubLogins = parsed.map(c => c.login);
+          if (subscribe && defaultRelays && defaultRelays.length > 0) {
+            try {
+              const { queryGithubIdentitiesFromNostr } = await import("@/lib/github-mapping");
+              await queryGithubIdentitiesFromNostr(subscribe, defaultRelays, githubLogins);
+              console.log(`✅ [Contributors] Queried Nostr for ${githubLogins.length} GitHub identities`);
+            } catch (identityError) {
+              console.warn("⚠️ [Contributors] Failed to query GitHub identities from Nostr:", identityError);
+              // Continue anyway - will use localStorage mappings only
+            }
           }
 
           const fetchedContributors = mapGithubContributors(
@@ -1082,6 +1111,18 @@ export default function RepoCodePage({
               let contributors: Array<{pubkey?: string; name?: string; picture?: string; weight: number; githubLogin?: string; role?: "owner" | "maintainer" | "contributor"}> = [];
                           
               if (d.contributors && Array.isArray(d.contributors) && d.contributors.length > 0) {
+                // CRITICAL: Query Nostr for GitHub identity mappings (NIP-39) before mapping contributors
+                const githubLogins = d.contributors.map((c: any) => c.login).filter(Boolean);
+                if (subscribe && defaultRelays && defaultRelays.length > 0 && githubLogins.length > 0) {
+                  try {
+                    const { queryGithubIdentitiesFromNostr } = await import("@/lib/github-mapping");
+                    await queryGithubIdentitiesFromNostr(subscribe, defaultRelays, githubLogins);
+                    console.log(`✅ [Contributors] Queried Nostr for ${githubLogins.length} GitHub identities (from repo data)`);
+                  } catch (identityError) {
+                    console.warn("⚠️ [Contributors] Failed to query GitHub identities from Nostr:", identityError);
+                    // Continue anyway - will use localStorage mappings only
+                  }
+                }
                 contributors = mapGithubContributors(d.contributors, effectiveUserPubkey || undefined, userPicture || undefined, true);
               }
               contributors = normalizeContributors(contributors);
@@ -1092,6 +1133,18 @@ export default function RepoCodePage({
                   if (contributorsResponse.ok) {
                     const contributorsData = await contributorsResponse.json();
                     if (contributorsData && Array.isArray(contributorsData) && contributorsData.length > 0) {
+                      // CRITICAL: Query Nostr for GitHub identity mappings (NIP-39) before mapping contributors
+                      const githubLogins = contributorsData.map((c: any) => c.login).filter(Boolean);
+                      if (subscribe && defaultRelays && defaultRelays.length > 0 && githubLogins.length > 0) {
+                        try {
+                          const { queryGithubIdentitiesFromNostr } = await import("@/lib/github-mapping");
+                          await queryGithubIdentitiesFromNostr(subscribe, defaultRelays, githubLogins);
+                          console.log(`✅ [Contributors] Queried Nostr for ${githubLogins.length} GitHub identities (from API)`);
+                        } catch (identityError) {
+                          console.warn("⚠️ [Contributors] Failed to query GitHub identities from Nostr:", identityError);
+                          // Continue anyway - will use localStorage mappings only
+                        }
+                      }
                       // This will use GITHUB_PLATFORM_TOKEN if available for better rate limits
                       const fetchedContributors = mapGithubContributors(contributorsData, effectiveUserPubkey || undefined, userPicture || undefined, true);
                       
@@ -2253,7 +2306,7 @@ export default function RepoCodePage({
                         if (tagValue && !tagValue.includes('localhost') && !tagValue.includes('127.0.0.1')) {
                         if (!eventRepoData.clone) eventRepoData.clone = [];
                         if (!eventRepoData.clone.includes(tagValue)) {
-                          eventRepoData.clone.push(tagValue);
+                        eventRepoData.clone.push(tagValue);
                           console.log(`✅ [File Fetch] Added clone URL from Kind 51 event tag: ${tagValue} (total: ${eventRepoData.clone.length})`);
                           // CRITICAL: Immediately save clone URLs to repoData state so they're available for fetching
                           setRepoData((prev: any) => {
@@ -2385,7 +2438,8 @@ export default function RepoCodePage({
                   return name.toLowerCase().replace(/[_-]/g, "");
                 };
                 
-                const expectedRepoNormalized = normalizeRepoName(params.repo);
+                // CRITICAL: Use decodedRepo (not params.repo) for comparison - params.repo is URL-encoded!
+                const expectedRepoNormalized = normalizeRepoName(decodedRepo);
                 const eventRepoNormalized = normalizeRepoName(eventRepoData.repositoryName);
                 
                 // Match by repository name (case-insensitive, normalized)
@@ -2695,7 +2749,7 @@ export default function RepoCodePage({
                   
                   const eventKeys = Object.keys(eventRepoData).join(',');
                   const eventContentPreview = event.content ? event.content.substring(0, 100) : "no content";
-                  console.log(`⚠️ [File Fetch] Event found but files not accepted: reason=${reason}, eventRepoName=${eventRepoData.repositoryName || 'none'}, expectedRepoName=${params.repo}, repoNameMatches=${repoNameMatches}, contentMatches=${contentMatches}, pubkeyMatches=${pubkeyMatches}, hasFiles=${!!(eventRepoData.files && Array.isArray(eventRepoData.files))}, filesLength=${eventRepoData.files?.length || 0}, eventKeys=${eventKeys}, contentPreview=${eventContentPreview}`);
+                  console.log(`⚠️ [File Fetch] Event found but files not accepted: reason=${reason}, eventRepoName=${eventRepoData.repositoryName || 'none'}, expectedRepoName=${decodedRepo}, repoNameMatches=${repoNameMatches}, contentMatches=${contentMatches}, pubkeyMatches=${pubkeyMatches}, hasFiles=${!!(eventRepoData.files && Array.isArray(eventRepoData.files))}, filesLength=${eventRepoData.files?.length || 0}, eventKeys=${eventKeys}, contentPreview=${eventContentPreview}`);
                   
                   // CRITICAL: Even if event doesn't have files, we should still extract sourceUrl, clone URLs, and relays
                   // This is needed for the GitHub fallback when git-nostr-bridge returns 404
