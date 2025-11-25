@@ -59,9 +59,14 @@ export function Contributors({ contributors = [] }: ContributorsProps) {
       {sanitizedContributors.map((contributor, idx) => {
         // DEBUG: Log contributor data to diagnose pubkey issues (only once per render, not per contributor)
         if (idx === 0) {
-          const uniquePubkeys = new Set(sanitizedContributors.map(c => c.pubkey).filter(Boolean));
-          if (uniquePubkeys.size === 1 && sanitizedContributors.length > 1) {
-            console.error("❌ [Contributors] ALL contributors have the SAME pubkey! This is wrong:", Array.from(uniquePubkeys)[0]);
+          // CRITICAL: Only flag error if MULTIPLE contributors have the SAME pubkey
+          // If only one contributor has a pubkey, that's fine (others just don't have Nostr identities)
+          const contributorsWithPubkeys = sanitizedContributors.filter(c => c.pubkey);
+          const uniquePubkeys = new Set(contributorsWithPubkeys.map(c => c.pubkey));
+          
+          // Only error if: multiple contributors have pubkeys AND they all have the same one
+          if (contributorsWithPubkeys.length > 1 && uniquePubkeys.size === 1) {
+            console.error("❌ [Contributors] Multiple contributors have the SAME pubkey! This is wrong:", Array.from(uniquePubkeys)[0]);
             // Only log full details if there's a problem
             console.table(sanitizedContributors.map((c, i) => ({
               idx: i,
@@ -70,6 +75,9 @@ export function Contributors({ contributors = [] }: ContributorsProps) {
               name: c.name || "none",
               role: c.role || "none",
             })));
+          } else if (contributorsWithPubkeys.length === 0) {
+            // DEBUG: Log when no contributors have pubkeys (this is normal if they haven't claimed identities)
+            console.debug("ℹ️ [Contributors] No contributors have Nostr pubkeys (they may not have claimed GitHub identities)");
           }
         }
         
