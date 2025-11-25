@@ -185,6 +185,9 @@ async function fetchFileContent(owner: string, repo: string, branch: string, pat
   }
 }
 
+// Increase timeout for large imports (5 minutes)
+export const maxDuration = 300;
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse<Data>) {
   // Handle OPTIONS request for CORS (GRASP requirement)
   if (req.method === "OPTIONS") {
@@ -440,44 +443,49 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     
     // Fetch actual file content for ALL files (including binary)
     // This ensures complete repository is stored in Nostr events, not just links to GitHub
+    // OPTIMIZATION: Fetch files in parallel batches (10 at a time) to speed up large repos
     const filesWithContent: Array<{ type: string; path: string; size?: number; content?: string; isBinary?: boolean }> = [];
     if (tree?.files) {
-      console.log(`📥 [Import API] Fetching content for ${tree.files.length} files (including binary files)...`);
-      let fetchedCount = 0;
+      const fileList = tree.files.filter((f: any) => f.type === "file");
+      const dirList = tree.files.filter((f: any) => f.type === "dir");
+      
+      // Add directories first (no content needed)
+      filesWithContent.push(...dirList);
+      
+      console.log(`📥 [Import API] Fetching content for ${fileList.length} files in parallel batches (including binary files)...`);
       let textCount = 0;
       let binaryCount = 0;
       let errorCount = 0;
       
-      for (const file of tree.files) {
-        if (file.type === "dir") {
-          // Directories don't have content
-          filesWithContent.push(file);
-          continue;
-        }
-        
-        // Fetch file content (text or binary as base64)
-        const fileData = await fetchFileContent(owner, repo, branchToUse, file.path);
-        if (fileData !== null) {
-          filesWithContent.push({
-            ...file,
-            content: fileData.content, // Include actual file content (text or base64 for binary)
-            isBinary: fileData.isBinary, // Mark binary files
-          });
-          fetchedCount++;
-          if (fileData.isBinary) {
-            binaryCount++;
+      // Fetch files in parallel batches of 10
+      const BATCH_SIZE = 10;
+      for (let i = 0; i < fileList.length; i += BATCH_SIZE) {
+        const batch = fileList.slice(i, i + BATCH_SIZE);
+        const batchPromises = batch.map(async (file: any) => {
+          const fileData = await fetchFileContent(owner, repo, branchToUse, file.path);
+          if (fileData !== null) {
+            if (fileData.isBinary) {
+              binaryCount++;
+            } else {
+              textCount++;
+            }
+            return {
+              ...file,
+              content: fileData.content,
+              isBinary: fileData.isBinary,
+            };
           } else {
-            textCount++;
+            errorCount++;
+            return file; // Include without content
           }
-        } else {
-          // File couldn't be fetched - include without content (shouldn't happen often)
-          filesWithContent.push(file);
-          errorCount++;
-        }
+        });
         
-        // Log progress every 10 files
-        if ((fetchedCount + errorCount) % 10 === 0) {
-          console.log(`📥 [Import API] Progress: ${fetchedCount + errorCount}/${tree.files.length} files processed (${textCount} text, ${binaryCount} binary)`);
+        const batchResults = await Promise.all(batchPromises);
+        filesWithContent.push(...batchResults);
+        
+        // Log progress every batch
+        if ((i + BATCH_SIZE) % 50 === 0 || i + BATCH_SIZE >= fileList.length) {
+          console.log(`📥 [Import API] Progress: ${Math.min(i + BATCH_SIZE, fileList.length)}/${fileList.length} files processed (${textCount} text, ${binaryCount} binary, ${errorCount} errors)`);
         }
       }
       
