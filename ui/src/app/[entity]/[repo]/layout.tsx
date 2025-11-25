@@ -365,7 +365,7 @@ export default function RepoLayout({
     const handleWindowResize = () => {
       clearTimeout(resizeTimeout);
       resizeTimeout = setTimeout(() => {
-        setWindowWidth(window.innerWidth);
+      setWindowWidth(window.innerWidth);
       }, 150); // Debounce by 150ms
     };
 
