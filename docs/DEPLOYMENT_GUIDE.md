@@ -189,6 +189,15 @@ cp .env.example .env.local
 
 **Why**: The bridge is essential for `git clone`, `git push`, and `git pull` operations.
 
+> **Why we still publish Strategy‑4 metadata**
+>
+> Even with a bridge (Strategy 5), every push still emits a full NIP‑34/Strategy 4 event. That’s deliberate:
+> 1. **Protocol compatibility** – Other NGit/GRASP clients expect the canonical `clone`, `relays`, `web`, `link`, and Blossom pack tags. If we stopped publishing them, relay‑only or nostr:// clients couldn’t reconstruct the repo.
+> 2. **Portability** – Some users run their own bridge or use `git-remote-nostr`. They rely on event metadata to fetch without touching `git.gittr.space`, so we keep Strategy 4 intact.
+> 3. **Redundancy** – If our bridge is down, the Nostr event still points to Blossom packs or other GRASP mirrors. There’s no single point of failure.
+> 4. **Performance layering** – The bridge is just a fast cache/API layered on top. When nostr:// or Blossom sources are available, clients can keep using them; the bridge is a shortcut while relays sync.
+
+
 #### 5.1: Install Go
 
 ```bash
