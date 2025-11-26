@@ -578,8 +578,8 @@ export default function ExplorePage() {
           
           if (!imageExts.includes(extension)) return false;
           
-          // Match logo files
-          if (baseName.includes("logo")) return true;
+          // Match logo files, but exclude third-party logos (alby, etc.)
+          if (baseName.includes("logo") && !baseName.includes("logo-alby") && !baseName.includes("alby-logo")) return true;
           
           // Match repo-name-based files (e.g., "tides.png" for tides repo)
           if (repoName && baseName === repoName) return true;
