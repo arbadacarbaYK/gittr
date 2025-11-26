@@ -1544,21 +1544,21 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 </div>
               )}
               {displayPubkey && (
-                <div className="flex items-center gap-2 text-gray-400 text-xs font-mono">
-                  <span>npub: {displayPubkey}</span>
+                <div className="flex items-center gap-2 text-gray-400 text-xs font-mono min-w-0">
+                  <span className="break-all">npub: {displayPubkey}</span>
                   <a 
                     href={`https://nostr.com/${displayPubkey}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-purple-400 hover:text-purple-300"
+                    className="text-purple-400 hover:text-purple-300 flex-shrink-0"
                   >
                     <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
               )}
               {fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta) && (
-                <div className="flex items-center gap-2 text-gray-400 text-xs font-mono">
-                  <span>pubkey: {fullPubkeyForMeta}</span>
+                <div className="flex items-center gap-2 text-gray-400 text-xs font-mono min-w-0">
+                  <span className="break-all">pubkey: {fullPubkeyForMeta}</span>
                 </div>
               )}
             </div>
