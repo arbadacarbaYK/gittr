@@ -38,6 +38,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
   // For metadata lookup, use full pubkey if we resolved one, otherwise use entity
   // CRITICAL: Handle npub format entities by decoding them first
   // Also try to resolve from localStorage immediately
+  // CRITICAL: Normalize to lowercase for consistent metadataMap lookup
   const [fullPubkeyForMeta, setFullPubkeyForMeta] = useState<string>(() => {
     // If entity is npub, decode it immediately
     if (params.entity.startsWith("npub")) {
@@ -46,18 +47,20 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
         if (decoded.type === "npub") {
           const pubkey = decoded.data as string;
           if (/^[0-9a-f]{64}$/i.test(pubkey)) {
-            console.log(`✅ [Profile] Decoded npub to pubkey: ${pubkey.slice(0, 8)}`);
-            return pubkey;
+            const normalized = pubkey.toLowerCase();
+            console.log(`✅ [Profile] Decoded npub to pubkey: ${normalized.slice(0, 8)}`);
+            return normalized;
           }
         }
       } catch (e) {
         console.error("Failed to decode npub:", e);
       }
     }
-    // If entity is already a full 64-char pubkey, use it
+    // If entity is already a full 64-char pubkey, use it (normalized)
     if (params.entity.length === 64 && /^[0-9a-f]{64}$/i.test(params.entity)) {
-      console.log(`✅ [Profile] Entity is full pubkey: ${params.entity.slice(0, 8)}`);
-      return params.entity;
+      const normalized = params.entity.toLowerCase();
+      console.log(`✅ [Profile] Entity is full pubkey: ${normalized.slice(0, 8)}`);
+      return normalized;
     }
     // Try to resolve from localStorage immediately
     try {
@@ -72,8 +75,9 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
       );
       
       if (matchingRepo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(matchingRepo.ownerPubkey)) {
-        console.log(`✅ [Profile] Resolved pubkey from repo: ${matchingRepo.ownerPubkey.slice(0, 8)}`);
-        return matchingRepo.ownerPubkey;
+        const normalized = matchingRepo.ownerPubkey.toLowerCase();
+        console.log(`✅ [Profile] Resolved pubkey from repo: ${normalized.slice(0, 8)}`);
+        return normalized;
       }
       
       // Try from activities
@@ -81,8 +85,9 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
         a.user && /^[0-9a-f]{64}$/i.test(a.user) && a.user.toLowerCase().startsWith(params.entity.toLowerCase())
       );
       if (matchingActivity?.user) {
-        console.log(`✅ [Profile] Resolved pubkey from activity: ${matchingActivity.user.slice(0, 8)}`);
-        return matchingActivity.user;
+        const normalized = matchingActivity.user.toLowerCase();
+        console.log(`✅ [Profile] Resolved pubkey from activity: ${normalized.slice(0, 8)}`);
+        return normalized;
       }
     } catch (e) {
       console.error("Failed to resolve pubkey from localStorage:", e);
