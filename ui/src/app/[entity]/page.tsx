@@ -1678,9 +1678,15 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
             {userRepos.map((repo: any) => {
               // CRITICAL: For URLs, use slugified version (repo/slug/repositoryName)
               // For display, use original name (repo.name)
-              const repoForUrl = repo.repo || repo.slug;
+              const repoForUrl = repo.repo || repo.slug || repo.name;
               const repoDisplayName = repo.name || repoForUrl; // CRITICAL: Use original name for display
               // Use npub format for URLs if we have full pubkey
+              // CRITICAL: Ensure repo.entity and repoForUrl exist before constructing href
+              if (!repo.entity || !repoForUrl) {
+                console.error('⚠️ [Profile] Invalid repo data for link:', { entity: repo.entity, repo: repoForUrl, name: repo.name, slug: repo.slug });
+                // Return a placeholder div instead of null to avoid React key issues
+                return <div key={`invalid-${repo.slug || repo.name || Math.random()}`} className="hidden" />;
+              }
               let href = `/${repo.entity}/${repoForUrl}`;
               if (repo.ownerPubkey && /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)) {
                 try {
