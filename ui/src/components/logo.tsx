@@ -1,15 +1,19 @@
-import { cn } from "@/lib/utils";
+"use client";
 
+import { cn } from "@/lib/utils";
 import Image from "next/image";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function Logo({ className }: { className?: string }) {
+  const router = useRouter();
+  
   return (
     <a 
       href="/" 
       onClick={(e) => {
         e.preventDefault();
-        window.location.href = "/";
+        e.stopPropagation();
+        router.push("/");
       }}
       className={cn("items-center space-x-2 flex", className)}
     >
