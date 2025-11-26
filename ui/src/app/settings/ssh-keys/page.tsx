@@ -385,17 +385,17 @@ export default function SSHKeysPage() {
               <div className="text-sm">
                 <p className="font-semibold mb-2">When Do You Need SSH Keys?</p>
                 <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li><strong>Web UI operations</strong> (Push to Nostr, PRs, Issues) use <strong>Nostr signing</strong> (NIP-07 or nsec) - <strong>NO SSH keys needed</strong></li>
-                  <li><strong>Command-line Git operations</strong> (<code className="bg-yellow-900/50 px-1 rounded">git clone</code>, <code className="bg-yellow-900/50 px-1 rounded">git push</code>, <code className="bg-yellow-900/50 px-1 rounded">git pull</code>) use <strong>SSH keys</strong> for authentication</li>
-                  <li>SSH keys are <strong>only needed if you want to use Git from your terminal</strong></li>
-                  <li>If you only use the web UI, you can skip SSH keys entirely</li>
+                  <li><strong>Web UI operations</strong> (Push to Nostr, PRs, Issues) publish <strong>NIP‑34 events</strong> via your Nostr key (NIP‑07 or nsec). <strong>No SSH key required.</strong></li>
+                  <li><strong>Command-line Git operations</strong> (<code className="bg-yellow-900/50 px-1 rounded">git clone</code>, <code className="bg-yellow-900/50 px-1 rounded">git push</code>, <code className="bg-yellow-900/50 px-1 rounded">git pull</code>) talk to the git bridge (e.g. <code className="bg-yellow-900/50 px-1 rounded">git.gittr.space</code>) and <strong>do require an SSH key</strong>.</li>
+                  <li>SSH keys are <strong>only needed if you want to interact with gittr from your terminal/CI</strong>.</li>
+                  <li>If you stay in the browser and let us publish NIP‑34 events for you, you can skip SSH keys entirely.</li>
                 </ul>
               </div>
             </div>
           </div>
           
           <p className="text-gray-400 mt-1">
-            Manage SSH keys for command-line Git operations over SSH. Keys are published to Nostr and used by git-nostr-bridge for authentication when using <code className="bg-gray-800 px-1 rounded">git clone</code>, <code className="bg-gray-800 px-1 rounded">git push</code>, and <code className="bg-gray-800 px-1 rounded">git pull</code>.
+            Manage SSH keys for command-line Git operations over SSH. Keys are published to Nostr (Kind 52) and used by the git-nostr-bridge when you run <code className="bg-gray-800 px-1 rounded">git clone</code>, <code className="bg-gray-800 px-1 rounded">git push</code>, or <code className="bg-gray-800 px-1 rounded">git pull</code> against <code className="bg-gray-800 px-1 rounded">git.gittr.space</code> or other GRASP servers.
           </p>
         </div>
         <div className="flex gap-2">
