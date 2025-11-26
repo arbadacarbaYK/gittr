@@ -1695,16 +1695,12 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 } catch {}
               }
               
-              // Resolve repo icon (same pattern as explore/homepage)
+              // Resolve repo icon with priority: 1) Logo file from repo, 2) Owner profile picture, 3) Stored logoUrl, 4) Platform default
               let iconUrl: string | null = null;
               const isGittrRepo = (repo.name || repo.slug || repo.repo || "").toLowerCase() === "gittr";
               try {
-                // Priority 1: Stored logoUrl
-                if (repo.logoUrl && repo.logoUrl.trim().length > 0) {
-                  iconUrl = repo.logoUrl;
-                  if (isGittrRepo) console.log(`🔍 [Profile] gittr repo: Using stored logoUrl: ${iconUrl}`);
-                } else if (repo.files && repo.files.length > 0) {
-                  // Priority 2: Logo/repo image file from repo
+                // Priority 1: Logo/repo image file from repo
+                if (repo.files && repo.files.length > 0) {
                   const repoName = (repo.repo || repo.slug || repo.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
                   const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
                   
@@ -1775,7 +1771,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                   }
                 }
                 
-                // Priority 3: Owner Nostr profile picture (last fallback)
+                // Priority 2: Owner Nostr profile picture
                 // CRITICAL: For imported repos, ensure we use the correct owner pubkey
                 // Don't use contributor identity mappings - use the actual repo owner
                 const ownerPubkey = repo.ownerPubkey || getRepoOwnerPubkey(repo, repo.entity);
@@ -1809,6 +1805,12 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                   if (isGittrRepo) {
                     console.error(`❌ [Profile] gittr repo: INVALID OWNERPUBKEY! ownerPubkey: ${ownerPubkey}, repo.ownerPubkey: ${repo.ownerPubkey}, getRepoOwnerPubkey result: ${getRepoOwnerPubkey(repo, repo.entity)}`);
                   }
+                }
+                
+                // Priority 3: Stored logoUrl (user-set in repo settings)
+                if (!iconUrl && repo.logoUrl && repo.logoUrl.trim().length > 0) {
+                  iconUrl = repo.logoUrl;
+                  if (isGittrRepo) console.log(`🔍 [Profile] gittr repo: Using stored logoUrl (Priority 3): ${iconUrl}`);
                 }
               } catch (error) {
                 console.error('⚠️ [Profile] Error resolving repo icon:', error);
