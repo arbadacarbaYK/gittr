@@ -334,7 +334,7 @@ export default function HelpPage() {
               </div>
             </div>
 
-            <div className="mt-6 border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
+            <div id="ssh-keys" className="mt-6 border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
               <h3 className="text-lg font-semibold text-white mb-2">SSH Keys vs NIP-34 (When to use which?)</h3>
               <p className="text-sm text-gray-300 mb-3">
                 Most gittr actions happen via NIP‑34 events (signed with your Nostr key). You only need SSH keys when you want to talk to the git bridge directly (terminal/CI).
