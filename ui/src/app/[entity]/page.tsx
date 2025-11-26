@@ -1697,10 +1697,12 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
               
               // Resolve repo icon (same pattern as explore/homepage)
               let iconUrl: string | null = null;
+              const isGittrRepo = (repo.name || repo.slug || repo.repo || "").toLowerCase() === "gittr";
               try {
                 // Priority 1: Stored logoUrl
                 if (repo.logoUrl && repo.logoUrl.trim().length > 0) {
                   iconUrl = repo.logoUrl;
+                  if (isGittrRepo) console.log(`🔍 [Profile] gittr repo: Using stored logoUrl: ${iconUrl}`);
                 } else if (repo.files && repo.files.length > 0) {
                   // Priority 2: Logo/repo image file from repo
                   const repoName = (repo.repo || repo.slug || repo.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -1735,6 +1737,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                   const logoFiles = iconFiles;
                   if (logoFiles.length > 0) {
                     const logoPath = logoFiles[0];
+                    if (isGittrRepo) console.log(`🔍 [Profile] gittr repo: Found logo file: ${logoPath}, sourceUrl: ${repo.sourceUrl || 'none'}`);
                     if (repo.sourceUrl) {
                       try {
                         const url = new URL(repo.sourceUrl);
@@ -1745,6 +1748,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                             const repoName = parts[1].replace(/\.git$/, "");
                             const branch = repo.defaultBranch || "main";
                             iconUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${logoPath}`;
+                            if (isGittrRepo) console.log(`🔍 [Profile] gittr repo: Using GitHub logo URL: ${iconUrl}`);
                           }
                         }
                       } catch {}
@@ -1755,8 +1759,11 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                       if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) && repoName) {
                         const branch = repo.defaultBranch || "main";
                         iconUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(logoPath)}&branch=${encodeURIComponent(branch)}`;
+                        if (isGittrRepo) console.log(`🔍 [Profile] gittr repo: Using Nostr API logo URL: ${iconUrl}, ownerPubkey: ${ownerPubkey.slice(0, 8)}...`);
                       }
                     }
+                  } else if (isGittrRepo) {
+                    console.log(`🔍 [Profile] gittr repo: No logo files found in ${repo.files?.length || 0} files`);
                   }
                 }
                 
@@ -1764,28 +1771,36 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 // CRITICAL: For imported repos, ensure we use the correct owner pubkey
                 // Don't use contributor identity mappings - use the actual repo owner
                 const ownerPubkey = repo.ownerPubkey || getRepoOwnerPubkey(repo, repo.entity);
+                if (isGittrRepo) {
+                  console.log(`🔍 [Profile] gittr repo: Resolving ownerPubkey - repo.ownerPubkey: ${repo.ownerPubkey?.slice(0, 8) || 'null'}, getRepoOwnerPubkey: ${getRepoOwnerPubkey(repo, repo.entity)?.slice(0, 8) || 'null'}, final: ${ownerPubkey?.slice(0, 8) || 'null'}`);
+                }
                 if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
                   // CRITICAL: Normalize pubkey to lowercase and use EXACT match only (no partial matching)
                   // Partial matching can pick up wrong users' metadata
                   const normalizedOwnerPubkey = ownerPubkey.toLowerCase();
                   // Use direct lookup first (exact match only)
                   const ownerMeta = metadataMap[normalizedOwnerPubkey] || metadataMap[ownerPubkey];
+                  if (isGittrRepo) {
+                    console.log(`🔍 [Profile] gittr repo: Metadata lookup - normalizedPubkey: ${normalizedOwnerPubkey.slice(0, 8)}..., hasMeta: ${!!ownerMeta}, picture: ${ownerMeta?.picture?.substring(0, 50) || 'none'}..., iconUrl so far: ${iconUrl || 'none'}`);
+                  }
                   if (ownerMeta?.picture && !iconUrl) {
                     const picture = ownerMeta.picture;
                     if (picture && picture.trim().length > 0 && picture.startsWith("http")) {
                       iconUrl = picture;
                       console.log(`✅ [Profile] Using owner picture for repo ${repo.name || repo.slug}: ${normalizedOwnerPubkey.slice(0, 8)}... (exact match)`);
+                      if (isGittrRepo) console.log(`✅ [Profile] gittr repo: Set iconUrl to owner picture: ${picture.substring(0, 50)}...`);
                     }
                   } else if (!iconUrl) {
-                    // Try getUserMetadata as fallback but log what it finds
-                    const fallbackMeta = getUserMetadata(normalizedOwnerPubkey, metadataMap);
-                    if (fallbackMeta?.picture && fallbackMeta.picture !== ownerMeta?.picture) {
-                      console.warn(`⚠️ [Profile] getUserMetadata found different picture for ${normalizedOwnerPubkey.slice(0, 8)}... (might be wrong user due to partial match)`);
-                    }
                     console.log(`⚠️ [Profile] No icon found for repo ${repo.name || repo.slug}, ownerPubkey: ${normalizedOwnerPubkey.slice(0, 8)}..., hasMetadata: ${!!ownerMeta}, hasPicture: ${!!ownerMeta?.picture}, metadataKeys: ${Object.keys(metadataMap).filter(k => k.toLowerCase().startsWith(normalizedOwnerPubkey.slice(0, 8))).join(', ')}`);
+                    if (isGittrRepo) {
+                      console.warn(`⚠️ [Profile] gittr repo: NO ICON SET! ownerPubkey: ${normalizedOwnerPubkey}, hasMeta: ${!!ownerMeta}, picture: ${ownerMeta?.picture || 'none'}, allMetadataKeys: ${Object.keys(metadataMap).slice(0, 10).join(', ')}`);
+                    }
                   }
                 } else if (!iconUrl) {
                   console.log(`⚠️ [Profile] No valid ownerPubkey for repo ${repo.name || repo.slug}, ownerPubkey: ${ownerPubkey || 'null'}, repo.ownerPubkey: ${repo.ownerPubkey?.slice(0, 8) || 'null'}, getRepoOwnerPubkey: ${getRepoOwnerPubkey(repo, repo.entity)?.slice(0, 8) || 'null'}`);
+                  if (isGittrRepo) {
+                    console.error(`❌ [Profile] gittr repo: INVALID OWNERPUBKEY! ownerPubkey: ${ownerPubkey}, repo.ownerPubkey: ${repo.ownerPubkey}, getRepoOwnerPubkey result: ${getRepoOwnerPubkey(repo, repo.entity)}`);
+                  }
                 }
               } catch (error) {
                 console.error('⚠️ [Profile] Error resolving repo icon:', error);
