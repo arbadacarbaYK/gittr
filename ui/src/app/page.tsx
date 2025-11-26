@@ -13,7 +13,7 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
-import { getRepoOwnerPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
+import { getRepoOwnerPubkey, getEntityDisplayName, getUserMetadata } from "@/lib/utils/entity-resolver";
 import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
 import { nip19 } from "nostr-tools";
 import { ZapButton } from "@/components/ui/zap-button";
@@ -607,9 +607,33 @@ export default function HomePage() {
   // Get owner pubkeys from recent repos for metadata fetching
   // CRITICAL: Normalize to lowercase to ensure consistent metadata lookup
   const recentRepoOwnerPubkeys = useMemo(() => {
-    return recent
+    const pubkeys = recent
       .map(r => {
-        const ownerPubkey = getRepoOwnerPubkey(r as any, r.entity);
+        // Priority 1: Use explicit ownerPubkey from repo (most reliable)
+        if ((r as any).ownerPubkey && /^[0-9a-f]{64}$/i.test((r as any).ownerPubkey)) {
+          return (r as any).ownerPubkey.toLowerCase();
+        }
+        
+        // Priority 2: Try getRepoOwnerPubkey helper
+        let ownerPubkey = getRepoOwnerPubkey(r as any, r.entity);
+        
+        // Priority 3: If getRepoOwnerPubkey didn't return a full pubkey, try to resolve from entity
+        if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+          const entity = r.entity;
+          if (entity && entity.startsWith("npub")) {
+            try {
+              const decoded = nip19.decode(entity);
+              if (decoded.type === "npub") {
+                ownerPubkey = decoded.data as string;
+              }
+            } catch (error) {
+              // Invalid npub, skip this repo
+            }
+          } else if (entity && /^[0-9a-f]{64}$/i.test(entity)) {
+            ownerPubkey = entity;
+          }
+        }
+        
         if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
           // CRITICAL: Normalize to lowercase for consistent metadata lookup
           return ownerPubkey.toLowerCase();
@@ -617,6 +641,11 @@ export default function HomePage() {
         return null;
       })
       .filter((p): p is string => p !== null);
+    
+    // Remove duplicates
+    const uniquePubkeys = Array.from(new Set(pubkeys));
+    console.log(`📊 [Home] Extracted ${uniquePubkeys.length} unique pubkeys from ${recent.length} recent repos`);
+    return uniquePubkeys;
   }, [recent]);
   
   // Combine all pubkeys for metadata fetching
@@ -627,8 +656,13 @@ export default function HomePage() {
       ...recentRepoOwnerPubkeys,
     ];
     // Remove duplicates
-    return Array.from(new Set(normalized));
-  }, [userPubkeys, recentRepoOwnerPubkeys]);
+    const unique = Array.from(new Set(normalized));
+    // CRITICAL: Log when not logged in to debug metadata fetching
+    if (!pubkey && unique.length > 0) {
+      console.log(`📊 [Home] Not logged in - fetching metadata for ${unique.length} pubkeys (${unique.slice(0, 3).map(p => p.slice(0, 8)).join(", ")}...)`);
+    }
+    return unique;
+  }, [userPubkeys, recentRepoOwnerPubkeys, pubkey]);
   
   const userMetadata = useContributorMetadata(allPubkeys);
   
@@ -820,7 +854,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] px-4 py-6 sm:px-6">
+    <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] px-4 py-6 sm:px-6" suppressHydrationWarning>
       <header className="mb-6">
         <h1 className="text-2xl font-bold">Home</h1>
         <p className="text-gray-400 mt-1">
@@ -1365,7 +1399,25 @@ export default function HomePage() {
                 if (!entity || entity === "user") return null;
                 
                 // CRITICAL: Resolve full owner pubkey and convert to npub format
-                const ownerPubkey = getRepoOwnerPubkey(r as any, entity);
+                // Try multiple strategies to get owner pubkey
+                let ownerPubkey = getRepoOwnerPubkey(r as any, entity);
+                
+                // If getRepoOwnerPubkey didn't return a full pubkey, try to resolve from entity
+                if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+                  if (entity && entity.startsWith("npub")) {
+                    try {
+                      const decoded = nip19.decode(entity);
+                      if (decoded.type === "npub") {
+                        ownerPubkey = decoded.data as string;
+                      }
+                    } catch (error) {
+                      // Invalid npub, continue with entity as-is
+                    }
+                  } else if (entity && /^[0-9a-f]{64}$/i.test(entity)) {
+                    ownerPubkey = entity;
+                  }
+                }
+                
                 let href: string;
                 
                 // Always ensure we have a valid href - never use "#"
@@ -1390,26 +1442,36 @@ export default function HomePage() {
                 const normalizedOwnerPubkey = ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
                   ? ownerPubkey.toLowerCase()
                   : null;
-                // CRITICAL: Use userMetadata (which includes cache) for lookup
+                // CRITICAL: Use getUserMetadata helper for robust metadata lookup (handles multiple lookup strategies)
                 const metadata = normalizedOwnerPubkey 
-                  ? (userMetadata[normalizedOwnerPubkey] || (ownerPubkey ? userMetadata[ownerPubkey.toLowerCase()] : undefined))
-                  : undefined;
-                const displayName = metadata?.name || metadata?.display_name
-                  ? (metadata.name || metadata.display_name)
-                  : (normalizedOwnerPubkey
-                    ? getEntityDisplayName(normalizedOwnerPubkey, userMetadata, entity)
-                    : (r.entityDisplayName || entity));
+                  ? getUserMetadata(normalizedOwnerPubkey, userMetadata)
+                  : {};
+                
+                // Priority: 1) Metadata name/display_name, 2) entityDisplayName from repo (if not npub), 3) getEntityDisplayName (which checks metadata + npub fallback), 4) entity
+                // CRITICAL: Only use getEntityDisplayName if we have a pubkey - it will check userMetadata and return npub if metadata not found
+                let displayName: string;
+                if (metadata?.name || metadata?.display_name) {
+                  displayName = metadata.name || metadata.display_name || "";
+                } else if (r.entityDisplayName && r.entityDisplayName.trim().length > 0 && !r.entityDisplayName.startsWith("npub")) {
+                  displayName = r.entityDisplayName;
+                } else if (normalizedOwnerPubkey) {
+                  // getEntityDisplayName checks userMetadata again and returns npub if metadata not found
+                  displayName = getEntityDisplayName(normalizedOwnerPubkey, userMetadata, entity);
+                } else {
+                  displayName = r.entityDisplayName || entity || "";
+                }
                 
                 // Resolve icons - always show fallback if icon fails
                 let iconUrl: string | null = null;
                 let ownerPicture: string | undefined = undefined;
                 try {
                   iconUrl = resolveRepoIcon(r);
-                  // CRITICAL: Use userMetadata for picture lookup (normalized to lowercase)
+                  // CRITICAL: Use getUserMetadata for picture lookup (handles multiple lookup strategies)
                   if (metadata?.picture) {
                     ownerPicture = metadata.picture;
                   } else if (normalizedOwnerPubkey) {
-                    ownerPicture = userMetadata[normalizedOwnerPubkey]?.picture || (ownerPubkey ? userMetadata[ownerPubkey.toLowerCase()]?.picture : undefined);
+                    const picMetadata = getUserMetadata(normalizedOwnerPubkey, userMetadata);
+                    ownerPicture = picMetadata?.picture;
                   }
                 } catch (error) {
                   console.error('⚠️ [Home] Error resolving icons:', error);
@@ -1467,7 +1529,8 @@ export default function HomePage() {
                       <div className="flex-1 min-w-0 min-w-[0]">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <div className="text-purple-500 hover:underline font-semibold truncate min-w-0">
-                            {displayName}/{r.name || repo}
+                            {/* Always show owner/username or npub/reponame format */}
+                            {displayName ? `${displayName}/${r.name || repo}` : (r.name || repo)}
                           </div>
                           {/* Status badge */}
                           {pubkey && (r as any).ownerPubkey === pubkey && (() => {
