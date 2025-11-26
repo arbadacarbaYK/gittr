@@ -284,6 +284,12 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
     
     if (pubkeyForMetadata && /^[0-9a-f]{64}$/i.test(pubkeyForMetadata)) {
       // pubkeyForMetadata is already normalized to lowercase
+      // CRITICAL: Try direct lookup first to ensure we get identities if they exist
+      const directMeta = effectiveMetadataMap[pubkeyForMetadata];
+      if (directMeta && Object.keys(directMeta).length > 0) {
+        return directMeta;
+      }
+      // Fallback to getUserMetadata for other lookup strategies
       const meta = getUserMetadata(pubkeyForMetadata, effectiveMetadataMap);
       // If we found metadata, return it
       if (meta && Object.keys(meta).length > 0) {
@@ -1192,23 +1198,23 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
   const getMetaField = useMemo(() => {
     return (field: string) => {
       // Try userMeta first (now reactive to metadataMap changes)
-      if (userMeta && userMeta[field]) {
-        return userMeta[field];
+      if (userMeta && (userMeta as any)[field]) {
+        return (userMeta as any)[field];
       }
       
       // Fallback 1: Try fullPubkeyForMeta lookup
       if (fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)) {
         const meta = getUserMetadata(fullPubkeyForMeta.toLowerCase(), metadataMap);
-        if (meta && meta[field]) {
-          return meta[field];
+        if (meta && (meta as any)[field]) {
+          return (meta as any)[field];
         }
       }
       
       // Fallback 2: If viewing own profile, try currentUserPubkey lookup
       if (isOwnProfileCheck && currentUserPubkey && /^[0-9a-f]{64}$/i.test(currentUserPubkey)) {
         const meta = getUserMetadata(currentUserPubkey.toLowerCase(), metadataMap);
-        if (meta && meta[field]) {
-          return meta[field];
+        if (meta && (meta as any)[field]) {
+          return (meta as any)[field];
         }
       }
       
