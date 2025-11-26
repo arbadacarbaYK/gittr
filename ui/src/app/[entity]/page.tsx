@@ -223,14 +223,15 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
   
   // CRITICAL: Use the same pattern as settings/profile page - determine pubkey first, then call getUserMetadata directly
   // Determine which pubkey to use (same priority as settings/profile)
+  // CRITICAL: Normalize to lowercase for consistent metadataMap lookup (metadataMap keys are lowercase)
   const pubkeyForMetadata = useMemo(() => {
     // Priority 1: Use fullPubkeyForMeta if available (most reliable)
     if (fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)) {
-      return fullPubkeyForMeta;
+      return fullPubkeyForMeta.toLowerCase();
     }
     // Priority 2: Try params.entity if it's a full pubkey
     if (params.entity && /^[0-9a-f]{64}$/i.test(params.entity)) {
-      return params.entity;
+      return params.entity.toLowerCase();
     }
     // Priority 3: Try decoding npub
     if (params.entity && params.entity.startsWith("npub")) {
@@ -239,7 +240,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
         if (decoded.type === "npub") {
           const pubkey = decoded.data as string;
           if (/^[0-9a-f]{64}$/i.test(pubkey)) {
-            return pubkey;
+            return pubkey.toLowerCase();
           }
         }
       } catch (e) {
@@ -254,8 +255,10 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
   // Use the same pattern as settings/profile: call getUserMetadata directly with the pubkey
   // CRITICAL: For own profile, also try currentUserPubkey as fallback if pubkeyForMetadata lookup fails
   // CRITICAL: Memoize userMeta so it updates when metadataMap changes (e.g., after cache update)
+  // CRITICAL: pubkeyForMetadata is already normalized to lowercase, so pass it directly to getUserMetadata
   const userMeta = useMemo(() => {
-    if (pubkeyForMetadata) {
+    if (pubkeyForMetadata && /^[0-9a-f]{64}$/i.test(pubkeyForMetadata)) {
+      // pubkeyForMetadata is already normalized to lowercase
       const meta = getUserMetadata(pubkeyForMetadata, metadataMap);
       // If we found metadata, return it
       if (meta && Object.keys(meta).length > 0) {
