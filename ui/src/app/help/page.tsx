@@ -238,10 +238,10 @@ export default function HelpPage() {
                 <li><strong>GitLab</strong> - Import from GitLab URLs (coming soon)</li>
               </ul>
               <p className="mt-2 text-sm text-gray-400">Imported repos maintain a link to their source (sourceUrl) and fetch files from the original git server.</p>
-              <div className="mt-3 p-3 bg-red-900/20 border border-red-600/30 rounded">
-                <p className="text-sm text-red-200 font-semibold mb-1">⚠️ 4 MB Import Limit</p>
-                <p className="text-sm text-red-100">
-                  Next.js API routes hard-cap responses at ~4 MB. When importing we fetch every file (including releases/binaries), so very large repos will fail with “Repository is too large”. Remove heavy artifacts (release archives, media, build outputs) or import a slimmer subset before retrying.
+              <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded">
+                <p className="text-sm text-blue-200 font-semibold mb-1">💡 Large Repository Support</p>
+                <p className="text-sm text-blue-100">
+                  The import process now handles large repositories efficiently. Only file metadata (paths, sizes) is included in the import response, and file content is fetched on-demand when you view or edit files. This allows importing repositories of any size without hitting API response limits.
                 </p>
               </div>
             </div>

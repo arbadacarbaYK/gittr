@@ -234,9 +234,9 @@ Configure in Settings → Account:
 - **[SSH & Git Guide](docs/SSH_GIT_GUIDE.md)** - SSH and Git operations guide
 
 
-### ⚠️ Repository import size limit
+### 💡 Large Repository Support
 
-Next.js API routes hard-cap responses at ~4 MB. When importing from GitHub/Codeberg we capture the entire file tree (including binaries/releases), so very large repositories will exceed that limit. When this happens the import dialog now shows a “repository is too large (>4 MB)” error. If you hit it, trim heavy artifacts (release archives, media, build outputs) before retrying, or import a smaller subset of the project.
+The import process now handles large repositories efficiently. Only file metadata (paths, sizes) is included in the import response, and file content is fetched on-demand when you view or edit files. This allows importing repositories of any size without hitting API response limits. Files are fetched individually via the `/api/git/file-content` endpoint as needed.
 
 ## 🎨 Themes
 
