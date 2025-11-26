@@ -734,8 +734,11 @@ export default function HomePage() {
         const prioritized = logoFiles.sort((a, b) => {
           const aParts = a.split("/");
           const bParts = b.split("/");
-          const aName = aParts[aParts.length - 1]?.replace(/\.[^.]+$/, "").toLowerCase() || "";
-          const bName = bParts[bParts.length - 1]?.replace(/\.[^.]+$/, "").toLowerCase() || "";
+          const aName = aParts[aParts.length - 1]?.toLowerCase() || "";
+          const bName = bParts[bParts.length - 1]?.toLowerCase() || "";
+          // Prioritize "logo.svg" or "logo.png" over other logo files
+          if (aName === "logo.svg" || aName === "logo.png") return -1;
+          if (bName === "logo.svg" || bName === "logo.png") return 1;
           const aIsRoot = aParts.length === 1;
           const bIsRoot = bParts.length === 1;
           
