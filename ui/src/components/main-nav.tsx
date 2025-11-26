@@ -5,9 +5,7 @@ import * as React from "react";
 import { MobileNav } from "@/components/mobile-nav";
 import { cn } from "@/lib/utils";
 
-import { Bell, Menu, X } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Menu, X } from "lucide-react";
 
 import Logo from "./logo";
 import SearchBar from "./search-bar";
@@ -31,7 +29,6 @@ interface MainNavProps {
 
 export function MainNav({ items, children }: MainNavProps) {
   const [showMobileMenu, setShowMobileMenu] = React.useState<boolean>(false);
-  const router = useRouter();
 
   const handleToggleMobileMenu = () => {
     setShowMobileMenu(!showMobileMenu);
@@ -69,22 +66,21 @@ export function MainNav({ items, children }: MainNavProps) {
         </nav>
       ) : null}
 
-      <div className="flex w-full md:w-auto justify-between items-center">
+      <div className="flex w-full md:w-auto items-center justify-between gap-3">
+        <Logo className="flex md:hidden" />
         <button
-          className="flex items-center space-x-2 md:hidden"
-          onClick={() => setShowMobileMenu(!showMobileMenu)}
+          aria-label="Toggle navigation menu"
+          className="flex items-center justify-center rounded-md p-1 text-white md:hidden"
+          onClick={handleToggleMobileMenu}
         >
           {showMobileMenu ? <X /> : <Menu />}
         </button>
-
-        <Logo className="flex md:hidden" />
 
         {showMobileMenu && items && (
           <MobileNav onClick={handleToggleMobileMenu} items={items}>
             {children}
           </MobileNav>
         )}
-        <Bell className="flex md:hidden w-4 h-4" />
       </div>
     </div>
   );

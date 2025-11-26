@@ -201,6 +201,8 @@ export default function Login() {
                         <a
                           className="underline"
                           href="https://www.getflamingo.org"
+                        target="_blank"
+                        rel="noreferrer"
                         >
                           Flamingo
                         </a>
@@ -208,10 +210,24 @@ export default function Login() {
                         <a
                           className="underline"
                           href="https://addons.mozilla.org/en-US/firefox/addon/nos2x-fox/"
+                        target="_blank"
+                        rel="noreferrer"
                         >
                           nos2x-fox
                         </a>
                         .
+                        <span className="block mt-2 text-gray-400 text-xs">
+                          On mobile browsers without extensions, install{" "}
+                          <a
+                            className="underline"
+                            href="https://github.com/haorendashu/nowser"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Nowser
+                          </a>{" "}
+                          to sign via NIP-46/NIP-07.
+                        </span>
                       </span>
                     </div>
                   </div>
@@ -235,6 +251,8 @@ export default function Login() {
                         <a
                           className="underline"
                           href="https://www.getflamingo.org"
+                        target="_blank"
+                        rel="noreferrer"
                         >
                           Flamingo
                         </a>
@@ -242,10 +260,24 @@ export default function Login() {
                         <a
                           className="underline"
                           href="https://addons.mozilla.org/en-US/firefox/addon/nos2x-fox/"
+                        target="_blank"
+                        rel="noreferrer"
                         >
                           nos2x-fox
                         </a>
                         .
+                        <span className="block mt-2 text-gray-400 text-xs">
+                          On mobile browsers without extensions, install{" "}
+                          <a
+                            className="underline"
+                            href="https://github.com/haorendashu/nowser"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Nowser
+                          </a>{" "}
+                          to sign via NIP-46/NIP-07.
+                        </span>
                       </span>
                     </div>
                   </div>

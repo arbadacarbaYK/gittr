@@ -6995,15 +6995,15 @@ export default function RepoCodePage({
           )}
           {selectedFile && (
             <div ref={fileViewerRef} className="mt-4 rounded-md border dark:border-[#383B42]">
-              <div className="flex items-center gap-2 border-b p-2 dark:border-[#383B42]">
+              <div className="flex flex-wrap items-center gap-2 border-b p-2 dark:border-[#383B42]">
                 <File className="text-gray-400 ml-2 h-4 w-4" />{" "}
-                <span className="text-gray-400">{selectedFile}</span>
-                <div className="ml-auto flex items-center gap-3">
+                <span className="text-gray-400 break-all">{selectedFile}</span>
+                <div className="ml-auto flex w-full flex-wrap items-center gap-3 justify-end text-sm md:w-auto">
                   {/* HTML and Markdown files: Toggle between preview and code view */}
                   {/* Media types (image, video, audio) always show preview - no toggle needed */}
                   {(fileType === 'html' || fileType === 'markdown') && !proposeEdit && (
                     <button
-                      className="text-sm text-purple-400 hover:text-purple-300 border border-purple-500/50 rounded px-2 py-1"
+                      className="text-purple-400 hover:text-purple-300 border border-purple-500/50 rounded px-2 py-1 whitespace-nowrap"
                       onClick={() => {
                         if (fileType === 'html') {
                           setHtmlViewMode(htmlViewMode === 'preview' ? 'code' : 'preview');
@@ -7022,7 +7022,7 @@ export default function RepoCodePage({
                         href={rawUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-sm text-gray-400 hover:text-purple-400 hover:underline"
+                        className="text-gray-400 hover:text-purple-400 hover:underline whitespace-nowrap"
                       >
                         Raw
                       </a>
@@ -7031,14 +7031,14 @@ export default function RepoCodePage({
                   <a
                     href={getRepoLink("commits") + `?file=${encodeURIComponent(selectedFile || "")}`}
                     onClick={(e) => { e.preventDefault(); window.location.href = getRepoLink("commits") + `?file=${encodeURIComponent(selectedFile || "")}`; }}
-                    className="text-sm text-gray-400 hover:text-purple-400 hover:underline"
+                    className="text-gray-400 hover:text-purple-400 hover:underline whitespace-nowrap"
                   >
                     History
                   </a>
                   <a
                     href={getRepoLink("blame") + `?file=${encodeURIComponent(selectedFile || "")}`}
                     onClick={(e) => { e.preventDefault(); window.location.href = getRepoLink("blame") + `?file=${encodeURIComponent(selectedFile || "")}`; }}
-                    className="text-sm text-gray-400 hover:text-purple-400 hover:underline"
+                    className="text-gray-400 hover:text-purple-400 hover:underline whitespace-nowrap"
                   >
                     Blame
                   </a>
@@ -7047,14 +7047,14 @@ export default function RepoCodePage({
                       {/* Edit button - only show in code view for HTML/Markdown, or for other text files (not media) */}
                       {((fileType === 'html' && htmlViewMode === 'code') || (fileType === 'markdown' && markdownViewMode === 'code') || (fileType !== 'image' && fileType !== 'video' && fileType !== 'audio' && fileType !== 'pdf' && fileType !== 'html' && fileType !== 'markdown')) && (
                       <button
-                        className="text-sm text-purple-500 hover:underline"
+                        className="text-purple-500 hover:underline text-left break-words"
                         onClick={() => editCurrentFile()}
                       >
                         Edit
                       </button>
                       )}
                       <button
-                        className="text-sm text-red-400 hover:underline"
+                        className="text-red-400 hover:underline text-left break-words"
                         onClick={() => deleteCurrentFile()}
                       >
                         Delete
@@ -7065,7 +7065,7 @@ export default function RepoCodePage({
                       {/* Edit button - only show in code view for HTML/Markdown, or for other text files (not media) */}
                       {!proposeEdit && ((fileType === 'html' && htmlViewMode === 'code') || (fileType === 'markdown' && markdownViewMode === 'code') || (fileType !== 'image' && fileType !== 'video' && fileType !== 'audio' && fileType !== 'pdf' && fileType !== 'html' && fileType !== 'markdown')) && (
                         <button
-                          className="text-sm text-purple-500 hover:underline"
+                          className="text-purple-500 hover:underline text-left break-words"
                           onClick={() => {
                             if (!selectedFile) return;
                             const type = getFileType(selectedFile);
@@ -7083,7 +7083,7 @@ export default function RepoCodePage({
                     </>
                   )}
                   <button
-                    className="text-sm text-gray-400 hover:underline"
+                    className="text-gray-400 hover:underline whitespace-nowrap"
                     onClick={() => { 
                       setSelectedFile(null); 
                       setFileContent(""); 

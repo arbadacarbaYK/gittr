@@ -817,7 +817,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
+    <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] px-4 py-6 sm:px-6">
       <header className="mb-6">
         <h1 className="text-2xl font-bold">Home</h1>
         <p className="text-gray-400 mt-1">
@@ -832,7 +832,7 @@ export default function HomePage() {
           <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Top Repos - Always show */}
             <div className="border border-[#383B42] rounded p-4 flex flex-col">
-              <h3 className="font-semibold mb-3 text-purple-400">🔥 Most Active Repos</h3>
+              <h3 className="font-semibold mb-3 text-purple-400 break-words">🔥 Most Active Repos</h3>
               <div className="space-y-2 flex-1">
                 {topRepos.length > 0 ? (
                   topRepos.slice(0, 5).map((repo, idx) => {
@@ -865,7 +865,7 @@ export default function HomePage() {
 
             {/* Top Users - Always show */}
             <div className="border border-[#383B42] rounded p-4 flex flex-col">
-              <h3 className="font-semibold mb-3 text-yellow-400">⭐ Most Active</h3>
+              <h3 className="font-semibold mb-3 text-yellow-400 break-words">⭐ Most Active</h3>
               <div className="space-y-2 flex-1">
                 {topUsers.length > 0 ? (
                   topUsers.slice(0, 5).map((user, idx) => {
@@ -893,8 +893,8 @@ export default function HomePage() {
 
             {/* Open Bounties - Always show */}
             <div className="border border-[#383B42] rounded p-4 flex flex-col">
-              <h3 className="font-semibold mb-3 text-yellow-400 flex items-center justify-between">
-                <span>💰 Open Bounties</span>
+              <h3 className="font-semibold mb-3 text-yellow-400 flex flex-wrap items-center justify-between gap-2">
+                <span className="min-w-fit">💰 Open Bounties</span>
                 <Link href="/bounty-hunt?status=paid" className="text-xs text-purple-400 hover:text-purple-300">
                   Hunt →
                 </Link>
