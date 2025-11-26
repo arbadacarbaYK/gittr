@@ -1709,7 +1709,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                   const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
                   
                   // Find all potential icon files:
-                  // 1. Files with "logo" in name (highest priority)
+                  // 1. Files with "logo" in name (highest priority), but exclude "logo-alby" and similar third-party logos
                   // 2. Files named after the repo (e.g., "tides.png" for tides repo)
                   // 3. Common icon names in root (repo.png, icon.png, etc.)
                   const iconFiles = repo.files
@@ -1722,8 +1722,8 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                       
                       if (!imageExts.includes(extension)) return false;
                       
-                      // Match logo files
-                      if (baseName.includes("logo")) return true;
+                      // Match logo files, but exclude third-party logos (alby, etc.)
+                      if (baseName.includes("logo") && !baseName.includes("logo-alby") && !baseName.includes("alby-logo")) return true;
                       
                       // Match repo-name-based files (e.g., "tides.png" for tides repo)
                       if (repoName && baseName === repoName) return true;
@@ -1732,6 +1732,14 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                       if (isRoot && (baseName === "repo" || baseName === "icon" || baseName === "favicon")) return true;
                       
                       return false;
+                    })
+                    .sort((a: string, b: string) => {
+                      // Prioritize "logo.svg" or "logo.png" over other logo files
+                      const aName = a.split("/").pop()?.toLowerCase() || "";
+                      const bName = b.split("/").pop()?.toLowerCase() || "";
+                      if (aName === "logo.svg" || aName === "logo.png") return -1;
+                      if (bName === "logo.svg" || bName === "logo.png") return 1;
+                      return 0;
                     });
                   
                   const logoFiles = iconFiles;
