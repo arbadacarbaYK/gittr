@@ -159,7 +159,7 @@ export default function StarsPage() {
             const baseName = fileName.replace(/\.[^.]+$/, "").toLowerCase();
             const extension = fileName.split(".").pop()?.toLowerCase() || "";
             const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
-            return baseName.includes("logo") && imageExts.includes(extension);
+            return baseName.includes("logo") && !baseName.includes("logo-alby") && !baseName.includes("alby-logo") && imageExts.includes(extension);
           });
         if (logoFiles.length > 0 && matchingRepo.sourceUrl) {
           try {
