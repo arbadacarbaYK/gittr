@@ -254,9 +254,9 @@ Handle binary vs text files
 - They're used when all other strategies fail
 - **Note**: For GRASP servers, `/api/git/file-content` detects them and forwards to bridge API (same as Strategy 5)
 
-### OwnerPubkey Resolution (Strategy 2)
+### OwnerPubkey Resolution (Strategies 3 & 5)
 
-The ownerPubkey resolution follows this priority:
+The ownerPubkey resolution is used in Strategy 3 (multi-source fetch for GRASP servers) and Strategy 5 (git-nostr-bridge API fallback). The resolution follows this priority:
 
 1. **repoData.ownerPubkey** (if set during file fetching)
 2. **localStorage** (check for matching repo by entity+name)
