@@ -50,7 +50,6 @@ export const DropdownItems = [
   {
     title: "Your Profile",
     href: "/profile", // Will be replaced dynamically
-    mobile: false,
   },
   {
     title: "Settings",
@@ -115,7 +114,7 @@ export function Header() {
   }, [router, signOut]);
 
   // Get profile URL - use npub format if available, otherwise use 8-char prefix
-  const profileUrl = pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? `/${nip19.npubEncode(pubkey)}` : (pubkey ? `/${pubkey}` : "/profile");
+  const profileUrl = pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? `/${nip19.npubEncode(pubkey)}` : (pubkey ? `/${pubkey}` : "/settings/profile");
 
   return (
     <header className="flex h-14 w-full items-center justify-between bg-[#171B21] px-8">

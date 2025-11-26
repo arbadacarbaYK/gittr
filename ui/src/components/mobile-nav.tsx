@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { nip19 } from "nostr-tools";
+
 import { type MainNavItem } from "./main-nav";
 import SearchBar from "./search-bar";
 import { Button } from "./ui/button";
@@ -26,7 +28,13 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
 
   useLockBody();
 
-  const { signOut } = useNostrContext();
+  const { signOut, pubkey } = useNostrContext();
+  const profileHref =
+    pubkey && /^[0-9a-f]{64}$/i.test(pubkey)
+      ? `/${nip19.npubEncode(pubkey)}`
+      : pubkey
+      ? `/${pubkey}`
+      : "/settings/profile";
   const router = useRouter();
   const handleSignOut = useCallback(() => {
     if (signOut) {
@@ -63,10 +71,12 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
           )}
 
           {DropdownItems.filter((item) => item.mobile !== false).map(
-            (filteredItem, index) => (
+            (filteredItem, index) => {
+              const href = filteredItem.href === "/profile" ? profileHref : filteredItem.href;
+              return (
               <Link
                 key={index}
-                href={filteredItem.href}
+                href={href}
                 onClick={onClick}
                 className={cn(
                   "hover:text-gray-400 flex w-full items-center border-b border-b-lightgray p-3 text-sm font-medium "
@@ -74,7 +84,8 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
               >
                 {filteredItem.title}
               </Link>
-            )
+            );
+            }
           )}
 
           {items.map((item, index) => (

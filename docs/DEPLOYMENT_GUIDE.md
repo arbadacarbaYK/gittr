@@ -419,6 +419,21 @@ sudo systemctl enable fcgiwrap
 sudo systemctl start fcgiwrap
 ```
 
+**Configure git safe.directory for www-data user (required to fix 500 errors):**
+
+Git will refuse to access repositories owned by different users (security feature). Since repos are owned by `git-nostr` but `fcgiwrap` runs as `www-data`, configure git to trust the repos directory:
+
+```bash
+# Create www-data home directory if it doesn't exist
+sudo mkdir -p /var/www
+sudo chown www-data:www-data /var/www
+
+# Configure git to trust all directories (required for git-http-backend)
+sudo -u www-data git config --global --add safe.directory '*'
+```
+
+**Note:** This is only needed in production. Local development doesn't require this unless you're running fcgiwrap locally.
+
 Enable site:
 
 ```bash
@@ -629,6 +644,20 @@ git clone git@gittr.space:<pubkey>/<repo-name>.git
    ```
 
 ### Git Clone Fails
+
+**HTTPS Clone Returns 500 Error:**
+
+If `git clone https://git.gittr.space/...` returns 500, this is usually due to Git's "dubious ownership" security check:
+
+```bash
+# Configure git to trust repos directory for www-data user (fcgiwrap)
+sudo mkdir -p /var/www
+sudo chown www-data:www-data /var/www
+sudo -u www-data git config --global --add safe.directory '*'
+sudo systemctl restart fcgiwrap
+```
+
+**SSH Clone Issues:**
 
 1. **Check SSH server:**
    ```bash

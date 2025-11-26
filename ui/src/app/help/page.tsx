@@ -162,7 +162,19 @@ export default function HelpPage() {
           <div className="space-y-4 text-gray-300">
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">1. Login with NIP-07</h3>
-              <p>Install a NIP-07 browser extension (like Alby or nos2x) and log in to access all features.</p>
+              <p>
+                Install a NIP-07 browser extension (like Alby, nos2x, or Flamingo) on desktop browsers.
+                On mobile, extensions aren&apos;t supported, so use a signer app such as{" "}
+                <a
+                  href="https://github.com/haorendashu/nowser"
+                  className="text-purple-400 underline"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Nowser
+                </a>
+                .
+              </p>
             </div>
 
             <div>
