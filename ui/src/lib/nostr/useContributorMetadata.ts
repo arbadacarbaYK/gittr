@@ -202,10 +202,23 @@ export function useContributorMetadata(pubkeys: string[]) {
     const keyChanged = pubkeysKeyRef.current !== pubkeysKey;
     const shouldSkip = !isFirstRender && !keyChanged && pubkeysKey !== "";
     
+    // CRITICAL: Reload cache before checking for missing pubkeys
+    // This ensures we have the latest cached metadata (especially important when not logged in)
+    const latestCache = loadMetadataCache();
+    const currentMetadataMap = { ...metadataMap, ...latestCache };
+    
+    // CRITICAL: Update metadataMap state if cache has new entries (but don't trigger re-render loop)
+    if (Object.keys(latestCache).length > 0 && Object.keys(latestCache).length > Object.keys(metadataMap).length) {
+      // Update state asynchronously to avoid blocking
+      setTimeout(() => {
+        setMetadataMap(prev => ({ ...prev, ...latestCache }));
+      }, 0);
+    }
+    
     // Check if any pubkeys are missing from cache
     const missingFromCache = validPubkeys.filter(p => {
       const normalized = p.toLowerCase();
-      return !metadataMap[normalized];
+      return !currentMetadataMap[normalized];
     });
     
     // CRITICAL: Only subscribe if:
@@ -226,12 +239,21 @@ export function useContributorMetadata(pubkeys: string[]) {
     
     // Only log on first render or when key changes significantly
     if (isFirstRender || keyChanged) {
-      // console.log(`🔍 [useContributorMetadata] Hook called with ${pubkeys.length} pubkeys`);
+      console.log(`🔍 [useContributorMetadata] Hook called with ${pubkeys.length} pubkeys, ${validPubkeys.length} valid, ${missingFromCache.length} missing from cache`);
     }
     
-    if (!subscribe || pubkeys.length === 0) {
-      console.log(`⏭️ [useContributorMetadata] Skipping subscription: subscribe=${!!subscribe}, pubkeys.length=${pubkeys.length}`);
+    if (!subscribe) {
+      console.log(`⏭️ [useContributorMetadata] Skipping subscription: subscribe is not available`);
       return;
+    }
+    if (pubkeys.length === 0) {
+      // Don't log this - it's normal when there are no pubkeys to fetch
+      return;
+    }
+    
+    // CRITICAL: Log when subscribing for metadata (especially when not logged in)
+    if (pubkeysToSubscribe.length > 0) {
+      console.log(`📡 [useContributorMetadata] Subscribing for ${pubkeysToSubscribe.length} pubkeys (${pubkeysToSubscribe.slice(0, 3).map(p => p.slice(0, 8)).join(", ")}...)`);
     }
     if (invalidPubkeys.length > 0) {
       console.error('❌ [useContributorMetadata] INVALID PUBKEYS DETECTED:', {
