@@ -141,12 +141,16 @@ export function getEntityPicture(
   pubkey: string | null,
   ownerMetadata: Record<string, any>
 ): string | null {
-  if (!pubkey) return null;
+  if (!pubkey || !/^[0-9a-f]{64}$/i.test(pubkey)) return null;
   
   // CRITICAL: Normalize pubkey to lowercase for metadata lookup (metadata is stored in lowercase)
+  // CRITICAL: Use EXACT match only - no partial matching to avoid wrong user's picture
   const normalizedPubkey = pubkey.toLowerCase();
   const meta = ownerMetadata[normalizedPubkey] || ownerMetadata[pubkey];
-  return meta?.picture || null;
+  if (meta?.picture && meta.picture.startsWith("http")) {
+    return meta.picture;
+  }
+  return null;
 }
 
 /**

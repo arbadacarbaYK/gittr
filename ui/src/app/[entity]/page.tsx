@@ -1765,21 +1765,27 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 // Don't use contributor identity mappings - use the actual repo owner
                 const ownerPubkey = repo.ownerPubkey || getRepoOwnerPubkey(repo, repo.entity);
                 if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-                  // CRITICAL: Use centralized getUserMetadata function for consistent lookup
-                  // CRITICAL: Normalize pubkey to lowercase before lookup
+                  // CRITICAL: Normalize pubkey to lowercase and use EXACT match only (no partial matching)
+                  // Partial matching can pick up wrong users' metadata
                   const normalizedOwnerPubkey = ownerPubkey.toLowerCase();
-                  const ownerMeta = getUserMetadata(normalizedOwnerPubkey, metadataMap);
+                  // Use direct lookup first (exact match only)
+                  const ownerMeta = metadataMap[normalizedOwnerPubkey] || metadataMap[ownerPubkey];
                   if (ownerMeta?.picture && !iconUrl) {
                     const picture = ownerMeta.picture;
                     if (picture && picture.trim().length > 0 && picture.startsWith("http")) {
                       iconUrl = picture;
-                      console.log(`✅ [Profile] Using owner picture for repo ${repo.name || repo.slug}: ${normalizedOwnerPubkey.slice(0, 8)}...`);
+                      console.log(`✅ [Profile] Using owner picture for repo ${repo.name || repo.slug}: ${normalizedOwnerPubkey.slice(0, 8)}... (exact match)`);
                     }
                   } else if (!iconUrl) {
-                    console.log(`⚠️ [Profile] No icon found for repo ${repo.name || repo.slug}, ownerPubkey: ${normalizedOwnerPubkey.slice(0, 8)}..., hasMetadata: ${!!ownerMeta}, hasPicture: ${!!ownerMeta?.picture}`);
+                    // Try getUserMetadata as fallback but log what it finds
+                    const fallbackMeta = getUserMetadata(normalizedOwnerPubkey, metadataMap);
+                    if (fallbackMeta?.picture && fallbackMeta.picture !== ownerMeta?.picture) {
+                      console.warn(`⚠️ [Profile] getUserMetadata found different picture for ${normalizedOwnerPubkey.slice(0, 8)}... (might be wrong user due to partial match)`);
+                    }
+                    console.log(`⚠️ [Profile] No icon found for repo ${repo.name || repo.slug}, ownerPubkey: ${normalizedOwnerPubkey.slice(0, 8)}..., hasMetadata: ${!!ownerMeta}, hasPicture: ${!!ownerMeta?.picture}, metadataKeys: ${Object.keys(metadataMap).filter(k => k.toLowerCase().startsWith(normalizedOwnerPubkey.slice(0, 8))).join(', ')}`);
                   }
                 } else if (!iconUrl) {
-                  console.log(`⚠️ [Profile] No valid ownerPubkey for repo ${repo.name || repo.slug}, ownerPubkey: ${ownerPubkey || 'null'}`);
+                  console.log(`⚠️ [Profile] No valid ownerPubkey for repo ${repo.name || repo.slug}, ownerPubkey: ${ownerPubkey || 'null'}, repo.ownerPubkey: ${repo.ownerPubkey?.slice(0, 8) || 'null'}, getRepoOwnerPubkey: ${getRepoOwnerPubkey(repo, repo.entity)?.slice(0, 8) || 'null'}`);
                 }
               } catch (error) {
                 console.error('⚠️ [Profile] Error resolving repo icon:', error);
