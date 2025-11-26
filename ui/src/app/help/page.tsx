@@ -280,7 +280,7 @@ export default function HelpPage() {
                 <div>
                   <p className="text-sm font-semibold text-purple-400 mb-1">Option C: nostr:// Protocol (Ecosystem Standard)</p>
                   <code className="block bg-[#0a0d11] p-2 rounded text-sm">
-                    git clone nostr://yourname@relay.ngit.dev/repo-name
+                    git clone nostr://npub1n2ph08n@relay.ngit.dev/tides
                   </code>
                   <p className="mt-1 text-xs text-gray-400">
                     Requires <code className="bg-gray-800 px-1 rounded">git-remote-nostr</code>. This helper translates <code className="bg-gray-800 px-1 rounded">nostr://</code> URLs into standard Git fetches and is used by other NIP-34 clients.
