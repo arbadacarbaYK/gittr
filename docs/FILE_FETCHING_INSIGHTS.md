@@ -160,22 +160,46 @@ User opens repo page
 
 ### CRITICAL: Strategy Order
 
-The correct order is **critical** for file opening to work:
+The correct order is **critical** for file opening to work. The system uses a 6-strategy fallback chain to ensure files can be fetched from any source:
 
-1. **Strategy 1: Check embedded files FIRST** (always, regardless of sourceUrl/clone URLs)
-2. **Strategy 2: Try git-nostr-bridge API** (for local/GRASP repos)
-3. **Strategy 3: Try external git servers via API proxy** (GitHub, GitLab, Codeberg)
+1. **Strategy 1: Check localStorage for local repos** (no sourceUrl, no cloneUrls)
+2. **Strategy 2: Check embedded files** (files stored directly in Nostr event)
+3. **Strategy 3: Multi-source fetch** (if repo has clone URLs - tries all in parallel)
+4. **Strategy 4: Query Nostr for NIP-34 events** (fallback if clone URLs not available)
+5. **Strategy 5: Try git-nostr-bridge API** (fallback for local/GRASP repos)
+6. **Strategy 6: Try external git servers via API proxy** (final fallback - GitHub, GitLab, Codeberg)
 
 ### Flow Diagram
 
 ```
 User clicks on a file
   ↓
-Strategy 1: Check if file content is embedded in repoData.files array
-   ├─ If found with content → Use embedded content ✅
+Strategy 1: Check localStorage for local repos (no sourceUrl, no cloneUrls)
+   ├─ If files found in localStorage → Use local files ✅
    └─ If not found → Continue to Strategy 2
   ↓
-Strategy 2: Try git-nostr-bridge API
+Strategy 2: Check if file content is embedded in repoData.files array
+   ├─ If found with content → Use embedded content ✅
+   └─ If not found → Continue to Strategy 3
+  ↓
+Strategy 3: Multi-source fetch (if repo has clone URLs)
+   ├─ Try all clone URLs in parallel:
+   │   ├─ GRASP servers → /api/nostr/repo/file-content → git-nostr-bridge
+   │   │   ├─ If 404 → /api/nostr/repo/clone → Poll (max 10 attempts, 2s delay) ✅
+   │   │   └─ If success → Use content from bridge ✅
+   │   ├─ GitHub → /api/git/file-content?sourceUrl=...&path=...&branch=...
+   │   ├─ GitLab → /api/git/file-content?sourceUrl=...&path=...&branch=...
+   │   ├─ Codeberg → /api/git/file-content?sourceUrl=...&path=...&branch=...
+   │   └─ Other GRASP servers → /api/git/file-content?sourceUrl=... → forwards to bridge API
+   ├─ If GRASP server returns 404 → Trigger clone → Poll (max 10 attempts, 2s delay) ✅
+   └─ If all fail → Continue to Strategy 4
+  ↓
+Strategy 4: Query Nostr for NIP-34 repository events
+   ├─ Subscribe to kind 30617 events with "#d" tag matching repo name
+   ├─ Extract files from event content (if embedded)
+   └─ Extract clone URLs and sourceUrl from event tags
+  ↓
+Strategy 5: Try git-nostr-bridge API (fallback)
    ├─ Resolve ownerPubkey:
    │   ├─ Check repoData.ownerPubkey
    │   ├─ Check localStorage for matching repo
@@ -184,14 +208,14 @@ Strategy 2: Try git-nostr-bridge API
    ├─ Success → Use content from git-nostr-bridge ✅
    ├─ 404 (not cloned) → Check if GRASP server
    │   ├─ If GRASP → Trigger clone → Poll (max 10 attempts, 2s delay) ✅
-   │   └─ If not GRASP → Continue to Strategy 3
-   └─ Error → Continue to Strategy 3
+   │   └─ If not GRASP → Continue to Strategy 6
+   └─ Error → Continue to Strategy 6
   ↓
-Strategy 3: Try external git servers via API proxy
+Strategy 6: Try external git servers via API proxy (final fallback)
    ├─ GitHub → /api/git/file-content?sourceUrl=...&path=...&branch=...
    ├─ GitLab → /api/git/file-content?sourceUrl=...&path=...&branch=...
    ├─ Codeberg → /api/git/file-content?sourceUrl=...&path=...&branch=...
-   └─ GRASP → /api/git/file-content?sourceUrl=...&path=...&branch=... (forwards to bridge API)
+   └─ Note: SSH URLs (git@host:path) are normalized to HTTPS before API calls
   ↓
 Handle binary vs text files
    ├─ Binary → Return base64, frontend creates data URL
@@ -200,22 +224,48 @@ Handle binary vs text files
 
 ### Why This Order Matters
 
-**Embedded files must be checked FIRST** because:
+**localStorage is checked FIRST** because:
+- Local repos (created in browser) have no sourceUrl or cloneUrls
+- Files are stored directly in localStorage for instant access
+- No network calls needed for local repos
+
+**Embedded files are checked second** because:
 - Some GRASP repos have files embedded in Nostr events even when clone URLs exist
 - Embedded content is the most reliable source (no network calls needed)
 - Legacy repos store files directly in events
 
-**git-nostr-bridge API is second** because:
+**Multi-source fetch (Strategy 3) tries all clone URLs in parallel** because:
+- Repos may have multiple clone URLs (GitHub, GitLab, GRASP servers)
+- Parallel fetching ensures fastest response time
+- GRASP servers automatically trigger cloning if repo not found locally
+
+**Nostr query (Strategy 4) is a fallback** because:
+- Used when clone URLs are not available in repoData
+- Fetches fresh NIP-34 events from relays
+- Can extract embedded files or clone URLs from events
+
+**git-nostr-bridge API (Strategy 5) is a fallback** because:
 - It's the primary method for repos that have been cloned locally
 - For GRASP repos, it requires the repo to be cloned first
 - It's faster than external API calls when available
 
-**External git servers are last** because:
+**External git servers (Strategy 6) are the final fallback** because:
 - They require network calls
-- They're used as fallback when embedded content and git-nostr-bridge aren't available
-- **Note**: For GRASP servers, `/api/git/file-content` detects them and forwards to bridge API (same as Strategy 2)
+- They're used when all other strategies fail
+- **Note**: For GRASP servers, `/api/git/file-content` detects them and forwards to bridge API (same as Strategy 5)
 
 ### OwnerPubkey Resolution (Strategy 2)
+
+The ownerPubkey resolution follows this priority:
+
+1. **repoData.ownerPubkey** (if set during file fetching)
+2. **localStorage** (check for matching repo by entity+name)
+3. **Decode npub** from `params.entity` (most reliable for GRASP repos)
+4. **resolveEntityToPubkey utility** (final fallback)
+
+This ensures consistency - if files were fetched successfully, file opening will work too.
+
+### OwnerPubkey Resolution (Strategies 3 & 5)
 
 The ownerPubkey resolution follows this priority:
 
@@ -229,7 +279,18 @@ This ensures consistency - if files were fetched successfully, file opening will
 ### Code Reference
 
 ```typescript
-// Strategy 1: Check embedded files FIRST
+// Strategy 1: Check localStorage for local repos
+if (!repoData?.sourceUrl && (!repoData?.clone || repoData.clone.length === 0)) {
+  const localRepo = findRepoByEntityAndName(repos, params.entity, decodedRepo);
+  if (localRepo?.files) {
+    const fileEntry = localRepo.files.find((f: any) => f.path === filePath);
+    if (fileEntry?.content) {
+      return { content: fileEntry.content, url: null, isBinary: false };
+    }
+  }
+}
+
+// Strategy 2: Check embedded files
 if (repoData?.files && Array.isArray(repoData.files)) {
   const fileEntry = repoData.files.find((f: any) => {
     // Match file by path...
@@ -240,7 +301,20 @@ if (repoData?.files && Array.isArray(repoData.files)) {
   }
 }
 
-// Strategy 2: Try git-nostr-bridge API
+// Strategy 3: Multi-source fetch (parallel attempts on all clone URLs)
+if (repoData?.clone && Array.isArray(repoData.clone) && repoData.clone.length > 0) {
+  // Try all clone URLs in parallel
+  for (const cloneUrl of repoData.clone) {
+    // GRASP servers → bridge API
+    // GitHub/GitLab/Codeberg → /api/git/file-content
+    // Handle 404 for GRASP → trigger clone → poll
+  }
+}
+
+// Strategy 4: Query Nostr for NIP-34 events
+// Subscribe to kind 30617 events, extract files/clone URLs
+
+// Strategy 5: Try git-nostr-bridge API (fallback)
 let ownerPubkey = (repoData as any)?.ownerPubkey;
 // Resolve ownerPubkey (check localStorage, decode npub, etc.)
 if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
@@ -254,7 +328,7 @@ if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
   }
 }
 
-// Strategy 3: Try external git servers via API proxy
+// Strategy 6: Try external git servers via API proxy (final fallback)
 const apiUrl = `/api/git/file-content?sourceUrl=...&path=...&branch=...`;
 const response = await fetch(apiUrl);
 // Handle response...
@@ -674,23 +748,46 @@ const treeUrl = `${baseUrl}/api/v1/repos${fullPath}/git/trees/${branch}?recursiv
 
 ## Key Insights and Why This Works
 
-### 1. **Embedded Files First**
+### 1. **localStorage First (Strategy 1)**
 
-- Files embedded in Nostr events are always checked first (both for list and content)
+- Local repos (created in browser) have no sourceUrl or cloneUrls
+- Files are stored directly in localStorage for instant access
+- No network calls needed for local repos
+- **Critical**: This must be Strategy 1 to handle repos created entirely in the browser
+
+### 2. **Embedded Files Second (Strategy 2)**
+
+- Files embedded in Nostr events are checked after localStorage
 - This handles legacy repos and small files that are stored directly in events
-- **Critical**: This must be Strategy 1 in file opening, regardless of sourceUrl/clone URLs
+- Some GRASP repos have files embedded even when clone URLs exist
+- **Critical**: Embedded files must be checked before attempting network calls
 
-### 2. **git-nostr-bridge for Local/GRASP Repos**
+### 3. **Multi-Source Parallel Fetch (Strategy 3)**
+
+- Tries all clone URLs in parallel for fastest response
+- GRASP servers automatically trigger cloning if repo not found locally
+- GitHub, GitLab, Codeberg APIs are tried simultaneously
+- First success wins, others continue in background for status updates
+
+### 4. **Nostr Query Fallback (Strategy 4)**
+
+- Used when clone URLs are not available in repoData
+- Fetches fresh NIP-34 events from relays
+- Can extract embedded files or clone URLs from events
+- Ensures repos can be accessed even if initial event data is incomplete
+
+### 5. **git-nostr-bridge API Fallback (Strategy 5)**
 
 - `git-nostr-bridge` is the primary method for repos that have been cloned locally
 - For GRASP servers that don't expose HTTP API, automatic cloning ensures files are available
 - OwnerPubkey resolution must be consistent between file fetching and file opening
+- Used as fallback when Strategy 3 fails or clone URLs aren't available
 
-### 3. **External Git Servers as Fallback**
+### 6. **External Git Servers Final Fallback (Strategy 6)**
 
-- GitHub, GitLab, Codeberg APIs are used when:
+- GitHub, GitLab, Codeberg APIs are used as final fallback when:
   - Repo is imported from external git server
-  - GRASP server doesn't have HTTP API or clone fails
+  - All previous strategies have failed
   - Files are not embedded in Nostr event
 
 ### 4. **Multiple URL Patterns for GRASP Servers**
@@ -746,8 +843,8 @@ const treeUrl = `${baseUrl}/api/v1/repos${fullPath}/git/trees/${branch}?recursiv
    - Check file size (large files are often binary)
 
 5. **Strategy Order in File Opening**
-   - ❌ Trying git-nostr-bridge API before embedded files
-   - ✅ Always check embedded files FIRST, then git-nostr-bridge, then external APIs
+   - ❌ Trying git-nostr-bridge API before embedded files or localStorage
+   - ✅ Always check localStorage FIRST, then embedded files, then multi-source fetch, then Nostr query, then bridge API, then external APIs
 
 6. **OwnerPubkey Resolution**
    - Must be consistent between file fetching and file opening
@@ -1062,4 +1159,4 @@ const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)
 
 ---
 
-*Last updated: After fixing deleted repo filtering across all pages, Promise.race implementation, HTML preview, and git server URL pattern recognition*
+*Last updated: Updated file opening flow to match 6-strategy flow from README.md (localStorage → embedded → multi-source → Nostr query → bridge API → external servers)*
