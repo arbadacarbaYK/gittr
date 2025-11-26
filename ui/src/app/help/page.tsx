@@ -334,6 +334,27 @@ export default function HelpPage() {
               </div>
             </div>
 
+            <div className="mt-6 border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
+              <h3 className="text-lg font-semibold text-white mb-2">SSH Keys vs NIP-34 (When to use which?)</h3>
+              <p className="text-sm text-gray-300 mb-3">
+                Most gittr actions happen via NIP‑34 events (signed with your Nostr key). You only need SSH keys when you want to talk to the git bridge directly (terminal/CI).
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-xs text-gray-200">
+                <li>
+                  <strong>Web UI operations</strong> (Push to Nostr, PRs, Issues) publish <strong>NIP‑34 events</strong> through your Nostr key (NIP‑07 or locally stored <code className="bg-black/40 px-1 rounded">nsec</code>). No SSH key is required.
+                </li>
+                <li>
+                  <strong>Command-line Git operations</strong> (<code className="bg-black/40 px-1 rounded">git clone</code>, <code className="bg-black/40 px-1 rounded">git push</code>, <code className="bg-black/40 px-1 rounded">git pull</code>) talk to <code className="bg-black/40 px-1 rounded">git.gittr.space</code> or other GRASP bridges and <strong>do require SSH keys</strong>.
+                </li>
+                <li>
+                  SSH keys are <strong>only needed if you want terminal/CI access</strong>. Staying in the browser? You can skip them entirely.
+                </li>
+                <li>
+                  Manage keys from <a className="text-purple-300 underline" href="/settings/ssh-keys">Settings → SSH Keys</a>. Keys are published as NIP‑52 (gitnostr) events so every bridge can authorize you.
+                </li>
+              </ul>
+            </div>
+
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Push to Nostr</h3>
               <p>After making local changes, click "Push to Nostr" in your repository settings to publish updates.</p>
