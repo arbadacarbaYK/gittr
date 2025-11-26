@@ -261,10 +261,30 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
   // CRITICAL: For own profile, also try currentUserPubkey as fallback if pubkeyForMetadata lookup fails
   // CRITICAL: Memoize userMeta so it updates when metadataMap changes (e.g., after cache update)
   // CRITICAL: pubkeyForMetadata is already normalized to lowercase, so pass it directly to getUserMetadata
+  // CRITICAL: Also check cache directly if metadataMap is empty (cache loads asynchronously)
   const userMeta = useMemo(() => {
+    // Merge cache with metadataMap to ensure we have latest data even if metadataMap hasn't updated yet
+    let effectiveMetadataMap = metadataMap;
+    if (typeof window !== "undefined") {
+      try {
+        const cache = JSON.parse(localStorage.getItem("gittr_metadata_cache") || "{}");
+        // Normalize cache keys to lowercase
+        const normalizedCache: Record<string, any> = {};
+        for (const [key, value] of Object.entries(cache)) {
+          if (key && /^[0-9a-f]{64}$/i.test(key)) {
+            normalizedCache[key.toLowerCase()] = value;
+          }
+        }
+        // Merge cache with metadataMap (metadataMap takes precedence if both exist)
+        effectiveMetadataMap = { ...normalizedCache, ...metadataMap };
+      } catch (e) {
+        // Cache parse failed, use metadataMap only
+      }
+    }
+    
     if (pubkeyForMetadata && /^[0-9a-f]{64}$/i.test(pubkeyForMetadata)) {
       // pubkeyForMetadata is already normalized to lowercase
-      const meta = getUserMetadata(pubkeyForMetadata, metadataMap);
+      const meta = getUserMetadata(pubkeyForMetadata, effectiveMetadataMap);
       // If we found metadata, return it
       if (meta && Object.keys(meta).length > 0) {
         return meta;
@@ -277,7 +297,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
       if (resolvedPubkey && /^[0-9a-f]{64}$/i.test(resolvedPubkey)) {
         const isOwnProfile = currentUserPubkey.toLowerCase() === resolvedPubkey.toLowerCase();
         if (isOwnProfile) {
-          const ownMeta = getUserMetadata(currentUserPubkey.toLowerCase(), metadataMap);
+          const ownMeta = getUserMetadata(currentUserPubkey.toLowerCase(), effectiveMetadataMap);
           if (ownMeta && Object.keys(ownMeta).length > 0) {
             console.log(`✅ [Profile] Found own metadata via currentUserPubkey fallback`);
             return ownMeta;
