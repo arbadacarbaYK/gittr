@@ -1755,16 +1755,25 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 }
                 
                 // Priority 3: Owner Nostr profile picture (last fallback)
+                // CRITICAL: For imported repos, ensure we use the correct owner pubkey
+                // Don't use contributor identity mappings - use the actual repo owner
                 const ownerPubkey = repo.ownerPubkey || getRepoOwnerPubkey(repo, repo.entity);
                 if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
                   // CRITICAL: Use centralized getUserMetadata function for consistent lookup
-                  const ownerMeta = getUserMetadata(ownerPubkey, metadataMap);
+                  // CRITICAL: Normalize pubkey to lowercase before lookup
+                  const normalizedOwnerPubkey = ownerPubkey.toLowerCase();
+                  const ownerMeta = getUserMetadata(normalizedOwnerPubkey, metadataMap);
                   if (ownerMeta?.picture && !iconUrl) {
                     const picture = ownerMeta.picture;
                     if (picture && picture.trim().length > 0 && picture.startsWith("http")) {
                       iconUrl = picture;
+                      console.log(`✅ [Profile] Using owner picture for repo ${repo.name || repo.slug}: ${normalizedOwnerPubkey.slice(0, 8)}...`);
                     }
+                  } else if (!iconUrl) {
+                    console.log(`⚠️ [Profile] No icon found for repo ${repo.name || repo.slug}, ownerPubkey: ${normalizedOwnerPubkey.slice(0, 8)}..., hasMetadata: ${!!ownerMeta}, hasPicture: ${!!ownerMeta?.picture}`);
                   }
+                } else if (!iconUrl) {
+                  console.log(`⚠️ [Profile] No valid ownerPubkey for repo ${repo.name || repo.slug}, ownerPubkey: ${ownerPubkey || 'null'}`);
                 }
               } catch (error) {
                 console.error('⚠️ [Profile] Error resolving repo icon:', error);
@@ -1818,7 +1827,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 className="font-semibold text-purple-400 truncate">{repoDisplayName}</h3>
+                        <h3 className="font-semibold text-purple-400 break-words">{repoDisplayName}</h3>
                         {repo.userRole && (
                           <span className={`text-xs px-2 py-0.5 rounded ${
                             repo.userRole === "owner" ? "bg-purple-600/30 text-purple-300" :

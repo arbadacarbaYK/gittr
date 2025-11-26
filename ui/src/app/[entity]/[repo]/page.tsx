@@ -50,7 +50,7 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import useSession from "@/lib/nostr/useSession";
 import { mapGithubContributors, type GitHubContributor } from "@/lib/github-mapping";
 import { useContributorMetadata, type Metadata } from "@/lib/nostr/useContributorMetadata";
-import { getEntityDisplayName, resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
+import { getEntityDisplayName, resolveEntityToPubkey, getUserMetadata } from "@/lib/utils/entity-resolver";
 import { sanitizeContributors } from "@/lib/utils/contributors";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -6556,9 +6556,9 @@ export default function RepoCodePage({
                     {(() => {
                   // CRITICAL: Use ref to access metadata without causing re-renders that block clicks
                   const currentMetadata = ownerMetadataRef.current;
-                      // Get owner picture from metadata - CRITICAL: Only use full pubkey, not 8-char prefix
+                      // Get owner picture from metadata - CRITICAL: Use centralized getUserMetadata for consistent lookup
                       const ownerMeta = ownerPubkeyForLink && ownerPubkeyForLink.length === 64 
-                    ? currentMetadata[ownerPubkeyForLink.toLowerCase()] || currentMetadata[ownerPubkeyForLink]
+                    ? getUserMetadata(ownerPubkeyForLink, currentMetadata)
                         : undefined;
                       const ownerPicture = ownerMeta?.picture;
                       // CRITICAL: Use metadata name/display_name if available, otherwise fallback to shortened npub
