@@ -6975,11 +6975,35 @@ export default function RepoCodePage({
                       );
                     },
                     a: ({ node, ...props }: any) => {
-                      const href = props.href || "";
+                      // Resolve relative links relative to repo root, not current page
+                      let href = props.href || '';
                       const isExternal = href.startsWith('http://') || href.startsWith('https://');
+                      if (href && !isExternal && !href.startsWith('mailto:') && !href.startsWith('#')) {
+                        // Relative link - resolve relative to repo root using query params format
+                        const repoBasePath = getRepoLink('');
+                        // Remove leading ./ or . if present
+                        let cleanHref = href.replace(/^\.\//, '').replace(/^\.$/, '');
+                        // Remove leading / if present (root-relative)
+                        if (cleanHref.startsWith('/')) {
+                          cleanHref = cleanHref.substring(1);
+                        }
+                        // Extract directory path and filename
+                        const pathParts = cleanHref.split('/');
+                        const fileName = pathParts[pathParts.length - 1];
+                        const dirPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '';
+                        // Construct URL with query parameters: ?path=dir&file=dir%2Ffile.md
+                        const encodedFile = encodeURIComponent(cleanHref);
+                        const encodedPath = dirPath ? encodeURIComponent(dirPath) : '';
+                        if (encodedPath) {
+                          href = `${repoBasePath}?path=${encodedPath}&file=${encodedFile}`;
+                        } else {
+                          href = `${repoBasePath}?file=${encodedFile}`;
+                        }
+                      }
                       return (
                         <a 
                           {...props} 
+                          href={href}
                           className="text-purple-500 hover:text-purple-400 hover:underline" 
                           target={isExternal ? '_blank' : undefined} 
                           rel={isExternal ? 'noopener noreferrer' : undefined} 
@@ -7283,9 +7307,34 @@ export default function RepoCodePage({
                         remarkPlugins={[remarkGfm]}
                         rehypePlugins={[rehypeRaw]}
                         components={{
-                          a: ({ node, ...props }: any) => (
-                            <a {...props} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300" />
-                          ),
+                          a: ({ node, ...props }: any) => {
+                            // Resolve relative links relative to repo root, not current page
+                            let href = props.href || '';
+                            const isExternal = href.startsWith('http://') || href.startsWith('https://');
+                            if (href && !isExternal && !href.startsWith('mailto:') && !href.startsWith('#')) {
+                              // Relative link - resolve relative to repo root using query params format
+                              const repoBasePath = getRepoLink('');
+                              // Remove leading ./ or . if present
+                              let cleanHref = href.replace(/^\.\//, '').replace(/^\.$/, '');
+                              // Remove leading / if present (root-relative)
+                              if (cleanHref.startsWith('/')) {
+                                cleanHref = cleanHref.substring(1);
+                              }
+                              // Extract directory path and filename
+                              const pathParts = cleanHref.split('/');
+                              const fileName = pathParts[pathParts.length - 1];
+                              const dirPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '';
+                              // Construct URL with query parameters: ?path=dir&file=dir%2Ffile.md
+                              const encodedFile = encodeURIComponent(cleanHref);
+                              const encodedPath = dirPath ? encodeURIComponent(dirPath) : '';
+                              if (encodedPath) {
+                                href = `${repoBasePath}?path=${encodedPath}&file=${encodedFile}`;
+                              } else {
+                                href = `${repoBasePath}?file=${encodedFile}`;
+                              }
+                            }
+                            return <a {...props} href={href} target={isExternal ? '_blank' : undefined} rel={isExternal ? 'noopener noreferrer' : undefined} className="text-purple-400 hover:text-purple-300" />;
+                          },
                         }}
                       >
                         {(() => {
@@ -7479,9 +7528,34 @@ export default function RepoCodePage({
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeRaw]}
               components={{
-                a: ({ node, ...props }: any) => (
-                  <a {...props} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300" />
-                ),
+                a: ({ node, ...props }: any) => {
+                  // Resolve relative links relative to repo root, not current page
+                  let href = props.href || '';
+                  const isExternal = href.startsWith('http://') || href.startsWith('https://');
+                  if (href && !isExternal && !href.startsWith('mailto:') && !href.startsWith('#')) {
+                    // Relative link - resolve relative to repo root using query params format
+                    const repoBasePath = getRepoLink('');
+                    // Remove leading ./ or . if present
+                    let cleanHref = href.replace(/^\.\//, '').replace(/^\.$/, '');
+                    // Remove leading / if present (root-relative)
+                    if (cleanHref.startsWith('/')) {
+                      cleanHref = cleanHref.substring(1);
+                    }
+                    // Extract directory path and filename
+                    const pathParts = cleanHref.split('/');
+                    const fileName = pathParts[pathParts.length - 1];
+                    const dirPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '';
+                    // Construct URL with query parameters: ?path=dir&file=dir%2Ffile.md
+                    const encodedFile = encodeURIComponent(cleanHref);
+                    const encodedPath = dirPath ? encodeURIComponent(dirPath) : '';
+                    if (encodedPath) {
+                      href = `${repoBasePath}?path=${encodedPath}&file=${encodedFile}`;
+                    } else {
+                      href = `${repoBasePath}?file=${encodedFile}`;
+                    }
+                  }
+                  return <a {...props} href={href} target={isExternal ? '_blank' : undefined} rel={isExternal ? 'noopener noreferrer' : undefined} className="text-purple-400 hover:text-purple-300" />;
+                },
               }}
             >
               {repoData.description}
@@ -7888,9 +7962,10 @@ export default function RepoCodePage({
                           } as StoredRepo & { releases?: unknown[]; lastModifiedAt?: number };
                           
                           // CRITICAL: Also save issues, pulls, and commits to separate localStorage keys
-                          if (importData.issues && Array.isArray(importData.issues) && importData.issues.length > 0) {
+                          // Always save (even if empty) to ensure we have the latest data from GitHub
                             try {
                               const issuesKey = getRepoStorageKey("gittr_issues", params.entity, params.repo);
+                            if (importData.issues && Array.isArray(importData.issues)) {
                               const formattedIssues = importData.issues.map((issue: any) => ({
                                 id: `issue-${issue.number}`,
                                 entity: params.entity,
@@ -7907,14 +7982,18 @@ export default function RepoCodePage({
                               }));
                               localStorage.setItem(issuesKey, JSON.stringify(formattedIssues));
                               console.log(`✅ [Refetch] Saved ${formattedIssues.length} issues`);
+                            } else {
+                              // If GitHub API didn't return issues, clear localStorage to avoid stale data
+                              localStorage.removeItem(issuesKey);
+                              console.log(`⚠️ [Refetch] No issues data from GitHub API, cleared localStorage`);
+                            }
                             } catch (e) {
                               console.error(`❌ [Refetch] Failed to save issues:`, e);
-                            }
                           }
                           
-                          if (importData.pulls && Array.isArray(importData.pulls) && importData.pulls.length > 0) {
                             try {
                               const pullsKey = getRepoStorageKey("gittr_prs", params.entity, params.repo);
+                            if (importData.pulls && Array.isArray(importData.pulls)) {
                               const formattedPRs = importData.pulls.map((pr: any) => ({
                                 id: `pr-${pr.number}`,
                                 entity: params.entity,
@@ -7934,14 +8013,18 @@ export default function RepoCodePage({
                               }));
                               localStorage.setItem(pullsKey, JSON.stringify(formattedPRs));
                               console.log(`✅ [Refetch] Saved ${formattedPRs.length} pull requests`);
+                            } else {
+                              // If GitHub API didn't return PRs, clear localStorage to avoid stale data
+                              localStorage.removeItem(pullsKey);
+                              console.log(`⚠️ [Refetch] No PRs data from GitHub API, cleared localStorage`);
+                            }
                             } catch (e) {
                               console.error(`❌ [Refetch] Failed to save pull requests:`, e);
-                            }
                           }
                           
-                          if (importData.commits && Array.isArray(importData.commits) && importData.commits.length > 0) {
                             try {
                               const commitsKey = getRepoStorageKey("gittr_commits", params.entity, params.repo);
+                            if (importData.commits && Array.isArray(importData.commits)) {
                               interface CommitData {
                                 sha?: string;
                                 message?: string;
@@ -7962,9 +8045,13 @@ export default function RepoCodePage({
                               }));
                               localStorage.setItem(commitsKey, JSON.stringify(formattedCommits));
                               console.log(`✅ [Refetch] Saved ${formattedCommits.length} commits`);
+                            } else {
+                              // If GitHub API didn't return commits, clear localStorage to avoid stale data
+                              localStorage.removeItem(commitsKey);
+                              console.log(`⚠️ [Refetch] No commits data from GitHub API, cleared localStorage`);
+                            }
                             } catch (e) {
                               console.error(`❌ [Refetch] Failed to save commits:`, e);
-                            }
                           }
                             
                             // CRITICAL: Only mark as having unpushed edits if:

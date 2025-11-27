@@ -99,6 +99,32 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
   const [issueEventId, setIssueEventId] = useState<string | null>(null);
   const commentTextareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Helper function to generate repo link for relative link resolution
+  const getRepoLink = useCallback((subpath: string = "") => {
+    // Try to resolve entity to pubkey for npub format
+    let ownerPubkey: string | null = null;
+    try {
+      const repos = loadStoredRepos();
+      const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+      if (repo) {
+        ownerPubkey = getRepoOwnerPubkey(repo, params.entity);
+      }
+    } catch (e) {
+      // Fallback to decoding entity
+      try {
+        const decoded = nip19.decode(params.entity);
+        if (decoded.type === "npub") {
+          ownerPubkey = decoded.data as string;
+        }
+      } catch {}
+    }
+    
+    const basePath = ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
+      ? `/${nip19.npubEncode(ownerPubkey)}/${params.repo}${subpath ? `/${subpath}` : ""}`
+      : `/${params.entity}/${params.repo}${subpath ? `/${subpath}` : ""}`;
+    return basePath;
+  }, [params.entity, params.repo]);
+
   // Fetch metadata for issue author (only full 64-char pubkeys for metadata lookup)
   const authorPubkeys = useMemo(() => {
     if (!issue?.author) return [];
@@ -1045,6 +1071,36 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
+                components={{
+                  a: ({ node, ...props }: any) => {
+                    // Resolve relative links relative to repo root, not current page
+                    let href = props.href || '';
+                    const isExternal = href.startsWith('http://') || href.startsWith('https://');
+                    if (href && !isExternal && !href.startsWith('mailto:') && !href.startsWith('#')) {
+                      // Relative link - resolve relative to repo root using query params format
+                      const repoBasePath = getRepoLink('');
+                      // Remove leading ./ or . if present
+                      let cleanHref = href.replace(/^\.\//, '').replace(/^\.$/, '');
+                      // Remove leading / if present (root-relative)
+                      if (cleanHref.startsWith('/')) {
+                        cleanHref = cleanHref.substring(1);
+                      }
+                      // Extract directory path and filename
+                      const pathParts = cleanHref.split('/');
+                      const fileName = pathParts[pathParts.length - 1];
+                      const dirPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '';
+                      // Construct URL with query parameters: ?path=dir&file=dir%2Ffile.md
+                      const encodedFile = encodeURIComponent(cleanHref);
+                      const encodedPath = dirPath ? encodeURIComponent(dirPath) : '';
+                      if (encodedPath) {
+                        href = `${repoBasePath}?path=${encodedPath}&file=${encodedFile}`;
+                      } else {
+                        href = `${repoBasePath}?file=${encodedFile}`;
+                      }
+                    }
+                    return <a {...props} href={href} target={isExternal ? '_blank' : undefined} rel={isExternal ? 'noopener noreferrer' : undefined} className="text-purple-400 hover:text-purple-300" />;
+                  },
+                }}
               >
                 {issue.description}
               </ReactMarkdown>
@@ -1139,6 +1195,26 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
                                 <ReactMarkdown
                                   remarkPlugins={[remarkGfm]}
                                   rehypePlugins={[rehypeRaw]}
+                                  components={{
+                                    a: ({ node, ...props }: any) => {
+                                      // Resolve relative links relative to repo root, not current page
+                                      let href = props.href || '';
+                                      if (href && !href.startsWith('http://') && !href.startsWith('https://') && !href.startsWith('mailto:') && !href.startsWith('#')) {
+                                        // Relative link - resolve relative to repo root
+                                        const repoBasePath = getRepoLink('');
+                                        // Remove leading ./ or . if present
+                                        const cleanHref = href.replace(/^\.\//, '').replace(/^\.$/, '');
+                                        // If it starts with /, it's root-relative to repo
+                                        if (cleanHref.startsWith('/')) {
+                                          href = `${repoBasePath}${cleanHref}`;
+                                        } else {
+                                          // Relative path - resolve from repo root
+                                          href = `${repoBasePath}/${cleanHref}`;
+                                        }
+                                      }
+                                      return <a {...props} href={href} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300" />;
+                                    },
+                                  }}
                                 >
                                   {comment.content}
                                 </ReactMarkdown>
