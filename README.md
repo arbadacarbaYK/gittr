@@ -11,6 +11,9 @@ Make your Git repositories discoverable on the Nostr network. Host your code on 
 - ✅ **Bitcoin Integration**: Native Lightning payments, zaps, and bounties
 - ✅ **Open Protocol**: Built on NIP-34, compatible with the Nostr ecosystem
 
+> **Badge legend:** 🆕 highlights gittr.space enhancements that sit on top of @spearson78’s upstream
+> `gitnostr` work. We keep his foundation intact and only note the extra bits we’re contributing back.
+
 ## 🚀 Features
 
 ### Core Repository Management
@@ -89,17 +92,17 @@ The file source is displayed in the repository's "About" sidebar, making it clea
 
 ### Event Processing & File Fetching
 
-**Direct Event Submission (gittr.space enhancement)**: When you push a repository to Nostr, the event is sent directly to the git-nostr-bridge HTTP API (`POST /api/nostr/repo/event` → `POST http://localhost:8080/api/event`) for immediate processing, eliminating the typical 1-5 second relay propagation delay. The bridge still subscribes to relays to receive events from other clients, ensuring full decentralization. This dual-channel approach (direct API + relay subscription) provides the best of both worlds: instant processing for your own pushes and full compatibility with the decentralized Nostr network.
+**🆕 Direct Event Submission**: When you push a repository to Nostr, the event is sent directly to the git-nostr-bridge HTTP API (`POST /api/nostr/repo/event` → `POST http://localhost:8080/api/event`) for immediate processing, eliminating the typical 1-5 second relay propagation delay. Huge thanks to @spearson78 for the original gitnostr architecture—this layer just adds an optional fast lane while continuing to use the same relay protocol for federation.
 
 **File Fetching Flows**: gittr.space uses a sophisticated multi-source file fetching system that tries multiple strategies in parallel to ensure fast and reliable file access. The system is designed to work with various git server types (GRASP servers, GitHub, GitLab, Codeberg) and handles both embedded files and files stored on remote servers.
 
-**Key Features of Flows:**
+**Key Features of Flows (🆕 items are gittr additions):**
 
 **SSH URL Support**: SSH clone URLs (e.g., `git@github.com:owner/repo`) are automatically normalized to HTTPS format, ensuring compatibility with all git hosting providers.
 
-**Automatic Cloning**: GRASP repositories automatically trigger a clone when not found locally, then retry the API call.
+**🆕 Automatic Cloning**: GRASP repositories automatically trigger a clone when not found locally, then retry the API call.
 
-**Robust Fallback Chain**: Both flows have multiple fallback strategies, ensuring files can be fetched even if one source fails.
+**🆕 Robust Fallback Chain**: Both flows have multiple fallback strategies, ensuring files can be fetched even if one source fails.
 
 **Binary File Handling**: Binary files are detected, encoded as base64, and converted to data URLs for display in the browser.
 

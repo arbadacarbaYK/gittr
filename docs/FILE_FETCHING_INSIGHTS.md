@@ -2,6 +2,9 @@
 
 This document captures insights and patterns discovered while implementing file fetching from various git servers (GitHub, GitLab, Codeberg, GRASP servers).
 
+> **Badge legend:** 🆕 denotes gittr.space-specific logic layered on top of @spearson78’s gitnostr
+> baseline so contributors know what still needs to be upstreamed.
+
 ## Table of Contents
 
 1. [Complete File Fetching and Opening Flow](#complete-file-fetching-and-opening-flow)
@@ -149,8 +152,8 @@ User opens repo page
 
 - **Strict matching**: Entity AND repo name must match for localStorage
 - **Npub decoding**: Converts npub to pubkey for comparison
-- **Automatic cloning**: GRASP repos trigger clone if not found locally
-- **Background polling**: Uses custom events (`grasp-repo-cloned`) for non-blocking updates
+- **🆕 Automatic cloning**: GRASP repos trigger clone if not found locally
+- **🆕 Background polling**: Uses custom events (`grasp-repo-cloned`) for non-blocking updates
 
 ---
 
@@ -184,14 +187,14 @@ Strategy 2: Check if file content is embedded in repoData.files array
   ↓
 Strategy 3: Multi-source fetch (if repo has clone URLs)
    ├─ Try all clone URLs in parallel:
-   │   ├─ GRASP servers → /api/nostr/repo/file-content → git-nostr-bridge
-   │   │   ├─ If 404 → /api/nostr/repo/clone → Poll (max 10 attempts, 2s delay) ✅
+   │   ├─ 🆕 GRASP servers → /api/nostr/repo/file-content → git-nostr-bridge
+   │   │   ├─ 🆕 If 404 → /api/nostr/repo/clone → Poll (max 10 attempts, 2s delay) ✅
    │   │   └─ If success → Use content from bridge ✅
    │   ├─ GitHub → /api/git/file-content?sourceUrl=...&path=...&branch=...
    │   ├─ GitLab → /api/git/file-content?sourceUrl=...&path=...&branch=...
    │   ├─ Codeberg → /api/git/file-content?sourceUrl=...&path=...&branch=...
    │   └─ Other GRASP servers → /api/git/file-content?sourceUrl=... → forwards to bridge API
-   ├─ If GRASP server returns 404 → Trigger clone → Poll (max 10 attempts, 2s delay) ✅
+   ├─ 🆕 If GRASP server returns 404 → Trigger clone → Poll (max 10 attempts, 2s delay) ✅
    └─ If all fail → Continue to Strategy 4
   ↓
 Strategy 4: Query Nostr for NIP-34 repository events
@@ -870,7 +873,7 @@ const treeUrl = `${baseUrl}/api/v1/repos${fullPath}/git/trees/${branch}?recursiv
 - **PR Events**: Kind 9804 (custom, not NIP-34 replaceable)
 - **Repository Events**: Kind 30617 (NIP-34 replaceable) - only for repository announcements
 - **Note**: PRs/issues use custom kinds, not NIP-34 replaceable events, so they don't follow the replaceable event pattern
-- **Automatic Publishing**: 
+- **🆕 Automatic Publishing**:
   - Issues are automatically published to Nostr when created
   - PRs are automatically published to Nostr when created
   - When a PR is merged, an updated event with status "merged" is automatically published

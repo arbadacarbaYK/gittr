@@ -1,5 +1,8 @@
 # Git-Nostr-Bridge Installation Guide
 
+> **Badge legend:** 🆕 highlights gittr.space additions layered on top of @spearson78’s original
+> gitnostr bridge so it’s clear what we’re contributing upstream.
+
 The git-nostr-bridge is **essential** for Git operations (`git clone`, `git push`, `git pull`) to work with gittr.space repositories. This service watches Nostr for SSH key and repository events and manages Git repositories on the server.
 
 ## ⚠️ Important Security Warning
@@ -131,8 +134,7 @@ nano ~/.config/git-nostr/git-nostr-bridge.json
     ],
     "gitRepoOwners": [
         "<your-nostr-pubkey-here>"
-    ],
-    "ListenAddr": ":8080"
+    ]
 }
 ```
 
@@ -142,8 +144,20 @@ nano ~/.config/git-nostr/git-nostr-bridge.json
   - `wss://gitnostr.com` - Public Grasp instance
   - `wss://relay.ngit.dev` - gitworkshop.dev relay instance (part of ngit ecosystem)
   - See `docs/GRASP_RELAY_SETUP.md` for more Grasp instances and setting up your own
-- `gitRepoOwners`: List of Nostr pubkeys that can create repositories on this server
-- `ListenAddr`: (Optional) HTTP API listen address for direct event submission (default: `:8080`). The bridge exposes a REST API endpoint at `/api/event` that accepts Nostr events directly, eliminating relay propagation delays.
+- `gitRepoOwners`: List of Nostr pubkeys that can create repositories on this server (leave empty to mirror *all* repos)
+- `BRIDGE_HTTP_PORT` env var (optional): Set when you want the REST fast-lane on `/api/event`. Leave it unset to keep the bridge in relay-only mode. Defaults to `8080` if set.
+
+| Key | Required | Default | Description |
+| --- | --- | --- | --- |
+| `repositoryDir` | ✅ | `~/git-nostr-repositories` | Filesystem path where bare repositories live. Use an absolute path in production. |
+| `DbFile` | ✅ | `~/.config/git-nostr/git-nostr-db.sqlite` | SQLite database that caches repo + permission events so SSH checks are instant even if relays lag. |
+| `relays` | ✅ | `[]` | Array of read-enabled relays (kinds 50/51/30617 + 52). Match the relays you publish to. |
+| `gitRepoOwners` | optional | `[]` | When empty the bridge accepts repo events from anyone (“watch-all”). Add pubkeys to restrict creation. |
+| `BRIDGE_HTTP_PORT` (env) | optional | unset | When set, exposes `/api/event` for POSTing signed events directly into the bridge. |
+
+Need more context? The extracted gitnostr repository ships with
+[`docs/STANDALONE_BRIDGE_SETUP.md`](STANDALONE_BRIDGE_SETUP.md)
+containing a full standalone guide plus fleet-tested defaults.
 
 **⚠️ Relay Configuration Required:** Ensure your relays allow the following event kinds:
 - **Kind 50** (Repository Permissions) - Required for access control
@@ -208,19 +222,20 @@ sudo launchctl load /System/Library/LaunchDaemons/ssh.plist
 
 ### Step 6: Run the Bridge
 
-The bridge now includes an **HTTP server** for direct event submission, which eliminates relay propagation delays. Events are processed immediately when sent directly to the bridge, while the bridge still subscribes to relays for events from other clients.
+🆕 **HTTP fast lane**: The bridge now includes an optional HTTP server for direct event submission,
+which eliminates relay propagation delays. Events are processed immediately when sent directly to the
+bridge, while the bridge still subscribes to relays for events from other clients (upstream behavior).
 
 #### HTTP Server Configuration
 
 **NEW FEATURE (gittr.space enhancement)**: The bridge exposes a REST API endpoint (`POST /api/event`) that accepts Nostr events directly. This allows the frontend to submit events immediately after publishing to relays, eliminating the typical 1-5 second delay for relay propagation.
 
-The bridge HTTP server runs on port **8080** by default. You can configure it via:
+The bridge HTTP server runs on port **8080** by default whenever `BRIDGE_HTTP_PORT` is set. Configure it via:
 
-1. **Config file** (recommended): Add `"ListenAddr": ":8080"` to `~/.config/git-nostr/git-nostr-bridge.json`
-2. **Environment variable**: `export BRIDGE_HTTP_PORT=8080`
-3. **Systemd service file**: `Environment=BRIDGE_HTTP_PORT=8080`
+1. **Environment variable**: `export BRIDGE_HTTP_PORT=8080`
+2. **Systemd service file**: `Environment=BRIDGE_HTTP_PORT=8080`
 
-**HTTP Endpoint**: `POST http://localhost:8080/api/event`
+**🆕 HTTP Endpoint**: `POST http://localhost:8080/api/event`
 
 **Request format:**
 ```json
@@ -258,7 +273,7 @@ The bridge HTTP server runs on port **8080** by default. You can configure it vi
   - `["web", "<url>"]` - Web links (logoUrl, links array) - multiple allowed
   - `["r", "<commit-id>", "euc"]` - Earliest unique commit (if commits exist)
 
-**gittr.space Extensions** (not in NIP-34 spec, but included for compatibility):
+**🆕 gittr.space Extensions** (not in NIP-34 spec, but included for compatibility):
 - `["source", "<url>"]` - Source URL (if imported from GitHub/GitLab/Codeberg) - *gittr.space addition*
 - `["forkedFrom", "<url>"]` - Forked from URL (if repository is a fork) - *gittr.space addition*
 - `["link", "<type>", "<url>", "<label>"]` - Structured links with type and label (docs, discord, slack, youtube, twitter, github, other) - *gittr.space addition*
