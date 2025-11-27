@@ -7721,7 +7721,7 @@ export default function RepoCodePage({
                 } else {
                   // Has event ID - check if bridge processed it
                   // If bridge hasn't processed it after 5 minutes, mark as "live_with_edits" (verifying)
-                  if (repo.bridgeProcessed !== true) {
+                  if ((repo as any).bridgeProcessed !== true) {
                     setRepoStatus(params.repo, params.entity, "live_with_edits");
                     status = "live_with_edits";
                     console.log("🔄 [Push Button] Changed stuck 'pushing' to 'live_with_edits' (has event ID, verifying bridge)");
