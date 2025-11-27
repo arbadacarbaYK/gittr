@@ -10,6 +10,7 @@ Make your Git repositories discoverable on the Nostr network. Host your code on 
 - ✅ **Decentralized Access**: Access your code through Nostr relays
 - ✅ **Bitcoin Integration**: Native Lightning payments, zaps, and bounties
 - ✅ **Open Protocol**: Built on NIP-34, compatible with the Nostr ecosystem
+- ✅ **Censorship Resistant**: Multiple redundant mirrors ensure your code survives even if one server goes down
 
 > **Badge legend:** 🆕 highlights gittr.space enhancements that sit on top of @spearson78’s upstream
 > `gitnostr` work. We keep his foundation intact and only note the extra bits we’re contributing back.
@@ -69,6 +70,57 @@ Make your Git repositories discoverable on the Nostr network. Host your code on 
   - `git-nostr-ssh`: SSH command handler for Git operations
   - `git-nostr-cli`: CLI tool for managing repos (optional)
   - Located in `ui/gitnostr/` - **All Go components are included!**
+
+## 🌐 Decentralization & Resilience
+
+### How Clone URLs Work: Potential Mirrors, Not Guaranteed Mirrors
+
+When you publish a repository on gittr, you'll see multiple clone URLs listed (e.g., `git.gittr.space`, `relay.ngit.dev`, `gitnostr.com`, etc.). Here's what this means:
+
+**GRASP servers are real Git servers** that can host full repositories, but they don't automatically mirror everything. Each GRASP server only has repositories that were:
+- **Pushed directly to them** (when you push, gittr pushes to its own server)
+- **Cloned to them** (when someone clones from that server, it creates a local copy)
+- **Actively mirrored** by the server operator
+
+**Why multiple clone URLs?**
+- **Discoverability**: Anyone can discover your repo through any Nostr relay
+- **Resilience**: If one server goes down, others may still have your repo
+- **Decentralization**: No single point of failure - your code exists independently of any one service
+- **Parallel fetching**: gittr tries all clone URLs simultaneously, using whichever responds first
+
+**What this means for you:**
+- ✅ Your repo metadata is stored on Nostr relays (censorship-resistant)
+- ✅ Multiple potential mirrors increase availability
+- ✅ Even if gittr.space goes down, your repo can still be accessed via other GRASP servers
+- ✅ Other clients can read your repo from Nostr events and clone from any available mirror
+
+**Example**: If GitHub deletes your repo but you've pushed it to gittr, it remains accessible through:
+- Nostr events (metadata and discovery)
+- GRASP servers that have cloned it
+- Your local git-nostr-bridge instance
+- Any other client that has cached it
+
+This is true decentralization: your code isn't dependent on any single service or platform.
+
+### Benefits for Developers
+
+**For Repository Owners:**
+- 🛡️ **Censorship Resistance**: Your repo metadata lives on Nostr relays, not controlled by any single entity
+- 🔄 **Redundancy**: Multiple potential mirrors mean your code survives server failures
+- 🌍 **Global Discovery**: Anyone on Nostr can discover your repo, regardless of which Git server hosts it
+- ⚡ **Fast Access**: Parallel fetching means users get files from the fastest available source
+
+**For Repository Users:**
+- 🔍 **Easy Discovery**: Find repos through Nostr's global network, not just one platform
+- 🚀 **Fast Clones**: System automatically tries multiple sources in parallel
+- 💪 **Resilience**: If one server is down, others may still work
+- 🔓 **No Vendor Lock-in**: Clone from any GRASP server or use standard Git commands
+
+**For the Ecosystem:**
+- 🌐 **True Decentralization**: No single point of failure
+- 🔗 **Interoperability**: Works with any Nostr client, not just gittr
+- 📈 **Scalability**: New GRASP servers can join the network without central coordination
+- 🎯 **Protocol-First**: Nostr events are the source of truth, Git servers are just data relays
 
 ## 📊 Architecture & Data Storage
 
@@ -176,6 +228,12 @@ Handle binary vs text files
 - **External git servers are last** because:
   - They require network calls
   - They're used as fallback when embedded content and git-nostr-bridge aren't available
+
+**Important Note on GRASP Servers:**
+- When Strategy 3 tries multiple clone URLs in parallel, not all GRASP servers necessarily have every repo
+- Clone URLs are *potential mirrors* - they only have repos that were pushed directly to them, cloned to them, or actively mirrored
+- The system tries all URLs simultaneously and uses whichever responds first, providing resilience and redundancy
+- See [Decentralization & Resilience](#-decentralization--resilience) for a detailed explanation
 
 **SSH URL Normalization:**
 - SSH clone URLs (e.g., `git@github.com:owner/repo`) are automatically converted to HTTPS format (`https://github.com/owner/repo`) before processing
