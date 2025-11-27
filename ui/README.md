@@ -142,6 +142,11 @@ GITHUB_CLIENT_SECRET=your_github_client_secret_here
 # 
 # Note: Zaps go TO recipients' wallets (from their Nostr profile or repo config).
 # LNBITS_URL/ADMIN_KEY is used by the SENDER to create invoices and split payments.
+
+# Platform Nostr pubkey for NIP-05 verification (optional)
+# This enables NIP-05 verification for the platform (e.g., _@gittr.space)
+# Must match the pubkey in public/.well-known/nostr.json
+# NEXT_PUBLIC_PLATFORM_PUBKEY=npub1...
 ```
 
 ### 2. Root `.env` (Optional - for backend/Go services)
@@ -263,6 +268,7 @@ When deploying to production (Vercel, Railway, Render, etc.):
 | `GITHUB_REDIRECT_URI` | `ui/.env.local` | ❌ No | Custom callback URL |
 | `LNBITS_URL` | `ui/.env.local` | ❌ No | Default LNbits instance |
 | `LNBITS_ADMIN_KEY` | `ui/.env.local` | ❌ No | Default LNbits admin key |
+| `NEXT_PUBLIC_PLATFORM_PUBKEY` | `ui/.env.local` | ❌ No | Platform Nostr pubkey for NIP-05 verification |
 | `BLOSSOM_URL` | `/.env` (root) | ❌ No | Blossom storage (backend only) |
 | `RELAYS` | `/.env` (root) | ❌ No | Default Nostr relays |
 
@@ -292,6 +298,63 @@ When deploying to production (Vercel, Railway, Render, etc.):
 - Make sure the file is in the correct location (`ui/.env.local` for Next.js)
 - Check file permissions (should be readable)
 - Verify variable names match exactly (case-sensitive)
+
+## 🔐 NIP-05 Verification Setup
+
+NIP-05 allows your platform to be verified on Nostr (e.g., `_@gittr.space` or `gittr@gittr.space`).
+
+### Step 1: Generate or Use a Nostr Keypair
+
+You need a Nostr pubkey for the platform. You can:
+- Generate a new keypair using any Nostr client
+- Use an existing pubkey you control
+
+### Step 2: Update `.well-known/nostr.json`
+
+Edit `ui/public/.well-known/nostr.json` and replace `YOUR_PLATFORM_PUBKEY_HERE` with your actual pubkey (npub format):
+
+```json
+{
+  "names": {
+    "_@gittr.space": "npub1your_actual_platform_pubkey_here",
+    "gittr@gittr.space": "npub1your_actual_platform_pubkey_here"
+  }
+}
+```
+
+**Note**: The `_@gittr.space` entry verifies the root domain, while `gittr@gittr.space` provides a named identifier.
+
+### Step 3: Set Environment Variable
+
+Add to `ui/.env.local`:
+
+```bash
+NEXT_PUBLIC_PLATFORM_PUBKEY=npub1your_actual_platform_pubkey_here
+```
+
+### Step 4: Verify Setup
+
+1. **Check the `.well-known` endpoint**:
+   ```bash
+   curl https://gittr.space/.well-known/nostr.json
+   ```
+   Should return the JSON with your pubkey.
+
+2. **Verify NIP-05**:
+   - Use a Nostr client or tool like https://nostr.com/ to verify `_@gittr.space`
+   - It should resolve to your platform pubkey
+
+3. **Check NIP-11 endpoint**:
+   ```bash
+   curl https://gittr.space/api/nostr/info
+   ```
+   The `pubkey` field should match your platform pubkey.
+
+### How It Works
+
+- The `.well-known/nostr.json` file is served at `https://gittr.space/.well-known/nostr.json`
+- Nostr clients query this endpoint to verify NIP-05 identifiers
+- The `NEXT_PUBLIC_PLATFORM_PUBKEY` is used in the NIP-11 info endpoint to advertise the platform's pubkey
 
 # Development
 
