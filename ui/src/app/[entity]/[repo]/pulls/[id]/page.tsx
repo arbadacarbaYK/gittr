@@ -107,6 +107,32 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
   const recipientMetadata = useContributorMetadata(allPubkeys);
   const recipientMeta = pr?.author ? recipientMetadata[pr.author] : null;
 
+  // Helper function to generate repo link for relative link resolution
+  const getRepoLink = useCallback((subpath: string = "") => {
+    // Try to resolve entity to pubkey for npub format
+    let ownerPubkey: string | null = null;
+    try {
+      const repos = loadStoredRepos();
+      const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+      if (repo) {
+        ownerPubkey = getRepoOwnerPubkey(repo, params.entity);
+      }
+    } catch (e) {
+      // Fallback to decoding entity
+      try {
+        const decoded = nip19.decode(params.entity);
+        if (decoded.type === "npub") {
+          ownerPubkey = decoded.data as string;
+        }
+      } catch {}
+    }
+    
+    const basePath = ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
+      ? `/${nip19.npubEncode(ownerPubkey)}/${params.repo}${subpath ? `/${subpath}` : ""}`
+      : `/${params.entity}/${params.repo}${subpath ? `/${subpath}` : ""}`;
+    return basePath;
+  }, [params.entity, params.repo]);
+
   // Load required approvals from repo settings
   useEffect(() => {
     try {
@@ -1191,6 +1217,36 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
+                components={{
+                  a: ({ node, ...props }: any) => {
+                    // Resolve relative links relative to repo root, not current page
+                    let href = props.href || '';
+                    const isExternal = href.startsWith('http://') || href.startsWith('https://');
+                    if (href && !isExternal && !href.startsWith('mailto:') && !href.startsWith('#')) {
+                      // Relative link - resolve relative to repo root using query params format
+                      const repoBasePath = getRepoLink('');
+                      // Remove leading ./ or . if present
+                      let cleanHref = href.replace(/^\.\//, '').replace(/^\.$/, '');
+                      // Remove leading / if present (root-relative)
+                      if (cleanHref.startsWith('/')) {
+                        cleanHref = cleanHref.substring(1);
+                      }
+                      // Extract directory path and filename
+                      const pathParts = cleanHref.split('/');
+                      const fileName = pathParts[pathParts.length - 1];
+                      const dirPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '';
+                      // Construct URL with query parameters: ?path=dir&file=dir%2Ffile.md
+                      const encodedFile = encodeURIComponent(cleanHref);
+                      const encodedPath = dirPath ? encodeURIComponent(dirPath) : '';
+                      if (encodedPath) {
+                        href = `${repoBasePath}?path=${encodedPath}&file=${encodedFile}`;
+                      } else {
+                        href = `${repoBasePath}?file=${encodedFile}`;
+                      }
+                    }
+                    return <a {...props} href={href} target={isExternal ? '_blank' : undefined} rel={isExternal ? 'noopener noreferrer' : undefined} className="text-purple-400 hover:text-purple-300" />;
+                  },
+                }}
               >
                 {pr.body || "No description provided"}
               </ReactMarkdown>
