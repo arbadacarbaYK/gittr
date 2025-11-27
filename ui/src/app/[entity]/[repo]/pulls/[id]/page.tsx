@@ -538,7 +538,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
             repoEntity: params.entity,
             repoName: params.repo,
             title: pr.title,
-            description: pr.body || pr.description || "",
+            description: pr.body || "",
             baseBranch: pr.baseBranch || "main",
             headBranch: pr.headBranch,
             status: "merged",
