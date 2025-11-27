@@ -435,7 +435,6 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
               description: issue.description || "",
               status: newStatus,
               bountyAmount: issue.bountyAmount,
-              bountyInvoice: issue.bountyInvoice,
             }),
             pubkey: authorPubkey,
             id: "",
