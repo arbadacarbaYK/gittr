@@ -13,6 +13,8 @@ import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { getEntityDisplayName } from "@/lib/utils/entity-resolver";
 import { formatDateTime24h, formatDate24h, formatTime24h } from "@/lib/utils/date-format";
+import { loadStoredRepos, type StoredRepo } from "@/lib/repos/storage";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 interface Commit {
   id: string; // commit hash or ID
@@ -96,6 +98,70 @@ export default function CommitsPage({ params }: { params: { entity: string; repo
   useEffect(() => {
     loadCommits();
   }, [loadCommits]);
+
+  // Fetch commits from GitHub API when tab is clicked (if repo has sourceUrl)
+  useEffect(() => {
+    if (!mounted || !params?.entity || !params?.repo) return;
+    
+    const fetchFromGitHub = async () => {
+      try {
+        const repos = loadStoredRepos();
+        const repo = findRepoByEntityAndName(repos, params.entity, params.repo);
+        if (!repo?.sourceUrl) return; // Only fetch for GitHub/GitLab/Codeberg repos
+        
+        // Parse sourceUrl to get owner/repo
+        let owner: string | null = null;
+        let repoName: string | null = null;
+        try {
+          const url = new URL(repo.sourceUrl);
+          const pathParts = url.pathname.replace(/\.git$/, "").split("/").filter(Boolean);
+          if (pathParts.length >= 2) {
+            owner = pathParts[0];
+            repoName = pathParts[1];
+          }
+        } catch {
+          return; // Invalid URL
+        }
+        
+        if (!owner || !repoName) return;
+        
+        // Check if this is GitHub
+        const isGitHub = repo.sourceUrl.includes("github.com");
+        if (!isGitHub) return; // Only fetch from GitHub for now
+        
+        // Fetch commits from GitHub API
+        const proxyUrl = `/api/github/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoName}/commits?per_page=100`)}`;
+        
+        const response = await fetch(proxyUrl);
+        if (response.ok) {
+          const list: any[] = await response.json();
+          const commits = list.map((c: any) => ({
+            id: c.sha || `commit-${Date.now()}`,
+            message: c.commit?.message || "",
+            author: c.commit?.author?.email || c.commit?.committer?.email || "",
+            authorName: c.commit?.author?.name || c.commit?.committer?.name || "",
+            timestamp: (c.commit?.author?.date || c.commit?.committer?.date)
+              ? new Date(c.commit?.author?.date || c.commit?.committer?.date || "").getTime() 
+              : Date.now(),
+            branch: repo.defaultBranch || "main",
+            html_url: c.html_url || "",
+          }));
+          
+          // Save to localStorage
+          const commitsKey = getRepoStorageKey("gittr_commits", params.entity, params.repo);
+          localStorage.setItem(commitsKey, JSON.stringify(commits));
+          console.log(`✅ [Commits] Fetched and saved ${commits.length} commits from GitHub`);
+          
+          // Reload commits
+          loadCommits();
+        }
+      } catch (error) {
+        console.error("Failed to fetch commits from GitHub:", error);
+      }
+    };
+    
+    fetchFromGitHub();
+  }, [mounted, params.entity, params.repo, loadCommits]);
 
   // Listen for new commits
   useEffect(() => {

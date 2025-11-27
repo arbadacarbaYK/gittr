@@ -1344,10 +1344,16 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
         throw new Error("No signing method available");
       }
       
-      // Publish to relays
+      // Publish to relays (synchronous, but we'll update state after a brief delay to ensure UI feedback)
+      try {
       publish(event, defaultRelays);
+        console.log(`📤 [Follow] Published kind 3 event to ${defaultRelays.length} relay(s)`);
+      } catch (publishError) {
+        console.error("Failed to publish follow event:", publishError);
+        throw publishError;
+      }
       
-      // Update local state
+      // Update local state immediately for responsive UI
       setIsFollowing(!isFollowing);
       setContactList(newContacts);
       
@@ -1454,22 +1460,23 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
           </div>
           
           {/* Profile Info */}
-          <div className="flex-1 w-full">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h1 className="text-4xl font-bold mb-2">{displayName}</h1>
+          <div className="flex-1 w-full min-w-0">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl sm:text-4xl font-bold mb-2 break-words">{displayName}</h1>
                 {nip05 && (
                   <div className="flex items-center gap-2 text-gray-400 mb-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-500" />
-                    <span>{nip05}</span>
+                    <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                    <span className="break-words">{nip05}</span>
                   </div>
             )}
             {about && (
-                  <p className="text-gray-300 mb-4 max-w-2xl">{about}</p>
+                  <p className="text-gray-300 mb-4 break-words">{about}</p>
             )}
             </div>
               
               {/* Follow Button */}
+              <div className="flex-shrink-0">
               {isLoggedIn && !isOwnProfile && (
                 <Button
                   onClick={handleFollow}
@@ -1501,6 +1508,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                   Edit Profile
                 </Button>
               )}
+              </div>
           </div>
             
             {/* Stats Row - Shows data from Nostr (repos) and local activities (commits, PRs, bounties) */}

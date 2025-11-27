@@ -852,41 +852,58 @@ const treeUrl = `${baseUrl}/api/v1/repos${fullPath}/git/trees/${branch}?recursiv
 
 ---
 
-## Future Work: PRs, Issues, Commits, Releases for GRASP Repos
+## PRs, Issues, Commits, Releases Handling
 
-### Current State
-- GitHub/Codeberg repos: Use their REST APIs for PRs, Issues, Commits, Releases
-- GRASP repos: Currently only support file browsing via git-nostr-bridge
-- Git protocol repos: Don't have REST APIs like GitHub
+### Current Implementation
+
+**GitHub/Codeberg Repos:**
+- **Source of Truth**: GitHub/Codeberg REST APIs are the primary source
+- **Fetching**: Issues, PRs, commits, and releases are fetched during import and refetch operations via `/api/import`
+- **Storage**: Data is stored in both:
+  - Repo object in localStorage (`repo.issues`, `repo.pulls`, `repo.commits`, `repo.releases`)
+  - Separate localStorage keys (`gittr_issues`, `gittr_prs`, `gittr_commits`) for display pages
+- **Refetch**: When refetching a repo, issues/PRs/commits are re-fetched from GitHub API and saved (even if empty arrays)
+- **Nostr Sync**: PRs and issues created via the web UI are published as Nostr events (kinds 9803/9804), but GitHub source takes precedence
+
+**Nostr Events for PRs/Issues:**
+- **Issue Events**: Kind 9803 (custom, not NIP-34 replaceable)
+- **PR Events**: Kind 9804 (custom, not NIP-34 replaceable)
+- **Repository Events**: Kind 30617 (NIP-34 replaceable) - only for repository announcements
+- **Note**: PRs/issues use custom kinds, not NIP-34 replaceable events, so they don't follow the replaceable event pattern
+- **Sync Behavior**: For GitHub repos, GitHub API is the source of truth. Nostr events are synced but GitHub data takes precedence when both exist
+
+**GRASP/Git Protocol Repos:**
+- Currently only support file browsing via git-nostr-bridge
+- PRs/Issues: Can be created via web UI and published as Nostr events (kinds 9803/9804)
+- Commits: Available via `git log` (git-nostr-bridge can provide)
+- Releases: Might be git tags (git-nostr-bridge can list)
 
 ### Differences
 **GitHub/Codeberg:**
 - REST APIs for PRs, Issues, Commits, Releases
-- Webhooks for real-time updates
+- Webhooks for real-time updates (not yet implemented)
 - Rich metadata (labels, assignees, milestones, etc.)
+- GitHub API is source of truth, Nostr events are secondary
 
 **GRASP/Git Protocol:**
 - No REST APIs - only git protocol
-- PRs/Issues might be stored as Nostr events (NIP-34 or custom kind)
+- PRs/Issues stored as Nostr events (kinds 9803/9804, custom kinds)
 - Commits available via `git log` (git-nostr-bridge can provide)
 - Releases might be git tags (git-nostr-bridge can list)
 
-### Potential Solutions
-1. **PRs/Issues**: Check for Nostr events (kind 30618 for issues, custom kind for PRs)
-2. **Commits**: Use git-nostr-bridge API to run `git log` commands
-3. **Releases**: Use git-nostr-bridge API to list git tags
+### Future Work
+1. **PRs/Issues for GRASP repos**: Better integration with Nostr events (kinds 9803/9804)
+2. **Commits for GRASP repos**: Use git-nostr-bridge API to run `git log` commands
+3. **Releases for GRASP repos**: Use git-nostr-bridge API to list git tags
 4. **File History**: Use git-nostr-bridge API to run `git log --follow` for file
+5. **Webhooks**: Implement webhook support for GitHub/Codeberg repos for real-time updates
 
 ### Implementation Notes
-- Need to create API endpoints in git-nostr-bridge for git commands
-- Need to parse git output (commits, tags, etc.)
-- Need to handle Nostr events for PRs/Issues if they exist
-- May need to fall back to "Not available for git protocol repos" for some features
-
-### Files to Update (Future)
-- `ui/src/app/[entity]/[repo]/issues/page.tsx` - Check Nostr events for issues
-- `ui/src/app/[entity]/[repo]/pulls/page.tsx` - Check Nostr events for PRs
-- `ui/src/app/[entity]/[repo]/commits/page.tsx` - Use git-nostr-bridge API for git log
+- GitHub repos: Always fetch from GitHub API during import/refetch
+- Nostr events: Subscribe to kinds 9803/9804 for PRs/issues created via web UI
+- Storage: Save to both repo object and separate localStorage keys for display
+- Refetch: Always save data (even if empty) to clear stale localStorage data
+- Priority: GitHub API > Nostr events for GitHub repos
 - `ui/src/app/[entity]/[repo]/releases/page.tsx` - Use git-nostr-bridge API for git tags
 - `ui/src/pages/api/nostr/repo/commits.ts` - New endpoint for git log
 - `ui/src/pages/api/nostr/repo/tags.ts` - New endpoint for git tags
