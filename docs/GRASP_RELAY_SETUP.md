@@ -8,11 +8,18 @@ This guide explains how to set up a relay instance (Grasp protocol server) for y
 
 Grasp (Git Relays Authorized via Signed-Nostr Proofs) is a distributed, protocol-first approach to hosting Git repos. It uses Nostr events as the source of truth, allowing multiple Git servers to act as redundant data relays.
 
+**Important Understanding**: GRASP servers are real Git servers that *can* host full repositories, but they don't automatically mirror everything. When you see multiple clone URLs in a repo, those are *potential mirrors* - not all of them necessarily have the repo. They only have repos that were pushed directly to them, cloned to them, or actively mirrored. This design provides:
+- **Discoverability**: Repo metadata is always on Nostr relays
+- **Resilience**: Multiple potential mirrors increase availability
+- **Decentralization**: No single point of failure
+- **Parallel Fetching**: Clients try all URLs simultaneously for fastest access
+
 **Key Benefits:**
-- **Decentralized**: No single point of failure
-- **Censorship Resistant**: Multiple servers can host the same repo
-- **Protocol-First**: Nostr events control the Git experience
-- **Resilient**: Pull/push from multiple instances simultaneously
+- **Decentralized**: No single point of failure - your repo metadata lives on Nostr relays
+- **Censorship Resistant**: Multiple servers can host the same repo, and repo discovery happens through Nostr
+- **Protocol-First**: Nostr events control the Git experience - Git servers are just data relays
+- **Resilient**: Pull/push from multiple instances simultaneously, with automatic fallback
+- **Discoverable**: Anyone can find your repo through Nostr relays, even if they don't know which Git server has it
 
 Learn more: https://ngit.dev/grasp/
 
@@ -197,13 +204,29 @@ If events are rejected, check your relay logs for "event kind not allowed" error
 
 ### How It Works
 
-1. **Repository Announcement**: When a user creates a repo, a Nostr event (kind 51) is published to relays listing which Grasp servers should host it.
+1. **Repository Announcement**: When a user creates a repo, a Nostr event (kind 51 or 30617) is published to relays listing which Grasp servers *could* host it. This event includes multiple clone URLs for potential mirrors.
 
-2. **Auto-Creation**: Grasp servers automatically create blank repos when they receive repository-announcement events that list them.
+2. **Auto-Creation vs. Actual Hosting**: 
+   - **Auto-Creation**: Some Grasp servers may automatically create blank repos when they receive repository-announcement events that list them
+   - **Actual Hosting**: However, a GRASP server only has the *full repository* if:
+     - The repo was **pushed directly to it** (e.g., gittr pushes to `git.gittr.space`)
+     - Someone **cloned from it** (which creates a local copy on that server)
+     - The server operator **actively mirrored it**
 
-3. **Git Operations**: Users push/pull using `nostr://` URLs, which resolve to multiple Grasp servers for redundancy.
+3. **Multiple Clone URLs = Potential Mirrors**: When you see 10 clone URLs in a repo, not all 10 necessarily have the repo. They're listed as *potential mirrors* for:
+   - **Discoverability**: Anyone can discover the repo through any Nostr relay
+   - **Resilience**: If one server goes down, others may still have it
+   - **Parallel Fetching**: Clients try all URLs simultaneously, using whichever responds first
 
-4. **Nostr Authority**: All permissions, PRs, issues, and metadata are stored as Nostr events, making Git servers simple data relays.
+4. **Git Operations**: Users push/pull using `nostr://` URLs or direct HTTPS/SSH URLs. The system tries multiple GRASP servers in parallel for redundancy.
+
+5. **Nostr Authority**: All permissions, PRs, issues, and metadata are stored as Nostr events, making Git servers simple data relays. The Nostr event is the source of truth for discovery and metadata.
+
+**Key Insight**: GRASP servers are real Git servers that *can* host full repos, but they don't automatically mirror everything. This is by design - it allows for:
+- **Decentralization**: No single point of failure
+- **Censorship Resistance**: Multiple independent mirrors
+- **Resilience**: Your code survives even if one service goes down
+- **Discoverability**: Repo metadata is always available on Nostr relays, even if some Git servers don't have the actual files
 
 ### Architecture
 
