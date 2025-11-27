@@ -871,7 +871,9 @@ const treeUrl = `${baseUrl}/api/v1/repos${fullPath}/git/trees/${branch}?recursiv
 **Nostr Events for PRs/Issues:**
 - **Issue Events**: Kind 9803 (custom, not NIP-34 replaceable)
 - **PR Events**: Kind 9804 (custom, not NIP-34 replaceable)
-- **Repository Events**: Kind 30617 (NIP-34 replaceable) - only for repository announcements
+- **Repository Events**: 
+  - **Kind 51** (gitnostr: Repository) - Repository announcements (legacy)
+  - **Kind 30617** (NIP-34: Replaceable Events) - Repository metadata (alternative to Kind 51, NIP-34 replaceable)
 - **Note**: PRs/issues use custom kinds, not NIP-34 replaceable events, so they don't follow the replaceable event pattern
 - **🆕 Automatic Publishing**:
   - Issues are automatically published to Nostr when created
