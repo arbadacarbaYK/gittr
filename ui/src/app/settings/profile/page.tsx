@@ -24,6 +24,7 @@ type ProfileFormInputs = {
   nip5: string;
   description: string;
   banner: string;
+  lud16: string;
 };
 
 export default function ProfilePage() {
@@ -99,6 +100,7 @@ export default function ProfilePage() {
       nip5: "",
       description: "",
       banner: "",
+      lud16: "",
     },
   });
 
@@ -260,6 +262,7 @@ export default function ProfilePage() {
       nip05: metadata.nip05 || "",
       about: metadata.about || "",
       userName: newActualUserName || "",
+      lud16: metadata.lud16 || "",
     });
     
     // Always update form if metadata exists and hasn't been processed yet
@@ -271,6 +274,7 @@ export default function ProfilePage() {
       nip5: metadata.nip05 || "",
       description: metadata.about || "",
       banner: metadata.banner || "",
+      lud16: metadata.lud16 || "",
       };
       
       reset(formData);
@@ -291,6 +295,7 @@ export default function ProfilePage() {
         nip5: formValues.nip5 || "",
         description: formValues.description || "",
         banner: formValues.banner || "",
+        lud16: formValues.lud16 || "",
       };
       
       const expectedFormData = {
@@ -299,6 +304,7 @@ export default function ProfilePage() {
         nip5: metadata.nip05 || "",
         description: metadata.about || "",
         banner: metadata.banner || "",
+        lud16: metadata.lud16 || "",
       };
       
       // Only reset if form is empty but metadata exists
@@ -360,6 +366,11 @@ export default function ProfilePage() {
       // This prevents overwriting existing banner from relays with an empty value
       if (data.banner && data.banner.trim()) {
         metadata.banner = data.banner.trim();
+      }
+      // CRITICAL: Only include lud16 if it has a value - empty string means "don't set lud16"
+      // This prevents overwriting existing lud16 from relays with an empty value
+      if (data.lud16 && data.lud16.trim()) {
+        metadata.lud16 = data.lud16.trim();
       }
 
       // Build NIP-39 i tags for claimed identities
@@ -625,6 +636,19 @@ export default function ProfilePage() {
               />
               <p className="text-xs text-gray-500 mt-1">
                 URL for your profile banner image (displayed at the top of your profile page)
+              </p>
+            </div>
+            
+            <div className="space-y-1">
+              <Label htmlFor="lud16">Lightning Address (LUD-16)</Label>
+              <Input
+                id="lud16"
+                type="text"
+                {...register("lud16")}
+                placeholder="yourname@example.com"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Your Lightning address for receiving payments (e.g., satoshi@lightning.com)
               </p>
             </div>
             
