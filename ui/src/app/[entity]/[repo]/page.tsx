@@ -8089,6 +8089,45 @@ export default function RepoCodePage({
                               }
                             }
                             
+                            // CRITICAL: Update contributors during refetch
+                            // Query NIP-39 identities and map contributors properly
+                            if (importData.contributors && Array.isArray(importData.contributors) && importData.contributors.length > 0) {
+                              try {
+                                // Query Nostr for GitHub identity mappings (NIP-39) before mapping contributors
+                                const githubLogins = importData.contributors.map((c: any) => c.login).filter(Boolean);
+                                if (subscribe && defaultRelays && defaultRelays.length > 0 && githubLogins.length > 0) {
+                                  try {
+                                    const { queryGithubIdentitiesFromNostr } = await import("@/lib/github-mapping");
+                                    await queryGithubIdentitiesFromNostr(subscribe, defaultRelays, githubLogins);
+                                    console.log(`✅ [Refetch] Queried Nostr for ${githubLogins.length} GitHub identities`);
+                                  } catch (identityError) {
+                                    console.warn("⚠️ [Refetch] Failed to query GitHub identities from Nostr:", identityError);
+                                    // Continue anyway - will use localStorage mappings only
+                                  }
+                                }
+                                
+                                // Map contributors with proper identity mappings
+                                const refetchedContributors = mapGithubContributors(
+                                  importData.contributors as GitHubContributor[],
+                                  effectiveUserPubkey || undefined,
+                                  userPicture || undefined,
+                                  true // keepAnonymous: true - show all contributors
+                                );
+                                
+                                // Normalize contributors
+                                const normalizedContributors = normalizeContributors(refetchedContributors);
+                                
+                                // Update repo with new contributors
+                                if (repoIndex >= 0 && repos[repoIndex]) {
+                                  repos[repoIndex].contributors = normalizedContributors;
+                                  console.log(`✅ [Refetch] Updated ${normalizedContributors.length} contributors`);
+                                }
+                              } catch (contribError) {
+                                console.error("❌ [Refetch] Failed to update contributors:", contribError);
+                                // Don't fail the entire refetch if contributor update fails
+                              }
+                            }
+                            
                             saveStoredRepos(repos);
                             
                             // Verify files were saved
