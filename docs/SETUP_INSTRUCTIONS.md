@@ -162,6 +162,9 @@ Edit `~/.config/git-nostr/git-nostr-bridge.json`:
 **IMPORTANT:** 
 - The `relays` array should match the relays in `ui/.env.local` (`NEXT_PUBLIC_NOSTR_RELAYS`).
 - Leave `gitRepoOwners` empty `[]` to allow ANY user to create repos (decentralized).
+- Need a deeper dive into every knob? See the extracted gitnostr repo's
+  [`docs/STANDALONE_BRIDGE_SETUP.md`](STANDALONE_BRIDGE_SETUP.md) for a complete
+  standalone bridge guide.
 
 **Restart the bridge** to pick up the new configuration:
 

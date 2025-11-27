@@ -258,8 +258,7 @@ Edit `~/.config/git-nostr/git-nostr-bridge.json`:
     "gitRepoOwners": [
         "<your-nostr-pubkey-here>",
         "<other-authorized-pubkeys>"
-    ],
-    "ListenAddr": ":8080"
+    ]
 }
 ```
 
@@ -267,7 +266,9 @@ Edit `~/.config/git-nostr/git-nostr-bridge.json`:
 - `relays`: Use your existing relays plus public Grasp instances
 - `gitRepoOwners`: List of Nostr pubkeys (64-char hex) that can create repositories
 - `repositoryDir`: Use absolute path in production
-- `ListenAddr`: (Optional) HTTP API listen address for direct event submission (default: `:8080`). This is a **gittr.space enhancement** that enables immediate event processing without relay propagation delays.
+- `BRIDGE_HTTP_PORT` env var (optional): Set (`8080` by default) when you want the `/api/event` fast lane. Leave unset to disable the HTTP listener.
+- For a complete reference of every knob plus standalone instructions, see
+  [`docs/STANDALONE_BRIDGE_SETUP.md`](STANDALONE_BRIDGE_SETUP.md) in the gitnostr repo.
 
 #### 5.5: Configure SSH Server
 
