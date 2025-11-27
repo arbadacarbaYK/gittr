@@ -56,7 +56,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Full GRASP compliance requires gittr-relay setup (see docs/GRASP_RELAY_SETUP.md)
     ],
     // GRASP protocol: Repository acceptance criteria
-    repo_acceptance_criteria: "Accepts all public repository announcements (kind 51) that list this instance in clone or relays tags. For GRASP-05 archive mode, also accepts repos not listing this instance.",
+    repo_acceptance_criteria: "Accepts all public repository announcements (kind 30617, NIP-34 replaceable events) that list this instance in clone or relays tags. Also reads legacy kind 51 for backwards compatibility. For GRASP-05 archive mode, also accepts repos not listing this instance.",
     // Git server information
     git_server_url: gitServerUrl,
     // Relay information (if this instance also runs a relay)
@@ -66,7 +66,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Custom event kinds for gittr
     custom_kinds: {
       50: "Repository Permissions",
-      51: "Repository Announcements",
+      51: "Repository Announcements (legacy, read-only)",
+      30617: "Repository Metadata (NIP-34, primary publishing method)",
       52: "SSH Keys",
       9803: "Issues",
       9804: "Pull Requests",

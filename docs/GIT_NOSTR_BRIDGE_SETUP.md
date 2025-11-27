@@ -151,7 +151,7 @@ nano ~/.config/git-nostr/git-nostr-bridge.json
 | --- | --- | --- | --- |
 | `repositoryDir` | ✅ | `~/git-nostr-repositories` | Filesystem path where bare repositories live. Use an absolute path in production. |
 | `DbFile` | ✅ | `~/.config/git-nostr/git-nostr-db.sqlite` | SQLite database that caches repo + permission events so SSH checks are instant even if relays lag. |
-| `relays` | ✅ | `[]` | Array of read-enabled relays (kinds 50/51/30617 + 52). Match the relays you publish to. |
+| `relays` | ✅ | `[]` | Array of read-enabled relays (kinds 50/51/30617 + 52). The bridge reads both kind 51 (legacy) and kind 30617 (NIP-34) for backwards compatibility. |
 | `gitRepoOwners` | optional | `[]` | When empty the bridge accepts repo events from anyone (“watch-all”). Add pubkeys to restrict creation. |
 | `BRIDGE_HTTP_PORT` (env) | optional | unset | When set, exposes `/api/event` for POSTing signed events directly into the bridge. |
 
@@ -161,8 +161,10 @@ containing a full standalone guide plus fleet-tested defaults.
 
 **⚠️ Relay Configuration Required:** Ensure your relays allow the following event kinds:
 - **Kind 50** (Repository Permissions) - Required for access control
-- **Kind 51** (Repository) - Required for repository announcements
+- **Kind 51** (Repository) - Required for reading legacy repositories (backwards compatibility)
+- **Kind 30617** (NIP-34: Replaceable Events) - Required for repository announcements (primary method, what gittr.space publishes)
 - **Kind 52** (SSH Keys) - Required for Git authentication
+- **Note**: gittr.space only publishes repository announcements as kind 30617, never as kind 51. Kind 51 is only read for backwards compatibility.
 - See `docs/GRASP_RELAY_SETUP.md` for complete relay configuration instructions
 
 ### Step 5: Set Up SSH Server

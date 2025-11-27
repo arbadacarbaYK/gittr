@@ -286,7 +286,7 @@ export default function HelpPage() {
                     Requires <code className="bg-gray-800 px-1 rounded">git-remote-nostr</code>. This helper translates <code className="bg-gray-800 px-1 rounded">nostr://</code> URLs into standard Git fetches and is used by other NIP-34 clients.
                   </p>
                   <div className="mt-2 text-[11px] text-gray-300 bg-[#0f172a] border border-purple-900/40 rounded p-2 space-y-1">
-                    <p className="font-semibold text-purple-300">Install git-remote-nostr (Nov 2025)</p>
+                    <p className="font-semibold text-purple-300">Install git-remote-nostr</p>
                     <ul className="list-disc list-inside space-y-1">
                       <li>macOS/Linux: <code className="bg-gray-900 px-1 rounded">pip install git-remote-nostr</code> (Python 3.10+)</li>
                       <li>or build from source: <a className="text-purple-300 underline" target="_blank" rel="noreferrer" href="https://github.com/aljazceru/git-remote-nostr">github.com/aljazceru/git-remote-nostr</a></li>
@@ -566,16 +566,16 @@ export default function HelpPage() {
                 <li><strong className="text-white">Kind 0</strong> (NIP-01: Metadata) - User profiles and identities</li>
                 <li><strong className="text-white">Kind 1</strong> (NIP-01: Notes) - Comments on issues, PRs, and discussions</li>
                 <li><strong className="text-white">Kind 50</strong> (gitnostr: Repository Permissions) - Repository access control</li>
-                <li><strong className="text-white">Kind 51</strong> (gitnostr: Repository) - Repository announcements</li>
+                <li><strong className="text-white">Kind 51</strong> (gitnostr: Repository) - Repository announcements (legacy, for backwards compatibility)</li>
                 <li><strong className="text-white">Kind 52</strong> (gitnostr: SSH Keys) - SSH public keys for Git authentication</li>
-                <li><strong className="text-white">Kind 30617</strong> (NIP-34: Replaceable Events) - Repository metadata (alternative to Kind 51)</li>
+                <li><strong className="text-white">Kind 30617</strong> (NIP-34: Replaceable Events) - Repository metadata (primary method, uses NIP-34 replaceable events)</li>
                 <li><strong className="text-white">Kind 9735</strong> (NIP-57: Zaps) - Lightning payments and tips</li>
                 <li><strong className="text-white">Kind 9803</strong> (Custom: Issues) - Issue tracking with bounties</li>
                 <li><strong className="text-white">Kind 9804</strong> (Custom: Pull Requests) - Pull requests and code reviews</li>
                 <li><strong className="text-white">Kind 9806</strong> (Custom: Bounties) - Bounty creation and status updates</li>
               </ul>
               <p className="mt-3 text-sm text-gray-400">
-                <strong>Note:</strong> Issues and PRs (kinds 9803/9804) are automatically published to Nostr when created, and status updates (merged, closed, reopened) are also published automatically. This enables cross-platform sync with other Nostr clients.
+                <strong>Note:</strong> Repository announcements use Kind 30617 (NIP-34 replaceable events) as the primary method. Kind 51 is supported for reading legacy repositories. Issues and PRs (kinds 9803/9804) are automatically published to Nostr when created, and status updates (merged, closed, reopened) are also published automatically. This enables cross-platform sync with other Nostr clients.
               </p>
             </div>
           </div>
