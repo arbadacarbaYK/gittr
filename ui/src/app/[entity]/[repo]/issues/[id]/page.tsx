@@ -64,6 +64,7 @@ interface Issue {
   bountyWithdrawUrl?: string; // Shareable URL for claiming the bounty (e.g., https://bitcoindelta.club/withdraw/{id})
   bountyStatus?: "pending" | "paid" | "released";
   bountyCreator?: string; // Pubkey of the user who created the bounty
+  bountyInvoice?: string; // Legacy invoice field (for backwards compatibility with old Nostr events)
 }
 
 interface Comment {
@@ -435,6 +436,7 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
               description: issue.description || "",
               status: newStatus,
               bountyAmount: issue.bountyAmount,
+              bountyInvoice: issue.bountyInvoice, // Preserve legacy invoice if exists
             }),
             pubkey: authorPubkey,
             id: "",
@@ -454,6 +456,7 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
             labels: issue.labels || [],
             assignees: issue.assignees || [],
             bountyAmount: issue.bountyAmount,
+            bountyInvoice: issue.bountyInvoice, // Preserve legacy invoice if exists
           }, privateKey);
           
           // Add reference to original issue
