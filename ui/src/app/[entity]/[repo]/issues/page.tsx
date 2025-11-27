@@ -125,7 +125,7 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
         try {
           const url = new URL(repo.sourceUrl);
           const pathParts = url.pathname.replace(/\.git$/, "").split("/").filter(Boolean);
-          if (pathParts.length >= 2) {
+          if (pathParts.length >= 2 && pathParts[0] && pathParts[1]) {
             owner = pathParts[0];
             repoName = pathParts[1];
           }
