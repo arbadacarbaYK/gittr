@@ -74,6 +74,61 @@ export default function RepositoriesPage() {
     setMounted(true);
   }, []);
   
+  // CRITICAL: Check for stuck "pushing" status and reset if needed
+  // This runs periodically to catch repos stuck in "pushing" state
+  useEffect(() => {
+    if (!mounted || !canAccessLocalStorage) return;
+    
+    const checkStuckPushes = () => {
+      try {
+        const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
+        const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+        let resetCount = 0;
+        
+        for (const repo of repos) {
+          if (repo.status === "pushing") {
+            const lastPushAttempt = repo.lastPushAttempt || 0;
+            const hasEventId = !!(repo.nostrEventId || repo.lastNostrEventId);
+            
+            // If push was more than 5 minutes ago and no event ID, reset to local
+            // If push was more than 5 minutes ago but has event ID, check bridge status
+            if (lastPushAttempt < fiveMinutesAgo) {
+              if (!hasEventId) {
+                // No event ID after 5 minutes - likely failed, reset to local
+                repo.status = "local";
+                resetCount++;
+                console.log(`🔄 [Repos List] Reset stuck 'pushing' status to 'local' for ${repo.repo || repo.slug}`);
+              } else {
+                // Has event ID - check if bridge processed it
+                // If bridge hasn't processed it after 5 minutes, mark as "live_with_edits" (verifying)
+                if (repo.bridgeProcessed !== true) {
+                  repo.status = "live_with_edits"; // Show as "Published (Verifying...)"
+                  resetCount++;
+                  console.log(`🔄 [Repos List] Changed stuck 'pushing' to 'live_with_edits' (has event ID, verifying bridge) for ${repo.repo || repo.slug}`);
+                }
+              }
+            }
+          }
+        }
+        
+        if (resetCount > 0) {
+          localStorage.setItem("gittr_repos", JSON.stringify(repos));
+          // Trigger re-render by updating repos state
+          setRepos([...repos]);
+          console.log(`✅ [Repos List] Reset ${resetCount} stuck push status(es)`);
+        }
+      } catch (error) {
+        console.error("Failed to check stuck pushes:", error);
+      }
+    };
+    
+    // Check immediately, then every 2 minutes
+    checkStuckPushes();
+    const interval = setInterval(checkStuckPushes, 2 * 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, [mounted, canAccessLocalStorage]);
+  
   // Clear clicked repo state when navigation completes
   useEffect(() => {
     if (!clickedRepo) return;

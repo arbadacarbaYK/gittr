@@ -901,8 +901,11 @@ export default function ImportPage() {
           let contributors: Array<{pubkey?: string; name?: string; picture?: string; weight: number; githubLogin?: string}> = [];
           
           if (importData.contributors && Array.isArray(importData.contributors) && importData.contributors.length > 0) {
-            // Filter out anonymous contributors (no Nostr pubkey) - only keep those with Nostr identities
-            contributors = mapGithubContributors(importData.contributors, pubkey || undefined, undefined, false);
+            // CRITICAL: Keep ALL contributors (keepAnonymous: true) so GitHub users without Nostr pubkeys
+            // are still shown with their GitHub avatars. This allows users to see both:
+            // 1. GitHub contributors (with GitHub avatars) - even if they haven't claimed Nostr identities
+            // 2. Nostr contributors (with Nostr avatars) - if they've claimed their GitHub identity
+            contributors = mapGithubContributors(importData.contributors, pubkey || undefined, undefined, true);
           }
             
           // ALWAYS ensure the importing user (owner) is in contributors with weight 100
