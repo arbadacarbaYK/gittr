@@ -110,22 +110,34 @@ export default function ProfilePage() {
   // Load existing identities from metadata
   // NIP-39 is just Kind 0 events with i tags - any relay supporting Kind 0 supports NIP-39
   // localStorage fallback is ONLY for propagation delays (relays might not have the event yet)
+  // CRITICAL: Use pubkey-specific localStorage keys to prevent cross-account identity leakage
   useEffect(() => {
-      if (metadata.identities && Array.isArray(metadata.identities) && metadata.identities.length > 0) {
-        console.log("✅ [Profile Settings] Loading identities from Nostr metadata (NIP-39):", metadata.identities);
-        setIdentities(metadata.identities);
-        // Update backup when we get fresh metadata from Nostr (Nostr now has it, so backup is confirmed)
-        localStorage.setItem('gittr_profile_identities_backup', JSON.stringify(metadata.identities));
-        localStorage.setItem('gittr_profile_identities_backup_time', Date.now().toString());
-        localStorage.setItem('gittr_profile_identities_backup_confirmed', 'true'); // Nostr has it, so confirmed
+    if (!pubkey || !/^[0-9a-f]{64}$/i.test(pubkey)) {
+      // Clear identities if no valid pubkey
+      setIdentities([]);
+      return;
+    }
+    
+    const normalizedPubkey = pubkey.toLowerCase();
+    const backupKey = `gittr_profile_identities_backup_${normalizedPubkey}`;
+    const backupTimeKey = `gittr_profile_identities_backup_time_${normalizedPubkey}`;
+    const backupConfirmedKey = `gittr_profile_identities_backup_confirmed_${normalizedPubkey}`;
+    
+    if (metadata.identities && Array.isArray(metadata.identities) && metadata.identities.length > 0) {
+      console.log("✅ [Profile Settings] Loading identities from Nostr metadata (NIP-39):", metadata.identities);
+      setIdentities(metadata.identities);
+      // Update backup when we get fresh metadata from Nostr (Nostr now has it, so backup is confirmed)
+      localStorage.setItem(backupKey, JSON.stringify(metadata.identities));
+      localStorage.setItem(backupTimeKey, Date.now().toString());
+      localStorage.setItem(backupConfirmedKey, 'true'); // Nostr has it, so confirmed
     } else {
       // Fallback: Use localStorage backup if available (persists until we get confirmation from Nostr)
       // This handles propagation delays and server restarts
       // We keep the backup until we successfully fetch identities from Nostr metadata
       try {
-        const backupTime = localStorage.getItem('gittr_profile_identities_backup_time');
-        const backup = localStorage.getItem('gittr_profile_identities_backup');
-        const backupConfirmed = localStorage.getItem('gittr_profile_identities_backup_confirmed') === 'true';
+        const backupTime = localStorage.getItem(backupTimeKey);
+        const backup = localStorage.getItem(backupKey);
+        const backupConfirmed = localStorage.getItem(backupConfirmedKey) === 'true';
         
         if (backup && backupTime) {
           const backupIdentities = JSON.parse(backup);
@@ -142,17 +154,21 @@ export default function ProfilePage() {
             } else {
               console.warn(`⚠️ [Profile Settings] Backup is ${Math.round(hoursSinceBackup)} hours old and unconfirmed - clearing. Check relay connectivity.`);
               // Only clear if it's old AND unconfirmed
-              localStorage.removeItem('gittr_profile_identities_backup');
-              localStorage.removeItem('gittr_profile_identities_backup_time');
-              localStorage.removeItem('gittr_profile_identities_backup_confirmed');
+              localStorage.removeItem(backupKey);
+              localStorage.removeItem(backupTimeKey);
+              localStorage.removeItem(backupConfirmedKey);
             }
           }
+        } else {
+          // No backup found - clear identities to prevent showing wrong account's identities
+          setIdentities([]);
         }
       } catch (e) {
         console.error("Failed to load identities backup:", e);
+        setIdentities([]);
       }
     }
-  }, [metadata.identities]);
+  }, [metadata.identities, pubkey]);
   
   // Load GitHub connection from account settings and sync with NIP-39 identities
   useEffect(() => {
@@ -345,32 +361,43 @@ export default function ProfilePage() {
       // Create kind 0 metadata event
       // CRITICAL: Only include fields that have actual values (not empty strings)
       // Empty strings will be converted to undefined and removed, preventing overwriting of existing relay metadata
-      const metadata: Record<string, any> = {};
+      // CRITICAL: Preserve existing metadata fields if form field is empty (prevents losing NIP-05, LUD-16, etc.)
+      const newMetadata: Record<string, any> = {};
+      
+      // Get existing metadata to preserve fields that aren't being updated
+      const existingNip05 = metadata.nip05;
+      const existingLud16 = metadata.lud16;
       
       if (data.displayName && data.displayName.trim()) {
-        metadata.display_name = data.displayName.trim();
+        newMetadata.display_name = data.displayName.trim();
       }
       if (data.userName && data.userName.trim()) {
-        metadata.name = data.userName.trim();
+        newMetadata.name = data.userName.trim();
       }
       if (data.description && data.description.trim()) {
-        metadata.about = data.description.trim();
+        newMetadata.about = data.description.trim();
       }
+      // CRITICAL: Preserve existing NIP-05 if form field is empty but metadata has it
       if (data.nip5 && data.nip5.trim()) {
-        metadata.nip05 = data.nip5.trim();
+        newMetadata.nip05 = data.nip5.trim();
+      } else if (existingNip05 && existingNip05.trim()) {
+        // Preserve existing NIP-05 from metadata if form field is empty
+        newMetadata.nip05 = existingNip05.trim();
       }
       if (actualPicture && actualPicture.trim()) {
-        metadata.picture = actualPicture.trim();
+        newMetadata.picture = actualPicture.trim();
       }
       // CRITICAL: Only include banner if it has a value - empty string means "don't set banner"
       // This prevents overwriting existing banner from relays with an empty value
       if (data.banner && data.banner.trim()) {
-        metadata.banner = data.banner.trim();
+        newMetadata.banner = data.banner.trim();
       }
-      // CRITICAL: Only include lud16 if it has a value - empty string means "don't set lud16"
-      // This prevents overwriting existing lud16 from relays with an empty value
+      // CRITICAL: Preserve existing LUD-16 if form field is empty but metadata has it
       if (data.lud16 && data.lud16.trim()) {
-        metadata.lud16 = data.lud16.trim();
+        newMetadata.lud16 = data.lud16.trim();
+      } else if (existingLud16 && existingLud16.trim()) {
+        // Preserve existing LUD-16 from metadata if form field is empty
+        newMetadata.lud16 = existingLud16.trim();
       }
 
       // Build NIP-39 i tags for claimed identities
@@ -390,7 +417,7 @@ export default function ProfilePage() {
         kind: 0,
         created_at: Math.floor(Date.now() / 1000),
         tags: iTags, // Include NIP-39 identity tags
-        content: JSON.stringify(metadata),
+        content: JSON.stringify(newMetadata),
         pubkey: pubkey,
         id: "",
         sig: "",
@@ -422,9 +449,14 @@ export default function ProfilePage() {
         try {
           // Store identities in localStorage as backup (persists until we get confirmation from Nostr)
           // NIP-39 works on all Kind 0-supporting relays - this backup handles propagation delays and server restarts
-          localStorage.setItem('gittr_profile_identities_backup', JSON.stringify(identities));
-          localStorage.setItem('gittr_profile_identities_backup_time', Date.now().toString());
-          localStorage.setItem('gittr_profile_identities_backup_confirmed', 'false'); // Will be set to true if confirmed
+          // CRITICAL: Use pubkey-specific keys to prevent cross-account identity leakage
+          const normalizedPubkey = pubkey.toLowerCase();
+          const backupKey = `gittr_profile_identities_backup_${normalizedPubkey}`;
+          const backupTimeKey = `gittr_profile_identities_backup_time_${normalizedPubkey}`;
+          const backupConfirmedKey = `gittr_profile_identities_backup_confirmed_${normalizedPubkey}`;
+          localStorage.setItem(backupKey, JSON.stringify(identities));
+          localStorage.setItem(backupTimeKey, Date.now().toString());
+          localStorage.setItem(backupConfirmedKey, 'false'); // Will be set to true if confirmed
           
           // Log the event being published for debugging
           console.log("📤 [Profile Settings] Publishing event with identities:", {
@@ -527,12 +559,22 @@ export default function ProfilePage() {
           
           if (result.confirmed) {
             // Mark backup as confirmed - keep it until Nostr metadata has it
-            localStorage.setItem('gittr_profile_identities_backup_confirmed', 'true');
+            // CRITICAL: Use pubkey-specific keys
+            if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
+              const normalizedPubkey = pubkey.toLowerCase();
+              const backupConfirmedKey = `gittr_profile_identities_backup_confirmed_${normalizedPubkey}`;
+              localStorage.setItem(backupConfirmedKey, 'true');
+            }
             setUpdateStatus(`✅ Profile update published and confirmed! Event ID: ${result.eventId.substring(0, 16)}... Confirmed by ${result.confirmedRelays.length} relay(s). Reloading in 3 seconds...`);
             console.log("✅ [Profile Settings] Event confirmed by relays:", result.confirmedRelays);
           } else {
             // Keep backup but mark as unconfirmed - will expire after 24 hours
-            localStorage.setItem('gittr_profile_identities_backup_confirmed', 'false');
+            // CRITICAL: Use pubkey-specific keys
+            if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
+              const normalizedPubkey = pubkey.toLowerCase();
+              const backupConfirmedKey = `gittr_profile_identities_backup_confirmed_${normalizedPubkey}`;
+              localStorage.setItem(backupConfirmedKey, 'false');
+            }
             setUpdateStatus(`⚠️ Profile update published but awaiting confirmation. Event ID: ${result.eventId.substring(0, 16)}... Reloading in 3 seconds...`);
             console.warn("⚠️ [Profile Settings] Event published but not confirmed yet. This might be due to relay connectivity issues.");
           }
@@ -797,9 +839,16 @@ export default function ProfilePage() {
                       setIdentities(updatedIdentities);
                       
                       // Save to backup immediately (before publishing)
-                      localStorage.setItem('gittr_profile_identities_backup', JSON.stringify(updatedIdentities));
-                      localStorage.setItem('gittr_profile_identities_backup_time', Date.now().toString());
-                      localStorage.setItem('gittr_profile_identities_backup_confirmed', 'false'); // Will be confirmed after successful publish
+                      // CRITICAL: Use pubkey-specific keys to prevent cross-account identity leakage
+                      if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
+                        const normalizedPubkey = pubkey.toLowerCase();
+                        const backupKey = `gittr_profile_identities_backup_${normalizedPubkey}`;
+                        const backupTimeKey = `gittr_profile_identities_backup_time_${normalizedPubkey}`;
+                        const backupConfirmedKey = `gittr_profile_identities_backup_confirmed_${normalizedPubkey}`;
+                        localStorage.setItem(backupKey, JSON.stringify(updatedIdentities));
+                        localStorage.setItem(backupTimeKey, Date.now().toString());
+                        localStorage.setItem(backupConfirmedKey, 'false'); // Will be confirmed after successful publish
+                      }
                       
                       console.log("✅ [Profile Settings] Added identity:", newIdentity);
                       console.log("✅ [Profile Settings] Total identities:", updatedIdentities.length);

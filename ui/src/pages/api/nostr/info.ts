@@ -38,11 +38,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const defaultRelays = process.env.NEXT_PUBLIC_NOSTR_RELAYS?.split(',').map(r => r.trim()).filter(Boolean) || 
     ['wss://relay.damus.io'];
 
+  // Get platform pubkey for NIP-05 verification (optional)
+  const platformPubkey = process.env.NEXT_PUBLIC_PLATFORM_PUBKEY || null;
+
   // NIP-11 document with GRASP protocol support
   const nip11Document = {
     name: "gittr Relay",
     description: "Gittr client with GRASP protocol support for distributed Git hosting",
-    pubkey: null, // This is a client, not a relay - no pubkey
+    pubkey: platformPubkey, // Platform pubkey for NIP-05 verification (e.g., _@gittr.space)
     contact: process.env.NEXT_PUBLIC_CONTACT_EMAIL || "",
     software: "gittr",
     version: "1.0.0",

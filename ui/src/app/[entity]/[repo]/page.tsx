@@ -6975,24 +6975,62 @@ export default function RepoCodePage({
                       );
                     },
                     a: ({ node, ...props }: any) => {
-                      // Resolve relative links relative to repo root, not current page
+                      // Resolve relative links relative to current file's directory, not repo root
                       let href = props.href || '';
                       const isExternal = href.startsWith('http://') || href.startsWith('https://');
                       if (href && !isExternal && !href.startsWith('mailto:') && !href.startsWith('#')) {
-                        // Relative link - resolve relative to repo root using query params format
+                        // Get current file path from URL to determine base directory
+                        const currentFile = searchParams?.get("file") || '';
+                        const currentPath = searchParams?.get("path") || '';
+                        
+                        // Determine the directory of the current file
+                        let currentDir = '';
+                        if (currentFile) {
+                          // If file is in a subdirectory, extract the directory
+                          const fileParts = currentFile.split('/');
+                          if (fileParts.length > 1) {
+                            currentDir = fileParts.slice(0, -1).join('/');
+                          }
+                        } else if (currentPath) {
+                          // Use path parameter if available
+                          currentDir = currentPath;
+                        }
+                        
                         const repoBasePath = getRepoLink('');
                         // Remove leading ./ or . if present
                         let cleanHref = href.replace(/^\.\//, '').replace(/^\.$/, '');
-                        // Remove leading / if present (root-relative)
+                        
+                        // Determine if link is root-relative (starts with /) or relative to current file
+                        let resolvedPath = '';
                         if (cleanHref.startsWith('/')) {
+                          // Root-relative: remove leading / and use as-is
                           cleanHref = cleanHref.substring(1);
+                          resolvedPath = cleanHref;
+                        } else {
+                          // Relative to current file: combine current directory with link
+                          if (currentDir) {
+                            resolvedPath = `${currentDir}/${cleanHref}`;
+                          } else {
+                            resolvedPath = cleanHref;
+                          }
+                          // Normalize path (remove .. and . segments)
+                          resolvedPath = resolvedPath.split('/').filter(p => p !== '.').reduce((acc, part) => {
+                            if (part === '..') {
+                              acc.pop();
+                            } else {
+                              acc.push(part);
+                            }
+                            return acc;
+                          }, [] as string[]).join('/');
                         }
-                        // Extract directory path and filename
-                        const pathParts = cleanHref.split('/');
+                        
+                        // Extract directory path and filename for query params
+                        const pathParts = resolvedPath.split('/');
                         const fileName = pathParts[pathParts.length - 1];
                         const dirPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '';
+                        
                         // Construct URL with query parameters: ?path=dir&file=dir%2Ffile.md
-                        const encodedFile = encodeURIComponent(cleanHref);
+                        const encodedFile = encodeURIComponent(resolvedPath);
                         const encodedPath = dirPath ? encodeURIComponent(dirPath) : '';
                         if (encodedPath) {
                           href = `${repoBasePath}?path=${encodedPath}&file=${encodedFile}`;
@@ -7097,6 +7135,12 @@ export default function RepoCodePage({
                               alert("Binary files cannot be edited inline. Please open an issue or upload via PR.");
                               return;
                             }
+                            // For HTML and Markdown files, switch to code view first
+                            if (type === 'html' && htmlViewMode !== 'code') {
+                              setHtmlViewMode('code');
+                            } else if (type === 'markdown' && markdownViewMode !== 'code') {
+                              setMarkdownViewMode('code');
+                            }
                             setProposeEdit(true);
                             setProposedContent(fileContent || "");
                           }}
@@ -7190,8 +7234,68 @@ export default function RepoCodePage({
                     );
                   })()
                 ) : fileType === 'html' && selectedFile ? (
-                  // HTML files: Toggle between preview (iframe) and code view
-                  loadingFile ? (
+                  // HTML files: Show edit textarea if proposeEdit is true, otherwise toggle between preview and code view
+                  proposeEdit ? (
+                    // Edit mode: Show textarea
+                    <div className="space-y-2">
+                      <textarea
+                        className="w-full h-[60vh] bg-[#0E1116] border border-[#383B42] text-white p-3 rounded font-mono text-sm"
+                        value={proposedContent}
+                        onChange={(e)=>setProposedContent(e.target.value)}
+                      />
+                      <div className="flex items-center gap-3">
+                        <>
+                          <button
+                            className="px-3 py-1 border border-purple-500 bg-purple-600 hover:bg-purple-700 rounded"
+                            onClick={async () => {
+                              if (!selectedFile) return;
+                              const before = fileContent || "";
+                              const after = proposedContent;
+                              if (after === before) { 
+                                setProposeEdit(false);
+                                setProposedContent("");
+                                return; 
+                              }
+                              
+                              try {
+                                // For both owners and non-owners: save as pending edit and redirect to PR creation
+                                const { addPendingEdit } = await import("@/lib/pending-changes");
+                                addPendingEdit(
+                                  params.entity,
+                                  params.repo,
+                                  currentUserPubkey || "",
+                                  {
+                                    path: selectedFile,
+                                    before,
+                                    after,
+                                    type: "edit",
+                                    timestamp: Date.now(),
+                                  }
+                                );
+                                setProposeEdit(false);
+                                setProposedContent("");
+                                window.location.href = `/${params.entity}/${params.repo}/pulls/new`;
+                              } catch (error) {
+                                console.error('Failed to create PR/commit:', error);
+                                alert('Failed to save changes. Please try again.');
+                              }
+                            }}
+                          >
+                            Create Pull Request
+                          </button>
+                          <button
+                            className="px-3 py-1 border border-gray-500 bg-gray-700 rounded"
+                            onClick={() => { 
+                              setProposeEdit(false); 
+                              setProposedContent("");
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      </div>
+                    </div>
+                  ) : loadingFile ? (
                     <div className="p-4 text-gray-400">Loading HTML file...</div>
                   ) : !fileContent || fileContent === "(unable to load file)" || (fileContent.trim && fileContent.trim().length === 0) ? (
                     <div className="p-4 text-gray-400">Unable to load HTML file</div>
@@ -7299,8 +7403,68 @@ export default function RepoCodePage({
                     />
                   )
                 ) : fileType === 'markdown' && fileContent ? (
-                  // Markdown files: Toggle between preview (rendered) and code view
-                  markdownViewMode === 'preview' ? (
+                  // Markdown files: Show edit textarea if proposeEdit is true, otherwise toggle between preview and code view
+                  proposeEdit ? (
+                    // Edit mode: Show textarea
+                    <div className="space-y-2">
+                      <textarea
+                        className="w-full h-[60vh] bg-[#0E1116] border border-[#383B42] text-white p-3 rounded font-mono text-sm"
+                        value={proposedContent}
+                        onChange={(e)=>setProposedContent(e.target.value)}
+                      />
+                      <div className="flex items-center gap-3">
+                        <>
+                          <button
+                            className="px-3 py-1 border border-purple-500 bg-purple-600 hover:bg-purple-700 rounded"
+                            onClick={async () => {
+                              if (!selectedFile) return;
+                              const before = fileContent || "";
+                              const after = proposedContent;
+                              if (after === before) { 
+                                setProposeEdit(false);
+                                setProposedContent("");
+                                return; 
+                              }
+                              
+                              try {
+                                // For both owners and non-owners: save as pending edit and redirect to PR creation
+                                const { addPendingEdit } = await import("@/lib/pending-changes");
+                                addPendingEdit(
+                                  params.entity,
+                                  params.repo,
+                                  currentUserPubkey || "",
+                                  {
+                                    path: selectedFile,
+                                    before,
+                                    after,
+                                    type: "edit",
+                                    timestamp: Date.now(),
+                                  }
+                                );
+                                setProposeEdit(false);
+                                setProposedContent("");
+                                window.location.href = `/${params.entity}/${params.repo}/pulls/new`;
+                              } catch (error) {
+                                console.error('Failed to create PR/commit:', error);
+                                alert('Failed to save changes. Please try again.');
+                              }
+                            }}
+                          >
+                            Create Pull Request
+                          </button>
+                          <button
+                            className="px-3 py-1 border border-gray-500 bg-gray-700 rounded"
+                            onClick={() => { 
+                              setProposeEdit(false); 
+                              setProposedContent("");
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      </div>
+                    </div>
+                  ) : markdownViewMode === 'preview' ? (
                     // Preview mode: Render as markdown
                     <div className="prose prose-invert max-w-none p-4">
                       <ReactMarkdown

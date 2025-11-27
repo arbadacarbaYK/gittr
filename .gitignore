@@ -25,6 +25,10 @@ tmpkey
 **/tmpkey
 ui/tmpkey
 
+# NIP-05 verification (contains platform pubkey)
+ui/public/.well-known/nostr.json
+**/.well-known/nostr.json
+
 # Bridge debugging scripts (may contain server info)
 check-bridge.sh
 
