@@ -901,6 +901,20 @@ export default function ImportPage() {
           let contributors: Array<{pubkey?: string; name?: string; picture?: string; weight: number; githubLogin?: string}> = [];
           
           if (importData.contributors && Array.isArray(importData.contributors) && importData.contributors.length > 0) {
+            // CRITICAL: Query Nostr for GitHub identity mappings (NIP-39) before mapping contributors
+            // This ensures GitHub users who have claimed their identity on Nostr are properly linked
+            const githubLogins = importData.contributors.map((c: any) => c.login).filter(Boolean);
+            if (subscribe && defaultRelays && defaultRelays.length > 0 && githubLogins.length > 0) {
+              try {
+                const { queryGithubIdentitiesFromNostr } = await import("@/lib/github-mapping");
+                await queryGithubIdentitiesFromNostr(subscribe, defaultRelays, githubLogins);
+                console.log(`✅ [Import] Queried Nostr for ${githubLogins.length} GitHub identities`);
+              } catch (identityError) {
+                console.warn("⚠️ [Import] Failed to query GitHub identities from Nostr:", identityError);
+                // Continue anyway - will use localStorage mappings only
+              }
+            }
+            
             // CRITICAL: Keep ALL contributors (keepAnonymous: true) so GitHub users without Nostr pubkeys
             // are still shown with their GitHub avatars. This allows users to see both:
             // 1. GitHub contributors (with GitHub avatars) - even if they haven't claimed Nostr identities
