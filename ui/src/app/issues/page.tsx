@@ -12,6 +12,7 @@ import { KIND_ISSUE } from "@/lib/nostr/events";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { loadStoredRepos } from "@/lib/repos/storage";
+import { getEntityDisplayName, resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
 
 import { clsx } from "clsx";
 import {
@@ -543,6 +544,21 @@ export default function IssuesPage({}) {
   const openCount = useMemo(() => allIssues.filter(i => (i.status || "open") === "open").length, [allIssues]);
   const closedCount = useMemo(() => allIssues.filter(i => (i.status || "open") === "closed").length, [allIssues]);
 
+  // Collect all unique entity pubkeys for metadata fetching
+  const entityPubkeys = useMemo(() => {
+    const pubkeys = new Set<string>();
+    allIssues.forEach(issue => {
+      const pubkey = resolveEntityToPubkey(issue.entity);
+      if (pubkey) {
+        pubkeys.add(pubkey);
+      }
+    });
+    return Array.from(pubkeys);
+  }, [allIssues]);
+
+  // Fetch metadata for all entities
+  const entityMetadata = useContributorMetadata(entityPubkeys);
+
   return (
     <section className="sm:px-8 py-6 max-w-6xl m-auto">
       <div className="md:flex justify-between gap-4 px-4 sm:px-0">
@@ -665,7 +681,11 @@ export default function IssuesPage({}) {
                           className="text-zinc-400 hover:text-purple-500"
                           href={`/${item.entity}/${item.repo}`}
                         >
-                          {item.entity}/{item.repo}
+                          {(() => {
+                            const entityPubkey = resolveEntityToPubkey(item.entity);
+                            const displayName = getEntityDisplayName(entityPubkey, entityMetadata, item.entity);
+                            return `${displayName}/${item.repo}`;
+                          })()}
                         </Link>
                       </span>
 
