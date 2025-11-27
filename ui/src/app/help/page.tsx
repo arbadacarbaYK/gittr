@@ -534,16 +534,49 @@ export default function HelpPage() {
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Pull Requests</h3>
               <p>Create PRs to propose changes. Reviewers can approve, request changes, or merge PRs.</p>
+              <p className="mt-2 text-sm text-gray-400">
+                <strong>Automatic Nostr Publishing:</strong> PRs are automatically published to Nostr (kind 9804) when created. When merged, the updated status is also published automatically. This enables cross-platform sync with other Nostr clients (e.g., gitworkshop.dev).
+              </p>
             </div>
 
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Issues</h3>
               <p>Track bugs, feature requests, and discussions. Add bounties to incentivize solutions.</p>
+              <p className="mt-2 text-sm text-gray-400">
+                <strong>Automatic Nostr Publishing:</strong> Issues are automatically published to Nostr (kind 9803) when created. When closed or reopened, the updated status is also published automatically. This enables cross-platform sync with other Nostr clients.
+              </p>
             </div>
 
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Contributors</h3>
               <p>Link your GitHub profile in Settings to show your profile picture as a contributor icon.</p>
+            </div>
+          </div>
+        </section>
+
+        {/* Technical Details */}
+        <section id="technical" className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
+          <h2 className="text-2xl font-semibold mb-4">Technical Details</h2>
+          
+          <div className="space-y-4 text-gray-300">
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">Supported Nostr Event Kinds</h3>
+              <p className="mb-3">gittr.space uses the following Nostr event kinds for different features:</p>
+              <ul className="space-y-2 text-sm">
+                <li><strong className="text-white">Kind 0</strong> (NIP-01: Metadata) - User profiles and identities</li>
+                <li><strong className="text-white">Kind 1</strong> (NIP-01: Notes) - Comments on issues, PRs, and discussions</li>
+                <li><strong className="text-white">Kind 50</strong> (gitnostr: Repository Permissions) - Repository access control</li>
+                <li><strong className="text-white">Kind 51</strong> (gitnostr: Repository) - Repository announcements</li>
+                <li><strong className="text-white">Kind 52</strong> (gitnostr: SSH Keys) - SSH public keys for Git authentication</li>
+                <li><strong className="text-white">Kind 30617</strong> (NIP-34: Replaceable Events) - Repository metadata (alternative to Kind 51)</li>
+                <li><strong className="text-white">Kind 9735</strong> (NIP-57: Zaps) - Lightning payments and tips</li>
+                <li><strong className="text-white">Kind 9803</strong> (Custom: Issues) - Issue tracking with bounties</li>
+                <li><strong className="text-white">Kind 9804</strong> (Custom: Pull Requests) - Pull requests and code reviews</li>
+                <li><strong className="text-white">Kind 9806</strong> (Custom: Bounties) - Bounty creation and status updates</li>
+              </ul>
+              <p className="mt-3 text-sm text-gray-400">
+                <strong>Note:</strong> Issues and PRs (kinds 9803/9804) are automatically published to Nostr when created, and status updates (merged, closed, reopened) are also published automatically. This enables cross-platform sync with other Nostr clients.
+              </p>
             </div>
           </div>
         </section>

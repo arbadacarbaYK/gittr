@@ -36,8 +36,8 @@ import { hasWriteAccess, isOwner as checkIsOwner } from "@/lib/repo-permissions"
 import { getRepoOwnerPubkey, resolveEntityToPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
 import { getNostrPrivateKey, getSecureItem } from "@/lib/security/encryptedStorage";
 import { sendNotification, formatNotificationMessage } from "@/lib/notifications";
-import { createBountyEvent, KIND_BOUNTY } from "@/lib/nostr/events";
-import { getEventHash } from "nostr-tools";
+import { createBountyEvent, KIND_BOUNTY, createPullRequestEvent, KIND_PULL_REQUEST } from "@/lib/nostr/events";
+import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
 
 interface ChangedFile {
   path: string;
@@ -496,6 +496,76 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
       );
       localStorage.setItem(prsKey, JSON.stringify(updatedPRs));
       setPR({ ...pr, status: "merged", mergedAt: Date.now(), mergedBy: currentUserPubkey || "", mergeCommit: commitId });
+
+      // 3a. Publish updated PR status to Nostr (merged)
+      try {
+        const hasNip07 = typeof window !== "undefined" && window.nostr;
+        let prUpdateEvent: any;
+        
+        if (hasNip07 && window.nostr) {
+          const authorPubkey = await window.nostr.getPublicKey();
+          
+          // Create updated PR event with merged status
+          prUpdateEvent = {
+            kind: KIND_PULL_REQUEST,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [
+              ["repo", params.entity, params.repo],
+              ["branch", pr.baseBranch || "main", pr.headBranch || pr.baseBranch || "main"],
+              ["status", "merged"],
+              ["e", pr.id, "", "previous"], // Reference to original PR event
+              ...(pr.linkedIssue ? [["e", pr.linkedIssue, "", "linked"]] : []),
+            ],
+            content: JSON.stringify({
+              title: pr.title,
+              description: pr.body || pr.description || "",
+              status: "merged",
+              changedFiles: pr.changedFiles || [],
+              mergedAt: Date.now(),
+              mergedBy: currentUserPubkey || "",
+              mergeCommit: commitId,
+            }),
+            pubkey: authorPubkey,
+            id: "",
+            sig: "",
+          };
+          
+          prUpdateEvent.id = getEventHash(prUpdateEvent);
+          prUpdateEvent = await window.nostr.signEvent(prUpdateEvent);
+        } else if (privateKey) {
+          // Use private key
+          prUpdateEvent = createPullRequestEvent({
+            repoEntity: params.entity,
+            repoName: params.repo,
+            title: pr.title,
+            description: pr.body || pr.description || "",
+            baseBranch: pr.baseBranch || "main",
+            headBranch: pr.headBranch,
+            status: "merged",
+            linkedIssue: pr.linkedIssue,
+            changedFiles: pr.changedFiles || [],
+          }, privateKey);
+          
+          // Add merged metadata to tags
+          prUpdateEvent.tags.push(["e", pr.id, "", "previous"]); // Reference to original PR
+          prUpdateEvent.tags.push(["status", "merged"]);
+          prUpdateEvent.id = getEventHash(prUpdateEvent);
+          prUpdateEvent.sig = signEvent(prUpdateEvent, privateKey);
+        }
+        
+        if (publish && defaultRelays && defaultRelays.length > 0 && prUpdateEvent) {
+          try {
+            publish(prUpdateEvent, defaultRelays);
+            console.log("✅ Published PR merge status to Nostr:", prUpdateEvent.id);
+          } catch (error) {
+            console.error("Failed to publish PR merge status to Nostr:", error);
+            // Don't block merge if publishing fails
+          }
+        }
+      } catch (error) {
+        console.error("Failed to create PR merge event:", error);
+        // Don't block merge if publishing fails
+      }
 
       // 6. Add PR author to contributors if not already present
       if (pr.author && pr.author.length === 64) {

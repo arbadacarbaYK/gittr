@@ -870,7 +870,13 @@ const treeUrl = `${baseUrl}/api/v1/repos${fullPath}/git/trees/${branch}?recursiv
 - **PR Events**: Kind 9804 (custom, not NIP-34 replaceable)
 - **Repository Events**: Kind 30617 (NIP-34 replaceable) - only for repository announcements
 - **Note**: PRs/issues use custom kinds, not NIP-34 replaceable events, so they don't follow the replaceable event pattern
-- **Sync Behavior**: For GitHub repos, GitHub API is the source of truth. Nostr events are synced but GitHub data takes precedence when both exist
+- **Automatic Publishing**: 
+  - Issues are automatically published to Nostr when created
+  - PRs are automatically published to Nostr when created
+  - When a PR is merged, an updated event with status "merged" is automatically published
+  - When an issue is closed/reopened, an updated event with the new status is automatically published
+  - All status updates reference the original event via `["e", originalEventId, "", "previous"]` tag
+- **Sync Behavior**: For GitHub repos, GitHub API is the source of truth. Nostr events are synced but GitHub data takes precedence when both exist. Nostr-only issues/PRs (from other clients) are preserved when fetching from GitHub.
 
 **GRASP/Git Protocol Repos:**
 - Currently only support file browsing via git-nostr-bridge
