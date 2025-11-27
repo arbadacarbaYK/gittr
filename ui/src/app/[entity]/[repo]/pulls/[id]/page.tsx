@@ -518,7 +518,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
             ],
             content: JSON.stringify({
               title: pr.title,
-              description: pr.body || pr.description || "",
+              description: pr.body || "",
               status: "merged",
               changedFiles: pr.changedFiles || [],
               mergedAt: Date.now(),
