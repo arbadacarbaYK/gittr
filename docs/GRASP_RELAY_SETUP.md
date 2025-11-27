@@ -117,9 +117,12 @@ const DEFAULT_RELAYS = [
    - Used for: Managing repository permissions
    - Required for: Git operations via git-nostr-bridge
 
-4. **Kind 51** (gitnostr: Repository) - Repository announcements
-   - Used for: Repository metadata, discovery, announcements
-   - Required for: Core repository functionality
+4. **Kind 51** (gitnostr: Repository) - Legacy repository announcements (read-only)
+   - Used for: Reading legacy repository metadata (backwards compatibility)
+   - Required for: Reading old repositories, NOT used for publishing
+5. **Kind 30617** (NIP-34: Replaceable Events) - Repository metadata (primary method)
+   - Used for: Repository announcements, discovery, metadata (primary publishing method)
+   - Required for: Core repository functionality - this is what gittr.space publishes
 
 5. **Kind 52** (gitnostr: SSH Keys) - SSH public keys
    - Used for: Git authentication via SSH
@@ -204,7 +207,7 @@ If events are rejected, check your relay logs for "event kind not allowed" error
 
 ### How It Works
 
-1. **Repository Announcement**: When a user creates a repo, a Nostr event (kind 51 or 30617) is published to relays listing which Grasp servers *could* host it. This event includes multiple clone URLs for potential mirrors.
+1. **Repository Announcement**: When a user creates a repo, a Nostr event (kind 30617, NIP-34 replaceable) is published to relays listing which Grasp servers *could* host it. This event includes multiple clone URLs for potential mirrors. Note: gittr.space only publishes as kind 30617, never as kind 51. Kind 51 is only read for backwards compatibility with legacy repositories.
 
 2. **Auto-Creation vs. Actual Hosting**: 
    - **Auto-Creation**: Some Grasp servers may automatically create blank repos when they receive repository-announcement events that list them
@@ -235,7 +238,7 @@ If events are rejected, check your relay logs for "event kind not allowed" error
 │  gittr Client │
 └──────┬──────┘
        │
-       ├─── Nostr Events (kind 51) ───┐
+       ├─── Nostr Events (kind 30617) ───┐
        │                                │
        │                                ▼
        │                         ┌──────────────┐
@@ -263,7 +266,7 @@ If events are rejected, check your relay logs for "event kind not allowed" error
 
 **Repos not appearing:**
 - Ensure your relay is listed in repository-announcement events
-- Check that KIND_REPOSITORY (51) events are being published
+- Check that KIND_REPOSITORY_NIP34 (30617) events are being published (gittr.space only publishes as 30617, never as 51)
 - Verify subscription filters are correct
 
 **Performance issues:**

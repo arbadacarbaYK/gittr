@@ -61,11 +61,14 @@ Use this checklist to track your deployment progress:
 - **Kind 0** (Metadata) - User profiles
 - **Kind 1** (Notes) - Comments and discussions
 - **Kind 50** (Repository Permissions) - Git access control
-- **Kind 51** (Repository) - Repository announcements
+- **Kind 51** (Repository) - Legacy repository announcements (read-only for backwards compatibility)
 - **Kind 52** (SSH Keys) - Git authentication
+- **Kind 30617** (NIP-34: Replaceable Events) - Repository metadata (primary method, used for publishing)
 - **Kind 9735** (Zaps) - Lightning payments
 - **Kind 9803** (Issues) - Issue tracking
 - **Kind 9804** (Pull Requests) - Code reviews
+
+**Note**: gittr.space publishes repository announcements as Kind 30617 (NIP-34 replaceable events). Kind 51 is only read for backwards compatibility with legacy repositories, never published.
 
 #### For nostr-rs-relay:
 
@@ -75,7 +78,7 @@ Edit your relay config file (usually `/etc/nostr-rs-relay/config.toml`):
 [relay]
 # Allow all kinds (recommended for public relays)
 # OR specify allowed kinds:
-allowed_kinds = [0, 1, 50, 51, 52, 9735, 9803, 9804]
+allowed_kinds = [0, 1, 50, 51, 52, 30617, 9735, 9803, 9804]
 ```
 
 Restart the relay:
@@ -90,7 +93,7 @@ Edit your `strfry.conf`:
 ```yaml
 relay:
   eventKinds:
-    allow: [0, 1, 50, 51, 52, 9735, 9803, 9804]
+    allow: [0, 1, 50, 51, 52, 30617, 9735, 9803, 9804]
 ```
 
 Restart strfry:
@@ -795,7 +798,7 @@ cp /path/to/gittr/ui/.env.local "$BACKUP_DIR/"
 
 ## Recent Updates & Fixes
 
-### NWC Payment Implementation (2024-01) ✅
+### NWC Payment Implementation ✅
 - **Fixed**: NWC (Nostr Wallet Connect) payments now work reliably
 - **Change**: Simplified payment flow - send event, wait for relay `OK`, return success
 - **Result**: Payments complete quickly without timeouts
@@ -803,7 +806,7 @@ cp /path/to/gittr/ui/.env.local "$BACKUP_DIR/"
 
 ---
 
-**Last Updated:** 2024-01-XX  
+**Last Updated:** See git history for latest changes  
 **For Issues:** See [GitHub Issues](https://github.com/arbadacarbaYK/gittr/issues)  
 **For Questions:** Contact the project maintainers
 

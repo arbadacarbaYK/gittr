@@ -364,7 +364,7 @@ The `gitnostr` Go components (`ui/gitnostr/`) are licensed under the **MIT Licen
 
 **Bridge Improvements (git-nostr-bridge):**
 - ✅ **HTTP API endpoint** (`POST /api/event`): Direct event submission for immediate processing (eliminates relay propagation delays)
-- ✅ **NIP-34 support**: Full support for kind 30617 repository events (in addition to legacy kind 51)
+- ✅ **NIP-34 support**: Full support for kind 30617 repository events (primary publishing method). Also reads legacy kind 51 for backwards compatibility, but never publishes as kind 51.
 - ✅ **Auto-cloning**: Automatically clones repositories from `sourceUrl` or `clone` URLs when not found locally
 - ✅ **Deletion handling**: Properly removes repositories and database entries when `deleted: true` events are received
 - ✅ **Event deduplication**: Merges events from both direct API and relay subscriptions with deduplication

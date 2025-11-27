@@ -38,7 +38,7 @@ Create (or edit) `~/.config/git-nostr/git-nostr-bridge.json`:
 | --- | --- | --- |
 | `repositoryDir` | yes | Absolute path where bare Git repositories are stored. The bridge creates the directory if missing. |
 | `DbFile` | yes | SQLite file keeping Nostr event metadata and permissions. Use an absolute path. |
-| `relays` | yes | List of read-only relays that emit gitnostr events (kinds 50/51/30617). Include your preferred relays or run your own. |
+| `relays` | yes | List of read-only relays that emit gitnostr events (kinds 50/51/30617). The bridge reads both kind 51 (legacy) and kind 30617 (NIP-34) for backwards compatibility. Include your preferred relays or run your own. |
 | `gitRepoOwners` | optional | If empty, the bridge mirrors **all** repositories it sees (“watch-all mode”). If you list pubkeys, only those authors can create repos on this bridge. |
 
 Save the file and ensure it is readable by the bridge user only (`chmod 600` is fine).
