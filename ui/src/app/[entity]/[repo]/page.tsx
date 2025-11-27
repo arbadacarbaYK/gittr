@@ -7712,10 +7712,21 @@ export default function RepoCodePage({
               const lastPushAttempt = (repo as any).lastPushAttempt || 0;
               const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
               if (lastPushAttempt < fiveMinutesAgo) {
-                // Status stuck for more than 5 minutes - reset to local
-                setRepoStatus(params.repo, params.entity, "local");
-                status = "local";
-                console.log("🔄 [Push Button] Reset stuck 'pushing' status to 'local'");
+                const hasEventId = !!(repo.nostrEventId || repo.lastNostrEventId);
+                if (!hasEventId) {
+                  // No event ID after 5 minutes - likely failed, reset to local
+                  setRepoStatus(params.repo, params.entity, "local");
+                  status = "local";
+                  console.log("🔄 [Push Button] Reset stuck 'pushing' status to 'local' (no event ID)");
+                } else {
+                  // Has event ID - check if bridge processed it
+                  // If bridge hasn't processed it after 5 minutes, mark as "live_with_edits" (verifying)
+                  if (repo.bridgeProcessed !== true) {
+                    setRepoStatus(params.repo, params.entity, "live_with_edits");
+                    status = "live_with_edits";
+                    console.log("🔄 [Push Button] Changed stuck 'pushing' to 'live_with_edits' (has event ID, verifying bridge)");
+                  }
+                }
               }
             }
             
