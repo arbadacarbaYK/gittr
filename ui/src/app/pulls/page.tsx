@@ -230,7 +230,7 @@ export default function PullsPage({}) {
           try {
             const url = new URL(repo.sourceUrl);
             const pathParts = url.pathname.replace(/\.git$/, "").split("/").filter(Boolean);
-            if (pathParts.length < 2) continue;
+            if (pathParts.length < 2 || !pathParts[0] || !pathParts[1]) continue;
             
             const owner = pathParts[0];
             const repoNameFromUrl = pathParts[1];
