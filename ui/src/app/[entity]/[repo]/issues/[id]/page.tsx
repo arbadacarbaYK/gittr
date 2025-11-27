@@ -454,7 +454,6 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
             labels: issue.labels || [],
             assignees: issue.assignees || [],
             bountyAmount: issue.bountyAmount,
-            bountyInvoice: issue.bountyInvoice,
           }, privateKey);
           
           // Add reference to original issue
