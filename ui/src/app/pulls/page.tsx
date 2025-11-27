@@ -8,6 +8,10 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { nip19 } from "nostr-tools";
+import { KIND_PULL_REQUEST } from "@/lib/nostr/events";
+import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import { loadStoredRepos } from "@/lib/repos/storage";
 
 import { clsx } from "clsx";
 import {
@@ -47,7 +51,7 @@ interface IPullRequestData {
 }
 
 export default function PullsPage({}) {
-  const { pubkey: currentUserPubkey } = useNostrContext();
+  const { pubkey: currentUserPubkey, subscribe, defaultRelays } = useNostrContext();
   const [prType, setPrType] = useState<
     "created" | "assigned" | "mentioned"
   >("created");
@@ -196,6 +200,278 @@ export default function PullsPage({}) {
       setAllPRs([]);
     }
   }, [currentUserPubkey]); // Reload when user changes
+
+  // Fetch PRs from GitHub API for repos with sourceUrl (on-demand, no polling)
+  useEffect(() => {
+    if (!currentUserPubkey) return;
+    
+    const fetchFromGitHub = async () => {
+      try {
+        const repos = loadStoredRepos();
+        const userRepos = repos.filter((repo: any) => {
+          const ownerPubkey = repo.ownerPubkey || 
+            (repo.contributors?.find((c: any) => c.weight === 100)?.pubkey) ||
+            (repo.entity && /^[0-9a-f]{64}$/i.test(repo.entity) ? repo.entity : null);
+          if (!ownerPubkey) return false;
+          return ownerPubkey === currentUserPubkey || 
+            (ownerPubkey.length === 64 && ownerPubkey.toLowerCase().startsWith(currentUserPubkey.slice(0, 8).toLowerCase())) ||
+            (currentUserPubkey.length === 64 && currentUserPubkey.toLowerCase().startsWith(ownerPubkey.slice(0, 8).toLowerCase())) ||
+            (repo.entity && repo.entity === currentUserPubkey.slice(0, 8).toLowerCase());
+        });
+
+        // Fetch from GitHub for repos with sourceUrl
+        for (const repo of userRepos) {
+          if (!repo.sourceUrl || !repo.sourceUrl.includes("github.com")) continue;
+          
+          const entity = repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
+          const repoName = repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
+          if (!entity || !repoName) continue;
+          
+          try {
+            const url = new URL(repo.sourceUrl);
+            const pathParts = url.pathname.replace(/\.git$/, "").split("/").filter(Boolean);
+            if (pathParts.length < 2) continue;
+            
+            const owner = pathParts[0];
+            const repoNameFromUrl = pathParts[1];
+            
+            const proxyUrl = `/api/github/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoNameFromUrl}/pulls?state=all&per_page=100&sort=updated`)}`;
+            const response = await fetch(proxyUrl);
+            
+            if (response.ok) {
+              const githubList: any[] = await response.json();
+              const githubPRs = githubList.map((item: any) => ({
+                id: `pr-${item.number}`,
+                entity: entity,
+                repo: repoName,
+                title: item.title || "",
+                number: String(item.number || ""),
+                status: item.merged_at ? "merged" : (item.state === "closed" ? "closed" : "open"),
+                author: item.user?.login || "",
+                labels: item.labels?.map((l: any) => l.name || l) || [],
+                assignees: [],
+                createdAt: item.created_at ? new Date(item.created_at).getTime() : Date.now(),
+                body: item.body || "",
+                html_url: item.html_url || "",
+                merged_at: item.merged_at || null,
+                head: item.head?.ref || null,
+                base: item.base?.ref || null,
+              }));
+              
+              const key = getRepoStorageKey("gittr_prs", entity, repoName);
+              const existingPRs = JSON.parse(localStorage.getItem(key) || "[]") as any[];
+              
+              // Merge GitHub PRs with existing Nostr PRs
+              const mergedPRsMap = new Map<string, any>();
+              existingPRs.forEach(pr => {
+                mergedPRsMap.set(pr.id, pr);
+              });
+              githubPRs.forEach(pr => {
+                mergedPRsMap.set(pr.id, pr);
+              });
+              
+              const finalPRs = Array.from(mergedPRsMap.values());
+              localStorage.setItem(key, JSON.stringify(finalPRs));
+              console.log(`✅ [PRs Aggregated] Fetched and merged ${githubPRs.length} GitHub PRs for ${entity}/${repoName}`);
+            }
+          } catch (error) {
+            console.error(`Failed to fetch PRs from GitHub for ${entity}/${repoName}:`, error);
+          }
+        }
+        
+        // Reload PRs after GitHub fetch
+        const allPRsData: IPullRequestData[] = [];
+        userRepos.forEach((repo: any) => {
+          const entity = repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
+          const repoName = repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
+          if (!entity || !repoName) return;
+          
+          const prKey1 = `gittr_prs__${entity}__${repoName}`;
+          const prKey2 = `gittr_prs__${repo.slug || entity}_${repoName}`;
+          let repoPRs = JSON.parse(localStorage.getItem(prKey1) || "[]") as any[];
+          if (repoPRs.length === 0) {
+            repoPRs = JSON.parse(localStorage.getItem(prKey2) || "[]") as any[];
+          }
+          
+          repoPRs.forEach((pr: any, idx: number) => {
+            const status = pr.status === "merged" ? "closed" : (pr.status || "open");
+            allPRsData.push({
+              id: pr.id || `${entity}_${repoName}_${idx}`,
+              entity: entity,
+              repo: repoName,
+              title: pr.title || `PR ${idx + 1}`,
+              number: pr.number || String(idx + 1),
+              date: pr.createdAt ? formatDateTime24h(pr.createdAt) : formatDateTime24h(Date.now()),
+              author: pr.author || "unknown",
+              tags: pr.labels || [],
+              taskTotal: null,
+              taskCompleted: null,
+              linkedPR: 0,
+              assignees: pr.assignees || [],
+              comments: 0,
+              status: status as "open" | "closed" | "merged",
+              createdAt: pr.createdAt || Date.now(),
+              linkedIssueId: pr.linkedIssue || pr.linkedIssueId,
+            });
+          });
+        });
+        
+        allPRsData.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        setAllPRs(allPRsData);
+      } catch (error) {
+        console.error("Failed to fetch PRs from GitHub:", error);
+      }
+    };
+    
+    fetchFromGitHub();
+  }, [currentUserPubkey]);
+
+  // Subscribe to PRs from Nostr relays (kind 9804) for all user repos - handles PRs from any Nostr client
+  useEffect(() => {
+    if (!subscribe || !defaultRelays || defaultRelays.length === 0 || !currentUserPubkey) return;
+    
+    const repos = loadStoredRepos();
+    const userRepos = repos.filter((repo: any) => {
+      const ownerPubkey = repo.ownerPubkey || 
+        (repo.contributors?.find((c: any) => c.weight === 100)?.pubkey) ||
+        (repo.entity && /^[0-9a-f]{64}$/i.test(repo.entity) ? repo.entity : null);
+      if (!ownerPubkey) return false;
+      return ownerPubkey === currentUserPubkey || 
+        (ownerPubkey.length === 64 && ownerPubkey.toLowerCase().startsWith(currentUserPubkey.slice(0, 8).toLowerCase())) ||
+        (currentUserPubkey.length === 64 && currentUserPubkey.toLowerCase().startsWith(ownerPubkey.slice(0, 8).toLowerCase())) ||
+        (repo.entity && repo.entity === currentUserPubkey.slice(0, 8).toLowerCase());
+    });
+    
+    if (userRepos.length === 0) return;
+    
+    // Build filters for all user repos - subscribe to PRs for each repo
+    const filters = userRepos.map((repo: any) => {
+      const entity = repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
+      const repoName = repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
+      if (!entity || !repoName) return null;
+      
+      return {
+        kinds: [KIND_PULL_REQUEST],
+        "#repo": [entity, repoName],
+      };
+    }).filter(Boolean) as any[];
+    
+    if (filters.length === 0) return;
+    
+    let cancelled = false;
+    const unsub = subscribe(
+      filters,
+      defaultRelays,
+      (event, isAfterEose, relayURL) => {
+        if (cancelled || event.kind !== KIND_PULL_REQUEST) return;
+        
+        try {
+          const prData = JSON.parse(event.content);
+          const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
+          if (!repoTag || repoTag.length < 3) return;
+          
+          const entity = repoTag[1];
+          const repoName = repoTag[2];
+          
+          if (!entity || !repoName) return;
+          
+          // Verify this repo belongs to the user
+          const repo = findRepoByEntityAndName(userRepos, entity, repoName);
+          if (!repo) return;
+          
+          const key = getRepoStorageKey("gittr_prs", entity, repoName);
+          const existingPRs = JSON.parse(localStorage.getItem(key) || "[]");
+          
+          // Check if PR already exists
+          const existingIndex = existingPRs.findIndex((pr: any) => pr.id === event.id);
+          
+          // Find next available number (avoid conflicts with GitHub PRs)
+          const maxNumber = existingPRs.reduce((max: number, pr: any) => {
+            const num = parseInt(pr.number || "0", 10);
+            return num > max ? num : max;
+          }, 0);
+          const nextNumber = maxNumber + 1;
+          
+          const branchTag = event.tags.find((t: string[]) => t[0] === "branch");
+          const linkedIssueTag = event.tags.find((t: string[]) => t[0] === "e" && t[3] === "linked");
+          const statusTag = event.tags.find((t: string[]) => t[0] === "status");
+          const status = statusTag ? statusTag[1] : (prData.status || "open");
+          
+          const pr = {
+            id: event.id,
+            entity: entity,
+            repo: repoName,
+            title: prData.title || "",
+            body: prData.description || "",
+            status: status,
+            author: event.pubkey,
+            contributors: [event.pubkey],
+            baseBranch: branchTag ? branchTag[1] : "main",
+            headBranch: branchTag ? branchTag[2] : undefined,
+            changedFiles: prData.changedFiles || [],
+            createdAt: event.created_at * 1000,
+            number: String(nextNumber),
+            linkedIssue: linkedIssueTag ? linkedIssueTag[1] : undefined,
+          };
+          
+          if (existingIndex >= 0) {
+            existingPRs[existingIndex] = { ...existingPRs[existingIndex], ...pr };
+          } else {
+            existingPRs.push(pr);
+          }
+          
+          localStorage.setItem(key, JSON.stringify(existingPRs));
+          
+          // Reload PRs
+          const allPRsData: IPullRequestData[] = [];
+          userRepos.forEach((r: any) => {
+            const e = r.entity || r.slug?.split("/")[0] || r.ownerPubkey?.slice(0, 8);
+            const rn = r.repo || r.slug?.split("/")[1] || r.name || r.slug;
+            if (!e || !rn) return;
+            
+            const k1 = `gittr_prs__${e}__${rn}`;
+            const k2 = `gittr_prs__${r.slug || e}_${rn}`;
+            let rprs = JSON.parse(localStorage.getItem(k1) || "[]") as any[];
+            if (rprs.length === 0) {
+              rprs = JSON.parse(localStorage.getItem(k2) || "[]") as any[];
+            }
+            
+            rprs.forEach((p: any, idx: number) => {
+              const s = p.status === "merged" ? "closed" : (p.status || "open");
+              allPRsData.push({
+                id: p.id || `${e}_${rn}_${idx}`,
+                entity: e,
+                repo: rn,
+                title: p.title || `PR ${idx + 1}`,
+                number: p.number || String(idx + 1),
+                date: p.createdAt ? formatDateTime24h(p.createdAt) : formatDateTime24h(Date.now()),
+                author: p.author || "unknown",
+                tags: p.labels || [],
+                taskTotal: null,
+                taskCompleted: null,
+                linkedPR: 0,
+                assignees: p.assignees || [],
+                comments: 0,
+                status: s as "open" | "closed" | "merged",
+                createdAt: p.createdAt || Date.now(),
+                linkedIssueId: p.linkedIssue || p.linkedIssueId,
+              });
+            });
+          });
+          
+          allPRsData.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          setAllPRs(allPRsData);
+        } catch (error: any) {
+          console.error("Error processing PR event from Nostr:", error);
+        }
+      }
+    );
+    
+    return () => {
+      cancelled = true;
+      if (unsub) unsub();
+    };
+  }, [subscribe, defaultRelays, currentUserPubkey]);
 
   // Get all unique author pubkeys (only full 64-char pubkeys for metadata lookup)
   const authorPubkeys = useMemo(() => {

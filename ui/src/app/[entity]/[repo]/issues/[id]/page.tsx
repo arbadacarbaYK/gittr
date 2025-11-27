@@ -40,7 +40,7 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { formatDateTime24h, formatDate24h, formatTime24h } from "@/lib/utils/date-format";
 import { sendNotification, formatNotificationMessage } from "@/lib/notifications";
 import { getRepoOwnerPubkey, resolveEntityToPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
-import { createBountyEvent, KIND_BOUNTY, createCommentEvent, KIND_COMMENT } from "@/lib/nostr/events";
+import { createBountyEvent, KIND_BOUNTY, createCommentEvent, KIND_COMMENT, createIssueEvent, KIND_ISSUE } from "@/lib/nostr/events";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
 import { Textarea } from "@/components/ui/textarea";
@@ -409,6 +409,74 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
       }
       
       setIssue({ ...issue, status: newStatus });
+      
+      // Publish updated issue status to Nostr (closed/reopened)
+      try {
+        const hasNip07 = typeof window !== "undefined" && window.nostr;
+        const privateKey = await getNostrPrivateKey();
+        let issueUpdateEvent: any;
+        
+        if (hasNip07 && window.nostr) {
+          const authorPubkey = await window.nostr.getPublicKey();
+          
+          // Create updated issue event with new status
+          issueUpdateEvent = {
+            kind: KIND_ISSUE,
+            created_at: Math.floor(Date.now() / 1000),
+            tags: [
+              ["repo", params.entity, params.repo],
+              ["status", newStatus],
+              ["e", issue.id, "", "previous"], // Reference to original issue event
+              ...(issue.labels || []).map((label: string) => ["t", label]),
+              ...(issue.assignees || []).map((assignee: string) => ["p", assignee]),
+            ],
+            content: JSON.stringify({
+              title: issue.title,
+              description: issue.description || "",
+              status: newStatus,
+              bountyAmount: issue.bountyAmount,
+              bountyInvoice: issue.bountyInvoice,
+            }),
+            pubkey: authorPubkey,
+            id: "",
+            sig: "",
+          };
+          
+          issueUpdateEvent.id = getEventHash(issueUpdateEvent);
+          issueUpdateEvent = await window.nostr.signEvent(issueUpdateEvent);
+        } else if (privateKey) {
+          // Use private key
+          issueUpdateEvent = createIssueEvent({
+            repoEntity: params.entity,
+            repoName: params.repo,
+            title: issue.title,
+            description: issue.description || "",
+            status: newStatus,
+            labels: issue.labels || [],
+            assignees: issue.assignees || [],
+            bountyAmount: issue.bountyAmount,
+            bountyInvoice: issue.bountyInvoice,
+          }, privateKey);
+          
+          // Add reference to original issue
+          issueUpdateEvent.tags.push(["e", issue.id, "", "previous"]);
+          issueUpdateEvent.id = getEventHash(issueUpdateEvent);
+          issueUpdateEvent.sig = signEvent(issueUpdateEvent, privateKey);
+        }
+        
+        if (publish && defaultRelays && defaultRelays.length > 0 && issueUpdateEvent) {
+          try {
+            publish(issueUpdateEvent, defaultRelays);
+            console.log(`✅ Published issue ${newStatus} status to Nostr:`, issueUpdateEvent.id);
+          } catch (error) {
+            console.error("Failed to publish issue status update to Nostr:", error);
+            // Don't block issue status change if publishing fails
+          }
+        }
+      } catch (error) {
+        console.error("Failed to create issue status update event:", error);
+        // Don't block issue status change if publishing fails
+      }
       
       // Dispatch event to update counts
       window.dispatchEvent(new CustomEvent("gittr:issue-updated"));
