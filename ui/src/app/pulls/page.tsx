@@ -732,7 +732,7 @@ export default function PullsPage({}) {
 
                         <Link
                           className="text-zinc-200 hover:text-purple-500 pl-7 sm:pl-3"
-                          href={`/${item.entity}/${item.repo}/pulls/${item.id}`}
+                          href={`/${item.entity}/${item.repo}/pulls/${item.id?.startsWith("pr-") ? item.number : item.id}`}
                         >
                           {item.title}
                         </Link>

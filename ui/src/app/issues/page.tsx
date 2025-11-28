@@ -691,7 +691,7 @@ export default function IssuesPage({}) {
 
                       <Link
                         className="text-zinc-200 hover:text-purple-500 pl-7 sm:pl-3"
-                        href={`/${item.entity}/${item.repo}/issues/${item.id}`}
+                        href={`/${item.entity}/${item.repo}/issues/${item.id?.startsWith("issue-") ? item.number : item.id}`}
                       >
                         {item.title}
                       </Link>
