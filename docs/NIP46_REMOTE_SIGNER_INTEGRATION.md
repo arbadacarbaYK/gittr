@@ -12,6 +12,16 @@ This document explains how to implement NIP-46 (Remote Signing) in a Nostr clien
 - Exposes a NIP-07-compatible API, so existing code works without changes
 - Session persistence for reconnection
 
+## Dependencies
+
+Install the required packages:
+
+```bash
+npm install html5-qrcode
+```
+
+**Note**: We use `html5-qrcode` (version `^2.3.8`) for QR code scanning in the browser. This library provides camera access and QR code decoding capabilities needed for scanning `bunker://` or `nostrconnect://` URIs from hardware signers.
+
 ## Event Kinds Used
 
 - **Kind 24133** (NIP-46): Encrypted request/response events between client and remote signer
@@ -330,13 +340,27 @@ bootstrapFromStorage() {
 ```typescript
 // ui/src/app/login/page.tsx
 
+import { Html5Qrcode } from "html5-qrcode";
+
 const [remoteModalOpen, setRemoteModalOpen] = useState(false);
 const [remoteToken, setRemoteToken] = useState("");
+const [showQRScanner, setShowQRScanner] = useState(false);
+const qrScannerRef = useRef<Html5Qrcode | null>(null);
+const qrScanAreaRef = useRef<HTMLDivElement>(null);
 const { remoteSigner } = useNostrContext();
 
 // QR Scanner for bunker:// or nostrconnect:// URIs
 const startQRScanner = useCallback(async () => {
+  if (qrScannerRef.current) return; // Already initialized
+  
+  setShowQRScanner(true);
+  
+  // Wait for DOM element to render
+  await new Promise(resolve => setTimeout(resolve, 100));
+  
   const scanner = new Html5Qrcode("qr-scanner-container");
+  qrScannerRef.current = scanner;
+  
   await scanner.start(
     { facingMode: "environment" },
     { fps: 10, qrbox: { width: 250, height: 250 } },
@@ -344,9 +368,26 @@ const startQRScanner = useCallback(async () => {
       if (decodedText.startsWith("bunker://") || decodedText.startsWith("nostrconnect://")) {
         setRemoteToken(decodedText);
         setRemoteError(null);
+        stopQRScanner(); // Stop scanner after successful scan
       }
+    },
+    (errorMessage) => {
+      // Ignore scanning errors (user might be adjusting camera)
     }
   );
+}, []);
+
+const stopQRScanner = useCallback(async () => {
+  if (qrScannerRef.current) {
+    try {
+      await qrScannerRef.current.stop();
+      await qrScannerRef.current.clear();
+    } catch (error) {
+      // Ignore errors when stopping
+    }
+    qrScannerRef.current = null;
+  }
+  setShowQRScanner(false);
 }, []);
 
 const handleRemoteConnect = useCallback(async () => {
@@ -403,4 +444,40 @@ All signing operations automatically use the remote signer:
 - **LNbits Remote Nostr Signer**: https://shop.lnbits.com/lnbits-remote-nostr-signer
 - **Nowser**: https://github.com/haorendashu/nowser (Mobile bunker)
 - **Bunker**: https://github.com/soapbox-pub/bunker (Self-hosted)
+
+## QR Scanning Implementation
+
+We use the **`html5-qrcode`** library (version `^2.3.8`) for QR code scanning. This library:
+- Provides browser-based camera access
+- Supports both front and back cameras
+- Handles QR code decoding automatically
+- Works on desktop and mobile browsers (with camera permissions)
+
+**Important Implementation Notes:**
+- Always wait for the DOM element to render before initializing `Html5Qrcode`
+- Store the scanner instance in a ref to prevent multiple initializations
+- Clean up the scanner properly when closing the modal or after a successful scan
+- Handle camera permission errors gracefully
+
+**Installation:**
+```bash
+npm install html5-qrcode
+```
+
+**Usage Example:**
+```typescript
+import { Html5Qrcode } from "html5-qrcode";
+
+const scanner = new Html5Qrcode("qr-scanner-container");
+await scanner.start(
+  { facingMode: "environment" },
+  { fps: 10, qrbox: { width: 250, height: 250 } },
+  (decodedText) => {
+    // Handle scanned QR code
+    if (decodedText.startsWith("bunker://") || decodedText.startsWith("nostrconnect://")) {
+      // Process remote signer URI
+    }
+  }
+);
+```
 
