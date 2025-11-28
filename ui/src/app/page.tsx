@@ -1387,7 +1387,7 @@ export default function HomePage() {
         <section className="lg:col-span-2 border border-[#383B42] rounded p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold">Recent repositories</h2>
-            <Link href="/explore" className="text-sm text-purple-500 hover:underline">Explore all</Link>
+            <Link href="/explore" prefetch={false} className="text-sm text-purple-500 hover:underline">Explore all</Link>
           </div>
           {recent.length === 0 ? (
             <div className="text-gray-400">No repositories yet. Create or import one to get started.</div>
@@ -1481,6 +1481,7 @@ export default function HomePage() {
                   <li key={`${entity}-${repo}`} className="py-3">
                     <Link 
                       href={href} 
+                      prefetch={false}
                       className="flex items-center gap-3 sm:gap-4 hover:bg-gray-800/50 rounded p-2 -m-2 cursor-pointer"
                     >
                       {/* Unified repo icon (circle): repo pic -> owner profile pic -> nostr default -> logo.svg */}
@@ -1564,13 +1565,13 @@ export default function HomePage() {
           <div className="border border-[#383B42] rounded p-4">
             <h3 className="font-semibold mb-2">Quick actions</h3>
             <div className="flex flex-col gap-2">
-              <Link href="/new">
+              <Link href="/new" prefetch={false}>
                 <Button className="w-full" variant="default">Create repository</Button>
               </Link>
-              <Link href="/explore">
+              <Link href="/explore" prefetch={false}>
                 <Button className="w-full" variant="outline">Explore</Button>
               </Link>
-              <Link href="/repositories">
+              <Link href="/repositories" prefetch={false}>
                 <Button className="w-full" variant="outline">Your repositories</Button>
               </Link>
               <Link href="/settings">

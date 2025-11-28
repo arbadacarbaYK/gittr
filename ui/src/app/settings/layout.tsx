@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
@@ -74,19 +74,24 @@ export default function SettingsLayout({
   
   // Generate initials from actual name, not from pubkey
   // Only use session initials if we don't have a name from metadata
-  const avatarInitials = useMemo(() => {
+  // CRITICAL: Use useState to prevent hydration mismatch - server renders "U", client updates after mount
+  const [avatarInitials, setAvatarInitials] = useState("U");
+  
+  useEffect(() => {
+    // Only compute initials on client to prevent hydration mismatch
+    if (typeof window === 'undefined') return;
+    
     if (actualName && actualName !== "Anonymous Nostrich") {
       // Use first 2 characters of the actual name
-      return actualName.substring(0, 2).toUpperCase();
+      setAvatarInitials(actualName.substring(0, 2).toUpperCase());
+    } else if (actualDisplayName && actualDisplayName !== "Anonymous Nostrich") {
+      setAvatarInitials(actualDisplayName.substring(0, 2).toUpperCase());
+    } else if (initials && !/^\d+$/.test(initials)) {
+      // Fallback to session initials only if they're not numbers (pubkey prefix)
+      setAvatarInitials(initials);
+    } else {
+      setAvatarInitials("U"); // Default fallback
     }
-    if (actualDisplayName && actualDisplayName !== "Anonymous Nostrich") {
-      return actualDisplayName.substring(0, 2).toUpperCase();
-    }
-    // Fallback to session initials only if they're not numbers (pubkey prefix)
-    if (initials && !/^\d+$/.test(initials)) {
-      return initials;
-    }
-    return "U"; // Default fallback
   }, [actualName, actualDisplayName, initials]);
 
   return (
