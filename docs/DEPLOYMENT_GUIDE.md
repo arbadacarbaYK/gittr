@@ -777,6 +777,8 @@ cp /path/to/gittr/ui/.env.local "$BACKUP_DIR/"
 
 - **[SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md)**: Detailed setup instructions with Docker options
 - **[GIT_NOSTR_BRIDGE_SETUP.md](GIT_NOSTR_BRIDGE_SETUP.md)**: Detailed bridge setup guide
+- **[NIP46_REMOTE_SIGNER_INTEGRATION.md](NIP46_REMOTE_SIGNER_INTEGRATION.md)**: NIP-46 remote signer integration guide (QR scanning, NIP-07 adapter)
+- **[NIP25_STARS_NIP51_FOLLOWING.md](NIP25_STARS_NIP51_FOLLOWING.md)**: NIP-25 stars and NIP-51 following implementation guide
 - **[ui/GITHUB_OAUTH_SETUP.md](ui/GITHUB_OAUTH_SETUP.md)**: GitHub OAuth configuration
 - **[ui/GITHUB_PLATFORM_TOKEN_SETUP.md](ui/GITHUB_PLATFORM_TOKEN_SETUP.md)**: GitHub Platform Token setup
 - **[docs/GRASP_RELAY_SETUP.md](docs/GRASP_RELAY_SETUP.md)**: Setting up relay instance (Grasp protocol)

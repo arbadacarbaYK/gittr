@@ -60,9 +60,8 @@ Make your Git repositories discoverable on the Nostr network. Host your code on 
 ### Authentication & Remote Signing (🆕)
 - ✅ Sign in with npub, hex pubkey, or NIP-05 name
 - ✅ One-click NIP-07 browser extension login (Flamingo, nos2x, etc.)
-- ✅ 🆕 **Remote signer pairing (NIP-46)** – scan QR code or paste a `bunker://` / `nostrconnect://` token to pair hardware signers (e.g., [LNbits Remote Nostr Signer](https://shop.lnbits.com/lnbits-remote-nostr-signer), Nowser bunker)
-- ✅ QR code scanning using `html5-qrcode` library (camera permissions required)
-- ✅ Remote sessions expose a NIP-07-compatible API, so **all operations** (repo pushes, issues, PRs, profile/account settings, SSH keys, file/repo deletions, follows) automatically use the remote signer without code changes
+- ✅ 🆕 **Remote signer pairing (NIP-46)** – paste or scan a `bunker://` / `nostrconnect://` token to pair hardware signers (e.g., LNbits nsec-remote-signer, Nowser bunker)
+- ✅ Remote sessions expose a NIP-07-compatible API, so the entire UI (repo pushes, issues, zaps) keeps working without ever handling your private key locally
 - ✅ Disconnect anytime from the login screen or global sign-out (clears the stored client key + token)
 
 ## 🛠️ Tech Stack
@@ -299,6 +298,8 @@ Configure in Settings → Account:
 - **[SETUP_INSTRUCTIONS.md](docs/SETUP_INSTRUCTIONS.md)** - Complete production setup guide
 - **[LOCAL_SETUP.md](docs/LOCAL_SETUP.md)** - Local development setup
 - **[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Server deployment guide
+- **[NIP-46 Remote Signer Integration](docs/NIP46_REMOTE_SIGNER_INTEGRATION.md)** - NIP-46 remote signer integration guide (QR scanning, NIP-07 adapter)
+- **[NIP-25 Stars & NIP-51 Following](docs/NIP25_STARS_NIP51_FOLLOWING.md)** - NIP-25 stars and NIP-51 following implementation guide
 - **[Grasp Relay Setup](docs/GRASP_RELAY_SETUP.md)** - How to set up your own relay instance (Grasp protocol)
 - **[SSH & Git Guide](docs/SSH_GIT_GUIDE.md)** - SSH and Git operations guide
 
