@@ -690,6 +690,21 @@ export default function RepositoriesPage() {
               }
               repoData.publicRead = true;
               repoData.publicWrite = false;
+              
+              // CRITICAL: Also parse event.content JSON for NIP-34 events to get deleted/archived flags
+              // Deletion events publish deleted: true in the content JSON
+              if (event.content) {
+                try {
+                  const contentData = JSON.parse(event.content);
+                  if (contentData.deleted !== undefined) repoData.deleted = contentData.deleted;
+                  if (contentData.archived !== undefined) repoData.archived = contentData.archived;
+                  // Also merge other content fields if they exist
+                  if (contentData.publicRead !== undefined) repoData.publicRead = contentData.publicRead;
+                  if (contentData.publicWrite !== undefined) repoData.publicWrite = contentData.publicWrite;
+                } catch (e) {
+                  // Content might not be JSON, that's okay
+                }
+              }
             } else {
               repoData = JSON.parse(event.content);
             }
@@ -1597,6 +1612,11 @@ export default function RepositoriesPage() {
 
                         // Save only user's repos
                         localStorage.setItem("gittr_repos", JSON.stringify(userRepos));
+                        
+                        // CRITICAL: DO NOT clear gittr_starred_repos or gittr_watched_repos
+                        // Stars and follows are user preferences that should persist
+                        // Even if you clear foreign repos, you might want to keep your stars/follows
+                        // These are stored separately and are not part of the repo data cache
 
                         // Collect foreign repo identifiers for cleanup
                         // Use the same key format as getRepoStorageKey: prefix__entity__repo
@@ -1669,7 +1689,7 @@ export default function RepositoriesPage() {
                         setShowClearForeignConfirm(false);
 
                         // Show success feedback
-                        alert(`✅ Successfully cleared!\n\n• Removed ${foreignCount} foreign repositories\n• Removed ${totalCleared} related storage keys (files, issues, PRs, commits)\n• Kept ${userRepos.length} of your own repositories\n\nForeign repos can be re-browsed from Nostr relays.`);
+                        alert(`✅ Successfully cleared!\n\n• Removed ${foreignCount} foreign repositories\n• Removed ${totalCleared} related storage keys (files, issues, PRs, commits)\n• Kept ${userRepos.length} of your own repositories\n• Preserved stars and follows (your preferences are safe)\n\nForeign repos can be re-browsed from Nostr relays.`);
 
                         loadRepos();
                         window.location.reload();
@@ -1741,22 +1761,106 @@ export default function RepositoriesPage() {
                     Cancel
                   </button>
           <button
-            onClick={() => {
+            onClick={async () => {
+                // WHITELIST APPROACH: Only clear specific repo-related keys
+                // This ensures we NEVER accidentally delete account settings, wallets, or user preferences
+                
+                // Keys to preserve (NEVER delete these):
+                const PRESERVED_KEYS = new Set([
+                  // Authentication & Signing
+                  "nostr:npub",
+                  "nostr:privkey",
+                  "nostr:remote-signer-session",
+                  "nostr:session", // Legacy session storage
+                  
+                  // Payment/Wallet Settings (encrypted or plaintext)
+                  "gittr_lnurl",
+                  "gittr_lud16",
+                  "gittr_nwc_recv",
+                  "gittr_nwc_send",
+                  "gittr_lnbits_url",
+                  "gittr_lnbits_admin_key",
+                  "gittr_lnbits_invoice_key",
+                  "gittr_payment_settings_encrypted",
+                  
+                  // Account Settings
+                  "gittr_github_profile",
+                  "gittr_github_mappings",
+                  "gittr_notifications",
+                  "gittr_theme",
+                  
+                  // User Preferences
+                  "gittr_starred_repos",
+                  "gittr_watched_repos",
+                  "gittr_deleted_repos", // Deletion list - preserve so deleted repos don't reappear
+                  
+                  // Other Important Data
+                  "gittr_metadata_cache",
+                  "gittr_earned_bounties",
+                  "gittr_user_bounties",
+                ]);
+                
+                // CRITICAL: Preserve ALL authentication and encryption keys
+                // These are essential for login and must NEVER be deleted
+                if (typeof window !== "undefined") {
+                  for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (!key) continue;
+                    
+                    // Preserve all Nostr authentication keys
+                    if (key.startsWith("nostr:")) {
+                      PRESERVED_KEYS.add(key);
+                    }
+                    
+                    // Preserve all encrypted keys (encryption system uses gittr:encrypted: prefix)
+                    if (key.startsWith("gittr:encrypted:")) {
+                      PRESERVED_KEYS.add(key);
+                    }
+                    
+                    // Preserve encryption system keys
+                    if (key.startsWith("gittr:encryption:")) {
+                      PRESERVED_KEYS.add(key);
+                    }
+                    
+                    // Preserve SSH keys (they have dynamic pubkey suffix)
+                    if (key.startsWith("gittr_ssh_keys_")) {
+                      PRESERVED_KEYS.add(key);
+                    }
+                  }
+                }
+                
                 // Clear main repo storage
                 localStorage.removeItem("gittr_repos");
-                localStorage.removeItem("gittr_deleted_repos");
                 localStorage.removeItem("gittr_activities");
                 
                 // Clear all separate storage keys (files, issues, PRs, commits)
+                // BUT only if they're NOT in the preserved list
                 const keysToRemove: string[] = [];
                 for (let i = 0; i < localStorage.length; i++) {
                   const key = localStorage.key(i);
-                  if (key && (
+                  if (!key) continue;
+                  
+                  // Skip preserved keys
+                  if (PRESERVED_KEYS.has(key)) continue;
+                  
+                  // Skip SSH keys (they have dynamic pubkey suffix)
+                  if (key.startsWith("gittr_ssh_keys_")) continue;
+                  
+                  // Only clear repo-related data keys
+                  if (
                     key.startsWith("gittr_files__") ||
                     key.startsWith("gittr_issues__") ||
                     key.startsWith("gittr_prs__") ||
-                    key.startsWith("gittr_commits__")
-                  )) {
+                    key.startsWith("gittr_commits__") ||
+                    key.startsWith("gittr_releases__") ||
+                    key.startsWith("gittr_discussions__") ||
+                    key.startsWith("gittr_milestones_") ||
+                    key.startsWith("gittr_overrides__") ||
+                    key.startsWith("gittr_repo_overrides__") ||
+                    key.startsWith("gittr_accumulated_zaps_") ||
+                    key.includes("gittr_issue_comments_") ||
+                    key.startsWith("gittr_recent_files_")
+                  ) {
                     keysToRemove.push(key);
                   }
                 }
@@ -1764,12 +1868,12 @@ export default function RepositoriesPage() {
                 keysToRemove.forEach(key => localStorage.removeItem(key));
                 
                 const totalCleared = keysToRemove.length;
-                console.log(`✅ Cleared all locally stored repos and ${totalCleared} separate storage keys from localStorage`);
+                console.log(`✅ Cleared all locally stored repos and ${totalCleared} separate storage keys from localStorage (preserved all account settings, wallets, and preferences)`);
                       
                       setShowClearConfirm(false);
                 
                 // Show success feedback
-                alert(`✅ Successfully cleared!\n\n• Removed all local repositories\n• Removed ${totalCleared} separate storage keys (files, issues, PRs, commits)\n\nRepos published to Nostr will be re-synced from relays.`);
+                alert(`✅ Successfully cleared!\n\n• Removed all local repositories\n• Removed ${totalCleared} separate storage keys (files, issues, PRs, commits)\n\nRepos published to Nostr will be re-synced from relays. Your account settings, wallets, and preferences are safe.`);
                 
                 loadRepos();
                 window.location.reload();

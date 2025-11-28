@@ -10,7 +10,8 @@ This document explains how to implement NIP-46 (Remote Signing) in a Nostr clien
 - Private keys never leave the hardware signer
 - Works with any NIP-46 compatible signer (bunker://, nostrconnect://)
 - Exposes a NIP-07-compatible API, so existing code works without changes
-- Session persistence for reconnection
+- Session persistence for automatic reconnection across page navigations
+- **Automatic login**: Users stay logged in after initial pairing—no need to sign in on each page
 
 ## Dependencies
 
@@ -315,29 +316,88 @@ export function loadStoredRemoteSignerSession(): RemoteSignerSession | null {
 
 ### 7. Bootstrap from Storage
 
-On app load, attempt to reconnect:
+On app load, attempt to reconnect. **Important**: For seamless UX, you should also check for stored sessions during auth initialization to immediately set the user as logged in, rather than waiting for async bootstrap.
 
 ```typescript
+// In your NostrContext or auth provider:
+
+// 1. Check for stored remote signer session during auth initialization
+const [authInitialized, setAuthInitialized] = useState(() => {
+  if (typeof window === "undefined") return false;
+  try {
+    // Check for stored pubkey
+    const storedPubkey = localStorage.getItem("nostr:npub");
+    if (storedPubkey) return true;
+    
+    // Check for stored remote signer session with userPubkey
+    const storedSession = localStorage.getItem("nostr:remote-signer-session");
+    if (storedSession) {
+      try {
+        const parsed = JSON.parse(storedSession);
+        if (parsed?.userPubkey) return true; // Session exists, user is logged in
+      } catch {
+        // Invalid JSON, ignore
+      }
+    }
+    
+    return false;
+  } catch {
+    return false;
+  }
+});
+
+// 2. Set pubkey immediately from stored session (before async bootstrap)
+useEffect(() => {
+  if (typeof window === "undefined") return;
+  
+  // Check for stored remote signer session and set pubkey immediately
+  try {
+    const storedSession = localStorage.getItem("nostr:remote-signer-session");
+    if (storedSession) {
+      const parsed = JSON.parse(storedSession);
+      if (parsed?.userPubkey && !pubkey) {
+        // Set pubkey immediately from stored session
+        setPubKey(parsed.userPubkey);
+      }
+    }
+  } catch (error) {
+    // Ignore errors, will be handled by bootstrap
+  }
+  
+  // Then bootstrap async connection
+  remoteSignerRef.current.bootstrapFromStorage();
+}, []);
+
+// 3. Remote signer bootstrap (async, restores connection)
 bootstrapFromStorage() {
   const stored = loadStoredRemoteSignerSession();
   if (!stored) return;
   
-  this.session = stored;
-  this.applyNip07Adapter();
-  
-  // Subscribe to responses
-  this.startSubscription();
-  
-  // Notify state change
-  this.onStateChange?.("ready", this.session, undefined);
+  try {
+    console.log("[RemoteSigner] Restoring session from storage");
+    await this.activateSession(stored);
+    this.notifyState("ready");
+  } catch (error: any) {
+    console.error("[RemoteSigner] Failed to resume session:", error);
+    this.clearSession();
+    this.notifyState("error", error?.message || "Failed to resume remote signer session");
+  }
 }
 ```
+
+**Why this matters:**
+- Without immediate pubkey restoration, users see "Sign in" buttons flash on each page navigation
+- By checking localStorage synchronously during initialization, the UI knows the user is logged in immediately
+- The async bootstrap then restores the actual connection in the background
+- This provides a seamless experience—users stay logged in after initial pairing
 
 ## UI Integration
 
 ### Login Page
 
 **Important**: After successful pairing, you must call `setAuthor` with the user's `npub` to actually log them in. The pairing alone doesn't log the user in—you need to extract the pubkey from the session and set it as the author.
+
+**Session Persistence**: Once paired, the remote signer session is stored in localStorage. On subsequent page loads, the session is automatically restored and the user remains logged in—no need to pair again or see "Sign in" buttons. The pubkey is set immediately from the stored session, and the connection is restored asynchronously in the background.
 
 ```typescript
 // ui/src/app/login/page.tsx
@@ -429,6 +489,25 @@ if (hasNip07 && window.nostr) {
   await publish(signedEvent);
 }
 ```
+
+## User Experience: Seamless Login
+
+With the improved session persistence implementation:
+
+1. **Initial Pairing**: User scans QR code and pairs with remote signer once
+2. **Automatic Login**: Session is stored in localStorage with `userPubkey`
+3. **Page Navigation**: On each page load:
+   - `authInitialized` is set to `true` immediately if a stored session exists
+   - `pubkey` is set synchronously from the stored session
+   - User sees logged-in state immediately (no "Sign in" button flash)
+   - Connection is restored asynchronously in the background
+4. **No Re-pairing Needed**: Users stay logged in across page navigations, browser refreshes, and even browser restarts (as long as localStorage persists)
+
+**Key Implementation Details:**
+- Check for stored remote signer session during `authInitialized` state initialization (synchronous)
+- Set `pubkey` immediately from stored session before async bootstrap
+- Wait for `authInitialized` in UI components before showing login state
+- This prevents the "Sign in" button flash that occurs when waiting for async operations
 
 ## Supported Operations
 

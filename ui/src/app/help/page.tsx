@@ -147,9 +147,9 @@ export default function HelpPage() {
             Settings
           </h2>
           <ul className="space-y-2 text-sm text-gray-300">
-            <li>• <Link href="/settings" className="text-cyan-400 hover:text-cyan-300">Account Settings</Link></li>
-            <li>• <Link href="/settings/notifications" className="text-cyan-400 hover:text-cyan-300">Notifications</Link></li>
-            <li>• <Link href="/settings/payments" className="text-cyan-400 hover:text-cyan-300">Payment Methods</Link></li>
+            <li>• <Link href="#account-settings" className="text-cyan-400 hover:text-cyan-300">Account Settings</Link></li>
+            <li>• <Link href="#notifications" className="text-cyan-400 hover:text-cyan-300">Notifications</Link></li>
+            <li>• <Link href="#payment-methods" className="text-cyan-400 hover:text-cyan-300">Payment Methods</Link></li>
           </ul>
         </div>
       </div>
@@ -478,6 +478,96 @@ export default function HelpPage() {
           </div>
         </section>
 
+        {/* Account Settings */}
+        <section id="account-settings" className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
+          <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
+            <Settings className="h-6 w-6 text-cyan-400" />
+            Account Settings
+          </h2>
+          
+          <div className="space-y-4 text-gray-300">
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">What are Account Settings?</h3>
+              <p>Account Settings allow you to configure your payment methods and authentication options. These settings are stored locally in your browser and are used to enable features like receiving zaps, creating bounties, and managing your repositories.</p>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">Payment Configuration</h3>
+              <p>To receive payments (zaps and bounties), you need to configure at least one payment method:</p>
+              <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
+                <li><strong>LNbits</strong> - A self-hosted Lightning wallet. You'll need your LNbits URL and admin key. This is required for creating bounties.</li>
+                <li><strong>LNURL</strong> - A Lightning address (like yourname@domain.com) that can receive payments.</li>
+                <li><strong>NWC (Nostr Wallet Connect)</strong> - Connect to a Lightning wallet via Nostr for sending payments.</li>
+              </ul>
+              <p className="mt-2 text-sm text-gray-400">See the <Link href="#payment-methods" className="text-purple-400 hover:text-purple-300">Payment Methods</Link> section for detailed setup instructions.</p>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">Why are these settings needed?</h3>
+              <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
+                <li><strong>Receiving Zaps:</strong> When someone zaps your repository, the payment needs to go somewhere. Configure your Lightning address or LNbits wallet to receive these payments.</li>
+                <li><strong>Creating Bounties:</strong> To create a bounty on an issue, you need an LNbits sending wallet configured. The funds are reserved in your wallet until the PR author claims the bounty.</li>
+                <li><strong>Sending Payments:</strong> NWC or LNbits sending wallets allow you to send zaps and fund bounties.</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">Accessing Account Settings</h3>
+              <p>Go to <Link href="/settings" className="text-purple-400 hover:text-purple-300">Settings → Account</Link> to configure your payment methods. All settings are stored locally in your browser and never sent to any server.</p>
+            </div>
+          </div>
+        </section>
+
+        {/* Payment Methods */}
+        <section id="payment-methods" className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
+          <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
+            <Coins className="h-6 w-6 text-yellow-400" />
+            Payment Methods
+          </h2>
+          
+          <div className="space-y-4 text-gray-300">
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">LNbits (Lightning Bits)</h3>
+              <p>LNbits is a self-hosted Lightning wallet that allows you to create and manage Lightning invoices and withdraw links. It's required for creating bounties.</p>
+              <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
+                <li><strong>LNbits URL:</strong> The URL where your LNbits instance is hosted (e.g., https://lnbits.com or your self-hosted instance)</li>
+                <li><strong>Admin Key:</strong> Your LNbits admin key (found in your LNbits wallet settings). This is used to create withdraw links for bounties.</li>
+                <li><strong>Invoice Key:</strong> (Optional) Used for receiving payments. If not provided, the admin key is used.</li>
+              </ul>
+              <p className="mt-2 text-sm text-gray-400">You can get a free LNbits wallet at <a href="https://lnbits.com" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300">lnbits.com</a> or self-host your own instance.</p>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">LNURL (Lightning Address)</h3>
+              <p>LNURL is a Lightning address (like yourname@domain.com) that can receive payments. It's a simple way to receive Lightning payments without managing a wallet directly.</p>
+              <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
+                <li>You can get a Lightning address from services like <a href="https://getalby.com" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300">Alby</a> or <a href="https://walletofsatoshi.com" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300">Wallet of Satoshi</a></li>
+                <li>Alternatively, you can add a <code className="bg-gray-800 px-1 rounded">lud16</code> or <code className="bg-gray-800 px-1 rounded">lnurl</code> field to your Nostr profile (Kind 0 metadata), and gittr.space will automatically use it for receiving payments</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">NWC (Nostr Wallet Connect)</h3>
+              <p>NWC allows you to connect to a Lightning wallet via Nostr. This is useful for sending payments (zaps) without managing wallet credentials directly.</p>
+              <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
+                <li>NWC requires a compatible wallet that supports the Nostr Wallet Connect protocol</li>
+                <li>You'll need to generate an NWC connection string from your wallet</li>
+                <li>This is primarily used for sending payments, not receiving them</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">How Payment Methods are Used</h3>
+              <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
+                <li><strong>Receiving Zaps:</strong> Uses your Lightning address (from Nostr profile or configured LNURL) or LNbits invoice key</li>
+                <li><strong>Creating Bounties:</strong> Requires LNbits admin key to create withdraw links</li>
+                <li><strong>Sending Zaps:</strong> Uses NWC or LNbits sending wallet</li>
+              </ul>
+              <p className="mt-2 text-sm text-gray-400">All payment credentials are stored locally in your browser and never sent to any server. Only you have access to your payment methods.</p>
+            </div>
+          </div>
+        </section>
+
         {/* Notifications */}
         <section id="notifications" className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
           <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
@@ -487,8 +577,13 @@ export default function HelpPage() {
           
           <div className="space-y-4 text-gray-300">
             <div>
+              <h3 className="text-lg font-semibold text-white mb-2">What are Notifications?</h3>
+              <p>Notifications keep you informed about activity in your repositories, such as new issues, pull requests, comments, and bounties. You can configure how and when you receive notifications.</p>
+            </div>
+
+            <div>
               <h3 className="text-lg font-semibold text-white mb-2">Configure Notifications</h3>
-              <p>Go to Settings → Notifications to set up:</p>
+              <p>Go to <Link href="/settings/notifications" className="text-purple-400 hover:text-purple-300">Settings → Notifications</Link> to set up:</p>
               <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
                 <li><strong>Nostr DMs</strong> - Receive encrypted direct messages on Nostr</li>
                 <li><strong>Telegram</strong> - Get notifications via Telegram DMs. Configure your Telegram User ID to receive private notifications for PRs, issues, and bounties.</li>

@@ -84,6 +84,21 @@ function parseNIP34Repository(event: any): any {
   repoData.publicRead = true;
   repoData.publicWrite = false; // NIP-34 doesn't specify, default to read-only
   
+  // CRITICAL: Also parse event.content JSON for NIP-34 events to get deleted/archived flags
+  // Deletion events publish deleted: true in the content JSON
+  if (event.content) {
+    try {
+      const contentData = JSON.parse(event.content);
+      if (contentData.deleted !== undefined) repoData.deleted = contentData.deleted;
+      if (contentData.archived !== undefined) repoData.archived = contentData.archived;
+      // Also merge other content fields if they exist
+      if (contentData.publicRead !== undefined) repoData.publicRead = contentData.publicRead;
+      if (contentData.publicWrite !== undefined) repoData.publicWrite = contentData.publicWrite;
+    } catch (e) {
+      // Content might not be JSON, that's okay
+    }
+  }
+  
   return repoData;
 }
 

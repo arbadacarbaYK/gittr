@@ -43,7 +43,8 @@ export default function SponsorsPage() {
   const { pubkey } = useNostrContext();
   const [sponsors, setSponsors] = useState<SponsorStats[]>([]);
   const [bountiesReceived, setBountiesReceived] = useState<BountyReceived[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   // Helper to normalize pubkey/npub for comparison
   const normalizePubkey = (key: string): string => {
@@ -77,12 +78,18 @@ export default function SponsorsPage() {
 
   const sponsorMetadata = useContributorMetadata(sponsorPubkeys);
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Load and process sponsor data and earned bounties
   useEffect(() => {
     if (!isLoggedIn || !pubkey) {
       setLoading(false);
       return;
     }
+    
+    setLoading(true);
 
     try {
       const allZaps = getZapHistory(undefined, undefined, 1000);
@@ -220,6 +227,15 @@ export default function SponsorsPage() {
       setLoading(false);
     }
   }, [isLoggedIn, pubkey]);
+
+  if (!mounted) {
+    return (
+      <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
+        <h1 className="text-2xl font-bold mb-4">Sponsors & Bounties</h1>
+        <p className="text-gray-400">Loading...</p>
+      </div>
+    );
+  }
 
   if (!isLoggedIn) {
     return (

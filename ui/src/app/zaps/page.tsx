@@ -24,6 +24,7 @@ export default function ZapsPage() {
   const [filter, setFilter] = useState<"all" | "sent" | "received">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "pending" | "failed">("all");
   const [walletBalances, setWalletBalances] = useState<WalletBalance[]>([]);
+  const [mounted, setMounted] = useState(false);
 
   // Calculate zap statistics
   const zapStats = useMemo(() => {
@@ -58,6 +59,10 @@ export default function ZapsPage() {
       return key.toLowerCase();
     }
   };
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Load zap history
   useEffect(() => {
@@ -113,6 +118,8 @@ export default function ZapsPage() {
     if (!isLoggedIn) return;
 
     const loadBalances = async () => {
+      if (typeof window === "undefined") return;
+      
       const balances: WalletBalance[] = [];
       
       // LNbits sending wallet
@@ -158,7 +165,7 @@ export default function ZapsPage() {
       // Could be extended to support separate receiving wallet
       
       // NWC sending wallet
-      const nwcSend = localStorage.getItem("gittr_nwc_send");
+      const nwcSend = typeof window !== "undefined" ? localStorage.getItem("gittr_nwc_send") : null;
       if (nwcSend) {
         balances.push({ label: "NWC (Sending)", type: "nwc_send", loading: true });
         
@@ -220,6 +227,15 @@ export default function ZapsPage() {
     return null;
   };
 
+  if (!mounted) {
+    return (
+      <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
+        <h1 className="text-2xl font-bold mb-4">Your Zaps</h1>
+        <p className="text-gray-400">Loading...</p>
+      </div>
+    );
+  }
+
   if (!isLoggedIn) {
     return (
       <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
@@ -233,7 +249,7 @@ export default function ZapsPage() {
   const filteredZaps = useMemo(() => {
     // Helper function to check if a repo is deleted
     const isRepoDeleted = (contextId: string): boolean => {
-      if (!contextId) return false;
+      if (!contextId || typeof window === "undefined") return false;
       
       try {
         // Load list of locally-deleted repos
@@ -283,6 +299,15 @@ export default function ZapsPage() {
     }
     return filtered.sort((a, b) => b.createdAt - a.createdAt);
   }, [zaps, statusFilter]);
+
+  if (!mounted) {
+    return (
+      <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
+        <h1 className="text-2xl font-bold mb-4">Your Zaps</h1>
+        <p className="text-gray-400">Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">

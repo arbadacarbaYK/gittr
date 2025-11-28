@@ -9,7 +9,7 @@ export enum PermissionLevel {
 }
 
 const useSession = () => {
-  const { pubkey } = useNostrContext();
+  const { pubkey, authInitialized } = useNostrContext();
   
   // Use centralized metadata cache (same as other parts of the app)
   const metadataMap = useContributorMetadata(
@@ -17,6 +17,9 @@ const useSession = () => {
   );
   const metadata = pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? (metadataMap[pubkey] || {}) : {};
 
+  // If we have a pubkey, we're logged in
+  // authInitialized is mainly for preventing flickering during initial load when checking extensions
+  // But if pubkey already exists (from localStorage), we're definitely logged in
   const isLoggedIn = !!pubkey;
 
   // Prioritize display_name, then name
