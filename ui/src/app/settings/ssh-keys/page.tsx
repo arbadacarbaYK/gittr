@@ -12,7 +12,7 @@ import { createSSHKeyEvent, KIND_SSH_KEY } from "@/lib/nostr/events";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { Key, Plus, Trash2, Copy, Download, AlertCircle, Info } from "lucide-react";
 import useSession from "@/lib/nostr/useSession";
-import { getEventHash, signEvent, getPublicKey, type Event as NostrEvent } from "nostr-tools";
+import { getEventHash, signEvent, type Event as NostrEvent } from "nostr-tools";
 import { formatDateTime24h, formatDate24h, formatTime24h } from "@/lib/utils/date-format";
 
 interface SSHKey {

@@ -57,6 +57,14 @@ Make your Git repositories discoverable on the Nostr network. Host your code on 
 - ✅ Sponsors page (users who zapped you)
 - ✅ Stars and zaps history
 
+### Authentication & Remote Signing (🆕)
+- ✅ Sign in with npub, hex pubkey, or NIP-05 name
+- ✅ One-click NIP-07 browser extension login (Flamingo, nos2x, etc.)
+- ✅ 🆕 **Remote signer pairing (NIP-46)** – scan QR code or paste a `bunker://` / `nostrconnect://` token to pair hardware signers (e.g., [LNbits Remote Nostr Signer](https://shop.lnbits.com/lnbits-remote-nostr-signer), Nowser bunker)
+- ✅ QR code scanning using `html5-qrcode` library (camera permissions required)
+- ✅ Remote sessions expose a NIP-07-compatible API, so **all operations** (repo pushes, issues, PRs, profile/account settings, SSH keys, file/repo deletions, follows) automatically use the remote signer without code changes
+- ✅ Disconnect anytime from the login screen or global sign-out (clears the stored client key + token)
+
 ## 🛠️ Tech Stack
 
 - **Frontend**: Next.js 13 (App Router), React, TypeScript, Tailwind CSS

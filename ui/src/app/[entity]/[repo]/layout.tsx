@@ -43,6 +43,8 @@ import { RepoQRShare } from "@/components/ui/repo-qr-share";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useEntityOwner } from "@/lib/utils/use-entity-owner";
 import { nip19 } from "nostr-tools";
+import { publishStarReaction, removeStarReaction, queryRepoStars } from "@/lib/nostr/repo-stars";
+import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 
 const menuItems = [
   {
@@ -115,7 +117,7 @@ export default function RepoLayout({
   // Use consistent default width on server and initial client render to prevent hydration mismatch
   const [windowWidth, setWindowWidth] = useState(1920);
   const { name: userName } = useSession();
-  const { pubkey } = useNostrContext();
+  const { pubkey, publish, subscribe, defaultRelays } = useNostrContext();
   const [isWatching, setIsWatching] = useState(false);
   const [isStarred, setIsStarred] = useState(false);
   const [starCount, setStarCount] = useState<number>(0);
@@ -221,10 +223,43 @@ export default function RepoLayout({
       setIsWatching(watched.includes(repoId));
       setIsStarred(starred.includes(repoId));
       
-      // Get star count from repo data
+      // Get star count from repo data (fallback to local count)
       setStarCount(repo?.stars || 0);
     } catch {}
   }, [params.entity, params.repo, pubkey, repo]);
+  
+  // Query aggregated star count from Nostr when repo event ID is available
+  useEffect(() => {
+    if (!repo || !subscribe || !defaultRelays) return;
+    const repoEventId = repo?.nostrEventId || repo?.lastNostrEventId;
+    if (!repoEventId) return;
+    
+    // Create adapter for subscribe function
+    const subscribeAdapter = (filters: any[], onEvent: (event: any) => void) => {
+      return subscribe(filters, defaultRelays, onEvent);
+    };
+    
+    // Query star reactions from Nostr (NIP-25)
+    queryRepoStars(subscribeAdapter, repoEventId).then(({ count }) => {
+      setStarCount(count);
+      
+      // Update repos list with aggregated count
+      try {
+        const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
+        const repoIndex = repos.findIndex((r: any) => {
+          const found = findRepoByEntityAndName([r], params.entity, params.repo);
+          return found !== undefined;
+        });
+        
+        if (repoIndex >= 0) {
+          repos[repoIndex].stars = count;
+          localStorage.setItem("gittr_repos", JSON.stringify(repos));
+        }
+      } catch {}
+    }).catch((error) => {
+      console.warn("[Repo Layout] Failed to query star count:", error);
+    });
+  }, [repo, subscribe, defaultRelays, params.entity, params.repo]);
   
   // Update zap total badge (local tracker for now)
   useEffect(() => {
@@ -298,54 +333,124 @@ export default function RepoLayout({
     } catch {}
   }, [params.entity, params.repo, isWatching, pubkey]);
   
-  const handleStar = useCallback(() => {
+  const handleStar = useCallback(async () => {
     if (!pubkey) return;
+    
+    const repoId = `${params.entity}/${params.repo}`;
+    
     try {
-      const repoId = `${params.entity}/${params.repo}`;
+      // Get repo's Nostr event ID and owner pubkey
+      const repoEventId = repo?.nostrEventId || repo?.lastNostrEventId;
+      const repoOwnerPubkey = ownerPubkey || repo?.ownerPubkey;
+      
+      // Update localStorage immediately for UI responsiveness
       const starred = JSON.parse(localStorage.getItem("gittr_starred_repos") || "[]") as string[];
       
-      // Update repos list to increment/decrement star count
-      const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
-      const repoIndex = repos.findIndex(r => {
-        const found = findRepoByEntityAndName([r], params.entity, params.repo);
-        return found !== undefined;
-      });
-      
       if (isStarred) {
-        // Unstar: remove from starred list and decrement count
+        // Unstar: remove from starred list
         localStorage.setItem("gittr_starred_repos", JSON.stringify(starred.filter(r => r !== repoId)));
         setIsStarred(false);
-        if (repoIndex >= 0) {
-          repos[repoIndex].stars = Math.max(0, (repos[repoIndex].stars || 0) - 1);
-          setStarCount(repos[repoIndex].stars);
+        
+        // Publish negative reaction to Nostr (NIP-25)
+        if (repoEventId && repoOwnerPubkey && publish && defaultRelays) {
+          const getSigner = async () => {
+            const hasNip07 = typeof window !== "undefined" && window.nostr;
+            if (hasNip07 && window.nostr) {
+              return {
+                signEvent: async (event: any) => {
+                  const hex = await window.nostr.getPublicKey();
+                  event.pubkey = hex;
+                  return await window.nostr.signEvent(event);
+                },
+              };
+            } else {
+              const privateKey = await getNostrPrivateKey();
+              if (!privateKey) throw new Error("No private key available");
+              const { getPublicKey, signEvent, getEventHash } = await import("nostr-tools");
+              return {
+                signEvent: async (event: any) => {
+                  event.pubkey = getPublicKey(privateKey);
+                  event.id = getEventHash(event);
+                  event.sig = signEvent(event, privateKey);
+                  return event;
+                },
+              };
+            }
+          };
+          
+          const publishAdapter = async (event: any) => {
+            await publish(event, defaultRelays);
+          };
+          await removeStarReaction(repoEventId, repoOwnerPubkey, publishAdapter, getSigner);
         }
       } else {
-        // Star: add to starred list and increment count
+        // Star: add to starred list
         localStorage.setItem("gittr_starred_repos", JSON.stringify([...starred, repoId]));
         setIsStarred(true);
-        if (repoIndex >= 0) {
-          repos[repoIndex].stars = (repos[repoIndex].stars || 0) + 1;
-          setStarCount(repos[repoIndex].stars);
-        } else {
-          // Repo not found in repos list, create minimal entry
-          repos.push({
-            slug: repoId,
-            entity: params.entity,
-            repo: params.repo,
-            name: params.repo,
-            stars: 1,
-          });
-          setStarCount(1);
+        
+        // Publish star reaction to Nostr (NIP-25)
+        if (repoEventId && repoOwnerPubkey && publish && defaultRelays) {
+          const getSigner = async () => {
+            const hasNip07 = typeof window !== "undefined" && window.nostr;
+            if (hasNip07 && window.nostr) {
+              return {
+                signEvent: async (event: any) => {
+                  const hex = await window.nostr.getPublicKey();
+                  event.pubkey = hex;
+                  return await window.nostr.signEvent(event);
+                },
+              };
+            } else {
+              const privateKey = await getNostrPrivateKey();
+              if (!privateKey) throw new Error("No private key available");
+              const { getPublicKey, signEvent, getEventHash } = await import("nostr-tools");
+              return {
+                signEvent: async (event: any) => {
+                  event.pubkey = getPublicKey(privateKey);
+                  event.id = getEventHash(event);
+                  event.sig = signEvent(event, privateKey);
+                  return event;
+                },
+              };
+            }
+          };
+          
+          const publishAdapter = async (event: any) => {
+            await publish(event, defaultRelays);
+          };
+          await publishStarReaction(repoEventId, repoOwnerPubkey, publishAdapter, getSigner);
         }
       }
       
-      localStorage.setItem("gittr_repos", JSON.stringify(repos));
+      // Query aggregated star count from Nostr
+      if (repoEventId && subscribe && defaultRelays) {
+        const subscribeAdapter = (filters: any[], onEvent: (event: any) => void) => {
+          return subscribe(filters, defaultRelays, onEvent);
+        };
+        const { count } = await queryRepoStars(subscribeAdapter, repoEventId);
+        setStarCount(count);
+        
+        // Update repos list with aggregated count
+        const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
+        const repoIndex = repos.findIndex((r: any) => {
+          const found = findRepoByEntityAndName([r], params.entity, params.repo);
+          return found !== undefined;
+        });
+        
+        if (repoIndex >= 0) {
+          repos[repoIndex].stars = count;
+          localStorage.setItem("gittr_repos", JSON.stringify(repos));
+        }
+      }
+      
       // Notify repo pages to refresh their counters
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("gittr:repos-updated"));
       }
-    } catch {}
-  }, [params.entity, params.repo, isStarred, pubkey]);
+    } catch (error) {
+      console.error("[Repo Layout] Failed to handle star:", error);
+    }
+  }, [params.entity, params.repo, isStarred, pubkey, repo, ownerPubkey, publish, subscribe, defaultRelays]);
   
   const handleFork = useCallback(() => {
     // Fork functionality - navigate to fork page or show modal

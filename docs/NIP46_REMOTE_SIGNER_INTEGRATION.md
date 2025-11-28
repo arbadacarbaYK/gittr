@@ -1,0 +1,406 @@
+# NIP-46 Remote Signer Integration
+
+This document explains how to implement NIP-46 (Remote Signing) in a Nostr client, using the approach we implemented in gittr.space. This enables users to pair hardware signers (like LNbits Remote Nostr Signer, Nowser bunker) without exposing private keys to the browser.
+
+## Overview
+
+**NIP-46** (Nostr Remote Signing) allows a client to request event signing from a remote signer (hardware device, mobile app, or server) via encrypted Nostr events. The client generates an ephemeral keypair, connects to the signer's relays, and requests permission to sign events on behalf of the user.
+
+**Key Benefits:**
+- Private keys never leave the hardware signer
+- Works with any NIP-46 compatible signer (bunker://, nostrconnect://)
+- Exposes a NIP-07-compatible API, so existing code works without changes
+- Session persistence for reconnection
+
+## Event Kinds Used
+
+- **Kind 24133** (NIP-46): Encrypted request/response events between client and remote signer
+  - Client publishes requests tagged with remote signer's pubkey
+  - Remote signer publishes responses tagged with client's pubkey
+  - Content is encrypted using NIP-04 or NIP-44
+
+## Implementation Structure
+
+### 1. Remote Signer Manager Class
+
+```typescript
+// ui/src/lib/nostr/remoteSigner.ts
+
+import { type UnsignedEvent, finalizeEvent, generateSecretKey, getPublicKey, nip19, nip44 } from "nostr-tools";
+import type { Event as NostrEvent } from "nostr-tools";
+
+export interface RemoteSignerConfig {
+  remotePubkey: string;  // Remote signer's pubkey (from bunker:// or nostrconnect:// URI)
+  relays: string[];      // Relays the remote signer uses
+  secret?: string;        // Optional shared secret for authentication
+  permissions?: string[]; // Requested permissions (e.g., ["sign_event", "nip44_encrypt"])
+  label?: string;        // Optional label for the connection
+}
+
+export interface RemoteSignerSession {
+  remotePubkey: string;
+  relays: string[];
+  clientSecretKey: string;  // Ephemeral client secret key
+  clientPubkey: string;     // Ephemeral client pubkey
+  userPubkey: string;        // User's pubkey (from remote signer)
+  secret?: string;
+  permissions?: string[];
+  label?: string;
+  lastConnected: number;
+}
+
+export type RemoteSignerState = "idle" | "connecting" | "ready" | "error";
+```
+
+### 2. URI Parsing
+
+Parse `bunker://` or `nostrconnect://` URIs:
+
+```typescript
+export function parseRemoteSignerUri(input: string): RemoteSignerConfig {
+  if (input.startsWith("bunker://")) {
+    // bunker://<remote-pubkey>?relay=wss://...&secret=...&name=...
+    const withoutScheme = input.replace(/^bunker:\/\//i, "");
+    const [pubkeyPart, query = ""] = withoutScheme.split("?");
+    const params = new URLSearchParams(query);
+    const relays = params.getAll("relay").map((relay) => relay.trim()).filter(Boolean);
+    return {
+      remotePubkey: pubkeyPart.toLowerCase(),
+      relays,
+      secret: params.get("secret") || undefined,
+      label: params.get("name") || params.get("label") || undefined,
+    };
+  }
+
+  if (input.startsWith("nostrconnect://")) {
+    // nostrconnect://<client-pubkey>?relay=wss://...&secret=...&name=...&perms=sign_event:1,nip44_encrypt
+    const withoutScheme = input.replace(/^nostrconnect:\/\//i, "");
+    const [clientPubkey, query = ""] = withoutScheme.split("?");
+    const params = new URLSearchParams(query);
+    const relays = params.getAll("relay").map((relay) => relay.trim()).filter(Boolean);
+    return {
+      remotePubkey: clientPubkey.toLowerCase(),
+      relays,
+      secret: params.get("secret") || undefined,
+      permissions: params.get("perms")?.split(",").map((p) => p.trim()).filter(Boolean),
+      label: params.get("name") || undefined,
+    };
+  }
+
+  throw new Error("Unsupported remote signer URI. Use bunker:// or nostrconnect://");
+}
+```
+
+### 3. Connection Flow
+
+```typescript
+class RemoteSignerManager {
+  async connect(uri: string): Promise<{ session: RemoteSignerSession; npub: string }> {
+    // 1. Parse URI
+    const config = parseRemoteSignerUri(uri);
+    
+    // 2. Generate ephemeral client keypair
+    const clientSecretKey = generateSecretKey();
+    const clientPubkey = getPublicKey(clientSecretKey);
+    
+    // 3. Send "connect" request (encrypted Kind 24133 event)
+    const connectRequest = {
+      id: randomRequestId(),
+      method: "connect",
+      params: {
+        pubkey: clientPubkey,
+        secret: config.secret,
+      },
+    };
+    
+    await this.sendRequest(config.remotePubkey, connectRequest, config.relays);
+    
+    // 4. Wait for response with user's pubkey
+    const response = await this.waitForResponse(connectRequest.id);
+    const userPubkey = response.result.pubkey;
+    
+    // 5. Create session and persist
+    const session: RemoteSignerSession = {
+      remotePubkey: config.remotePubkey,
+      relays: config.relays,
+      clientSecretKey: bytesToHex(clientSecretKey),
+      clientPubkey,
+      userPubkey,
+      secret: config.secret,
+      permissions: config.permissions,
+      label: config.label,
+      lastConnected: Date.now(),
+    };
+    
+    persistRemoteSignerSession(session);
+    
+    // 6. Apply NIP-07 adapter
+    this.applyNip07Adapter();
+    
+    return { session, npub: nip19.npubEncode(userPubkey) };
+  }
+}
+```
+
+### 4. NIP-07 Compatible Adapter
+
+Override `window.nostr` to route signing through the remote signer:
+
+```typescript
+applyNip07Adapter() {
+  const originalNostr = window.nostr;
+  
+  window.nostr = {
+    getPublicKey: async () => {
+      return this.session?.userPubkey || "";
+    },
+    
+    signEvent: async (event: UnsignedEvent) => {
+      if (!this.session) throw new Error("Remote signer not connected");
+      
+      // Send "sign_event" request
+      const request = {
+        id: randomRequestId(),
+        method: "sign_event",
+        params: {
+          event: event,
+        },
+      };
+      
+      const response = await this.sendRequest(
+        this.session.remotePubkey,
+        request,
+        this.session.relays
+      );
+      
+      return response.result.event; // Signed event from remote signer
+    },
+    
+    nip04: {
+      encrypt: async (pubkey: string, plaintext: string) => {
+        // Request NIP-04 encryption via remote signer
+        const request = {
+          id: randomRequestId(),
+          method: "nip04_encrypt",
+          params: { pubkey, plaintext },
+        };
+        const response = await this.sendRequest(/* ... */);
+        return response.result.ciphertext;
+      },
+      decrypt: async (pubkey: string, ciphertext: string) => {
+        // Request NIP-04 decryption via remote signer
+        const request = {
+          id: randomRequestId(),
+          method: "nip04_decrypt",
+          params: { pubkey, ciphertext },
+        };
+        const response = await this.sendRequest(/* ... */);
+        return response.result.plaintext;
+      },
+    },
+    
+    nip44: {
+      encrypt: async (pubkey: string, plaintext: string) => {
+        // Request NIP-44 encryption via remote signer
+        const request = {
+          id: randomRequestId(),
+          method: "nip44_encrypt",
+          params: { pubkey, plaintext },
+        };
+        const response = await this.sendRequest(/* ... */);
+        return response.result.ciphertext;
+      },
+      decrypt: async (pubkey: string, ciphertext: string) => {
+        // Request NIP-44 decryption via remote signer
+        const request = {
+          id: randomRequestId(),
+          method: "nip44_decrypt",
+          params: { pubkey, ciphertext },
+        };
+        const response = await this.sendRequest(/* ... */);
+        return response.result.plaintext;
+      },
+    },
+  };
+  
+  // Store original for restoration on disconnect
+  this.originalNostr = originalNostr;
+}
+```
+
+### 5. Encrypted Request/Response
+
+Send encrypted Kind 24133 events:
+
+```typescript
+async sendRequest(
+  remotePubkey: string,
+  request: { id: string; method: string; params: any },
+  relays: string[]
+): Promise<any> {
+  // Encrypt request using NIP-44 (or NIP-04)
+  const encrypted = await nip44.encrypt(
+    this.session.clientSecretKey,
+    remotePubkey,
+    JSON.stringify(request)
+  );
+  
+  // Create Kind 24133 event
+  const event = finalizeEvent(
+    {
+      kind: 24133, // NIP-46 request/response kind
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [
+        ["p", remotePubkey], // Tag remote signer
+      ],
+      content: encrypted,
+    },
+    this.session.clientSecretKey
+  );
+  
+  // Publish to relays
+  await this.publish(event, relays);
+  
+  // Wait for response
+  return this.waitForResponse(request.id);
+}
+```
+
+### 6. Session Persistence
+
+Store session in localStorage for reconnection:
+
+```typescript
+const STORAGE_KEY = "nostr:remote-signer-session";
+
+export function persistRemoteSignerSession(session: RemoteSignerSession | null) {
+  if (typeof window === "undefined") return;
+  try {
+    if (!session) {
+      localStorage.removeItem(STORAGE_KEY);
+    } else {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    }
+  } catch (error) {
+    console.error("[RemoteSigner] Failed to persist session:", error);
+  }
+}
+
+export function loadStoredRemoteSignerSession(): RemoteSignerSession | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as RemoteSignerSession;
+    if (!parsed.remotePubkey || !parsed.clientSecretKey || !parsed.userPubkey) {
+      return null;
+    }
+    return parsed;
+  } catch (error) {
+    console.warn("[RemoteSigner] Failed to load stored session:", error);
+    return null;
+  }
+}
+```
+
+### 7. Bootstrap from Storage
+
+On app load, attempt to reconnect:
+
+```typescript
+bootstrapFromStorage() {
+  const stored = loadStoredRemoteSignerSession();
+  if (!stored) return;
+  
+  this.session = stored;
+  this.applyNip07Adapter();
+  
+  // Subscribe to responses
+  this.startSubscription();
+  
+  // Notify state change
+  this.onStateChange?.("ready", this.session, undefined);
+}
+```
+
+## UI Integration
+
+### Login Page
+
+```typescript
+// ui/src/app/login/page.tsx
+
+const [remoteModalOpen, setRemoteModalOpen] = useState(false);
+const [remoteToken, setRemoteToken] = useState("");
+const { remoteSigner } = useNostrContext();
+
+// QR Scanner for bunker:// or nostrconnect:// URIs
+const startQRScanner = useCallback(async () => {
+  const scanner = new Html5Qrcode("qr-scanner-container");
+  await scanner.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: { width: 250, height: 250 } },
+    (decodedText) => {
+      if (decodedText.startsWith("bunker://") || decodedText.startsWith("nostrconnect://")) {
+        setRemoteToken(decodedText);
+        setRemoteError(null);
+      }
+    }
+  );
+}, []);
+
+const handleRemoteConnect = useCallback(async () => {
+  if (!remoteSigner || !remoteToken.trim()) return;
+  
+  setRemoteBusy(true);
+  try {
+    await remoteSigner.connect(remoteToken.trim());
+    setRemoteModalOpen(false);
+    router.push("/");
+  } catch (error: any) {
+    setRemoteError(error?.message || "Unable to pair with remote signer");
+  } finally {
+    setRemoteBusy(false);
+  }
+}, [remoteSigner, remoteToken, router]);
+```
+
+## Usage in Existing Code
+
+Once the NIP-07 adapter is applied, all existing code that uses `window.nostr.signEvent()` automatically works with the remote signer:
+
+```typescript
+// This works without any changes!
+const hasNip07 = typeof window !== "undefined" && window.nostr;
+if (hasNip07 && window.nostr) {
+  const signedEvent = await window.nostr.signEvent(unsignedEvent);
+  await publish(signedEvent);
+}
+```
+
+## Supported Operations
+
+All signing operations automatically use the remote signer:
+- Repository pushes (Kind 30617)
+- Issue creation (Kind 9803)
+- Pull request creation (Kind 9804)
+- Profile updates (Kind 0)
+- Account settings (Kind 0 with NIP-39)
+- SSH key management (Kind 52)
+- File/repo deletions (Kind 5, Kind 30617)
+- Follows/unfollows (Kind 3)
+
+## References
+
+- **NIP-46**: https://nips.nostr.com/46
+- **NIP-07**: https://nips.nostr.com/07
+- **NIP-04**: https://nips.nostr.com/04 (Encryption)
+- **NIP-44**: https://nips.nostr.com/44 (Encryption v2)
+- **Kind 24133**: NIP-46 request/response events
+
+## Example Remote Signers
+
+- **LNbits Remote Nostr Signer**: https://shop.lnbits.com/lnbits-remote-nostr-signer
+- **Nowser**: https://github.com/haorendashu/nowser (Mobile bunker)
+- **Bunker**: https://github.com/soapbox-pub/bunker (Self-hosted)
+
