@@ -26,6 +26,7 @@
     "cytoscape": "^3.33.1",
     "cytoscape-dagre": "^2.5.0",
     "dagre": "^0.8.5",
+    "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.122.0",
     "mermaid": "^11.12.1",
     "next": "^13.2.1",

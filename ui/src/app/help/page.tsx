@@ -569,13 +569,15 @@ export default function HelpPage() {
                 <li><strong className="text-white">Kind 51</strong> (gitnostr: Repository) - Repository announcements (legacy, for backwards compatibility)</li>
                 <li><strong className="text-white">Kind 52</strong> (gitnostr: SSH Keys) - SSH public keys for Git authentication</li>
                 <li><strong className="text-white">Kind 30617</strong> (NIP-34: Replaceable Events) - Repository metadata (primary method, uses NIP-34 replaceable events)</li>
+                <li><strong className="text-white">Kind 7</strong> (NIP-25: Reactions) - Repository stars (reactions to kind 30617 events)</li>
                 <li><strong className="text-white">Kind 9735</strong> (NIP-57: Zaps) - Lightning payments and tips</li>
                 <li><strong className="text-white">Kind 9803</strong> (Custom: Issues) - Issue tracking with bounties</li>
                 <li><strong className="text-white">Kind 9804</strong> (Custom: Pull Requests) - Pull requests and code reviews</li>
                 <li><strong className="text-white">Kind 9806</strong> (Custom: Bounties) - Bounty creation and status updates</li>
+                <li><strong className="text-white">Kind 3000</strong> (NIP-51: Bookmark Lists) - Following/watching repositories</li>
               </ul>
               <p className="mt-3 text-sm text-gray-400">
-                <strong>Note:</strong> Repository announcements use Kind 30617 (NIP-34 replaceable events) as the primary method. Kind 51 is supported for reading legacy repositories. Issues and PRs (kinds 9803/9804) are automatically published to Nostr when created, and status updates (merged, closed, reopened) are also published automatically. This enables cross-platform sync with other Nostr clients.
+                <strong>Note:</strong> Repository announcements use Kind 30617 (NIP-34 replaceable events) as the primary method. Kind 51 is supported for reading legacy repositories. Stars use NIP-25 (Kind 7) reactions with a "k" tag pointing to the repository event, enabling platform-wide star counts. Following repositories uses NIP-51 (Kind 3000) bookmark lists. Issues and PRs (kinds 9803/9804) are automatically published to Nostr when created, and status updates (merged, closed, reopened) are also published automatically. This enables cross-platform sync with other Nostr clients.
               </p>
             </div>
           </div>

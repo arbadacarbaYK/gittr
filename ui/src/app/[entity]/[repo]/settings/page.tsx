@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { createRepositoryEvent } from "@/lib/nostr/events";
+import { createRepositoryEvent, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { useParams, useRouter } from "next/navigation";
 import { Zap, ArrowRight, CheckCircle, X, Plus, User, Lock, Globe, BookOpen, MessageSquare, Youtube, Twitter, Github, Link as LinkIcon } from "lucide-react";
@@ -399,29 +399,63 @@ export default function RepoSettingsPage() {
       
       if (publish && pubkey && repoToDelete && wasPublishedToNostr) {
         try {
-          // Get private key for signing
-          const privateKey = await getNostrPrivateKey();
-          if (privateKey) {
+          // Sign with NIP-07 or private key
+          const hasNip07 = typeof window !== "undefined" && window.nostr;
+          const privateKey = hasNip07 ? null : await getNostrPrivateKey();
+          
+          if (hasNip07 || privateKey) {
             // Publish a replacement event with deleted: true
-            // This uses the same "d" tag, so it replaces the previous event (NIP-33 replaceable events)
+            // This uses the same "d" tag, so it replaces the previous event (NIP-34 replaceable events)
             const repoWithExtras = repoToDelete as StoredRepo & {
               publicRead?: boolean;
               sourceUrl?: string;
               forkedFrom?: string;
             };
-            const deletionEvent = createRepositoryEvent(
-              {
-                repositoryName: repo,
-                publicRead: repoWithExtras.publicRead !== false,
-                publicWrite: false,
-                description: repoToDelete.description,
-                deleted: true, // Mark as deleted on Nostr - other clients will respect this
-                // Preserve other metadata for context
-                sourceUrl: repoWithExtras.sourceUrl,
-                forkedFrom: repoWithExtras.forkedFrom,
-              },
-              privateKey
-            );
+            
+            let deletionEvent: any;
+            if (hasNip07 && window.nostr) {
+              // Use NIP-07 (supports remote signer)
+              const { getEventHash } = await import("nostr-tools");
+              const authorPubkey = await window.nostr.getPublicKey();
+              deletionEvent = {
+                kind: KIND_REPOSITORY_NIP34,
+                created_at: Math.floor(Date.now() / 1000),
+                tags: [
+                  ["d", repo],
+                  ["name", repo],
+                  ...(repoWithExtras.description ? [["description", repoWithExtras.description]] : []),
+                  ...(repoWithExtras.sourceUrl ? [["source", repoWithExtras.sourceUrl]] : []),
+                  ...(repoWithExtras.forkedFrom ? [["forkedFrom", repoWithExtras.forkedFrom]] : []),
+                ],
+                content: JSON.stringify({
+                  deleted: true,
+                  publicRead: repoWithExtras.publicRead !== false,
+                  publicWrite: false,
+                }),
+                pubkey: authorPubkey,
+                id: "",
+                sig: "",
+              };
+              deletionEvent.id = getEventHash(deletionEvent);
+              deletionEvent = await window.nostr.signEvent(deletionEvent);
+            } else if (privateKey) {
+              // Use private key (fallback)
+              deletionEvent = createRepositoryEvent(
+                {
+                  repositoryName: repo,
+                  publicRead: repoWithExtras.publicRead !== false,
+                  publicWrite: false,
+                  description: repoToDelete.description,
+                  deleted: true, // Mark as deleted on Nostr - other clients will respect this
+                  // Preserve other metadata for context
+                  sourceUrl: repoWithExtras.sourceUrl,
+                  forkedFrom: repoWithExtras.forkedFrom,
+                },
+                privateKey
+              );
+            } else {
+              throw new Error("No signing method available");
+            }
             
             await publish(deletionEvent, defaultRelays);
             console.log("✅ Published deletion marker to Nostr - other clients will hide this repo");

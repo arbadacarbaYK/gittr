@@ -1,4 +1,4 @@
-import { type ReactNode, createContext, useCallback, useContext } from "react";
+import { type ReactNode, createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import {
   type OnEose,
@@ -12,6 +12,11 @@ import { nip19 } from "nostr-tools";
 import useLocalStorage from "../hooks/useLocalStorage";
 
 import { WEB_STORAGE_KEYS } from "./localStorage";
+import {
+  RemoteSignerManager,
+  type RemoteSignerSession,
+  type RemoteSignerState,
+} from "./remoteSigner";
 
 declare global {
   interface Window {
@@ -20,6 +25,10 @@ declare global {
       signEvent(event: NostrEvent | UnsignedEvent): Promise<NostrEvent>;
       getRelays(): Promise<{ [url: string]: { read: boolean; write: boolean } }>;
       nip04: {
+        encrypt(pubkey: string, plaintext: string): Promise<string>;
+        decrypt(pubkey: string, ciphertext: string): Promise<string>;
+      };
+      nip44?: {
         encrypt(pubkey: string, plaintext: string): Promise<string>;
         decrypt(pubkey: string, ciphertext: string): Promise<string>;
       };
@@ -75,6 +84,13 @@ const NostrContext = createContext<{
   pubkey: string | null;
   signOut?: () => void;
   getRelayStatuses?: () => [url: string, status: number][];
+  remoteSigner?: {
+    session: RemoteSignerSession | null;
+    state: RemoteSignerState;
+    error?: string;
+    connect: (uri: string) => Promise<{ npub: string }>;
+    disconnect: () => void;
+  };
 }>({ defaultRelays, pubkey: null });
 
 export const useNostrContext = () => {
@@ -150,10 +166,6 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   );
 
 
-  const signOut = useCallback(() => {
-    removePubKey();
-  }, [removePubKey]);
-
   const publish = useCallback(
     (event: any, relays: string[]) => {
       console.log(`📤 [NostrContext] Publishing event:`, {
@@ -180,6 +192,54 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     return relayPool.getRelayStatuses();
   }, []);
 
+  const [remoteSignerStatus, setRemoteSignerStatus] = useState<{
+    session: RemoteSignerSession | null;
+    state: RemoteSignerState;
+    error?: string;
+  }>({ session: null, state: "idle" });
+  const remoteSignerRef = useRef<RemoteSignerManager | null>(null);
+
+  useEffect(() => {
+    if (remoteSignerRef.current) return;
+    remoteSignerRef.current = new RemoteSignerManager({
+      publish,
+      subscribe: relayPoolSubscribe,
+      addRelay,
+      removeRelay,
+    });
+    remoteSignerRef.current.onStateChange = (state, session, error) => {
+      setRemoteSignerStatus({ state, session, error });
+      if (state === "ready" && session?.userPubkey) {
+        setPubKey(session.userPubkey);
+      }
+    };
+    remoteSignerRef.current.bootstrapFromStorage();
+    return () => {
+      remoteSignerRef.current?.disconnect();
+    };
+  }, [addRelay, removeRelay, publish, relayPoolSubscribe, setPubKey]);
+
+  const connectRemoteSigner = useCallback(
+    async (uri: string) => {
+      if (!remoteSignerRef.current) {
+        throw new Error("Remote signer manager not initialized");
+      }
+      const result = await remoteSignerRef.current.connect(uri);
+      setPubKey(result.session.userPubkey);
+      return { npub: result.npub };
+    },
+    [setPubKey]
+  );
+
+  const disconnectRemoteSigner = useCallback(() => {
+    remoteSignerRef.current?.disconnect();
+  }, []);
+
+  const signOut = useCallback(() => {
+    remoteSignerRef.current?.disconnect();
+    removePubKey();
+  }, [removePubKey]);
+
   return (
     <NostrContext.Provider
       value={{
@@ -192,6 +252,13 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         pubkey,
         signOut,
         getRelayStatuses,
+        remoteSigner: {
+          session: remoteSignerStatus.session,
+          state: remoteSignerStatus.state,
+          error: remoteSignerStatus.error,
+          connect: connectRemoteSigner,
+          disconnect: disconnectRemoteSigner,
+        },
       }}
     >
       {children}

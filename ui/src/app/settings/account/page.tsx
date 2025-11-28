@@ -417,10 +417,23 @@ export default function AccountSettingsPage() {
                   };
                   
                   event.id = getEventHash(event);
-                  event.sig = signEvent(event, privateKey);
+                  
+                  // Sign with NIP-07 or private key
+                  const hasNip07 = typeof window !== "undefined" && window.nostr;
+                  let signedEvent = event;
+                  if (hasNip07 && window.nostr) {
+                    // Use NIP-07 extension (supports remote signer)
+                    signedEvent = await window.nostr.signEvent(event);
+                  } else if (privateKey) {
+                    // Use private key (fallback)
+                    signedEvent = { ...event };
+                    signedEvent.sig = signEvent(signedEvent, privateKey);
+                  } else {
+                    throw new Error("No signing method available");
+                  }
                   
                   // Publish to relays
-                  publish(event, defaultRelays);
+                  publish(signedEvent, defaultRelays);
                   
                   setSaved(`✅ GitHub connected and published to Nostr! Username: ${data.githubUsername}`);
                   setTimeout(() => setSaved(""), 5000);
