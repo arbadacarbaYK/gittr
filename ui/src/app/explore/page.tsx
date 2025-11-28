@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
@@ -127,7 +127,7 @@ type Repo = {
   fromNostr?: boolean;
 };
 
-export default function ExplorePage() {
+function ExplorePageContent() {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [isLoadingRepos, setIsLoadingRepos] = useState(true);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
@@ -148,6 +148,7 @@ export default function ExplorePage() {
   
   // Load cached metadata from localStorage on mount
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     try {
       const cached = localStorage.getItem("gittr_metadata_cache");
       if (cached) {
@@ -167,6 +168,7 @@ export default function ExplorePage() {
   // Use ref to track last saved state to prevent unnecessary saves
   const lastSavedMetadataRef = useRef<string>("");
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     if (Object.keys(ownerMetadata).length > 0) {
       const currentMetadataStr = JSON.stringify(ownerMetadata);
       // Only save if metadata actually changed
@@ -681,6 +683,7 @@ export default function ExplorePage() {
   
   // Load repos from localStorage and sync from Nostr
   const loadRepos = useCallback(() => {
+    if (typeof window === 'undefined') return;
     setIsLoadingRepos(true);
     try {
       // DEBUG: Check raw localStorage first
@@ -707,6 +710,7 @@ export default function ExplorePage() {
       });
       
       // Load list of locally-deleted repos (user deleted them, don't show)
+      if (typeof window === 'undefined') return;
       const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
       const deletedReposSet = new Set(deletedRepos.map(d => `${d.entity}/${d.repo}`.toLowerCase()));
       
@@ -819,6 +823,7 @@ export default function ExplorePage() {
     
     // CRITICAL: Clear old repos from localStorage to force fresh fetch
     // This ensures we get ALL repos from Nostr, not just cached ones
+    if (typeof window === 'undefined') return;
     const existingRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
     console.log('📊 [Explore] Current repos in localStorage:', existingRepos.length);
     
@@ -845,6 +850,7 @@ export default function ExplorePage() {
       // Stop showing "syncing" status if we've received EOSE from at least 2 GRASP relays
       // OR if we've received repos from at least 5 regular relays and waited 5 seconds
       // OR if we've received a very large number of repos (2000+) - we have enough initial data
+      if (typeof window === 'undefined') return;
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
       const hasEnoughRepos = repos.length > 0;
       const hasVeryManyRepos = repos.length >= 2000; // Large number = good initial sample
@@ -873,7 +879,7 @@ export default function ExplorePage() {
       console.log('⏱️ [Explore] Sync timeout after 15s:', {
         eoseReceived: eoseReceived.size,
         graspRelaysReceived: graspRelaysReceived.size,
-        totalRepos: JSON.parse(localStorage.getItem("gittr_repos") || "[]").length
+        totalRepos: typeof window !== 'undefined' ? JSON.parse(localStorage.getItem("gittr_repos") || "[]").length : 0
       });
       setSyncing(false);
       if (minRelaysTimeout) clearTimeout(minRelaysTimeout);
@@ -1819,7 +1825,7 @@ export default function ExplorePage() {
           </div>
         </div>
       )}
-      {syncing && !isLoadingRepos && (() => {
+      {syncing && !isLoadingRepos && typeof window !== 'undefined' && (() => {
         const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
         const repoCount = repos.length;
         return (
@@ -2029,6 +2035,14 @@ export default function ExplorePage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ExplorePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-black text-white p-8">Loading...</div>}>
+      <ExplorePageContent />
+    </Suspense>
   );
 }
 

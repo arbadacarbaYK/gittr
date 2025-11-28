@@ -100,11 +100,27 @@ export function Header() {
   const { signOut, pubkey } = useNostrContext();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [stableLoginState, setStableLoginState] = useState<boolean | null>(null);
   
   // Only render client-side content after hydration
   useEffect(() => {
     setMounted(true);
   }, []);
+  
+  // Stabilize login state to prevent flickering
+  // Once we determine login state, keep it stable unless explicitly changed
+  useEffect(() => {
+    if (mounted) {
+      // Wait a bit for auth to settle (NIP-07, remote signer, etc.)
+      const timer = setTimeout(() => {
+        setStableLoginState(isLoggedIn);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [mounted, isLoggedIn]);
+  
+  // Use stable login state if available, otherwise use current
+  const displayIsLoggedIn = stableLoginState !== null ? stableLoginState : isLoggedIn;
   
   const handleSignOut = useCallback(() => {
     if (signOut) {
@@ -120,14 +136,14 @@ export function Header() {
     <header className="flex h-14 w-full items-center justify-between bg-[#171B21] px-8">
       <div className="flex items-center gap-4">
       <MainNav items={HeaderConfig.mainNav} />
-        {mounted && isLoggedIn && (
+        {mounted && displayIsLoggedIn && (
           <Button variant="outline" className="max-h-8 min-w-max">
             <a href="/new" onClick={(e) => { e.preventDefault(); window.location.href = "/new"; }}>New</a>
           </Button>
         )}
       </div>
       <div className="hidden items-center md:inline">
-        {mounted && isLoggedIn ? (
+        {mounted && displayIsLoggedIn ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <div className="flex items-center cursor-pointer">
