@@ -89,7 +89,15 @@ export default function Login() {
     setRemoteBusy(true);
     setRemoteError(null);
     try {
-      await remoteSigner.connect(remoteToken.trim());
+      const result = await remoteSigner.connect(remoteToken.trim());
+      // After successful pairing, log the user in with their pubkey
+      if (result?.npub && setAuthor) {
+        setAuthor(result.npub);
+      } else if (remoteSigner?.session?.userPubkey && setAuthor) {
+        // Fallback: get pubkey from session and convert to npub
+        const npub = nip19.npubEncode(remoteSigner.session.userPubkey);
+        setAuthor(npub);
+      }
       setRemoteBusy(false);
       setRemoteModalOpen(false);
       setRemoteToken("");
@@ -99,7 +107,7 @@ export default function Login() {
       setRemoteBusy(false);
       setRemoteError(error?.message || "Unable to pair with remote signer");
     }
-  }, [remoteSigner, remoteToken, router]);
+  }, [remoteSigner, remoteToken, router, setAuthor]);
 
   const handleRemoteDisconnect = useCallback(() => {
     remoteSigner?.disconnect();
