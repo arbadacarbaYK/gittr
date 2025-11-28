@@ -22,13 +22,23 @@ export interface RepoLink {
   label?: string;
 }
 
-export interface RepoFileEntry {
+type RepoFileContentFields = {
+  content?: string;
+  data?: string;
+  body?: string;
+  text?: string;
+  fileContent?: string;
+  file_content?: string;
+};
+
+export interface RepoFileEntry extends RepoFileContentFields {
   path: string;
   type: string;
   size?: number;
   sha?: string;
   url?: string;
   isBinary?: boolean; // Flag to indicate binary files (images, PDFs, etc.)
+  binary?: boolean;
 }
 
 export interface StoredContributor {
@@ -48,7 +58,10 @@ export interface StoredRepo {
   repo?: string;
   slug?: string;
   name?: string;
+  repositoryName?: string;
   ownerPubkey?: string;
+  fileCount?: number;
+  logoUrl?: string | null;
   contributors?: StoredContributor[];
   files?: RepoFileEntry[];
   sourceUrl?: string;
@@ -73,8 +86,17 @@ export interface StoredRepo {
   tags?: string[];
   lastNostrEventId?: string;
   nostrEventId?: string;
+  lastNostrEventCreatedAt?: number;
+  fromNostr?: boolean;
   deleted?: boolean;
   hasUnpushedEdits?: boolean;
+  lastPushAttempt?: number;
+  bridgeProcessed?: boolean;
+  successfulSources?: Array<{
+    source: string;
+    status: "pending" | "fetching" | "success" | "failed";
+    error?: string;
+  }>;
   status?: string;
   syncedFromNostr?: boolean;
 }
