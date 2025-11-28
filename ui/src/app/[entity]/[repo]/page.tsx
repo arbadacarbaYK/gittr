@@ -3141,18 +3141,7 @@ export default function RepoCodePage({
                     });
                     
                     // Fetch from all sources
-                    // Use event.pubkey as event publisher pubkey for bridge API (bridge stores repos by event publisher)
-                    // TypeScript workaround: event is a Nostr event with pubkey, but type might not be fully inferred
-                    const eventPubkey =
-                      typeof event === "object" &&
-                      event !== null &&
-                      "pubkey" in event &&
-                      typeof (event as { pubkey?: unknown }).pubkey === "string"
-                        ? (event as { pubkey: string }).pubkey
-                        : undefined;
-                    const eventPublisherPubkey = (eventPubkey && typeof eventPubkey === 'string' && /^[0-9a-f]{64}$/i.test(eventPubkey)) 
-                      ? eventPubkey 
-                      : undefined;
+                    const eventPublisherPubkey = resolvedOwnerPubkey;
                     const { files, statuses } = await fetchFilesFromMultipleSources(
                       cloneUrls,
                       branch,
