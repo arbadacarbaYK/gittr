@@ -112,7 +112,7 @@ if (sshMatch) {
 
 ## File List Fetching Flow
 
-**Location**: `ui/src/app/[entity]/[repo]/page.tsx` (main `useEffect` starting around line 955)
+**Location**: `ui/src/app/[entity]/[repo]/page.tsx` (main file list fetching `useEffect` - search for "File List Fetching Flow" or "useEffect.*files")
 
 ### Flow Diagram
 
@@ -159,7 +159,7 @@ User opens repo page
 
 ## File Opening Flow - Correct Strategy Order
 
-**Location**: `ui/src/app/[entity]/[repo]/page.tsx` (`fetchGithubRaw` function starting around line 3503)
+**Location**: `ui/src/app/[entity]/[repo]/page.tsx` (`fetchGithubRaw` function - search for "fetchGithubRaw" or "Strategy 1: Check localStorage")
 
 ### CRITICAL: Strategy Order
 
@@ -986,7 +986,7 @@ const firstSuccessPromise = Promise.race(successPromises);
 4. Add `allow-modals` to iframe sandbox permissions
 5. Add `onLoad` and `onError` handlers for debugging
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (HTML preview rendering around line 5186)
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (HTML preview rendering - search for "HTML preview" or "iframe.*sandbox")
 
 **Result**: HTML files now render correctly in preview mode, with proper structure and better error handling.
 
@@ -1031,7 +1031,7 @@ if (gitServerMatch) {
 
 **Solution**: Resolve `ownerPubkey` immediately from `params.entity` (npub) using `nip19.decode()` instead of waiting for Nostr queries. This allows file fetching to start immediately when the page loads.
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (file fetching `useEffect` starting around line 983)
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (file fetching `useEffect` - search for "resolvedOwnerPubkey" or "ownerPubkeyForLink" in useEffect)
 
 **Key Change**:
 ```typescript
@@ -1064,7 +1064,7 @@ if (params.entity && params.entity.startsWith("npub")) {
 2. Show "✓ Files found, checking other sources..." when files are found but some sources are still fetching
 3. Ensure all successful sources show "✓ Fetched" status, not just failures
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (status display around line 4720)
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (status display logic - search for "fetchStatus" or "status display" or "No files found")
 
 **Key Changes**:
 - Hide status display when `hasFiles && allDone && !stillFetching`
@@ -1079,7 +1079,7 @@ if (params.entity && params.entity.startsWith("npub")) {
 
 **Solution**: Decode `params.repo` immediately at the start of the component using `decodeURIComponent(params.repo)` and use `decodedRepo` throughout the component for all API calls, localStorage lookups, and file operations.
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (line 70)
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (component start - search for "decodeURIComponent" or "decodedRepo")
 
 **Key Change**:
 ```typescript
@@ -1097,7 +1097,7 @@ const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)
 
 **Solution**: Removed the console.log from the render function. The check still runs but doesn't spam the console. The infinite loop warning was likely from a different source (Radix UI component).
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (line 5387)
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (push button check - search for "push button" or "Repo not found" log)
 
 ### Unused Variable Cleanup
 
@@ -1105,7 +1105,7 @@ const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)
 
 **Solution**: Removed the unused variable. The `firstSuccessFiles` variable is sufficient for tracking the first successful fetch.
 
-**Code Location**: `ui/src/lib/utils/git-source-fetcher.ts` (line 641)
+**Code Location**: `ui/src/lib/utils/git-source-fetcher.ts` (`fetchFilesFromSource` function - search for "firstSuccessSource" or "firstSuccessFiles")
 
 ### Clone URLs for Embedded Files
 
@@ -1127,14 +1127,14 @@ const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)
 4. **Show status for all expanded sources** - when a Nostr git URL is found, expand it to all known git servers and show status for all of them immediately
 5. **Update files immediately** when first source succeeds (don't wait for all sources to complete)
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (lines 1238-1318 for immediate expansion, 2224 for EOSE delay, 2268 for timeout)
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (search for: "expand clone URLs immediately", "EOSE delay", "timeout" in file fetching logic)
 
 **Key Changes**:
-- Clone URLs are expanded immediately when found (line 1238-1273)
-- Status display shows all sources (including expanded ones) immediately (line 1295-1318)
-- Files are updated immediately when first source succeeds (line 1348-1356)
-- EOSE delay reduced to 200ms (line 2224)
-- Timeout reduced to 3s and also expands clone URLs (line 2326-2357)
+- Clone URLs are expanded immediately when found (search for "expandCloneUrls" or "immediately expand")
+- Status display shows all sources (including expanded ones) immediately (search for "status display" or "all sources")
+- Files are updated immediately when first source succeeds (search for "firstSuccessFiles" or "update files immediately")
+- EOSE delay reduced to 200ms (search for "EOSE" or "isAfterEose" with delay)
+- Timeout reduced to 3s and also expands clone URLs (search for "timeout" or "setTimeout" in file fetching)
 
 ### Status Display for All Sources
 
@@ -1147,14 +1147,14 @@ const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)
 4. **Always show status** - status display remains visible even after files are found, so users can see which sources succeeded/failed
 5. **Update files immediately** - files are shown as soon as the first source succeeds, not waiting for all sources
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (status display logic around line 4809, expansion logic around line 1238)
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (search for: "status display logic" or "fetchStatus" for status, "expandCloneUrls" or "immediately expand" for expansion)
 
 **Key Changes**:
 - All expanded clone URLs are added to the status display immediately
-- GitHub/Codeberg sources are added to cloneUrls if sourceUrl is found (line 1230-1235)
+- GitHub/Codeberg sources are added to cloneUrls if sourceUrl is found (search for "sourceUrl" or "GitHub.*cloneUrls")
 - Each source shows its own status (pending, fetching, success, failed)
 - Status updates happen in real-time via the `onStatusUpdate` callback
-- Files are updated immediately when first source succeeds (line 1348-1356, 2205-2213)
+- Files are updated immediately when first source succeeds (search for "firstSuccessFiles" or "update files immediately")
 - Status display always shows all sources (removed the logic that hid it after files were found)
 
 ---
@@ -1179,10 +1179,10 @@ const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)
   - npub decoding for cross-format matching
 
 **Code Locations**:
-- `ui/src/app/explore/page.tsx` (line 1367-1407)
-- `ui/src/app/repositories/page.tsx` (line 1215-1255)
-- `ui/src/app/page.tsx` (line 157-206) - already implemented
-- `ui/src/app/[entity]/page.tsx` (line 733-750) - already implemented
+- `ui/src/app/explore/page.tsx` (search for "filteredRepos" or "deleted.*filter" in useMemo)
+- `ui/src/app/repositories/page.tsx` (search for "deleted.*filter" or "isDeleted" before ownership checks)
+- `ui/src/app/page.tsx` (search for "deleted.*filter" in recent repos) - already implemented
+- `ui/src/app/[entity]/page.tsx` (search for "deleted.*filter" in public profile) - already implemented
 
 **Result**: Deleted repositories are now completely hidden from all repository listing pages, ensuring users only see active repositories.
 
