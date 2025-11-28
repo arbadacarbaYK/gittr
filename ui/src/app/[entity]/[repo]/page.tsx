@@ -3141,7 +3141,7 @@ export default function RepoCodePage({
                     });
                     
                     // Fetch from all sources
-                    const eventPublisherPubkey = resolvedOwnerPubkey;
+                    const eventPublisherPubkey = ownerPubkey || resolvedOwnerPubkey || undefined;
                     const { files, statuses } = await fetchFilesFromMultipleSources(
                       cloneUrls,
                       branch,
