@@ -65,7 +65,7 @@ import { formatDate24h } from "@/lib/utils/date-format";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
 import { pushFilesToBridge } from "@/lib/nostr/push-to-bridge";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
-import { fetchFilesFromMultipleSources, parseGitSource, type FetchStatus } from "@/lib/utils/git-source-fetcher";
+import { fetchFilesFromMultipleSources, parseGitSource, type FetchStatus, type GitSource } from "@/lib/utils/git-source-fetcher";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { getActivities } from "@/lib/activity-tracking";
 import {
@@ -116,7 +116,10 @@ export default function RepoCodePage({
   const [fileContent, setFileContent] = useState<string>("");
   const [loadingFile, setLoadingFile] = useState<boolean>(false);
   const [fetchingFilesFromGit, setFetchingFilesFromGit] = useState<{ source: 'github' | 'gitlab' | null, message: string }>({ source: null, message: '' });
-  const [fetchStatuses, setFetchStatuses] = useState<Array<{ source: string; status: 'pending' | 'fetching' | 'success' | 'failed'; error?: string }>>([]);
+  type SimpleFetchStatus = { source: string; status: 'pending' | 'fetching' | 'success' | 'failed'; error?: string };
+  const [fetchStatuses, setFetchStatuses] = useState<Array<SimpleFetchStatus | FetchStatus>>([]);
+  const getStatusSourceString = (source: string | GitSource): string =>
+    typeof source === "string" ? source : source.url;
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [proposeEdit, setProposeEdit] = useState<boolean>(false);
   const [proposedContent, setProposedContent] = useState<string>("");
@@ -146,8 +149,8 @@ export default function RepoCodePage({
   }, [params.entity]);
 
   const repoOwnerPubkey = useMemo(() => {
-    if ((repoData as any)?.ownerPubkey && typeof (repoData as any).ownerPubkey === "string") {
-      return (repoData as any).ownerPubkey.toLowerCase();
+    if (repoData?.ownerPubkey && typeof repoData.ownerPubkey === "string") {
+      return repoData.ownerPubkey.toLowerCase();
     }
     try {
       const repos = loadStoredRepos();
@@ -170,14 +173,18 @@ export default function RepoCodePage({
   }, [currentUserPubkey, entityPubkey, repoOwnerPubkey]);
 
   const repoLinksList = repoData?.links || [];
+  const repoCloneUrls = repoData?.clone || [];
+  const repoHasClone = repoCloneUrls.length > 0;
+  const repoBranches = repoData?.branches || [];
+  const repoTags = repoData?.tags || [];
   const linksPublished = useMemo(() => {
     if (!repoLinksList || repoLinksList.length === 0) return false;
     return Boolean(
-      (repoData as any)?.syncedFromNostr ||
-      (repoData as any)?.lastNostrEventId ||
-      (repoData as any)?.nostrEventId ||
-      (repoData as any)?.fromNostr ||
-      (repoData as any)?.lastNostrEventCreatedAt
+      repoData?.syncedFromNostr ||
+      repoData?.lastNostrEventId ||
+      repoData?.nostrEventId ||
+      repoData?.fromNostr ||
+      repoData?.lastNostrEventCreatedAt
     );
   }, [repoLinksList, repoData]);
 
@@ -1038,13 +1045,13 @@ export default function RepoCodePage({
         // Always set repoData, even if files/readme are empty (for foreign repos synced from Nostr)
         // Only fetch from sourceUrl if we don't have any data AND there's a sourceUrl
         try {
-          if (repo.readme !== undefined || repo.files !== undefined || (repo as any).fileCount !== undefined || !repo.sourceUrl) {
+          if (repo.readme !== undefined || repo.files !== undefined || repo.fileCount !== undefined || !repo.sourceUrl) {
           // We have data or no sourceUrl - load what we have
           // CRITICAL: Check separate files storage key first (for optimized storage)
           let filesArray: RepoFileEntry[] = [];
           if (repo.files && Array.isArray(repo.files) && repo.files.length > 0) {
             filesArray = repo.files; // Use files from repo object if available
-          } else if ((repo as StoredRepo & { fileCount?: number }).fileCount && (repo as StoredRepo & { fileCount?: number }).fileCount! > 0) {
+          } else if (repo.fileCount && repo.fileCount > 0) {
             // Try loading from separate storage key
             filesArray = loadRepoFiles(params.entity, params.repo);
             if (filesArray.length > 0) {
@@ -1077,10 +1084,10 @@ export default function RepoCodePage({
             contributors,
             links: repo.links || [],
             defaultBranch: repo.defaultBranch || "main",
-            clone: (repo as any).clone || [], // CRITICAL: Include clone URLs from NIP-34 event
-            relays: (repo as any).relays || [],
+            clone: repo.clone || [], // CRITICAL: Include clone URLs from NIP-34 event
+            relays: repo.relays || [],
             ownerPubkey: ownerPubkey || repo.ownerPubkey,
-            lastNostrEventId: (repo as any).lastNostrEventId || (repo as any).nostrEventId,
+            lastNostrEventId: repo.lastNostrEventId || repo.nostrEventId,
           });
           // Ensure branches present
           const branches = (repo.branches && repo.branches.length > 0)
@@ -3136,7 +3143,13 @@ export default function RepoCodePage({
                     // Fetch from all sources
                     // Use event.pubkey as event publisher pubkey for bridge API (bridge stores repos by event publisher)
                     // TypeScript workaround: event is a Nostr event with pubkey, but type might not be fully inferred
-                    const eventPubkey = (event as any)?.pubkey;
+                    const eventPubkey =
+                      typeof event === "object" &&
+                      event !== null &&
+                      "pubkey" in event &&
+                      typeof (event as { pubkey?: unknown }).pubkey === "string"
+                        ? (event as { pubkey: string }).pubkey
+                        : undefined;
                     const eventPublisherPubkey = (eventPubkey && typeof eventPubkey === 'string' && /^[0-9a-f]{64}$/i.test(eventPubkey)) 
                       ? eventPubkey 
                       : undefined;
@@ -4150,7 +4163,7 @@ export default function RepoCodePage({
                               
                               for (const branchToTry of branchesToTry) {
                                 const branchUrl = `https://api.github.com/repos/${owner}/${repoName}/git/refs/heads/${encodeURIComponent(branchToTry)}`;
-                                const branchResponse = await fetch(branchUrl, { headers: { "User-Agent": "gittr-space" } as any });
+                                const branchResponse = await fetch(branchUrl, { headers: { "User-Agent": "gittr-space" } as HeadersInit });
                                 
                                 if (branchResponse.ok) {
                                   const branchData: any = await branchResponse.json();
@@ -4516,7 +4529,7 @@ export default function RepoCodePage({
                         try {
                           const projectPath = encodeURIComponent(`${owner}/${repoName}`);
                           const repoInfoUrl = `https://gitlab.com/api/v4/projects/${projectPath}`;
-                          const repoInfoResponse = await fetch(repoInfoUrl, { headers: { "User-Agent": "gittr-space" } as any });
+                          const repoInfoResponse = await fetch(repoInfoUrl, { headers: { "User-Agent": "gittr-space" } as HeadersInit });
                           if (repoInfoResponse.ok) {
                             const repoInfo: any = await repoInfoResponse.json();
                             if (repoInfo.default_branch) {
@@ -4793,7 +4806,7 @@ export default function RepoCodePage({
     updatingFromURLRef.current = true;
     
     // Update branch from URL if valid - use functional update
-    if (urlBranch && (repoData as any).branches?.includes(urlBranch)) {
+    if (urlBranch && repoData?.branches?.includes(urlBranch)) {
       setSelectedBranch(prev => {
         if (prev !== urlBranch) return urlBranch;
         return prev;
@@ -5050,7 +5063,7 @@ export default function RepoCodePage({
   const computeLiveCounts = useCallback(() => {
     try {
       const repoId = `${params.entity}/${params.repo}`;
-      const repos = loadStoredRepos() as any[];
+      const repos = loadStoredRepos();
       const rec = repos.find(r => {
         const slug = r.slug || "";
         const entity = r.entity || "";
@@ -5219,19 +5232,19 @@ export default function RepoCodePage({
   function getInlineRepoFile(path: string): { content: string; isBinary: boolean } | null {
     if (!repoData?.files || !Array.isArray(repoData.files)) return null;
     const normalizedTarget = normalizeRepoPath(path).toLowerCase();
-    const contentFields = ["content", "data", "body", "text", "fileContent", "file_content"];
+    const contentFields = ["content", "data", "body", "text", "fileContent", "file_content"] as const;
 
-    const match = repoData.files.find((file: any) => {
+    const match = repoData.files.find((file) => {
       const filePath = normalizeRepoPath(file?.path || "").toLowerCase();
       return filePath === normalizedTarget;
     });
 
     if (!match) return null;
-    const matchAny = match as Record<string, any>;
+
     for (const field of contentFields) {
-      const fieldValue = matchAny?.[field];
+      const fieldValue = match[field];
       if (typeof fieldValue === "string" && fieldValue) {
-        const isBinary = Boolean(matchAny?.isBinary || matchAny?.binary);
+        const isBinary = Boolean(match.isBinary || match.binary);
         return { content: fieldValue, isBinary };
       }
     }
@@ -5320,7 +5333,7 @@ export default function RepoCodePage({
   }
 
   async function fetchGithubRaw(path: string): Promise<{ content: string | null; url: string | null; isBinary: boolean }> {
-    // console.log(`🔍 [fetchGithubRaw] Fetching file: ${path}`, { hasRepoData: !!repoData, filesCount: repoData?.files?.length || 0, ownerPubkey: (repoData as any)?.ownerPubkey ? (repoData as any).ownerPubkey.slice(0, 8) : null });
+    // console.log(`🔍 [fetchGithubRaw] Fetching file: ${path}`, { hasRepoData: !!repoData, filesCount: repoData?.files?.length || 0, ownerPubkey: repoData?.ownerPubkey ? repoData.ownerPubkey.slice(0, 8) : null });
 
     // Strategy 1: Check if file content is embedded in repoData.files array
     // According to the working insights: "Files embedded in Nostr events are always checked first"
@@ -5330,7 +5343,7 @@ export default function RepoCodePage({
       const normalizePath = (p: string) => p.replace(/^\/+/, '').replace(/\/+/g, '/');
       const normalizedPath = normalizePath(path);
       
-      const fileEntry = repoData.files.find((f: any) => {
+      const fileEntry = repoData.files.find((f) => {
         const fPath = normalizePath(f.path || "");
         // Try multiple matching strategies
         return fPath === normalizedPath || 
@@ -5346,8 +5359,8 @@ export default function RepoCodePage({
         console.log(`🔍 [fetchGithubRaw] Found file entry in Nostr event files array: ${path}`, {
           fileEntryPath: fileEntry.path,
           requestedPath: path,
-          hasContent: !!(fileEntry as any).content,
-          isBinary: !!(fileEntry as any).isBinary,
+          hasContent: Boolean(fileEntry.content),
+          isBinary: Boolean(fileEntry.isBinary),
         });
         
         // CRITICAL: Check for content in standard field first, then try alternative field names
@@ -5357,8 +5370,9 @@ export default function RepoCodePage({
         let foundField: string | null = null;
         
         for (const field of contentFields) {
-          if ((fileEntry as any)?.[field]) {
-            foundContent = (fileEntry as any)[field];
+          const candidate = fileEntry[field as keyof RepoFileEntry];
+          if (typeof candidate === "string" && candidate.length > 0) {
+            foundContent = candidate;
             foundField = field;
             break;
           }
@@ -5366,14 +5380,14 @@ export default function RepoCodePage({
         
         if (foundContent) {
           console.log(`✅ [fetchGithubRaw] Found file content in field '${foundField}' for ${path}`, {
-            isBinary: !!(fileEntry as any).isBinary,
+            isBinary: Boolean(fileEntry.isBinary),
           });
           
           // Check if it's a binary file stored as base64
           const ext = path.split('.').pop()?.toLowerCase() || '';
           const htmlExts = ['html', 'htm', 'xhtml'];
           const isHtmlFile = htmlExts.includes(ext);
-          const isBinary = (fileEntry as any).isBinary || (fileEntry as any).binary || false;
+          const isBinary = Boolean(fileEntry.isBinary || fileEntry.binary);
           
           if (isBinary) {
             // CRITICAL: HTML files should NEVER be stored as binary, but if they are, decode them
@@ -5432,7 +5446,7 @@ export default function RepoCodePage({
     // Strategy 2: Try git-nostr-bridge API
     // According to the working insights: "git-nostr-bridge is the primary method for repos that have been cloned locally"
     // Resolve ownerPubkey: check repoData, then localStorage, then decode npub, then resolveEntityToPubkey
-    let ownerPubkey: string | null = (repoData as any)?.ownerPubkey;
+    let ownerPubkey: string | null = repoData?.ownerPubkey ?? null;
     
     // If not in repoData, check localStorage
     if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
@@ -5483,8 +5497,12 @@ export default function RepoCodePage({
       // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
       // Priority: repositoryName > repo > slug > name > decodedRepo
       // The bridge uses repositoryName from the event, not the human-readable name
-      const repoDataAny = repoData as any; // Type assertion for dynamic fields (repo/slug may exist but aren't in type)
-      let repoName = repoDataAny?.repositoryName || repoDataAny?.['repo'] || repoDataAny?.['slug'] || repoDataAny?.name || String(decodedRepo || "");
+      let repoName =
+        repoData?.repositoryName ||
+        repoData?.repo ||
+        repoData?.slug ||
+        repoData?.name ||
+        String(decodedRepo || "");
       
       // Extract repo name (handle paths like "gitnostr.com/gitworkshop")
       if (repoName.includes('/')) {
@@ -5528,7 +5546,7 @@ export default function RepoCodePage({
         } else if (response.status === 404 || response.status === 500) {
           // Repo not cloned yet OR repo exists but is empty/corrupted - check if GRASP server and trigger clone
           // 500 errors can occur when repo exists but has no valid branches or is corrupted
-          const cloneUrls = (repoData as any)?.clone || [];
+          const cloneUrls = repoData?.clone || [];
           // Use centralized isGraspServer function which includes pattern matching (git., git-\d+.)
           const { isGraspServer: isGraspServerFn } = require("@/lib/utils/grasp-servers");
           const graspCloneUrl = cloneUrls.find((url: string) => 
@@ -5605,7 +5623,7 @@ export default function RepoCodePage({
     // GitHub, GitLab, Codeberg APIs are used when repo is imported from external git server
     // CRITICAL: Iterate through all successful sources if available, for fallback during file opening
     // IMPORTANT: Only use sources that actually succeeded in fetching files (not sources that returned "No files found")
-    const successfulSources = (repoData as any)?.successfulSources || [];
+    const successfulSources = repoData?.successfulSources || [];
     const sourcesToTry: Array<{ sourceUrl: string; source: any }> = [];
     
     // Priority 1: Use successful sources array (sources that successfully fetched file lists)
@@ -5628,10 +5646,14 @@ export default function RepoCodePage({
     
     // Priority 2: Fallback to sourceUrl/forkedFrom/clone URLs if no successful sources
     if (sourcesToTry.length === 0) {
-      let sourceUrl = repoData?.sourceUrl || repoData?.forkedFrom || 
-        ((repoData as any)?.clone && Array.isArray((repoData as any).clone) && (repoData as any).clone.length > 0 
-          ? (repoData as any).clone.find((url: string) => url.includes('github.com') || url.includes('gitlab.com') || url.includes('codeberg.org'))
-          : null);
+      const preferredClone = repoCloneUrls.find((url) =>
+        url.includes("github.com") || url.includes("gitlab.com") || url.includes("codeberg.org")
+      );
+      let sourceUrl: string | null =
+        repoData?.sourceUrl ??
+        repoData?.forkedFrom ??
+        preferredClone ??
+        null;
       
       // CRITICAL: Normalize SSH URLs (git@host:path) to HTTPS format if found
       if (sourceUrl) {
@@ -5647,7 +5669,7 @@ export default function RepoCodePage({
       if (!sourceUrl) {
         try {
           const repos = loadStoredRepos();
-          const matchingRepo = repos.find((r: any) => {
+          const matchingRepo = repos.find((r) => {
             const entityMatch = r.entity === params.entity || 
               (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
             const repoMatch = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
@@ -5655,7 +5677,7 @@ export default function RepoCodePage({
           });
           if (matchingRepo) {
             // Priority 1: Use sourceUrl or forkedFrom if available
-            sourceUrl = matchingRepo.sourceUrl || matchingRepo.forkedFrom;
+            sourceUrl = matchingRepo.sourceUrl ?? matchingRepo.forkedFrom ?? null;
             // Priority 2: If no sourceUrl, try to find GitHub/GitLab/Codeberg clone URL (preferred)
             // CRITICAL: Only use GitHub/GitLab/Codeberg URLs as sourceUrl - Nostr git servers are handled by multi-source fetcher
             if (!sourceUrl && matchingRepo.clone && Array.isArray(matchingRepo.clone) && matchingRepo.clone.length > 0) {
@@ -5728,7 +5750,7 @@ export default function RepoCodePage({
           hasGitlabMatch: !!gitlabMatch,
           fromSourceUrl: !!repoData?.sourceUrl,
           fromForkedFrom: !!repoData?.forkedFrom,
-          fromClone: !!(repoData?.sourceUrl || repoData?.forkedFrom) ? false : !!((repoData as any)?.clone && Array.isArray((repoData as any).clone) && (repoData as any).clone.length > 0),
+          fromClone: Boolean(!(repoData?.sourceUrl || repoData?.forkedFrom) && repoHasClone),
         });
         
       // Use selectedBranch, fallback to defaultBranch, then main/master
@@ -5860,8 +5882,8 @@ export default function RepoCodePage({
       console.log(`⚠️ [fetchGithubRaw] No sourceUrl, forkedFrom, or clone URL found for fetching file:`, {
         hasSourceUrl: !!repoData?.sourceUrl,
         hasForkedFrom: !!repoData?.forkedFrom,
-        hasClone: !!((repoData as any)?.clone && Array.isArray((repoData as any).clone) && (repoData as any).clone.length > 0),
-        cloneUrls: (repoData as any)?.clone || [],
+        hasClone: repoHasClone,
+        cloneUrls: repoCloneUrls,
       });
     } else {
       console.log(`❌ [fetchGithubRaw] All ${sourcesToTry.length} sources failed to fetch file: ${path}`);
@@ -5956,7 +5978,7 @@ export default function RepoCodePage({
       // Check if this file is binary by checking the file entry
       const repoData = repoDataRef.current;
       if (repoData && repoData.files) {
-        const fileEntry = repoData.files.find((f: any) => {
+        const fileEntry = repoData.files.find((f) => {
           const fPath = normalizePath(f.path || "");
           return fPath === normalizedPath || 
                  fPath === path || 
@@ -5968,7 +5990,7 @@ export default function RepoCodePage({
         });
         
         if (fileEntry) {
-          const isBinary = (fileEntry as any).isBinary || (fileEntry as any).binary || false;
+          const isBinary = Boolean(fileEntry.isBinary || fileEntry.binary);
           
           if (isBinary && overrideContent && !overrideContent.startsWith('data:')) {
             // Convert base64 to data URL for binary files
@@ -6139,9 +6161,7 @@ export default function RepoCodePage({
   const [markdownViewMode, setMarkdownViewMode] = useState<'preview' | 'code'>('preview');
 
   const cloneUrlGroups = useMemo(() => {
-    const rawCloneList = Array.isArray((repoData as any)?.clone)
-      ? ((repoData as any)?.clone as string[])
-      : [];
+    const rawCloneList = repoCloneUrls;
     const uniqueCloneUrls = Array.from(
       new Set(
         rawCloneList.filter(
@@ -6155,11 +6175,7 @@ export default function RepoCodePage({
     const sshCloneUrls = uniqueCloneUrls.filter((url) => url.startsWith("git@"));
     const nostrCloneUrls = uniqueCloneUrls.filter((url) => url.startsWith("nostr://"));
     return { httpCloneUrls, sshCloneUrls, nostrCloneUrls };
-  }, [
-    Array.isArray((repoData as any)?.clone)
-      ? (repoData as any)?.clone.join("|")
-      : "",
-  ]);
+  }, [repoCloneUrls.join("|")]);
 
   const { httpCloneUrls, sshCloneUrls, nostrCloneUrls } = cloneUrlGroups;
 
@@ -6170,8 +6186,8 @@ export default function RepoCodePage({
   const prevTagsRawRef = useRef<any[] | undefined>(undefined);
   
   // Get current branches/tags
-  const currentBranches = (repoData as any)?.branches;
-  const currentTags = (repoData as any)?.tags;
+  const currentBranches = repoBranches;
+  const currentTags = repoTags;
   
   // Shallow comparison helper - only checks length and first few elements for performance
   const arraysEqual = (a: any[] | undefined, b: any[] | undefined): boolean => {
@@ -6315,11 +6331,11 @@ export default function RepoCodePage({
                 onCreateBranch={handleCreateBranch}
               />
               <div className="hidden lg:inline-block">
-                <GitBranch className="text-gray-400 inline h-4 w-4" /> {(((repoData as any)?.branches)||[]).length}{" "}
+                <GitBranch className="text-gray-400 inline h-4 w-4" /> {repoBranches.length}{" "}
                 <span className="text-gray-400">branches</span>
               </div>
               <div className="hidden lg:inline-block">
-                <Tag className="text-gray-400 inline h-4 w-4" /> {(((repoData as any)?.tags)||[]).length}{" "}
+                <Tag className="text-gray-400 inline h-4 w-4" /> {repoTags.length}{" "}
                 <span className="text-gray-400">tags</span>
               </div>
             </div>
@@ -6379,7 +6395,7 @@ export default function RepoCodePage({
                                   console.error("NEXT_PUBLIC_GIT_SSH_BASE is not configured in environment variables");
                                 }
                                 const sshUrl = `git@${gitSshBase}:${params.entity}/${params.repo}.git`;
-                                const cloneUrls = (repoData as any)?.clone || [];
+                                const cloneUrls = repoCloneUrls;
                                 const httpsUrls = cloneUrls.filter((url: string) => typeof url === "string" && (url.startsWith("http://") || url.startsWith("https://")));
                                 const nostrUrls = cloneUrls.filter((url: string) => typeof url === "string" && url.startsWith("nostr://"));
                                 
@@ -6396,7 +6412,7 @@ export default function RepoCodePage({
                               try {
                                 const { showToast } = await import("@/components/ui/toast");
                                 // CRITICAL: Use NIP-34 clone URLs from event first, then fallback to sourceUrl or localhost
-                                const cloneUrls = (repoData as any)?.clone || [];
+                                const cloneUrls = repoCloneUrls;
                                 let cloneUrl: string | null = null;
                                 
                                 // Priority 1: Use first NIP-34 clone URL (from event tags)
@@ -6680,12 +6696,7 @@ export default function RepoCodePage({
                 onClick={(e) => { e.preventDefault(); window.location.href = getRepoLink() + (selectedBranch && selectedBranch !== (repoData?.defaultBranch || "main") ? `?branch=${selectedBranch}` : ""); }}
                 className="text-purple-500 hover:underline font-semibold"
               >
-                {(() => {
-                  // CRITICAL: Display decoded repo name (e.g., "Swarm Relay" instead of "Swarm%20Relay")
-                  // But use repoData.name if available (from Nostr event) for consistency
-                  const repoDataAny = repoData as any;
-                  return repoDataAny?.name || repoDataAny?.repo || decodedRepo;
-                })()}
+                {repoData?.name || repoData?.repo || decodedRepo}
               </a>
               {pathParts.map((part, i) => (
                 <span key={i} className="flex items-center gap-1">
@@ -6858,7 +6869,7 @@ export default function RepoCodePage({
             const hasSuccess = fetchStatuses.some(s => s.status === 'success');
             const allDone = fetchStatuses.every(s => s.status === 'success' || s.status === 'failed');
             const stillFetching = fetchStatuses.some(s => s.status === 'fetching' || s.status === 'pending');
-            const successfulSourcesList = (repoData as any)?.successfulSources || [];
+            const successfulSourcesList = repoData?.successfulSources || [];
             
             // Count statuses for summary
             const successCount = fetchStatuses.filter(s => s.status === 'success').length;
@@ -6909,17 +6920,19 @@ export default function RepoCodePage({
                         <p className="text-xs text-green-400 font-semibold mb-1">✓ Successful Sources:</p>
                         {fetchStatuses
                           .filter(s => s.status === 'success')
-                          .map((status, index) => (
+                          .map((status, index) => {
+                            const sourceLabel = getStatusSourceString(status.source);
+                            return (
                             <div key={`success-${index}`} className="flex items-center justify-between text-xs bg-green-900/20 border border-green-600/30 rounded px-2 py-1">
                               <span className="text-green-300 truncate flex-1 mr-2 font-medium">
-                                {(status.source === 'github.com' || status.source.includes('github')) && '🐙 '}
-                                {(status.source === 'codeberg.org' || status.source.includes('codeberg')) && '🐙 '}
-                                {(status.source === 'gitlab.com' || status.source.includes('gitlab')) && '🦊 '}
-                                {status.source}
-                      </span>
+                                {(sourceLabel === 'github.com' || sourceLabel.includes('github')) && '🐙 '}
+                                {(sourceLabel === 'codeberg.org' || sourceLabel.includes('codeberg')) && '🐙 '}
+                                {(sourceLabel === 'gitlab.com' || sourceLabel.includes('gitlab')) && '🦊 '}
+                                {sourceLabel}
+                              </span>
                               <span className="text-green-400 flex-shrink-0">✓ Files available</span>
-                    </div>
-                  ))}
+                            </div>);
+                          })}
                 </div>
                     )}
                     
@@ -6930,12 +6943,14 @@ export default function RepoCodePage({
                           <p className="text-xs text-blue-400 font-semibold mb-1">⟳ Fetching:</p>
                           {fetchStatuses
                             .filter(s => s.status === 'fetching' || s.status === 'pending')
-                            .map((status, index) => (
+                            .map((status, index) => {
+                              const sourceLabel = getStatusSourceString(status.source);
+                              return (
                               <div key={`fetching-${index}`} className="flex items-center justify-between text-xs">
-                                <span className="text-gray-300 truncate flex-1 mr-2">{status.source}</span>
+                                <span className="text-gray-300 truncate flex-1 mr-2">{sourceLabel}</span>
                                 <span className="text-blue-400 flex-shrink-0">⟳ Fetching...</span>
                               </div>
-                            ))}
+                            )})}
                         </>
                       )}
                       
@@ -6945,14 +6960,16 @@ export default function RepoCodePage({
                           <p className="text-xs text-gray-400 font-semibold mb-1">✗ Unavailable:</p>
                           {fetchStatuses
                             .filter(s => s.status === 'failed')
-                            .map((status, index) => (
+                            .map((status, index) => {
+                              const sourceLabel = getStatusSourceString(status.source);
+                              return (
                               <div key={`failed-${index}`} className="flex items-center justify-between text-xs text-gray-500">
-                                <span className="text-gray-500 truncate flex-1 mr-2">{status.source}</span>
+                                <span className="text-gray-500 truncate flex-1 mr-2">{sourceLabel}</span>
                                 <span className="text-gray-500 flex-shrink-0 text-xs">
                                   {status.error || 'No files from this source'}
                           </span>
-                        </div>
-                      ))}
+                              </div>
+                            )})}
                         </>
                       )}
                     </div>
@@ -6962,7 +6979,10 @@ export default function RepoCodePage({
                       <div className="pt-2 border-t border-[#383B42]">
                         <p className="text-xs text-gray-400 mb-1">
                           <span className="text-green-400">✓</span> Files loaded from: <span className="text-green-300 font-medium">
-                            {fetchStatuses.find(s => s.status === 'success')?.source || 'localStorage'}
+                            {(() => {
+                              const winningSource = fetchStatuses.find(s => s.status === 'success')?.source;
+                              return winningSource ? getStatusSourceString(winningSource) : 'localStorage';
+                            })()}
                           </span>
                         </p>
                       </div>
@@ -8027,7 +8047,7 @@ export default function RepoCodePage({
             // CRITICAL: Reset "pushing" status if it's been stuck for more than 5 minutes
             // This handles cases where push was canceled or failed but status wasn't reset
             if (status === "pushing" && repo.status === "pushing") {
-              const lastPushAttempt = (repo as any).lastPushAttempt || 0;
+              const lastPushAttempt = repo.lastPushAttempt || 0;
               const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
               if (lastPushAttempt < fiveMinutesAgo) {
                 const hasEventId = !!(repo.nostrEventId || repo.lastNostrEventId);
@@ -8039,7 +8059,7 @@ export default function RepoCodePage({
                 } else {
                   // Has event ID - check if bridge processed it
                   // If bridge hasn't processed it after 5 minutes, mark as "live_with_edits" (verifying)
-                  if ((repo as any).bridgeProcessed !== true) {
+                  if (repo.bridgeProcessed !== true) {
                     setRepoStatus(params.repo, params.entity, "live_with_edits");
                     status = "live_with_edits";
                     console.log("🔄 [Push Button] Changed stuck 'pushing' to 'live_with_edits' (has event ID, verifying bridge)");
@@ -8188,7 +8208,15 @@ export default function RepoCodePage({
                           // - Files locally but not on GitHub → DELETE them (they were deleted on GitHub)
                           // - GitHub is the absolute source of truth - no merging, no safety checks
                           
-                          const githubFiles = importData.files || [];
+                          const githubFiles: RepoFileEntry[] = Array.isArray(importData.files)
+                            ? importData.files.filter(
+                                (f: unknown): f is RepoFileEntry =>
+                                  typeof f === "object" &&
+                                  f !== null &&
+                                  typeof (f as { path?: unknown }).path === "string" &&
+                                  typeof (f as { type?: unknown }).type === "string"
+                              )
+                            : [];
                           
                           console.log(`🔄 [Refetch] Full replacement from GitHub:`, {
                             githubFilesTotal: githubFiles.length,
@@ -8217,13 +8245,13 @@ export default function RepoCodePage({
                           const localFiles = existingRepo.files || [];
                           const localFileMap = new Map(
                             localFiles
-                              .filter((f: any) => f.type === "file")
-                              .map((f: any) => [f.path, f])
+                              .filter((f) => f.type === "file")
+                              .map((f) => [f.path, f])
                           );
                           const githubFileMap = new Map(
                             newFiles
-                              .filter((f: any) => f.type === "file")
-                              .map((f: any) => [f.path, f])
+                              .filter((f) => f.type === "file")
+                              .map((f) => [f.path, f])
                           );
                           
                           // Check for differences:
@@ -8240,10 +8268,10 @@ export default function RepoCodePage({
                             const localFile = localFileMap.get(path);
                             if (localFile) {
                               // Compare content (handle both text and binary)
-                              const localContent = String((localFile as any).content || "");
-                              const githubContent = String((githubFile as any).content || "");
-                              const localIsBinary = Boolean((localFile as any).isBinary || false);
-                              const githubIsBinary = Boolean((githubFile as any).isBinary || false);
+                              const localContent = String(localFile.content || "");
+                              const githubContent = String(githubFile.content || "");
+                              const localIsBinary = Boolean(localFile.isBinary || false);
+                              const githubIsBinary = Boolean(githubFile.isBinary || false);
                               
                               // Content changed if: binary flag changed, or content string differs
                               if (localIsBinary !== githubIsBinary || localContent !== githubContent) {
@@ -8605,11 +8633,10 @@ export default function RepoCodePage({
                                 syncedFromNostr: true,
                                 // Clear unpushed edits flag (we just synced from Nostr)
                                 hasUnpushedEdits: false,
-                                // Preserve local-only data (logoUrl may not be in StoredRepo type but exists at runtime)
-                                ...((existingRepo as any).logoUrl ? { logoUrl: (existingRepo as any).logoUrl } : {}),
+                                logoUrl: existingRepo.logoUrl,
                                 // Store created_at timestamp in SECONDS (NIP-34 format) - not milliseconds
-                                ...({ lastNostrEventCreatedAt: latestEvent.created_at } as any),
-                              } as StoredRepo & { lastNostrEventCreatedAt?: number; logoUrl?: string };
+                                lastNostrEventCreatedAt: latestEvent.created_at,
+                              };
                               
                               saveStoredRepos(repos);
                               
@@ -8909,10 +8936,10 @@ export default function RepoCodePage({
           relays={useMemo(() => {
             // Combine default relays (from env: NEXT_PUBLIC_NOSTR_RELAYS) with repo-specific relays from Nostr event
             // Repo-specific relays come from "relay" or "relays" tags in the repository event
-            const repoRelays = (repoData as any)?.relays || [];
+            const repoRelays = repoData?.relays || [];
             const combined = [...(defaultRelays || []), ...repoRelays.filter((r: string) => !defaultRelays.includes(r))];
             return combined;
-          }, [defaultRelays, (repoData as any)?.relays])}
+          }, [defaultRelays, repoData?.relays])}
           graspServers={useMemo(() => {
             // CRITICAL: graspServers should be wss:// URLs (Nostr relays that are also git servers)
             // GRASP servers are automatically extracted from relays by RelayDisplay component
@@ -8981,7 +9008,7 @@ export default function RepoCodePage({
                 
                 // Handle GitSource object format (from FetchStatus)
                 if (source && typeof source === 'object' && 'type' in source) {
-                  const gitSource = source as any;
+                  const gitSource = source as GitSource;
                   const sourceType = gitSource.type;
                   const sourceUrl = gitSource.url || '';
                   
@@ -9023,7 +9050,7 @@ export default function RepoCodePage({
                   }
                 } else if (source && typeof source === 'object' && 'url' in source) {
                   // Handle GitSource object format
-                  const gitSource = source as any;
+                  const gitSource = source as GitSource;
                   sourceUrl = gitSource.url || '';
                   displayName = gitSource.displayName || 
                     (gitSource.owner && gitSource.repo 
