@@ -148,7 +148,12 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
     try {
       const key = getRepoStorageKey("gittr_prs", params.entity, params.repo);
       const prs = JSON.parse(localStorage.getItem(key) || "[]") as any[];
-      const prData = prs.find((p: any) => p.id === params.id || String(prs.indexOf(p) + 1) === params.id);
+      // Match by: full ID, number, or index
+      const prData = prs.find((p: any) => 
+        p.id === params.id || 
+        p.number === params.id || 
+        String(prs.indexOf(p) + 1) === params.id
+      );
       
       if (prData) {
         setPR({

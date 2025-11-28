@@ -161,7 +161,12 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
       const key = getRepoStorageKey("gittr_issues", params.entity, params.repo);
       const issuesRaw = localStorage.getItem(key);
       const issues: Issue[] = issuesRaw ? (JSON.parse(issuesRaw) as Issue[]) : [];
-      const issueData = issues.find((i) => i.id === params.id || String(issues.indexOf(i) + 1) === params.id);
+      // Match by: full ID, number, or index
+      const issueData = issues.find((i) => 
+        i.id === params.id || 
+        i.number === params.id || 
+        String(issues.indexOf(i) + 1) === params.id
+      );
       
       if (issueData) {
         setIssue({
