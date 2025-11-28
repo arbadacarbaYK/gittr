@@ -452,6 +452,7 @@ export default function RepositoriesPage() {
       }
       
       // Load list of locally-deleted repos (user deleted them, don't re-add from Nostr)
+      if (typeof window === 'undefined') return;
       const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
       const deletedReposSet = new Set(deletedRepos.map(d => `${d.entity}/${d.repo}`.toLowerCase()));
       
@@ -737,6 +738,7 @@ export default function RepositoriesPage() {
             });
             
             // Load existing repos
+            if (typeof window === 'undefined') return;
             const existingRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as Repo[];
             
             // Check if this repo was locally deleted (user deleted it, don't re-add from Nostr)
@@ -1019,6 +1021,7 @@ export default function RepositoriesPage() {
         // We'll track EOSE separately and only mark as complete when all relays are done
         if (isAfterEose) {
           // DEBUG: Log summary after EOSE from this relay
+          if (typeof window === 'undefined') return;
           const allRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
           const foreignRepos = pubkey ? allRepos.filter((r: any) => r.ownerPubkey && r.ownerPubkey !== pubkey) : allRepos;
           const foreignReposWithFiles = foreignRepos.filter((r: any) => r.files && r.files.length > 0);
@@ -1042,6 +1045,7 @@ export default function RepositoriesPage() {
         // For now, we'll use a delay to ensure all relays have sent EOSE
         setTimeout(() => {
           setSyncing(false);
+          if (typeof window === 'undefined') return;
           const allRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
           const foreignRepos = pubkey ? allRepos.filter((r: any) => r.ownerPubkey && r.ownerPubkey !== pubkey) : allRepos;
           const foreignReposWithFiles = foreignRepos.filter((r: any) => r.files && r.files.length > 0);
@@ -1073,7 +1077,7 @@ export default function RepositoriesPage() {
   // CRITICAL: Sync repos from activities if they're missing from localStorage
   // This handles the case where repos were created locally but not synced to localStorage
   useEffect(() => {
-    if (!pubkey) return; // Not logged in = can't sync
+    if (!pubkey || typeof window === 'undefined') return; // Not logged in = can't sync
     
     try {
       const allRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
