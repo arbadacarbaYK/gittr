@@ -3342,7 +3342,10 @@ export default function RepoCodePage({
                 } else {
                   console.log("✅ [File Fetch] Files found in Nostr event, not using git-nostr-bridge fallback");
                 }
-                if (unsub) unsub();
+                if (unsub) {
+                  unsub();
+                  clearTimeout(globalTimeoutId); // Clear global timeout since EOSE arrived
+                }
               }, 500); // Reduced to 500ms to start fetching faster
             }
           );
