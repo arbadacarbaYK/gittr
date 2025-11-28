@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import useSession from "@/lib/nostr/useSession";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
@@ -25,7 +25,7 @@ function slugify(text: string): string {
   return slug || "";
 }
 
-export default function NewRepoPage() {
+function NewRepoPageContent() {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [status, setStatus] = useState("");
@@ -490,6 +490,14 @@ export default function NewRepoPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function NewRepoPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-black text-white p-8">Loading...</div>}>
+      <NewRepoPageContent />
+    </Suspense>
   );
 }
 
