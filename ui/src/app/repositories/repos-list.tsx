@@ -431,7 +431,7 @@ export function ReposList({
                 : "hover:bg-white/5"
             }`}
           >
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
               <div
                 className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
                 onClick={(e) => {
@@ -463,20 +463,18 @@ export function ReposList({
                 </div>
                 <div className="flex flex-col gap-1 min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex items-center gap-2">
+                    <div className="font-semibold text-cyan-400 min-w-0 flex-1 flex items-center gap-2">
                       {isNavigating && (
                         <Loader2 className="h-4 w-4 animate-spin text-purple-400 flex-shrink-0" />
                       )}
-                      <span>
-                        {displayName} <span className="opacity-70">/ {entityDisplay}/{displayName}</span>
-                      </span>
+                      <span className="truncate">{displayName}</span>
                     </div>
                     {/* CRITICAL: Status badge - suppressHydrationWarning because status calculation depends on client-side state */}
                     {(() => {
                       const style = getStatusBadgeStyle(status);
                       return (
                         <span 
-                          className={`text-xs px-2 py-0.5 rounded ${style.bg} ${style.text} flex-shrink-0`}
+                          className={`text-xs px-2 py-0.5 rounded ${style.bg} ${style.text} flex-shrink-0 whitespace-nowrap`}
                           suppressHydrationWarning
                         >
                           {style.label}
@@ -488,7 +486,7 @@ export function ReposList({
                     <div suppressHydrationWarning>
                       <Badge 
                         variant="outline" 
-                        className="text-xs flex items-center gap-1 flex-shrink-0"
+                        className="text-xs flex items-center gap-1 flex-shrink-0 whitespace-nowrap"
                       >
                         {r.publicRead !== false ? (
                           <>
@@ -504,14 +502,18 @@ export function ReposList({
                       </Badge>
                     </div>
                   </div>
-                  {r.sourceUrl && (
-                    <div className="text-sm opacity-70 whitespace-nowrap overflow-hidden text-ellipsis">
+                  {r.description && r.description.trim() ? (
+                    <div className="text-sm opacity-70 line-clamp-2">
+                      {r.description}
+                    </div>
+                  ) : r.sourceUrl ? (
+                    <div className="text-sm opacity-70 line-clamp-2">
                       Imported from {r.sourceUrl}
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
-              <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+              <div className="flex items-center gap-2 sm:ml-4 flex-shrink-0 flex-wrap">
                 {/* CRITICAL: Always render button container to prevent hydration mismatches */}
                 {/* Hide button when conditions aren't met, but keep DOM structure consistent */}
                 {/* suppressHydrationWarning because button visibility depends on client-side state (pubkey, isOwner) */}
@@ -523,6 +525,7 @@ export function ReposList({
                     size="sm"
                     variant="outline"
                     disabled={isPushing}
+                    className="text-xs whitespace-nowrap"
                     onClick={async (e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -607,14 +610,29 @@ export function ReposList({
                         });
                       }
                     }}
-                    className="text-xs"
                   >
                     <Upload className="h-3 w-3 mr-1" />
                     {isPushing ? "Pushing..." : "Push to Nostr"}
                   </Button>
                 </div>
                 <div className="opacity-70 text-sm whitespace-nowrap">
-                  {formatDateTime24h(r.createdAt)}
+                  {(r as any).lastNostrEventCreatedAt ? (
+                    <>
+                      Last push: {formatDateTime24h((r as any).lastNostrEventCreatedAt * 1000)}
+                    </>
+                  ) : (r as any).lastPushAttempt ? (
+                    <>
+                      Push attempted: {formatDateTime24h((r as any).lastPushAttempt)}
+                    </>
+                  ) : (r as any).lastModifiedAt ? (
+                    <>
+                      Modified: {formatDateTime24h((r as any).lastModifiedAt)}
+                    </>
+                  ) : (
+                    <>
+                      Created: {formatDateTime24h(r.createdAt)}
+                    </>
+                  )}
                 </div>
               </div>
             </div>
