@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
@@ -8,7 +8,7 @@ import useSession from "@/lib/nostr/useSession";
 import { cn } from "@/lib/utils";
 
 import { Bell, Brush, Cog, Server, User, Coins, Key, Shield } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 // check if signed in, if not, redirect to sign in page
 
@@ -62,6 +62,7 @@ export default function SettingsLayout({
 }) {
   const { picture, initials, name } = useSession();
   const { pubkey } = useNostrContext();
+  const router = useRouter();
   // Use centralized metadata cache instead of separate useMetadata hook
   const metadataMap = useContributorMetadata(pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? [pubkey] : []);
   const metadata = pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? (metadataMap[pubkey] || {}) : {};
@@ -76,21 +77,26 @@ export default function SettingsLayout({
   // Only use session initials if we don't have a name from metadata
   // CRITICAL: Use useState to prevent hydration mismatch - server renders "U", client updates after mount
   const [avatarInitials, setAvatarInitials] = useState("U");
+  const lastComputedRef = useRef<string>("");
   
   useEffect(() => {
     // Only compute initials on client to prevent hydration mismatch
     if (typeof window === 'undefined') return;
     
+    // Compute the initials value
+    let computed = "U";
     if (actualName && actualName !== "Anonymous Nostrich") {
-      // Use first 2 characters of the actual name
-      setAvatarInitials(actualName.substring(0, 2).toUpperCase());
+      computed = actualName.substring(0, 2).toUpperCase();
     } else if (actualDisplayName && actualDisplayName !== "Anonymous Nostrich") {
-      setAvatarInitials(actualDisplayName.substring(0, 2).toUpperCase());
+      computed = actualDisplayName.substring(0, 2).toUpperCase();
     } else if (initials && !/^\d+$/.test(initials)) {
-      // Fallback to session initials only if they're not numbers (pubkey prefix)
-      setAvatarInitials(initials);
-    } else {
-      setAvatarInitials("U"); // Default fallback
+      computed = initials;
+    }
+    
+    // Only update if the value actually changed to prevent infinite loops
+    if (computed !== lastComputedRef.current) {
+      lastComputedRef.current = computed;
+      setAvatarInitials(computed);
     }
   }, [actualName, actualDisplayName, initials]);
 
@@ -143,7 +149,7 @@ export default function SettingsLayout({
                     href={link.href}
                     onClick={(e) => {
                       e.preventDefault();
-                      window.location.href = link.href;
+                      router.push(link.href);
                     }}
                     className={cn(
                       pathname == link.href && "!bg-zinc-800/50",
