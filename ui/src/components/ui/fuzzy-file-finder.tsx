@@ -133,6 +133,7 @@ export function FuzzyFileFinder({
 
   // Load recent files from localStorage
   const recentFiles = useMemo(() => {
+    if (typeof window === 'undefined') return [] as string[];
     try {
       const stored = localStorage.getItem(`gittr_recent_files_${currentPath}`);
       if (stored) {
@@ -170,6 +171,7 @@ export function FuzzyFileFinder({
 
   // Save file to recent files
   const saveToRecent = useCallback((path: string) => {
+    if (typeof window === 'undefined') return;
     try {
       const key = `gittr_recent_files_${currentPath}`;
       const stored = localStorage.getItem(key);

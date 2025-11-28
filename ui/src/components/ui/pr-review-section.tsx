@@ -45,6 +45,7 @@ export function PRReviewSection({ prId, entity, repo, requiredApprovals = 1, prA
 
   // Load reviews
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     try {
       const stored = JSON.parse(localStorage.getItem(storageKey) || "[]");
       setReviews(stored);
@@ -53,6 +54,7 @@ export function PRReviewSection({ prId, entity, repo, requiredApprovals = 1, prA
 
   // Load repo data and check if current user can approve PRs (owner, maintainer, or contributor)
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     try {
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
       const foundRepo = findRepoByEntityAndName(repos, entity, repo);
@@ -110,7 +112,9 @@ export function PRReviewSection({ prId, entity, repo, requiredApprovals = 1, prA
     updatedReviews.push(newReview);
     updatedReviews.sort((a, b) => b.submittedAt - a.submittedAt);
 
-    localStorage.setItem(storageKey, JSON.stringify(updatedReviews));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(storageKey, JSON.stringify(updatedReviews));
+    }
     setReviews(updatedReviews);
     setShowReviewForm(false);
     setReviewComment("");

@@ -77,6 +77,7 @@ export function NostrUserSearch({
 
   // Load all cached metadata from localStorage
   const cachedMetadata = useMemo(() => {
+    if (typeof window === 'undefined') return {} as Record<string, any>;
     try {
       const cached = localStorage.getItem("gittr_metadata_cache");
       if (cached) {
@@ -147,6 +148,7 @@ export function NostrUserSearch({
     }
 
     // 2. Search repo contributors
+    if (typeof window === 'undefined') return results;
     try {
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
       for (const repo of repos) {
@@ -163,6 +165,7 @@ export function NostrUserSearch({
 
     // 3. Search users from activities
     try {
+      if (typeof window === 'undefined') return results;
       const activities = JSON.parse(localStorage.getItem("gittr_activities") || "[]");
       for (const activity of activities) {
         if (activity.user && /^[0-9a-f]{64}$/i.test(activity.user)) {

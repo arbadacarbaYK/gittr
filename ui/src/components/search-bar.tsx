@@ -16,6 +16,7 @@ export default function SearchBar({ className }: { className?: string }) {
     e.preventDefault();
     const q = ref.current?.value?.trim() || "";
     if (!q) return;
+    if (typeof window === 'undefined') return;
     try {
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
       const normalized = q.toLowerCase();
