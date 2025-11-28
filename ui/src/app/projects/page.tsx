@@ -26,6 +26,11 @@ export default function UserProjectsPage() {
   const [allProjects, setAllProjects] = useState<AggregatedProject[]>([]);
   const [selectedView, setSelectedView] = useState<"all" | "active" | "overdue">("all");
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!isLoggedIn || !pubkey) {
@@ -96,6 +101,17 @@ export default function UserProjectsPage() {
     
     return { total, done, inProgress, todo, progress: total > 0 ? Math.round((done / total) * 100) : 0 };
   }, [allProjects]);
+
+  if (!mounted) {
+    return (
+      <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
+        <div className="text-center py-12">
+          <div className="animate-spin h-8 w-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isLoggedIn) {
     return (

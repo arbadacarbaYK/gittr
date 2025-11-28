@@ -655,8 +655,10 @@ export default function RepoCodePage({
 
   useEffect(() => {
     const repoKey = `${params.entity}/${params.repo}`;
-    if (repoProcessedRef.current === repoKey) {
-      return;
+    
+    // Reset ref if navigating to a different repo
+    if (repoProcessedRef.current !== repoKey) {
+      repoProcessedRef.current = "";
     }
 
     const repos = loadStoredRepos();
@@ -1061,11 +1063,18 @@ export default function RepoCodePage({
           // Ensure files is always an array, never undefined
           
           
+          // CRITICAL: Preserve existing files if they exist AND match this repo (prevents clearing on viewport resize)
+          // But only preserve if entity and repo match exactly
+          const filesToUse = (repoData?.entity === repo.entity && repoData?.repo === (repo.repo || params.repo) && 
+                              repoData?.files && Array.isArray(repoData.files) && repoData.files.length > 0)
+            ? repoData.files 
+            : filesArray;
+          
           setRepoData({ 
             entity: repo.entity,
             repo: repo.repo || params.repo,
             readme: repo.readme || "", 
-            files: filesArray,
+            files: filesToUse,
             sourceUrl: repo.sourceUrl, 
             forkedFrom: repo.forkedFrom || repo.sourceUrl,
             entityDisplayName: repo.entityDisplayName,
@@ -1272,15 +1281,21 @@ export default function RepoCodePage({
           
           if (isDeleted) {
             console.log("⏭️ [Foreign Repo] Repo is marked as deleted, showing deleted message");
+            // CRITICAL: Only preserve files if they match this exact repo (prevents clearing on viewport resize)
+            // But allow clearing if navigating to a different repo
+            const existingFiles = (repoData?.entity === params.entity && repoData?.repo === params.repo &&
+                                   repoData?.files && Array.isArray(repoData.files) && repoData.files.length > 0)
+              ? repoData.files 
+              : [];
             setRepoData({
               entity: params.entity,
               repo: params.repo,
-              readme: "",
-              files: [],
+              readme: repoData?.readme || "",
+              files: existingFiles, // Preserve existing files instead of always clearing
               name: params.repo,
               description: "This repository has been deleted.",
-              contributors: [],
-              defaultBranch: "main",
+              contributors: repoData?.contributors || [],
+              defaultBranch: repoData?.defaultBranch || "main",
             } as StoredRepo & { deleted?: boolean });
             repoProcessedRef.current = repoKey;
             return;
@@ -1293,18 +1308,26 @@ export default function RepoCodePage({
           // Mark as processed to prevent re-running
           repoProcessedRef.current = repoKey;
           
+          // CRITICAL: Preserve existing files if they exist AND match this repo (prevents clearing on viewport resize)
+          // But only preserve if entity and repo match exactly - allows navigation to new repos
+          const existingFiles = (repoData?.entity === params.entity && repoData?.repo === params.repo &&
+                                 repoData?.files && Array.isArray(repoData.files) && repoData.files.length > 0)
+            ? repoData.files 
+            : [];
+          
           // Create minimal repoData with empty files - files will be fetched from Nostr if available
+          // But preserve existing files if they exist (prevents clearing on resize)
           setRepoData({
             entity: params.entity,
             repo: params.repo,
-            readme: "",
-            files: [],
+            readme: repoData?.readme || "",
+            files: existingFiles, // Preserve existing files instead of always clearing
             name: params.repo,
-            description: "",
+            description: repoData?.description || "",
             contributors: resolvedOwnerPubkey ? [{ pubkey: resolvedOwnerPubkey, weight: 100 }] : [],
-            defaultBranch: "main",
+            defaultBranch: repoData?.defaultBranch || "main",
           });
-          setSelectedBranch("main");
+          setSelectedBranch(repoData?.defaultBranch || "main");
           }
           // Load local overrides and deletions
           try {
@@ -5496,7 +5519,20 @@ export default function RepoCodePage({
       }
     }
     
-    if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+    // Strategy 2: Try git-nostr-bridge API (GRASP) - but ONLY if no better source is available
+    // OPTIMIZATION: Skip GRASP if we have successful sources (GitHub/GitLab) to avoid slow polling
+    // Check if we have a better source available (GitHub/GitLab) before trying GRASP
+    const successfulSourcesForGraspCheck = repoData?.successfulSources || [];
+    const hasBetterSource = successfulSourcesForGraspCheck.some((s: any) => 
+      s.sourceUrl && (
+        s.sourceUrl.includes('github.com') || 
+        s.sourceUrl.includes('gitlab.com') || 
+        s.sourceUrl.includes('codeberg.org')
+      ) && s.files && Array.isArray(s.files) && s.files.length > 0
+    );
+    
+    // Only try GRASP if we don't have a better source available
+    if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) && !hasBetterSource) {
       // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
       // Priority: repositoryName > repo > slug > name > decodedRepo
       // The bridge uses repositoryName from the event, not the human-readable name
@@ -5516,8 +5552,6 @@ export default function RepoCodePage({
       
       const branch = selectedBranch || repoData?.defaultBranch || "main";
       const apiUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(branch)}`;
-      
-      // console.log(`🔍 [fetchGithubRaw] Trying git-nostr-bridge API: ${apiUrl}`, { ownerPubkey: ownerPubkey.slice(0, 8) + "...", actualRepoName: repoName, decodedRepoFromUrl: decodedRepo, branch, path });
       
       try {
         const response = await fetch(apiUrl);
@@ -5549,67 +5583,71 @@ export default function RepoCodePage({
         } else if (response.status === 404 || response.status === 500) {
           // Repo not cloned yet OR repo exists but is empty/corrupted - check if GRASP server and trigger clone
           // 500 errors can occur when repo exists but has no valid branches or is corrupted
-          const cloneUrls = repoData?.clone || [];
-          // Use centralized isGraspServer function which includes pattern matching (git., git-\d+.)
-          const { isGraspServer: isGraspServerFn } = require("@/lib/utils/grasp-servers");
-          const graspCloneUrl = cloneUrls.find((url: string) => 
-            isGraspServerFn(url) &&
-            (url.startsWith('http://') || url.startsWith('https://'))
-          );
-          
-          if (graspCloneUrl) {
-            const errorType = response.status === 404 ? "not cloned yet" : "empty or corrupted";
-            console.log(`💡 [fetchGithubRaw] GRASP repo ${errorType} (${response.status}), triggering clone...`);
-            try {
-              const cloneResponse = await fetch("/api/nostr/repo/clone", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ cloneUrl: graspCloneUrl, ownerPubkey, repo: repoName })
-              });
-              if (cloneResponse.ok) {
-                console.log(`✅ [fetchGithubRaw] Clone triggered, polling for file...`);
-                // Poll for file (max 5 attempts, 1s delay - reduced from 10 attempts/2s to speed up)
-                for (let attempt = 1; attempt <= 5; attempt++) {
-                  await new Promise(resolve => setTimeout(resolve, 1000));
-                  console.log(`🔍 [fetchGithubRaw] Polling for file (attempt ${attempt}/5)...`);
-                  try {
-                    const pollResponse = await fetch(apiUrl);
-                    if (pollResponse.ok) {
-                      const pollData = await pollResponse.json();
-                      if (pollData.content !== undefined) {
-                        const isBinary = pollData.isBinary || false;
-                        if (isBinary) {
-                          const ext = path.split('.').pop()?.toLowerCase() || '';
-                          const mimeTypes: Record<string, string> = {
-                            'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif',
-                            'webp': 'image/webp', 'svg': 'image/svg+xml', 'ico': 'image/x-icon',
-                            'pdf': 'application/pdf', 'woff': 'font/woff', 'woff2': 'font/woff2',
-                            'ttf': 'font/ttf', 'otf': 'font/otf', 'mp4': 'video/mp4', 'mp3': 'audio/mpeg', 'wav': 'audio/wav',
-                          };
-                          const mimeType = mimeTypes[ext] || 'application/octet-stream';
-                          const dataUrl = `data:${mimeType};base64,${pollData.content}`;
-                          console.log(`✅ [fetchGithubRaw] File available after clone (binary)!`);
-                          return { content: null, url: dataUrl, isBinary: true };
-                        } else {
-                          console.log(`✅ [fetchGithubRaw] File available after clone!`);
-                          return { content: pollData.content, url: null, isBinary: false };
+          // OPTIMIZATION: Only try clone if 404 (not cloned), skip for 500 (corrupted) to avoid slow polling
+          if (response.status === 500) {
+            console.log(`⏭️ [fetchGithubRaw] GRASP repo corrupted (500), skipping clone to avoid slow polling`);
+          } else {
+            const cloneUrls = repoData?.clone || [];
+            // Use centralized isGraspServer function which includes pattern matching (git., git-\d+.)
+            const { isGraspServer: isGraspServerFn } = require("@/lib/utils/grasp-servers");
+            const graspCloneUrl = cloneUrls.find((url: string) => 
+              isGraspServerFn(url) &&
+              (url.startsWith('http://') || url.startsWith('https://'))
+            );
+            
+            if (graspCloneUrl) {
+              console.log(`💡 [fetchGithubRaw] GRASP repo not cloned yet (404), triggering clone...`);
+              try {
+                const cloneResponse = await fetch("/api/nostr/repo/clone", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ cloneUrl: graspCloneUrl, ownerPubkey, repo: repoName })
+                });
+                if (cloneResponse.ok) {
+                  console.log(`✅ [fetchGithubRaw] Clone triggered, polling for file...`);
+                  // OPTIMIZATION: Reduced polling to 2 attempts with 500ms delay (was 5 attempts, 1s delay)
+                  for (let attempt = 1; attempt <= 2; attempt++) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    console.log(`🔍 [fetchGithubRaw] Polling for file (attempt ${attempt}/2)...`);
+                    try {
+                      const pollResponse = await fetch(apiUrl);
+                      if (pollResponse.ok) {
+                        const pollData = await pollResponse.json();
+                        if (pollData.content !== undefined) {
+                          const isBinary = pollData.isBinary || false;
+                          if (isBinary) {
+                            const ext = path.split('.').pop()?.toLowerCase() || '';
+                            const mimeTypes: Record<string, string> = {
+                              'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif',
+                              'webp': 'image/webp', 'svg': 'image/svg+xml', 'ico': 'image/x-icon',
+                              'pdf': 'application/pdf', 'woff': 'font/woff', 'woff2': 'font/woff2',
+                              'ttf': 'font/ttf', 'otf': 'font/otf', 'mp4': 'video/mp4', 'mp3': 'audio/mpeg', 'wav': 'audio/wav',
+                            };
+                            const mimeType = mimeTypes[ext] || 'application/octet-stream';
+                            const dataUrl = `data:${mimeType};base64,${pollData.content}`;
+                            console.log(`✅ [fetchGithubRaw] File available after clone (binary)!`);
+                            return { content: null, url: dataUrl, isBinary: true };
+                          } else {
+                            console.log(`✅ [fetchGithubRaw] File available after clone!`);
+                            return { content: pollData.content, url: null, isBinary: false };
+                          }
                         }
+                      } else if (pollResponse.status !== 404) {
+                        const errorText = await pollResponse.text().catch(() => "");
+                        console.log(`⚠️ [fetchGithubRaw] Poll attempt ${attempt} failed: ${pollResponse.status} - ${errorText.substring(0, 100)}`);
                       }
-                    } else if (pollResponse.status !== 404) {
-                      const errorText = await pollResponse.text().catch(() => "");
-                      console.log(`⚠️ [fetchGithubRaw] Poll attempt ${attempt} failed: ${pollResponse.status} - ${errorText.substring(0, 100)}`);
+                    } catch (pollError: any) {
+                      console.warn(`⚠️ [fetchGithubRaw] Poll attempt ${attempt} error:`, pollError.message);
                     }
-                  } catch (pollError: any) {
-                    console.warn(`⚠️ [fetchGithubRaw] Poll attempt ${attempt} error:`, pollError.message);
                   }
+                  console.log(`⚠️ [fetchGithubRaw] File not available after clone (tried 2 times), falling back to other sources`);
+                } else {
+                  const cloneErrorData = await cloneResponse.json().catch(() => ({ error: "Unknown error" }));
+                  console.warn(`⚠️ [fetchGithubRaw] Clone API failed: ${cloneResponse.status} -`, cloneErrorData);
                 }
-                console.log(`⚠️ [fetchGithubRaw] File not available after clone (tried 5 times), user can retry`);
-              } else {
-                const cloneErrorData = await cloneResponse.json().catch(() => ({ error: "Unknown error" }));
-                console.warn(`⚠️ [fetchGithubRaw] Clone API failed: ${cloneResponse.status} -`, cloneErrorData);
+              } catch (cloneError: any) {
+                console.warn(`⚠️ [fetchGithubRaw] Failed to trigger clone:`, cloneError.message);
               }
-            } catch (cloneError: any) {
-              console.warn(`⚠️ [fetchGithubRaw] Failed to trigger clone:`, cloneError.message);
             }
           }
         } else {
@@ -5619,6 +5657,8 @@ export default function RepoCodePage({
       } catch (error: any) {
         console.error(`❌ [fetchGithubRaw] Error fetching from git-nostr-bridge API:`, error.message);
       }
+    } else if (hasBetterSource) {
+      console.log(`⏭️ [fetchGithubRaw] Skipping GRASP - better source (GitHub/GitLab) available`);
     }
 
     // Strategy 3: Try external git servers via API proxy
@@ -6662,11 +6702,17 @@ export default function RepoCodePage({
                   className="h-5 w-5 rounded-sm object-contain" 
                   onError={(e) => {
                     // If logoUrl fails to load (CORS or other error), hide it and use fallback
-                    console.warn("Failed to load repo logo:", logoUrl, "Using owner picture as fallback");
+                    // Only do this once to prevent infinite retry loops
                     const target = e.currentTarget;
-                    target.style.display = 'none';
-                    // Trigger fallback by setting logoUrl to null (will use owner picture)
-                    setLogoUrl(null);
+                    if (target.style.display !== 'none') {
+                      console.warn("Failed to load repo logo:", logoUrl, "Using owner picture as fallback");
+                      target.style.display = 'none';
+                      // Trigger fallback by setting logoUrl to null (will use owner picture)
+                      // Use a ref to prevent infinite loops from state updates
+                      if (logoUrl) {
+                        setLogoUrl(null);
+                      }
+                    }
                   }}
                   referrerPolicy="no-referrer"
                 />

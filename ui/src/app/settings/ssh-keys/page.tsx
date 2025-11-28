@@ -30,6 +30,7 @@ export default function SSHKeysPage() {
   const { isLoggedIn } = useSession();
   const [keys, setKeys] = useState<SSHKey[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showGenerateForm, setShowGenerateForm] = useState(false);
   const [publicKeyInput, setPublicKeyInput] = useState("");
@@ -58,6 +59,10 @@ export default function SSHKeysPage() {
       setLoading(false);
     }
   }, [pubkey]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
@@ -360,6 +365,14 @@ export default function SSHKeysPage() {
     setStatus("Private key downloaded. Keep it secure and never share it!");
     setTimeout(() => setStatus(""), 3000);
   }, []);
+
+  if (!mounted) {
+    return (
+      <div className="p-6">
+        <p className="text-gray-400">Loading...</p>
+      </div>
+    );
+  }
 
   if (!isLoggedIn) {
     return (

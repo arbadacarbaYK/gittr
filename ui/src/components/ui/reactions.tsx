@@ -71,7 +71,7 @@ export function Reactions({ targetId, targetType, entity, repo }: ReactionsProps
 
       // Save to localStorage
       if (typeof window !== 'undefined') {
-        localStorage.setItem(storageKey, JSON.stringify(updated));
+      localStorage.setItem(storageKey, JSON.stringify(updated));
       }
       return updated;
     });

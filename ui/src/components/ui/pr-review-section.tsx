@@ -113,7 +113,7 @@ export function PRReviewSection({ prId, entity, repo, requiredApprovals = 1, prA
     updatedReviews.sort((a, b) => b.submittedAt - a.submittedAt);
 
     if (typeof window !== 'undefined') {
-      localStorage.setItem(storageKey, JSON.stringify(updatedReviews));
+    localStorage.setItem(storageKey, JSON.stringify(updatedReviews));
     }
     setReviews(updatedReviews);
     setShowReviewForm(false);

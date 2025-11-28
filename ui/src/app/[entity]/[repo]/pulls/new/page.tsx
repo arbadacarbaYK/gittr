@@ -42,6 +42,7 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
   const searchParams = useSearchParams();
   const { pubkey: currentUserPubkey, publish, defaultRelays } = useNostrContext();
   const { isLoggedIn } = useSession();
+  const [mounted, setMounted] = useState(false);
 
   // URL params for compare page integration
   const baseBranchParam = searchParams?.get("base") || null;
@@ -65,6 +66,10 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
   const repoOwnerMetadata = useContributorMetadata(repoOwnerPubkeys);
 
   // Load pending changes on mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     if (!isLoggedIn || !currentUserPubkey) {
       setLoading(false);
@@ -403,6 +408,14 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
       setCreating(false);
     }
   };
+
+  if (!mounted) {
+    return (
+      <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
+        <p className="text-gray-400">Loading...</p>
+      </div>
+    );
+  }
 
   if (!isLoggedIn) {
     return (

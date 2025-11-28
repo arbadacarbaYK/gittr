@@ -1186,6 +1186,40 @@ const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)
 
 **Result**: Deleted repositories are now completely hidden from all repository listing pages, ensuring users only see active repositories.
 
+### Files Disappearing on Viewport Resize (Fixed)
+
+**Problem**: When the browser window was resized to mobile size (or opened on mobile), files would disappear and show "No files found", even if they were successfully fetched on desktop. This was a confusing UX issue that made users think the repo had no files.
+
+**Root Cause**: When the viewport changed, React would re-render and the `useEffect` that loads repo data from localStorage would run again. If the repo lookup temporarily failed (due to timing or a temporary localStorage issue), it would create a minimal `repoData` with empty files, clearing the existing files that were already loaded.
+
+**Solution**: 
+1. **Preserve existing files** when repo is not found in localStorage - if `repoData.files` already exists, preserve it instead of clearing
+2. **Prevent unnecessary re-runs** - if the repo is already processed AND files exist, don't re-run the useEffect even if the repo is found again
+3. **Preserve files in deleted repo case** - even if a repo is marked as deleted, preserve existing files to prevent clearing on resize
+
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (main repo loading `useEffect` - search for "repoProcessedRef" or "Preserve existing files")
+
+**Key Changes**:
+```typescript
+// Guard: If repo already processed AND files exist, don't re-run
+if (repoProcessedRef.current === repoKey) {
+  if (repoData?.files && Array.isArray(repoData.files) && repoData.files.length > 0) {
+    return; // Preserve existing files
+  }
+}
+
+// When repo not found, preserve existing files instead of clearing
+const existingFiles = repoData?.files && Array.isArray(repoData.files) && repoData.files.length > 0 
+  ? repoData.files 
+  : [];
+setRepoData({
+  // ... other fields ...
+  files: existingFiles, // Preserve instead of always clearing
+});
+```
+
+**Result**: Files now persist across viewport changes, ensuring a consistent user experience on both desktop and mobile. Files remain visible even when the window is resized or the page is opened on mobile devices.
+
 ---
 
 *Last updated: Updated file opening flow to match 6-strategy flow from README.md (localStorage → embedded → multi-source → Nostr query → bridge API → external servers)*

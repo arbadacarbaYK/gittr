@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import useSession from "@/lib/nostr/useSession";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,11 @@ export default function StarsPage() {
   const { isLoggedIn } = useSession();
   const [starredRepos, setStarredRepos] = useState<StarredRepo[]>([]);
   const [allRepos, setAllRepos] = useState<any[]>([]);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -102,6 +107,7 @@ export default function StarsPage() {
 
   // Get owner metadata for avatars - resolve to full pubkeys
   const ownerPubkeys = useMemo(() => {
+    if (typeof window === "undefined") return [];
     const pubkeys = new Set<string>();
     for (const repo of starredRepos) {
       if (!repo.entity || repo.entity === "user") continue;
@@ -134,6 +140,7 @@ export default function StarsPage() {
   // Resolve repo icon - use full pubkey for metadata lookup
   const getRepoIcon = (repo: StarredRepo): string | null => {
     if (repo.logoUrl) return repo.logoUrl;
+    if (typeof window === "undefined") return null;
     
     // Find matching repo to get ownerPubkey
     try {
@@ -188,6 +195,15 @@ export default function StarsPage() {
     
     return null;
   };
+
+  if (!mounted) {
+    return (
+      <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
+        <h1 className="text-2xl font-bold mb-4">Your Stars</h1>
+        <p className="text-gray-400">Loading...</p>
+      </div>
+    );
+  }
 
   if (!isLoggedIn) {
     return (
