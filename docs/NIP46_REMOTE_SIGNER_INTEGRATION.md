@@ -13,6 +13,12 @@ This document explains how to implement NIP-46 (Remote Signing) in a Nostr clien
 - Session persistence for automatic reconnection across page navigations
 - **Automatic login**: Users stay logged in after initial pairing—no need to sign in on each page
 
+**Critical Implementation Notes:**
+- `generatePrivateKey()` returns a hex string directly—no `bytesToHex` conversion needed
+- `nip04.encrypt()` and `nip04.decrypt()` accept hex secret keys directly (nostr-tools handles hex strings)
+- Always use `generatePrivateKey()` (not `generateSecretKey()`) from nostr-tools
+- The NIP-07 adapter includes `getRelays()` and `nip44` support for complete compatibility
+
 ## Dependencies
 
 Install the required packages:
@@ -37,7 +43,7 @@ npm install html5-qrcode
 ```typescript
 // ui/src/lib/nostr/remoteSigner.ts
 
-import { type UnsignedEvent, finalizeEvent, generateSecretKey, getPublicKey, nip19, nip44 } from "nostr-tools";
+import { type UnsignedEvent, generatePrivateKey, getPublicKey, getEventHash, signEvent, nip19, nip04 } from "nostr-tools";
 import type { Event as NostrEvent } from "nostr-tools";
 
 export interface RemoteSignerConfig {
@@ -109,133 +115,104 @@ class RemoteSignerManager {
   async connect(uri: string): Promise<{ session: RemoteSignerSession; npub: string }> {
     // 1. Parse URI
     const config = parseRemoteSignerUri(uri);
-    
+    this.notifyState("connecting");
+
     // 2. Generate ephemeral client keypair
-    const clientSecretKey = generateSecretKey();
-    const clientPubkey = getPublicKey(clientSecretKey);
-    
-    // 3. Send "connect" request (encrypted Kind 24133 event)
-    const connectRequest = {
-      id: randomRequestId(),
-      method: "connect",
-      params: {
-        pubkey: clientPubkey,
-        secret: config.secret,
-      },
-    };
-    
-    await this.sendRequest(config.remotePubkey, connectRequest, config.relays);
-    
-    // 4. Wait for response with user's pubkey
-    const response = await this.waitForResponse(connectRequest.id);
-    const userPubkey = response.result.pubkey;
-    
-    // 5. Create session and persist
+    // CRITICAL: generatePrivateKey() returns a hex string directly, no conversion needed
+    const generatedClientSecret = generatePrivateKey();
     const session: RemoteSignerSession = {
       remotePubkey: config.remotePubkey,
       relays: config.relays,
-      clientSecretKey: bytesToHex(clientSecretKey),
-      clientPubkey,
-      userPubkey,
+      clientSecretKey: generatedClientSecret, // generatePrivateKey returns hex string
+      clientPubkey: "",
+      userPubkey: "",
       secret: config.secret,
       permissions: config.permissions,
       label: config.label,
       lastConnected: Date.now(),
     };
+    session.clientPubkey = getPublicKey(session.clientSecretKey);
     
-    persistRemoteSignerSession(session);
-    
-    // 6. Apply NIP-07 adapter
-    this.applyNip07Adapter();
-    
-    return { session, npub: nip19.npubEncode(userPubkey) };
+    try {
+      await this.ensureRelays(session.relays);
+      await this.startSubscription(session);
+
+      const connectParams = [session.remotePubkey];
+      if (session.secret) {
+        connectParams.push(session.secret);
+      }
+      if (session.permissions && session.permissions.length > 0) {
+        connectParams.push(session.permissions.join(","));
+      }
+      await this.sendRequest(session, "connect", connectParams, 20000);
+
+      const remotePubkeyHex = await this.sendRequest(session, "get_public_key", []);
+      if (!remotePubkeyHex || typeof remotePubkeyHex !== "string") {
+        throw new Error("Remote signer did not return a pubkey");
+      }
+      session.userPubkey = remotePubkeyHex.toLowerCase();
+      session.lastConnected = Date.now();
+
+      await this.activateSession(session);
+      this.notifyState("ready");
+
+      return {
+        session,
+        npub: nip19.npubEncode(session.userPubkey),
+      };
+    } catch (error: any) {
+      console.error("[RemoteSigner] Pairing failed:", error);
+      this.clearSession();
+      this.notifyState("error", error?.message || "Remote signer pairing failed");
+      throw error;
+    }
   }
 }
 ```
 
 ### 4. NIP-07 Compatible Adapter
 
-Override `window.nostr` to route signing through the remote signer:
+Override `window.nostr` to route signing through the remote signer. The adapter includes complete NIP-07 support with `getRelays` and `nip44` methods:
 
 ```typescript
-applyNip07Adapter() {
-  const originalNostr = window.nostr;
-  
-  window.nostr = {
+private applyNip07Adapter() {
+  if (typeof window === "undefined") return;
+  const adapter = createRemoteNip07Adapter(this);
+  this.adapter = adapter;
+  window.nostr = adapter;
+}
+
+function createRemoteNip07Adapter(manager: RemoteSignerManager) {
+  return {
     getPublicKey: async () => {
-      return this.session?.userPubkey || "";
+      const pubkey = manager.getUserPubkey();
+      if (!pubkey) {
+        throw new Error("Remote signer not paired");
+      }
+      return pubkey;
     },
     
-    signEvent: async (event: UnsignedEvent) => {
-      if (!this.session) throw new Error("Remote signer not connected");
-      
-      // Send "sign_event" request
-      const request = {
-        id: randomRequestId(),
-        method: "sign_event",
-        params: {
-          event: event,
-        },
-      };
-      
-      const response = await this.sendRequest(
-        this.session.remotePubkey,
-        request,
-        this.session.relays
-      );
-      
-      return response.result.event; // Signed event from remote signer
+    signEvent: (event: UnsignedEvent) => manager.signEvent(event),
+    
+    getRelays: async () => {
+      const session = manager.getSession();
+      if (!session) return {};
+      return session.relays.reduce<Record<string, { read: boolean; write: boolean }>>((acc, relay) => {
+        acc[relay] = { read: true, write: true };
+        return acc;
+      }, {});
     },
     
     nip04: {
-      encrypt: async (pubkey: string, plaintext: string) => {
-        // Request NIP-04 encryption via remote signer
-        const request = {
-          id: randomRequestId(),
-          method: "nip04_encrypt",
-          params: { pubkey, plaintext },
-        };
-        const response = await this.sendRequest(/* ... */);
-        return response.result.ciphertext;
-      },
-      decrypt: async (pubkey: string, ciphertext: string) => {
-        // Request NIP-04 decryption via remote signer
-        const request = {
-          id: randomRequestId(),
-          method: "nip04_decrypt",
-          params: { pubkey, ciphertext },
-        };
-        const response = await this.sendRequest(/* ... */);
-        return response.result.plaintext;
-      },
+      encrypt: (pubkey: string, plaintext: string) => manager.nip04Encrypt(pubkey, plaintext),
+      decrypt: (pubkey: string, ciphertext: string) => manager.nip04Decrypt(pubkey, ciphertext),
     },
     
     nip44: {
-      encrypt: async (pubkey: string, plaintext: string) => {
-        // Request NIP-44 encryption via remote signer
-        const request = {
-          id: randomRequestId(),
-          method: "nip44_encrypt",
-          params: { pubkey, plaintext },
-        };
-        const response = await this.sendRequest(/* ... */);
-        return response.result.ciphertext;
-      },
-      decrypt: async (pubkey: string, ciphertext: string) => {
-        // Request NIP-44 decryption via remote signer
-        const request = {
-          id: randomRequestId(),
-          method: "nip44_decrypt",
-          params: { pubkey, ciphertext },
-        };
-        const response = await this.sendRequest(/* ... */);
-        return response.result.plaintext;
-      },
+      encrypt: (pubkey: string, plaintext: string) => manager.nip44Encrypt(pubkey, plaintext),
+      decrypt: (pubkey: string, ciphertext: string) => manager.nip44Decrypt(pubkey, ciphertext),
     },
   };
-  
-  // Store original for restoration on disconnect
-  this.originalNostr = originalNostr;
 }
 ```
 
@@ -244,36 +221,41 @@ applyNip07Adapter() {
 Send encrypted Kind 24133 events:
 
 ```typescript
-async sendRequest(
-  remotePubkey: string,
-  request: { id: string; method: string; params: any },
-  relays: string[]
+private async sendRequest(
+  session: RemoteSignerSession,
+  method: string,
+  params: unknown[],
+  timeoutMs = REQUEST_TIMEOUT_MS
 ): Promise<any> {
-  // Encrypt request using NIP-44 (or NIP-04)
-  const encrypted = await nip44.encrypt(
-    this.session.clientSecretKey,
-    remotePubkey,
-    JSON.stringify(request)
-  );
-  
-  // Create Kind 24133 event
-  const event = finalizeEvent(
-    {
-      kind: 24133, // NIP-46 request/response kind
-      created_at: Math.floor(Date.now() / 1000),
-      tags: [
-        ["p", remotePubkey], // Tag remote signer
-      ],
-      content: encrypted,
-    },
-    this.session.clientSecretKey
-  );
-  
-  // Publish to relays
-  await this.publish(event, relays);
-  
-  // Wait for response
-  return this.waitForResponse(request.id);
+  await this.ensureRelays(session.relays);
+  const id = randomRequestId();
+  const payload = JSON.stringify({
+    id,
+    method,
+    params,
+  });
+  // CRITICAL: nip04.encrypt accepts hex secret key directly (nostr-tools handles hex strings)
+  const ciphertext = await nip04.encrypt(session.clientSecretKey, session.remotePubkey, payload);
+  const unsignedEvent: any = {
+    kind: 24133, // NIP-46 request/response kind
+    created_at: Math.floor(Date.now() / 1000),
+    content: ciphertext,
+    tags: [
+      ["p", session.remotePubkey], // Tag remote signer
+    ],
+    pubkey: getPublicKey(session.clientSecretKey),
+  };
+  unsignedEvent.id = getEventHash(unsignedEvent);
+  const signed = signEvent(unsignedEvent, session.clientSecretKey);
+  this.deps.publish(signed, session.relays);
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      this.pending.delete(id);
+      reject(new Error(`Remote signer request ${method} timed out`));
+    }, timeoutMs);
+    this.pending.set(id, { resolve, reject, timeout });
+  });
 }
 ```
 
