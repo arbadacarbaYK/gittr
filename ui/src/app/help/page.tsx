@@ -639,6 +639,16 @@ export default function HelpPage() {
                   </a>
                 </li>
                 <li>
+                  <a href="https://github.com/arbadacarbaYK/gittr/blob/main/docs/NIP46_REMOTE_SIGNER_INTEGRATION.md" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300">
+                    NIP-46 Remote Signer Integration
+                  </a>
+                </li>
+                <li>
+                  <a href="https://github.com/arbadacarbaYK/gittr/blob/main/docs/NIP25_STARS_NIP51_FOLLOWING.md" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300">
+                    NIP-25 Stars & NIP-51 Following
+                  </a>
+                </li>
+                <li>
                   <Link href="/settings/notifications" className="text-purple-400 hover:text-purple-300">
                     Notification Settings
                   </Link>

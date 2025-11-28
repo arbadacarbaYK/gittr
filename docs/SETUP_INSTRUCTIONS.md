@@ -95,6 +95,8 @@ You can now log in to gittr.space using a NIP-46 remote signer (hardware bunker,
 4. Generate pairing QR code on the device
 5. Scan it in gittr.space login screen
 
+**For detailed implementation guide**: See [`docs/NIP46_REMOTE_SIGNER_INTEGRATION.md`](NIP46_REMOTE_SIGNER_INTEGRATION.md) for complete NIP-46 integration documentation, including QR scanning with `html5-qrcode`, NIP-07 adapter implementation, and session management.
+
 Nothing else changes in the deployment steps—the remote signer support simply gives your users a hardware-login path without modifying the backend.
 
 ### Step 5: Install Go (for building git-nostr-bridge) OR Use Docker
