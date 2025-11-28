@@ -78,7 +78,6 @@ export const DropdownItems = [
   {
     title: "Sponsors & Bounties",
     href: "/sponsors",
-    mobile: false,
   },
   {
     title: "Upgrade",
@@ -88,7 +87,6 @@ export const DropdownItems = [
   {
     title: "Help",
     href: "/help",
-    mobile: false,
   },
 ];
 

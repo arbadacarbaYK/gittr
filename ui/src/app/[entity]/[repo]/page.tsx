@@ -5304,7 +5304,204 @@ export default function RepoCodePage({
         ? inlineFile.content
         : `data:${guessMimeType(path)};base64,${inlineFile.content}`;
     }
-    return getRawUrl(path);
+    
+    // Try raw Git URL first (for GitHub/GitLab repos)
+    const rawUrl = getRawUrl(path);
+    if (rawUrl) {
+      return rawUrl;
+    }
+    
+    // For Nostr-native repos (no sourceUrl), use API endpoint
+    if (!repoData?.sourceUrl) {
+      // Resolve ownerPubkey: check repoData, then decode npub from entity, then resolveEntityToPubkey
+      let ownerPubkey: string | null = repoData?.ownerPubkey ?? null;
+      
+      if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+        // Try to decode npub from entity
+        if (params.entity && params.entity.startsWith("npub")) {
+          try {
+            const decoded = nip19.decode(params.entity);
+            if (decoded.type === "npub") {
+              ownerPubkey = decoded.data as string;
+            }
+          } catch (e) {
+            // Decode failed, try resolveEntityToPubkey
+          }
+        }
+      }
+      
+      // Final fallback: use resolveEntityToPubkey utility
+      if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+        const resolved = resolveEntityToPubkey(params.entity, repoData);
+        if (resolved && /^[0-9a-f]{64}$/i.test(resolved)) {
+          ownerPubkey = resolved;
+        }
+      }
+      
+      if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+        const repoName = repoData?.repo || repoData?.slug || params.repo;
+        const branch = selectedBranch || repoData?.defaultBranch || "main";
+        const normalizedPath = normalizeRepoPath(path);
+        const encodedPath = normalizedPath
+          .split("/")
+          .map((segment) => encodeURIComponent(segment))
+          .join("/");
+        return `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(encodedPath)}&branch=${encodeURIComponent(branch)}`;
+      }
+    }
+    return null;
+  }
+
+  // Stateful image component that reacts to repoData changes
+  function RepoImage({ src, basePath, ...props }: { src: string; basePath: string | null; [key: string]: any }) {
+    const [imageSrc, setImageSrc] = useState<string | null>(null);
+    const retryIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const fetchedUrlsRef = useRef<Set<string>>(new Set());
+    const trimmedSrc = src.trim();
+    const isExternal =
+      trimmedSrc.startsWith("http://") ||
+      trimmedSrc.startsWith("https://") ||
+      trimmedSrc.startsWith("data:");
+    
+    useEffect(() => {
+      // External URLs (blossom-servers, etc.) - use directly
+      if (isExternal) {
+        setImageSrc(trimmedSrc);
+        return;
+      }
+
+      // Relative paths - resolve to repo asset URL
+      const resolvedPath = resolveRepoRelativePath(trimmedSrc, basePath || undefined);
+      const assetUrl = getRepoAssetUrl(resolvedPath);
+      
+      // Only set imageSrc if we have a valid assetUrl
+      // Don't fall back to trimmedSrc as it will resolve relative to page URL incorrectly
+      if (!assetUrl) {
+        setImageSrc(null);
+        return;
+      }
+      
+      // If it's an API endpoint, fetch and convert to data URL immediately
+      if (assetUrl.startsWith('/api/')) {
+        // Avoid duplicate fetches
+        if (fetchedUrlsRef.current.has(assetUrl)) {
+          return;
+        }
+        fetchedUrlsRef.current.add(assetUrl);
+        
+        fetch(assetUrl)
+          .then(res => res.json())
+          .then((data: { content?: string; isBinary?: boolean }) => {
+            if (data.content && data.isBinary) {
+              // Convert base64 content to data URL
+              const ext = trimmedSrc.split('.').pop()?.toLowerCase() || '';
+              const mimeTypes: Record<string, string> = {
+                'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif',
+                'webp': 'image/webp', 'svg': 'image/svg+xml', 'ico': 'image/x-icon',
+                'pdf': 'application/pdf', 'woff': 'font/woff', 'woff2': 'font/woff2',
+                'ttf': 'font/ttf', 'otf': 'font/otf', 'mp4': 'video/mp4', 'mp3': 'audio/mpeg', 'wav': 'audio/wav',
+              };
+              const mimeType = mimeTypes[ext] || 'application/octet-stream';
+              const dataUrl = `data:${mimeType};base64,${data.content}`;
+              setImageSrc(dataUrl);
+            } else {
+              // Not binary or no content - set to null to trigger error handler
+              setImageSrc(null);
+            }
+          })
+          .catch((error) => {
+            console.error(`❌ [RepoImage] Failed to fetch API endpoint ${assetUrl}:`, error);
+            fetchedUrlsRef.current.delete(assetUrl); // Allow retry
+            setImageSrc(null);
+          });
+      } else {
+        // Direct URL (data URL, external URL, etc.) - use directly
+        setImageSrc(assetUrl);
+      }
+    }, [trimmedSrc, basePath, repoData?.sourceUrl, selectedBranch, repoData?.defaultBranch, isExternal, repoData]);
+    
+    useEffect(() => {
+      // Cleanup interval on unmount
+      return () => {
+        if (retryIntervalRef.current) {
+          clearInterval(retryIntervalRef.current);
+          retryIntervalRef.current = null;
+        }
+      };
+    }, []);
+    
+    const handleError = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+      const target = e.currentTarget as HTMLImageElement;
+      if (!target.dataset.errorLogged) {
+        target.dataset.errorLogged = 'true';
+        const resolvedPath = resolveRepoRelativePath(trimmedSrc, basePath || undefined);
+        const currentAssetUrl = getRepoAssetUrl(resolvedPath);
+        
+        console.error(`❌ [Markdown Image] Failed to load image:`, {
+          originalSrc: trimmedSrc,
+          resolvedPath: resolvedPath,
+          assetUrl: currentAssetUrl,
+          sourceUrl: repoData?.sourceUrl,
+          hasRepoData: !!repoData,
+          branch: selectedBranch || repoData?.defaultBranch || 'main',
+        });
+        
+        // Retry when sourceUrl becomes available
+        if (!repoData?.sourceUrl) {
+          let retryCount = 0;
+          const maxRetries = 10;
+          
+          retryIntervalRef.current = setInterval(() => {
+            retryCount++;
+            const newAssetUrl = getRepoAssetUrl(resolvedPath);
+            if (repoData?.sourceUrl && newAssetUrl && newAssetUrl.startsWith('/api/git/')) {
+              console.log(`🔄 [Markdown Image] Retrying with Git API endpoint:`, newAssetUrl);
+              setImageSrc(newAssetUrl);
+              delete target.dataset.errorLogged;
+              if (retryIntervalRef.current) {
+                clearInterval(retryIntervalRef.current);
+                retryIntervalRef.current = null;
+              }
+            } else if (retryCount >= maxRetries) {
+              console.warn(`⚠️ [Markdown Image] Max retries reached, giving up`);
+              if (retryIntervalRef.current) {
+                clearInterval(retryIntervalRef.current);
+                retryIntervalRef.current = null;
+              }
+            }
+          }, 1000);
+        } else if (currentAssetUrl && currentAssetUrl !== imageSrc) {
+          // sourceUrl is available but we're using wrong URL, update immediately
+          console.log(`🔄 [Markdown Image] Updating to correct URL:`, currentAssetUrl);
+          setImageSrc(currentAssetUrl);
+          delete target.dataset.errorLogged;
+        }
+      }
+    }, [trimmedSrc, basePath, repoData?.sourceUrl, selectedBranch, repoData?.defaultBranch, imageSrc]);
+    
+    // External URLs (blossom-servers, etc.) - use directly
+    if (isExternal) {
+      return <img {...props} src={trimmedSrc} className="max-w-full h-auto rounded" alt={props.alt || ""} />;
+    }
+    
+    // Use key to force re-render when sourceUrl changes
+    const imageKey = `${trimmedSrc}-${repoData?.sourceUrl || 'no-source'}-${selectedBranch || repoData?.defaultBranch || 'main'}`;
+    
+    // Don't render if we don't have a valid src yet
+    if (!imageSrc) {
+      return null;
+    }
+    
+    return (
+      <img
+        {...props}
+        key={imageKey}
+        src={imageSrc}
+        className="max-w-full h-auto rounded"
+        alt={props.alt || ""}
+        onError={handleError}
+      />
+    );
   }
 
   function createMarkdownImageRenderer(basePath: string | null) {
@@ -5324,16 +5521,99 @@ export default function RepoCodePage({
         return <img {...props} src={trimmedSrc} className="max-w-full h-auto rounded" />;
       }
 
-      const resolvedPath = resolveRepoRelativePath(trimmedSrc, basePath || undefined);
-      const assetUrl = getRepoAssetUrl(resolvedPath);
+      return <RepoImage src={trimmedSrc} basePath={basePath} {...props} />;
+    };
+  }
 
+  // Renderer for links that converts YouTube/video URLs to embeds and handles relative links
+  function createMarkdownLinkRenderer(basePath: string | null = null) {
+    return ({ node, href, children, ...props }: any) => {
+      if (!href) {
+        return <a {...props}>{children}</a>;
+      }
+
+      let url = href.trim();
+      const isExternal = url.startsWith('http://') || url.startsWith('https://');
+      
+      // Handle relative links (for file viewer)
+      if (basePath && !isExternal && !url.startsWith('mailto:') && !url.startsWith('#')) {
+        // Relative link - resolve relative to repo root using query params format
+        const repoBasePath = getRepoLink('');
+        // Remove leading ./ or . if present
+        let cleanHref = url.replace(/^\.\//, '').replace(/^\.$/, '');
+        // Remove leading / if present (root-relative)
+        if (cleanHref.startsWith('/')) {
+          cleanHref = cleanHref.substring(1);
+        }
+        // Extract directory path and filename
+        const pathParts = cleanHref.split('/');
+        const fileName = pathParts[pathParts.length - 1];
+        const dirPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '';
+        // Construct URL with query parameters: ?path=dir&file=dir%2Ffile.md
+        const encodedFile = encodeURIComponent(cleanHref);
+        const encodedPath = dirPath ? encodeURIComponent(dirPath) : '';
+        if (encodedPath) {
+          url = `${repoBasePath}?path=${encodedPath}&file=${encodedFile}`;
+        } else {
+          url = `${repoBasePath}?file=${encodedFile}`;
+        }
+        return <a {...props} href={url} className="text-purple-400 hover:text-purple-300">{children}</a>;
+      }
+      
+      // YouTube embed detection
+      const youtubeRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+      const youtubeMatch = url.match(youtubeRegex);
+      if (youtubeMatch) {
+        const videoId = youtubeMatch[1];
+        return (
+          <div className="my-4 aspect-video w-full max-w-4xl mx-auto">
+            <iframe
+              src={`https://www.youtube.com/embed/${videoId}`}
+              title={typeof children === 'string' ? children : 'YouTube video'}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="w-full h-full rounded"
+            />
+          </div>
+        );
+      }
+
+      // Vimeo embed detection
+      const vimeoRegex = /vimeo\.com\/(?:.*\/)?(\d+)/i;
+      const vimeoMatch = url.match(vimeoRegex);
+      if (vimeoMatch) {
+        const videoId = vimeoMatch[1];
+        return (
+          <div className="my-4 aspect-video w-full max-w-4xl mx-auto">
+            <iframe
+              src={`https://player.vimeo.com/video/${videoId}`}
+              title={typeof children === 'string' ? children : 'Vimeo video'}
+              allow="autoplay; fullscreen; picture-in-picture"
+              allowFullScreen
+              className="w-full h-full rounded"
+            />
+          </div>
+        );
+      }
+
+      // Generic video file detection (mp4, webm, ogg, etc.)
+      const videoExtensions = /\.(mp4|webm|ogg|mov|avi|wmv|flv|mkv)(\?.*)?$/i;
+      if (videoExtensions.test(url)) {
+        return (
+          <div className="my-4 w-full max-w-4xl mx-auto">
+            <video controls className="w-full rounded">
+              <source src={url} />
+              Your browser does not support the video tag.
+            </video>
+          </div>
+        );
+      }
+
+      // Regular link (external URLs like blossom-servers, etc.)
       return (
-        <img
-          {...props}
-          src={assetUrl || trimmedSrc}
-          className="max-w-full h-auto rounded"
-          alt={props.alt || ""}
-        />
+        <a href={url} target={isExternal ? '_blank' : undefined} rel={isExternal ? 'noopener noreferrer' : undefined} {...props}>
+          {children}
+        </a>
       );
     };
   }
@@ -5344,16 +5624,32 @@ export default function RepoCodePage({
     const normalizedPath = normalizeRepoPath(path);
     try {
       const u = new URL(repoData.sourceUrl);
+      const hostname = u.hostname.toLowerCase();
       const parts = u.pathname.split("/").filter(Boolean);
       const owner = parts[0];
       const repo = (parts[1] || params.repo).replace(/\.git$/, "");
       const branch = selectedBranch || repoData?.defaultBranch || "main";
-      const encodedPath = normalizedPath
-        .split("/")
-        .map((segment) => encodeURIComponent(segment))
-        .join("/");
-      return `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/${encodedPath}`;
-    } catch {
+      
+      // For GitLab and Codeberg, use API proxy for better reliability
+      // For GitHub, use raw.githubusercontent.com directly
+      if (hostname === "github.com" || hostname.includes("github")) {
+        const encodedPath = normalizedPath
+          .split("/")
+          .map((segment) => encodeURIComponent(segment))
+          .join("/");
+        return `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/${encodedPath}`;
+      } else if (hostname === "gitlab.com" || hostname.includes("gitlab")) {
+        // Use API proxy for GitLab - more reliable than raw URLs
+        return `/api/git/file-content?sourceUrl=${encodeURIComponent(repoData.sourceUrl)}&path=${encodeURIComponent(normalizedPath)}&branch=${encodeURIComponent(branch)}`;
+      } else if (hostname === "codeberg.org" || hostname.includes("codeberg")) {
+        // Use API proxy for Codeberg
+        return `/api/git/file-content?sourceUrl=${encodeURIComponent(repoData.sourceUrl)}&path=${encodeURIComponent(normalizedPath)}&branch=${encodeURIComponent(branch)}`;
+      } else {
+        // For other git providers, use the API proxy
+        return `/api/git/file-content?sourceUrl=${encodeURIComponent(repoData.sourceUrl)}&path=${encodeURIComponent(normalizedPath)}&branch=${encodeURIComponent(branch)}`;
+      }
+    } catch (e) {
+      console.error(`❌ [getRawUrl] Error constructing raw URL for ${path}:`, e);
       return null;
     }
   }
@@ -7171,6 +7467,7 @@ export default function RepoCodePage({
                   rehypePlugins={[rehypeRaw]}
                   components={{
                     img: createMarkdownImageRenderer(readmePath),
+                    a: createMarkdownLinkRenderer(readmePath),
                     code: ({ node, inline, className, children, ...props }: any) => {
                       const match = /language-([\w-]+)/.exec(className || "");
                       const language = match?.[1]?.toLowerCase();
@@ -7194,80 +7491,6 @@ export default function RepoCodePage({
                         <code className="bg-gray-900 px-1 rounded text-green-400" {...props}>
                           {children}
                         </code>
-                      );
-                    },
-                    a: ({ node, ...props }: any) => {
-                      // Resolve relative links relative to current file's directory, not repo root
-                      let href = props.href || '';
-                      const isExternal = href.startsWith('http://') || href.startsWith('https://');
-                      if (href && !isExternal && !href.startsWith('mailto:') && !href.startsWith('#')) {
-                        // Get current file path from URL to determine base directory
-                        const currentFile = searchParams?.get("file") || '';
-                        const currentPath = searchParams?.get("path") || '';
-                        
-                        // Determine the directory of the current file
-                        let currentDir = '';
-                        if (currentFile) {
-                          // If file is in a subdirectory, extract the directory
-                          const fileParts = currentFile.split('/');
-                          if (fileParts.length > 1) {
-                            currentDir = fileParts.slice(0, -1).join('/');
-                          }
-                        } else if (currentPath) {
-                          // Use path parameter if available
-                          currentDir = currentPath;
-                        }
-                        
-                        const repoBasePath = getRepoLink('');
-                        // Remove leading ./ or . if present
-                        let cleanHref = href.replace(/^\.\//, '').replace(/^\.$/, '');
-                        
-                        // Determine if link is root-relative (starts with /) or relative to current file
-                        let resolvedPath = '';
-                        if (cleanHref.startsWith('/')) {
-                          // Root-relative: remove leading / and use as-is
-                          cleanHref = cleanHref.substring(1);
-                          resolvedPath = cleanHref;
-                        } else {
-                          // Relative to current file: combine current directory with link
-                          if (currentDir) {
-                            resolvedPath = `${currentDir}/${cleanHref}`;
-                          } else {
-                            resolvedPath = cleanHref;
-                          }
-                          // Normalize path (remove .. and . segments)
-                          resolvedPath = resolvedPath.split('/').filter(p => p !== '.').reduce((acc, part) => {
-                            if (part === '..') {
-                              acc.pop();
-                            } else {
-                              acc.push(part);
-                            }
-                            return acc;
-                          }, [] as string[]).join('/');
-                        }
-                        
-                        // Extract directory path and filename for query params
-                        const pathParts = resolvedPath.split('/');
-                        const fileName = pathParts[pathParts.length - 1];
-                        const dirPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '';
-                        
-                        // Construct URL with query parameters: ?path=dir&file=dir%2Ffile.md
-                        const encodedFile = encodeURIComponent(resolvedPath);
-                        const encodedPath = dirPath ? encodeURIComponent(dirPath) : '';
-                        if (encodedPath) {
-                          href = `${repoBasePath}?path=${encodedPath}&file=${encodedFile}`;
-                        } else {
-                          href = `${repoBasePath}?file=${encodedFile}`;
-                        }
-                      }
-                      return (
-                        <a 
-                          {...props} 
-                          href={href}
-                          className="text-purple-500 hover:text-purple-400 hover:underline" 
-                          target={isExternal ? '_blank' : undefined} 
-                          rel={isExternal ? 'noopener noreferrer' : undefined} 
-                        />
                       );
                     },
                   }}
@@ -7694,34 +7917,7 @@ export default function RepoCodePage({
                         rehypePlugins={[rehypeRaw]}
                         components={{
                           img: createMarkdownImageRenderer(selectedFile),
-                          a: ({ node, ...props }: any) => {
-                            // Resolve relative links relative to repo root, not current page
-                            let href = props.href || '';
-                            const isExternal = href.startsWith('http://') || href.startsWith('https://');
-                            if (href && !isExternal && !href.startsWith('mailto:') && !href.startsWith('#')) {
-                              // Relative link - resolve relative to repo root using query params format
-                              const repoBasePath = getRepoLink('');
-                              // Remove leading ./ or . if present
-                              let cleanHref = href.replace(/^\.\//, '').replace(/^\.$/, '');
-                              // Remove leading / if present (root-relative)
-                              if (cleanHref.startsWith('/')) {
-                                cleanHref = cleanHref.substring(1);
-                              }
-                              // Extract directory path and filename
-                              const pathParts = cleanHref.split('/');
-                              const fileName = pathParts[pathParts.length - 1];
-                              const dirPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '';
-                              // Construct URL with query parameters: ?path=dir&file=dir%2Ffile.md
-                              const encodedFile = encodeURIComponent(cleanHref);
-                              const encodedPath = dirPath ? encodeURIComponent(dirPath) : '';
-                              if (encodedPath) {
-                                href = `${repoBasePath}?path=${encodedPath}&file=${encodedFile}`;
-                              } else {
-                                href = `${repoBasePath}?file=${encodedFile}`;
-                              }
-                            }
-                            return <a {...props} href={href} target={isExternal ? '_blank' : undefined} rel={isExternal ? 'noopener noreferrer' : undefined} className="text-purple-400 hover:text-purple-300" />;
-                          },
+                          a: createMarkdownLinkRenderer(selectedFile),
                         }}
                       >
                         {(() => {
@@ -7915,34 +8111,7 @@ export default function RepoCodePage({
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeRaw]}
               components={{
-                a: ({ node, ...props }: any) => {
-                  // Resolve relative links relative to repo root, not current page
-                  let href = props.href || '';
-                  const isExternal = href.startsWith('http://') || href.startsWith('https://');
-                  if (href && !isExternal && !href.startsWith('mailto:') && !href.startsWith('#')) {
-                    // Relative link - resolve relative to repo root using query params format
-                    const repoBasePath = getRepoLink('');
-                    // Remove leading ./ or . if present
-                    let cleanHref = href.replace(/^\.\//, '').replace(/^\.$/, '');
-                    // Remove leading / if present (root-relative)
-                    if (cleanHref.startsWith('/')) {
-                      cleanHref = cleanHref.substring(1);
-                    }
-                    // Extract directory path and filename
-                    const pathParts = cleanHref.split('/');
-                    const fileName = pathParts[pathParts.length - 1];
-                    const dirPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '';
-                    // Construct URL with query parameters: ?path=dir&file=dir%2Ffile.md
-                    const encodedFile = encodeURIComponent(cleanHref);
-                    const encodedPath = dirPath ? encodeURIComponent(dirPath) : '';
-                    if (encodedPath) {
-                      href = `${repoBasePath}?path=${encodedPath}&file=${encodedFile}`;
-                    } else {
-                      href = `${repoBasePath}?file=${encodedFile}`;
-                    }
-                  }
-                  return <a {...props} href={href} target={isExternal ? '_blank' : undefined} rel={isExternal ? 'noopener noreferrer' : undefined} className="text-purple-400 hover:text-purple-300" />;
-                },
+                a: createMarkdownLinkRenderer(null),
               }}
             >
               {repoData.description}
