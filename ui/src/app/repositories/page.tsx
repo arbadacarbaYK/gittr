@@ -407,8 +407,15 @@ export default function RepositoriesPage() {
   }, [ownerMetadata]);
   
   // Load from localStorage first and listen for updates
+  // CRITICAL: Use ref to prevent infinite loops from storage events
+  const isLoadingReposRef = useRef(false);
   const loadRepos = useCallback(() => {
     if (!canAccessLocalStorage) return;
+    if (isLoadingReposRef.current) {
+      console.log("⏭️ [Repositories] Skipping loadRepos - already loading");
+      return;
+    }
+    isLoadingReposRef.current = true;
     try {
       const list = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as Repo[];
       
@@ -543,7 +550,14 @@ export default function RepositoriesPage() {
       
       // Save if anything changed
       if (updated.length !== list.length || updated.some((r, i) => JSON.stringify(r) !== JSON.stringify(list[i]))) {
+        // CRITICAL: Set flag before updating localStorage to prevent storage event loop
+        isLoadingReposRef.current = true;
         localStorage.setItem("gittr_repos", JSON.stringify(updated));
+        // Reset flag after a short delay to allow storage event to be ignored
+        setTimeout(() => {
+          isLoadingReposRef.current = false;
+        }, 50);
+        
         if (updated.length !== list.length) {
           console.log(`✅ Auto-deleted test_repo_icon_check_fork (removed ${list.length - updated.length} instance(s))`);
         }
@@ -552,8 +566,10 @@ export default function RepositoriesPage() {
     } catch (e) { 
       console.error("Error loading repos:", e);
       setRepos([]); 
+    } finally {
+      isLoadingReposRef.current = false;
     }
-  }, [pubkey]);
+  }, [pubkey, canAccessLocalStorage]);
 
   useEffect(() => {
     // CRITICAL: Only load repos after component is mounted to prevent hydration mismatches
@@ -562,15 +578,17 @@ export default function RepositoriesPage() {
     loadRepos();
     
     // Listen for storage changes (when repos are created/imported in other tabs)
+    // CRITICAL: Only listen for storage events from OTHER tabs/windows, not our own updates
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "gittr_repos") {
-        console.log("📦 [Repositories] Storage event detected, reloading repos...");
+      if (e.key === "gittr_repos" && !isLoadingReposRef.current) {
+        console.log("📦 [Repositories] Storage event detected (from other tab), reloading repos...");
         loadRepos();
       }
     };
     
     // Listen for custom events when repos are created/imported
     const handleRepoUpdate = (event: Event) => {
+      if (isLoadingReposRef.current) return;
       const customEvent = event as CustomEvent;
       console.log("📦 [Repositories] Custom event detected (repo-created/imported), reloading repos...", {
         hasDetail: !!customEvent?.detail,
@@ -578,7 +596,9 @@ export default function RepositoriesPage() {
       });
       // Small delay to ensure localStorage is updated
       setTimeout(() => {
-        loadRepos();
+        if (!isLoadingReposRef.current) {
+          loadRepos();
+        }
       }, 100);
     };
     
@@ -591,7 +611,7 @@ export default function RepositoriesPage() {
       window.removeEventListener("gittr:repo-created", handleRepoUpdate as EventListener);
       window.removeEventListener("gittr:repo-imported", handleRepoUpdate as EventListener);
     };
-  }, [mounted, loadRepos]);
+  }, [mounted]); // CRITICAL: Remove loadRepos from dependencies to prevent loops
 
   // Sync from Nostr relays - query for ALL public repos (Nostr cloud)
   // This allows users to see repos from all users, not just their own
