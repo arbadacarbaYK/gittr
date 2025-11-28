@@ -50,6 +50,7 @@ interface ChangedFile {
 
 interface PRData {
   id: string;
+  number?: string; // PR number (for GitHub items: "1", "2", etc.)
   title: string;
   body: string;
   path?: string;
