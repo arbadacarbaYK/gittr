@@ -120,6 +120,7 @@ export default function RepoCodePage({
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [proposeEdit, setProposeEdit] = useState<boolean>(false);
   const [proposedContent, setProposedContent] = useState<string>("");
+  const [readmePath, setReadmePath] = useState<string>("README.md");
   const fileViewerRef = useRef<HTMLDivElement | null>(null);
   const repoProcessedRef = useRef<string>(""); // Track which repo we've already processed
   const fileFetchInProgressRef = useRef<boolean>(false); // Prevent multiple simultaneous file fetches
@@ -4219,6 +4220,9 @@ export default function RepoCodePage({
                                   
                                   let readmeContent = "";
                                   if (readmeFile) {
+                                    if (readmeFile.path) {
+                                      setReadmePath(readmeFile.path);
+                                    }
                                     try {
                                       console.log("📖 [File Fetch] Auto-loading README:", readmeFile.path);
                                       
@@ -4614,6 +4618,9 @@ export default function RepoCodePage({
                             
                             let readmeContent = "";
                             if (readmeFile && sourceUrlToPreserve) {
+                              if (readmeFile.path) {
+                                setReadmePath(readmeFile.path);
+                              }
                               try {
                                 console.log("📖 [File Fetch] Auto-loading README:", readmeFile.path);
                                 const readmeApiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrlToPreserve)}&path=${encodeURIComponent(readmeFile.path)}&branch=${encodeURIComponent(branch)}`;
@@ -5149,16 +5156,164 @@ export default function RepoCodePage({
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [repoData?.files]);
 
-  // Helper to get raw GitHub URL for a file path
+  // Helper to normalize repo-relative paths (removes ./ and ../ safely)
+  function normalizeRepoPath(path: string): string {
+    if (!path) return "";
+    const sanitized = path.replace(/\\/g, "/").trim();
+    const segments = sanitized.split("/");
+    const stack: string[] = [];
+    for (const segment of segments) {
+      if (!segment || segment === ".") continue;
+      if (segment === "..") {
+        stack.pop();
+      } else {
+        stack.push(segment);
+      }
+    }
+    return stack.join("/");
+  }
+
+  function resolveRepoRelativePath(targetPath: string, basePath?: string | null): string {
+    if (!targetPath) return "";
+    const trimmed = targetPath.trim();
+    if (
+      trimmed.startsWith("http://") ||
+      trimmed.startsWith("https://") ||
+      trimmed.startsWith("data:") ||
+      trimmed.startsWith("mailto:") ||
+      trimmed.startsWith("#")
+    ) {
+      return trimmed;
+    }
+
+    const isRootRelative = trimmed.startsWith("/");
+    const segments = trimmed.replace(/\\/g, "/").split("/");
+    const stack: string[] = [];
+
+    if (!isRootRelative && basePath) {
+      const baseNormalized = normalizeRepoPath(basePath);
+      if (baseNormalized) {
+        const baseParts = baseNormalized.split("/");
+        baseParts.pop(); // remove filename
+        stack.push(...baseParts);
+      }
+    }
+
+    if (isRootRelative) {
+      // Start from repo root
+      stack.length = 0;
+    }
+
+    for (const segment of segments) {
+      if (!segment || segment === ".") continue;
+      if (segment === "..") {
+        stack.pop();
+      } else {
+        stack.push(segment);
+      }
+    }
+
+    return stack.join("/");
+  }
+
+  function getInlineRepoFile(path: string): { content: string; isBinary: boolean } | null {
+    if (!repoData?.files || !Array.isArray(repoData.files)) return null;
+    const normalizedTarget = normalizeRepoPath(path).toLowerCase();
+    const contentFields = ["content", "data", "body", "text", "fileContent", "file_content"];
+
+    const match = repoData.files.find((file: any) => {
+      const filePath = normalizeRepoPath(file?.path || "").toLowerCase();
+      return filePath === normalizedTarget;
+    });
+
+    if (!match) return null;
+    const matchAny = match as Record<string, any>;
+    for (const field of contentFields) {
+      const fieldValue = matchAny?.[field];
+      if (typeof fieldValue === "string" && fieldValue) {
+        const isBinary = Boolean(matchAny?.isBinary || matchAny?.binary);
+        return { content: fieldValue, isBinary };
+      }
+    }
+    return null;
+  }
+
+  function guessMimeType(path: string): string {
+    const ext = path.split(".").pop()?.toLowerCase() || "";
+    const mimeMap: Record<string, string> = {
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif",
+      webp: "image/webp",
+      svg: "image/svg+xml",
+      bmp: "image/bmp",
+      ico: "image/x-icon",
+      avif: "image/avif",
+      jfif: "image/jpeg",
+      tiff: "image/tiff",
+      tif: "image/tiff",
+    };
+    return mimeMap[ext] || "application/octet-stream";
+  }
+
+  function getRepoAssetUrl(path: string): string | null {
+    if (!path) return null;
+    const inlineFile = getInlineRepoFile(path);
+    if (inlineFile && inlineFile.isBinary && inlineFile.content) {
+      return inlineFile.content.startsWith("data:")
+        ? inlineFile.content
+        : `data:${guessMimeType(path)};base64,${inlineFile.content}`;
+    }
+    return getRawUrl(path);
+  }
+
+  function createMarkdownImageRenderer(basePath: string | null) {
+    return ({ node, ...props }: any) => {
+      const rawSrc = props.src || "";
+      if (!rawSrc) {
+        return <img {...props} className="max-w-full h-auto rounded" />;
+      }
+
+      const trimmedSrc = rawSrc.trim();
+      const isExternal =
+        trimmedSrc.startsWith("http://") ||
+        trimmedSrc.startsWith("https://") ||
+        trimmedSrc.startsWith("data:");
+
+      if (isExternal) {
+        return <img {...props} src={trimmedSrc} className="max-w-full h-auto rounded" />;
+      }
+
+      const resolvedPath = resolveRepoRelativePath(trimmedSrc, basePath || undefined);
+      const assetUrl = getRepoAssetUrl(resolvedPath);
+
+      return (
+        <img
+          {...props}
+          src={assetUrl || trimmedSrc}
+          className="max-w-full h-auto rounded"
+          alt={props.alt || ""}
+        />
+      );
+    };
+  }
+
+  // Helper to get raw Git URL for a file path
   function getRawUrl(path: string): string | null {
     if (!repoData?.sourceUrl) return null;
+    const normalizedPath = normalizeRepoPath(path);
     try {
       const u = new URL(repoData.sourceUrl);
       const parts = u.pathname.split("/").filter(Boolean);
       const owner = parts[0];
       const repo = (parts[1] || params.repo).replace(/\.git$/, "");
       const branch = selectedBranch || repoData?.defaultBranch || "main";
-      return `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/${path}`;
+      const encodedPath = normalizedPath
+        .split("/")
+        .map((segment) => encodeURIComponent(segment))
+        .join("/");
+      return `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/${encodedPath}`;
     } catch {
       return null;
     }
@@ -6551,8 +6706,8 @@ export default function RepoCodePage({
           </div>
           )}
           <div className="rounded-md rounded-bl-none rounded-br-none border bg-[#171B21] py-2 px-4 text-sm font-medium dark:border-[#383B42]">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-gray-300">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-gray-300 flex-wrap min-w-0">
                     {(() => {
                   // CRITICAL: Use ref to access metadata without causing re-renders that block clicks
                   const currentMetadata = ownerMetadataRef.current;
@@ -6632,7 +6787,7 @@ export default function RepoCodePage({
                     <a 
                       href={ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${params.entity}`}
                       onClick={(e) => { e.preventDefault(); window.location.href = ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${params.entity}`; }}
-                      className="text-purple-500 hover:underline font-semibold"
+                      className="text-purple-500 hover:underline font-semibold truncate max-w-[160px]"
                     >
                       {(() => {
                         // CRITICAL: Use ref to access metadata without causing re-renders that block clicks
@@ -6645,12 +6800,12 @@ export default function RepoCodePage({
                         return ownerMeta?.display_name || ownerMeta?.name || params.entity;
                       })()}
                   </a>
-                    <span className="text-gray-400">forked</span>
+                    <span className="text-gray-400 whitespace-nowrap">forked</span>
                     <a 
                       href={repoData.forkedFrom} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="text-purple-500 hover:underline"
+                      className="text-purple-500 hover:underline truncate max-w-[200px]"
                     >
                       {repoData.forkedFrom.replace(/^https?:\/\//, '').replace(/\.git$/, '').replace(/^github\.com\//, '')}
                     </a>
@@ -6659,7 +6814,7 @@ export default function RepoCodePage({
                   <a 
                     href={ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${params.entity}`}
                     onClick={(e) => { e.preventDefault(); window.location.href = ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${params.entity}`; }}
-                    className="text-purple-500 hover:underline font-semibold"
+                    className="text-purple-500 hover:underline font-semibold truncate max-w-[160px]"
                   >
                     {(() => {
                       // CRITICAL: Use ref to access metadata without causing re-renders that block clicks
@@ -6670,12 +6825,12 @@ export default function RepoCodePage({
                   </a>
                 )}
                 {repoData?.createdAt && (
-                  <span className="text-gray-400">
+                  <span className="text-gray-400 whitespace-nowrap text-xs">
                     {formatDate24h(repoData.createdAt)}
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-4 text-gray-400 text-xs">
+              <div className="flex flex-wrap items-center gap-3 text-gray-400 text-xs">
                 <span className="hover:text-purple-500 flex items-center gap-1">
                   <History className="h-4 w-4" />
                   <span className="hidden sm:inline">
@@ -6946,9 +7101,7 @@ export default function RepoCodePage({
                   remarkPlugins={[remarkGfm]}
                   rehypePlugins={[rehypeRaw]}
                   components={{
-                    img: ({ node, ...props }) => (
-                      <img {...props} className="max-w-full h-auto rounded" alt={props.alt || ""} />
-                    ),
+                    img: createMarkdownImageRenderer(readmePath),
                     code: ({ node, inline, className, children, ...props }: any) => {
                       const match = /language-([\w-]+)/.exec(className || "");
                       const language = match?.[1]?.toLowerCase();
@@ -7471,6 +7624,7 @@ export default function RepoCodePage({
                         remarkPlugins={[remarkGfm]}
                         rehypePlugins={[rehypeRaw]}
                         components={{
+                          img: createMarkdownImageRenderer(selectedFile),
                           a: ({ node, ...props }: any) => {
                             // Resolve relative links relative to repo root, not current page
                             let href = props.href || '';
