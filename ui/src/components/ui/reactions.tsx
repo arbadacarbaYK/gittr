@@ -34,6 +34,7 @@ export function Reactions({ targetId, targetType, entity, repo }: ReactionsProps
 
   // Load reactions from localStorage
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     try {
       const stored = JSON.parse(localStorage.getItem(storageKey) || "[]");
       setReactions(stored.length > 0 ? stored : REACTION_EMOJIS.map(e => ({ ...e, count: 0, users: [] })));
@@ -69,7 +70,9 @@ export function Reactions({ targetId, targetType, entity, repo }: ReactionsProps
       });
 
       // Save to localStorage
-      localStorage.setItem(storageKey, JSON.stringify(updated));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(storageKey, JSON.stringify(updated));
+      }
       return updated;
     });
   }, [isLoggedIn, currentUserPubkey, storageKey]);
