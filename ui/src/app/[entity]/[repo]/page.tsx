@@ -3347,11 +3347,22 @@ export default function RepoCodePage({
             }
           );
           
+          // CRITICAL: Add global timeout to prevent subscription from hanging forever if EOSE never arrives
+          // This ensures the subscription is cleaned up even if relays don't respond
+          const globalTimeoutId = setTimeout(() => {
+            if (unsub) {
+              console.log("⏱️ [File Fetch] Global timeout (15s) - unsubscribing to prevent hang");
+              unsub();
+              unsub = undefined;
+            }
+          }, 15000); // 15 second global timeout
+          
           // Timeout after 3 seconds as a final fallback (reduced from 15s - should rarely trigger since we start fetching immediately)
           // CRITICAL: This should rarely trigger since we now start fetching immediately when clone URLs are found
           setTimeout(async () => {
             if (!foundFiles && unsub && !fileFetchInProgressRef.current) {
               console.log("⏱️ [File Fetch] Final timeout reached after 3s, trying multi-source fetch and git-nostr-bridge as last resort");
+              clearTimeout(globalTimeoutId); // Clear global timeout since we're handling it here
               unsub();
               
               // Try multi-source fetching first (NIP-34 clone URLs)
