@@ -1572,6 +1572,7 @@ function ExplorePageContent() {
   
   const filteredRepos = useMemo(() => {
     // Load list of locally-deleted repos (user deleted them, don't show)
+    if (typeof window === 'undefined') return repos;
     const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
     
     // Helper function to check if repo is deleted (robust matching)
