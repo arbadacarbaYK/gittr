@@ -50,6 +50,7 @@ import { loadStoredRepos, type StoredRepo, type StoredContributor } from "@/lib/
 
 interface Issue {
   id: string;
+  number?: string; // Issue number (for GitHub items: "1", "2", etc.)
   title: string;
   description: string;
   author: string;
