@@ -14,6 +14,12 @@ Following the [Nostr community discussion](https://github.com/nostr-protocol/nip
 - Decentralized aggregation (clients query and count reactions)
 - Standard NIPs (no custom event kinds needed)
 
+## Dependencies
+
+This implementation uses standard Nostr libraries:
+- `nostr-tools` - For event creation, signing, and hashing
+- No additional dependencies required for starring/following functionality
+
 ## Event Kinds Used
 
 - **Kind 7** (NIP-25: Reactions) - Star reactions to repositories
