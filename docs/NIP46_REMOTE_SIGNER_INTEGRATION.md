@@ -337,17 +337,20 @@ bootstrapFromStorage() {
 
 ### Login Page
 
+**Important**: After successful pairing, you must call `setAuthor` with the user's `npub` to actually log them in. The pairing alone doesn't log the user in—you need to extract the pubkey from the session and set it as the author.
+
 ```typescript
 // ui/src/app/login/page.tsx
 
 import { Html5Qrcode } from "html5-qrcode";
+import { nip19 } from "nostr-tools";
 
 const [remoteModalOpen, setRemoteModalOpen] = useState(false);
 const [remoteToken, setRemoteToken] = useState("");
 const [showQRScanner, setShowQRScanner] = useState(false);
 const qrScannerRef = useRef<Html5Qrcode | null>(null);
 const qrScanAreaRef = useRef<HTMLDivElement>(null);
-const { remoteSigner } = useNostrContext();
+const { remoteSigner, setAuthor } = useNostrContext();
 
 // QR Scanner for bunker:// or nostrconnect:// URIs
 const startQRScanner = useCallback(async () => {
