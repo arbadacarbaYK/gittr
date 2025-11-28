@@ -395,7 +395,15 @@ const handleRemoteConnect = useCallback(async () => {
   
   setRemoteBusy(true);
   try {
-    await remoteSigner.connect(remoteToken.trim());
+    const result = await remoteSigner.connect(remoteToken.trim());
+    // After successful pairing, log the user in with their pubkey
+    if (result?.npub && setAuthor) {
+      setAuthor(result.npub);
+    } else if (remoteSigner?.session?.userPubkey && setAuthor) {
+      // Fallback: get pubkey from session and convert to npub
+      const npub = nip19.npubEncode(remoteSigner.session.userPubkey);
+      setAuthor(npub);
+    }
     setRemoteModalOpen(false);
     router.push("/");
   } catch (error: any) {
@@ -403,7 +411,7 @@ const handleRemoteConnect = useCallback(async () => {
   } finally {
     setRemoteBusy(false);
   }
-}, [remoteSigner, remoteToken, router]);
+}, [remoteSigner, remoteToken, router, setAuthor]);
 ```
 
 ## Usage in Existing Code

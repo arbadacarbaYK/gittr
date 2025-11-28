@@ -84,7 +84,7 @@ You can now log in to gittr.space using a NIP-46 remote signer (hardware bunker,
 - **Pairing**: Click **"Pair Remote Signer (NIP-46)"** on the login screen.
 - **QR Scanning**: Use the **"Scan QR"** button to scan a `bunker://` QR code from your hardware signer (e.g., LNbits Remote Nostr Signer). The scanner uses `html5-qrcode` library and requires camera permissions.
 - **Manual Entry**: Alternatively, paste a `bunker://` or `nostrconnect://` URI directly into the text field.
-- **How It Works**: The UI generates an ephemeral client keypair, connects to the signer's relays, and requests permission. Once paired, the browser exposes a NIP-07-compatible `window.nostr` adapter backed by the remote signer.
+- **How It Works**: The UI generates an ephemeral client keypair, connects to the signer's relays, and requests permission. Once paired, the browser exposes a NIP-07-compatible `window.nostr` adapter backed by the remote signer, and **you are automatically logged in** with your pubkey from the remote signer.
 - **All Operations Supported**: Repository pushes, issues, pull requests, profile/account settings updates, SSH key management, file/repo deletions, and follows all automatically use the remote signer via the NIP-07 adapter—no code changes needed.
 - **Disconnect**: Signing out (or tapping "Disconnect remote signer") removes the cached client key and restores the original NIP-07 provider if you had one installed.
 
