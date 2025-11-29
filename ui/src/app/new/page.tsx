@@ -493,6 +493,9 @@ function NewRepoPageContent() {
   );
 }
 
+// Mark as dynamic to prevent static generation (useSearchParams requires dynamic rendering)
+export const dynamic = 'force-dynamic';
+
 export default function NewRepoPage() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-black text-white p-8">Loading...</div>}>
