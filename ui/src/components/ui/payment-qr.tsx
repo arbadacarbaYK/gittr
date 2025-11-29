@@ -605,7 +605,11 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
             )}
 
             <Button
-              onClick={() => window.open(`lightning:${cleanInvoice}`, "_blank")}
+              onClick={() => {
+                // Use window.location.href for better mobile compatibility with custom URL schemes
+                // This works on both mobile and desktop browsers
+                window.location.href = `lightning:${cleanInvoice}`;
+              }}
               className="w-full theme-bg-accent-primary"
             >
               Open in Wallet

@@ -1133,6 +1133,74 @@ const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)
 - Clone URLs are expanded immediately when found (search for "expandCloneUrls" or "immediately expand")
 - Status display shows all sources (including expanded ones) immediately (search for "status display" or "all sources")
 - Files are updated immediately when first source succeeds (search for "firstSuccessFiles" or "update files immediately")
+
+### File Fetching Performance Optimizations (2024)
+
+**Problem**: File fetching was slow and making redundant API calls:
+1. Multiple nostr-git sources (7+ GRASP servers) were all calling the same `git-nostr-bridge` API endpoint
+2. Clone triggers were being called multiple times for the same repo
+3. All sources were tried in parallel without prioritization, causing unnecessary network traffic
+
+**Solution**: Implemented caching and source prioritization:
+
+1. **Bridge API Cache** (`bridgeApiCache`):
+   - In-memory Map that deduplicates calls to `/api/nostr/repo/files` for the same `ownerPubkey`, `repo`, and `branch`
+   - All nostr-git sources share the same bridge API call since they all hit the same endpoint
+   - Reduces API calls from 7+ to 1 per repo/branch combination
+
+2. **Clone Trigger Cache** (`cloneTriggerCache`):
+   - In-memory Map that deduplicates calls to `/api/nostr/repo/clone` for the same `ownerPubkey` and `repo`
+   - Prevents multiple clone triggers for the same repository
+   - Only one clone is triggered per repo, even if multiple sources try
+
+3. **Nostr-Git Source Optimization**:
+   - Only tries the **first** nostr-git source since they all hit the same bridge API
+   - Other nostr-git sources are marked as success if the first one succeeds
+   - Reduces parallel bridge API calls from 7+ to 1
+
+4. **Source Prioritization**:
+   - Known-good sources (GitHub, Codeberg, GitLab) are tried **first** in parallel
+   - Nostr-git sources are only tried if known-good sources fail
+   - Returns immediately on first success
+
+5. **Reduced Polling**:
+   - Clone polling reduced from 10 attempts to 1 attempt
+   - Polling delay reduced from 2000ms to 500ms
+   - Faster failure detection
+
+**Code Location**: `ui/src/lib/utils/git-source-fetcher.ts` (`fetchFromNostrGit` and `fetchFilesFromMultipleSources` functions)
+
+**Key Changes**:
+```typescript
+// Bridge API cache - deduplicates API calls
+const bridgeApiCache = new Map<string, Promise<any>>();
+const cacheKey = `${ownerPubkey}:${repo}:${branch}`;
+if (bridgeApiCache.has(cacheKey)) {
+  return bridgeApiCache.get(cacheKey);
+}
+
+// Clone trigger cache - deduplicates clone triggers
+const cloneTriggerCache = new Map<string, Promise<any>>();
+const cloneKey = `${ownerPubkey}:${repo}`;
+if (cloneTriggerCache.has(cloneKey)) {
+  return cloneTriggerCache.get(cloneKey);
+}
+
+// Only try first nostr-git source
+const nostrGitSources = sources.filter(s => s.type === 'nostr-git');
+if (nostrGitSources.length > 0) {
+  // Only try the first one - they all hit the same bridge API
+  const firstNostrGit = nostrGitSources[0];
+  // ... fetch from first nostr-git source
+  // Mark other nostr-git sources as success if first one succeeds
+}
+```
+
+**Result**: 
+- Network requests reduced by ~85% (from 7+ bridge API calls to 1)
+- No duplicate clone triggers
+- Faster file fetching by prioritizing reliable sources
+- Reduced console spam from duplicate operations
 - EOSE delay reduced to 200ms (search for "EOSE" or "isAfterEose" with delay)
 - Timeout reduced to 3s and also expands clone URLs (search for "timeout" or "setTimeout" in file fetching)
 

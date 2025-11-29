@@ -113,20 +113,20 @@ export default function DistributeZaps({ entity, repo, contributors = [] }: Dist
       <h4 className="font-semibold mb-2">Distribute zaps</h4>
       <div className="flex items-center gap-3 text-sm mb-3">
         <label className="flex items-center gap-1">
-          <input type="radio" checked={mode === "sats"} onChange={() => setMode("sats")} />
+          <input type="radio" id="distribute-mode-sats" name="distribute-mode" checked={mode === "sats"} onChange={() => setMode("sats")} />
           Sats
         </label>
         <label className="flex items-center gap-1">
-          <input type="radio" checked={mode === "percent"} onChange={() => setMode("percent")} />
+          <input type="radio" id="distribute-mode-percent" name="distribute-mode" checked={mode === "percent"} onChange={() => setMode("percent")} />
           Percent
         </label>
         <span className="mx-2">|</span>
         <label className="flex items-center gap-1">
-          <input type="radio" checked={feeMode === "gross"} onChange={() => setFeeMode("gross")} />
+          <input type="radio" id="distribute-fee-gross" name="distribute-fee" checked={feeMode === "gross"} onChange={() => setFeeMode("gross")} />
           Fees on top
         </label>
         <label className="flex items-center gap-1">
-          <input type="radio" checked={feeMode === "cap"} onChange={() => setFeeMode("cap")} />
+          <input type="radio" id="distribute-fee-cap" name="distribute-fee" checked={feeMode === "cap"} onChange={() => setFeeMode("cap")} />
           Cap spend
         </label>
       </div>
@@ -134,13 +134,15 @@ export default function DistributeZaps({ entity, repo, contributors = [] }: Dist
       <div className="space-y-2">
         {rows.map((r, idx) => (
           <div key={idx} className={`flex items-center gap-3 p-2 border rounded ${r.enabled ? "border-gray-700" : "border-gray-800 bg-gray-900/30"}`}>
-            <label className="flex items-center gap-2 w-1/3">
-              <input type="checkbox" checked={r.enabled} onChange={(e) => setRows(prev => prev.map((x, i) => i === idx ? { ...x, enabled: e.target.checked } : x))} disabled={!r.lud16 && !r.lnurl} />
+            <label className="flex items-center gap-2 w-1/3" htmlFor={`distribute-checkbox-${idx}`}>
+              <input type="checkbox" id={`distribute-checkbox-${idx}`} name={`distribute-enabled-${idx}`} checked={r.enabled} onChange={(e) => setRows(prev => prev.map((x, i) => i === idx ? { ...x, enabled: e.target.checked } : x))} disabled={!r.lud16 && !r.lnurl} />
               <span className="truncate" title={r.name}>{r.name}</span>
               {!r.lud16 && !r.lnurl && (<Badge className="ml-2">no lightning</Badge>)}
             </label>
             <input
               type="number"
+              id={`distribute-amount-${idx}`}
+              name={`distribute-amount-${idx}`}
               min={0}
               className="w-32 px-2 py-1 border border-gray-700 bg-gray-800 text-white rounded"
               value={r.amount}
