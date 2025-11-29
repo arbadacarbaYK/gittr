@@ -110,12 +110,6 @@ export function ZapButton({
   }, [recipient, subscribe, defaultRelays, providedMetadata]);
 
   const handleZap = async () => {
-    if (!pubkey) {
-      setError("Please log in to zap");
-      setShowQR(true);
-      return;
-    }
-
     const zapAmount = parseInt(customAmount) || amount;
     if (zapAmount < 2) {
       setError("Minimum zap amount is 2 sats");
@@ -132,7 +126,8 @@ export function ZapButton({
     try {
       
       // Format payment message: username + "via gittr.space ⚡⚡"
-      const senderName = getPaymentSenderName(pubkey, currentUserMetadata);
+      // If not logged in, paymentMessage will default to "Anonymous via gittr.space ⚡⚡"
+      const senderName = pubkey ? getPaymentSenderName(pubkey, currentUserMetadata) : null;
       const paymentMessage = formatPaymentMessage(senderName);
       
       const zapRequest: ZapRequest & { recipientMetadata?: { lud16?: string; lnurl?: string } } = {
@@ -221,7 +216,7 @@ export function ZapButton({
       recordZap({
         id: Date.now().toString(),
         recipient,
-        sender: pubkey,
+        sender: pubkey || undefined, // Convert null to undefined
         amount: zapAmount,
         comment: zapRequest.comment,
         createdAt: Date.now(),

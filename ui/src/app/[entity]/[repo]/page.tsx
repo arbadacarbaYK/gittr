@@ -1470,15 +1470,17 @@ export default function RepoCodePage({
       return;
     }
     
-    if (fileFetchInProgressRef.current) {
-      console.log("⏭️ [File Fetch] Skipping - fetch in progress");
-      return;
-    }
-    
     const repoKey = `${params.entity}/${params.repo}`;
     const currentBranch = selectedBranch || repoData?.defaultBranch || "main";
     const repoKeyWithBranch = `${repoKey}:${currentBranch}`; // Include branch in key
     const hasAttempted = fileFetchAttemptedRef.current === repoKeyWithBranch;
+    
+    // CRITICAL: Check if fetch is in progress BEFORE checking attempted status
+    // This prevents race conditions where multiple useEffect runs try to start fetching
+    if (fileFetchInProgressRef.current) {
+      console.log("⏭️ [File Fetch] Skipping - fetch in progress");
+      return;
+    }
     
     // Check if repo has clone URLs - if so, always try multi-source fetch (even if attempted before)
     const hasCloneUrls = currentRepoData?.clone && Array.isArray(currentRepoData.clone) && currentRepoData.clone.length > 0;
@@ -1492,16 +1494,20 @@ export default function RepoCodePage({
     
     // For repos with clone URLs, allow one retry per page load (but not infinite loops)
     // Use a separate flag to track if we've already done the retry
+    // CRITICAL: Use a ref to track retries in addition to sessionStorage to prevent race conditions
     const retryKey = `retry_${repoKeyWithBranch}`;
     const hasRetried = sessionStorage.getItem(retryKey) === "true";
+    const retryRefKey = `retryRef_${repoKeyWithBranch}`;
+    const hasRetriedRef = (fileFetchAttemptedRef as any)[retryRefKey] === true;
     
-    if (hasCloneUrls && hasAttempted && !hasRetried) {
+    if (hasCloneUrls && hasAttempted && !hasRetried && !hasRetriedRef) {
       console.log("🔄 [File Fetch] Repo has clone URLs, will retry multi-source fetch once");
-      // Mark as retried to prevent infinite loops
+      // Mark as retried in both sessionStorage and ref to prevent infinite loops
       sessionStorage.setItem(retryKey, "true");
+      (fileFetchAttemptedRef as any)[retryRefKey] = true;
       // Reset the attempted flag to allow one retry
       fileFetchAttemptedRef.current = "";
-    } else if (hasCloneUrls && hasAttempted && hasRetried) {
+    } else if (hasCloneUrls && hasAttempted && (hasRetried || hasRetriedRef)) {
       // Already retried once - don't retry again (prevents infinite loops)
       console.log("⏭️ [File Fetch] Already retried once for this repo, skipping to prevent loop");
       return;
@@ -1597,7 +1603,13 @@ export default function RepoCodePage({
       }
     }
     
-    // Mark as attempted before starting to prevent re-runs (include branch in key)
+    // CRITICAL: Mark as in progress and attempted BEFORE starting to prevent race conditions
+    // This must be done atomically to prevent multiple useEffect runs from starting fetches
+    if (fileFetchInProgressRef.current) {
+      console.log("⏭️ [File Fetch] Another fetch already started, skipping");
+      return;
+    }
+    fileFetchInProgressRef.current = true;
     fileFetchAttemptedRef.current = repoKeyWithBranch;
     console.log("🚀 [File Fetch] Starting file fetch for:", repoKeyWithBranch, "branch:", currentBranch);
       
@@ -1615,8 +1627,6 @@ export default function RepoCodePage({
       
       // Use ownerPubkeyForFetch for the rest of the function
       const ownerPubkey: string = ownerPubkeyForFetch;
-      
-      fileFetchInProgressRef.current = true;
       
       // Check if repo has clone URLs in localStorage - if so, try multi-source fetch immediately
       (async () => {
@@ -5750,17 +5760,17 @@ export default function RepoCodePage({
             return { content: typeof foundContent === 'string' ? foundContent : String(foundContent), url: null, isBinary: false };
           }
         } else {
-          console.log(`⚠️ [fetchGithubRaw] File ${path} found in files array but no content in any field`, {
-            fileEntry: fileEntry ? { path: fileEntry.path, type: fileEntry.type, keys: Object.keys(fileEntry), fullEntry: fileEntry } : null,
-            allFiles: repoData.files.slice(0, 5).map((f: any) => ({ path: f.path, keys: Object.keys(f) })),
+          // File found in array but no content - this is normal for large files or files stored on GRASP servers
+          // Continue to Strategy 2 to fetch from bridge API
+          console.log(`ℹ️ [fetchGithubRaw] File ${path} found in files array but no embedded content - will fetch from bridge API`, {
+            fileEntry: fileEntry ? { path: fileEntry.path, type: fileEntry.type } : null,
           });
         }
       } else {
-        console.log(`⚠️ [fetchGithubRaw] File ${path} NOT found in files array`, {
+        console.log(`ℹ️ [fetchGithubRaw] File ${path} NOT found in files array - will fetch from bridge API`, {
           requestedPath: path,
           normalizedPath: normalizePath(path),
           filesCount: repoData.files.length,
-          samplePaths: repoData.files.slice(0, 5).map((f: any) => f.path),
         });
       }
     }
@@ -5901,10 +5911,10 @@ export default function RepoCodePage({
                 });
                 if (cloneResponse.ok) {
                   console.log(`✅ [fetchGithubRaw] Clone triggered, polling for file...`);
-                  // OPTIMIZATION: Reduced polling to 2 attempts with 500ms delay (was 5 attempts, 1s delay)
-                  for (let attempt = 1; attempt <= 2; attempt++) {
+                  // OPTIMIZATION: Reduced polling to 1 attempt with 500ms delay for faster failure
+                  for (let attempt = 1; attempt <= 1; attempt++) {
                     await new Promise(resolve => setTimeout(resolve, 500));
-                    console.log(`🔍 [fetchGithubRaw] Polling for file (attempt ${attempt}/2)...`);
+                    console.log(`🔍 [fetchGithubRaw] Polling for file (attempt ${attempt}/1)...`);
                     try {
                       const pollResponse = await fetch(apiUrl);
                       if (pollResponse.ok) {
@@ -5936,7 +5946,7 @@ export default function RepoCodePage({
                       console.warn(`⚠️ [fetchGithubRaw] Poll attempt ${attempt} error:`, pollError.message);
                     }
                   }
-                  console.log(`⚠️ [fetchGithubRaw] File not available after clone (tried 2 times), falling back to other sources`);
+                  console.log(`⚠️ [fetchGithubRaw] File not available after clone (tried 1 time), falling back to other sources`);
                 } else {
                   const cloneErrorData = await cloneResponse.json().catch(() => ({ error: "Unknown error" }));
                   console.warn(`⚠️ [fetchGithubRaw] Clone API failed: ${cloneResponse.status} -`, cloneErrorData);
@@ -6061,158 +6071,157 @@ export default function RepoCodePage({
       }
     }
     
-    // Try each source in order until one succeeds
-    for (const sourceInfo of sourcesToTry) {
-      let sourceUrl = sourceInfo.sourceUrl;
-      if (!sourceUrl) continue;
+    // OPTIMIZATION: Try all sources in parallel using Promise.race (instead of sequential loop)
+    // This significantly speeds up file opening when multiple sources are available
+    if (sourcesToTry.length > 0) {
+      console.log(`🚀 [fetchGithubRaw] Trying ${sourcesToTry.length} sources in parallel for: ${path}`);
       
-      // CRITICAL: Normalize SSH URLs (git@host:path) to HTTPS format for matching
-      const sshMatch = sourceUrl.match(/^git@([^:]+):(.+)$/);
-      if (sshMatch) {
-        const [, host, path] = sshMatch;
-        sourceUrl = `https://${host}/${path}`;
-        console.log(`🔄 [fetchGithubRaw] Normalized SSH URL to HTTPS: ${sourceUrl}`);
+      // Use selectedBranch, fallback to defaultBranch, then main/master
+      // CRITICAL: Prioritize defaultBranch if it exists, to avoid unnecessary 404s
+      const defaultBranch = repoData?.defaultBranch || "main";
+      const branch = selectedBranch || defaultBranch;
+      // Build branches list: selected/default branch first, then fallbacks, dedupe
+      const branchesToTry = [branch];
+      if (branch !== defaultBranch) branchesToTry.push(defaultBranch);
+      if (branch !== "main" && defaultBranch !== "main") branchesToTry.push("main");
+      if (branch !== "master" && defaultBranch !== "master" && !branchesToTry.includes("master")) branchesToTry.push("master");
+      
+      // Helper function to fetch from a single source
+      const fetchFromSource = async (sourceInfo: { sourceUrl: string; source: any }): Promise<{ content: string | null; url: string | null; isBinary: boolean } | null> => {
+        let sourceUrl = sourceInfo.sourceUrl;
+        if (!sourceUrl) return null;
+        
+        // CRITICAL: Normalize SSH URLs (git@host:path) to HTTPS format for matching
+        const sshMatch = sourceUrl.match(/^git@([^:]+):(.+)$/);
+        if (sshMatch) {
+          const [, host, path] = sshMatch;
+          sourceUrl = `https://${host}/${path}`;
+        }
+        
+        try {
+          const githubMatch = sourceUrl.match(/github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/);
+          const gitlabMatch = sourceUrl.match(/gitlab\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/);
+          const codebergMatch = sourceUrl.match(/codeberg\.org\/([^\/]+)\/([^\/]+?)(?:\.git)?$/);
+          
+          // Helper to convert binary data to data URL
+          const createDataUrl = (ext: string, base64Content: string): string => {
+            const mimeTypes: Record<string, string> = {
+              // Images
+              'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif',
+              'webp': 'image/webp', 'svg': 'image/svg+xml', 'ico': 'image/x-icon', 'bmp': 'image/bmp',
+              'tiff': 'image/tiff', 'tif': 'image/tiff', 'avif': 'image/avif', 'heic': 'image/heic',
+              // Videos
+              'mp4': 'video/mp4', 'webm': 'video/webm', 'ogv': 'video/ogg', 'mov': 'video/quicktime',
+              'avi': 'video/x-msvideo', 'mkv': 'video/x-matroska', 'wmv': 'video/x-ms-wmv',
+              // Audio
+              'mp3': 'audio/mpeg', 'wav': 'audio/wav', 'flac': 'audio/flac', 'aac': 'audio/aac',
+              'ogg': 'audio/ogg', 'opus': 'audio/opus', 'm4a': 'audio/mp4',
+              // Documents
+              'pdf': 'application/pdf', 'doc': 'application/msword', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              'xls': 'application/vnd.ms-excel', 'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              'ppt': 'application/vnd.ms-powerpoint', 'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+              // Fonts
+              'woff': 'font/woff', 'woff2': 'font/woff2', 'ttf': 'font/ttf', 'otf': 'font/otf', 'eot': 'application/vnd.ms-fontobject',
+              // Archives
+              'zip': 'application/zip', 'tar': 'application/x-tar', 'gz': 'application/gzip',
+              'bz2': 'application/x-bzip2', 'xz': 'application/x-xz', '7z': 'application/x-7z-compressed',
+              'rar': 'application/x-rar-compressed', 'dmg': 'application/x-apple-diskimage',
+              // Installers & Executables
+              'exe': 'application/x-msdownload', 'msi': 'application/x-ms-installer', 'msix': 'application/msix',
+              'pkg': 'application/x-newton-compatible-pkg', 'deb': 'application/vnd.debian.binary-package',
+              'rpm': 'application/x-rpm', 'apk': 'application/vnd.android.package-archive', 'ipa': 'application/octet-stream',
+              'appimage': 'application/x-executable', 'snap': 'application/vnd.snap',
+              // Other binaries
+              'bin': 'application/octet-stream', 'dll': 'application/x-msdownload', 'so': 'application/x-sharedlib',
+              'dylib': 'application/x-mach-binary', 'jar': 'application/java-archive', 'wasm': 'application/wasm',
+            };
+            const mimeType = mimeTypes[ext] || 'application/octet-stream';
+            return `data:${mimeType};base64,${base64Content}`;
+          };
+          
+          // Try all branches in parallel for this source - first success wins
+          // CRITICAL: Use Promise.allSettled instead of Promise.race to try all branches
+          // Promise.race rejects immediately if first promise rejects, preventing us from trying other branches
+          const branchPromises = branchesToTry.map(async (tryBranch) => {
+            const apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrl)}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(tryBranch)}`;
+            try {
+              const r = await fetch(apiUrl);
+              if (r.ok) {
+                const data = await r.json();
+                const ext = path.split('.').pop()?.toLowerCase() || '';
+                if (data.isBinary) {
+                  const dataUrl = createDataUrl(ext, data.content);
+                  return { content: null, url: dataUrl, isBinary: true, branch: tryBranch };
+                }
+                return { content: data.content, url: null, isBinary: false, branch: tryBranch };
+              }
+              // Return a special "failed" marker instead of throwing
+              return { __failed: true, branch: tryBranch, status: r.status } as any;
+            } catch (error: any) {
+              // Return failed marker instead of throwing
+              return { __failed: true, branch: tryBranch, error: error.message } as any;
+            }
+          });
+          
+          // Use Promise.allSettled to try all branches, then pick first successful one
+          const branchResults = await Promise.allSettled(branchPromises);
+          for (const result of branchResults) {
+            if (result.status === 'fulfilled' && result.value && !(result.value as any).__failed) {
+              const successResult = result.value as { content: string | null; url: string | null; isBinary: boolean; branch: string };
+              if (githubMatch) {
+                console.log(`✅ [fetchGithubRaw] Successfully fetched from GitHub via API proxy: ${path} (branch: ${successResult.branch})`);
+              } else if (gitlabMatch) {
+                console.log(`✅ [fetchGithubRaw] Successfully fetched from GitLab via API proxy: ${path} (branch: ${successResult.branch})`);
+              } else if (codebergMatch) {
+                console.log(`✅ [fetchGithubRaw] Successfully fetched from Codeberg via API proxy: ${path} (branch: ${successResult.branch})`);
+              }
+              // Return without branch property (not needed by caller)
+              return { content: successResult.content, url: successResult.url, isBinary: successResult.isBinary };
+            }
+          }
+          
+          // All branches failed for this source
+          return null;
+        } catch (error: any) {
+          return null;
+        }
+      };
+      
+      // Try all sources in parallel - first success wins
+      // Wrap promises so failures don't cause Promise.race to reject early
+      const sourcePromises = sourcesToTry.map(async (sourceInfo) => {
+        try {
+          const result = await fetchFromSource(sourceInfo);
+          if (result) {
+            return result;
+          }
+          // If failed, return a special marker that we'll filter out
+          return { __failed: true } as any;
+        } catch (error: any) {
+          // Return failed marker instead of throwing
+          return { __failed: true } as any;
+        }
+      });
+      
+      const timeoutPromise = new Promise<{ __timeout: true }>((resolve) => {
+        setTimeout(() => resolve({ __timeout: true }), 3000); // 3 second timeout
+      });
+      
+      // Race all sources - first non-failed result wins
+      const racePromises = [...sourcePromises, timeoutPromise];
+      const result = await Promise.race(racePromises);
+      
+      // Check if result is valid (not failed marker, not timeout)
+      if (result && !(result as any).__failed && !(result as any).__timeout && ((result as any).content || (result as any).url)) {
+        return result as { content: string | null; url: string | null; isBinary: boolean };
       }
       
-      console.log(`🔍 [fetchGithubRaw] Trying source: ${sourceUrl}`, {
-        sourceIndex: sourcesToTry.indexOf(sourceInfo) + 1,
-        totalSources: sourcesToTry.length,
-      });
-      try {
-        const githubMatch = sourceUrl.match(/github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/);
-        const gitlabMatch = sourceUrl.match(/gitlab\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/);
-        const codebergMatch = sourceUrl.match(/codeberg\.org\/([^\/]+)\/([^\/]+?)(?:\.git)?$/);
-        
-        console.log(`🔍 [fetchGithubRaw] Checking sourceUrl for file fetch:`, {
-          sourceUrl,
-          hasGithubMatch: !!githubMatch,
-          hasGitlabMatch: !!gitlabMatch,
-          fromSourceUrl: !!repoData?.sourceUrl,
-          fromForkedFrom: !!repoData?.forkedFrom,
-          fromClone: Boolean(!(repoData?.sourceUrl || repoData?.forkedFrom) && repoHasClone),
-        });
-        
-      // Use selectedBranch, fallback to defaultBranch, then main/master
-      const branch = selectedBranch || repoData?.defaultBranch || "main";
-      const branchesToTry = [branch, "main", "master"].filter((b, i, arr) => arr.indexOf(b) === i); // dedupe
-      
-        if (githubMatch) {
-          const [, owner, repo] = githubMatch;
-          console.log(`🔍 [fetchGithubRaw] Trying GitHub via API proxy for: ${owner}/${repo}`, { branchesToTry });
-      for (const tryBranch of branchesToTry) {
-            // Use backend API proxy to avoid CORS issues (consistent with GitLab)
-            const apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrl)}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(tryBranch)}`;
-            const r = await fetch(apiUrl);
-        if (r.ok) {
-              const data = await r.json();
-              console.log(`✅ [fetchGithubRaw] Successfully fetched from GitHub via API proxy: ${path}`);
-              if (data.isBinary) {
-                // For binary files, convert base64 to data URL
-                const ext = path.split('.').pop()?.toLowerCase() || '';
-                const mimeTypes: Record<string, string> = {
-                  // Images
-                  'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif',
-                  'webp': 'image/webp', 'svg': 'image/svg+xml', 'ico': 'image/x-icon', 'bmp': 'image/bmp',
-                  'tiff': 'image/tiff', 'tif': 'image/tiff', 'avif': 'image/avif', 'heic': 'image/heic',
-                  // Videos
-                  'mp4': 'video/mp4', 'webm': 'video/webm', 'ogv': 'video/ogg', 'mov': 'video/quicktime',
-                  'avi': 'video/x-msvideo', 'mkv': 'video/x-matroska', 'wmv': 'video/x-ms-wmv',
-                  // Audio
-                  'mp3': 'audio/mpeg', 'wav': 'audio/wav', 'flac': 'audio/flac', 'aac': 'audio/aac',
-                  'ogg': 'audio/ogg', 'opus': 'audio/opus', 'm4a': 'audio/mp4',
-                  // Documents
-                  'pdf': 'application/pdf', 'doc': 'application/msword', 'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                  'xls': 'application/vnd.ms-excel', 'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                  'ppt': 'application/vnd.ms-powerpoint', 'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-                  // Fonts
-                  'woff': 'font/woff', 'woff2': 'font/woff2', 'ttf': 'font/ttf', 'otf': 'font/otf', 'eot': 'application/vnd.ms-fontobject',
-                  // Archives
-                  'zip': 'application/zip', 'tar': 'application/x-tar', 'gz': 'application/gzip',
-                  'bz2': 'application/x-bzip2', 'xz': 'application/x-xz', '7z': 'application/x-7z-compressed',
-                  'rar': 'application/x-rar-compressed', 'dmg': 'application/x-apple-diskimage',
-                  // Installers & Executables (Release Assets)
-                  'exe': 'application/x-msdownload', 'msi': 'application/x-ms-installer', 'msix': 'application/msix',
-                  'pkg': 'application/x-newton-compatible-pkg', 'deb': 'application/vnd.debian.binary-package',
-                  'rpm': 'application/x-rpm', 'apk': 'application/vnd.android.package-archive', 'ipa': 'application/octet-stream',
-                  'appimage': 'application/x-executable', 'snap': 'application/vnd.snap',
-                  // Other binaries
-                  'bin': 'application/octet-stream', 'dll': 'application/x-msdownload', 'so': 'application/x-sharedlib',
-                  'dylib': 'application/x-mach-binary', 'jar': 'application/java-archive', 'wasm': 'application/wasm',
-                };
-                const mimeType = mimeTypes[ext] || 'application/octet-stream';
-                const dataUrl = `data:${mimeType};base64,${data.content}`;
-                return { content: null, url: dataUrl, isBinary: true };
-              }
-              return { content: data.content, url: null, isBinary: false };
-            } else {
-              console.log(`⚠️ [fetchGithubRaw] GitHub API proxy failed: ${apiUrl} - ${r.status}`);
-            }
-          }
-        } else if (gitlabMatch) {
-          const [, owner, repo] = gitlabMatch;
-          console.log(`🔍 [fetchGithubRaw] Trying GitLab via API proxy for: ${owner}/${repo}`, { branchesToTry });
-          for (const tryBranch of branchesToTry) {
-            // Use backend API proxy to avoid CORS issues
-            const apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrl)}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(tryBranch)}`;
-            const r = await fetch(apiUrl);
-            if (r.ok) {
-              const data = await r.json();
-              console.log(`✅ [fetchGithubRaw] Successfully fetched from GitLab via API proxy: ${path}`);
-              if (data.isBinary) {
-                // For binary files, convert base64 to data URL
-                const ext = path.split('.').pop()?.toLowerCase() || '';
-                const mimeTypes: Record<string, string> = {
-                  'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif',
-                  'webp': 'image/webp', 'svg': 'image/svg+xml', 'ico': 'image/x-icon',
-                  'pdf': 'application/pdf', 'woff': 'font/woff', 'woff2': 'font/woff2',
-                  'ttf': 'font/ttf', 'otf': 'font/otf', 'mp4': 'video/mp4', 'mp3': 'audio/mpeg', 'wav': 'audio/wav',
-                };
-                const mimeType = mimeTypes[ext] || 'application/octet-stream';
-                const dataUrl = `data:${mimeType};base64,${data.content}`;
-                return { content: null, url: dataUrl, isBinary: true };
-              }
-              return { content: data.content, url: null, isBinary: false };
-            } else {
-              console.log(`⚠️ [fetchGithubRaw] GitLab API proxy failed: ${apiUrl} - ${r.status}`);
-            }
-          }
-        } else if (codebergMatch) {
-          const [, owner, repo] = codebergMatch;
-          console.log(`🔍 [fetchGithubRaw] Trying Codeberg via API proxy for: ${owner}/${repo}`, { branchesToTry });
-          for (const tryBranch of branchesToTry) {
-            // Use backend API proxy to avoid CORS issues
-            const apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrl)}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(tryBranch)}`;
-            const r = await fetch(apiUrl);
-            if (r.ok) {
-              const data = await r.json();
-              console.log(`✅ [fetchGithubRaw] Successfully fetched from Codeberg via API proxy: ${path}`);
-              if (data.isBinary) {
-                // For binary files, convert base64 to data URL
-                const ext = path.split('.').pop()?.toLowerCase() || '';
-                const mimeTypes: Record<string, string> = {
-                  'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif',
-                  'webp': 'image/webp', 'svg': 'image/svg+xml', 'ico': 'image/x-icon',
-                  'pdf': 'application/pdf', 'woff': 'font/woff', 'woff2': 'font/woff2',
-                  'ttf': 'font/ttf', 'otf': 'font/otf', 'mp4': 'video/mp4', 'mp3': 'audio/mpeg', 'wav': 'audio/wav',
-                };
-                const mimeType = mimeTypes[ext] || 'application/octet-stream';
-                const dataUrl = `data:${mimeType};base64,${data.content}`;
-                return { content: null, url: dataUrl, isBinary: true };
-              }
-              return { content: data.content, url: null, isBinary: false };
-            } else {
-              console.log(`⚠️ [fetchGithubRaw] Codeberg API proxy failed: ${apiUrl} - ${r.status}`);
-            }
-          }
-        } else {
-          console.log(`⚠️ [fetchGithubRaw] sourceUrl is not GitHub, GitLab, or Codeberg: ${sourceUrl}, trying next source...`);
-          // Continue to next source in loop
-          continue;
+      // If timeout or all failed, try Promise.allSettled to see if any succeeded
+      const allResults = await Promise.allSettled(sourcePromises);
+      for (const settled of allResults) {
+        if (settled.status === 'fulfilled' && settled.value && !(settled.value as any).__failed) {
+          return settled.value as { content: string | null; url: string | null; isBinary: boolean };
         }
-      } catch (error: any) {
-        console.error(`❌ [fetchGithubRaw] Error fetching from source ${sourceUrl}:`, error.message);
-        // Continue to next source in loop
-        continue;
       }
     }
     
@@ -7808,6 +7817,9 @@ export default function RepoCodePage({
                         htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${htmlContent}</body></html>`;
                       }
                       
+                      // Note: Relative paths in HTML (scripts, stylesheets, images) may not work in srcdoc iframes
+                      // This is a browser security limitation - the HTML is rendered in an isolated context
+                      
                       return (
                         <div className="w-full h-[70vh] border border-[#383B42] rounded">
                           <iframe 
@@ -7815,6 +7827,13 @@ export default function RepoCodePage({
                             className="w-full h-full border-0" 
                             title={selectedFile}
                             sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals"
+                            onLoad={() => {
+                              // Iframe loaded successfully
+                              console.log(`✅ [HTML Preview] Successfully loaded HTML file: ${selectedFile}`);
+                            }}
+                            onError={(e) => {
+                              console.error(`❌ [HTML Preview] Failed to load HTML file: ${selectedFile}`, e);
+                            }}
                           />
                         </div>
                       );
@@ -9004,15 +9023,17 @@ export default function RepoCodePage({
           return null;
         })() : null}
         
-        {mounted && showZap && currentUserPubkey && (
+        {mounted && showZap && (
           <div className="mb-4 pb-4 border-b border-lightgray">
             <h3 className="text-sm font-semibold mb-2">Zap this repo</h3>
             <RepoZapButton
               repoId={`${params.entity}/${params.repo}`}
               ownerPubkey={(() => {
-                // Resolve actual owner pubkey
+                // Priority 1: Current repoData (most up-to-date)
+                if (repoData?.ownerPubkey) return repoData.ownerPubkey;
+                // Priority 2: If current user is owner
                 if (isOwner && currentUserPubkey) return currentUserPubkey;
-                // Try to get owner pubkey from repo data or entity lookup
+                // Priority 3: Try to get owner pubkey from stored repos
                 try {
       const repos = loadStoredRepos();
       const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, decodedRepo);

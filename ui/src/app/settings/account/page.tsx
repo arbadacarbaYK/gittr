@@ -685,11 +685,16 @@ export default function AccountSettingsPage() {
     showError?: boolean;
   }) {
     const displayError = showError && error;
+    // Generate a unique id from the label
+    const fieldId = `input-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+    const fieldName = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     return (
       <div className="space-y-1">
-        <label className="block text-sm font-medium">{label}</label>
+        <label htmlFor={fieldId} className="block text-sm font-medium">{label}</label>
         <div className="relative">
           <input
+            id={fieldId}
+            name={fieldName}
             className={`w-full border p-2 text-black rounded ${
               displayError ? "border-red-500" : isValid ? "border-green-500" : "border-gray-300"
             }`}

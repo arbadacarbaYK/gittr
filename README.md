@@ -163,6 +163,13 @@ The file source is displayed in the repository's "About" sidebar, making it clea
 
 **🆕 Robust Fallback Chain**: Both flows have multiple fallback strategies, ensuring files can be fetched even if one source fails.
 
+**🆕 Performance Optimizations**: The system includes intelligent caching and deduplication:
+- **Bridge API Cache**: Deduplicates API calls to `git-nostr-bridge` (reduces from 7+ calls to 1 per repo/branch)
+- **Clone Trigger Cache**: Prevents duplicate clone triggers for the same repository
+- **Source Prioritization**: Known-good sources (GitHub, Codeberg, GitLab) are tried first
+- **Nostr-Git Optimization**: Only the first nostr-git source is tried since they all hit the same bridge API
+- See [docs/FILE_FETCHING_INSIGHTS.md](docs/FILE_FETCHING_INSIGHTS.md) for detailed implementation notes
+
 **Binary File Handling**: Binary files are detected, encoded as base64, and converted to data URLs for display in the browser.
 
 **OwnerPubkey Resolution**: The system uses multiple strategies to resolve the correct owner pubkey, ensuring consistency between file fetching and file opening.
@@ -240,6 +247,7 @@ Handle binary vs text files
 - When Strategy 3 tries multiple clone URLs in parallel, not all GRASP servers necessarily have every repo
 - Clone URLs are *potential mirrors* - they only have repos that were pushed directly to them, cloned to them, or actively mirrored
 - The system tries all URLs simultaneously and uses whichever responds first, providing resilience and redundancy
+- **Performance Note**: For nostr-git sources (GRASP servers), only the first source is tried since they all hit the same `git-nostr-bridge` API endpoint, reducing redundant network calls
 - See [Decentralization & Resilience](#-decentralization--resilience) for a detailed explanation
 
 **SSH URL Normalization:**

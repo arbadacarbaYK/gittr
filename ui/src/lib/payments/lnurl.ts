@@ -135,10 +135,20 @@ export async function createInvoiceFromLNURL(
   const callbackUrl = new URL(payResponse.callback);
   callbackUrl.searchParams.set("amount", String(amount));
   
-  // Skip comments for Alby compatibility (rejects comments even when allowed)
-  if (comment && commentAllowed === 0) {
-    // Comments not allowed - don't include
+  // Add comment if provided and allowed
+  // Some LNbits versions expect the comment parameter to be present even if empty
+  if (commentAllowed > 0 && comment) {
+    // Truncate comment to allowed length
+    const truncatedComment = comment.length > commentAllowed 
+      ? comment.substring(0, commentAllowed) 
+      : comment;
+    callbackUrl.searchParams.set("comment", truncatedComment);
+  } else if (commentAllowed > 0) {
+    // LNbits compatibility: include empty comment parameter if comments are allowed
+    // This ensures compatibility with newer LNbits versions that expect the parameter
+    callbackUrl.searchParams.set("comment", "");
   }
+  // If commentAllowed === 0, don't include comment parameter at all (Alby compatibility)
   
   const finalCallbackUrl = callbackUrl.toString();
   

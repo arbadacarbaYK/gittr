@@ -873,7 +873,7 @@ export default function HomePage() {
       <header className="mb-6">
         <h1 className="text-2xl font-bold">Home</h1>
         <p className="text-gray-400 mt-1">
-          {isLoggedIn ? `Welcome, ${name || "nostr user"}` : "Welcome. Please log in with NIP-07 to create and fork repos."}
+          {isLoggedIn ? `Welcome, ${name || "nostr user"}` : "Welcome. Please log in to create and fork repos."}
         </p>
       </header>
 
