@@ -470,6 +470,14 @@ export default function HomePage() {
   }, [pubkey]); // Re-run when pubkey changes (login/logout)
 
   const recent = useMemo(() => {
+    console.log('📋 [Home] Computing recent repos:', {
+      reposCount: repos.length,
+      sample: repos.slice(0, 3).map(r => ({
+        repo: r.repo || r.slug,
+        entity: r.entity,
+        ownerPubkey: (r as any).ownerPubkey ? (r as any).ownerPubkey.slice(0, 16) + '...' : 'MISSING'
+      }))
+    });
     // CRITICAL: Sort by latest event date (lastNostrEventCreatedAt) if available, otherwise by createdAt
     // This ensures repos with recent updates appear first
     // Note: lastNostrEventCreatedAt is in SECONDS (NIP-34 format), createdAt/updatedAt are in MILLISECONDS
