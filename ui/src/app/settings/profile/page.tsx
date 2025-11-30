@@ -41,6 +41,11 @@ export default function ProfilePage() {
   const [newIdentityPlatform, setNewIdentityPlatform] = useState<string>("");
   const [newIdentityName, setNewIdentityName] = useState<string>("");
   const [newIdentityProof, setNewIdentityProof] = useState<string>("");
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Use actual username, avoiding "Anonymous Nostrich" and shortened pubkeys
   // CRITICAL: Get picture from metadata if session doesn't have it
