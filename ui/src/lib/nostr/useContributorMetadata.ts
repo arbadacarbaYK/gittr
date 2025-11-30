@@ -236,7 +236,8 @@ export function useContributorMetadata(pubkeys: string[]) {
       return;
     }
     
-    // If no pubkeys, still return early but don't log (this is normal during initial load)
+    // If no pubkeys, return early (this is normal during initial load before repos are loaded)
+    // The hook will re-run when pubkeys become available
     if (pubkeys.length === 0) {
       return;
     }
