@@ -936,52 +936,6 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       note: "Verify clone tags on nostr.watch or gitworkshop.dev - they should match the URLs above",
     });
 
-    // Step 6.5: Send event directly to bridge for immediate processing (optional optimization)
-    // This eliminates relay propagation delay - bridge will process immediately
-    // If this fails, bridge will still receive event via relay subscription
-    // CRITICAL: Use the confirmed event ID from relays (result.eventId) to ensure consistency
-    try {
-      onProgress?.("Sending event to bridge for immediate processing...");
-      
-      // Ensure we're using the confirmed event ID from relays
-      const eventToSend = {
-        ...repoEvent,
-        id: result.eventId || repoEvent.id, // Use confirmed ID from relays
-      };
-      
-      // Log event structure before sending to bridge
-      console.log(`🔍 [Push Repo] Sending event to bridge:`, {
-        eventId: eventToSend.id,
-        kind: eventToSend.kind,
-        pubkey: eventToSend.pubkey ? `${eventToSend.pubkey.slice(0, 8)}...` : "missing",
-        sig: eventToSend.sig ? `${eventToSend.sig.slice(0, 16)}...` : "missing",
-        created_at: eventToSend.created_at,
-        tagsCount: Array.isArray(eventToSend.tags) ? eventToSend.tags.length : 0,
-        contentLength: typeof eventToSend.content === "string" ? eventToSend.content.length : 0,
-      });
-      
-      const bridgeResponse = await fetch("/api/nostr/repo/event", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(eventToSend),
-      });
-      
-      if (bridgeResponse.ok) {
-        const bridgeResult = await bridgeResponse.json();
-        console.log(`✅ [Push Repo] Event sent directly to bridge: ${bridgeResult.status || "accepted"}`);
-        onProgress?.("✅ Event processed by bridge immediately!");
-      } else {
-        const errorText = await bridgeResponse.text();
-        console.warn(`⚠️ [Push Repo] Bridge direct submission failed (will receive via relay): ${errorText}`);
-        // Don't fail - bridge will get it via relay subscription
-      }
-    } catch (bridgeError: any) {
-      console.warn(`⚠️ [Push Repo] Bridge direct submission error (will receive via relay):`, bridgeError?.message || bridgeError);
-      // Don't fail - bridge will get it via relay subscription
-    }
-
     if (result.confirmed) {
       // Step 7: Store event ID and update status
       storeRepoEventId(repoSlug, entity, result.eventId, true);

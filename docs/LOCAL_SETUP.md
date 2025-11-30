@@ -84,7 +84,7 @@ go version
 
 **Use this option if:** You don't have sudo access, or prefer to install Go in your home directory.
 
-**Important clarification:** "Your user" means the **Linux system user account** you're logged in as (e.g., `mylaptop`, `www-data`). This is **NOT** the Nostr nsec/pubkey from your `.env.local` file. The Nostr keys are for platform authentication, while the system user is your Linux account. Full standalone bridge instructions live in the extracted gitnostr repo under [`docs/STANDALONE_BRIDGE_SETUP.md`](../gitnostr/docs/STANDALONE_BRIDGE_SETUP.md) if you plan to run the bridge without the UI.
+**Important clarification:** "Your user" means the **Linux system user account** you're logged in as (e.g., `homie`, `www-data`). This is **NOT** the Nostr nsec/pubkey from your `.env.local` file. The Nostr keys are for platform authentication, while the system user is your Linux account.
 
 **For Docker installations:** If you're using Docker, Go is already included in the Docker image, so you don't need to install it separately. See Docker setup in [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md).
 

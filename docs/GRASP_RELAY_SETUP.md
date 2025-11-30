@@ -8,18 +8,11 @@ This guide explains how to set up a relay instance (Grasp protocol server) for y
 
 Grasp (Git Relays Authorized via Signed-Nostr Proofs) is a distributed, protocol-first approach to hosting Git repos. It uses Nostr events as the source of truth, allowing multiple Git servers to act as redundant data relays.
 
-**Important Understanding**: GRASP servers are real Git servers that *can* host full repositories, but they don't automatically mirror everything. When you see multiple clone URLs in a repo, those are *potential mirrors* - not all of them necessarily have the repo. They only have repos that were pushed directly to them, cloned to them, or actively mirrored. This design provides:
-- **Discoverability**: Repo metadata is always on Nostr relays
-- **Resilience**: Multiple potential mirrors increase availability
-- **Decentralization**: No single point of failure
-- **Parallel Fetching**: Clients try all URLs simultaneously for fastest access
-
 **Key Benefits:**
-- **Decentralized**: No single point of failure - your repo metadata lives on Nostr relays
-- **Censorship Resistant**: Multiple servers can host the same repo, and repo discovery happens through Nostr
-- **Protocol-First**: Nostr events control the Git experience - Git servers are just data relays
-- **Resilient**: Pull/push from multiple instances simultaneously, with automatic fallback
-- **Discoverable**: Anyone can find your repo through Nostr relays, even if they don't know which Git server has it
+- **Decentralized**: No single point of failure
+- **Censorship Resistant**: Multiple servers can host the same repo
+- **Protocol-First**: Nostr events control the Git experience
+- **Resilient**: Pull/push from multiple instances simultaneously
 
 Learn more: https://ngit.dev/grasp/
 
@@ -117,12 +110,9 @@ const DEFAULT_RELAYS = [
    - Used for: Managing repository permissions
    - Required for: Git operations via git-nostr-bridge
 
-4. **Kind 51** (gitnostr: Repository) - Legacy repository announcements (read-only)
-   - Used for: Reading legacy repository metadata (backwards compatibility)
-   - Required for: Reading old repositories, NOT used for publishing
-5. **Kind 30617** (NIP-34: Replaceable Events) - Repository metadata (primary method)
-   - Used for: Repository announcements, discovery, metadata (primary publishing method)
-   - Required for: Core repository functionality - this is what gittr.space publishes
+4. **Kind 51** (gitnostr: Repository) - Repository announcements
+   - Used for: Repository metadata, discovery, announcements
+   - Required for: Core repository functionality
 
 5. **Kind 52** (gitnostr: SSH Keys) - SSH public keys
    - Used for: Git authentication via SSH
@@ -136,7 +126,15 @@ const DEFAULT_RELAYS = [
    - Used for: Repository issues with bounties
    - Required for: Issue management
 
-8. **Kind 9804** (Custom: Pull Requests) - Pull requests
+8. **Kind 1337** (NIP-C0: Code Snippets) - Code snippet sharing
+   - Used for: Sharing code snippets from repositories
+   - Required for: Code snippet features
+
+9. **Kind 30617** (NIP-34: Repository Metadata) - Repository announcements (primary)
+   - Used for: Repository metadata, discovery, announcements
+   - Required for: Core repository functionality (replaces legacy kind 51)
+
+10. **Kind 9804** (Custom: Pull Requests) - Pull requests
    - Used for: Code review and merging
    - Required for: PR workflow
 
@@ -150,7 +148,7 @@ const DEFAULT_RELAYS = [
 [relay]
 # Allow all kinds (recommended for public relays)
 # OR specify allowed kinds:
-allowed_kinds = [0, 1, 50, 51, 52, 9735, 9803, 9804]
+allowed_kinds = [0, 1, 50, 51, 52, 1337, 30617, 9735, 9803, 9804]
 ```
 
 **After updating config, restart relay:**
@@ -167,7 +165,7 @@ relay:
   # Allow all kinds (recommended)
   # Or use eventKinds section to whitelist:
   eventKinds:
-    allow: [0, 1, 50, 51, 52, 9735, 9803, 9804]
+    allow: [0, 1, 50, 51, 52, 1337, 30617, 9735, 9803, 9804]
 ```
 
 **After updating config, restart relay:**
@@ -177,7 +175,7 @@ sudo systemctl restart strfry
 docker-compose restart strfry
 ```
 
-**For other relay implementations:** Check your relay's documentation for how to configure allowed event kinds. The key is ensuring these kinds are allowed: 0, 1, 50, 51, 52, 9735, 9803, 9804.
+**For other relay implementations:** Check your relay's documentation for how to configure allowed event kinds. The key is ensuring these kinds are allowed: 0, 1, 50, 51, 52, 1337, 30617, 9735, 9803, 9804.
 
 **Blossom Server (NIP-96):**
 If you're running a Blossom server for file storage (Git pack files), ensure it:
@@ -207,29 +205,13 @@ If events are rejected, check your relay logs for "event kind not allowed" error
 
 ### How It Works
 
-1. **Repository Announcement**: When a user creates a repo, a Nostr event (kind 30617, NIP-34 replaceable) is published to relays listing which Grasp servers *could* host it. This event includes multiple clone URLs for potential mirrors. Note: gittr.space only publishes as kind 30617, never as kind 51. Kind 51 is only read for backwards compatibility with legacy repositories.
+1. **Repository Announcement**: When a user creates a repo, a Nostr event (kind 51) is published to relays listing which Grasp servers should host it.
 
-2. **Auto-Creation vs. Actual Hosting**: 
-   - **Auto-Creation**: Some Grasp servers may automatically create blank repos when they receive repository-announcement events that list them
-   - **Actual Hosting**: However, a GRASP server only has the *full repository* if:
-     - The repo was **pushed directly to it** (e.g., gittr pushes to `git.gittr.space`)
-     - Someone **cloned from it** (which creates a local copy on that server)
-     - The server operator **actively mirrored it**
+2. **Auto-Creation**: Grasp servers automatically create blank repos when they receive repository-announcement events that list them.
 
-3. **Multiple Clone URLs = Potential Mirrors**: When you see 10 clone URLs in a repo, not all 10 necessarily have the repo. They're listed as *potential mirrors* for:
-   - **Discoverability**: Anyone can discover the repo through any Nostr relay
-   - **Resilience**: If one server goes down, others may still have it
-   - **Parallel Fetching**: Clients try all URLs simultaneously, using whichever responds first
+3. **Git Operations**: Users push/pull using `nostr://` URLs, which resolve to multiple Grasp servers for redundancy.
 
-4. **Git Operations**: Users push/pull using `nostr://` URLs or direct HTTPS/SSH URLs. The system tries multiple GRASP servers in parallel for redundancy.
-
-5. **Nostr Authority**: All permissions, PRs, issues, and metadata are stored as Nostr events, making Git servers simple data relays. The Nostr event is the source of truth for discovery and metadata.
-
-**Key Insight**: GRASP servers are real Git servers that *can* host full repos, but they don't automatically mirror everything. This is by design - it allows for:
-- **Decentralization**: No single point of failure
-- **Censorship Resistance**: Multiple independent mirrors
-- **Resilience**: Your code survives even if one service goes down
-- **Discoverability**: Repo metadata is always available on Nostr relays, even if some Git servers don't have the actual files
+4. **Nostr Authority**: All permissions, PRs, issues, and metadata are stored as Nostr events, making Git servers simple data relays.
 
 ### Architecture
 
@@ -238,7 +220,7 @@ If events are rejected, check your relay logs for "event kind not allowed" error
 │  gittr Client │
 └──────┬──────┘
        │
-       ├─── Nostr Events (kind 30617) ───┐
+       ├─── Nostr Events (kind 51) ───┐
        │                                │
        │                                ▼
        │                         ┌──────────────┐
@@ -266,7 +248,7 @@ If events are rejected, check your relay logs for "event kind not allowed" error
 
 **Repos not appearing:**
 - Ensure your relay is listed in repository-announcement events
-- Check that KIND_REPOSITORY_NIP34 (30617) events are being published (gittr.space only publishes as 30617, never as 51)
+- Check that KIND_REPOSITORY (51) events are being published
 - Verify subscription filters are correct
 
 **Performance issues:**

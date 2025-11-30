@@ -40,7 +40,8 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { formatDateTime24h, formatDate24h, formatTime24h } from "@/lib/utils/date-format";
 import { sendNotification, formatNotificationMessage } from "@/lib/notifications";
 import { getRepoOwnerPubkey, resolveEntityToPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
-import { createBountyEvent, KIND_BOUNTY, createCommentEvent, KIND_COMMENT, createIssueEvent, KIND_ISSUE } from "@/lib/nostr/events";
+import { createBountyEvent, KIND_BOUNTY, createCommentEvent, KIND_COMMENT, KIND_CODE_SNIPPET } from "@/lib/nostr/events";
+import { CodeSnippetRenderer } from "@/components/ui/code-snippet-renderer";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
 import { Textarea } from "@/components/ui/textarea";
@@ -50,7 +51,6 @@ import { loadStoredRepos, type StoredRepo, type StoredContributor } from "@/lib/
 
 interface Issue {
   id: string;
-  number?: string; // Issue number (for GitHub items: "1", "2", etc.)
   title: string;
   description: string;
   author: string;
@@ -65,7 +65,6 @@ interface Issue {
   bountyWithdrawUrl?: string; // Shareable URL for claiming the bounty (e.g., https://bitcoindelta.club/withdraw/{id})
   bountyStatus?: "pending" | "paid" | "released";
   bountyCreator?: string; // Pubkey of the user who created the bounty
-  bountyInvoice?: string; // Legacy invoice field (for backwards compatibility with old Nostr events)
 }
 
 interface Comment {
@@ -98,33 +97,8 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyParentId, setReplyParentId] = useState<string | null>(null);
   const [issueEventId, setIssueEventId] = useState<string | null>(null);
+  const [snippetEvents, setSnippetEvents] = useState<Map<string, any>>(new Map());
   const commentTextareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Helper function to generate repo link for relative link resolution
-  const getRepoLink = useCallback((subpath: string = "") => {
-    // Try to resolve entity to pubkey for npub format
-    let ownerPubkey: string | null = null;
-    try {
-      const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
-      if (repo) {
-        ownerPubkey = getRepoOwnerPubkey(repo, params.entity);
-      }
-    } catch (e) {
-      // Fallback to decoding entity
-      try {
-        const decoded = nip19.decode(params.entity);
-        if (decoded.type === "npub") {
-          ownerPubkey = decoded.data as string;
-        }
-      } catch {}
-    }
-    
-    const basePath = ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
-      ? `/${nip19.npubEncode(ownerPubkey)}/${params.repo}${subpath ? `/${subpath}` : ""}`
-      : `/${params.entity}/${params.repo}${subpath ? `/${subpath}` : ""}`;
-    return basePath;
-  }, [params.entity, params.repo]);
 
   // Fetch metadata for issue author (only full 64-char pubkeys for metadata lookup)
   const authorPubkeys = useMemo(() => {
@@ -162,12 +136,7 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
       const key = getRepoStorageKey("gittr_issues", params.entity, params.repo);
       const issuesRaw = localStorage.getItem(key);
       const issues: Issue[] = issuesRaw ? (JSON.parse(issuesRaw) as Issue[]) : [];
-      // Match by: full ID, number, or index
-      const issueData = issues.find((i) => 
-        i.id === params.id || 
-        i.number === params.id || 
-        String(issues.indexOf(i) + 1) === params.id
-      );
+      const issueData = issues.find((i) => i.id === params.id || String(issues.indexOf(i) + 1) === params.id);
       
       if (issueData) {
         setIssue({
@@ -255,16 +224,40 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
   useEffect(() => {
     if (!subscribe || !defaultRelays || !issue?.id || !issueEventId) return;
 
-    // Subscribe to comments (kind 1) that reference this issue
+    // Subscribe to comments (kind 1) and code snippets (kind 1337) that reference this issue
     const unsub = subscribe(
       [
         {
-          kinds: [KIND_COMMENT],
-          "#e": [issueEventId], // Comments that reference the issue event ID
+          kinds: [KIND_COMMENT, KIND_CODE_SNIPPET],
+          "#e": [issueEventId], // Comments/snippets that reference the issue event ID
         },
       ],
       defaultRelays,
       (event, isAfterEose, relayURL) => {
+        // Handle code snippets
+        if (event.kind === KIND_CODE_SNIPPET) {
+          try {
+            const eTags = event.tags.filter((t): t is string[] => Array.isArray(t) && t[0] === "e");
+            const repoTag = event.tags.find((t): t is string[] => Array.isArray(t) && t[0] === "repo");
+            
+            // Verify this snippet is for our issue and repo
+            const isForThisIssue = eTags.some((t) => t[1] === issueEventId);
+            const isForThisRepo = repoTag && repoTag[1] === params.entity && repoTag[2] === params.repo;
+            
+            if (isForThisIssue && isForThisRepo) {
+              // Store snippet event
+              setSnippetEvents((prev) => {
+                const newMap = new Map(prev);
+                newMap.set(event.id, event);
+                return newMap;
+              });
+            }
+          } catch (error) {
+            console.error("Failed to process snippet event:", error);
+          }
+        }
+        
+        // Handle comments
         if (event.kind === KIND_COMMENT) {
           try {
             // Parse comment from event
@@ -442,74 +435,6 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
       }
       
       setIssue({ ...issue, status: newStatus });
-      
-      // Publish updated issue status to Nostr (closed/reopened)
-      try {
-        const hasNip07 = typeof window !== "undefined" && window.nostr;
-        const privateKey = await getNostrPrivateKey();
-        let issueUpdateEvent: any;
-        
-        if (hasNip07 && window.nostr) {
-          const authorPubkey = await window.nostr.getPublicKey();
-          
-          // Create updated issue event with new status
-          issueUpdateEvent = {
-            kind: KIND_ISSUE,
-            created_at: Math.floor(Date.now() / 1000),
-            tags: [
-              ["repo", params.entity, params.repo],
-              ["status", newStatus],
-              ["e", issue.id, "", "previous"], // Reference to original issue event
-              ...(issue.labels || []).map((label: string) => ["t", label]),
-              ...(issue.assignees || []).map((assignee: string) => ["p", assignee]),
-            ],
-            content: JSON.stringify({
-              title: issue.title,
-              description: issue.description || "",
-              status: newStatus,
-              bountyAmount: issue.bountyAmount,
-              bountyInvoice: issue.bountyInvoice, // Preserve legacy invoice if exists
-            }),
-            pubkey: authorPubkey,
-            id: "",
-            sig: "",
-          };
-          
-          issueUpdateEvent.id = getEventHash(issueUpdateEvent);
-          issueUpdateEvent = await window.nostr.signEvent(issueUpdateEvent);
-        } else if (privateKey) {
-          // Use private key
-          issueUpdateEvent = createIssueEvent({
-            repoEntity: params.entity,
-            repoName: params.repo,
-            title: issue.title,
-            description: issue.description || "",
-            status: newStatus,
-            labels: issue.labels || [],
-            assignees: issue.assignees || [],
-            bountyAmount: issue.bountyAmount,
-            bountyInvoice: issue.bountyInvoice, // Preserve legacy invoice if exists
-          }, privateKey);
-          
-          // Add reference to original issue
-          issueUpdateEvent.tags.push(["e", issue.id, "", "previous"]);
-          issueUpdateEvent.id = getEventHash(issueUpdateEvent);
-          issueUpdateEvent.sig = signEvent(issueUpdateEvent, privateKey);
-        }
-        
-        if (publish && defaultRelays && defaultRelays.length > 0 && issueUpdateEvent) {
-          try {
-            publish(issueUpdateEvent, defaultRelays);
-            console.log(`✅ Published issue ${newStatus} status to Nostr:`, issueUpdateEvent.id);
-          } catch (error) {
-            console.error("Failed to publish issue status update to Nostr:", error);
-            // Don't block issue status change if publishing fails
-          }
-        }
-      } catch (error) {
-        console.error("Failed to create issue status update event:", error);
-        // Don't block issue status change if publishing fails
-      }
       
       // Dispatch event to update counts
       window.dispatchEvent(new CustomEvent("gittr:issue-updated"));
@@ -1077,36 +1002,6 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
-                components={{
-                  a: ({ node, ...props }: any) => {
-                    // Resolve relative links relative to repo root, not current page
-                    let href = props.href || '';
-                    const isExternal = href.startsWith('http://') || href.startsWith('https://');
-                    if (href && !isExternal && !href.startsWith('mailto:') && !href.startsWith('#')) {
-                      // Relative link - resolve relative to repo root using query params format
-                      const repoBasePath = getRepoLink('');
-                      // Remove leading ./ or . if present
-                      let cleanHref = href.replace(/^\.\//, '').replace(/^\.$/, '');
-                      // Remove leading / if present (root-relative)
-                      if (cleanHref.startsWith('/')) {
-                        cleanHref = cleanHref.substring(1);
-                      }
-                      // Extract directory path and filename
-                      const pathParts = cleanHref.split('/');
-                      const fileName = pathParts[pathParts.length - 1];
-                      const dirPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '';
-                      // Construct URL with query parameters: ?path=dir&file=dir%2Ffile.md
-                      const encodedFile = encodeURIComponent(cleanHref);
-                      const encodedPath = dirPath ? encodeURIComponent(dirPath) : '';
-                      if (encodedPath) {
-                        href = `${repoBasePath}?path=${encodedPath}&file=${encodedFile}`;
-                      } else {
-                        href = `${repoBasePath}?file=${encodedFile}`;
-                      }
-                    }
-                    return <a {...props} href={href} target={isExternal ? '_blank' : undefined} rel={isExternal ? 'noopener noreferrer' : undefined} className="text-purple-400 hover:text-purple-300" />;
-                  },
-                }}
               >
                 {issue.description}
               </ReactMarkdown>
@@ -1201,29 +1096,44 @@ export default function IssueDetailPage({ params }: { params: { entity: string; 
                                 <ReactMarkdown
                                   remarkPlugins={[remarkGfm]}
                                   rehypePlugins={[rehypeRaw]}
-                                  components={{
-                                    a: ({ node, ...props }: any) => {
-                                      // Resolve relative links relative to repo root, not current page
-                                      let href = props.href || '';
-                                      if (href && !href.startsWith('http://') && !href.startsWith('https://') && !href.startsWith('mailto:') && !href.startsWith('#')) {
-                                        // Relative link - resolve relative to repo root
-                                        const repoBasePath = getRepoLink('');
-                                        // Remove leading ./ or . if present
-                                        const cleanHref = href.replace(/^\.\//, '').replace(/^\.$/, '');
-                                        // If it starts with /, it's root-relative to repo
-                                        if (cleanHref.startsWith('/')) {
-                                          href = `${repoBasePath}${cleanHref}`;
-                                        } else {
-                                          // Relative path - resolve from repo root
-                                          href = `${repoBasePath}/${cleanHref}`;
-                                        }
-                                      }
-                                      return <a {...props} href={href} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300" />;
-                                    },
-                                  }}
                                 >
                                   {comment.content}
                                 </ReactMarkdown>
+                                {/* Render snippets referenced in comment */}
+                                {(() => {
+                                  // Extract snippet event IDs from comment content
+                                  // Look for nostr:note1... or just event IDs (64 hex chars)
+                                  const snippetIdPattern = /(?:nostr:)?(note1[a-z0-9]{58}|[0-9a-f]{64})/gi;
+                                  const matches = comment.content.matchAll(snippetIdPattern);
+                                  const snippetIds: string[] = [];
+                                  for (const match of matches) {
+                                    const id = match[1];
+                                    if (!id) continue; // Skip if no match
+                                    // Decode if it's a bech32 note ID
+                                    if (id.startsWith("note1")) {
+                                      try {
+                                        const decoded = nip19.decode(id);
+                                        if (decoded.type === "note") {
+                                          snippetIds.push(decoded.data as string);
+                                        }
+                                      } catch {
+                                        // Invalid bech32, skip
+                                      }
+                                    } else if (/^[0-9a-f]{64}$/i.test(id)) {
+                                      snippetIds.push(id);
+                                    }
+                                  }
+                                  
+                                  return snippetIds.map((snippetId) => {
+                                    const snippetEvent = snippetEvents.get(snippetId);
+                                    if (!snippetEvent) return null;
+                                    return (
+                                      <div key={snippetId} className="mt-4">
+                                        <CodeSnippetRenderer event={snippetEvent} showAuthor={false} />
+                                      </div>
+                                    );
+                                  });
+                                })()}
                               </div>
                               <div className="flex items-center gap-4">
                                 <Button

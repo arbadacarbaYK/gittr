@@ -61,14 +61,13 @@ Use this checklist to track your deployment progress:
 - **Kind 0** (Metadata) - User profiles
 - **Kind 1** (Notes) - Comments and discussions
 - **Kind 50** (Repository Permissions) - Git access control
-- **Kind 51** (Repository) - Legacy repository announcements (read-only for backwards compatibility)
+- **Kind 51** (Repository) - Repository announcements (legacy)
 - **Kind 52** (SSH Keys) - Git authentication
-- **Kind 30617** (NIP-34: Replaceable Events) - Repository metadata (primary method, used for publishing)
-- **Kind 9735** (Zaps) - Lightning payments
+- **Kind 1337** (NIP-C0: Code Snippets) - Code snippet sharing
+- **Kind 30617** (NIP-34: Repository Metadata) - Repository announcements (primary)
+- **Kind 9735** (NIP-57: Zaps) - Lightning payments
 - **Kind 9803** (Issues) - Issue tracking
 - **Kind 9804** (Pull Requests) - Code reviews
-
-**Note**: gittr.space publishes repository announcements as Kind 30617 (NIP-34 replaceable events). Kind 51 is only read for backwards compatibility with legacy repositories, never published.
 
 #### For nostr-rs-relay:
 
@@ -78,7 +77,7 @@ Edit your relay config file (usually `/etc/nostr-rs-relay/config.toml`):
 [relay]
 # Allow all kinds (recommended for public relays)
 # OR specify allowed kinds:
-allowed_kinds = [0, 1, 50, 51, 52, 30617, 9735, 9803, 9804]
+allowed_kinds = [0, 1, 50, 51, 52, 1337, 30617, 9735, 9803, 9804]
 ```
 
 Restart the relay:
@@ -93,7 +92,7 @@ Edit your `strfry.conf`:
 ```yaml
 relay:
   eventKinds:
-    allow: [0, 1, 50, 51, 52, 30617, 9735, 9803, 9804]
+    allow: [0, 1, 50, 51, 52, 1337, 30617, 9735, 9803, 9804]
 ```
 
 Restart strfry:
@@ -192,15 +191,6 @@ cp .env.example .env.local
 
 **Why**: The bridge is essential for `git clone`, `git push`, and `git pull` operations.
 
-> **Why we still publish Strategy‑4 metadata**
->
-> Even with a bridge (Strategy 5), every push still emits a full NIP‑34/Strategy 4 event. That’s deliberate:
-> 1. **Protocol compatibility** – Other NGit/GRASP clients expect the canonical `clone`, `relays`, `web`, `link`, and Blossom pack tags. If we stopped publishing them, relay‑only or nostr:// clients couldn’t reconstruct the repo.
-> 2. **Portability** – Some users run their own bridge or use `git-remote-nostr`. They rely on event metadata to fetch without touching `git.gittr.space`, so we keep Strategy 4 intact.
-> 3. **Redundancy** – If our bridge is down, the Nostr event still points to Blossom packs or other GRASP mirrors. There’s no single point of failure.
-> 4. **Performance layering** – The bridge is just a fast cache/API layered on top. When nostr:// or Blossom sources are available, clients can keep using them; the bridge is a shortcut while relays sync.
-
-
 #### 5.1: Install Go
 
 ```bash
@@ -269,9 +259,6 @@ Edit `~/.config/git-nostr/git-nostr-bridge.json`:
 - `relays`: Use your existing relays plus public Grasp instances
 - `gitRepoOwners`: List of Nostr pubkeys (64-char hex) that can create repositories
 - `repositoryDir`: Use absolute path in production
-- `BRIDGE_HTTP_PORT` env var (optional): Set (`8080` by default) when you want the `/api/event` fast lane. Leave unset to disable the HTTP listener.
-- For a complete reference of every knob plus standalone instructions, see
-  [`docs/STANDALONE_BRIDGE_SETUP.md`](STANDALONE_BRIDGE_SETUP.md) in the gitnostr repo.
 
 #### 5.5: Configure SSH Server
 
@@ -315,14 +302,10 @@ Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-# Optional: Configure HTTP server port for direct event submission (default: 8080)
-Environment=BRIDGE_HTTP_PORT=8080
 
 [Install]
 WantedBy=multi-user.target
 ```
-
-**Note**: The bridge now includes an HTTP server (port 8080) for direct event submission. This is a **gittr.space enhancement** that allows immediate processing of your pushes without waiting for relay propagation (typically 1-5 seconds). The frontend automatically sends events to this endpoint via `/api/nostr/repo/event`, which proxies to the bridge's HTTP API. The bridge still subscribes to relays to receive events from other clients, ensuring full decentralization.
 
 Enable and start:
 
@@ -432,21 +415,6 @@ sudo systemctl enable fcgiwrap
 sudo systemctl start fcgiwrap
 ```
 
-**Configure git safe.directory for www-data user (required to fix 500 errors):**
-
-Git will refuse to access repositories owned by different users (security feature). Since repos are owned by `git-nostr` but `fcgiwrap` runs as `www-data`, configure git to trust the repos directory:
-
-```bash
-# Create www-data home directory if it doesn't exist
-sudo mkdir -p /var/www
-sudo chown www-data:www-data /var/www
-
-# Configure git to trust all directories (required for git-http-backend)
-sudo -u www-data git config --global --add safe.directory '*'
-```
-
-**Note:** This is only needed in production. Local development doesn't require this unless you're running fcgiwrap locally.
-
 Enable site:
 
 ```bash
@@ -521,8 +489,7 @@ WantedBy=multi-user.target
 
 | Variable | Location | Required | Purpose |
 |----------|----------|----------|---------|
-| `NEXT_PUBLIC_NOSTR_RELAYS` | `ui/.env.local` | ✅ Yes | Comma-separated **Nostr relay** URLs (WSS format, e.g., `wss://relay.example.com`) |
-| `NEXT_PUBLIC_GIT_SERVER_URL` | `ui/.env.local` | ❌ No | **Git server** URL for HTTPS clones (e.g., `https://git.gittr.space`) - **NOT a Nostr relay** |
+| `NEXT_PUBLIC_NOSTR_RELAYS` | `ui/.env.local` | ✅ Yes | Comma-separated relay URLs |
 | `NEXT_PUBLIC_BLOSSOM_URL` | `ui/.env.local` | ✅ Yes | Blossom server URL (for Git pack files) |
 | `NEXT_PUBLIC_SITE_URL` | `ui/.env.local` | ❌ No | Site URL for SEO metadata and GRASP server API calls (defaults to `https://gittr.space`) |
 | `NEXT_PUBLIC_GIT_SSH_BASE` | `ui/.env.local` | ❌ No | Git SSH base hostname for clone URLs (defaults to `gittr.space`) |
@@ -530,13 +497,8 @@ WantedBy=multi-user.target
 | `NOSTR_NSEC` | `ui/.env.local` | ❌ No | Nostr private key for notifications |
 | `TELEGRAM_BOT_TOKEN` | `ui/.env.local` | ❌ No | Telegram bot token for notifications |
 | `TELEGRAM_CHAT_ID` | `ui/.env.local` | ❌ No | Telegram channel ID for notifications |
-| `BRIDGE_HTTP_PORT` | `ui/.env.local` | ❌ No | Bridge HTTP API port (defaults to `8080`) |
-| `BRIDGE_HTTP_HOST` | `ui/.env.local` | ❌ No | Bridge HTTP API hostname (defaults to `localhost`) |
 
-**⚠️ Important Distinction:**
-- **`NEXT_PUBLIC_NOSTR_RELAYS`**: Nostr relay URLs (WSS format) - used for publishing/subscribing to Nostr events
-- **`NEXT_PUBLIC_GIT_SERVER_URL`**: Git server URL (HTTPS format) - used for `git clone` operations, 
--Note that `git.gittr.space` is a **Git server**, not a Nostr relay. It should only be in `NEXT_PUBLIC_GIT_SERVER_URL`, not `NEXT_PUBLIC_NOSTR_RELAYS`
+**⚠️ Security Note:** All sensitive values (tokens, keys, secrets) are in `.gitignore` and will NOT be committed to git. Only the server admin has access to these values.
 
 ### Port Configuration
 
@@ -544,11 +506,8 @@ WantedBy=multi-user.target
 |---------|-------------|-----------------|-------|
 | Next.js Frontend | 3000 | 3000 (internal) | Proxied through nginx on 443 |
 | git-nostr-bridge SSH | 22 | 22 | Standard SSH port |
-| git-nostr-bridge HTTP | 8080 | 8080 (internal) | Direct event submission API (localhost only) |
 | nginx HTTP | 80 | 80 | Redirects to HTTPS |
 | nginx HTTPS | 443 | 443 | Main entry point |
-
-**Note**: The bridge HTTP server (port 8080) is only accessible from localhost for security. The frontend API routes proxy requests to it.
 
 ---
 
@@ -658,20 +617,6 @@ git clone git@gittr.space:<pubkey>/<repo-name>.git
 
 ### Git Clone Fails
 
-**HTTPS Clone Returns 500 Error:**
-
-If `git clone https://git.gittr.space/...` returns 500, this is usually due to Git's "dubious ownership" security check:
-
-```bash
-# Configure git to trust repos directory for www-data user (fcgiwrap)
-sudo mkdir -p /var/www
-sudo chown www-data:www-data /var/www
-sudo -u www-data git config --global --add safe.directory '*'
-sudo systemctl restart fcgiwrap
-```
-
-**SSH Clone Issues:**
-
 1. **Check SSH server:**
    ```bash
    sudo systemctl status sshd
@@ -777,8 +722,6 @@ cp /path/to/gittr/ui/.env.local "$BACKUP_DIR/"
 
 - **[SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md)**: Detailed setup instructions with Docker options
 - **[GIT_NOSTR_BRIDGE_SETUP.md](GIT_NOSTR_BRIDGE_SETUP.md)**: Detailed bridge setup guide
-- **[NIP46_REMOTE_SIGNER_INTEGRATION.md](NIP46_REMOTE_SIGNER_INTEGRATION.md)**: NIP-46 remote signer integration guide (QR scanning, NIP-07 adapter)
-- **[NIP25_STARS_NIP51_FOLLOWING.md](NIP25_STARS_NIP51_FOLLOWING.md)**: NIP-25 stars and NIP-51 following implementation guide
 - **[ui/GITHUB_OAUTH_SETUP.md](ui/GITHUB_OAUTH_SETUP.md)**: GitHub OAuth configuration
 - **[ui/GITHUB_PLATFORM_TOKEN_SETUP.md](ui/GITHUB_PLATFORM_TOKEN_SETUP.md)**: GitHub Platform Token setup
 - **[docs/GRASP_RELAY_SETUP.md](docs/GRASP_RELAY_SETUP.md)**: Setting up relay instance (Grasp protocol)
@@ -800,7 +743,7 @@ cp /path/to/gittr/ui/.env.local "$BACKUP_DIR/"
 
 ## Recent Updates & Fixes
 
-### NWC Payment Implementation ✅
+### NWC Payment Implementation (2024-01) ✅
 - **Fixed**: NWC (Nostr Wallet Connect) payments now work reliably
 - **Change**: Simplified payment flow - send event, wait for relay `OK`, return success
 - **Result**: Payments complete quickly without timeouts
@@ -808,7 +751,7 @@ cp /path/to/gittr/ui/.env.local "$BACKUP_DIR/"
 
 ---
 
-**Last Updated:** See git history for latest changes  
+**Last Updated:** 2024-01-XX  
 **For Issues:** See [GitHub Issues](https://github.com/arbadacarbaYK/gittr/issues)  
 **For Questions:** Contact the project maintainers
 

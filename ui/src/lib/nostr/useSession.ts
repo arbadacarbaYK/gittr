@@ -9,7 +9,9 @@ export enum PermissionLevel {
 }
 
 const useSession = () => {
-  const { pubkey, authInitialized } = useNostrContext();
+  const { pubkey } = useNostrContext();
+  // TODO: Add authInitialized back to NostrContext if needed
+  const authInitialized = true; // Temporarily set to true - not in NostrContext
   
   // Use centralized metadata cache (same as other parts of the app)
   const metadataMap = useContributorMetadata(

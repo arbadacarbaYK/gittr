@@ -13,7 +13,7 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
-import { getRepoOwnerPubkey, getEntityDisplayName, getUserMetadata } from "@/lib/utils/entity-resolver";
+import { getRepoOwnerPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
 import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
 import { nip19 } from "nostr-tools";
 import { ZapButton } from "@/components/ui/zap-button";
@@ -81,21 +81,6 @@ function parseNIP34Repository(event: any): any {
   repoData.publicRead = true;
   repoData.publicWrite = false;
   
-  // CRITICAL: Also parse event.content JSON for NIP-34 events to get deleted/archived flags
-  // Deletion events publish deleted: true in the content JSON
-  if (event.content) {
-    try {
-      const contentData = JSON.parse(event.content);
-      if (contentData.deleted !== undefined) repoData.deleted = contentData.deleted;
-      if (contentData.archived !== undefined) repoData.archived = contentData.archived;
-      // Also merge other content fields if they exist
-      if (contentData.publicRead !== undefined) repoData.publicRead = contentData.publicRead;
-      if (contentData.publicWrite !== undefined) repoData.publicWrite = contentData.publicWrite;
-    } catch (e) {
-      // Content might not be JSON, that's okay
-    }
-  }
-  
   return repoData;
 }
 
@@ -120,18 +105,8 @@ type Repo = {
 };
 
 export default function HomePage() {
-  const { isLoggedIn: sessionIsLoggedIn, name: sessionName } = useSession();
+  const { isLoggedIn, name } = useSession();
   const { pubkey, defaultRelays, subscribe, addRelay } = useNostrContext();
-  
-  // Fix hydration mismatch: start with server-safe values, update after mount
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [name, setName] = useState<string | undefined>(undefined);
-  
-  useEffect(() => {
-    // Only update after mount to avoid hydration mismatch
-    setIsLoggedIn(sessionIsLoggedIn);
-    setName(sessionName);
-  }, [sessionIsLoggedIn, sessionName]);
   const [repos, setRepos] = useState<Repo[]>([]);
   const [topRepos, setTopRepos] = useState<RepoStats[]>([]);
   const [topDevs, setTopDevs] = useState<UserStats[]>([]);
@@ -218,25 +193,9 @@ export default function HomePage() {
             // Process events immediately (for responsive UI)
             if (event.kind === KIND_REPOSITORY || event.kind === KIND_REPOSITORY_NIP34) {
               try {
-                let repoData: any;
-                if (event.kind === KIND_REPOSITORY_NIP34) {
-                  repoData = parseNIP34Repository(event);
-                } else {
-                  // Kind 51: Try to parse as JSON, but handle non-JSON content gracefully
-                  if (event.content && event.content.trim().startsWith('{')) {
-                    try {
-                      repoData = JSON.parse(event.content);
-                    } catch (parseError) {
-                      // Content is not valid JSON - skip this event
-                      console.warn("⚠️ [Home] Kind 51 event content is not valid JSON, skipping:", event.id.slice(0, 8), event.content?.substring(0, 50));
-                      return;
-                    }
-                  } else {
-                    // Content is empty or not JSON - skip this event
-                    console.warn("⚠️ [Home] Kind 51 event has no JSON content, skipping:", event.id.slice(0, 8));
-                    return;
-                  }
-                }
+                const repoData = event.kind === KIND_REPOSITORY_NIP34 
+                  ? parseNIP34Repository(event)
+                  : JSON.parse(event.content);
                 
                 const existingRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
                 const repoName = repoData.repositoryName || repoData.name || "";
@@ -472,8 +431,6 @@ export default function HomePage() {
     };
   }, [pubkey]); // Re-run when pubkey changes (login/logout)
 
-  const canAccessLocalStorage = typeof window !== "undefined" && typeof localStorage !== "undefined";
-
   const recent = useMemo(() => {
     // CRITICAL: Sort by latest event date (lastNostrEventCreatedAt) if available, otherwise by createdAt
     // This ensures repos with recent updates appear first
@@ -525,15 +482,10 @@ export default function HomePage() {
     
     // Load list of locally-deleted repos (user deleted them, don't show)
     // CRITICAL: Use same key as explore page for consistency
-    // Only access localStorage if available (client-side only)
-    let deletedRepos: Array<{entity: string; repo: string; deletedAt: number}> = [];
-    if (canAccessLocalStorage) {
-      try {
-        deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]");
-      } catch (error) {
-        console.warn("Failed to parse gittr_deleted_repos from localStorage:", error);
-      }
-    }
+    // Check for window to avoid SSR errors
+    const deletedRepos = typeof window !== 'undefined' 
+      ? JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>
+      : [] as Array<{entity: string; repo: string; deletedAt: number}>;
     
     // Filter out deleted/archived repos AND locally-deleted repos
     const filtered = Array.from(dedupeMap.values()).filter((r: any) => {
@@ -587,31 +539,6 @@ export default function HomePage() {
     return filtered.slice(0, 12);
   }, [repos]);
 
-  // Extract and count topics from all repos for tag cloud
-  const tagCloud = useMemo(() => {
-    const topicCounts = new Map<string, number>();
-    
-    // Count topics from all repos (not just recent)
-    repos.forEach((r: any) => {
-      if (r.topics && Array.isArray(r.topics)) {
-        r.topics.forEach((topic: string) => {
-          if (topic && typeof topic === 'string' && topic.trim().length > 0) {
-            const normalized = topic.trim().toLowerCase();
-            topicCounts.set(normalized, (topicCounts.get(normalized) || 0) + 1);
-          }
-        });
-      }
-    });
-    
-    // Convert to array and sort by frequency (descending)
-    const sorted = Array.from(topicCounts.entries())
-      .map(([topic, count]) => ({ topic, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 30); // Top 30 topics
-    
-    return sorted;
-  }, [repos]);
-
   // Get metadata for user avatars (stats)
   const userPubkeys = useMemo(() => [
     ...topDevs.map(d => d.pubkey),
@@ -622,33 +549,9 @@ export default function HomePage() {
   // Get owner pubkeys from recent repos for metadata fetching
   // CRITICAL: Normalize to lowercase to ensure consistent metadata lookup
   const recentRepoOwnerPubkeys = useMemo(() => {
-    const pubkeys = recent
+    return recent
       .map(r => {
-        // Priority 1: Use explicit ownerPubkey from repo (most reliable)
-        if ((r as any).ownerPubkey && /^[0-9a-f]{64}$/i.test((r as any).ownerPubkey)) {
-          return (r as any).ownerPubkey.toLowerCase();
-        }
-        
-        // Priority 2: Try getRepoOwnerPubkey helper
-        let ownerPubkey = getRepoOwnerPubkey(r as any, r.entity);
-        
-        // Priority 3: If getRepoOwnerPubkey didn't return a full pubkey, try to resolve from entity
-        if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-          const entity = r.entity;
-          if (entity && entity.startsWith("npub")) {
-            try {
-              const decoded = nip19.decode(entity);
-              if (decoded.type === "npub") {
-                ownerPubkey = decoded.data as string;
-              }
-            } catch (error) {
-              // Invalid npub, skip this repo
-            }
-          } else if (entity && /^[0-9a-f]{64}$/i.test(entity)) {
-            ownerPubkey = entity;
-          }
-        }
-        
+        const ownerPubkey = getRepoOwnerPubkey(r as any, r.entity);
         if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
           // CRITICAL: Normalize to lowercase for consistent metadata lookup
           return ownerPubkey.toLowerCase();
@@ -656,11 +559,6 @@ export default function HomePage() {
         return null;
       })
       .filter((p): p is string => p !== null);
-    
-    // Remove duplicates
-    const uniquePubkeys = Array.from(new Set(pubkeys));
-    console.log(`📊 [Home] Extracted ${uniquePubkeys.length} unique pubkeys from ${recent.length} recent repos`);
-    return uniquePubkeys;
   }, [recent]);
   
   // Combine all pubkeys for metadata fetching
@@ -671,13 +569,8 @@ export default function HomePage() {
       ...recentRepoOwnerPubkeys,
     ];
     // Remove duplicates
-    const unique = Array.from(new Set(normalized));
-    // CRITICAL: Log when not logged in to debug metadata fetching
-    if (!pubkey && unique.length > 0) {
-      console.log(`📊 [Home] Not logged in - fetching metadata for ${unique.length} pubkeys (${unique.slice(0, 3).map(p => p.slice(0, 8)).join(", ")}...)`);
-    }
-    return unique;
-  }, [userPubkeys, recentRepoOwnerPubkeys, pubkey]);
+    return Array.from(new Set(normalized));
+  }, [userPubkeys, recentRepoOwnerPubkeys]);
   
   const userMetadata = useContributorMetadata(allPubkeys);
   
@@ -765,8 +658,8 @@ export default function HomePage() {
           
           if (!imageExts.includes(extension)) return false;
           
-          // Match logo files, but exclude third-party logos (alby, etc.)
-          if (baseName.includes("logo") && !baseName.includes("logo-alby") && !baseName.includes("alby-logo")) return true;
+          // Match logo files
+          if (baseName.includes("logo")) return true;
           
           // Match repo-name-based files (e.g., "tides.png" for tides repo)
           if (repoName && baseName === repoName) return true;
@@ -783,11 +676,8 @@ export default function HomePage() {
         const prioritized = logoFiles.sort((a, b) => {
           const aParts = a.split("/");
           const bParts = b.split("/");
-          const aName = aParts[aParts.length - 1]?.toLowerCase() || "";
-          const bName = bParts[bParts.length - 1]?.toLowerCase() || "";
-          // Prioritize "logo.svg" or "logo.png" over other logo files
-          if (aName === "logo.svg" || aName === "logo.png") return -1;
-          if (bName === "logo.svg" || bName === "logo.png") return 1;
+          const aName = aParts[aParts.length - 1]?.replace(/\.[^.]+$/, "").toLowerCase() || "";
+          const bName = bParts[bParts.length - 1]?.replace(/\.[^.]+$/, "").toLowerCase() || "";
           const aIsRoot = aParts.length === 1;
           const bIsRoot = bParts.length === 1;
           
@@ -869,11 +759,11 @@ export default function HomePage() {
   };
 
   return (
-    <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] px-4 py-6 sm:px-6" suppressHydrationWarning>
+    <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
       <header className="mb-6">
         <h1 className="text-2xl font-bold">Home</h1>
         <p className="text-gray-400 mt-1">
-          {isLoggedIn ? `Welcome, ${name || "nostr user"}` : "Welcome. Please log in to create and fork repos."}
+          {isLoggedIn ? `Welcome, ${name || "nostr user"}` : "Welcome. Please log in with NIP-07 to create and fork repos."}
         </p>
       </header>
 
@@ -884,7 +774,7 @@ export default function HomePage() {
           <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Top Repos - Always show */}
             <div className="border border-[#383B42] rounded p-4 flex flex-col">
-              <h3 className="font-semibold mb-3 text-purple-400 break-words">🔥 Most Active Repos</h3>
+              <h3 className="font-semibold mb-3 text-purple-400">🔥 Most Active Repos</h3>
               <div className="space-y-2 flex-1">
                 {topRepos.length > 0 ? (
                   topRepos.slice(0, 5).map((repo, idx) => {
@@ -917,7 +807,7 @@ export default function HomePage() {
 
             {/* Top Users - Always show */}
             <div className="border border-[#383B42] rounded p-4 flex flex-col">
-              <h3 className="font-semibold mb-3 text-yellow-400 break-words">⭐ Most Active</h3>
+              <h3 className="font-semibold mb-3 text-yellow-400">⭐ Most Active</h3>
               <div className="space-y-2 flex-1">
                 {topUsers.length > 0 ? (
                   topUsers.slice(0, 5).map((user, idx) => {
@@ -945,8 +835,8 @@ export default function HomePage() {
 
             {/* Open Bounties - Always show */}
             <div className="border border-[#383B42] rounded p-4 flex flex-col">
-              <h3 className="font-semibold mb-3 text-yellow-400 flex flex-wrap items-center justify-between gap-2">
-                <span className="min-w-fit">💰 Open Bounties</span>
+              <h3 className="font-semibold mb-3 text-yellow-400 flex items-center justify-between">
+                <span>💰 Open Bounties</span>
                 <Link href="/bounty-hunt?status=paid" className="text-xs text-purple-400 hover:text-purple-300">
                   Hunt →
                 </Link>
@@ -1402,37 +1292,22 @@ export default function HomePage() {
         <section className="lg:col-span-2 border border-[#383B42] rounded p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold">Recent repositories</h2>
-            <Link href="/explore" prefetch={false} className="text-sm text-purple-500 hover:underline">Explore all</Link>
+            <Link href="/explore" className="text-sm text-purple-500 hover:underline">Explore all</Link>
           </div>
           {recent.length === 0 ? (
             <div className="text-gray-400">No repositories yet. Create or import one to get started.</div>
           ) : (
             <ul className="divide-y divide-[#383B42]">
-              {recent.map((r, index) => {
+              {recent.filter((r: any) => {
+                // Filter out deleted repos
+                return !r.deleted && !r.archived;
+              }).map((r, index) => {
                 const entity = r.entity;
                 const repo = r.repo || r.slug;
                 if (!entity || entity === "user") return null;
                 
                 // CRITICAL: Resolve full owner pubkey and convert to npub format
-                // Try multiple strategies to get owner pubkey
-                let ownerPubkey = getRepoOwnerPubkey(r as any, entity);
-                
-                // If getRepoOwnerPubkey didn't return a full pubkey, try to resolve from entity
-                if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-                  if (entity && entity.startsWith("npub")) {
-                    try {
-                      const decoded = nip19.decode(entity);
-                      if (decoded.type === "npub") {
-                        ownerPubkey = decoded.data as string;
-                      }
-                    } catch (error) {
-                      // Invalid npub, continue with entity as-is
-                    }
-                  } else if (entity && /^[0-9a-f]{64}$/i.test(entity)) {
-                    ownerPubkey = entity;
-                  }
-                }
-                
+                const ownerPubkey = getRepoOwnerPubkey(r as any, entity);
                 let href: string;
                 
                 // Always ensure we have a valid href - never use "#"
@@ -1457,36 +1332,26 @@ export default function HomePage() {
                 const normalizedOwnerPubkey = ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
                   ? ownerPubkey.toLowerCase()
                   : null;
-                // CRITICAL: Use getUserMetadata helper for robust metadata lookup (handles multiple lookup strategies)
+                // CRITICAL: Use userMetadata (which includes cache) for lookup
                 const metadata = normalizedOwnerPubkey 
-                  ? getUserMetadata(normalizedOwnerPubkey, userMetadata)
-                  : {};
-                
-                // Priority: 1) Metadata name/display_name, 2) entityDisplayName from repo (if not npub), 3) getEntityDisplayName (which checks metadata + npub fallback), 4) entity
-                // CRITICAL: Only use getEntityDisplayName if we have a pubkey - it will check userMetadata and return npub if metadata not found
-                let displayName: string;
-                if (metadata?.name || metadata?.display_name) {
-                  displayName = metadata.name || metadata.display_name || "";
-                } else if (r.entityDisplayName && r.entityDisplayName.trim().length > 0 && !r.entityDisplayName.startsWith("npub")) {
-                  displayName = r.entityDisplayName;
-                } else if (normalizedOwnerPubkey) {
-                  // getEntityDisplayName checks userMetadata again and returns npub if metadata not found
-                  displayName = getEntityDisplayName(normalizedOwnerPubkey, userMetadata, entity);
-                } else {
-                  displayName = r.entityDisplayName || entity || "";
-                }
+                  ? (userMetadata[normalizedOwnerPubkey] || (ownerPubkey ? userMetadata[ownerPubkey.toLowerCase()] : undefined))
+                  : undefined;
+                const displayName = metadata?.name || metadata?.display_name
+                  ? (metadata.name || metadata.display_name)
+                  : (normalizedOwnerPubkey
+                    ? getEntityDisplayName(normalizedOwnerPubkey, userMetadata, entity)
+                    : (r.entityDisplayName || entity));
                 
                 // Resolve icons - always show fallback if icon fails
                 let iconUrl: string | null = null;
                 let ownerPicture: string | undefined = undefined;
                 try {
                   iconUrl = resolveRepoIcon(r);
-                  // CRITICAL: Use getUserMetadata for picture lookup (handles multiple lookup strategies)
+                  // CRITICAL: Use userMetadata for picture lookup (normalized to lowercase)
                   if (metadata?.picture) {
                     ownerPicture = metadata.picture;
                   } else if (normalizedOwnerPubkey) {
-                    const picMetadata = getUserMetadata(normalizedOwnerPubkey, userMetadata);
-                    ownerPicture = picMetadata?.picture;
+                    ownerPicture = userMetadata[normalizedOwnerPubkey]?.picture || (ownerPubkey ? userMetadata[ownerPubkey.toLowerCase()]?.picture : undefined);
                   }
                 } catch (error) {
                   console.error('⚠️ [Home] Error resolving icons:', error);
@@ -1496,7 +1361,6 @@ export default function HomePage() {
                   <li key={`${entity}-${repo}`} className="py-3">
                     <Link 
                       href={href} 
-                      prefetch={false}
                       className="flex items-center gap-3 sm:gap-4 hover:bg-gray-800/50 rounded p-2 -m-2 cursor-pointer"
                     >
                       {/* Unified repo icon (circle): repo pic -> owner profile pic -> nostr default -> logo.svg */}
@@ -1545,8 +1409,7 @@ export default function HomePage() {
                       <div className="flex-1 min-w-0 min-w-[0]">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <div className="text-purple-500 hover:underline font-semibold truncate min-w-0">
-                            {/* Always show owner/username or npub/reponame format */}
-                            {displayName ? `${displayName}/${r.name || repo}` : (r.name || repo)}
+                            {displayName}/{r.name || repo}
                           </div>
                           {/* Status badge */}
                           {pubkey && (r as any).ownerPubkey === pubkey && (() => {
@@ -1580,13 +1443,13 @@ export default function HomePage() {
           <div className="border border-[#383B42] rounded p-4">
             <h3 className="font-semibold mb-2">Quick actions</h3>
             <div className="flex flex-col gap-2">
-              <Link href="/new" prefetch={false}>
+              <Link href="/new">
                 <Button className="w-full" variant="default">Create repository</Button>
               </Link>
-              <Link href="/explore" prefetch={false}>
+              <Link href="/explore">
                 <Button className="w-full" variant="outline">Explore</Button>
               </Link>
-              <Link href="/repositories" prefetch={false}>
+              <Link href="/repositories">
                 <Button className="w-full" variant="outline">Your repositories</Button>
               </Link>
               <Link href="/settings">
@@ -1595,39 +1458,12 @@ export default function HomePage() {
             </div>
           </div>
 
-          {tagCloud.length > 0 && (
           <div className="border border-[#383B42] rounded p-4">
-              <h3 className="font-semibold mb-3">Popular Topics</h3>
-              <div className="flex flex-wrap gap-2">
-                {tagCloud.map(({ topic, count }) => {
-                  // Calculate size based on frequency (min 0.75rem, max 1.25rem)
-                  const maxCount = tagCloud[0]?.count || 1;
-                  const minSize = 0.75;
-                  const maxSize = 1.25;
-                  const size = minSize + ((count / maxCount) * (maxSize - minSize));
-                  
-                  return (
-                    <Link
-                      key={topic}
-                      href={`/explore?q=${encodeURIComponent(topic)}`}
-                      className="inline-block px-2 py-1 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 hover:text-purple-200 transition-all duration-200 hover:scale-105"
-                      style={{ fontSize: `${size}rem` }}
-                    >
-                      {topic}
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <div className="border border-[#383B42] rounded p-4">
-            <h3 className="font-semibold mb-2">💡 Quick Tips</h3>
-            <ul className="list-disc list-inside text-gray-400 text-sm space-y-1.5">
-              <li><span className="text-purple-400">💰 Bounties:</span> Post Lightning bounties on issues to incentivize contributions</li>
-              <li><span className="text-purple-400">⚡ Zaps:</span> Support repos and contributors directly with Lightning payments</li>
-              <li><span className="text-purple-400">🔍 Explore:</span> Discover repos by topic tags or browse all public repositories</li>
-              <li><span className="text-purple-400">🔗 Import:</span> Bring your GitHub repos to Nostr for decentralized hosting</li>
+            <h3 className="font-semibold mb-2">Tips</h3>
+            <ul className="list-disc list-inside text-gray-400 text-sm space-y-1">
+              <li>Import from GitHub to populate code and README.</li>
+              <li>Enable zaps in Settings → Account.</li>
+              <li>Link your GitHub profile to show contributor icons.</li>
             </ul>
           </div>
         </aside>

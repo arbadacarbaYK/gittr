@@ -36,8 +36,9 @@ import { hasWriteAccess, isOwner as checkIsOwner } from "@/lib/repo-permissions"
 import { getRepoOwnerPubkey, resolveEntityToPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
 import { getNostrPrivateKey, getSecureItem } from "@/lib/security/encryptedStorage";
 import { sendNotification, formatNotificationMessage } from "@/lib/notifications";
-import { createBountyEvent, KIND_BOUNTY, createPullRequestEvent, KIND_PULL_REQUEST } from "@/lib/nostr/events";
-import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
+import { createBountyEvent, KIND_BOUNTY, KIND_CODE_SNIPPET } from "@/lib/nostr/events";
+import { CodeSnippetRenderer } from "@/components/ui/code-snippet-renderer";
+import { getEventHash } from "nostr-tools";
 
 interface ChangedFile {
   path: string;
@@ -50,7 +51,6 @@ interface ChangedFile {
 
 interface PRData {
   id: string;
-  number?: string; // PR number (for GitHub items: "1", "2", etc.)
   title: string;
   body: string;
   path?: string;
@@ -89,6 +89,8 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
   const [checkingBalance, setCheckingBalance] = useState(false);
   const [bountyPaymentStatus, setBountyPaymentStatus] = useState<"pending" | "success" | "failed" | null>(null);
   const [bountyPaymentHash, setBountyPaymentHash] = useState<string | null>(null);
+  const [snippetEvents, setSnippetEvents] = useState<Map<string, any>>(new Map());
+  const [prEventId, setPrEventId] = useState<string | null>(null);
   
   // Fetch metadata for PR author, mergedBy, contributors, and bounty creator
   const allPubkeys = useMemo(() => {
@@ -108,32 +110,6 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
   const recipientMetadata = useContributorMetadata(allPubkeys);
   const recipientMeta = pr?.author ? recipientMetadata[pr.author] : null;
 
-  // Helper function to generate repo link for relative link resolution
-  const getRepoLink = useCallback((subpath: string = "") => {
-    // Try to resolve entity to pubkey for npub format
-    let ownerPubkey: string | null = null;
-    try {
-      const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
-      if (repo) {
-        ownerPubkey = getRepoOwnerPubkey(repo, params.entity);
-      }
-    } catch (e) {
-      // Fallback to decoding entity
-      try {
-        const decoded = nip19.decode(params.entity);
-        if (decoded.type === "npub") {
-          ownerPubkey = decoded.data as string;
-        }
-      } catch {}
-    }
-    
-    const basePath = ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
-      ? `/${nip19.npubEncode(ownerPubkey)}/${params.repo}${subpath ? `/${subpath}` : ""}`
-      : `/${params.entity}/${params.repo}${subpath ? `/${subpath}` : ""}`;
-    return basePath;
-  }, [params.entity, params.repo]);
-
   // Load required approvals from repo settings
   useEffect(() => {
     try {
@@ -144,17 +120,89 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
     } catch {}
   }, [params.entity, params.repo]);
 
+  // Subscribe to snippets referenced in PR description and snippets that reference this PR
+  useEffect(() => {
+    if (!subscribe || !defaultRelays) return;
+
+    const filters: any[] = [];
+    
+    // Filter 1: Snippets that reference this PR via #e tag
+    if (prEventId) {
+      filters.push({
+        kinds: [KIND_CODE_SNIPPET],
+        "#e": [prEventId],
+      });
+    }
+    
+    // Filter 2: Snippets referenced by ID in PR description
+    if (pr?.body) {
+      const snippetIdPattern = /(?:nostr:)?(note1[a-z0-9]{58}|[0-9a-f]{64})/gi;
+      const matches = pr.body.matchAll(snippetIdPattern);
+      const snippetIds: string[] = [];
+      for (const match of matches) {
+        const id = match[1];
+        if (!id) continue; // Skip if no match
+        if (id.startsWith("note1")) {
+          try {
+            const decoded = nip19.decode(id);
+            if (decoded.type === "note") {
+              snippetIds.push(decoded.data as string);
+            }
+          } catch {
+            // Invalid bech32, skip
+          }
+        } else if (/^[0-9a-f]{64}$/i.test(id)) {
+          snippetIds.push(id);
+        }
+      }
+      
+      if (snippetIds.length > 0) {
+        filters.push({
+          kinds: [KIND_CODE_SNIPPET],
+          ids: snippetIds,
+        });
+      }
+    }
+
+    if (filters.length === 0) return;
+
+    // Subscribe to snippet events
+    const unsub = subscribe(
+      filters,
+      defaultRelays,
+      (event, isAfterEose, relayURL) => {
+        if (event.kind === KIND_CODE_SNIPPET) {
+          // Verify snippet is for this PR/repo
+          const eTags = event.tags.filter((t): t is string[] => Array.isArray(t) && t[0] === "e");
+          const repoTag = event.tags.find((t): t is string[] => Array.isArray(t) && t[0] === "repo");
+          
+          // Check if snippet references this PR or is in PR description
+          const referencesThisPR = prEventId && eTags.some((t) => t[1] === prEventId);
+          const isInDescription = pr?.body && pr.body.includes(event.id);
+          const isForThisRepo = repoTag && repoTag[1] === params.entity && repoTag[2] === params.repo;
+          
+          if ((referencesThisPR || isInDescription) && (isForThisRepo || !repoTag)) {
+            setSnippetEvents((prev) => {
+              const newMap = new Map(prev);
+              newMap.set(event.id, event);
+              return newMap;
+            });
+          }
+        }
+      }
+    );
+
+    return () => {
+      unsub();
+    };
+  }, [subscribe, defaultRelays, pr?.body, prEventId, params.entity, params.repo]);
+
   // Load PR data
   useEffect(() => {
     try {
       const key = getRepoStorageKey("gittr_prs", params.entity, params.repo);
       const prs = JSON.parse(localStorage.getItem(key) || "[]") as any[];
-      // Match by: full ID, number, or index
-      const prData = prs.find((p: any) => 
-        p.id === params.id || 
-        p.number === params.id || 
-        String(prs.indexOf(p) + 1) === params.id
-      );
+      const prData = prs.find((p: any) => p.id === params.id || String(prs.indexOf(p) + 1) === params.id);
       
       if (prData) {
         setPR({
@@ -176,6 +224,10 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
           baseBranch: prData.baseBranch || "main",
           headBranch: prData.headBranch,
         });
+        // Store PR event ID if available
+        if (prData.nostrEventId || prData.lastNostrEventId) {
+          setPrEventId(prData.nostrEventId || prData.lastNostrEventId);
+        }
         
         // Check if current user can merge (owner or maintainer - write access)
         const repos = loadStoredRepos();
@@ -528,76 +580,6 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
       );
       localStorage.setItem(prsKey, JSON.stringify(updatedPRs));
       setPR({ ...pr, status: "merged", mergedAt: Date.now(), mergedBy: currentUserPubkey || "", mergeCommit: commitId });
-
-      // 3a. Publish updated PR status to Nostr (merged)
-      try {
-        const hasNip07 = typeof window !== "undefined" && window.nostr;
-        let prUpdateEvent: any;
-        
-        if (hasNip07 && window.nostr) {
-          const authorPubkey = await window.nostr.getPublicKey();
-          
-          // Create updated PR event with merged status
-          prUpdateEvent = {
-            kind: KIND_PULL_REQUEST,
-            created_at: Math.floor(Date.now() / 1000),
-            tags: [
-              ["repo", params.entity, params.repo],
-              ["branch", pr.baseBranch || "main", pr.headBranch || pr.baseBranch || "main"],
-              ["status", "merged"],
-              ["e", pr.id, "", "previous"], // Reference to original PR event
-              ...(pr.linkedIssue ? [["e", pr.linkedIssue, "", "linked"]] : []),
-            ],
-            content: JSON.stringify({
-              title: pr.title,
-              description: pr.body || "",
-              status: "merged",
-              changedFiles: pr.changedFiles || [],
-              mergedAt: Date.now(),
-              mergedBy: currentUserPubkey || "",
-              mergeCommit: commitId,
-            }),
-            pubkey: authorPubkey,
-            id: "",
-            sig: "",
-          };
-          
-          prUpdateEvent.id = getEventHash(prUpdateEvent);
-          prUpdateEvent = await window.nostr.signEvent(prUpdateEvent);
-        } else if (privateKey) {
-          // Use private key
-          prUpdateEvent = createPullRequestEvent({
-            repoEntity: params.entity,
-            repoName: params.repo,
-            title: pr.title,
-            description: pr.body || "",
-            baseBranch: pr.baseBranch || "main",
-            headBranch: pr.headBranch,
-            status: "merged",
-            linkedIssue: pr.linkedIssue,
-            changedFiles: pr.changedFiles || [],
-          }, privateKey);
-          
-          // Add merged metadata to tags
-          prUpdateEvent.tags.push(["e", pr.id, "", "previous"]); // Reference to original PR
-          prUpdateEvent.tags.push(["status", "merged"]);
-          prUpdateEvent.id = getEventHash(prUpdateEvent);
-          prUpdateEvent.sig = signEvent(prUpdateEvent, privateKey);
-        }
-        
-        if (publish && defaultRelays && defaultRelays.length > 0 && prUpdateEvent) {
-          try {
-            publish(prUpdateEvent, defaultRelays);
-            console.log("✅ Published PR merge status to Nostr:", prUpdateEvent.id);
-          } catch (error) {
-            console.error("Failed to publish PR merge status to Nostr:", error);
-            // Don't block merge if publishing fails
-          }
-        }
-      } catch (error) {
-        console.error("Failed to create PR merge event:", error);
-        // Don't block merge if publishing fails
-      }
 
       // 6. Add PR author to contributors if not already present
       if (pr.author && pr.author.length === 64) {
@@ -1223,39 +1205,43 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
-                components={{
-                  a: ({ node, ...props }: any) => {
-                    // Resolve relative links relative to repo root, not current page
-                    let href = props.href || '';
-                    const isExternal = href.startsWith('http://') || href.startsWith('https://');
-                    if (href && !isExternal && !href.startsWith('mailto:') && !href.startsWith('#')) {
-                      // Relative link - resolve relative to repo root using query params format
-                      const repoBasePath = getRepoLink('');
-                      // Remove leading ./ or . if present
-                      let cleanHref = href.replace(/^\.\//, '').replace(/^\.$/, '');
-                      // Remove leading / if present (root-relative)
-                      if (cleanHref.startsWith('/')) {
-                        cleanHref = cleanHref.substring(1);
-                      }
-                      // Extract directory path and filename
-                      const pathParts = cleanHref.split('/');
-                      const fileName = pathParts[pathParts.length - 1];
-                      const dirPath = pathParts.length > 1 ? pathParts.slice(0, -1).join('/') : '';
-                      // Construct URL with query parameters: ?path=dir&file=dir%2Ffile.md
-                      const encodedFile = encodeURIComponent(cleanHref);
-                      const encodedPath = dirPath ? encodeURIComponent(dirPath) : '';
-                      if (encodedPath) {
-                        href = `${repoBasePath}?path=${encodedPath}&file=${encodedFile}`;
-                      } else {
-                        href = `${repoBasePath}?file=${encodedFile}`;
-                      }
-                    }
-                    return <a {...props} href={href} target={isExternal ? '_blank' : undefined} rel={isExternal ? 'noopener noreferrer' : undefined} className="text-purple-400 hover:text-purple-300" />;
-                  },
-                }}
               >
                 {pr.body || "No description provided"}
               </ReactMarkdown>
+              {/* Render snippets referenced in PR description */}
+              {(() => {
+                if (!pr.body) return null;
+                // Extract snippet event IDs from PR body
+                const snippetIdPattern = /(?:nostr:)?(note1[a-z0-9]{58}|[0-9a-f]{64})/gi;
+                const matches = pr.body.matchAll(snippetIdPattern);
+                const snippetIds: string[] = [];
+                for (const match of matches) {
+                  const id = match[1];
+                  if (!id) continue; // Skip if no match
+                  if (id.startsWith("note1")) {
+                    try {
+                      const decoded = nip19.decode(id);
+                      if (decoded.type === "note") {
+                        snippetIds.push(decoded.data as string);
+                      }
+                    } catch {
+                      // Invalid bech32, skip
+                    }
+                  } else if (/^[0-9a-f]{64}$/i.test(id)) {
+                    snippetIds.push(id);
+                  }
+                }
+                
+                return snippetIds.map((snippetId) => {
+                  const snippetEvent = snippetEvents.get(snippetId);
+                  if (!snippetEvent) return null;
+                  return (
+                    <div key={snippetId} className="mt-4">
+                      <CodeSnippetRenderer event={snippetEvent} showAuthor={false} />
+                    </div>
+                  );
+                });
+              })()}
             </div>
             <div className="mt-4 pt-4 border-t border-gray-700">
               <Reactions

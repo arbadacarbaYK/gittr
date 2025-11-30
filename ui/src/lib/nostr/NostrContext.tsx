@@ -1,4 +1,4 @@
-import { type ReactNode, createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { type ReactNode, createContext, useCallback, useContext } from "react";
 
 import {
   type OnEose,
@@ -12,11 +12,6 @@ import { nip19 } from "nostr-tools";
 import useLocalStorage from "../hooks/useLocalStorage";
 
 import { WEB_STORAGE_KEYS } from "./localStorage";
-import {
-  RemoteSignerManager,
-  type RemoteSignerSession,
-  type RemoteSignerState,
-} from "./remoteSigner";
 
 declare global {
   interface Window {
@@ -25,10 +20,6 @@ declare global {
       signEvent(event: NostrEvent | UnsignedEvent): Promise<NostrEvent>;
       getRelays(): Promise<{ [url: string]: { read: boolean; write: boolean } }>;
       nip04: {
-        encrypt(pubkey: string, plaintext: string): Promise<string>;
-        decrypt(pubkey: string, ciphertext: string): Promise<string>;
-      };
-      nip44?: {
         encrypt(pubkey: string, plaintext: string): Promise<string>;
         decrypt(pubkey: string, ciphertext: string): Promise<string>;
       };
@@ -84,15 +75,7 @@ const NostrContext = createContext<{
   pubkey: string | null;
   signOut?: () => void;
   getRelayStatuses?: () => [url: string, status: number][];
-  authInitialized: boolean; // Whether all auth methods have been checked
-  remoteSigner?: {
-    session: RemoteSignerSession | null;
-    state: RemoteSignerState;
-    error?: string;
-    connect: (uri: string) => Promise<{ npub: string }>;
-    disconnect: () => void;
-  };
-}>({ defaultRelays, pubkey: null, authInitialized: false });
+}>({ defaultRelays, pubkey: null });
 
 export const useNostrContext = () => {
   const context = useContext(NostrContext);
@@ -166,32 +149,10 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     [setPubKey]
   );
 
-  // Initialize authInitialized immediately if pubkey exists OR remote signer session exists
-  // This prevents flickering on page navigation
-  const [authInitialized, setAuthInitialized] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      // Check for stored pubkey
-      const storedPubkey = localStorage.getItem(WEB_STORAGE_KEYS.NPUB);
-      if (storedPubkey) return true;
-      
-      // Check for stored remote signer session with userPubkey
-      const storedSession = localStorage.getItem(WEB_STORAGE_KEYS.REMOTE_SIGNER_SESSION);
-      if (storedSession) {
-        try {
-          const parsed = JSON.parse(storedSession);
-          if (parsed?.userPubkey) return true;
-        } catch {
-          // Invalid JSON, ignore
-        }
-      }
-      
-      return false;
-    } catch {
-      return false;
-    }
-  });
 
+  const signOut = useCallback(() => {
+    removePubKey();
+  }, [removePubKey]);
 
   const publish = useCallback(
     (event: any, relays: string[]) => {
@@ -219,176 +180,6 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     return relayPool.getRelayStatuses();
   }, []);
 
-  const [remoteSignerStatus, setRemoteSignerStatus] = useState<{
-    session: RemoteSignerSession | null;
-    state: RemoteSignerState;
-    error?: string;
-  }>({ session: null, state: "idle" });
-  const remoteSignerRef = useRef<RemoteSignerManager | null>(null);
-  const initTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const initCompleteRef = useRef(!!pubkey || authInitialized); // Start based on pubkey or authInitialized
-  const initializedRef = useRef(false);
-
-  // If pubkey exists, authInitialized should always be true (immediate)
-  // This prevents flickering on page navigation
-  useEffect(() => {
-    if (pubkey) {
-      // Pubkey exists - ensure we're initialized
-      if (!authInitialized || !initCompleteRef.current) {
-        initCompleteRef.current = true;
-        setAuthInitialized(true);
-      }
-    } else if (!pubkey && authInitialized && initCompleteRef.current) {
-      // Pubkey was removed and we were initialized - reset
-      initCompleteRef.current = false;
-      setAuthInitialized(false);
-    }
-  }, [pubkey]); // Only depend on pubkey
-
-  // Initialize remote signer (only once)
-  useEffect(() => {
-    if (typeof window === "undefined" || initializedRef.current) return;
-    initializedRef.current = true;
-
-    // Check for stored remote signer session and set pubkey immediately if it exists
-    // This prevents the need to wait for async bootstrap
-    try {
-      const storedSession = localStorage.getItem(WEB_STORAGE_KEYS.REMOTE_SIGNER_SESSION);
-      if (storedSession) {
-        const parsed = JSON.parse(storedSession);
-        if (parsed?.userPubkey && !pubkey) {
-          // Set pubkey immediately from stored session
-          setPubKey(parsed.userPubkey);
-        }
-      }
-    } catch (error) {
-      // Ignore errors, will be handled by bootstrap
-    }
-
-    remoteSignerRef.current = new RemoteSignerManager({
-      publish,
-      subscribe: relayPoolSubscribe,
-      addRelay,
-      removeRelay,
-    });
-    remoteSignerRef.current.onStateChange = (state, session, error) => {
-      setRemoteSignerStatus({ state, session, error });
-      if (state === "ready" && session?.userPubkey) {
-        setPubKey(session.userPubkey);
-      }
-    };
-    remoteSignerRef.current.bootstrapFromStorage();
-
-    return () => {
-      remoteSignerRef.current?.disconnect();
-    };
-  }, [addRelay, removeRelay, publish, relayPoolSubscribe, setPubKey]);
-
-  // Check auth initialization status (only if no pubkey exists yet)
-  // This effect only runs once on mount or when remoteSignerStatus changes
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (initCompleteRef.current) return; // Already initialized, don't run again
-    
-    // If we already have a pubkey, we're immediately initialized (handled by sync effect above)
-    if (pubkey) {
-      initCompleteRef.current = true;
-      setAuthInitialized(true);
-      if (initTimeoutRef.current) {
-        clearTimeout(initTimeoutRef.current);
-        initTimeoutRef.current = null;
-      }
-      return;
-    }
-    
-    const checkAuthInitialized = () => {
-      if (initCompleteRef.current) return;
-      
-      // Check if we have pubkey from localStorage (synchronous)
-      const hasLocalStoragePubkey = !!pubkey;
-      
-      // If we have pubkey, initialize immediately
-      if (hasLocalStoragePubkey) {
-        initCompleteRef.current = true;
-        setAuthInitialized(true);
-        if (initTimeoutRef.current) {
-          clearTimeout(initTimeoutRef.current);
-          initTimeoutRef.current = null;
-        }
-        return;
-      }
-      
-      // Check if remote signer has finished bootstrapping
-      // If state is not "idle", it means we've checked (ready, error, or connecting)
-      const remoteSignerDone = remoteSignerStatus.state !== "idle";
-      
-      // Check if NIP-07 extension is available (give it time to inject)
-      const nip07Checked = typeof window !== "undefined" && 
-        (window.nostr !== undefined || Date.now() > ((window as any).__nip07CheckTime || 0));
-      
-      if (remoteSignerDone && nip07Checked) {
-        initCompleteRef.current = true;
-        setAuthInitialized(true);
-        if (initTimeoutRef.current) {
-          clearTimeout(initTimeoutRef.current);
-          initTimeoutRef.current = null;
-        }
-      }
-    };
-
-    // Mark NIP-07 check time
-    if (typeof window !== "undefined") {
-      (window as any).__nip07CheckTime = Date.now();
-    }
-
-    // Check immediately (for localStorage pubkey)
-    checkAuthInitialized();
-
-    // Check after a short delay (for NIP-07 injection)
-    const timeout1 = setTimeout(checkAuthInitialized, 100);
-    const timeout2 = setTimeout(checkAuthInitialized, 500);
-    const timeout3 = setTimeout(checkAuthInitialized, 1000);
-
-    // Final timeout: if nothing happens after 2 seconds, consider it initialized
-    initTimeoutRef.current = setTimeout(() => {
-      if (!initCompleteRef.current) {
-        initCompleteRef.current = true;
-        setAuthInitialized(true);
-      }
-    }, 2000);
-
-    return () => {
-      clearTimeout(timeout1);
-      clearTimeout(timeout2);
-      clearTimeout(timeout3);
-      if (initTimeoutRef.current) {
-        clearTimeout(initTimeoutRef.current);
-        initTimeoutRef.current = null;
-      }
-    };
-  }, [pubkey, remoteSignerStatus.state, remoteSignerStatus.session]);
-
-  const connectRemoteSigner = useCallback(
-    async (uri: string) => {
-      if (!remoteSignerRef.current) {
-        throw new Error("Remote signer manager not initialized");
-      }
-      const result = await remoteSignerRef.current.connect(uri);
-      setPubKey(result.session.userPubkey);
-      return { npub: result.npub };
-    },
-    [setPubKey]
-  );
-
-  const disconnectRemoteSigner = useCallback(() => {
-    remoteSignerRef.current?.disconnect();
-  }, []);
-
-  const signOut = useCallback(() => {
-    remoteSignerRef.current?.disconnect();
-    removePubKey();
-  }, [removePubKey]);
-
   return (
     <NostrContext.Provider
       value={{
@@ -401,14 +192,6 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         pubkey,
         signOut,
         getRelayStatuses,
-        authInitialized,
-        remoteSigner: {
-          session: remoteSignerStatus.session,
-          state: remoteSignerStatus.state,
-          error: remoteSignerStatus.error,
-          connect: connectRemoteSigner,
-          disconnect: disconnectRemoteSigner,
-        },
       }}
     >
       {children}

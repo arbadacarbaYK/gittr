@@ -3,7 +3,6 @@
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { getRepoOwnerPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
-import { loadStoredRepos, type StoredRepo } from "@/lib/repos/storage";
 
 import * as React from "react";
 import { useCallback, useEffect, useState, useMemo } from "react";
@@ -109,97 +108,7 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
     };
   }, [loadIssues]);
 
-  // Fetch issues from GitHub API when tab is clicked (if repo has sourceUrl)
-  useEffect(() => {
-    if (!mounted || !params?.entity || !params?.repo) return;
-    
-    const fetchFromGitHub = async () => {
-      try {
-        const repos = loadStoredRepos();
-        const repo = findRepoByEntityAndName(repos, params.entity, params.repo);
-        if (!repo?.sourceUrl) return; // Only fetch for GitHub/GitLab/Codeberg repos
-        
-        // Parse sourceUrl to get owner/repo
-        let owner: string | null = null;
-        let repoName: string | null = null;
-        try {
-          const url = new URL(repo.sourceUrl);
-          const pathParts = url.pathname.replace(/\.git$/, "").split("/").filter(Boolean);
-          if (pathParts.length >= 2 && pathParts[0] && pathParts[1]) {
-            owner = pathParts[0];
-            repoName = pathParts[1];
-          }
-        } catch {
-          return; // Invalid URL
-        }
-        
-        if (!owner || !repoName) return;
-        
-        // Check if this is GitHub
-        const isGitHub = repo.sourceUrl.includes("github.com");
-        if (!isGitHub) return; // Only fetch from GitHub for now
-        
-        // Fetch issues from GitHub API
-        const issuesUrl = `https://api.github.com/repos/${owner}/${repoName}/issues?state=all&per_page=100&sort=updated`;
-        const proxyUrl = `/api/github/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoName}/issues?state=all&per_page=100&sort=updated`)}`;
-        
-        const response = await fetch(proxyUrl);
-        if (response.ok) {
-          const list: any[] = await response.json();
-          // Filter out pull requests (they have pull_request field)
-          const issues = list
-            .filter((item: any) => !item.pull_request)
-            .map((item: any) => ({
-              id: `issue-${item.number}`,
-              entity: params.entity,
-              repo: params.repo,
-              title: item.title || "",
-              number: String(item.number || ""),
-              status: item.state === "closed" ? "closed" : "open",
-              author: item.user?.login || "",
-              labels: item.labels?.map((l: any) => l.name || l) || [],
-              assignees: [],
-              createdAt: item.created_at ? new Date(item.created_at).getTime() : Date.now(),
-              body: item.body || "",
-              html_url: item.html_url || "",
-            }));
-          
-          // Merge with existing Nostr issues (preserve Nostr-only issues)
-          const key = getRepoStorageKey("gittr_issues", params.entity, params.repo);
-          const existingIssues = JSON.parse(localStorage.getItem(key) || "[]");
-          
-          // Create a map of GitHub issues by their number (for matching)
-          const githubIssuesMap = new Map(issues.map((issue: any) => [issue.number, issue]));
-          
-          // Find Nostr-only issues (those not in GitHub by number)
-          const nostrOnlyIssues = existingIssues.filter((existing: any) => {
-            // If it has a number that matches GitHub, it's from GitHub (or was synced)
-            // Nostr-only issues typically have event.id as their id, not issue-{number}
-            const isNostrOnly = !existing.number || !githubIssuesMap.has(existing.number);
-            // Also check if it's a Nostr event ID format (64-char hex)
-            const isNostrEventId = existing.id && /^[0-9a-f]{64}$/i.test(existing.id);
-            return isNostrOnly || isNostrEventId;
-          });
-          
-          // Merge: GitHub issues (source of truth) + Nostr-only issues
-          const mergedIssues = [...issues, ...nostrOnlyIssues];
-          
-          // Save merged list
-          localStorage.setItem(key, JSON.stringify(mergedIssues));
-          console.log(`✅ [Issues] Merged ${issues.length} GitHub issues + ${nostrOnlyIssues.length} Nostr-only issues = ${mergedIssues.length} total`);
-          
-          // Reload issues
-          loadIssues();
-        }
-      } catch (error) {
-        console.error("Failed to fetch issues from GitHub:", error);
-      }
-    };
-    
-    fetchFromGitHub();
-  }, [mounted, params.entity, params.repo, loadIssues]);
-
-  // Subscribe to Issues from Nostr relays (kind 9803) - handles issues from any Nostr client (gittr, gitworkshop.dev, etc.)
+  // Subscribe to Issues from Nostr relays for this repo
   useEffect(() => {
     if (!subscribe || !defaultRelays || defaultRelays.length === 0 || !params.entity || !params.repo) return;
 
@@ -242,18 +151,8 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
               const key = getRepoStorageKey("gittr_issues", params.entity, params.repo);
               const existingIssues = JSON.parse(localStorage.getItem(key) || "[]");
               
-              // Check if issue already exists (by event.id for Nostr issues)
+              // Check if issue already exists
               const existingIndex = existingIssues.findIndex((i: any) => i.id === event.id);
-              
-              // CRITICAL: Don't overwrite GitHub issues - check if this number already exists from GitHub
-              // GitHub issues have id format "issue-{number}", Nostr issues use event.id
-              const githubIssueWithSameNumber = existingIssues.find((i: any) => 
-                i.number && i.id?.startsWith("issue-") && i.number === String(existingIssues.length + 1)
-              );
-              if (githubIssueWithSameNumber) {
-                console.log(`⚠️ [Issues] Skipping Nostr issue - GitHub issue #${githubIssueWithSameNumber.number} already exists`);
-                return; // Don't add if GitHub issue with this number exists
-              }
               
               // Extract labels, assignees from tags
               const labels = event.tags.filter((t: string[]) => t[0] === "label" || t[0] === "t").map((t: string[]) => t[1]);
@@ -261,15 +160,8 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
               const statusTag = event.tags.find((t: string[]) => t[0] === "status");
               const status = statusTag ? statusTag[1] : (issueData.status || "open");
 
-              // Find next available number (avoid conflicts with GitHub issues)
-              const maxNumber = existingIssues.reduce((max: number, i: any) => {
-                const num = parseInt(i.number || "0", 10);
-                return num > max ? num : max;
-              }, 0);
-              const nextNumber = maxNumber + 1;
-
               const issue = {
-                id: event.id, // Use Nostr event ID (64-char hex) to identify Nostr-only issues
+                id: event.id,
                 entity: params.entity,
                 repo: params.repo,
                 title: issueData.title || "",
@@ -279,7 +171,7 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
                 labels: labels,
                 assignees: assignees,
                 createdAt: event.created_at * 1000,
-                number: String(nextNumber), // Use next available number
+                number: String(existingIssues.length + 1), // Auto-number
                 bountyAmount: issueData.bountyAmount,
                 bountyInvoice: issueData.bountyInvoice,
                 bountyStatus: issueData.bountyStatus || (issueData.bountyAmount ? "pending" : undefined),

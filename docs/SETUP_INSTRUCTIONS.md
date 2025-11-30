@@ -77,28 +77,6 @@ cd ui
 npm run build
 ```
 
-### Step 4b: (Optional) Enable Remote Signer Login
-
-You can now log in to gittr.space using a NIP-46 remote signer (hardware bunker, LNbits `nsec-remote-signer`, Nowser mobile signer, etc.). No extra server config is required—the feature runs entirely in the browser:
-
-- **Pairing**: Click **"Pair Remote Signer (NIP-46)"** on the login screen.
-- **QR Scanning**: Use the **"Scan QR"** button to scan a `bunker://` QR code from your hardware signer (e.g., LNbits Remote Nostr Signer). The scanner uses `html5-qrcode` library and requires camera permissions.
-- **Manual Entry**: Alternatively, paste a `bunker://` or `nostrconnect://` URI directly into the text field.
-- **How It Works**: The UI generates an ephemeral client keypair, connects to the signer's relays, and requests permission. Once paired, the browser exposes a NIP-07-compatible `window.nostr` adapter backed by the remote signer, and **you are automatically logged in** with your pubkey from the remote signer.
-- **All Operations Supported**: Repository pushes, issues, pull requests, profile/account settings updates, SSH key management, file/repo deletions, and follows all automatically use the remote signer via the NIP-07 adapter—no code changes needed.
-- **Disconnect**: Signing out (or tapping "Disconnect remote signer") removes the cached client key and restores the original NIP-07 provider if you had one installed.
-
-**Hardware Setup**: For LNbits Remote Nostr Signer devices, follow the [official setup guide](https://shop.lnbits.com/lnbits-remote-nostr-signer):
-1. Connect to Wi-Fi
-2. Upload your Nostr private key (64-char hex, not nsec)
-3. Configure relay URL
-4. Generate pairing QR code on the device
-5. Scan it in gittr.space login screen
-
-**For detailed implementation guide**: See [`docs/NIP46_REMOTE_SIGNER_INTEGRATION.md`](NIP46_REMOTE_SIGNER_INTEGRATION.md) for complete NIP-46 integration documentation, including QR scanning with `html5-qrcode`, NIP-07 adapter implementation, and session management.
-
-Nothing else changes in the deployment steps—the remote signer support simply gives your users a hardware-login path without modifying the backend.
-
 ### Step 5: Install Go (for building git-nostr-bridge) OR Use Docker
 
 **Note:** Go is only required to BUILD the bridge from source. If you have a pre-built binary, you can skip this step.
@@ -184,9 +162,6 @@ Edit `~/.config/git-nostr/git-nostr-bridge.json`:
 **IMPORTANT:** 
 - The `relays` array should match the relays in `ui/.env.local` (`NEXT_PUBLIC_NOSTR_RELAYS`).
 - Leave `gitRepoOwners` empty `[]` to allow ANY user to create repos (decentralized).
-- Need a deeper dive into every knob? See the extracted gitnostr repo's
-  [`docs/STANDALONE_BRIDGE_SETUP.md`](STANDALONE_BRIDGE_SETUP.md) for a complete
-  standalone bridge guide.
 
 **Restart the bridge** to pick up the new configuration:
 

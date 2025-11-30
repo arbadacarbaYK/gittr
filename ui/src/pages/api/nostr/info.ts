@@ -67,8 +67,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     custom_kinds: {
       50: "Repository Permissions",
       51: "Repository Announcements (legacy, read-only)",
-      30617: "Repository Metadata (NIP-34, primary publishing method)",
       52: "SSH Keys",
+      1337: "Code Snippets (NIP-C0)",
+      30617: "Repository Metadata (NIP-34, primary publishing method)",
+      9735: "Zaps (NIP-57)",
       9803: "Issues",
       9804: "Pull Requests",
     },
