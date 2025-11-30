@@ -148,6 +148,7 @@ function ExplorePageContent() {
   
   // Load cached metadata from localStorage on mount
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     try {
       const cached = localStorage.getItem("gittr_metadata_cache");
       if (cached) {
@@ -167,6 +168,7 @@ function ExplorePageContent() {
   // Use ref to track last saved state to prevent unnecessary saves
   const lastSavedMetadataRef = useRef<string>("");
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     if (Object.keys(ownerMetadata).length > 0) {
       const currentMetadataStr = JSON.stringify(ownerMetadata);
       // Only save if metadata actually changed
@@ -1566,6 +1568,7 @@ function ExplorePageContent() {
   
   const filteredRepos = useMemo(() => {
     // Load list of locally-deleted repos (user deleted them, don't show)
+    if (typeof window === 'undefined') return repos;
     const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
     
     // Helper function to check if repo is deleted (robust matching)
@@ -1797,7 +1800,7 @@ function ExplorePageContent() {
           </div>
         </div>
       )}
-      {syncing && !isLoadingRepos && (() => {
+      {syncing && !isLoadingRepos && typeof window !== 'undefined' && (() => {
         const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
         const repoCount = repos.length;
         return (
