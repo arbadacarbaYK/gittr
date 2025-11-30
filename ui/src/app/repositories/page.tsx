@@ -57,15 +57,6 @@ type Repo = {
 export default function RepositoriesPage() {
   // CRITICAL: Prevent SSR - return empty content during server-side rendering
   const [mounted, setMounted] = useState(false);
-  
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-  
-  if (!mounted) {
-    return null; // Return nothing during SSR to prevent localStorage access
-  }
-  
   const [repos, setRepos] = useState<Repo[]>([]);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showClearForeignConfirm, setShowClearForeignConfirm] = useState(false);
@@ -76,6 +67,14 @@ export default function RepositoriesPage() {
   const router = useRouter();
   const { name: userName, isLoggedIn } = useSession();
   const { subscribe, publish, defaultRelays, pubkey } = useNostrContext();
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  if (!mounted) {
+    return <div className="min-h-screen bg-[#0a0d11]"></div>; // Return empty div during SSR to prevent localStorage access
+  }
   
   // Clear clicked repo state when navigation completes
   useEffect(() => {
