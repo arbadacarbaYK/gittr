@@ -139,12 +139,19 @@ export default function HomePage() {
     }
   }, []);
 
+  const storageUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     loadRepos();
     
     // Listen for repo updates from Nostr sync
+    // Debounce to prevent excessive updates during sync
     const handleRepoUpdate = () => {
-      loadRepos();
+      if (storageUpdateTimeoutRef.current) {
+        clearTimeout(storageUpdateTimeoutRef.current);
+      }
+      storageUpdateTimeoutRef.current = setTimeout(() => {
+        loadRepos();
+      }, 500); // Debounce by 500ms
     };
     
     window.addEventListener("storage", handleRepoUpdate);
@@ -152,6 +159,9 @@ export default function HomePage() {
     window.addEventListener("ngit:repo-imported", handleRepoUpdate);
     
     return () => {
+      if (storageUpdateTimeoutRef.current) {
+        clearTimeout(storageUpdateTimeoutRef.current);
+      }
       window.removeEventListener("storage", handleRepoUpdate);
       window.removeEventListener("ngit:repo-created", handleRepoUpdate);
       window.removeEventListener("ngit:repo-imported", handleRepoUpdate);
