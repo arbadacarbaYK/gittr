@@ -123,7 +123,7 @@ export function Header() {
       <MainNav items={HeaderConfig.mainNav} />
         {mounted && isLoggedIn && (
           <Button variant="outline" className="max-h-8 min-w-max">
-            <a href="/new" onClick={(e) => { e.preventDefault(); window.location.href = "/new"; }}>New</a>
+            <a href="/new" onClick={(e) => { e.preventDefault(); router.push("/new"); }}>New</a>
           </Button>
         )}
       </div>
@@ -193,10 +193,10 @@ export function Header() {
         ) : mounted ? (
           <div className="flex gap-1 items-center">
             <Button variant="ghost" className="mr-2 max-h-8 min-w-max">
-              <a href="/login" onClick={(e) => { e.preventDefault(); window.location.href = "/login"; }}>Sign in</a>
+              <a href="/login" onClick={(e) => { e.preventDefault(); router.push("/login"); }}>Sign in</a>
             </Button>
             <Button variant="outline" className="max-h-8 min-w-max">
-              <a href="/signup" onClick={(e) => { e.preventDefault(); window.location.href = "/signup"; }}>Sign up</a>
+              <a href="/signup" onClick={(e) => { e.preventDefault(); router.push("/signup"); }}>Sign up</a>
             </Button>
           </div>
         ) : (
