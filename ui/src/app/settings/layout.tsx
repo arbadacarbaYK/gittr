@@ -90,6 +90,9 @@ export default function SettingsLayout({
     // Only compute initials on client to prevent hydration mismatch
     if (typeof window === 'undefined') return;
     
+    // CRITICAL: Wait for mounted state before updating initials to prevent hydration mismatch
+    if (!mounted) return;
+    
     // Compute the initials value
     let computed = "U";
     if (actualName && actualName !== "Anonymous Nostrich") {
@@ -105,7 +108,7 @@ export default function SettingsLayout({
       lastComputedRef.current = computed;
       setAvatarInitials(computed);
     }
-  }, [actualName, actualDisplayName, initials]);
+  }, [mounted, actualName, actualDisplayName, initials]);
 
   return (
     <>
