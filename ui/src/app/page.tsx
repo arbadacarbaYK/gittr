@@ -133,8 +133,17 @@ export default function HomePage() {
   const loadRepos = useCallback(() => {
     try {
       const list = loadStoredRepos();
+      console.log('📦 [Home] loadRepos called:', {
+        loadedCount: list.length,
+        sample: list.slice(0, 3).map(r => ({
+          repo: r.repo || r.slug,
+          entity: r.entity,
+          ownerPubkey: (r as any).ownerPubkey ? (r as any).ownerPubkey.slice(0, 16) + '...' : 'MISSING'
+        }))
+      });
       setRepos(list as Repo[]);
-    } catch {
+    } catch (err) {
+      console.error('❌ [Home] loadRepos error:', err);
       setRepos([]);
     }
   }, []);
