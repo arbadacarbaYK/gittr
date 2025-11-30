@@ -211,10 +211,15 @@ export function useContributorMetadata(pubkeys: string[]) {
     const keyChanged = pubkeysKeyRef.current !== pubkeysKey;
     const shouldSkip = !isFirstRender && !keyChanged && pubkeysKey !== "";
     
-    // Check if any pubkeys are missing from cache
+    // CRITICAL: Check cache directly (not just state) to ensure we don't miss cached metadata
+    // The state might not be updated yet, but the cache might have the data
+    const currentCache = loadMetadataCache();
+    
+    // Check if any pubkeys are missing from cache (check both state and cache)
     const missingFromCache = validPubkeys.filter(p => {
       const normalized = p.toLowerCase();
-      return !metadataMap[normalized];
+      // Check both metadataMap state and currentCache to ensure we don't miss cached data
+      return !metadataMap[normalized] && !currentCache[normalized];
     });
     
     // CRITICAL: Only subscribe if:
