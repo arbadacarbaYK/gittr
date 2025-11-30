@@ -4667,9 +4667,211 @@ export default function RepoCodePage({
           }
         }
         
-        // Priority 2: Logo files from repo
-        const candidates = (repoData.files || []).map(f => f.path).filter(p => /(^|\/)logo\.(png|jpg|jpeg|gif|webp|svg|ico)$/i.test(p));
+        // Priority 2: Logo files from repo (prioritize root-level, exact "logo" matches)
+        const repoName = (repoData.name || repoData.repo || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
+        
+        const candidates = (repoData.files || [])
+          .map(f => f.path)
+          .filter(p => {
+            const fileName = p.split("/").pop() || "";
+            const baseName = fileName.replace(/\.[^.]+$/, "").toLowerCase();
+            const extension = fileName.split(".").pop()?.toLowerCase() || "";
+            const isRoot = p.split("/").length === 1;
+            
+            if (!imageExts.includes(extension)) return false;
+            
+            // Match logo files (but exclude third-party logos like alby)
+            if (baseName.includes("logo") && !baseName.includes("logo-alby") && !baseName.includes("alby-logo")) return true;
+            
+            // Match repo-name-based files (e.g., "gittr.png" for gittr repo)
+            if (repoName && baseName === repoName) return true;
+            
+            // Match common icon names in root directory only
+            if (isRoot && (baseName === "repo" || baseName === "icon" || baseName === "favicon")) return true;
+            
+            return false;
+          })
+          .sort((a, b) => {
+            const aParts = a.split("/");
+            const bParts = b.split("/");
+            const aName = aParts[aParts.length - 1]?.replace(/\.[^.]+$/, "").toLowerCase() || "";
+            const bName = bParts[bParts.length - 1]?.replace(/\.[^.]+$/, "").toLowerCase() || "";
+            const aIsRoot = aParts.length === 1;
+            const bIsRoot = bParts.length === 1;
+            
+            // Priority 1: Exact "logo" match
+            if (aName === "logo" && bName !== "logo") return -1;
+            if (bName === "logo" && aName !== "logo") return 1;
+            
+            // Priority 2: Repo-name-based files
+            if (repoName && aName === repoName && bName !== repoName && bName !== "logo") return -1;
+            if (repoName && bName === repoName && aName !== repoName && aName !== "logo") return 1;
+            
+            // Priority 3: Root directory files
+            if (aName === "logo" && bName === "logo") {
+              if (aIsRoot && !bIsRoot) return -1;
+              if (!aIsRoot && bIsRoot) return 1;
+            }
+            if (aIsRoot && !bIsRoot) return -1;
+            if (!bIsRoot && aIsRoot) return 1;
+            
+            // Priority 4: Format preference (png > svg > webp > jpg > gif > ico)
+            const formatPriority: Record<string, number> = { png: 0, svg: 1, webp: 2, jpg: 3, jpeg: 3, gif: 4, ico: 5 };
+            const aExt = a.split(".").pop()?.toLowerCase() || "";
+            const bExt = b.split(".").pop()?.toLowerCase() || "";
+            const aPrio = formatPriority[aExt] ?? 10;
+            const bPrio = formatPriority[bExt] ?? 10;
+            
+            return aPrio - bPrio;
+          });
+        
+        // Helper function to extract owner/repo from various URL formats
+        const extractOwnerRepo = (urlString: string): { owner: string; repo: string; hostname: string } | null => {
+          try {
+            // Handle SSH format: git@github.com:owner/repo.git
+            if (urlString.includes('@') && urlString.includes(':')) {
+              const match = urlString.match(/(?:git@|https?:\/\/)([^\/:]+)[\/:]([^\/]+)\/([^\/]+?)(?:\.git)?$/);
+              if (match && match[1] && match[2] && match[3]) {
+                const hostname = match[1]!;
+                const owner = match[2]!;
+                const repo = match[3]!.replace(/\.git$/, '');
+                return { owner, repo, hostname };
+              }
+            }
+            
+            // Handle HTTPS/HTTP URLs
+            const url = new URL(urlString);
+            const parts = url.pathname.split("/").filter(Boolean);
+            if (parts.length >= 2 && parts[0] && parts[1]) {
+              return {
+                owner: parts[0],
+                repo: parts[1].replace(/\.git$/, ''),
+                hostname: url.hostname
+              };
+            }
+          } catch (e) {
+            // Invalid URL format
+          }
+          return null;
+        };
+
         for (const p of candidates) {
+          // Try sourceUrl first
+          let gitUrl: string | undefined = repoData.sourceUrl;
+          let ownerRepo: { owner: string; repo: string; hostname: string } | null = null;
+          
+          if (gitUrl) {
+            ownerRepo = extractOwnerRepo(gitUrl);
+          }
+          
+          // If sourceUrl didn't work, try clone array
+          if (!ownerRepo && repoData.clone && Array.isArray(repoData.clone) && repoData.clone.length > 0) {
+            // Find first GitHub/GitLab/Codeberg URL in clone array
+            const gitCloneUrl = repoData.clone.find((url: string) => 
+              url && (url.includes('github.com') || url.includes('gitlab.com') || url.includes('codeberg.org'))
+            );
+            if (gitCloneUrl) {
+              ownerRepo = extractOwnerRepo(gitCloneUrl);
+            }
+          }
+          
+          // If we found a valid git URL, construct raw URL
+          if (ownerRepo) {
+            const { owner, repo, hostname } = ownerRepo;
+            const branch = selectedBranch || repoData?.defaultBranch || "main";
+            
+            if (hostname === "github.com" || hostname.includes("github.com")) {
+              const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/${p}`;
+              if (!cancelled) setLogoUrl(rawUrl);
+              return;
+            } else if (hostname === "gitlab.com" || hostname.includes("gitlab.com")) {
+              const rawUrl = `https://gitlab.com/${owner}/${repo}/-/raw/${encodeURIComponent(branch)}/${p}`;
+              if (!cancelled) setLogoUrl(rawUrl);
+              return;
+            } else if (hostname === "codeberg.org" || hostname.includes("codeberg.org")) {
+              const rawUrl = `https://codeberg.org/${owner}/${repo}/raw/branch/${encodeURIComponent(branch)}/${p}`;
+              if (!cancelled) setLogoUrl(rawUrl);
+              return;
+            }
+          }
+          
+          // For Nostr-native repos without sourceUrl, try bridge API directly
+          // Get owner pubkey for bridge API
+          const ownerPubkeyForBridge = ownerPubkeysForMetadata.length > 0 ? ownerPubkeysForMetadata[0] : 
+                                     (record?.ownerPubkey && /^[0-9a-f]{64}$/i.test(record.ownerPubkey) ? record.ownerPubkey : 
+                                     (params.entity && params.entity.length === 64 && /^[0-9a-f]{64}$/i.test(params.entity) ? params.entity : undefined));
+          
+          // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
+          // Priority: record.repositoryName > repoData.repositoryName > name > repo > slug
+          // Check both record (from localStorage) and repoData (from state) for repositoryName
+          const repoDataAny = repoData as any;
+          const recordAny = record as any;
+          let repoName = recordAny?.repositoryName || repoDataAny?.repositoryName || repoData?.name || repoData?.repo || repoData?.slug;
+          
+          // Extract repo name (handle paths like "gitnostr.com/gitworkshop")
+          if (repoName && typeof repoName === 'string' && repoName.includes('/')) {
+            const parts = repoName.split('/');
+            repoName = parts[parts.length - 1] || repoName;
+          }
+          if (repoName) {
+            repoName = String(repoName).replace(/\.git$/, '');
+          }
+          
+          if (ownerPubkeyForBridge && repoName) {
+            const branch = selectedBranch || repoData?.defaultBranch || "main";
+            const bridgeApiUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(ownerPubkeyForBridge)}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(p)}&branch=${encodeURIComponent(branch)}`;
+            
+            // For images, we can try to fetch and convert to data URL, or use the API URL directly
+            // Since it's a logo file, try fetching it to get a data URL
+            try {
+              const response = await fetch(bridgeApiUrl);
+              if (response.ok) {
+                const data = await response.json();
+                if (data.content) {
+                  // If it's base64 encoded binary, construct data URL
+                  const isBinary = data.isBinary || false;
+                  if (isBinary) {
+                    const ext = p.split('.').pop()?.toLowerCase() || 'png';
+                    const mimeType = ext === 'svg' ? 'image/svg+xml' : 
+                                   ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+                                   ext === 'gif' ? 'image/gif' :
+                                   ext === 'webp' ? 'image/webp' :
+                                   ext === 'ico' ? 'image/x-icon' : 'image/png';
+                    const dataUrl = `data:${mimeType};base64,${data.content}`;
+                    if (!cancelled) setLogoUrl(dataUrl);
+                    return;
+                  } else {
+                    // Text content (unlikely for logo, but handle it)
+                    if (!cancelled) setLogoUrl(bridgeApiUrl);
+                    return;
+                  }
+                } else if (data.url) {
+                  // API returned a URL
+                  if (!cancelled) setLogoUrl(data.url);
+                  return;
+                }
+              } else {
+                // Response not OK (e.g., 500), but try using the API URL directly
+                // The browser might be able to load it if the API supports direct image serving
+                console.warn("⚠️ [Logo] Bridge API returned non-OK status, using API URL directly:", response.status);
+                if (!cancelled) {
+                  setLogoUrl(bridgeApiUrl);
+                  return;
+                }
+              }
+            } catch (e) {
+              // API call failed, but try using the bridge API URL directly as fallback
+              // The browser might be able to load it even if our fetch failed
+              console.warn("⚠️ [Logo] Bridge API call failed, using API URL directly:", e);
+              if (!cancelled) {
+                setLogoUrl(bridgeApiUrl);
+                return;
+              }
+            }
+          }
+          
+          // Fallback to fetchGithubRaw for other cases (nostr repos, unknown providers, etc.)
           const res = await fetchGithubRaw(p);
           if (res.url) {
             if (!cancelled) setLogoUrl(res.url);
@@ -6337,8 +6539,8 @@ export default function RepoCodePage({
           </div>
           )}
           <div className="rounded-md rounded-bl-none rounded-br-none border bg-[#171B21] py-2 px-4 text-sm font-medium dark:border-[#383B42]">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-gray-300">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 text-gray-300 min-w-0 flex-1">
                     {(() => {
                   // CRITICAL: Use ref to access metadata without causing re-renders that block clicks
                   const currentMetadata = ownerMetadataRef.current;
@@ -6431,14 +6633,14 @@ export default function RepoCodePage({
                         return ownerMeta?.display_name || ownerMeta?.name || params.entity;
                       })()}
                   </a>
-                    <span className="text-gray-400">forked</span>
+                    <span className="text-gray-400 whitespace-nowrap">forked</span>
                     <a 
                       href={repoData.forkedFrom} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="text-purple-500 hover:underline"
+                      className="text-purple-500 hover:underline truncate min-w-0"
                     >
-                      {repoData.forkedFrom.replace(/^https?:\/\//, '').replace(/\.git$/, '').replace(/^github\.com\//, '')}
+                      <span className="truncate block">{repoData.forkedFrom.replace(/^https?:\/\//, '').replace(/\.git$/, '').replace(/^github\.com\//, '')}</span>
                     </a>
                   </>
                 ) : (
@@ -6456,18 +6658,20 @@ export default function RepoCodePage({
                   </a>
                 )}
                 {repoData?.createdAt && (
-                  <span className="text-gray-400">
+                  <span className="text-gray-400 whitespace-nowrap truncate">
                     {formatDate24h(repoData.createdAt)}
                   </span>
                 )}
               </div>
               <div className="flex items-center gap-4 text-gray-400 text-xs">
-                <span className="hover:text-purple-500 flex items-center gap-1">
-                  <History className="h-4 w-4" />
-                  <span className="hidden sm:inline">
-                    {repoData?.files ? repoData.files.filter(f => f.type === "file").length : 0} files
+                <Tooltip content={`Total number of files in this repository: ${repoData?.files ? repoData.files.filter(f => f.type === "file").length : 0}`}>
+                  <span className="hover:text-purple-500 flex items-center gap-1 cursor-help">
+                    <History className="h-4 w-4" />
+                    <span className="hidden sm:inline">
+                      {repoData?.files ? repoData.files.filter(f => f.type === "file").length : 0} files
+                    </span>
                   </span>
-                  </span>
+                </Tooltip>
               </div>
             </div>
           </div>
@@ -6608,19 +6812,19 @@ export default function RepoCodePage({
             <ul className="divide-y dark:divide-lightgray">
                 {items.map((it) => (
                   <li key={it.path} className="text-gray-400 grid grid-cols-2 p-2 text-sm sm:grid-cols-4 hover:bg-[#171B21]">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
                       {it.type === "dir" ? (
                         <>
                   <Folder className="text-gray-400 ml-2 h-4 w-4" />{" "}
                           <button
-                            className="hover:text-purple-500 hover:underline cursor-pointer"
+                            className="hover:text-purple-500 hover:underline cursor-pointer text-left truncate min-w-0"
                             onClick={(e) => {
                               e.preventDefault();
                               setCurrentPath(it.path);
                               updateURL({ path: it.path });
                             }}
                           >
-                            {it.path.split("/").pop()}
+                            <span className="truncate block">{it.path.split("/").pop()}</span>
                             {(() => {
                               const name = it.path.split("/").pop() || it.path;
                               const lower = name.toLowerCase();
@@ -6670,13 +6874,13 @@ export default function RepoCodePage({
                     return <File className={`${cls} ml-2 h-4 w-4`} />;
                   })()}{" "}
                           <button
-                            className="truncate hover:text-purple-500 hover:underline cursor-pointer"
+                            className="hover:text-purple-500 hover:underline cursor-pointer text-left truncate min-w-0"
                             onClick={(e) => {
                               e.preventDefault();
                               openFile(it.path);
                             }}
                           >
-                            {it.path.split("/").pop()}
+                            <span className="truncate block">{it.path.split("/").pop()}</span>
                           </button>
                         </>
                       )}
@@ -6709,7 +6913,7 @@ export default function RepoCodePage({
                         <span className="text-gray-500">-</span>
                       )}
                 </div>
-                    <div className="text-right">{it.size ? `${it.size} B` : "-"}</div>
+                    <div className="text-right whitespace-nowrap">{it.size ? `${it.size} B` : "-"}</div>
               </li>
                 ))}
             </ul>
@@ -6881,10 +7085,10 @@ export default function RepoCodePage({
           )}
           {selectedFile && (
             <div ref={fileViewerRef} className="mt-4 rounded-md border dark:border-[#383B42]">
-              <div className="flex items-center gap-2 border-b p-2 dark:border-[#383B42]">
-                <File className="text-gray-400 ml-2 h-4 w-4" />{" "}
-                <span className="text-gray-400">{selectedFile}</span>
-                <div className="ml-auto flex items-center gap-3">
+              <div className="flex items-center gap-2 border-b p-2 dark:border-[#383B42] flex-wrap">
+                <File className="text-gray-400 ml-2 h-4 w-4 flex-shrink-0" />{" "}
+                <span className="text-gray-400 truncate min-w-0 flex-1">{selectedFile}</span>
+                <div className="ml-auto flex items-center gap-2 flex-wrap justify-end min-w-0">
                   {/* HTML and Markdown files: Toggle between preview and code view */}
                   {/* Media types (image, video, audio) always show preview - no toggle needed */}
                   {(fileType === 'html' || fileType === 'markdown') && !proposeEdit && (
@@ -6908,7 +7112,7 @@ export default function RepoCodePage({
                         href={rawUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-sm text-gray-400 hover:text-purple-400 hover:underline"
+                        className="text-sm text-gray-400 hover:text-purple-400 hover:underline whitespace-nowrap"
                       >
                         Raw
                       </a>
@@ -6933,14 +7137,14 @@ export default function RepoCodePage({
                       {/* Edit button - only show in code view for HTML/Markdown, or for other text files (not media) */}
                       {((fileType === 'html' && htmlViewMode === 'code') || (fileType === 'markdown' && markdownViewMode === 'code') || (fileType !== 'image' && fileType !== 'video' && fileType !== 'audio' && fileType !== 'pdf' && fileType !== 'html' && fileType !== 'markdown')) && (
                       <button
-                        className="text-sm text-purple-500 hover:underline"
+                        className="text-sm text-purple-500 hover:underline whitespace-nowrap"
                         onClick={() => editCurrentFile()}
                       >
                         Edit
                       </button>
                       )}
                       <button
-                        className="text-sm text-red-400 hover:underline"
+                        className="text-sm text-red-400 hover:underline whitespace-nowrap"
                         onClick={() => deleteCurrentFile()}
                       >
                         Delete
@@ -6951,7 +7155,7 @@ export default function RepoCodePage({
                       {/* Edit button - only show in code view for HTML/Markdown, or for other text files (not media) */}
                       {!proposeEdit && ((fileType === 'html' && htmlViewMode === 'code') || (fileType === 'markdown' && markdownViewMode === 'code') || (fileType !== 'image' && fileType !== 'video' && fileType !== 'audio' && fileType !== 'pdf' && fileType !== 'html' && fileType !== 'markdown')) && (
                         <button
-                          className="text-sm text-purple-500 hover:underline"
+                          className="text-sm text-purple-500 hover:underline whitespace-nowrap"
                           onClick={() => {
                             if (!selectedFile) return;
                             const type = getFileType(selectedFile);
@@ -6969,7 +7173,7 @@ export default function RepoCodePage({
                     </>
                   )}
                   <button
-                    className="text-sm text-gray-400 hover:underline"
+                    className="text-sm text-gray-400 hover:underline whitespace-nowrap"
                     onClick={() => { 
                       setSelectedFile(null); 
                       setFileContent(""); 
