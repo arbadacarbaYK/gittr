@@ -130,6 +130,7 @@ export default function SettingsLayout({
                 />
               ) : null}
               {/* Only show fallback if no picture or picture failed to load */}
+              {/* CRITICAL: Always render "U" initially to match server, update after mount */}
               <AvatarFallback className="bg-purple-600 text-white" suppressHydrationWarning>
                 {mounted ? avatarInitials : "U"}
               </AvatarFallback>
