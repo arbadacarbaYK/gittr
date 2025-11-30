@@ -170,6 +170,15 @@ export function useContributorMetadata(pubkeys: string[]) {
   }, [pubkeys.length, pubkeys.join(",")]); // Still depend on length and join for React's dependency tracking
 
   useEffect(() => {
+    console.log(`🔄 [useContributorMetadata] useEffect triggered:`, {
+      pubkeysLength: pubkeys.length,
+      pubkeysKey: pubkeysKey.slice(0, 50) + (pubkeysKey.length > 50 ? '...' : ''),
+      previousKey: pubkeysKeyRef.current.slice(0, 50) + (pubkeysKeyRef.current.length > 50 ? '...' : ''),
+      keyChanged: pubkeysKey !== pubkeysKeyRef.current,
+      wasEmpty: pubkeysKeyRef.current === "",
+      isNowNonEmpty: pubkeysKey !== "" && pubkeysKey !== pubkeysKeyRef.current
+    });
+    
     // CRITICAL: Debounce subscriptions to prevent excessive re-subscriptions
     // Only allow re-subscription if at least 2 seconds have passed since last subscription
     // BUT: Always allow subscription when pubkeys change from empty to non-empty
@@ -188,6 +197,7 @@ export function useContributorMetadata(pubkeys: string[]) {
     // If we just subscribed recently, debounce the new subscription
     // UNLESS: pubkeys changed from empty to non-empty (this is important!)
     if (timeSinceLastSubscription < DEBOUNCE_MS && lastSubscriptionTimeRef.current > 0 && !(wasEmpty && isNowNonEmpty)) {
+      console.log(`⏭️ [useContributorMetadata] Debouncing subscription (${timeSinceLastSubscription}ms < ${DEBOUNCE_MS}ms)`);
       // Skip this subscription attempt - will be handled by the timeout
       return;
     }
