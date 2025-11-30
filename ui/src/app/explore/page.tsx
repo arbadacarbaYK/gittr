@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
@@ -127,7 +127,7 @@ type Repo = {
   fromNostr?: boolean;
 };
 
-export default function ExplorePage() {
+function ExplorePageContent() {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [isLoadingRepos, setIsLoadingRepos] = useState(true);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
@@ -2010,4 +2010,14 @@ export default function ExplorePage() {
   );
 }
 
+// Mark as dynamic to prevent static generation (useSearchParams requires dynamic rendering)
+export const dynamic = 'force-dynamic';
+
+export default function ExplorePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-black text-white p-8">Loading...</div>}>
+      <ExplorePageContent />
+    </Suspense>
+  );
+}
 
