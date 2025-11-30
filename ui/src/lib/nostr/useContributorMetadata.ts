@@ -226,7 +226,13 @@ export function useContributorMetadata(pubkeys: string[]) {
     
     // Only log on first render or when key changes significantly
     if (isFirstRender || keyChanged) {
-      // console.log(`🔍 [useContributorMetadata] Hook called with ${pubkeys.length} pubkeys`);
+      console.log(`🔍 [useContributorMetadata] Hook called with ${pubkeys.length} pubkeys`, {
+        isFirstRender,
+        keyChanged,
+        validPubkeys: validPubkeys.length,
+        missingFromCache: missingFromCache.length,
+        cachedCount: Object.keys(metadataMap).length
+      });
     }
     
     // CRITICAL: Don't skip if subscribe is available - we need to fetch metadata even if pubkeys are empty initially
@@ -236,9 +242,9 @@ export function useContributorMetadata(pubkeys: string[]) {
       return;
     }
     
-    // If no pubkeys, return early (this is normal during initial load before repos are loaded)
+    // If no valid pubkeys, return early (this is normal during initial load before repos are loaded)
     // The hook will re-run when pubkeys become available
-    if (pubkeys.length === 0) {
+    if (validPubkeys.length === 0) {
       return;
     }
     if (invalidPubkeys.length > 0) {
