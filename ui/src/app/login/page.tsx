@@ -14,7 +14,9 @@ import { nip05, nip19 } from "nostr-tools";
 import { Html5Qrcode } from "html5-qrcode";
 
 export default function Login() {
-  const { setAuthor, remoteSigner } = useNostrContext();
+  const { setAuthor } = useNostrContext();
+  // TODO: Add remoteSigner back to NostrContext if remote signer feature is needed
+  const remoteSigner: any = undefined; // Temporarily disabled - not in NostrContext
   const router = useRouter();
 
   const inputRef = useRef<HTMLInputElement>(null);

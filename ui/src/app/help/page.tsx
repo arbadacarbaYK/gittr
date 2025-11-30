@@ -136,6 +136,7 @@ export default function HelpPage() {
           </h2>
           <ul className="space-y-2 text-sm text-gray-300">
             <li>• <Link href="#git-operations" className="text-green-400 hover:text-green-300">Git Operations</Link></li>
+            <li>• <Link href="#code-snippets" className="text-green-400 hover:text-green-300">Code Snippets</Link></li>
             <li>• <Link href="#ssh-keys" className="text-green-400 hover:text-green-300">SSH Keys</Link></li>
             <li>• <Link href="#collaboration" className="text-green-400 hover:text-green-300">Collaboration</Link></li>
           </ul>
@@ -147,9 +148,9 @@ export default function HelpPage() {
             Settings
           </h2>
           <ul className="space-y-2 text-sm text-gray-300">
-            <li>• <Link href="#account-settings" className="text-cyan-400 hover:text-cyan-300">Account Settings</Link></li>
-            <li>• <Link href="#notifications" className="text-cyan-400 hover:text-cyan-300">Notifications</Link></li>
-            <li>• <Link href="#payment-methods" className="text-cyan-400 hover:text-cyan-300">Payment Methods</Link></li>
+            <li>• <Link href="/settings" className="text-cyan-400 hover:text-cyan-300">Account Settings</Link></li>
+            <li>• <Link href="/settings/notifications" className="text-cyan-400 hover:text-cyan-300">Notifications</Link></li>
+            <li>• <Link href="/settings/payments" className="text-cyan-400 hover:text-cyan-300">Payment Methods</Link></li>
           </ul>
         </div>
       </div>
@@ -162,19 +163,7 @@ export default function HelpPage() {
           <div className="space-y-4 text-gray-300">
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">1. Login with NIP-07</h3>
-              <p>
-                Install a NIP-07 browser extension (like Alby, nos2x, or Flamingo) on desktop browsers.
-                On mobile, extensions aren&apos;t supported, so use a signer app such as{" "}
-                <a
-                  href="https://github.com/haorendashu/nowser"
-                  className="text-purple-400 underline"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Nowser
-                </a>
-                .
-              </p>
+              <p>Install a NIP-07 browser extension (like Alby or nos2x) and log in to access all features.</p>
             </div>
 
             <div>
@@ -207,8 +196,8 @@ export default function HelpPage() {
               <ul className="list-disc list-inside space-y-1 ml-4">
                 <li><span className="text-yellow-400">Local</span> - Only exists on your device</li>
                 <li><span className="text-blue-400">Pushing...</span> - Currently being published to Nostr</li>
-                <li><span className="text-green-400">Live on Nostr</span> - Published to Nostr relays and processed by bridge</li>
-                <li><span className="text-orange-400">Published (Verifying...)</span> - Published to Nostr and sent to bridge, verifying bridge processed it</li>
+                <li><span className="text-green-400">Live on Nostr</span> - Published and visible to others</li>
+                <li><span className="text-orange-400">Live (Unpushed Edits)</span> - Has local changes not yet published</li>
                 <li><span className="text-red-400">Push Failed</span> - Publication attempt failed</li>
               </ul>
             </div>
@@ -238,10 +227,10 @@ export default function HelpPage() {
                 <li><strong>GitLab</strong> - Import from GitLab URLs (coming soon)</li>
               </ul>
               <p className="mt-2 text-sm text-gray-400">Imported repos maintain a link to their source (sourceUrl) and fetch files from the original git server.</p>
-              <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded">
-                <p className="text-sm text-blue-200 font-semibold mb-1">💡 Large Repository Support</p>
-                <p className="text-sm text-blue-100">
-                  The import process now handles large repositories efficiently. Only file metadata (paths, sizes) is included in the import response, and file content is fetched on-demand when you view or edit files. This allows importing repositories of any size without hitting API response limits.
+              <div className="mt-3 p-3 bg-red-900/20 border border-red-600/30 rounded">
+                <p className="text-sm text-red-200 font-semibold mb-1">⚠️ 4 MB Import Limit</p>
+                <p className="text-sm text-red-100">
+                  Next.js API routes hard-cap responses at ~4 MB. When importing we fetch every file (including releases/binaries), so very large repos will fail with “Repository is too large”. Remove heavy artifacts (release archives, media, build outputs) or import a slimmer subset before retrying.
                 </p>
               </div>
             </div>
@@ -280,7 +269,7 @@ export default function HelpPage() {
                 <div>
                   <p className="text-sm font-semibold text-purple-400 mb-1">Option C: nostr:// Protocol (Ecosystem Standard)</p>
                   <code className="block bg-[#0a0d11] p-2 rounded text-sm">
-                    git clone nostr://npub1n2ph08n@relay.ngit.dev/tides
+                    git clone nostr://yourname@relay.ngit.dev/repo-name
                   </code>
                   <p className="mt-1 text-xs text-gray-400">
                     Requires <code className="bg-gray-800 px-1 rounded">git-remote-nostr</code>. This helper translates <code className="bg-gray-800 px-1 rounded">nostr://</code> URLs into standard Git fetches and is used by other NIP-34 clients.
@@ -334,27 +323,6 @@ export default function HelpPage() {
               </div>
             </div>
 
-            <div id="ssh-keys" className="mt-6 border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
-              <h3 className="text-lg font-semibold text-white mb-2">SSH Keys vs NIP-34 (When to use which?)</h3>
-              <p className="text-sm text-gray-300 mb-3">
-                Most gittr actions happen via NIP‑34 events (signed with your Nostr key). You only need SSH keys when you want to talk to the git bridge directly (terminal/CI).
-              </p>
-              <ul className="list-disc list-inside space-y-1 text-xs text-gray-200">
-                <li>
-                  <strong>Web UI operations</strong> (Push to Nostr, PRs, Issues) publish <strong>NIP‑34 events</strong> through your Nostr key (NIP‑07 or locally stored <code className="bg-black/40 px-1 rounded">nsec</code>). No SSH key is required.
-                </li>
-                <li>
-                  <strong>Command-line Git operations</strong> (<code className="bg-black/40 px-1 rounded">git clone</code>, <code className="bg-black/40 px-1 rounded">git push</code>, <code className="bg-black/40 px-1 rounded">git pull</code>) talk to <code className="bg-black/40 px-1 rounded">git.gittr.space</code> or other GRASP bridges and <strong>do require SSH keys</strong>.
-                </li>
-                <li>
-                  SSH keys are <strong>only needed if you want terminal/CI access</strong>. Staying in the browser? You can skip them entirely.
-                </li>
-                <li>
-                  Manage keys from <a className="text-purple-300 underline" href="/settings/ssh-keys">Settings → SSH Keys</a>. Keys are published as NIP‑52 (gitnostr) events so every bridge can authorize you.
-                </li>
-              </ul>
-            </div>
-
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Push to Nostr</h3>
               <p>After making local changes, click "Push to Nostr" in your repository settings to publish updates.</p>
@@ -377,6 +345,82 @@ export default function HelpPage() {
                 className="text-purple-400 hover:text-purple-300 underline text-sm"
               >
                 📖 SSH & Git Access Guide →
+              </a>
+            </div>
+          </div>
+        </section>
+
+        {/* Code Snippets */}
+        <section id="code-snippets" className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
+          <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
+            <Code className="h-6 w-6 text-green-400" />
+            Code Snippets (NIP-C0)
+          </h2>
+          
+          <div className="space-y-4 text-gray-300">
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">Share Code Snippets</h3>
+              <p>Share code snippets from your repositories as standalone, discoverable events on Nostr.</p>
+              
+              <div className="mt-3 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold text-green-400 mb-1">How to Share:</p>
+                  <ol className="list-decimal list-inside space-y-2 text-sm text-gray-300 ml-2">
+                    <li>Open any file in a repository</li>
+                    <li>Select the code lines you want to share (click to select, Shift+click to extend)</li>
+                    <li>Click the <strong className="text-green-400">"Share as snippet"</strong> button that appears</li>
+                    <li>Optionally add a description</li>
+                    <li>Click <strong className="text-green-400">"Share to Nostr"</strong></li>
+                  </ol>
+                </div>
+                
+                <div>
+                  <p className="text-sm font-semibold text-purple-400 mb-1">What Gets Shared:</p>
+                  <ul className="list-disc list-inside space-y-1 text-sm text-gray-300 ml-2">
+                    <li>The selected code (with syntax highlighting)</li>
+                    <li>Language and file extension (auto-detected)</li>
+                    <li>Optional description</li>
+                    <li>Link back to source repository (NIP-34 format)</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">Using Snippets in Comments</h3>
+              <p>Reference code snippets in issue and PR comments. Snippets will appear inline with syntax highlighting.</p>
+              
+              <div className="mt-3 p-3 bg-purple-900/20 border border-purple-600/50 rounded">
+                <p className="text-purple-200 font-semibold mb-2">💡 How it works:</p>
+                <ol className="list-decimal list-inside space-y-1 text-sm text-purple-200/90 ml-2">
+                  <li>Share a code snippet using the "Share as snippet" button</li>
+                  <li>Copy the snippet event ID (shown after sharing)</li>
+                  <li>Paste the event ID in a comment (as <code className="text-purple-300">nostr:note1...</code> or hex format)</li>
+                  <li>The snippet will automatically render inline with syntax highlighting</li>
+                </ol>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">Snippet Features</h3>
+              <ul className="list-disc list-inside space-y-1 text-sm text-gray-300 ml-2">
+                <li><strong>Syntax Highlighting:</strong> Code is displayed with proper formatting</li>
+                <li><strong>Copy Code:</strong> One-click copy button</li>
+                <li><strong>Download:</strong> Download snippet as a file</li>
+                <li><strong>Repository Link:</strong> Click to view the source repository</li>
+                <li><strong>Discoverable:</strong> Snippets are searchable across the Nostr network</li>
+              </ul>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-gray-700">
+              <p className="text-sm text-gray-400 mb-2">Learn more about NIP-C0:</p>
+              <a 
+                href="https://github.com/nostr-protocol/nips/blob/master/C0.md" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-purple-400 hover:text-purple-300 underline text-sm"
+              >
+                📖 NIP-C0 Specification →
               </a>
             </div>
           </div>
@@ -478,96 +522,6 @@ export default function HelpPage() {
           </div>
         </section>
 
-        {/* Account Settings */}
-        <section id="account-settings" className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
-          <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <Settings className="h-6 w-6 text-cyan-400" />
-            Account Settings
-          </h2>
-          
-          <div className="space-y-4 text-gray-300">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">What are Account Settings?</h3>
-              <p>Account Settings allow you to configure your payment methods and authentication options. These settings are stored locally in your browser and are used to enable features like receiving zaps, creating bounties, and managing your repositories.</p>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">Payment Configuration</h3>
-              <p>To receive payments (zaps and bounties), you need to configure at least one payment method:</p>
-              <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
-                <li><strong>LNbits</strong> - A self-hosted Lightning wallet. You'll need your LNbits URL and admin key. This is required for creating bounties.</li>
-                <li><strong>LNURL</strong> - A Lightning address (like yourname@domain.com) that can receive payments.</li>
-                <li><strong>NWC (Nostr Wallet Connect)</strong> - Connect to a Lightning wallet via Nostr for sending payments.</li>
-              </ul>
-              <p className="mt-2 text-sm text-gray-400">See the <Link href="#payment-methods" className="text-purple-400 hover:text-purple-300">Payment Methods</Link> section for detailed setup instructions.</p>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">Why are these settings needed?</h3>
-              <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
-                <li><strong>Receiving Zaps:</strong> When someone zaps your repository, the payment needs to go somewhere. Configure your Lightning address or LNbits wallet to receive these payments.</li>
-                <li><strong>Creating Bounties:</strong> To create a bounty on an issue, you need an LNbits sending wallet configured. The funds are reserved in your wallet until the PR author claims the bounty.</li>
-                <li><strong>Sending Payments:</strong> NWC or LNbits sending wallets allow you to send zaps and fund bounties.</li>
-              </ul>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">Accessing Account Settings</h3>
-              <p>Go to <Link href="/settings" className="text-purple-400 hover:text-purple-300">Settings → Account</Link> to configure your payment methods. All settings are stored locally in your browser and never sent to any server.</p>
-            </div>
-          </div>
-        </section>
-
-        {/* Payment Methods */}
-        <section id="payment-methods" className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
-          <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <Coins className="h-6 w-6 text-yellow-400" />
-            Payment Methods
-          </h2>
-          
-          <div className="space-y-4 text-gray-300">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">LNbits (Lightning Bits)</h3>
-              <p>LNbits is a self-hosted Lightning wallet that allows you to create and manage Lightning invoices and withdraw links. It's required for creating bounties.</p>
-              <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
-                <li><strong>LNbits URL:</strong> The URL where your LNbits instance is hosted (e.g., https://lnbits.com or your self-hosted instance)</li>
-                <li><strong>Admin Key:</strong> Your LNbits admin key (found in your LNbits wallet settings). This is used to create withdraw links for bounties.</li>
-                <li><strong>Invoice Key:</strong> (Optional) Used for receiving payments. If not provided, the admin key is used.</li>
-              </ul>
-              <p className="mt-2 text-sm text-gray-400">You can get a free LNbits wallet at <a href="https://lnbits.com" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300">lnbits.com</a> or self-host your own instance.</p>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">LNURL (Lightning Address)</h3>
-              <p>LNURL is a Lightning address (like yourname@domain.com) that can receive payments. It's a simple way to receive Lightning payments without managing a wallet directly.</p>
-              <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
-                <li>You can get a Lightning address from services like <a href="https://getalby.com" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300">Alby</a> or <a href="https://walletofsatoshi.com" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300">Wallet of Satoshi</a></li>
-                <li>Alternatively, you can add a <code className="bg-gray-800 px-1 rounded">lud16</code> or <code className="bg-gray-800 px-1 rounded">lnurl</code> field to your Nostr profile (Kind 0 metadata), and gittr.space will automatically use it for receiving payments</li>
-              </ul>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">NWC (Nostr Wallet Connect)</h3>
-              <p>NWC allows you to connect to a Lightning wallet via Nostr. This is useful for sending payments (zaps) without managing wallet credentials directly.</p>
-              <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
-                <li>NWC requires a compatible wallet that supports the Nostr Wallet Connect protocol</li>
-                <li>You'll need to generate an NWC connection string from your wallet</li>
-                <li>This is primarily used for sending payments, not receiving them</li>
-              </ul>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">How Payment Methods are Used</h3>
-              <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
-                <li><strong>Receiving Zaps:</strong> Uses your Lightning address (from Nostr profile or configured LNURL) or LNbits invoice key</li>
-                <li><strong>Creating Bounties:</strong> Requires LNbits admin key to create withdraw links</li>
-                <li><strong>Sending Zaps:</strong> Uses NWC or LNbits sending wallet</li>
-              </ul>
-              <p className="mt-2 text-sm text-gray-400">All payment credentials are stored locally in your browser and never sent to any server. Only you have access to your payment methods.</p>
-            </div>
-          </div>
-        </section>
-
         {/* Notifications */}
         <section id="notifications" className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
           <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
@@ -577,13 +531,8 @@ export default function HelpPage() {
           
           <div className="space-y-4 text-gray-300">
             <div>
-              <h3 className="text-lg font-semibold text-white mb-2">What are Notifications?</h3>
-              <p>Notifications keep you informed about activity in your repositories, such as new issues, pull requests, comments, and bounties. You can configure how and when you receive notifications.</p>
-            </div>
-
-            <div>
               <h3 className="text-lg font-semibold text-white mb-2">Configure Notifications</h3>
-              <p>Go to <Link href="/settings/notifications" className="text-purple-400 hover:text-purple-300">Settings → Notifications</Link> to set up:</p>
+              <p>Go to Settings → Notifications to set up:</p>
               <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
                 <li><strong>Nostr DMs</strong> - Receive encrypted direct messages on Nostr</li>
                 <li><strong>Telegram</strong> - Get notifications via Telegram DMs. Configure your Telegram User ID to receive private notifications for PRs, issues, and bounties.</li>
@@ -629,51 +578,16 @@ export default function HelpPage() {
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Pull Requests</h3>
               <p>Create PRs to propose changes. Reviewers can approve, request changes, or merge PRs.</p>
-              <p className="mt-2 text-sm text-gray-400">
-                <strong>Automatic Nostr Publishing:</strong> PRs are automatically published to Nostr (kind 9804) when created. When merged, the updated status is also published automatically. This enables cross-platform sync with other Nostr clients (e.g., gitworkshop.dev).
-              </p>
             </div>
 
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Issues</h3>
               <p>Track bugs, feature requests, and discussions. Add bounties to incentivize solutions.</p>
-              <p className="mt-2 text-sm text-gray-400">
-                <strong>Automatic Nostr Publishing:</strong> Issues are automatically published to Nostr (kind 9803) when created. When closed or reopened, the updated status is also published automatically. This enables cross-platform sync with other Nostr clients.
-              </p>
             </div>
 
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Contributors</h3>
               <p>Link your GitHub profile in Settings to show your profile picture as a contributor icon.</p>
-            </div>
-          </div>
-        </section>
-
-        {/* Technical Details */}
-        <section id="technical" className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
-          <h2 className="text-2xl font-semibold mb-4">Technical Details</h2>
-          
-          <div className="space-y-4 text-gray-300">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">Supported Nostr Event Kinds</h3>
-              <p className="mb-3">gittr.space uses the following Nostr event kinds for different features:</p>
-              <ul className="space-y-2 text-sm">
-                <li><strong className="text-white">Kind 0</strong> (NIP-01: Metadata) - User profiles and identities</li>
-                <li><strong className="text-white">Kind 1</strong> (NIP-01: Notes) - Comments on issues, PRs, and discussions</li>
-                <li><strong className="text-white">Kind 50</strong> (gitnostr: Repository Permissions) - Repository access control</li>
-                <li><strong className="text-white">Kind 51</strong> (gitnostr: Repository) - Repository announcements (legacy, for backwards compatibility)</li>
-                <li><strong className="text-white">Kind 52</strong> (gitnostr: SSH Keys) - SSH public keys for Git authentication</li>
-                <li><strong className="text-white">Kind 30617</strong> (NIP-34: Replaceable Events) - Repository metadata (primary method, uses NIP-34 replaceable events)</li>
-                <li><strong className="text-white">Kind 7</strong> (NIP-25: Reactions) - Repository stars (reactions to kind 30617 events)</li>
-                <li><strong className="text-white">Kind 9735</strong> (NIP-57: Zaps) - Lightning payments and tips</li>
-                <li><strong className="text-white">Kind 9803</strong> (Custom: Issues) - Issue tracking with bounties</li>
-                <li><strong className="text-white">Kind 9804</strong> (Custom: Pull Requests) - Pull requests and code reviews</li>
-                <li><strong className="text-white">Kind 9806</strong> (Custom: Bounties) - Bounty creation and status updates</li>
-                <li><strong className="text-white">Kind 3000</strong> (NIP-51: Bookmark Lists) - Following/watching repositories</li>
-              </ul>
-              <p className="mt-3 text-sm text-gray-400">
-                <strong>Note:</strong> Repository announcements use Kind 30617 (NIP-34 replaceable events) as the primary method. Kind 51 is supported for reading legacy repositories. Stars use NIP-25 (Kind 7) reactions with a "k" tag pointing to the repository event, enabling platform-wide star counts. Following repositories uses NIP-51 (Kind 3000) bookmark lists. Issues and PRs (kinds 9803/9804) are automatically published to Nostr when created, and status updates (merged, closed, reopened) are also published automatically. This enables cross-platform sync with other Nostr clients.
-              </p>
             </div>
           </div>
         </section>
@@ -731,16 +645,6 @@ export default function HelpPage() {
                   <a href="https://github.com/arbadacarbaYK/gittr" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 flex items-center gap-2">
                     <Github className="h-4 w-4" />
                     GitHub Repository
-                  </a>
-                </li>
-                <li>
-                  <a href="https://github.com/arbadacarbaYK/gittr/blob/main/docs/NIP46_REMOTE_SIGNER_INTEGRATION.md" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300">
-                    NIP-46 Remote Signer Integration
-                  </a>
-                </li>
-                <li>
-                  <a href="https://github.com/arbadacarbaYK/gittr/blob/main/docs/NIP25_STARS_NIP51_FOLLOWING.md" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300">
-                    NIP-25 Stars & NIP-51 Following
                   </a>
                 </li>
                 <li>

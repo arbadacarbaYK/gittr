@@ -38,7 +38,6 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
   // For metadata lookup, use full pubkey if we resolved one, otherwise use entity
   // CRITICAL: Handle npub format entities by decoding them first
   // Also try to resolve from localStorage immediately
-  // CRITICAL: Normalize to lowercase for consistent metadataMap lookup
   const [fullPubkeyForMeta, setFullPubkeyForMeta] = useState<string>(() => {
     // If entity is npub, decode it immediately
     if (params.entity.startsWith("npub")) {
@@ -47,20 +46,18 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
         if (decoded.type === "npub") {
           const pubkey = decoded.data as string;
           if (/^[0-9a-f]{64}$/i.test(pubkey)) {
-            const normalized = pubkey.toLowerCase();
-            console.log(`✅ [Profile] Decoded npub to pubkey: ${normalized.slice(0, 8)}`);
-            return normalized;
+            console.log(`✅ [Profile] Decoded npub to pubkey: ${pubkey.slice(0, 8)}`);
+            return pubkey;
           }
         }
       } catch (e) {
         console.error("Failed to decode npub:", e);
       }
     }
-    // If entity is already a full 64-char pubkey, use it (normalized)
+    // If entity is already a full 64-char pubkey, use it
     if (params.entity.length === 64 && /^[0-9a-f]{64}$/i.test(params.entity)) {
-      const normalized = params.entity.toLowerCase();
-      console.log(`✅ [Profile] Entity is full pubkey: ${normalized.slice(0, 8)}`);
-      return normalized;
+      console.log(`✅ [Profile] Entity is full pubkey: ${params.entity.slice(0, 8)}`);
+      return params.entity;
     }
     // Try to resolve from localStorage immediately
     try {
@@ -75,9 +72,8 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
       );
       
       if (matchingRepo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(matchingRepo.ownerPubkey)) {
-        const normalized = matchingRepo.ownerPubkey.toLowerCase();
-        console.log(`✅ [Profile] Resolved pubkey from repo: ${normalized.slice(0, 8)}`);
-        return normalized;
+        console.log(`✅ [Profile] Resolved pubkey from repo: ${matchingRepo.ownerPubkey.slice(0, 8)}`);
+        return matchingRepo.ownerPubkey;
       }
       
       // Try from activities
@@ -85,9 +81,8 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
         a.user && /^[0-9a-f]{64}$/i.test(a.user) && a.user.toLowerCase().startsWith(params.entity.toLowerCase())
       );
       if (matchingActivity?.user) {
-        const normalized = matchingActivity.user.toLowerCase();
-        console.log(`✅ [Profile] Resolved pubkey from activity: ${normalized.slice(0, 8)}`);
-        return normalized;
+        console.log(`✅ [Profile] Resolved pubkey from activity: ${matchingActivity.user.slice(0, 8)}`);
+        return matchingActivity.user;
       }
     } catch (e) {
       console.error("Failed to resolve pubkey from localStorage:", e);
@@ -228,15 +223,14 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
   
   // CRITICAL: Use the same pattern as settings/profile page - determine pubkey first, then call getUserMetadata directly
   // Determine which pubkey to use (same priority as settings/profile)
-  // CRITICAL: Normalize to lowercase for consistent metadataMap lookup (metadataMap keys are lowercase)
   const pubkeyForMetadata = useMemo(() => {
     // Priority 1: Use fullPubkeyForMeta if available (most reliable)
     if (fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)) {
-      return fullPubkeyForMeta.toLowerCase();
+      return fullPubkeyForMeta;
     }
     // Priority 2: Try params.entity if it's a full pubkey
     if (params.entity && /^[0-9a-f]{64}$/i.test(params.entity)) {
-      return params.entity.toLowerCase();
+      return params.entity;
     }
     // Priority 3: Try decoding npub
     if (params.entity && params.entity.startsWith("npub")) {
@@ -245,7 +239,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
         if (decoded.type === "npub") {
           const pubkey = decoded.data as string;
           if (/^[0-9a-f]{64}$/i.test(pubkey)) {
-            return pubkey.toLowerCase();
+            return pubkey;
           }
         }
       } catch (e) {
@@ -260,37 +254,9 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
   // Use the same pattern as settings/profile: call getUserMetadata directly with the pubkey
   // CRITICAL: For own profile, also try currentUserPubkey as fallback if pubkeyForMetadata lookup fails
   // CRITICAL: Memoize userMeta so it updates when metadataMap changes (e.g., after cache update)
-  // CRITICAL: pubkeyForMetadata is already normalized to lowercase, so pass it directly to getUserMetadata
-  // CRITICAL: Also check cache directly if metadataMap is empty (cache loads asynchronously)
   const userMeta = useMemo(() => {
-    // Merge cache with metadataMap to ensure we have latest data even if metadataMap hasn't updated yet
-    let effectiveMetadataMap = metadataMap;
-    if (typeof window !== "undefined") {
-      try {
-        const cache = JSON.parse(localStorage.getItem("gittr_metadata_cache") || "{}");
-        // Normalize cache keys to lowercase
-        const normalizedCache: Record<string, any> = {};
-        for (const [key, value] of Object.entries(cache)) {
-          if (key && /^[0-9a-f]{64}$/i.test(key)) {
-            normalizedCache[key.toLowerCase()] = value;
-          }
-        }
-        // Merge cache with metadataMap (metadataMap takes precedence if both exist)
-        effectiveMetadataMap = { ...normalizedCache, ...metadataMap };
-      } catch (e) {
-        // Cache parse failed, use metadataMap only
-      }
-    }
-    
-    if (pubkeyForMetadata && /^[0-9a-f]{64}$/i.test(pubkeyForMetadata)) {
-      // pubkeyForMetadata is already normalized to lowercase
-      // CRITICAL: Try direct lookup first to ensure we get identities if they exist
-      const directMeta = effectiveMetadataMap[pubkeyForMetadata];
-      if (directMeta && Object.keys(directMeta).length > 0) {
-        return directMeta;
-      }
-      // Fallback to getUserMetadata for other lookup strategies
-      const meta = getUserMetadata(pubkeyForMetadata, effectiveMetadataMap);
+    if (pubkeyForMetadata) {
+      const meta = getUserMetadata(pubkeyForMetadata, metadataMap);
       // If we found metadata, return it
       if (meta && Object.keys(meta).length > 0) {
         return meta;
@@ -303,7 +269,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
       if (resolvedPubkey && /^[0-9a-f]{64}$/i.test(resolvedPubkey)) {
         const isOwnProfile = currentUserPubkey.toLowerCase() === resolvedPubkey.toLowerCase();
         if (isOwnProfile) {
-          const ownMeta = getUserMetadata(currentUserPubkey.toLowerCase(), effectiveMetadataMap);
+          const ownMeta = getUserMetadata(currentUserPubkey.toLowerCase(), metadataMap);
           if (ownMeta && Object.keys(ownMeta).length > 0) {
             console.log(`✅ [Profile] Found own metadata via currentUserPubkey fallback`);
             return ownMeta;
@@ -1198,23 +1164,23 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
   const getMetaField = useMemo(() => {
     return (field: string) => {
       // Try userMeta first (now reactive to metadataMap changes)
-      if (userMeta && (userMeta as any)[field]) {
-        return (userMeta as any)[field];
+      if (userMeta && userMeta[field]) {
+        return userMeta[field];
       }
       
       // Fallback 1: Try fullPubkeyForMeta lookup
       if (fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)) {
         const meta = getUserMetadata(fullPubkeyForMeta.toLowerCase(), metadataMap);
-        if (meta && (meta as any)[field]) {
-          return (meta as any)[field];
+        if (meta && meta[field]) {
+          return meta[field];
         }
       }
       
       // Fallback 2: If viewing own profile, try currentUserPubkey lookup
       if (isOwnProfileCheck && currentUserPubkey && /^[0-9a-f]{64}$/i.test(currentUserPubkey)) {
         const meta = getUserMetadata(currentUserPubkey.toLowerCase(), metadataMap);
-        if (meta && (meta as any)[field]) {
-          return (meta as any)[field];
+        if (meta && meta[field]) {
+          return meta[field];
         }
       }
       
@@ -1344,16 +1310,10 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
         throw new Error("No signing method available");
       }
       
-      // Publish to relays (synchronous, but we'll update state after a brief delay to ensure UI feedback)
-      try {
+      // Publish to relays
       publish(event, defaultRelays);
-        console.log(`📤 [Follow] Published kind 3 event to ${defaultRelays.length} relay(s)`);
-      } catch (publishError) {
-        console.error("Failed to publish follow event:", publishError);
-        throw publishError;
-      }
       
-      // Update local state immediately for responsive UI
+      // Update local state
       setIsFollowing(!isFollowing);
       setContactList(newContacts);
       
@@ -1460,23 +1420,22 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
           </div>
           
           {/* Profile Info */}
-          <div className="flex-1 w-full min-w-0">
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
-              <div className="flex-1 min-w-0">
-                <h1 className="text-2xl sm:text-4xl font-bold mb-2 break-words">{displayName}</h1>
+          <div className="flex-1 w-full">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h1 className="text-4xl font-bold mb-2">{displayName}</h1>
                 {nip05 && (
                   <div className="flex items-center gap-2 text-gray-400 mb-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                    <span className="break-words">{nip05}</span>
+                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    <span>{nip05}</span>
                   </div>
             )}
             {about && (
-                  <p className="text-gray-300 mb-4 break-words">{about}</p>
+                  <p className="text-gray-300 mb-4 max-w-2xl">{about}</p>
             )}
             </div>
               
               {/* Follow Button */}
-              <div className="flex-shrink-0">
               {isLoggedIn && !isOwnProfile && (
                 <Button
                   onClick={handleFollow}
@@ -1508,7 +1467,6 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                   Edit Profile
                 </Button>
               )}
-              </div>
           </div>
             
             {/* Stats Row - Shows data from Nostr (repos) and local activities (commits, PRs, bounties) */}
@@ -1552,21 +1510,21 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 </div>
               )}
               {displayPubkey && (
-                <div className="flex items-center gap-2 text-gray-400 text-xs font-mono min-w-0">
-                  <span className="break-all">npub: {displayPubkey}</span>
+                <div className="flex items-center gap-2 text-gray-400 text-xs font-mono">
+                  <span>npub: {displayPubkey}</span>
                   <a 
                     href={`https://nostr.com/${displayPubkey}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-purple-400 hover:text-purple-300 flex-shrink-0"
+                    className="text-purple-400 hover:text-purple-300"
                   >
                     <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
               )}
               {fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta) && (
-                <div className="flex items-center gap-2 text-gray-400 text-xs font-mono min-w-0">
-                  <span className="break-all">pubkey: {fullPubkeyForMeta}</span>
+                <div className="flex items-center gap-2 text-gray-400 text-xs font-mono">
+                  <span>pubkey: {fullPubkeyForMeta}</span>
                 </div>
               )}
             </div>
@@ -1720,15 +1678,9 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
             {userRepos.map((repo: any) => {
               // CRITICAL: For URLs, use slugified version (repo/slug/repositoryName)
               // For display, use original name (repo.name)
-              const repoForUrl = repo.repo || repo.slug || repo.name;
+              const repoForUrl = repo.repo || repo.slug;
               const repoDisplayName = repo.name || repoForUrl; // CRITICAL: Use original name for display
               // Use npub format for URLs if we have full pubkey
-              // CRITICAL: Ensure repo.entity and repoForUrl exist before constructing href
-              if (!repo.entity || !repoForUrl) {
-                console.error('⚠️ [Profile] Invalid repo data for link:', { entity: repo.entity, repo: repoForUrl, name: repo.name, slug: repo.slug });
-                // Return a placeholder div instead of null to avoid React key issues
-                return <div key={`invalid-${repo.slug || repo.name || Math.random()}`} className="hidden" />;
-              }
               let href = `/${repo.entity}/${repoForUrl}`;
               if (repo.ownerPubkey && /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)) {
                 try {
@@ -1737,17 +1689,19 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 } catch {}
               }
               
-              // Resolve repo icon with priority: 1) Logo file from repo, 2) Owner profile picture, 3) Stored logoUrl, 4) Platform default
+              // Resolve repo icon (same pattern as explore/homepage)
               let iconUrl: string | null = null;
-              const isGittrRepo = (repo.name || repo.slug || repo.repo || "").toLowerCase() === "gittr";
               try {
-                // Priority 1: Logo/repo image file from repo
-                if (repo.files && repo.files.length > 0) {
+                // Priority 1: Stored logoUrl
+                if (repo.logoUrl && repo.logoUrl.trim().length > 0) {
+                  iconUrl = repo.logoUrl;
+                } else if (repo.files && repo.files.length > 0) {
+                  // Priority 2: Logo/repo image file from repo
                   const repoName = (repo.repo || repo.slug || repo.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
                   const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
                   
                   // Find all potential icon files:
-                  // 1. Files with "logo" in name (highest priority), but exclude "logo-alby" and similar third-party logos
+                  // 1. Files with "logo" in name (highest priority)
                   // 2. Files named after the repo (e.g., "tides.png" for tides repo)
                   // 3. Common icon names in root (repo.png, icon.png, etc.)
                   const iconFiles = repo.files
@@ -1760,8 +1714,8 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                       
                       if (!imageExts.includes(extension)) return false;
                       
-                      // Match logo files, but exclude third-party logos (alby, etc.)
-                      if (baseName.includes("logo") && !baseName.includes("logo-alby") && !baseName.includes("alby-logo")) return true;
+                      // Match logo files
+                      if (baseName.includes("logo")) return true;
                       
                       // Match repo-name-based files (e.g., "tides.png" for tides repo)
                       if (repoName && baseName === repoName) return true;
@@ -1770,20 +1724,11 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                       if (isRoot && (baseName === "repo" || baseName === "icon" || baseName === "favicon")) return true;
                       
                       return false;
-                    })
-                    .sort((a: string, b: string) => {
-                      // Prioritize "logo.svg" or "logo.png" over other logo files
-                      const aName = a.split("/").pop()?.toLowerCase() || "";
-                      const bName = b.split("/").pop()?.toLowerCase() || "";
-                      if (aName === "logo.svg" || aName === "logo.png") return -1;
-                      if (bName === "logo.svg" || bName === "logo.png") return 1;
-                      return 0;
                     });
                   
                   const logoFiles = iconFiles;
                   if (logoFiles.length > 0) {
                     const logoPath = logoFiles[0];
-                    if (isGittrRepo) console.log(`🔍 [Profile] gittr repo: Found logo file: ${logoPath}, sourceUrl: ${repo.sourceUrl || 'none'}`);
                     if (repo.sourceUrl) {
                       try {
                         const url = new URL(repo.sourceUrl);
@@ -1794,7 +1739,6 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                             const repoName = parts[1].replace(/\.git$/, "");
                             const branch = repo.defaultBranch || "main";
                             iconUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${logoPath}`;
-                            if (isGittrRepo) console.log(`🔍 [Profile] gittr repo: Using GitHub logo URL: ${iconUrl}`);
                           }
                         }
                       } catch {}
@@ -1805,54 +1749,22 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                       if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) && repoName) {
                         const branch = repo.defaultBranch || "main";
                         iconUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(logoPath)}&branch=${encodeURIComponent(branch)}`;
-                        if (isGittrRepo) console.log(`🔍 [Profile] gittr repo: Using Nostr API logo URL: ${iconUrl}, ownerPubkey: ${ownerPubkey.slice(0, 8)}...`);
                       }
                     }
-                  } else if (isGittrRepo) {
-                    console.log(`🔍 [Profile] gittr repo: No logo files found in ${repo.files?.length || 0} files`);
                   }
                 }
                 
-                // Priority 2: Owner Nostr profile picture
-                // CRITICAL: For imported repos, ensure we use the correct owner pubkey
-                // Don't use contributor identity mappings - use the actual repo owner
+                // Priority 3: Owner Nostr profile picture (last fallback)
                 const ownerPubkey = repo.ownerPubkey || getRepoOwnerPubkey(repo, repo.entity);
-                if (isGittrRepo) {
-                  console.log(`🔍 [Profile] gittr repo: Resolving ownerPubkey - repo.ownerPubkey: ${repo.ownerPubkey?.slice(0, 8) || 'null'}, getRepoOwnerPubkey: ${getRepoOwnerPubkey(repo, repo.entity)?.slice(0, 8) || 'null'}, final: ${ownerPubkey?.slice(0, 8) || 'null'}`);
-                }
                 if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-                  // CRITICAL: Normalize pubkey to lowercase and use EXACT match only (no partial matching)
-                  // Partial matching can pick up wrong users' metadata
-                  const normalizedOwnerPubkey = ownerPubkey.toLowerCase();
-                  // Use direct lookup first (exact match only)
-                  const ownerMeta = metadataMap[normalizedOwnerPubkey] || metadataMap[ownerPubkey];
-                  if (isGittrRepo) {
-                    console.log(`🔍 [Profile] gittr repo: Metadata lookup - normalizedPubkey: ${normalizedOwnerPubkey.slice(0, 8)}..., hasMeta: ${!!ownerMeta}, picture: ${ownerMeta?.picture?.substring(0, 50) || 'none'}..., iconUrl so far: ${iconUrl || 'none'}`);
-                  }
+                  // CRITICAL: Use centralized getUserMetadata function for consistent lookup
+                  const ownerMeta = getUserMetadata(ownerPubkey, metadataMap);
                   if (ownerMeta?.picture && !iconUrl) {
                     const picture = ownerMeta.picture;
                     if (picture && picture.trim().length > 0 && picture.startsWith("http")) {
                       iconUrl = picture;
-                      console.log(`✅ [Profile] Using owner picture for repo ${repo.name || repo.slug}: ${normalizedOwnerPubkey.slice(0, 8)}... (exact match)`);
-                      if (isGittrRepo) console.log(`✅ [Profile] gittr repo: Set iconUrl to owner picture: ${picture.substring(0, 50)}...`);
-                    }
-                  } else if (!iconUrl) {
-                    console.log(`⚠️ [Profile] No icon found for repo ${repo.name || repo.slug}, ownerPubkey: ${normalizedOwnerPubkey.slice(0, 8)}..., hasMetadata: ${!!ownerMeta}, hasPicture: ${!!ownerMeta?.picture}, metadataKeys: ${Object.keys(metadataMap).filter(k => k.toLowerCase().startsWith(normalizedOwnerPubkey.slice(0, 8))).join(', ')}`);
-                    if (isGittrRepo) {
-                      console.warn(`⚠️ [Profile] gittr repo: NO ICON SET! ownerPubkey: ${normalizedOwnerPubkey}, hasMeta: ${!!ownerMeta}, picture: ${ownerMeta?.picture || 'none'}, allMetadataKeys: ${Object.keys(metadataMap).slice(0, 10).join(', ')}`);
                     }
                   }
-                } else if (!iconUrl) {
-                  console.log(`⚠️ [Profile] No valid ownerPubkey for repo ${repo.name || repo.slug}, ownerPubkey: ${ownerPubkey || 'null'}, repo.ownerPubkey: ${repo.ownerPubkey?.slice(0, 8) || 'null'}, getRepoOwnerPubkey: ${getRepoOwnerPubkey(repo, repo.entity)?.slice(0, 8) || 'null'}`);
-                  if (isGittrRepo) {
-                    console.error(`❌ [Profile] gittr repo: INVALID OWNERPUBKEY! ownerPubkey: ${ownerPubkey}, repo.ownerPubkey: ${repo.ownerPubkey}, getRepoOwnerPubkey result: ${getRepoOwnerPubkey(repo, repo.entity)}`);
-                  }
-                }
-                
-                // Priority 3: Stored logoUrl (user-set in repo settings)
-                if (!iconUrl && repo.logoUrl && repo.logoUrl.trim().length > 0) {
-                  iconUrl = repo.logoUrl;
-                  if (isGittrRepo) console.log(`🔍 [Profile] gittr repo: Using stored logoUrl (Priority 3): ${iconUrl}`);
                 }
               } catch (error) {
                 console.error('⚠️ [Profile] Error resolving repo icon:', error);
@@ -1906,7 +1818,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 className="font-semibold text-purple-400 break-words">{repoDisplayName}</h3>
+                        <h3 className="font-semibold text-purple-400 truncate">{repoDisplayName}</h3>
                         {repo.userRole && (
                           <span className={`text-xs px-2 py-0.5 rounded ${
                             repo.userRole === "owner" ? "bg-purple-600/30 text-purple-300" :

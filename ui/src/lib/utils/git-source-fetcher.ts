@@ -13,15 +13,6 @@
  * Based on NIP-34: https://github.com/nostr-protocol/nips/blob/master/34.md
  */
 
-// CRITICAL: Shared cache for bridge API calls to prevent duplicate requests
-// All nostr-git sources for the same repo hit the same bridge API endpoint
-// Key: `${ownerPubkey}:${repo}:${branch}`
-const bridgeApiCache = new Map<string, Promise<Array<{ type: string; path: string; size?: number }> | null>>();
-
-// CRITICAL: Shared cache for clone API calls to prevent duplicate clone triggers
-// Key: `${ownerPubkey}:${repo}`
-const cloneTriggerCache = new Map<string, Promise<any>>();
-
 export type GitSourceType = 
   | "nostr-git"      // Nostr git server (grasp): https://relay.ngit.dev/npub/.../repo.git
   | "github"         // GitHub: https://github.com/user/repo.git
@@ -78,25 +69,6 @@ export function parseGitSource(cloneUrl: string): GitSource {
     normalizedUrl = cloneUrl.replace(/^git:\/\//, "https://");
     originalProtocol = "git";
     console.log(`🔄 [Git Source] Converting git:// to https:// for processing: ${normalizedUrl}`);
-  } else if (cloneUrl.startsWith("nostr://")) {
-    // CRITICAL: Convert nostr:// URLs to https:// for processing
-    // Format: nostr://npub...@host/repo or nostr://npub...@host/repo.git
-    // We'll convert it to https:// for the clone API
-    const nostrMatch = cloneUrl.match(/^nostr:\/\/([^@]+)@([^\/]+)\/(.+)$/);
-    if (nostrMatch) {
-      const [, npub, host, repo] = nostrMatch;
-      normalizedUrl = `https://${host}/${npub}/${repo}`;
-      originalProtocol = "nostr";
-      console.log(`🔄 [Git Source] Converting nostr:// URL to HTTPS for processing: ${normalizedUrl}`);
-    } else {
-      // Unknown nostr:// format - mark as unknown
-      console.warn(`⚠️ [Git Source] Unknown nostr:// URL format: ${cloneUrl}`);
-      return {
-        type: "unknown",
-        url: cloneUrl,
-        displayName: "Unknown nostr:// URL",
-      };
-    }
   }
   
   // Remove .git suffix if present
@@ -114,7 +86,6 @@ export function parseGitSource(cloneUrl: string): GitSource {
   
   // Nostr git server (grasp) pattern: https://relay.ngit.dev/npub.../repo
   // or: https://ngit.danconwaydev.com/npub.../repo
-  // or: https://git.gittr.space/8dac122d92c1a00b74a16c2ee8bcb5e0d173a4ce3787c550ff665a570fc98d37/repo (pubkey instead of npub)
   // or: https://git.vanderwarker.family/nostr/repo (without npub in path)
   const nostrGitMatch = url.match(/^https?:\/\/([^\/]+)\/(npub[a-z0-9]+)\/([^\/]+)$/i);
   if (nostrGitMatch) {
@@ -127,30 +98,6 @@ export function parseGitSource(cloneUrl: string): GitSource {
         npub,
         repo,
       };
-    }
-  }
-  
-  // Pattern for URLs with pubkey (64-char hex) instead of npub: https://git.gittr.space/8dac122d.../repo
-  const pubkeyGitMatch = url.match(/^https?:\/\/([^\/]+)\/([0-9a-f]{64})\/([^\/]+)$/i);
-  if (pubkeyGitMatch) {
-    const [, domain, pubkey, repo] = pubkeyGitMatch;
-    // Check if this is a known git server domain
-    if (domain && knownGitServers.some(server => domain.includes(server) || server.includes(domain))) {
-      // Convert pubkey to npub for bridge API (bridge expects npub)
-      try {
-        const { nip19 } = require("nostr-tools");
-        const npub = nip19.npubEncode(pubkey);
-        return {
-          type: "nostr-git",
-          url: normalizedUrl, // Use normalized URL (https://) for API calls
-          displayName: domain,
-          npub,
-          repo,
-        };
-      } catch (e) {
-        console.warn(`⚠️ [Git Source] Failed to convert pubkey to npub: ${pubkey ? pubkey.slice(0, 16) + '...' : 'unknown'}`);
-        // Fall through to try as regular git server
-      }
     }
   }
   
@@ -739,13 +686,6 @@ async function fetchFromNostrGit(
     }
     
     if (ownerPubkey) {
-      // CRITICAL: Use shared cache for bridge API calls - all nostr-git sources share the same bridge
-      const cacheKey = `${ownerPubkey}:${repo}:${branch}`;
-      if (bridgeApiCache.has(cacheKey)) {
-        console.log(`♻️ [Git Source] Reusing cached bridge API call for ${cacheKey.slice(0, 32)}...`);
-        return await bridgeApiCache.get(cacheKey)!;
-      }
-      
       const bridgeUrl = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repo)}&branch=${encodeURIComponent(branch)}`;
       console.log(`🔍 [Git Source] Trying git-nostr-bridge API:`, {
         npub: npub.slice(0, 16) + "...",
@@ -754,174 +694,131 @@ async function fetchFromNostrGit(
         branch,
         url: bridgeUrl,
       });
+      const response = await fetch(bridgeUrl);
       
-      // Create shared promise for this bridge API call
-      const bridgePromise = (async () => {
-        try {
-          const response = await fetch(bridgeUrl);
-      
-          if (response.ok) {
-            const data = await response.json();
-            if (data.files && Array.isArray(data.files) && data.files.length > 0) {
-              console.log(`✅ [Git Source] Fetched ${data.files.length} files from git-nostr-bridge`);
-              // Clear cache on success
-              bridgeApiCache.delete(cacheKey);
-              return data.files;
-            } else {
-              console.log(`⚠️ [Git Source] git-nostr-bridge API returned OK but no files:`, data);
-            }
-          } else {
-            const errorText = await response.text().catch(() => "");
-            console.log(`⚠️ [Git Source] git-nostr-bridge API failed: ${response.status} - ${errorText.substring(0, 200)}`);
-            if (response.status === 404 || response.status === 500) {
-              // 404: Repo not cloned yet
-              // 500: Repo exists but is empty/corrupted (no valid branches, git command failed)
-              const errorType = response.status === 404 ? "not cloned yet" : "empty or corrupted";
-              console.log(`💡 [Git Source] Repository ${errorType} (${response.status}). Attempting to trigger clone...`);
-              
-              // Try to trigger clone via API endpoint
-              // GRASP servers don't expose REST APIs - they only work via git protocol
-              // So we need to clone via git protocol and then retry the bridge API
-              // CRITICAL: Only trigger clone for GRASP servers, not GitHub/Codeberg/GitLab
-              // Use centralized isGraspServer function which includes pattern matching (git., git-\d+.)
-              const isGraspServerCheck = cloneUrl && isGraspServerFn(cloneUrl);
-              console.log(`🔍 [Git Source] Clone trigger check:`, {
-                hasOwnerPubkey: !!ownerPubkey,
-                hasCloneUrl: !!cloneUrl,
-                isGraspServer: isGraspServerCheck,
-                cloneUrl: cloneUrl?.substring(0, 50) + "...",
-                ownerPubkey: ownerPubkey?.slice(0, 16) + "..."
-              });
-              
-              // CRITICAL: Normalize SSH URLs (git@host:path) and git:// URLs to https:// for clone API
-              // The clone API will handle the conversion, but we need to pass https:// here
-              let normalizedCloneUrl = cloneUrl;
-              const sshMatch = cloneUrl.match(/^git@([^:]+):(.+)$/);
-              if (sshMatch) {
-                const [, host, path] = sshMatch;
-                normalizedCloneUrl = `https://${host}/${path}`;
-                console.log(`🔄 [Git Source] Normalizing SSH URL to https:// for clone API: ${normalizedCloneUrl}`);
-              } else if (cloneUrl.startsWith("git://")) {
-                normalizedCloneUrl = cloneUrl.replace(/^git:\/\//, "https://");
-                console.log(`🔄 [Git Source] Normalizing git:// to https:// for clone API: ${normalizedCloneUrl}`);
-              }
-              
-              if (ownerPubkey && normalizedCloneUrl && (normalizedCloneUrl.startsWith("https://") || normalizedCloneUrl.startsWith("http://")) && isGraspServerCheck) {
-                // CRITICAL: Deduplicate clone triggers - use shared cache
-                const cloneCacheKey = `${ownerPubkey}:${repo}`;
-                if (cloneTriggerCache.has(cloneCacheKey)) {
-                  console.log(`♻️ [Git Source] Clone already triggered for ${cloneCacheKey.slice(0, 32)}..., reusing promise`);
-                  await cloneTriggerCache.get(cloneCacheKey)!;
-                } else {
-                  const clonePromise = (async () => {
-                    try {
-                      console.log(`🔍 [Git Source] Triggering clone via API:`, {
-                        cloneUrl: normalizedCloneUrl,
-                        originalCloneUrl: cloneUrl,
-                        ownerPubkey: ownerPubkey.slice(0, 16) + "...",
-                        repo
-                      });
-                      
-                      const cloneResponse = await fetch("/api/nostr/repo/clone", {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify({
-                          cloneUrl: normalizedCloneUrl, // Use normalized URL (https://) for clone API
-                          ownerPubkey,
-                          repo
-                        })
-                      });
-              
-                      if (cloneResponse.ok) {
-                        const cloneData = await cloneResponse.json();
-                        console.log(`✅ [Git Source] Clone triggered successfully:`, cloneData);
-                        
-                        // Start polling in the background (non-blocking)
-                        // This allows the page to render immediately while clone completes
-                        const pollForFiles = async (maxAttempts = 1, delay = 500) => {
-                          for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-                            await new Promise(resolve => setTimeout(resolve, delay));
-                            console.log(`🔍 [Git Source] Polling for files (attempt ${attempt}/${maxAttempts})...`);
-                            
-                            try {
-                              const pollResponse = await fetch(bridgeUrl);
-                              if (pollResponse.ok) {
-                                const pollData = await pollResponse.json();
-                                if (pollData.files && Array.isArray(pollData.files) && pollData.files.length > 0) {
-                                  console.log(`✅ [Git Source] Files available after clone! Fetched ${pollData.files.length} files`);
-                                  // Clear clone cache on success
-                                  cloneTriggerCache.delete(cloneCacheKey);
-                                  // Clear bridge cache and update it with success
-                                  bridgeApiCache.delete(cacheKey);
-                                  // Trigger a custom event to notify the page that files are ready
-                                  if (typeof window !== 'undefined') {
-                                    window.dispatchEvent(new CustomEvent('grasp-repo-cloned', {
-                                      detail: { files: pollData.files, ownerPubkey, repo }
-                                    }));
-                                  }
-                                  return pollData.files;
-                                }
-                              }
-                            } catch (pollError) {
-                              console.warn(`⚠️ [Git Source] Poll attempt ${attempt} failed:`, pollError);
-                            }
-                          }
-                          console.log(`⚠️ [Git Source] Polling completed - files not yet available. User can refresh to try again.`);
-                          // Clear clone cache after polling completes
-                          cloneTriggerCache.delete(cloneCacheKey);
-                          return null;
-                        };
-                        
-                        // Start polling in background (don't await - non-blocking)
-                        pollForFiles().catch(err => {
-                          console.warn('Polling error:', err);
-                          cloneTriggerCache.delete(cloneCacheKey);
-                        });
-                        
-                        // Return null immediately to allow page to render
-                        console.log(`💡 [Git Source] Clone initiated - polling for files in background. Page will render immediately.`);
-                        return null;
-                      } else {
-                        const cloneError = await cloneResponse.json().catch(() => ({ error: "Unknown error" }));
-                        console.log(`⚠️ [Git Source] Clone API failed: ${cloneResponse.status} -`, cloneError);
-                        cloneTriggerCache.delete(cloneCacheKey);
-                        return null;
-                      }
-                    } catch (cloneError: any) {
-                      console.warn(`⚠️ [Git Source] Failed to trigger clone:`, cloneError.message);
-                      cloneTriggerCache.delete(cloneCacheKey);
-                      return null;
-                    }
-                  })();
-                  cloneTriggerCache.set(cloneCacheKey, clonePromise);
-                  await clonePromise;
-                }
-              } else {
-                if (!isGraspServerCheck) {
-                  console.log(`💡 [Git Source] Not a GRASP server - skipping clone trigger (GitHub/Codeberg/GitLab use their own APIs)`);
-                } else {
-                  console.log(`💡 [Git Source] Cannot trigger clone - missing ownerPubkey or cloneUrl is not HTTPS`);
-                }
-                console.log(`💡 [Git Source] Bridge path would be: reposDir/${ownerPubkey ? ownerPubkey.slice(0, 16) + '...' : '?'}/${repo}.git`);
-              }
-            }
+      if (response.ok) {
+        const data = await response.json();
+        if (data.files && Array.isArray(data.files) && data.files.length > 0) {
+          console.log(`✅ [Git Source] Fetched ${data.files.length} files from git-nostr-bridge`);
+          return data.files;
+        } else {
+          console.log(`⚠️ [Git Source] git-nostr-bridge API returned OK but no files:`, data);
+        }
+      } else {
+        const errorText = await response.text().catch(() => "");
+        console.log(`⚠️ [Git Source] git-nostr-bridge API failed: ${response.status} - ${errorText.substring(0, 200)}`);
+        if (response.status === 404 || response.status === 500) {
+          // 404: Repo not cloned yet
+          // 500: Repo exists but is empty/corrupted (no valid branches, git command failed)
+          const errorType = response.status === 404 ? "not cloned yet" : "empty or corrupted";
+          console.log(`💡 [Git Source] Repository ${errorType} (${response.status}). Attempting to trigger clone...`);
+          
+          // Try to trigger clone via API endpoint
+          // GRASP servers don't expose REST APIs - they only work via git protocol
+          // So we need to clone via git protocol and then retry the bridge API
+          // CRITICAL: Only trigger clone for GRASP servers, not GitHub/Codeberg/GitLab
+          // Use centralized isGraspServer function which includes pattern matching (git., git-\d+.)
+          const isGraspServerCheck = cloneUrl && isGraspServerFn(cloneUrl);
+          console.log(`🔍 [Git Source] Clone trigger check:`, {
+            hasOwnerPubkey: !!ownerPubkey,
+            hasCloneUrl: !!cloneUrl,
+            isGraspServer: isGraspServerCheck,
+            cloneUrl: cloneUrl?.substring(0, 50) + "...",
+            ownerPubkey: ownerPubkey?.slice(0, 16) + "..."
+          });
+          
+          // CRITICAL: Normalize SSH URLs (git@host:path) and git:// URLs to https:// for clone API
+          // The clone API will handle the conversion, but we need to pass https:// here
+          let normalizedCloneUrl = cloneUrl;
+          const sshMatch = cloneUrl.match(/^git@([^:]+):(.+)$/);
+          if (sshMatch) {
+            const [, host, path] = sshMatch;
+            normalizedCloneUrl = `https://${host}/${path}`;
+            console.log(`🔄 [Git Source] Normalizing SSH URL to https:// for clone API: ${normalizedCloneUrl}`);
+          } else if (cloneUrl.startsWith("git://")) {
+            normalizedCloneUrl = cloneUrl.replace(/^git:\/\//, "https://");
+            console.log(`🔄 [Git Source] Normalizing git:// to https:// for clone API: ${normalizedCloneUrl}`);
           }
           
-          // Clear cache on failure
-          bridgeApiCache.delete(cacheKey);
-          return null;
-        } catch (error: any) {
-          console.error("❌ [Git Source] Bridge API error:", error);
-          bridgeApiCache.delete(cacheKey);
-          return null;
+          if (ownerPubkey && normalizedCloneUrl && (normalizedCloneUrl.startsWith("https://") || normalizedCloneUrl.startsWith("http://")) && isGraspServerCheck) {
+            try {
+              console.log(`🔍 [Git Source] Triggering clone via API:`, {
+                cloneUrl: normalizedCloneUrl,
+                originalCloneUrl: cloneUrl,
+                ownerPubkey: ownerPubkey.slice(0, 16) + "...",
+                repo
+              });
+              
+              const cloneResponse = await fetch("/api/nostr/repo/clone", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                  cloneUrl: normalizedCloneUrl, // Use normalized URL (https://) for clone API
+                  ownerPubkey,
+                  repo
+                })
+              });
+              
+              if (cloneResponse.ok) {
+                const cloneData = await cloneResponse.json();
+                console.log(`✅ [Git Source] Clone triggered successfully:`, cloneData);
+                
+                // Start polling in the background (non-blocking)
+                // This allows the page to render immediately while clone completes
+                const pollForFiles = async (maxAttempts = 10, delay = 2000) => {
+                  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    console.log(`🔍 [Git Source] Polling for files (attempt ${attempt}/${maxAttempts})...`);
+                    
+                    try {
+                      const pollResponse = await fetch(bridgeUrl);
+                      if (pollResponse.ok) {
+                        const pollData = await pollResponse.json();
+                        if (pollData.files && Array.isArray(pollData.files) && pollData.files.length > 0) {
+                          console.log(`✅ [Git Source] Files available after clone! Fetched ${pollData.files.length} files`);
+                          // Trigger a custom event to notify the page that files are ready
+                          // The page can listen to this event and update the UI
+                          if (typeof window !== 'undefined') {
+                            window.dispatchEvent(new CustomEvent('grasp-repo-cloned', {
+                              detail: { files: pollData.files, ownerPubkey, repo }
+                            }));
+                          }
+                          return pollData.files;
+                        }
+                      }
+                    } catch (pollError) {
+                      console.warn(`⚠️ [Git Source] Poll attempt ${attempt} failed:`, pollError);
+                    }
+                  }
+                  console.log(`⚠️ [Git Source] Polling completed - files not yet available. User can refresh to try again.`);
+                  return null;
+                };
+                
+                // Start polling in background (don't await - non-blocking)
+                pollForFiles().catch(err => console.warn('Polling error:', err));
+                
+                // Return null immediately to allow page to render
+                console.log(`💡 [Git Source] Clone initiated - polling for files in background. Page will render immediately.`);
+                return null;
+              } else {
+                const cloneError = await cloneResponse.json().catch(() => ({ error: "Unknown error" }));
+                console.log(`⚠️ [Git Source] Clone API failed: ${cloneResponse.status} -`, cloneError);
+              }
+            } catch (cloneError: any) {
+              console.warn(`⚠️ [Git Source] Failed to trigger clone:`, cloneError.message);
+            }
+          } else {
+            if (!isGraspServerCheck) {
+              console.log(`💡 [Git Source] Not a GRASP server - skipping clone trigger (GitHub/Codeberg/GitLab use their own APIs)`);
+            } else {
+              console.log(`💡 [Git Source] Cannot trigger clone - missing ownerPubkey or cloneUrl is not HTTPS`);
+            }
+            console.log(`💡 [Git Source] Bridge path would be: reposDir/${ownerPubkey ? ownerPubkey.slice(0, 16) + '...' : '?'}/${repo}.git`);
+          }
         }
-      })();
-      
-      // Store promise in cache
-      bridgeApiCache.set(cacheKey, bridgePromise);
-      return await bridgePromise;
+      }
     } else {
       console.warn(`⚠️ [Git Source] Could not decode npub to pubkey for bridge API: ${npub.slice(0, 16)}...`);
     }
@@ -986,9 +883,8 @@ export async function fetchFilesFromSource(
       break;
       
     case "unknown":
-      // Skip unknown source types - don't attempt to fetch
-      console.warn(`⚠️ [Git Source] Skipping unknown source type: ${source.url}`);
-      return null;
+      console.warn(`⚠️ [Git Source] Unknown source type for: ${source.url}`);
+      break;
   }
   
   return null;
@@ -1009,27 +905,7 @@ export async function fetchFilesFromMultipleSources(
   statuses: FetchStatus[];
 }> {
   const sources = cloneUrls.map(parseGitSource);
-  
-  // CRITICAL: Filter out unknown source types to prevent unnecessary attempts
-  // Prioritize known-good sources: GitHub, Codeberg, GitLab first, then nostr-git
-  const prioritizedSources = sources.filter(s => s.type !== "unknown");
-  const unknownSources = sources.filter(s => s.type === "unknown");
-  
-  // Log unknown sources but don't attempt to fetch them
-  if (unknownSources.length > 0) {
-    console.log(`⏭️ [Git Source] Skipping ${unknownSources.length} unknown source types:`, unknownSources.map(s => s.url).join(", "));
-  }
-  
-  // Sort sources by priority: github/codeberg/gitlab first, then nostr-git
-  const sortedSources = prioritizedSources.sort((a, b) => {
-    const priority: Record<Exclude<GitSourceType, "unknown">, number> = { github: 1, codeberg: 2, gitlab: 3, "nostr-git": 4 };
-    // Since we filtered out unknown sources, we know a.type and b.type are not "unknown"
-    const aPriority = priority[a.type as Exclude<GitSourceType, "unknown">] || 99;
-    const bPriority = priority[b.type as Exclude<GitSourceType, "unknown">] || 99;
-    return aPriority - bPriority;
-  });
-  
-  const statuses: FetchStatus[] = sortedSources.map(source => ({
+  const statuses: FetchStatus[] = sources.map(source => ({
     source,
     status: "pending",
   }));
@@ -1039,32 +915,17 @@ export async function fetchFilesFromMultipleSources(
     if (onStatusUpdate) onStatusUpdate(status);
   });
   
-  // CRITICAL: Limit parallel fetches to prevent overwhelming the network
-  // Try known-good sources (GitHub, Codeberg, GitLab) first, then nostr-git sources
-  // Limit to 5 parallel fetches at a time to prevent slowdown
-  const MAX_PARALLEL_FETCHES = 5;
-  console.log(`🚀 [Git Source] Starting parallel fetch from ${sortedSources.length} sources (max ${MAX_PARALLEL_FETCHES} parallel):`, sortedSources.map(s => s.displayName).join(", "));
+  // CRITICAL: Try ALL sources in parallel using Promise.allSettled
+  // This ensures we try every source simultaneously, not sequentially
+  console.log(`🚀 [Git Source] Starting parallel fetch from ${sources.length} sources:`, sources.map(s => s.displayName).join(", "));
   
   // Track if we've already found files (to update UI immediately)
   let firstSuccessFiles: Array<{ type: string; path: string; size?: number }> | null = null;
   
-  // CRITICAL: Process sources in batches to limit parallel fetches
-  // First batch: known-good sources (GitHub, Codeberg, GitLab) - try all in parallel
-  // Second batch: nostr-git sources - only try ONE since they all hit the same bridge API
-  const knownGoodSources = sortedSources.filter(s => s.type === "github" || s.type === "codeberg" || s.type === "gitlab");
-  const nostrGitSources = sortedSources.filter(s => s.type === "nostr-git");
-  
-  // CRITICAL: For nostr-git sources, only try the first one since they all hit the same bridge API
-  // All nostr-git sources for the same repo resolve to the same ownerPubkey+repo+branch
-  // So trying multiple is redundant - they'll all make the same API call (which is now cached)
-  const uniqueNostrGitSource = nostrGitSources.length > 0 ? [nostrGitSources[0]] : [];
-  
-  // Process known-good sources first (all in parallel)
-  const knownGoodPromises = knownGoodSources.map(async (source, index) => {
-    const statusIndex = sortedSources.indexOf(source);
-    const status = statuses[statusIndex];
+  const fetchPromises = sources.map(async (source, index) => {
+    const status = statuses[index];
     if (!status) {
-      console.error(`❌ [Git Source] No status found for index ${statusIndex}`);
+      console.error(`❌ [Git Source] No status found for index ${index}`);
       return { source, files: undefined, success: false };
     }
     
@@ -1086,20 +947,27 @@ export async function fetchFilesFromMultipleSources(
         status.fetchedAt = Date.now();
         console.log(`✅ [Git Source] Successfully fetched ${files.length} files from ${source.displayName}`);
         
+        // CRITICAL: Update UI immediately when first source succeeds (don't wait for all)
         if (!firstSuccessFiles) {
           firstSuccessFiles = files;
+          console.log(`🚀 [Git Source] First success! Using files from ${source.displayName} immediately (${files.length} files)`);
         }
-        if (onStatusUpdate) onStatusUpdate(status);
-        return { source, files, success: true };
+        // CRITICAL: Always call onStatusUpdate for successful fetches, not just the first one
+        // This ensures the UI is updated immediately when any source succeeds
+        if (onStatusUpdate) {
+          console.log(`📢 [Git Source] Calling onStatusUpdate for success: ${source.displayName} (${files.length} files)`);
+          onStatusUpdate(status);
+        }
       } else {
         status.status = "failed";
-        status.error = "No files returned";
-        console.log(`⚠️ [Git Source] No files returned from ${source.displayName}`);
-        if (onStatusUpdate) onStatusUpdate(status);
-        return { source, files: undefined, success: false };
+        // More specific error: files were checked but not found (server responded, but no files)
+        // This means THIS source didn't return files, but files may exist from other sources
+        status.error = "No files from this source";
+        console.warn(`⚠️ [Git Source] No files returned from ${source.displayName}`);
       }
     } catch (error: any) {
       status.status = "failed";
+      // Distinguish between network errors and other errors
       const errorMessage = error.message || "Fetch failed";
       if (errorMessage.includes("fetch failed") || 
           errorMessage.includes("ECONNREFUSED") || 
@@ -1118,117 +986,166 @@ export async function fetchFilesFromMultipleSources(
         status.error = errorMessage.length > 50 ? errorMessage.substring(0, 50) + "..." : errorMessage;
       }
       console.error(`❌ [Git Source] Fetch failed from ${source.displayName}:`, error);
-      if (onStatusUpdate) onStatusUpdate(status);
-      return { source, files: undefined, success: false };
+    }
+    
+    if (onStatusUpdate) onStatusUpdate(status);
+    return { source, files: status.files, success: status.status === "success" };
+  });
+  
+  // CRITICAL: Use Promise.race to return as soon as first source succeeds (don't wait for all)
+  // Continue updating statuses in the background, but don't block the UI
+  const timeoutPromise = new Promise<{ files: null; statuses: FetchStatus[] }>((resolve) => {
+    setTimeout(() => {
+      console.log(`⏱️ [Git Source] Timeout waiting for first success, returning current statuses`);
+      resolve({ files: null, statuses });
+    }, 10000); // 10 second timeout
+  });
+  
+  // Wrap each fetch promise to resolve immediately on first success
+  // This allows Promise.race to return as soon as ANY promise succeeds
+  // We create a promise that never resolves for failures, so Promise.race only resolves on success
+  const successPromises = fetchPromises.map(async (p) => {
+    try {
+      const result = await p;
+      if (result.success && result.files && Array.isArray(result.files) && result.files.length > 0) {
+        // This is a success - resolve immediately with files
+        console.log(`✅ [Git Source] Promise resolved with success: ${result.files.length} files from ${result.source.displayName}`);
+        return { files: result.files, statuses, success: true };
+      }
+      // Not a success - wait forever (this promise will never resolve, so Promise.race will skip it)
+      await new Promise(() => {}); // Never resolves
+      return null; // Unreachable
+    } catch (error) {
+      // Error - wait forever (this promise will never resolve)
+      await new Promise(() => {}); // Never resolves
+      return null; // Unreachable
     }
   });
   
-  // Process nostr-git sources in batches (limit parallel fetches)
-  const processNostrGitBatch = async (batch: typeof sortedSources) => {
-    const batchPromises = batch.map(async (source, index) => {
-      const statusIndex = sortedSources.indexOf(source);
-      const status = statuses[statusIndex];
-      if (!status) {
-        console.error(`❌ [Git Source] No status found for index ${statusIndex}`);
-        return { source, files: undefined, success: false };
+  // Race all promises - the first one that succeeds will resolve immediately
+  // Promises that fail will never resolve, so they won't affect the race
+  const firstSuccessPromise = Promise.race(successPromises).then((result) => {
+    if (result && result.success && result.files) {
+      console.log(`✅ [Git Source] First success found via Promise.race: ${result.files.length} files`);
+      
+      // CRITICAL: Ensure onStatusUpdate is called for the first success so UI updates immediately
+      // Find the status for the successful source and call onStatusUpdate
+      const successfulStatus = statuses.find(s => s.status === "success" && s.files && s.files.length > 0);
+      if (successfulStatus && onStatusUpdate) {
+        console.log(`🚀 [Git Source] Calling onStatusUpdate for first success: ${successfulStatus.source.displayName}`);
+        onStatusUpdate(successfulStatus);
       }
       
-      status.status = "fetching";
-      if (onStatusUpdate) onStatusUpdate(status);
-      
-      try {
-        console.log(`🔍 [Git Source] Starting fetch from ${source.displayName} (${source.type}):`, {
-          url: source.url,
-          owner: source.owner,
-          repo: source.repo,
-          branch,
-        });
-        const files = await fetchFilesFromSource(source, branch, eventPublisherPubkey);
-        
-        if (files && files.length > 0) {
-          status.status = "success";
-          status.files = files;
-          status.fetchedAt = Date.now();
-          console.log(`✅ [Git Source] Successfully fetched ${files.length} files from ${source.displayName}`);
+      // Continue updating statuses in background (don't await - let it run in background)
+      Promise.allSettled(fetchPromises).then((allResults) => {
+        allResults.forEach((allResult, idx) => {
+          const status = statuses[idx];
+          if (!status) return;
           
-          if (!firstSuccessFiles) {
-            firstSuccessFiles = files;
+          // CRITICAL: Don't overwrite success status - if a source already succeeded, preserve it
+          const wasSuccess = status.status === "success";
+          if (wasSuccess) {
+            // Already succeeded, don't overwrite
+            return;
           }
-          if (onStatusUpdate) onStatusUpdate(status);
-          return { source, files, success: true };
-        } else {
-          status.status = "failed";
-          status.error = "No files returned";
-          console.log(`⚠️ [Git Source] No files returned from ${source.displayName}`);
-          if (onStatusUpdate) onStatusUpdate(status);
-          return { source, files: undefined, success: false };
-        }
-      } catch (error: any) {
-        status.status = "failed";
-        const errorMessage = error.message || "Fetch failed";
-        if (errorMessage.includes("fetch failed") || 
-            errorMessage.includes("ECONNREFUSED") || 
-            errorMessage.includes("ETIMEDOUT") || 
-            errorMessage.includes("ENOTFOUND") ||
-            errorMessage.includes("Network error") ||
-            errorMessage.includes("Unable to connect")) {
-          status.error = "Server unavailable";
-        } else if (errorMessage.includes("rate limit")) {
-          status.error = "Rate limit exceeded";
-        } else if (errorMessage.includes("404") || errorMessage.includes("not found")) {
-          status.error = "Repository not found";
-        } else if (errorMessage.includes("403") || errorMessage.includes("Forbidden")) {
-          status.error = "Access forbidden";
-        } else {
-          status.error = errorMessage.length > 50 ? errorMessage.substring(0, 50) + "..." : errorMessage;
-        }
-        console.error(`❌ [Git Source] Fetch failed from ${source.displayName}:`, error);
-        if (onStatusUpdate) onStatusUpdate(status);
-        return { source, files: undefined, success: false };
-      }
-    });
-    
-    return await Promise.allSettled(batchPromises);
-  };
-  
-  // Start with known-good sources (all in parallel)
-  const knownGoodResults = await Promise.allSettled(knownGoodPromises);
-  
-  // Check if any known-good source succeeded
-  for (const result of knownGoodResults) {
-    if (result.status === "fulfilled" && result.value.success && result.value.files) {
-      // Found files from known-good source - return immediately
-      return { files: result.value.files, statuses };
-    }
-  }
-  
-  // If no known-good source succeeded, try nostr-git source (only one needed - they share bridge API)
-  if (uniqueNostrGitSource.length > 0) {
-    const batch = uniqueNostrGitSource.filter((s): s is GitSource => s !== undefined);
-    const batchResults = await processNostrGitBatch(batch);
-    
-    // Check if any source in this batch succeeded
-    for (const result of batchResults) {
-      if (result.status === "fulfilled" && result.value.success && result.value.files) {
-        // Found files - mark all other nostr-git sources as success (they share the same bridge)
-        nostrGitSources.slice(1).forEach(source => {
-          const statusIndex = sortedSources.indexOf(source);
-          if (statusIndex >= 0 && statuses[statusIndex]) {
-            statuses[statusIndex].status = "success";
-            statuses[statusIndex].files = result.value.files;
-            if (onStatusUpdate) onStatusUpdate(statuses[statusIndex]);
+          
+          if (allResult.status === "fulfilled") {
+            const value = allResult.value;
+            if (value.success && value.files) {
+              status.status = "success";
+              status.files = value.files;
+              status.fetchedAt = Date.now();
+            } else {
+              // Only set to failed if not already failed (preserve any existing status)
+              if (status.status !== "failed") {
+                status.status = "failed";
+                status.error = "No files found";
+              }
+            }
+          } else if (allResult.status === "rejected") {
+            // Only set to failed if not already success or failed (preserve success status)
+            // Check wasSuccess variable instead of status.status to avoid TypeScript narrowing issues
+            if (!wasSuccess && status.status !== "failed") {
+              status.status = "failed";
+              status.error = allResult.reason?.message || "Unknown error";
+            }
           }
+          
+          if (onStatusUpdate) onStatusUpdate(status);
         });
-        // Return immediately
-        return { files: result.value.files, statuses };
-      }
+        
+        console.log(`📊 [Git Source] All fetches completed. Final statuses:`, statuses.map(s => `${s.source.displayName}: ${s.status}`).join(", "));
+      }).catch((error) => {
+        console.error(`❌ [Git Source] Error processing background status updates:`, error);
+      });
+      
+      return result;
     }
+    return null;
+  });
+  
+  // Race between first success and timeout - return immediately when first succeeds
+  const raceResult = await Promise.race([firstSuccessPromise, timeoutPromise]);
+  if (raceResult && raceResult.files && Array.isArray(raceResult.files) && raceResult.files.length > 0) {
+    return raceResult;
   }
   
-  // Return results: use firstSuccessFiles if found, otherwise return null
-  return { 
-    files: firstSuccessFiles, 
-    statuses 
-  };
+  // Fallback: wait for all if no success yet
+  const results = await Promise.allSettled(fetchPromises);
+  
+  // Process results and find first successful fetch
+  let files: Array<{ type: string; path: string; size?: number }> | null = null;
+  
+  results.forEach((result, index) => {
+    const status = statuses[index];
+    if (!status) return;
+    
+    // CRITICAL: Don't overwrite success status - if a source already succeeded, preserve it
+    const wasSuccess = status.status === "success";
+    if (wasSuccess) {
+      // Already succeeded, skip processing
+      if (result.status === "fulfilled") {
+        const value = result.value;
+        if (value.success && value.files && !files) {
+          files = value.files;
+          console.log(`✅ [Git Source] Using files from ${value.source.displayName} (${files.length} files)`);
+        }
+      }
+      return; // Don't update status, already success
+    }
+    
+    if (result.status === "fulfilled") {
+      const value = result.value;
+      if (value.success && value.files) {
+        if (!files) {
+          files = value.files;
+          console.log(`✅ [Git Source] Using files from ${value.source.displayName} (${files.length} files)`);
+        }
+        status.status = "success";
+        status.files = value.files;
+        status.fetchedAt = Date.now();
+      } else {
+        // Only set to failed if not already failed (preserve any existing status)
+        if (status.status !== "failed") {
+          status.status = "failed";
+          status.error = "No files found";
+        }
+      }
+    } else if (result.status === "rejected") {
+      // Only set to failed if not already success or failed (preserve success status)
+      // Check wasSuccess variable instead of status.status to avoid TypeScript narrowing issues
+      if (!wasSuccess && status.status !== "failed") {
+        status.status = "failed";
+        status.error = result.reason?.message || "Unknown error";
+        console.error(`❌ [Git Source] Fetch rejected for ${status.source.displayName}:`, result.reason);
+      }
+    }
+    
+    if (onStatusUpdate) onStatusUpdate(status);
+  });
+  
+  console.log(`📊 [Git Source] All fetches completed. Final statuses:`, statuses.map(s => `${s.source.displayName}: ${s.status}`).join(", "));
+  
+  return { files, statuses };
 }
 

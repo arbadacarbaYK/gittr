@@ -18,19 +18,6 @@ data
 .env.*.local
 .env
 # Personal credentials - never commit
-*.key
-*.pem
-*.pkey
-tmpkey
-**/tmpkey
-ui/tmpkey
-
-# NIP-05 verification (contains platform pubkey)
-ui/public/.well-known/nostr.json
-**/.well-known/nostr.json
-
-# Bridge debugging scripts (may contain server info)
-check-bridge.sh
 
 # Server configs (contain server-specific paths/IPs)
 /etc/nginx/sites-available/gittr

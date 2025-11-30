@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, useCallback, useRef, Suspense } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
@@ -84,21 +84,6 @@ function parseNIP34Repository(event: any): any {
   repoData.publicRead = true;
   repoData.publicWrite = false; // NIP-34 doesn't specify, default to read-only
   
-  // CRITICAL: Also parse event.content JSON for NIP-34 events to get deleted/archived flags
-  // Deletion events publish deleted: true in the content JSON
-  if (event.content) {
-    try {
-      const contentData = JSON.parse(event.content);
-      if (contentData.deleted !== undefined) repoData.deleted = contentData.deleted;
-      if (contentData.archived !== undefined) repoData.archived = contentData.archived;
-      // Also merge other content fields if they exist
-      if (contentData.publicRead !== undefined) repoData.publicRead = contentData.publicRead;
-      if (contentData.publicWrite !== undefined) repoData.publicWrite = contentData.publicWrite;
-    } catch (e) {
-      // Content might not be JSON, that's okay
-    }
-  }
-  
   return repoData;
 }
 
@@ -142,7 +127,7 @@ type Repo = {
   fromNostr?: boolean;
 };
 
-function ExplorePageContent() {
+export default function ExplorePage() {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [isLoadingRepos, setIsLoadingRepos] = useState(true);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
@@ -163,7 +148,6 @@ function ExplorePageContent() {
   
   // Load cached metadata from localStorage on mount
   useEffect(() => {
-    if (typeof window === 'undefined') return;
     try {
       const cached = localStorage.getItem("gittr_metadata_cache");
       if (cached) {
@@ -183,7 +167,6 @@ function ExplorePageContent() {
   // Use ref to track last saved state to prevent unnecessary saves
   const lastSavedMetadataRef = useRef<string>("");
   useEffect(() => {
-    if (typeof window === 'undefined') return;
     if (Object.keys(ownerMetadata).length > 0) {
       const currentMetadataStr = JSON.stringify(ownerMetadata);
       // Only save if metadata actually changed
@@ -595,8 +578,8 @@ function ExplorePageContent() {
           
           if (!imageExts.includes(extension)) return false;
           
-          // Match logo files, but exclude third-party logos (alby, etc.)
-          if (baseName.includes("logo") && !baseName.includes("logo-alby") && !baseName.includes("alby-logo")) return true;
+          // Match logo files
+          if (baseName.includes("logo")) return true;
           
           // Match repo-name-based files (e.g., "tides.png" for tides repo)
           if (repoName && baseName === repoName) return true;
@@ -698,7 +681,6 @@ function ExplorePageContent() {
   
   // Load repos from localStorage and sync from Nostr
   const loadRepos = useCallback(() => {
-    if (typeof window === 'undefined') return;
     setIsLoadingRepos(true);
     try {
       // DEBUG: Check raw localStorage first
@@ -725,7 +707,6 @@ function ExplorePageContent() {
       });
       
       // Load list of locally-deleted repos (user deleted them, don't show)
-      if (typeof window === 'undefined') return;
       const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
       const deletedReposSet = new Set(deletedRepos.map(d => `${d.entity}/${d.repo}`.toLowerCase()));
       
@@ -838,7 +819,6 @@ function ExplorePageContent() {
     
     // CRITICAL: Clear old repos from localStorage to force fresh fetch
     // This ensures we get ALL repos from Nostr, not just cached ones
-    if (typeof window === 'undefined') return;
     const existingRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
     console.log('📊 [Explore] Current repos in localStorage:', existingRepos.length);
     
@@ -865,7 +845,6 @@ function ExplorePageContent() {
       // Stop showing "syncing" status if we've received EOSE from at least 2 GRASP relays
       // OR if we've received repos from at least 5 regular relays and waited 5 seconds
       // OR if we've received a very large number of repos (2000+) - we have enough initial data
-      if (typeof window === 'undefined') return;
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
       const hasEnoughRepos = repos.length > 0;
       const hasVeryManyRepos = repos.length >= 2000; // Large number = good initial sample
@@ -894,7 +873,7 @@ function ExplorePageContent() {
       console.log('⏱️ [Explore] Sync timeout after 15s:', {
         eoseReceived: eoseReceived.size,
         graspRelaysReceived: graspRelaysReceived.size,
-        totalRepos: typeof window !== 'undefined' ? JSON.parse(localStorage.getItem("gittr_repos") || "[]").length : 0
+        totalRepos: JSON.parse(localStorage.getItem("gittr_repos") || "[]").length
       });
       setSyncing(false);
       if (minRelaysTimeout) clearTimeout(minRelaysTimeout);
@@ -1587,7 +1566,6 @@ function ExplorePageContent() {
   
   const filteredRepos = useMemo(() => {
     // Load list of locally-deleted repos (user deleted them, don't show)
-    if (typeof window === 'undefined') return repos;
     const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
     
     // Helper function to check if repo is deleted (robust matching)
@@ -1681,41 +1659,19 @@ function ExplorePageContent() {
           return matches;
         }
         
-        // Filter by search query (searches in name, description, and topics)
+        // Filter by search query
         if (q) {
           const entity = r.entity || "";
           const repo = r.repo || r.slug || "";
           const name = r.name || repo;
-          const description = (r.description || "").toLowerCase();
-          const topics = (r.topics || []).map((t: string) => t.toLowerCase());
-          
-          // Build searchable text from all fields
-          const searchableText = [
-            entity.toLowerCase(),
-            repo.toLowerCase(),
-            name.toLowerCase(),
-            description,
-            ...topics
-          ].join(" ");
-          
-          // Split query into words for flexible matching
-          const queryWords = q.split(/\s+/).filter(w => w.length > 0);
-          
-          // Check if all query words appear in the searchable text
-          // This allows "nip-07 extension" to match repos with topics like ["nip-07", "browser", "extensions"]
-          const allWordsMatch = queryWords.every(word => {
-            // Direct match
-            if (searchableText.includes(word)) return true;
-            // Plural/singular variations
-            if (searchableText.includes(word + "s")) return true;
-            if (word.endsWith("s") && searchableText.includes(word.slice(0, -1))) return true;
-            return false;
-          });
-          
-          if (!allWordsMatch) {
-            console.log('🔍 [Explore] Filtered out repo (search filter):', r.slug || r.repo || r.name, 'query:', q, 'topics:', topics);
+          const matches = (
+            `${entity}/${repo}`.toLowerCase().includes(q) ||
+            name.toLowerCase().includes(q)
+          );
+          if (!matches) {
+            console.log('🔍 [Explore] Filtered out repo (search filter):', r.slug || r.repo || r.name);
           }
-          return allWordsMatch;
+          return matches;
         }
         
         return true;
@@ -1841,7 +1797,7 @@ function ExplorePageContent() {
           </div>
         </div>
       )}
-      {syncing && !isLoadingRepos && typeof window !== 'undefined' && (() => {
+      {syncing && !isLoadingRepos && (() => {
         const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
         const repoCount = repos.length;
         return (
@@ -2051,17 +2007,6 @@ function ExplorePageContent() {
         )}
       </div>
     </div>
-  );
-}
-
-// Mark as dynamic to prevent static generation (useSearchParams requires dynamic rendering)
-export const dynamic = 'force-dynamic';
-
-export default function ExplorePage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-black text-white p-8">Loading...</div>}>
-      <ExplorePageContent />
-    </Suspense>
   );
 }
 

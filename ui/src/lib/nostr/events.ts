@@ -11,11 +11,10 @@ export const KIND_PULL_REQUEST = 9804; // Custom: Pull Requests
 export const KIND_DISCUSSION = 9805; // Custom: Discussions
 export const KIND_BOUNTY = 9806; // Custom: Bounties
 export const KIND_COMMENT = 1; // NIP-01: Notes (for comments)
-export const KIND_REACTION = 7; // NIP-25: Reactions (for starring repositories)
+export const KIND_REACTION = 7; // NIP-25: Reactions
 export const KIND_ZAP = 9735; // NIP-57: Zaps
 export const KIND_DELETION = 5; // NIP-09: Deletion/Revocation events
-export const KIND_BOOKMARK_LIST = 3000; // NIP-51: Bookmark list (for following repositories)
-export const KIND_FOLLOW_LIST = 3001; // NIP-51: Follow list (alternative for following repositories)
+export const KIND_CODE_SNIPPET = 1337; // NIP-C0: Code snippets
 
 export interface RepositoryEvent {
   repositoryName: string;
@@ -133,6 +132,19 @@ export interface BountyEvent {
 export interface SSHKeyEvent {
   publicKey: string; // Format: "<key-type> <base64-key> <title>"
   title?: string;
+}
+
+export interface CodeSnippetEvent {
+  content: string; // The actual code
+  language?: string; // From 'l' tag (lowercase, e.g., "javascript", "python")
+  extension?: string; // From 'extension' tag (without dot, e.g., "js", "py")
+  name?: string; // From 'name' tag (commonly a filename, e.g., "hello-world.js")
+  description?: string; // From 'description' tag
+  runtime?: string; // From 'runtime' tag (e.g., "node v18.15.0", "python 3.11")
+  license?: string[]; // From 'license' tags (SPDX identifiers, can be multiple)
+  dependencies?: string[]; // From 'dep' tags (can be repeated)
+  repo?: string; // From 'repo' tag (URL or NIP-34 format: "30617:<pubkey>:<d tag>")
+  repoRelay?: string; // Recommended relay for repo event (additional parameter on 'repo' tag)
 }
 
 // Create and sign a Nostr repository event
@@ -274,6 +286,78 @@ export function createRepositoryEvent(
   return event;
 }
 
+export function createCodeSnippetEvent(
+  snippet: CodeSnippetEvent,
+  privateKey: string
+): any {
+  const pubkey = getPublicKey(privateKey);
+  
+  const tags: string[][] = [];
+  
+  // NIP-C0: Add language tag (lowercase)
+  if (snippet.language) {
+    tags.push(["l", snippet.language.toLowerCase()]);
+  }
+  
+  // NIP-C0: Add extension tag (without dot)
+  if (snippet.extension) {
+    tags.push(["extension", snippet.extension.replace(/^\./, "")]);
+  }
+  
+  // NIP-C0: Add name tag (filename)
+  if (snippet.name) {
+    tags.push(["name", snippet.name]);
+  }
+  
+  // NIP-C0: Add description tag
+  if (snippet.description) {
+    tags.push(["description", snippet.description]);
+  }
+  
+  // NIP-C0: Add runtime tag
+  if (snippet.runtime) {
+    tags.push(["runtime", snippet.runtime]);
+  }
+  
+  // NIP-C0: Add license tags (can be multiple)
+  if (snippet.license && snippet.license.length > 0) {
+    snippet.license.forEach(license => {
+      tags.push(["license", license]);
+    });
+  }
+  
+  // NIP-C0: Add dependency tags (can be repeated)
+  if (snippet.dependencies && snippet.dependencies.length > 0) {
+    snippet.dependencies.forEach(dep => {
+      tags.push(["dep", dep]);
+    });
+  }
+  
+  // NIP-C0: Add repo tag (URL or NIP-34 format: "30617:<pubkey>:<d tag>")
+  if (snippet.repo) {
+    if (snippet.repoRelay) {
+      // Add relay as additional parameter
+      tags.push(["repo", snippet.repo, snippet.repoRelay]);
+    } else {
+      tags.push(["repo", snippet.repo]);
+    }
+  }
+  
+  const event = {
+    kind: KIND_CODE_SNIPPET,
+    created_at: Math.floor(Date.now() / 1000),
+    tags,
+    content: snippet.content, // NIP-C0: content contains the actual code
+    pubkey,
+    id: "",
+    sig: "",
+  };
+  
+  event.id = getEventHash(event);
+  event.sig = signEvent(event, privateKey);
+  return event;
+}
+
 // Create and sign a Nostr issue event
 export function createIssueEvent(
   issue: IssueEvent,
@@ -321,6 +405,7 @@ export function createIssueEvent(
   event.sig = signEvent(event, privateKey);
   return event;
 }
+
 
 // Create and sign a Nostr pull request event
 export function createPullRequestEvent(
@@ -370,6 +455,7 @@ export function createPullRequestEvent(
   return event;
 }
 
+
 // Create and sign a Nostr discussion event
 export function createDiscussionEvent(
   discussion: DiscussionEvent,
@@ -408,6 +494,7 @@ export function createDiscussionEvent(
   event.sig = signEvent(event, privateKey);
   return event;
 }
+
 
 // Create and sign a Nostr comment event
 export function createCommentEvent(
@@ -468,6 +555,7 @@ export function createCommentEvent(
   return event;
 }
 
+
 // Create and sign a Nostr bounty event (KIND_BOUNTY = 9806)
 export function createBountyEvent(
   bounty: BountyEvent,
@@ -510,6 +598,7 @@ export function createBountyEvent(
   event.sig = signEvent(event, privateKey);
   return event;
 }
+
 
 // Create and sign a Nostr SSH key event (KIND_SSH_KEY = 52)
 // Format: content = "<key-type> <base64-public-key> <title>"
@@ -558,70 +647,3 @@ export function createSSHKeyEvent(
   return event;
 }
 
-// NIP-25: Create a reaction event for starring a repository
-// Tags: ["e", repoEventId], ["k", "30617"], ["p", repoOwnerPubkey]
-// Content: "+" (star reaction)
-export function createStarReactionEvent(
-  repoEventId: string,
-  repoOwnerPubkey: string,
-  privateKey: string
-): any {
-  const pubkey = getPublicKey(privateKey);
-  
-  const event = {
-    kind: KIND_REACTION,
-    created_at: Math.floor(Date.now() / 1000),
-    tags: [
-      ["e", repoEventId], // Reference to the repository event (kind 30617)
-      ["k", "30617"], // Indicates this is a reaction to a kind 30617 event
-      ["p", repoOwnerPubkey], // Repository owner pubkey
-    ],
-    content: "+", // Star reaction (NIP-25 standard)
-    pubkey,
-    id: "",
-    sig: "",
-  };
-
-  event.id = getEventHash(event);
-  event.sig = signEvent(event, privateKey);
-  return event;
-}
-
-// NIP-51: Create a bookmark/follow list event for following repositories
-// Tags: ["d", listIdentifier], ["r", "30617:<relay>:<repo-event-id>"] or ["r", ":<ownerPubkey>:<slug>"]
-export function createRepoFollowListEvent(
-  listIdentifier: string, // e.g., "followed-repos" or "watched-repos"
-  repoReferences: Array<{ eventId?: string; relay?: string; ownerPubkey?: string; slug?: string }>,
-  privateKey: string
-): any {
-  const pubkey = getPublicKey(privateKey);
-  
-  const tags: string[][] = [
-    ["d", listIdentifier], // List identifier (NIP-51)
-  ];
-  
-  // Add repository references
-  for (const ref of repoReferences) {
-    if (ref.eventId && ref.relay) {
-      // Full reference: 30617:<relay>:<repo-event-id>
-      tags.push(["r", `30617:${ref.relay}:${ref.eventId}`]);
-    } else if (ref.ownerPubkey && ref.slug) {
-      // Minimal reference: :<ownerPubkey>:<slug>
-      tags.push(["r", `:${ref.ownerPubkey}:${ref.slug}`]);
-    }
-  }
-  
-  const event = {
-    kind: KIND_BOOKMARK_LIST, // Use bookmark list (3000) for following repos
-    created_at: Math.floor(Date.now() / 1000),
-    tags,
-    content: "", // Empty content for lists
-    pubkey,
-    id: "",
-    sig: "",
-  };
-
-  event.id = getEventHash(event);
-  event.sig = signEvent(event, privateKey);
-  return event;
-}

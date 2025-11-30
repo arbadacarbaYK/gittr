@@ -1,19 +1,8 @@
-# gittr.space - Host Your Repositories on Nostr for Better Discoverability
+# gittr.space - Git over Nostr with Bitcoin Incentives
 
-Make your Git repositories discoverable on the Nostr network. Host your code on Nostr while keeping your existing GitHub/GitLab workflow. Enhance discoverability, enable decentralized access, and add Bitcoin/Lightning payment integration to your projects.
+A decentralized Git platform built on Nostr with native Bitcoin/Lightning payment integration. Think GitHub, but censorship-resistant, with zaps, bounties, and decentralized storage.
 
 **Platform**: [gittr.space](https://gittr.space)
-
-**Why gittr.space?**
-- ✅ **Enhanced Discoverability**: Make your repos discoverable across the Nostr network
-- ✅ **Keep Your Workflow**: Works alongside GitHub/GitLab - no need to migrate
-- ✅ **Decentralized Access**: Access your code through Nostr relays
-- ✅ **Bitcoin Integration**: Native Lightning payments, zaps, and bounties
-- ✅ **Open Protocol**: Built on NIP-34, compatible with the Nostr ecosystem
-- ✅ **Censorship Resistant**: Multiple redundant mirrors ensure your code survives even if one server goes down
-
-> **Badge legend:** 🆕 highlights gittr.space enhancements that sit on top of @spearson78’s upstream
-> `gitnostr` work. We keep his foundation intact and only note the extra bits we’re contributing back.
 
 ## 🚀 Features
 
@@ -57,13 +46,6 @@ Make your Git repositories discoverable on the Nostr network. Host your code on 
 - ✅ Sponsors page (users who zapped you)
 - ✅ Stars and zaps history
 
-### Authentication & Remote Signing (🆕)
-- ✅ Sign in with npub, hex pubkey, or NIP-05 name
-- ✅ One-click NIP-07 browser extension login (Flamingo, nos2x, etc.)
-- ✅ 🆕 **Remote signer pairing (NIP-46)** – paste or scan a `bunker://` / `nostrconnect://` token to pair hardware signers (e.g., LNbits nsec-remote-signer, Nowser bunker)
-- ✅ Remote sessions expose a NIP-07-compatible API, so the entire UI (repo pushes, issues, zaps) keeps working without ever handling your private key locally
-- ✅ Disconnect anytime from the login screen or global sign-out (clears the stored client key + token)
-
 ## 🛠️ Tech Stack
 
 - **Frontend**: Next.js 13 (App Router), React, TypeScript, Tailwind CSS
@@ -77,57 +59,6 @@ Make your Git repositories discoverable on the Nostr network. Host your code on 
   - `git-nostr-ssh`: SSH command handler for Git operations
   - `git-nostr-cli`: CLI tool for managing repos (optional)
   - Located in `ui/gitnostr/` - **All Go components are included!**
-
-## 🌐 Decentralization & Resilience
-
-### How Clone URLs Work: Potential Mirrors, Not Guaranteed Mirrors
-
-When you publish a repository on gittr, you'll see multiple clone URLs listed (e.g., `git.gittr.space`, `relay.ngit.dev`, `gitnostr.com`, etc.). Here's what this means:
-
-**GRASP servers are real Git servers** that can host full repositories, but they don't automatically mirror everything. Each GRASP server only has repositories that were:
-- **Pushed directly to them** (when you push, gittr pushes to its own server)
-- **Cloned to them** (when someone clones from that server, it creates a local copy)
-- **Actively mirrored** by the server operator
-
-**Why multiple clone URLs?**
-- **Discoverability**: Anyone can discover your repo through any Nostr relay
-- **Resilience**: If one server goes down, others may still have your repo
-- **Decentralization**: No single point of failure - your code exists independently of any one service
-- **Parallel fetching**: gittr tries all clone URLs simultaneously, using whichever responds first
-
-**What this means for you:**
-- ✅ Your repo metadata is stored on Nostr relays (censorship-resistant)
-- ✅ Multiple potential mirrors increase availability
-- ✅ Even if gittr.space goes down, your repo can still be accessed via other GRASP servers
-- ✅ Other clients can read your repo from Nostr events and clone from any available mirror
-
-**Example**: If GitHub deletes your repo but you've pushed it to gittr, it remains accessible through:
-- Nostr events (metadata and discovery)
-- GRASP servers that have cloned it
-- Your local git-nostr-bridge instance
-- Any other client that has cached it
-
-This is true decentralization: your code isn't dependent on any single service or platform.
-
-### Benefits for Developers
-
-**For Repository Owners:**
-- 🛡️ **Censorship Resistance**: Your repo metadata lives on Nostr relays, not controlled by any single entity
-- 🔄 **Redundancy**: Multiple potential mirrors mean your code survives server failures
-- 🌍 **Global Discovery**: Anyone on Nostr can discover your repo, regardless of which Git server hosts it
-- ⚡ **Fast Access**: Parallel fetching means users get files from the fastest available source
-
-**For Repository Users:**
-- 🔍 **Easy Discovery**: Find repos through Nostr's global network, not just one platform
-- 🚀 **Fast Clones**: System automatically tries multiple sources in parallel
-- 💪 **Resilience**: If one server is down, others may still work
-- 🔓 **No Vendor Lock-in**: Clone from any GRASP server or use standard Git commands
-
-**For the Ecosystem:**
-- 🌐 **True Decentralization**: No single point of failure
-- 🔗 **Interoperability**: Works with any Nostr client, not just gittr
-- 📈 **Scalability**: New GRASP servers can join the network without central coordination
-- 🎯 **Protocol-First**: Nostr events are the source of truth, Git servers are just data relays
 
 ## 📊 Architecture & Data Storage
 
@@ -149,26 +80,17 @@ gittr.space follows the **NIP-34 architecture** for repository file storage:
 
 The file source is displayed in the repository's "About" sidebar, making it clear where files are stored.
 
-### Event Processing & File Fetching
+### File Fetching Flows
 
-**🆕 Direct Event Submission**: When you push a repository to Nostr, the event is sent directly to the git-nostr-bridge HTTP API (`POST /api/nostr/repo/event` → `POST http://localhost:8080/api/event`) for immediate processing, eliminating the typical 1-5 second relay propagation delay. Huge thanks to @spearson78 for the original gitnostr architecture—this layer just adds an optional fast lane while continuing to use the same relay protocol for federation.
+gittr.space uses a sophisticated multi-source file fetching system that tries multiple strategies in parallel to ensure fast and reliable file access. The system is designed to work with various git server types (GRASP servers, GitHub, GitLab, Codeberg) and handles both embedded files and files stored on remote servers.
 
-**File Fetching Flows**: gittr.space uses a sophisticated multi-source file fetching system that tries multiple strategies in parallel to ensure fast and reliable file access. The system is designed to work with various git server types (GRASP servers, GitHub, GitLab, Codeberg) and handles both embedded files and files stored on remote servers.
-
-**Key Features of Flows (🆕 items are gittr additions):**
+**Key Features of Flows:**
 
 **SSH URL Support**: SSH clone URLs (e.g., `git@github.com:owner/repo`) are automatically normalized to HTTPS format, ensuring compatibility with all git hosting providers.
 
-**🆕 Automatic Cloning**: GRASP repositories automatically trigger a clone when not found locally, then retry the API call.
+**Automatic Cloning**: GRASP repositories automatically trigger a clone when not found locally, then retry the API call.
 
-**🆕 Robust Fallback Chain**: Both flows have multiple fallback strategies, ensuring files can be fetched even if one source fails.
-
-**🆕 Performance Optimizations**: The system includes intelligent caching and deduplication:
-- **Bridge API Cache**: Deduplicates API calls to `git-nostr-bridge` (reduces from 7+ calls to 1 per repo/branch)
-- **Clone Trigger Cache**: Prevents duplicate clone triggers for the same repository
-- **Source Prioritization**: Known-good sources (GitHub, Codeberg, GitLab) are tried first
-- **Nostr-Git Optimization**: Only the first nostr-git source is tried since they all hit the same bridge API
-- See [docs/FILE_FETCHING_INSIGHTS.md](docs/FILE_FETCHING_INSIGHTS.md) for detailed implementation notes
+**Robust Fallback Chain**: Both flows have multiple fallback strategies, ensuring files can be fetched even if one source fails.
 
 **Binary File Handling**: Binary files are detected, encoded as base64, and converted to data URLs for display in the browser.
 
@@ -243,13 +165,6 @@ Handle binary vs text files
   - They require network calls
   - They're used as fallback when embedded content and git-nostr-bridge aren't available
 
-**Important Note on GRASP Servers:**
-- When Strategy 3 tries multiple clone URLs in parallel, not all GRASP servers necessarily have every repo
-- Clone URLs are *potential mirrors* - they only have repos that were pushed directly to them, cloned to them, or actively mirrored
-- The system tries all URLs simultaneously and uses whichever responds first, providing resilience and redundancy
-- **Performance Note**: For nostr-git sources (GRASP servers), only the first source is tried since they all hit the same `git-nostr-bridge` API endpoint, reducing redundant network calls
-- See [Decentralization & Resilience](#-decentralization--resilience) for a detailed explanation
-
 **SSH URL Normalization:**
 - SSH clone URLs (e.g., `git@github.com:owner/repo`) are automatically converted to HTTPS format (`https://github.com/owner/repo`) before processing
 - This normalization happens in all critical paths: file fetching, file opening, cloning, refetching, pushing to Nostr, and importing
@@ -306,15 +221,13 @@ Configure in Settings → Account:
 - **[SETUP_INSTRUCTIONS.md](docs/SETUP_INSTRUCTIONS.md)** - Complete production setup guide
 - **[LOCAL_SETUP.md](docs/LOCAL_SETUP.md)** - Local development setup
 - **[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Server deployment guide
-- **[NIP-46 Remote Signer Integration](docs/NIP46_REMOTE_SIGNER_INTEGRATION.md)** - NIP-46 remote signer integration guide (QR scanning, NIP-07 adapter)
-- **[NIP-25 Stars & NIP-51 Following](docs/NIP25_STARS_NIP51_FOLLOWING.md)** - NIP-25 stars and NIP-51 following implementation guide
 - **[Grasp Relay Setup](docs/GRASP_RELAY_SETUP.md)** - How to set up your own relay instance (Grasp protocol)
 - **[SSH & Git Guide](docs/SSH_GIT_GUIDE.md)** - SSH and Git operations guide
 
 
-### 💡 Large Repository Support
+### ⚠️ Repository import size limit
 
-The import process now handles large repositories efficiently. Only file metadata (paths, sizes) is included in the import response, and file content is fetched on-demand when you view or edit files. This allows importing repositories of any size without hitting API response limits. Files are fetched individually via the `/api/git/file-content` endpoint as needed.
+Next.js API routes hard-cap responses at ~4 MB. When importing from GitHub/Codeberg we capture the entire file tree (including binaries/releases), so very large repositories will exceed that limit. When this happens the import dialog now shows a “repository is too large (>4 MB)” error. If you hit it, trim heavy artifacts (release archives, media, build outputs) before retrying, or import a smaller subset of the project.
 
 ## 🎨 Themes
 
@@ -370,25 +283,12 @@ The `gitnostr` Go components (`ui/gitnostr/`) are licensed under the **MIT Licen
 - Implements [GRASP Protocol](https://ngit.dev/grasp/) for distributed Git hosting (newer than original NostrGit)
 - Inspired by GitHub's developer experience
 
-**Note:** This project (`gittr.space`) is a fork of NostrGit Page template that has been significantly developed. It is a separate project and platform. Key additions and modifications include:
-
-**Core Enhancements:**
+**Note:** This project (`gittr.space`) is a fork of NostrGit Page template that has been significantly developed. It is a separate project and platform. Key additions include:
 - ✅ GRASP protocol support (clone/relays tags, client-side proactive sync)
 - ✅ Bitcoin/Lightning payment integration (zaps, bounties)
 - ✅ Enhanced UI features (themes, activity tracking, explore page)
 - ✅ Notification system (Nostr DM, Telegram DM, channel announcements)
 - ✅ All original Go components (`git-nostr-bridge`, `git-nostr-cli`, `git-nostr-ssh`) are included and functional
-
-**Bridge Improvements (git-nostr-bridge):**
-- ✅ **HTTP API endpoint** (`POST /api/event`): Direct event submission for immediate processing (eliminates relay propagation delays)
-- ✅ **NIP-34 support**: Full support for kind 30617 repository events (primary publishing method). Also reads legacy kind 51 for backwards compatibility, but never publishes as kind 51.
-- ✅ **Auto-cloning**: Automatically clones repositories from `sourceUrl` or `clone` URLs when not found locally
-- ✅ **Deletion handling**: Properly removes repositories and database entries when `deleted: true` events are received
-- ✅ **Event deduplication**: Merges events from both direct API and relay subscriptions with deduplication
-- ✅ **Unified deployment path**: Both frontend and bridge now use `/opt/ngit` for simplified deployment
-
-**Frontend API Routes:**
-- ✅ `/api/nostr/repo/event`: Proxies Nostr events directly to bridge HTTP API for immediate processing
 
 ## 📞 Support
 

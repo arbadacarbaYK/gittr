@@ -2,9 +2,6 @@
 
 This document captures insights and patterns discovered while implementing file fetching from various git servers (GitHub, GitLab, Codeberg, GRASP servers).
 
-> **Badge legend:** 🆕 denotes gittr.space-specific logic layered on top of @spearson78’s gitnostr
-> baseline so contributors know what still needs to be upstreamed.
-
 ## Table of Contents
 
 1. [Complete File Fetching and Opening Flow](#complete-file-fetching-and-opening-flow)
@@ -112,7 +109,7 @@ if (sshMatch) {
 
 ## File List Fetching Flow
 
-**Location**: `ui/src/app/[entity]/[repo]/page.tsx` (main file list fetching `useEffect` - search for "File List Fetching Flow" or "useEffect.*files")
+**Location**: `ui/src/app/[entity]/[repo]/page.tsx` (main `useEffect` starting around line 955)
 
 ### Flow Diagram
 
@@ -152,57 +149,33 @@ User opens repo page
 
 - **Strict matching**: Entity AND repo name must match for localStorage
 - **Npub decoding**: Converts npub to pubkey for comparison
-- **🆕 Automatic cloning**: GRASP repos trigger clone if not found locally
-- **🆕 Background polling**: Uses custom events (`grasp-repo-cloned`) for non-blocking updates
+- **Automatic cloning**: GRASP repos trigger clone if not found locally
+- **Background polling**: Uses custom events (`grasp-repo-cloned`) for non-blocking updates
 
 ---
 
 ## File Opening Flow - Correct Strategy Order
 
-**Location**: `ui/src/app/[entity]/[repo]/page.tsx` (`fetchGithubRaw` function - search for "fetchGithubRaw" or "Strategy 1: Check localStorage")
+**Location**: `ui/src/app/[entity]/[repo]/page.tsx` (`fetchGithubRaw` function starting around line 3503)
 
 ### CRITICAL: Strategy Order
 
-The correct order is **critical** for file opening to work. The system uses a 6-strategy fallback chain to ensure files can be fetched from any source:
+The correct order is **critical** for file opening to work:
 
-1. **Strategy 1: Check localStorage for local repos** (no sourceUrl, no cloneUrls)
-2. **Strategy 2: Check embedded files** (files stored directly in Nostr event)
-3. **Strategy 3: Multi-source fetch** (if repo has clone URLs - tries all in parallel)
-4. **Strategy 4: Query Nostr for NIP-34 events** (fallback if clone URLs not available)
-5. **Strategy 5: Try git-nostr-bridge API** (fallback for local/GRASP repos)
-6. **Strategy 6: Try external git servers via API proxy** (final fallback - GitHub, GitLab, Codeberg)
+1. **Strategy 1: Check embedded files FIRST** (always, regardless of sourceUrl/clone URLs)
+2. **Strategy 2: Try git-nostr-bridge API** (for local/GRASP repos)
+3. **Strategy 3: Try external git servers via API proxy** (GitHub, GitLab, Codeberg)
 
 ### Flow Diagram
 
 ```
 User clicks on a file
   ↓
-Strategy 1: Check localStorage for local repos (no sourceUrl, no cloneUrls)
-   ├─ If files found in localStorage → Use local files ✅
+Strategy 1: Check if file content is embedded in repoData.files array
+   ├─ If found with content → Use embedded content ✅
    └─ If not found → Continue to Strategy 2
   ↓
-Strategy 2: Check if file content is embedded in repoData.files array
-   ├─ If found with content → Use embedded content ✅
-   └─ If not found → Continue to Strategy 3
-  ↓
-Strategy 3: Multi-source fetch (if repo has clone URLs)
-   ├─ Try all clone URLs in parallel:
-   │   ├─ 🆕 GRASP servers → /api/nostr/repo/file-content → git-nostr-bridge
-   │   │   ├─ 🆕 If 404 → /api/nostr/repo/clone → Poll (max 10 attempts, 2s delay) ✅
-   │   │   └─ If success → Use content from bridge ✅
-   │   ├─ GitHub → /api/git/file-content?sourceUrl=...&path=...&branch=...
-   │   ├─ GitLab → /api/git/file-content?sourceUrl=...&path=...&branch=...
-   │   ├─ Codeberg → /api/git/file-content?sourceUrl=...&path=...&branch=...
-   │   └─ Other GRASP servers → /api/git/file-content?sourceUrl=... → forwards to bridge API
-   ├─ 🆕 If GRASP server returns 404 → Trigger clone → Poll (max 10 attempts, 2s delay) ✅
-   └─ If all fail → Continue to Strategy 4
-  ↓
-Strategy 4: Query Nostr for NIP-34 repository events
-   ├─ Subscribe to kind 30617 events with "#d" tag matching repo name
-   ├─ Extract files from event content (if embedded)
-   └─ Extract clone URLs and sourceUrl from event tags
-  ↓
-Strategy 5: Try git-nostr-bridge API (fallback)
+Strategy 2: Try git-nostr-bridge API
    ├─ Resolve ownerPubkey:
    │   ├─ Check repoData.ownerPubkey
    │   ├─ Check localStorage for matching repo
@@ -211,14 +184,14 @@ Strategy 5: Try git-nostr-bridge API (fallback)
    ├─ Success → Use content from git-nostr-bridge ✅
    ├─ 404 (not cloned) → Check if GRASP server
    │   ├─ If GRASP → Trigger clone → Poll (max 10 attempts, 2s delay) ✅
-   │   └─ If not GRASP → Continue to Strategy 6
-   └─ Error → Continue to Strategy 6
+   │   └─ If not GRASP → Continue to Strategy 3
+   └─ Error → Continue to Strategy 3
   ↓
-Strategy 6: Try external git servers via API proxy (final fallback)
+Strategy 3: Try external git servers via API proxy
    ├─ GitHub → /api/git/file-content?sourceUrl=...&path=...&branch=...
    ├─ GitLab → /api/git/file-content?sourceUrl=...&path=...&branch=...
    ├─ Codeberg → /api/git/file-content?sourceUrl=...&path=...&branch=...
-   └─ Note: SSH URLs (git@host:path) are normalized to HTTPS before API calls
+   └─ GRASP → /api/git/file-content?sourceUrl=...&path=...&branch=... (forwards to bridge API)
   ↓
 Handle binary vs text files
    ├─ Binary → Return base64, frontend creates data URL
@@ -227,48 +200,22 @@ Handle binary vs text files
 
 ### Why This Order Matters
 
-**localStorage is checked FIRST** because:
-- Local repos (created in browser) have no sourceUrl or cloneUrls
-- Files are stored directly in localStorage for instant access
-- No network calls needed for local repos
-
-**Embedded files are checked second** because:
+**Embedded files must be checked FIRST** because:
 - Some GRASP repos have files embedded in Nostr events even when clone URLs exist
 - Embedded content is the most reliable source (no network calls needed)
 - Legacy repos store files directly in events
 
-**Multi-source fetch (Strategy 3) tries all clone URLs in parallel** because:
-- Repos may have multiple clone URLs (GitHub, GitLab, GRASP servers)
-- Parallel fetching ensures fastest response time
-- GRASP servers automatically trigger cloning if repo not found locally
-
-**Nostr query (Strategy 4) is a fallback** because:
-- Used when clone URLs are not available in repoData
-- Fetches fresh NIP-34 events from relays
-- Can extract embedded files or clone URLs from events
-
-**git-nostr-bridge API (Strategy 5) is a fallback** because:
+**git-nostr-bridge API is second** because:
 - It's the primary method for repos that have been cloned locally
 - For GRASP repos, it requires the repo to be cloned first
 - It's faster than external API calls when available
 
-**External git servers (Strategy 6) are the final fallback** because:
+**External git servers are last** because:
 - They require network calls
-- They're used when all other strategies fail
-- **Note**: For GRASP servers, `/api/git/file-content` detects them and forwards to bridge API (same as Strategy 5)
+- They're used as fallback when embedded content and git-nostr-bridge aren't available
+- **Note**: For GRASP servers, `/api/git/file-content` detects them and forwards to bridge API (same as Strategy 2)
 
-### OwnerPubkey Resolution (Strategies 3 & 5)
-
-The ownerPubkey resolution is used in Strategy 3 (multi-source fetch for GRASP servers) and Strategy 5 (git-nostr-bridge API fallback). The resolution follows this priority:
-
-1. **repoData.ownerPubkey** (if set during file fetching)
-2. **localStorage** (check for matching repo by entity+name)
-3. **Decode npub** from `params.entity` (most reliable for GRASP repos)
-4. **resolveEntityToPubkey utility** (final fallback)
-
-This ensures consistency - if files were fetched successfully, file opening will work too.
-
-### OwnerPubkey Resolution (Strategies 3 & 5)
+### OwnerPubkey Resolution (Strategy 2)
 
 The ownerPubkey resolution follows this priority:
 
@@ -282,18 +229,7 @@ This ensures consistency - if files were fetched successfully, file opening will
 ### Code Reference
 
 ```typescript
-// Strategy 1: Check localStorage for local repos
-if (!repoData?.sourceUrl && (!repoData?.clone || repoData.clone.length === 0)) {
-  const localRepo = findRepoByEntityAndName(repos, params.entity, decodedRepo);
-  if (localRepo?.files) {
-    const fileEntry = localRepo.files.find((f: any) => f.path === filePath);
-    if (fileEntry?.content) {
-      return { content: fileEntry.content, url: null, isBinary: false };
-    }
-  }
-}
-
-// Strategy 2: Check embedded files
+// Strategy 1: Check embedded files FIRST
 if (repoData?.files && Array.isArray(repoData.files)) {
   const fileEntry = repoData.files.find((f: any) => {
     // Match file by path...
@@ -304,20 +240,7 @@ if (repoData?.files && Array.isArray(repoData.files)) {
   }
 }
 
-// Strategy 3: Multi-source fetch (parallel attempts on all clone URLs)
-if (repoData?.clone && Array.isArray(repoData.clone) && repoData.clone.length > 0) {
-  // Try all clone URLs in parallel
-  for (const cloneUrl of repoData.clone) {
-    // GRASP servers → bridge API
-    // GitHub/GitLab/Codeberg → /api/git/file-content
-    // Handle 404 for GRASP → trigger clone → poll
-  }
-}
-
-// Strategy 4: Query Nostr for NIP-34 events
-// Subscribe to kind 30617 events, extract files/clone URLs
-
-// Strategy 5: Try git-nostr-bridge API (fallback)
+// Strategy 2: Try git-nostr-bridge API
 let ownerPubkey = (repoData as any)?.ownerPubkey;
 // Resolve ownerPubkey (check localStorage, decode npub, etc.)
 if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
@@ -331,7 +254,7 @@ if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
   }
 }
 
-// Strategy 6: Try external git servers via API proxy (final fallback)
+// Strategy 3: Try external git servers via API proxy
 const apiUrl = `/api/git/file-content?sourceUrl=...&path=...&branch=...`;
 const response = await fetch(apiUrl);
 // Handle response...
@@ -751,46 +674,23 @@ const treeUrl = `${baseUrl}/api/v1/repos${fullPath}/git/trees/${branch}?recursiv
 
 ## Key Insights and Why This Works
 
-### 1. **localStorage First (Strategy 1)**
+### 1. **Embedded Files First**
 
-- Local repos (created in browser) have no sourceUrl or cloneUrls
-- Files are stored directly in localStorage for instant access
-- No network calls needed for local repos
-- **Critical**: This must be Strategy 1 to handle repos created entirely in the browser
-
-### 2. **Embedded Files Second (Strategy 2)**
-
-- Files embedded in Nostr events are checked after localStorage
+- Files embedded in Nostr events are always checked first (both for list and content)
 - This handles legacy repos and small files that are stored directly in events
-- Some GRASP repos have files embedded even when clone URLs exist
-- **Critical**: Embedded files must be checked before attempting network calls
+- **Critical**: This must be Strategy 1 in file opening, regardless of sourceUrl/clone URLs
 
-### 3. **Multi-Source Parallel Fetch (Strategy 3)**
-
-- Tries all clone URLs in parallel for fastest response
-- GRASP servers automatically trigger cloning if repo not found locally
-- GitHub, GitLab, Codeberg APIs are tried simultaneously
-- First success wins, others continue in background for status updates
-
-### 4. **Nostr Query Fallback (Strategy 4)**
-
-- Used when clone URLs are not available in repoData
-- Fetches fresh NIP-34 events from relays
-- Can extract embedded files or clone URLs from events
-- Ensures repos can be accessed even if initial event data is incomplete
-
-### 5. **git-nostr-bridge API Fallback (Strategy 5)**
+### 2. **git-nostr-bridge for Local/GRASP Repos**
 
 - `git-nostr-bridge` is the primary method for repos that have been cloned locally
 - For GRASP servers that don't expose HTTP API, automatic cloning ensures files are available
 - OwnerPubkey resolution must be consistent between file fetching and file opening
-- Used as fallback when Strategy 3 fails or clone URLs aren't available
 
-### 6. **External Git Servers Final Fallback (Strategy 6)**
+### 3. **External Git Servers as Fallback**
 
-- GitHub, GitLab, Codeberg APIs are used as final fallback when:
+- GitHub, GitLab, Codeberg APIs are used when:
   - Repo is imported from external git server
-  - All previous strategies have failed
+  - GRASP server doesn't have HTTP API or clone fails
   - Files are not embedded in Nostr event
 
 ### 4. **Multiple URL Patterns for GRASP Servers**
@@ -846,8 +746,8 @@ const treeUrl = `${baseUrl}/api/v1/repos${fullPath}/git/trees/${branch}?recursiv
    - Check file size (large files are often binary)
 
 5. **Strategy Order in File Opening**
-   - ❌ Trying git-nostr-bridge API before embedded files or localStorage
-   - ✅ Always check localStorage FIRST, then embedded files, then multi-source fetch, then Nostr query, then bridge API, then external APIs
+   - ❌ Trying git-nostr-bridge API before embedded files
+   - ✅ Always check embedded files FIRST, then git-nostr-bridge, then external APIs
 
 6. **OwnerPubkey Resolution**
    - Must be consistent between file fetching and file opening
@@ -855,67 +755,41 @@ const treeUrl = `${baseUrl}/api/v1/repos${fullPath}/git/trees/${branch}?recursiv
 
 ---
 
-## PRs, Issues, Commits, Releases Handling
+## Future Work: PRs, Issues, Commits, Releases for GRASP Repos
 
-### Current Implementation
-
-**GitHub/Codeberg Repos:**
-- **Source of Truth**: GitHub/Codeberg REST APIs are the primary source
-- **Fetching**: Issues, PRs, commits, and releases are fetched during import and refetch operations via `/api/import`
-- **Storage**: Data is stored in both:
-  - Repo object in localStorage (`repo.issues`, `repo.pulls`, `repo.commits`, `repo.releases`)
-  - Separate localStorage keys (`gittr_issues`, `gittr_prs`, `gittr_commits`) for display pages
-- **Refetch**: When refetching a repo, issues/PRs/commits are re-fetched from GitHub API and saved (even if empty arrays)
-- **Nostr Sync**: PRs and issues created via the web UI are published as Nostr events (kinds 9803/9804), but GitHub source takes precedence
-
-**Nostr Events for PRs/Issues:**
-- **Issue Events**: Kind 9803 (custom, not NIP-34 replaceable)
-- **PR Events**: Kind 9804 (custom, not NIP-34 replaceable)
-- **Repository Events**: 
-  - **Kind 30617** (NIP-34: Replaceable Events) - Repository metadata (primary method, used for publishing)
-  - **Kind 51** (gitnostr: Repository) - Legacy format (only read for backwards compatibility, never published)
-- **Note**: PRs/issues use custom kinds, not NIP-34 replaceable events, so they don't follow the replaceable event pattern
-- **Publishing**: gittr.space ONLY publishes repository announcements as Kind 30617 (NIP-34 replaceable events). Kind 51 is never published, only read for legacy repository compatibility.
-- **🆕 Automatic Publishing**:
-  - Issues are automatically published to Nostr when created
-  - PRs are automatically published to Nostr when created
-  - When a PR is merged, an updated event with status "merged" is automatically published
-  - When an issue is closed/reopened, an updated event with the new status is automatically published
-  - All status updates reference the original event via `["e", originalEventId, "", "previous"]` tag
-- **Sync Behavior**: For GitHub repos, GitHub API is the source of truth. Nostr events are synced but GitHub data takes precedence when both exist. Nostr-only issues/PRs (from other clients) are preserved when fetching from GitHub.
-
-**GRASP/Git Protocol Repos:**
-- Currently only support file browsing via git-nostr-bridge
-- PRs/Issues: Can be created via web UI and published as Nostr events (kinds 9803/9804)
-- Commits: Available via `git log` (git-nostr-bridge can provide)
-- Releases: Might be git tags (git-nostr-bridge can list)
+### Current State
+- GitHub/Codeberg repos: Use their REST APIs for PRs, Issues, Commits, Releases
+- GRASP repos: Currently only support file browsing via git-nostr-bridge
+- Git protocol repos: Don't have REST APIs like GitHub
 
 ### Differences
 **GitHub/Codeberg:**
 - REST APIs for PRs, Issues, Commits, Releases
-- Webhooks for real-time updates (not yet implemented)
+- Webhooks for real-time updates
 - Rich metadata (labels, assignees, milestones, etc.)
-- GitHub API is source of truth, Nostr events are secondary
 
 **GRASP/Git Protocol:**
 - No REST APIs - only git protocol
-- PRs/Issues stored as Nostr events (kinds 9803/9804, custom kinds)
+- PRs/Issues might be stored as Nostr events (NIP-34 or custom kind)
 - Commits available via `git log` (git-nostr-bridge can provide)
 - Releases might be git tags (git-nostr-bridge can list)
 
-### Future Work
-1. **PRs/Issues for GRASP repos**: Better integration with Nostr events (kinds 9803/9804)
-2. **Commits for GRASP repos**: Use git-nostr-bridge API to run `git log` commands
-3. **Releases for GRASP repos**: Use git-nostr-bridge API to list git tags
+### Potential Solutions
+1. **PRs/Issues**: Check for Nostr events (kind 30618 for issues, custom kind for PRs)
+2. **Commits**: Use git-nostr-bridge API to run `git log` commands
+3. **Releases**: Use git-nostr-bridge API to list git tags
 4. **File History**: Use git-nostr-bridge API to run `git log --follow` for file
-5. **Webhooks**: Implement webhook support for GitHub/Codeberg repos for real-time updates
 
 ### Implementation Notes
-- GitHub repos: Always fetch from GitHub API during import/refetch
-- Nostr events: Subscribe to kinds 9803/9804 for PRs/issues created via web UI
-- Storage: Save to both repo object and separate localStorage keys for display
-- Refetch: Always save data (even if empty) to clear stale localStorage data
-- Priority: GitHub API > Nostr events for GitHub repos
+- Need to create API endpoints in git-nostr-bridge for git commands
+- Need to parse git output (commits, tags, etc.)
+- Need to handle Nostr events for PRs/Issues if they exist
+- May need to fall back to "Not available for git protocol repos" for some features
+
+### Files to Update (Future)
+- `ui/src/app/[entity]/[repo]/issues/page.tsx` - Check Nostr events for issues
+- `ui/src/app/[entity]/[repo]/pulls/page.tsx` - Check Nostr events for PRs
+- `ui/src/app/[entity]/[repo]/commits/page.tsx` - Use git-nostr-bridge API for git log
 - `ui/src/app/[entity]/[repo]/releases/page.tsx` - Use git-nostr-bridge API for git tags
 - `ui/src/pages/api/nostr/repo/commits.ts` - New endpoint for git log
 - `ui/src/pages/api/nostr/repo/tags.ts` - New endpoint for git tags
@@ -986,7 +860,7 @@ const firstSuccessPromise = Promise.race(successPromises);
 4. Add `allow-modals` to iframe sandbox permissions
 5. Add `onLoad` and `onError` handlers for debugging
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (HTML preview rendering - search for "HTML preview" or "iframe.*sandbox")
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (HTML preview rendering around line 5186)
 
 **Result**: HTML files now render correctly in preview mode, with proper structure and better error handling.
 
@@ -1031,7 +905,7 @@ if (gitServerMatch) {
 
 **Solution**: Resolve `ownerPubkey` immediately from `params.entity` (npub) using `nip19.decode()` instead of waiting for Nostr queries. This allows file fetching to start immediately when the page loads.
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (file fetching `useEffect` - search for "resolvedOwnerPubkey" or "ownerPubkeyForLink" in useEffect)
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (file fetching `useEffect` starting around line 983)
 
 **Key Change**:
 ```typescript
@@ -1064,7 +938,7 @@ if (params.entity && params.entity.startsWith("npub")) {
 2. Show "✓ Files found, checking other sources..." when files are found but some sources are still fetching
 3. Ensure all successful sources show "✓ Fetched" status, not just failures
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (status display logic - search for "fetchStatus" or "status display" or "No files found")
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (status display around line 4720)
 
 **Key Changes**:
 - Hide status display when `hasFiles && allDone && !stillFetching`
@@ -1079,7 +953,7 @@ if (params.entity && params.entity.startsWith("npub")) {
 
 **Solution**: Decode `params.repo` immediately at the start of the component using `decodeURIComponent(params.repo)` and use `decodedRepo` throughout the component for all API calls, localStorage lookups, and file operations.
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (component start - search for "decodeURIComponent" or "decodedRepo")
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (line 70)
 
 **Key Change**:
 ```typescript
@@ -1097,7 +971,7 @@ const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)
 
 **Solution**: Removed the console.log from the render function. The check still runs but doesn't spam the console. The infinite loop warning was likely from a different source (Radix UI component).
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (push button check - search for "push button" or "Repo not found" log)
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (line 5387)
 
 ### Unused Variable Cleanup
 
@@ -1105,7 +979,7 @@ const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)
 
 **Solution**: Removed the unused variable. The `firstSuccessFiles` variable is sufficient for tracking the first successful fetch.
 
-**Code Location**: `ui/src/lib/utils/git-source-fetcher.ts` (`fetchFilesFromSource` function - search for "firstSuccessSource" or "firstSuccessFiles")
+**Code Location**: `ui/src/lib/utils/git-source-fetcher.ts` (line 641)
 
 ### Clone URLs for Embedded Files
 
@@ -1127,82 +1001,14 @@ const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)
 4. **Show status for all expanded sources** - when a Nostr git URL is found, expand it to all known git servers and show status for all of them immediately
 5. **Update files immediately** when first source succeeds (don't wait for all sources to complete)
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (search for: "expand clone URLs immediately", "EOSE delay", "timeout" in file fetching logic)
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (lines 1238-1318 for immediate expansion, 2224 for EOSE delay, 2268 for timeout)
 
 **Key Changes**:
-- Clone URLs are expanded immediately when found (search for "expandCloneUrls" or "immediately expand")
-- Status display shows all sources (including expanded ones) immediately (search for "status display" or "all sources")
-- Files are updated immediately when first source succeeds (search for "firstSuccessFiles" or "update files immediately")
-
-### File Fetching Performance Optimizations (2024)
-
-**Problem**: File fetching was slow and making redundant API calls:
-1. Multiple nostr-git sources (7+ GRASP servers) were all calling the same `git-nostr-bridge` API endpoint
-2. Clone triggers were being called multiple times for the same repo
-3. All sources were tried in parallel without prioritization, causing unnecessary network traffic
-
-**Solution**: Implemented caching and source prioritization:
-
-1. **Bridge API Cache** (`bridgeApiCache`):
-   - In-memory Map that deduplicates calls to `/api/nostr/repo/files` for the same `ownerPubkey`, `repo`, and `branch`
-   - All nostr-git sources share the same bridge API call since they all hit the same endpoint
-   - Reduces API calls from 7+ to 1 per repo/branch combination
-
-2. **Clone Trigger Cache** (`cloneTriggerCache`):
-   - In-memory Map that deduplicates calls to `/api/nostr/repo/clone` for the same `ownerPubkey` and `repo`
-   - Prevents multiple clone triggers for the same repository
-   - Only one clone is triggered per repo, even if multiple sources try
-
-3. **Nostr-Git Source Optimization**:
-   - Only tries the **first** nostr-git source since they all hit the same bridge API
-   - Other nostr-git sources are marked as success if the first one succeeds
-   - Reduces parallel bridge API calls from 7+ to 1
-
-4. **Source Prioritization**:
-   - Known-good sources (GitHub, Codeberg, GitLab) are tried **first** in parallel
-   - Nostr-git sources are only tried if known-good sources fail
-   - Returns immediately on first success
-
-5. **Reduced Polling**:
-   - Clone polling reduced from 10 attempts to 1 attempt
-   - Polling delay reduced from 2000ms to 500ms
-   - Faster failure detection
-
-**Code Location**: `ui/src/lib/utils/git-source-fetcher.ts` (`fetchFromNostrGit` and `fetchFilesFromMultipleSources` functions)
-
-**Key Changes**:
-```typescript
-// Bridge API cache - deduplicates API calls
-const bridgeApiCache = new Map<string, Promise<any>>();
-const cacheKey = `${ownerPubkey}:${repo}:${branch}`;
-if (bridgeApiCache.has(cacheKey)) {
-  return bridgeApiCache.get(cacheKey);
-}
-
-// Clone trigger cache - deduplicates clone triggers
-const cloneTriggerCache = new Map<string, Promise<any>>();
-const cloneKey = `${ownerPubkey}:${repo}`;
-if (cloneTriggerCache.has(cloneKey)) {
-  return cloneTriggerCache.get(cloneKey);
-}
-
-// Only try first nostr-git source
-const nostrGitSources = sources.filter(s => s.type === 'nostr-git');
-if (nostrGitSources.length > 0) {
-  // Only try the first one - they all hit the same bridge API
-  const firstNostrGit = nostrGitSources[0];
-  // ... fetch from first nostr-git source
-  // Mark other nostr-git sources as success if first one succeeds
-}
-```
-
-**Result**: 
-- Network requests reduced by ~85% (from 7+ bridge API calls to 1)
-- No duplicate clone triggers
-- Faster file fetching by prioritizing reliable sources
-- Reduced console spam from duplicate operations
-- EOSE delay reduced to 200ms (search for "EOSE" or "isAfterEose" with delay)
-- Timeout reduced to 3s and also expands clone URLs (search for "timeout" or "setTimeout" in file fetching)
+- Clone URLs are expanded immediately when found (line 1238-1273)
+- Status display shows all sources (including expanded ones) immediately (line 1295-1318)
+- Files are updated immediately when first source succeeds (line 1348-1356)
+- EOSE delay reduced to 200ms (line 2224)
+- Timeout reduced to 3s and also expands clone URLs (line 2326-2357)
 
 ### Status Display for All Sources
 
@@ -1215,14 +1021,14 @@ if (nostrGitSources.length > 0) {
 4. **Always show status** - status display remains visible even after files are found, so users can see which sources succeeded/failed
 5. **Update files immediately** - files are shown as soon as the first source succeeds, not waiting for all sources
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (search for: "status display logic" or "fetchStatus" for status, "expandCloneUrls" or "immediately expand" for expansion)
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (status display logic around line 4809, expansion logic around line 1238)
 
 **Key Changes**:
 - All expanded clone URLs are added to the status display immediately
-- GitHub/Codeberg sources are added to cloneUrls if sourceUrl is found (search for "sourceUrl" or "GitHub.*cloneUrls")
+- GitHub/Codeberg sources are added to cloneUrls if sourceUrl is found (line 1230-1235)
 - Each source shows its own status (pending, fetching, success, failed)
 - Status updates happen in real-time via the `onStatusUpdate` callback
-- Files are updated immediately when first source succeeds (search for "firstSuccessFiles" or "update files immediately")
+- Files are updated immediately when first source succeeds (line 1348-1356, 2205-2213)
 - Status display always shows all sources (removed the logic that hid it after files were found)
 
 ---
@@ -1247,47 +1053,13 @@ if (nostrGitSources.length > 0) {
   - npub decoding for cross-format matching
 
 **Code Locations**:
-- `ui/src/app/explore/page.tsx` (search for "filteredRepos" or "deleted.*filter" in useMemo)
-- `ui/src/app/repositories/page.tsx` (search for "deleted.*filter" or "isDeleted" before ownership checks)
-- `ui/src/app/page.tsx` (search for "deleted.*filter" in recent repos) - already implemented
-- `ui/src/app/[entity]/page.tsx` (search for "deleted.*filter" in public profile) - already implemented
+- `ui/src/app/explore/page.tsx` (line 1367-1407)
+- `ui/src/app/repositories/page.tsx` (line 1215-1255)
+- `ui/src/app/page.tsx` (line 157-206) - already implemented
+- `ui/src/app/[entity]/page.tsx` (line 733-750) - already implemented
 
 **Result**: Deleted repositories are now completely hidden from all repository listing pages, ensuring users only see active repositories.
 
-### Files Disappearing on Viewport Resize (Fixed)
-
-**Problem**: When the browser window was resized to mobile size (or opened on mobile), files would disappear and show "No files found", even if they were successfully fetched on desktop. This was a confusing UX issue that made users think the repo had no files.
-
-**Root Cause**: When the viewport changed, React would re-render and the `useEffect` that loads repo data from localStorage would run again. If the repo lookup temporarily failed (due to timing or a temporary localStorage issue), it would create a minimal `repoData` with empty files, clearing the existing files that were already loaded.
-
-**Solution**: 
-1. **Preserve existing files** when repo is not found in localStorage - if `repoData.files` already exists, preserve it instead of clearing
-2. **Prevent unnecessary re-runs** - if the repo is already processed AND files exist, don't re-run the useEffect even if the repo is found again
-3. **Preserve files in deleted repo case** - even if a repo is marked as deleted, preserve existing files to prevent clearing on resize
-
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (main repo loading `useEffect` - search for "repoProcessedRef" or "Preserve existing files")
-
-**Key Changes**:
-```typescript
-// Guard: If repo already processed AND files exist, don't re-run
-if (repoProcessedRef.current === repoKey) {
-  if (repoData?.files && Array.isArray(repoData.files) && repoData.files.length > 0) {
-    return; // Preserve existing files
-  }
-}
-
-// When repo not found, preserve existing files instead of clearing
-const existingFiles = repoData?.files && Array.isArray(repoData.files) && repoData.files.length > 0 
-  ? repoData.files 
-  : [];
-setRepoData({
-  // ... other fields ...
-  files: existingFiles, // Preserve instead of always clearing
-});
-```
-
-**Result**: Files now persist across viewport changes, ensuring a consistent user experience on both desktop and mobile. Files remain visible even when the window is resized or the page is opened on mobile devices.
-
 ---
 
-*Last updated: Updated file opening flow to match 6-strategy flow from README.md (localStorage → embedded → multi-source → Nostr query → bridge API → external servers)*
+*Last updated: After fixing deleted repo filtering across all pages, Promise.race implementation, HTML preview, and git server URL pattern recognition*

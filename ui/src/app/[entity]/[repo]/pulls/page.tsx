@@ -13,7 +13,6 @@ import { KIND_PULL_REQUEST } from "@/lib/nostr/events";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { getRepoOwnerPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
-import { loadStoredRepos, type StoredRepo } from "@/lib/repos/storage";
 
 import { clsx } from "clsx";
 import {
@@ -131,143 +130,7 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
     }
   }, [params?.entity, params?.repo, issueStatus]);
 
-  // Fetch PRs from GitHub API when tab is clicked (if repo has sourceUrl)
-  useEffect(() => {
-    if (!mounted || !params?.entity || !params?.repo) return;
-    
-    const fetchFromGitHub = async () => {
-      try {
-        const repos = loadStoredRepos();
-        const repo = findRepoByEntityAndName(repos, params.entity, params.repo);
-        if (!repo?.sourceUrl) return; // Only fetch for GitHub/GitLab/Codeberg repos
-        
-        // Parse sourceUrl to get owner/repo
-        let owner: string | null = null;
-        let repoName: string | null = null;
-        try {
-          const url = new URL(repo.sourceUrl);
-          const pathParts = url.pathname.replace(/\.git$/, "").split("/").filter(Boolean);
-          if (pathParts.length >= 2 && pathParts[0] && pathParts[1]) {
-            owner = pathParts[0];
-            repoName = pathParts[1];
-          }
-        } catch {
-          return; // Invalid URL
-        }
-        
-        if (!owner || !repoName) return;
-        
-        // Check if this is GitHub
-        const isGitHub = repo.sourceUrl.includes("github.com");
-        if (!isGitHub) return; // Only fetch from GitHub for now
-        
-        // Fetch PRs from GitHub API
-        const proxyUrl = `/api/github/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoName}/pulls?state=all&per_page=100&sort=updated`)}`;
-        
-        const response = await fetch(proxyUrl);
-        if (response.ok) {
-          const list: any[] = await response.json();
-          const prs = list.map((pr: any) => ({
-            id: `pr-${pr.number}`,
-            entity: params.entity,
-            repo: params.repo,
-            title: pr.title || "",
-            number: String(pr.number || ""),
-            status: pr.merged_at ? "merged" : (pr.state === "closed" ? "closed" : "open"),
-            author: pr.user?.login || "",
-            labels: pr.labels?.map((l: any) => l.name || l) || [],
-            assignees: [],
-            createdAt: pr.created_at ? new Date(pr.created_at).getTime() : Date.now(),
-            body: pr.body || "",
-            html_url: pr.html_url || "",
-            merged_at: pr.merged_at || null,
-            head: pr.head?.ref || null,
-            base: pr.base?.ref || null,
-          }));
-          
-          // Merge with existing Nostr PRs (preserve Nostr-only PRs)
-          const key = getRepoStorageKey("gittr_prs", params.entity, params.repo);
-          const existingPRs = JSON.parse(localStorage.getItem(key) || "[]");
-          
-          // Create a map of GitHub PRs by their number (for matching)
-          const githubPRsMap = new Map(prs.map((pr: any) => [pr.number, pr]));
-          
-          // Find Nostr-only PRs (those not in GitHub by number)
-          const nostrOnlyPRs = existingPRs.filter((existing: any) => {
-            // If it has a number that matches GitHub, it's from GitHub (or was synced)
-            // Nostr-only PRs typically have event.id as their id, not pr-{number}
-            const isNostrOnly = !existing.number || !githubPRsMap.has(existing.number);
-            // Also check if it's a Nostr event ID format (64-char hex)
-            const isNostrEventId = existing.id && /^[0-9a-f]{64}$/i.test(existing.id);
-            return isNostrOnly || isNostrEventId;
-          });
-          
-          // Merge: GitHub PRs (source of truth) + Nostr-only PRs
-          const mergedPRs = [...prs, ...nostrOnlyPRs];
-          
-          // Save merged list
-          localStorage.setItem(key, JSON.stringify(mergedPRs));
-          console.log(`✅ [PRs] Merged ${prs.length} GitHub PRs + ${nostrOnlyPRs.length} Nostr-only PRs = ${mergedPRs.length} total`);
-          
-          // Reload PRs by triggering the existing useEffect
-          const filtered = prs.filter((pr: any) => {
-            const prStatus = pr.status || "open";
-            if (issueStatus === "open") {
-              return prStatus === "open";
-            } else {
-              return prStatus === "closed" || prStatus === "merged";
-            }
-          });
-          
-          const mapped: IPullsData[] = filtered.map((pr: any, idx: number) => ({
-            id: pr.id || String(idx),
-            entity: params.entity,
-            repo: params.repo,
-            title: pr.title || `PR ${idx+1}`,
-            number: pr.number || String(idx + 1),
-            date: pr.createdAt ? formatDateTime24h(pr.createdAt) : "",
-            author: pr.author || "you",
-            tags: [],
-            taskTotal: null,
-            taskCompleted: null,
-            linkedPR: 0,
-            assignees: [],
-            comments: 0,
-            status: pr.status || "open",
-            createdAt: pr.createdAt || Date.now(),
-          }));
-          mapped.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-          
-          const allMapped: IPullsData[] = prs.map((pr: any, idx: number) => ({
-            id: pr.id || String(idx),
-            entity: params.entity,
-            repo: params.repo,
-            title: pr.title || `PR ${idx+1}`,
-            number: pr.number || String(idx + 1),
-            date: pr.createdAt ? formatDateTime24h(pr.createdAt) : "",
-            author: pr.author || "you",
-            tags: [],
-            taskTotal: null,
-            taskCompleted: null,
-            linkedPR: 0,
-            assignees: [],
-            comments: 0,
-            status: pr.status || "open",
-            createdAt: pr.createdAt || Date.now(),
-          }));
-          
-          setAllPRs(allMapped);
-          setIssues(mapped);
-        }
-      } catch (error) {
-        console.error("Failed to fetch PRs from GitHub:", error);
-      }
-    };
-    
-    fetchFromGitHub();
-  }, [mounted, params.entity, params.repo, issueStatus]);
-
-  // Subscribe to PRs from Nostr relays (kind 9804) - handles PRs from any Nostr client (gittr, gitworkshop.dev, etc.)
+  // Subscribe to PRs from Nostr relays for this repo
   useEffect(() => {
     if (!subscribe || !defaultRelays || defaultRelays.length === 0 || !params?.entity || !params?.repo) return;
 
@@ -310,17 +173,8 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
               const key = getRepoStorageKey("gittr_prs", params.entity, params.repo);
               const existingPRs = JSON.parse(localStorage.getItem(key) || "[]");
               
-              // Check if PR already exists (by event.id for Nostr PRs)
+              // Check if PR already exists
               const existingIndex = existingPRs.findIndex((pr: any) => pr.id === event.id);
-              
-              // CRITICAL: Don't overwrite GitHub PRs - find next available number
-              // GitHub PRs have id format "pr-{number}", Nostr PRs use event.id
-              // Find next available number (avoid conflicts with GitHub PRs)
-              const maxNumber = existingPRs.reduce((max: number, pr: any) => {
-                const num = parseInt(pr.number || "0", 10);
-                return num > max ? num : max;
-              }, 0);
-              const nextNumber = maxNumber + 1;
               
               // Extract branch info, linked issue from tags
               const branchTag = event.tags.find((t: string[]) => t[0] === "branch");
@@ -329,7 +183,7 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
               const status = statusTag ? statusTag[1] : (prData.status || "open");
 
               const pr = {
-                id: event.id, // Use Nostr event ID (64-char hex) to identify Nostr-only PRs
+                id: event.id,
                 entity: params.entity,
                 repo: params.repo,
                 title: prData.title || "",
@@ -341,7 +195,7 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
                 headBranch: branchTag ? branchTag[2] : undefined,
                 changedFiles: prData.changedFiles || [],
                 createdAt: event.created_at * 1000,
-                number: String(nextNumber), // Use next available number
+                number: String(existingPRs.length + 1), // Auto-number
                 linkedIssue: linkedIssueTag ? linkedIssueTag[1] : undefined,
               };
 
@@ -567,7 +421,7 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
 
                       <Link
                         className="text-zinc-200 hover:text-purple-500 pl-7 sm:pl-3"
-                        href={`/${item.entity}/${item.repo}/pulls/${item.id?.startsWith("pr-") ? item.number : item.id}`}
+                        href={`/${item.entity}/${item.repo}/pulls/${item.id}`}
                       >
                         {item.title}
                       </Link>
