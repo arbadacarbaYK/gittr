@@ -598,7 +598,14 @@ export default function HomePage() {
       ...recentRepoOwnerPubkeys,
     ];
     // Remove duplicates
-    return Array.from(new Set(normalized));
+    const result = Array.from(new Set(normalized));
+    console.log('🔑 [Home] allPubkeys computed:', {
+      userPubkeys: userPubkeys.length,
+      recentRepoOwnerPubkeys: recentRepoOwnerPubkeys.length,
+      total: result.length,
+      sample: result.slice(0, 3).map(p => p.slice(0, 16) + '...')
+    });
+    return result;
   }, [userPubkeys, recentRepoOwnerPubkeys]);
   
   const userMetadata = useContributorMetadata(allPubkeys);
