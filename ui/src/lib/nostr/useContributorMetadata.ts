@@ -172,9 +172,12 @@ export function useContributorMetadata(pubkeys: string[]) {
   useEffect(() => {
     // CRITICAL: Debounce subscriptions to prevent excessive re-subscriptions
     // Only allow re-subscription if at least 2 seconds have passed since last subscription
+    // BUT: Always allow subscription when pubkeys change from empty to non-empty
     const now = Date.now();
     const timeSinceLastSubscription = now - lastSubscriptionTimeRef.current;
     const DEBOUNCE_MS = 2000; // 2 seconds debounce
+    const wasEmpty = pubkeysKeyRef.current === "";
+    const isNowNonEmpty = pubkeysKey !== "" && pubkeysKey !== pubkeysKeyRef.current;
     
     // Clear any pending subscription
     if (subscriptionTimeoutRef.current) {
@@ -183,7 +186,8 @@ export function useContributorMetadata(pubkeys: string[]) {
     }
     
     // If we just subscribed recently, debounce the new subscription
-    if (timeSinceLastSubscription < DEBOUNCE_MS && lastSubscriptionTimeRef.current > 0) {
+    // UNLESS: pubkeys changed from empty to non-empty (this is important!)
+    if (timeSinceLastSubscription < DEBOUNCE_MS && lastSubscriptionTimeRef.current > 0 && !(wasEmpty && isNowNonEmpty)) {
       // Skip this subscription attempt - will be handled by the timeout
       return;
     }
