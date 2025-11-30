@@ -1099,7 +1099,8 @@ export default function ProfilePage() {
             {/* eslint-disable-next-line @next/next/no-img-element*/}
             <img
               src={actualPicture || "/default-avatar.png"}
-              alt={actualName || "Profile"}
+              alt="Profile"
+              suppressHydrationWarning
               className="my-4 rounded-full w-52 h-52 max-w-52 max-h-52 object-cover"
               style={{ maxWidth: '13rem', maxHeight: '13rem' }}
               onError={(e) => {
