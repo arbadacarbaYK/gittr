@@ -4,7 +4,7 @@
 export const dynamic = 'force-dynamic';
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import useSession from "@/lib/nostr/useSession";
 import { Button } from "@/components/ui/button";
 import { getTopRepos, getTopDevsByPRs, getTopBountyTakers, getTopUsers, getLatestBounties, getOpenBounties, getOwnBountyStats, getRecentActivity, getOpenPRsAndIssues, getRecentBountyActivities, getUserBountyActivityStats, getPlatformBountyStats, RepoStats, UserStats } from "@/lib/stats";
@@ -160,13 +160,21 @@ export default function HomePage() {
 
   // Sync from Nostr relays - ensures homepage shows repos even when not signed in
   // This makes the homepage consistent across browsers (unlike localStorage which is browser-specific)
+  const syncInProgressRef = useRef(false);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!subscribe || !defaultRelays || !Array.isArray(defaultRelays) || defaultRelays.length === 0) {
       return;
     }
     
+    // Prevent multiple simultaneous syncs
+    if (syncInProgressRef.current) {
+      console.log('📡 [Home] Sync already in progress, skipping...');
+      return;
+    }
+    
     try {
+      syncInProgressRef.current = true;
       console.log('📡 [Home] Starting Nostr sync for homepage...');
       setSyncing(true);
       
@@ -346,14 +354,19 @@ export default function HomePage() {
         }
       );
       
-      setTimeout(() => setSyncing(false), 10000);
+      setTimeout(() => {
+        setSyncing(false);
+        syncInProgressRef.current = false;
+      }, 10000);
       
       return () => {
+        syncInProgressRef.current = false;
         if (unsub) unsub();
       };
     } catch (err) {
       console.error("❌ [Home] Failed to start Nostr sync:", err);
       setSyncing(false);
+      syncInProgressRef.current = false;
     }
   }, [subscribe, defaultRelays]);
 
