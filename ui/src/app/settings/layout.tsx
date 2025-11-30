@@ -82,26 +82,12 @@ export default function SettingsLayout({
   
   // Generate initials from actual name, not from pubkey
   // Only use session initials if we don't have a name from metadata
-  // CRITICAL: Use useState to prevent hydration mismatch - server renders "U", client updates after mount
+  // CRITICAL: Compute initials only on client after mount to prevent hydration mismatch
   const [avatarInitials, setAvatarInitials] = useState("U");
-  const lastComputedRef = useRef<string>("");
-  const hydrationCompleteRef = useRef(false);
-  
-  // Mark hydration as complete after a delay to ensure React has finished hydrating
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const timeoutId = setTimeout(() => {
-      hydrationCompleteRef.current = true;
-    }, 100); // Wait 100ms to ensure hydration is complete
-    return () => clearTimeout(timeoutId);
-  }, []);
   
   useEffect(() => {
     // Only compute initials on client to prevent hydration mismatch
-    if (typeof window === 'undefined') return;
-    
-    // CRITICAL: Wait for both mounted state AND hydration completion before updating initials
-    if (!mounted || !hydrationCompleteRef.current) return;
+    if (typeof window === 'undefined' || !mounted) return;
     
     // Compute the initials value
     let computed = "U";
@@ -113,11 +99,7 @@ export default function SettingsLayout({
       computed = initials;
     }
     
-    // Only update if the value actually changed to prevent infinite loops
-    if (computed !== lastComputedRef.current) {
-      lastComputedRef.current = computed;
-      setAvatarInitials(computed);
-    }
+    setAvatarInitials(computed);
   }, [mounted, actualName, actualDisplayName, initials]);
 
   return (
@@ -140,9 +122,8 @@ export default function SettingsLayout({
                 />
               ) : null}
               {/* Only show fallback if no picture or picture failed to load */}
-              {/* CRITICAL: Always render "U" initially to match server, update after mount */}
               <AvatarFallback className="bg-purple-600 text-white" suppressHydrationWarning>
-                {mounted ? avatarInitials : "U"}
+                {avatarInitials}
               </AvatarFallback>
             </Avatar>
             <header suppressHydrationWarning>
