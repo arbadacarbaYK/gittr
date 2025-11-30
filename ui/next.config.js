@@ -56,7 +56,7 @@ const nextConfig = {
               "img-src 'self' data: https: blob:",
               "font-src 'self' data:",
               "connect-src 'self' https://*.github.com wss://* https://*",
-              "frame-src 'self'",
+              "frame-src 'self' https://www.youtube.com https://youtube.com https://youtu.be",
               "object-src 'none'",
               "base-uri 'self'",
               "form-action 'self'",
