@@ -157,6 +157,7 @@ export function useContributorMetadata(pubkeys: string[]) {
   const pubkeysKeyRef = useRef<string>("");
   const lastSubscriptionTimeRef = useRef<number>(0);
   const subscriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasFetchedOnMountRef = useRef<boolean>(false);
   const pubkeysKey = useMemo(() => {
     if (pubkeys.length === 0) {
       const emptyKey = "";
