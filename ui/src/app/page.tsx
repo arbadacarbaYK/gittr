@@ -108,6 +108,12 @@ export default function HomePage() {
   const { isLoggedIn, name } = useSession();
   const { pubkey, defaultRelays, subscribe, addRelay } = useNostrContext();
   const [repos, setRepos] = useState<Repo[]>([]);
+  const [mounted, setMounted] = useState(false);
+  
+  // Prevent hydration mismatch by only showing personalized message after mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [topRepos, setTopRepos] = useState<RepoStats[]>([]);
   const [topDevs, setTopDevs] = useState<UserStats[]>([]);
   const [topBountyTakers, setTopBountyTakers] = useState<UserStats[]>([]);
@@ -762,8 +768,8 @@ export default function HomePage() {
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
       <header className="mb-6">
         <h1 className="text-2xl font-bold">Home</h1>
-        <p className="text-gray-400 mt-1">
-          {isLoggedIn ? `Welcome, ${name || "nostr user"}` : "Welcome. Please log in with NIP-07 to create and fork repos."}
+        <p className="text-gray-400 mt-1" suppressHydrationWarning>
+          {mounted && isLoggedIn ? `Welcome, ${name || "nostr user"}` : "Welcome. Please log in to create and fork repos."}
         </p>
       </header>
 
