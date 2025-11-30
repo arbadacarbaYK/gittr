@@ -131,64 +131,7 @@ function ExplorePageContent() {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [isLoadingRepos, setIsLoadingRepos] = useState(true);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
-  const [ownerMetadata, setOwnerMetadata] = useState<Record<string, Metadata>>({});
   const [syncing, setSyncing] = useState(false);
-  
-  // Batch metadata updates to prevent render loops
-  const metadataUpdateQueueRef = useRef<Map<string, Metadata & { created_at: number }>>(new Map());
-  const metadataUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Ref to access latest ownerMetadata without causing re-renders in map function
-  const ownerMetadataRef = useRef<Record<string, Metadata>>({});
-  
-  // Keep ref in sync with ownerMetadata
-  useEffect(() => {
-    ownerMetadataRef.current = ownerMetadata;
-  }, [ownerMetadata]);
-  
-  // Load cached metadata from localStorage on mount
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const cached = localStorage.getItem("gittr_metadata_cache");
-      if (cached) {
-        const parsed = JSON.parse(cached) as Record<string, Metadata & { created_at?: number }>;
-        console.log("📦 [Explore] Loaded cached metadata", {
-          count: Object.keys(parsed).length,
-          sample: Object.keys(parsed).slice(0, 3).map(k => k.slice(0, 8))
-        });
-        setOwnerMetadata(parsed);
-      }
-    } catch (err) {
-      console.error("❌ [Explore] Failed to load cached metadata", err);
-    }
-  }, []);
-  
-  // Save metadata to localStorage whenever it updates (debounced to avoid excessive writes)
-  // Use ref to track last saved state to prevent unnecessary saves
-  const lastSavedMetadataRef = useRef<string>("");
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (Object.keys(ownerMetadata).length > 0) {
-      const currentMetadataStr = JSON.stringify(ownerMetadata);
-      // Only save if metadata actually changed
-      if (currentMetadataStr !== lastSavedMetadataRef.current) {
-        const timeout = setTimeout(() => {
-          try {
-            localStorage.setItem("gittr_metadata_cache", currentMetadataStr);
-            lastSavedMetadataRef.current = currentMetadataStr;
-            console.log("💾 [Explore] Saved metadata to cache", {
-              count: Object.keys(ownerMetadata).length
-            });
-          } catch (err) {
-            console.error("❌ [Explore] Failed to save metadata to cache", err);
-          }
-        }, 1000); // Increased debounce to 1s to reduce writes
-        
-        return () => clearTimeout(timeout);
-      }
-    }
-  }, [ownerMetadata]);
   const searchParams = useSearchParams();
   const q = (searchParams?.get("q") || "").toLowerCase();
   const userFilter = searchParams?.get("user") || null;
