@@ -155,17 +155,12 @@ export function useContributorMetadata(pubkeys: string[]) {
   const pubkeysKey = useMemo(() => {
     if (pubkeys.length === 0) {
       const emptyKey = "";
-      if (pubkeysKeyRef.current !== emptyKey) {
-        pubkeysKeyRef.current = emptyKey;
-      }
+      // Don't update ref here - let useEffect detect the change
       return emptyKey;
     }
     const sorted = pubkeys.slice().sort(); // Create copy to avoid mutating original
     const newKey = sorted.join(",");
-    // Only update ref if content actually changed
-    if (pubkeysKeyRef.current !== newKey) {
-      pubkeysKeyRef.current = newKey;
-    }
+    // Don't update ref here - let useEffect detect the change
     return newKey;
   }, [pubkeys.length, pubkeys.join(",")]); // Still depend on length and join for React's dependency tracking
 
