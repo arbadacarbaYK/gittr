@@ -55,6 +55,17 @@ type Repo = {
 };
 
 export default function RepositoriesPage() {
+  // CRITICAL: Prevent SSR - return empty content during server-side rendering
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  if (!mounted) {
+    return null; // Return nothing during SSR to prevent localStorage access
+  }
+  
   const [repos, setRepos] = useState<Repo[]>([]);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showClearForeignConfirm, setShowClearForeignConfirm] = useState(false);
@@ -124,6 +135,7 @@ export default function RepositoriesPage() {
   // Resolve missing ownerPubkeys from Nostr (runs in useEffect, not useMemo)
   // This ensures all repos have ownerPubkey set for proper metadata fetching
   useEffect(() => {
+    if (typeof window === 'undefined') return; // Don't run during SSR
     if (!subscribe || !defaultRelays || defaultRelays.length === 0) return;
     
     const reposToResolve = repos.filter((repo: any) => {
@@ -140,6 +152,7 @@ export default function RepositoriesPage() {
       [{ kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34] }], // Support both gitnostr and NIP-34
       defaultRelays,
       (event, isAfterEose, relayURL) => {
+        if (typeof window === 'undefined') return; // Don't access localStorage during SSR
         if ((event.kind === KIND_REPOSITORY || event.kind === KIND_REPOSITORY_NIP34) && !isAfterEose && /^[0-9a-f]{64}$/i.test(event.pubkey)) {
           try {
             const repoData = JSON.parse(event.content);
@@ -245,8 +258,8 @@ export default function RepositoriesPage() {
           
           if (!imageExts.includes(extension)) return false;
           
-          // Match logo files
-          if (baseName.includes("logo")) return true;
+          // Match logo files, but exclude third-party logos (alby, etc.)
+          if (baseName.includes("logo") && !baseName.includes("logo-alby") && !baseName.includes("alby-logo")) return true;
           
           // Match repo-name-based files (e.g., "tides.png" for tides repo)
           if (repoName && baseName === repoName) return true;
@@ -297,27 +310,86 @@ export default function RepositoriesPage() {
         
         const logoPath = prioritized[0];
         
-        // For GitHub repos, use GitHub raw URL
-        if (repo.sourceUrl) {
+        // Helper function to extract owner/repo from various URL formats
+        const extractOwnerRepo = (urlString: string): { owner: string; repo: string; hostname: string } | null => {
           try {
-            const url = new URL(repo.sourceUrl);
-            if (url.hostname === "github.com") {
-              const parts = url.pathname.split("/").filter(Boolean);
-              if (parts.length >= 2 && parts[0] && parts[1]) {
-                const owner = parts[0];
-                const repoName = parts[1].replace(/\.git$/, "");
-                const branch = repo.defaultBranch || "main";
-                return `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${logoPath}`;
+            // Handle SSH format: git@github.com:owner/repo.git
+            if (urlString.includes('@') && urlString.includes(':')) {
+              const match = urlString.match(/(?:git@|https?:\/\/)([^\/:]+)[\/:]([^\/]+)\/([^\/]+?)(?:\.git)?$/);
+              if (match && match[1] && match[2] && match[3]) {
+                const hostname = match[1]!;
+                const owner = match[2]!;
+                const repo = match[3]!.replace(/\.git$/, '');
+                return { owner, repo, hostname };
               }
             }
-          } catch {}
+            
+            // Handle HTTPS/HTTP URLs
+            const url = new URL(urlString);
+            const parts = url.pathname.split("/").filter(Boolean);
+            if (parts.length >= 2 && parts[0] && parts[1]) {
+              return {
+                owner: parts[0],
+                repo: parts[1].replace(/\.git$/, ''),
+                hostname: url.hostname
+              };
+            }
+          } catch (e) {
+            // Invalid URL format
+          }
+          return null;
+        };
+        
+        // Try sourceUrl first
+        let gitUrl: string | undefined = repo.sourceUrl;
+        let ownerRepo: { owner: string; repo: string; hostname: string } | null = null;
+        
+        if (gitUrl) {
+          ownerRepo = extractOwnerRepo(gitUrl);
         }
         
-        // For native Nostr repos (without sourceUrl), use the API endpoint
-        // CRITICAL: Construct API URL for logo files from native Nostr repos
-        if (!repo.sourceUrl) {
+        // If sourceUrl didn't work, try clone array
+        if (!ownerRepo && (repo as any).clone && Array.isArray((repo as any).clone) && (repo as any).clone.length > 0) {
+          // Find first GitHub/GitLab/Codeberg URL in clone array
+          const gitCloneUrl = (repo as any).clone.find((url: string) => 
+            url && (url.includes('github.com') || url.includes('gitlab.com') || url.includes('codeberg.org'))
+          );
+          if (gitCloneUrl) {
+            ownerRepo = extractOwnerRepo(gitCloneUrl);
+          }
+        }
+        
+        // If we found a valid git URL, construct raw URL
+        if (ownerRepo) {
+          const { owner, repo: repoName, hostname } = ownerRepo;
+          const branch = repo.defaultBranch || "main";
+          
+          if (hostname === "github.com" || hostname.includes("github.com")) {
+            return `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${logoPath}`;
+          } else if (hostname === "gitlab.com" || hostname.includes("gitlab.com")) {
+            return `https://gitlab.com/${owner}/${repoName}/-/raw/${encodeURIComponent(branch)}/${logoPath}`;
+          } else if (hostname === "codeberg.org" || hostname.includes("codeberg.org")) {
+            return `https://codeberg.org/${owner}/${repoName}/raw/branch/${encodeURIComponent(branch)}/${logoPath}`;
+          }
+        }
+        
+        // For native Nostr repos (without sourceUrl or clone URLs), use the API endpoint
+        // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
+        // Priority: repositoryName > repo > slug > name
+        if (!ownerRepo) {
           const ownerPubkey = repo.entity ? getRepoOwnerPubkey(repo as any, repo.entity) : null;
-          const repoName = repo.repo || repo.slug || repo.name;
+          const repoDataAny = repo as any;
+          let repoName = repoDataAny?.repositoryName || repo.repo || repo.slug || repo.name;
+          
+          // Extract repo name (handle paths like "gitnostr.com/gitworkshop")
+          if (repoName && typeof repoName === 'string' && repoName.includes('/')) {
+            const parts = repoName.split('/');
+            repoName = parts[parts.length - 1] || repoName;
+          }
+          if (repoName) {
+            repoName = String(repoName).replace(/\.git$/, '');
+          }
+          
           if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) && repoName && logoPath) {
             const branch = repo.defaultBranch || "main";
             // Construct API URL - this will work for native Nostr repos
@@ -345,6 +417,10 @@ export default function RepositoriesPage() {
   
   // Load from localStorage first and listen for updates
   const loadRepos = useCallback(() => {
+    if (typeof window === 'undefined') {
+      setRepos([]);
+      return; // Don't access localStorage during SSR
+    }
     try {
       const list = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as Repo[];
       
@@ -491,6 +567,7 @@ export default function RepositoriesPage() {
   }, [pubkey]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return; // Don't run during SSR
     loadRepos();
     
     // Listen for storage changes (when repos are created/imported in other tabs)
@@ -669,6 +746,7 @@ export default function RepositoriesPage() {
               eventId: event.id.slice(0, 8)
             });
             
+            if (typeof window === 'undefined') return; // Don't access localStorage during SSR
             // Load existing repos
             const existingRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as Repo[];
             
@@ -942,6 +1020,7 @@ export default function RepositoriesPage() {
         // We'll track EOSE separately and only mark as complete when all relays are done
         if (isAfterEose) {
           // DEBUG: Log summary after EOSE from this relay
+          if (typeof window === 'undefined') return; // Don't access localStorage during SSR
           const allRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
           const foreignRepos = pubkey ? allRepos.filter((r: any) => r.ownerPubkey && r.ownerPubkey !== pubkey) : allRepos;
           const foreignReposWithFiles = foreignRepos.filter((r: any) => r.files && r.files.length > 0);
@@ -964,6 +1043,7 @@ export default function RepositoriesPage() {
         // Note: This is called per relay, so we need to track when ALL relays are done
         // For now, we'll use a delay to ensure all relays have sent EOSE
         setTimeout(() => {
+          if (typeof window === 'undefined') return; // Don't access localStorage during SSR
           setSyncing(false);
           const allRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
           const foreignRepos = pubkey ? allRepos.filter((r: any) => r.ownerPubkey && r.ownerPubkey !== pubkey) : allRepos;
@@ -996,6 +1076,7 @@ export default function RepositoriesPage() {
   // CRITICAL: Sync repos from activities if they're missing from localStorage
   // This handles the case where repos were created locally but not synced to localStorage
   useEffect(() => {
+    if (typeof window === 'undefined') return; // Don't access localStorage during SSR
     if (!pubkey) return; // Not logged in = can't sync
     
     try {
@@ -1395,6 +1476,7 @@ export default function RepositoriesPage() {
                       }
 
                       try {
+                        if (typeof window === 'undefined') return; // Don't access localStorage during SSR
                         // Load all repos
                         const allRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
                         
