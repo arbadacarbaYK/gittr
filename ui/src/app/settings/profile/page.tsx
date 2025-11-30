@@ -1121,16 +1121,16 @@ export default function ProfilePage() {
               <div>
                 <Label className="text-xs text-gray-400 mb-1 block">Public Key (hex)</Label>
                 <div className="bg-gray-900 p-2 rounded border border-gray-700">
-                  <code className="text-xs text-gray-300 font-mono break-all">
-                    {pubkey || "Not available"}
+                  <code className="text-xs text-gray-300 font-mono break-all" suppressHydrationWarning>
+                    {mounted ? (pubkey || "Not available") : "Not available"}
                   </code>
                 </div>
               </div>
               <div>
                 <Label className="text-xs text-gray-400 mb-1 block">NPUB (bech32)</Label>
                 <div className="bg-gray-900 p-2 rounded border border-gray-700">
-                  <code className="text-xs text-gray-300 font-mono break-all">
-                    {pubkey ? (() => {
+                  <code className="text-xs text-gray-300 font-mono break-all" suppressHydrationWarning>
+                    {mounted && pubkey ? (() => {
                       try {
                         return nip19.npubEncode(pubkey);
                       } catch {
