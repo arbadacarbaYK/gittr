@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
-import type { Metadata } from "@/lib/nostr/useContributorMetadata";
+import { useContributorMetadata, type Metadata } from "@/lib/nostr/useContributorMetadata";
 import { getRepoOwnerPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { nip19 } from "nostr-tools";
