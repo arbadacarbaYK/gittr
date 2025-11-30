@@ -283,12 +283,43 @@ The `gitnostr` Go components (`ui/gitnostr/`) are licensed under the **MIT Licen
 - Implements [GRASP Protocol](https://ngit.dev/grasp/) for distributed Git hosting (newer than original NostrGit)
 - Inspired by GitHub's developer experience
 
-**Note:** This project (`gittr.space`) is a fork of NostrGit Page template that has been significantly developed. It is a separate project and platform. Key additions include:
-- ✅ GRASP protocol support (clone/relays tags, client-side proactive sync)
-- ✅ Bitcoin/Lightning payment integration (zaps, bounties)
-- ✅ Enhanced UI features (themes, activity tracking, explore page)
-- ✅ Notification system (Nostr DM, Telegram DM, channel announcements)
-- ✅ All original Go components (`git-nostr-bridge`, `git-nostr-cli`, `git-nostr-ssh`) are included and functional
+**Note:** This project (`gittr.space`) is a fork of NostrGit Page template that has been significantly developed. It is a separate project and platform.
+
+### Platform Enhancements Overview
+
+![Comprehensive gittr.space platform enhancements](./docs/gittr-platform-enhancements.png)
+
+This diagram shows **all enhancements** added to the gittr.space platform across the entire stack. See the [gitnostr bridge fork README](ui/gitnostr/README.md#gittrspace-enhancements) for detailed bridge-specific enhancements.
+
+### Key Additions
+
+- ✅ **GRASP protocol support** (clone/relays tags, client-side proactive sync, NIP-96 Blossom)
+- ✅ **Bitcoin/Lightning payment integration** (zaps, bounties, LNbits, LNURL, NWC)
+- ✅ **Enhanced UI features** (themes, activity tracking, explore page, fuzzy finder, code search)
+- ✅ **Collaboration tools** (issues with bounties, pull requests, projects/Kanban, discussions)
+- ✅ **Notification system** (Nostr DM, Telegram DM, channel announcements)
+- ✅ **Multi-source file fetching** (parallel fetching, prioritization, caching, README image handling)
+- ✅ **NIP extensions** (NIP-25 stars, NIP-51 following, NIP-46 remote signer, NIP-57 zaps, NIP-96 Blossom, NIP-C0 code snippets)
+- ✅ **All original Go components** (`git-nostr-bridge`, `git-nostr-cli`, `git-nostr-ssh`) are included and functional with gittr enhancements
+
+### Supported NIPs & Event Kinds
+
+See [`docs/NIPS_AND_EVENT_KINDS.md`](docs/NIPS_AND_EVENT_KINDS.md) for complete documentation.
+
+**Standard NIPs:**
+- NIP-01 (Basic Protocol), NIP-11 (Relay Info), NIP-19 (bech32), NIP-25 (Reactions/Stars)
+- NIP-33/34 (Replaceable Events - Repository announcements)
+- NIP-46 (Remote Signer/NIP-07), NIP-57 (Lightning Zaps), NIP-96 (Blossom file storage)
+- NIP-C0 (Code Snippets)
+
+**Event Kinds:**
+- **Kind 50** – Repository permissions (original gitnostr protocol)
+- **Kind 51** – Repository metadata (legacy, read-only support)
+- **Kind 52** – SSH keys
+- **Kind 30617 (NIP-34)** – Replaceable repository announcements (primary source)
+- **Kind 9803 / 9804** – gittr extensions for issues and pull requests
+- **Kind 9806 / 9807** – Bounties and comments
+- **Kind 1337 (NIP-C0)** – Code snippets
 
 ## 📞 Support
 
