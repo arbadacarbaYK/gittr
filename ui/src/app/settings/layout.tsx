@@ -68,6 +68,13 @@ export default function SettingsLayout({
   const metadata = pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? (metadataMap[pubkey] || {}) : {};
   const pathname = usePathname();
   
+  // CRITICAL: Prevent hydration mismatch by only rendering client-side dependent content after mount
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
   // Use actual username and picture from metadata if session doesn't have it
   const actualPicture = picture || metadata.picture || "";
   const actualName = name && name !== "Anonymous Nostrich" ? name : (metadata.name || metadata.display_name || "");
@@ -124,10 +131,10 @@ export default function SettingsLayout({
                 {avatarInitials}
               </AvatarFallback>
             </Avatar>
-            <header>
-              {actualDisplayName && <h2>{actualDisplayName}</h2>}
-              {actualName && <h3 className="text-zinc-500 text-xs">@{actualName}</h3>}
-              {metadata.nip05 && <h3 className="text-zinc-500 text-xs">{metadata.nip05}</h3>}
+            <header suppressHydrationWarning>
+              {mounted && actualDisplayName && <h2>{actualDisplayName}</h2>}
+              {mounted && actualName && <h3 className="text-zinc-500 text-xs">@{actualName}</h3>}
+              {mounted && metadata.nip05 && <h3 className="text-zinc-500 text-xs">{metadata.nip05}</h3>}
             </header>
           </div>
         </div>
