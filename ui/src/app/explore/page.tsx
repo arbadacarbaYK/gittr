@@ -152,7 +152,9 @@ function ExplorePageContent() {
   // CRITICAL: Only fetch metadata for repos that are actually rendered (first batch)
   // Fetch more metadata progressively as repos appear, not all upfront
   // This matches homepage pattern: only fetch for `recent` repos (12 repos)
-  const [metadataBatchSize] = useState(30); // Fetch metadata for first 30 rendered repos
+  // INCREASED: Fetch metadata for first 100 repos to ensure more icons show up when logged out
+  // The cache will be checked first, so this only fetches missing metadata from Nostr
+  const [metadataBatchSize] = useState(100); // Fetch metadata for first 100 rendered repos
   
   const ownerPubkeys = useMemo(() => {
     console.log(`🔍 [Explore] Computing ownerPubkeys: repos.length=${repos.length}`);
