@@ -85,13 +85,23 @@ export default function SettingsLayout({
   // CRITICAL: Use useState to prevent hydration mismatch - server renders "U", client updates after mount
   const [avatarInitials, setAvatarInitials] = useState("U");
   const lastComputedRef = useRef<string>("");
+  const hydrationCompleteRef = useRef(false);
+  
+  // Mark hydration as complete after a delay to ensure React has finished hydrating
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const timeoutId = setTimeout(() => {
+      hydrationCompleteRef.current = true;
+    }, 100); // Wait 100ms to ensure hydration is complete
+    return () => clearTimeout(timeoutId);
+  }, []);
   
   useEffect(() => {
     // Only compute initials on client to prevent hydration mismatch
     if (typeof window === 'undefined') return;
     
-    // CRITICAL: Wait for mounted state before updating initials to prevent hydration mismatch
-    if (!mounted) return;
+    // CRITICAL: Wait for both mounted state AND hydration completion before updating initials
+    if (!mounted || !hydrationCompleteRef.current) return;
     
     // Compute the initials value
     let computed = "U";
