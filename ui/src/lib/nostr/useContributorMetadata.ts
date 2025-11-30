@@ -229,8 +229,15 @@ export function useContributorMetadata(pubkeys: string[]) {
       // console.log(`🔍 [useContributorMetadata] Hook called with ${pubkeys.length} pubkeys`);
     }
     
-    if (!subscribe || pubkeys.length === 0) {
-      console.log(`⏭️ [useContributorMetadata] Skipping subscription: subscribe=${!!subscribe}, pubkeys.length=${pubkeys.length}`);
+    // CRITICAL: Don't skip if subscribe is available - we need to fetch metadata even if pubkeys are empty initially
+    // The pubkeys will be populated when repos load, and we need to subscribe then
+    if (!subscribe) {
+      console.log(`⏭️ [useContributorMetadata] Skipping subscription: subscribe=false`);
+      return;
+    }
+    
+    // If no pubkeys, still return early but don't log (this is normal during initial load)
+    if (pubkeys.length === 0) {
       return;
     }
     if (invalidPubkeys.length > 0) {
