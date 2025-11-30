@@ -6732,9 +6732,93 @@ export default function RepoCodePage({
                   remarkPlugins={[remarkGfm]}
                   rehypePlugins={[rehypeRaw]}
                   components={{
-                    img: ({ node, ...props }) => (
-                      <img {...props} className="max-w-full h-auto rounded" alt={props.alt || ""} />
-                    ),
+                    img: ({ node, ...props }) => {
+                      // Transform relative image paths to absolute URLs
+                      let imageSrc = props.src || "";
+                      
+                      // If src is already an absolute URL (http:// or https://) or data URL, use it as-is
+                      if (imageSrc.startsWith("http://") || imageSrc.startsWith("https://") || imageSrc.startsWith("data:")) {
+                        return <img {...props} className="max-w-full h-auto rounded" alt={props.alt || ""} />;
+                      }
+                      
+                      // For relative paths, resolve them using the repository's sourceUrl or API
+                      if (imageSrc && repoData) {
+                        try {
+                          // Get the branch to use
+                          const branch = selectedBranch || repoData?.defaultBranch || "main";
+                          
+                          // Resolve relative path: remove leading slash or ./ if present
+                          // Images in markdown are typically relative to the repository root
+                          let imagePath = imageSrc;
+                          if (imagePath.startsWith("./")) {
+                            imagePath = imagePath.slice(2);
+                          } else if (imagePath.startsWith("/")) {
+                            imagePath = imagePath.slice(1);
+                          }
+                          
+                          // Construct raw URL based on git provider
+                          const sourceUrl = repoData.sourceUrl || '';
+                          const githubMatch = sourceUrl.match(/github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/);
+                          const gitlabMatch = sourceUrl.match(/gitlab\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/);
+                          const codebergMatch = sourceUrl.match(/codeberg\.org\/([^\/]+)\/([^\/]+?)(?:\.git)?$/);
+                          
+                          if (githubMatch) {
+                            const [, owner, repo] = githubMatch;
+                            imageSrc = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/${imagePath}`;
+                          } else if (gitlabMatch) {
+                            // GitLab raw URL format: https://gitlab.com/owner/repo/-/raw/branch/path
+                            const [, owner, repo] = gitlabMatch;
+                            imageSrc = `https://gitlab.com/${owner}/${repo}/-/raw/${encodeURIComponent(branch)}/${imagePath}`;
+                          } else if (codebergMatch) {
+                            // Codeberg raw URL format: https://codeberg.org/owner/repo/raw/branch/path
+                            const [, owner, repo] = codebergMatch;
+                            imageSrc = `https://codeberg.org/${owner}/${repo}/raw/branch/${encodeURIComponent(branch)}/${imagePath}`;
+                          } else if (!repoData.sourceUrl) {
+                            // For gittr/nostr repos without external sourceUrl, try to use the bridge API
+                            // Note: The API returns JSON with base64, so we'd need special handling
+                            // For now, log a warning - this case needs a custom image component
+                            console.warn("⚠️ [README] Image in nostr repo without sourceUrl - needs special handling:", imageSrc);
+                          } else {
+                            // For other git providers, try to construct a raw URL pattern
+                            // This is a best-effort approach for unknown providers
+                            try {
+                              const url = new URL(repoData.sourceUrl.replace(/\.git$/, ""));
+                              const pathParts = url.pathname.split("/").filter(Boolean);
+                              if (pathParts.length >= 2) {
+                                const owner = pathParts[0];
+                                const repo = pathParts[1];
+                                // Try common raw URL patterns
+                                imageSrc = `${url.protocol}//${url.host}/${owner}/${repo}/raw/${encodeURIComponent(branch)}/${imagePath}`;
+                              } else {
+                                console.warn("⚠️ [README] Could not parse sourceUrl for image:", repoData.sourceUrl);
+                              }
+                            } catch (e) {
+                              console.warn("⚠️ [README] Failed to construct raw URL for image:", imageSrc, e);
+                            }
+                          }
+                        } catch (e) {
+                          console.warn("⚠️ [README] Failed to resolve image URL:", imageSrc, e);
+                          // Fallback to original src
+                        }
+                      }
+                      
+                      return (
+                        <div className="my-4 overflow-x-auto">
+                          <img 
+                            {...props} 
+                            src={imageSrc} 
+                            className="max-w-full h-auto rounded" 
+                            alt={props.alt || ""} 
+                            style={{ maxWidth: '100%', width: 'auto', height: 'auto' }}
+                            onError={(e) => {
+                              console.warn("⚠️ [README] Image failed to load:", imageSrc);
+                              // Optionally hide broken images or show a placeholder
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }} 
+                          />
+                        </div>
+                      );
+                    },
                     a: ({ node, href, children, ...props }: any) => {
                       // Convert YouTube URLs to embeds
                       if (href && typeof href === 'string') {
@@ -7085,6 +7169,88 @@ export default function RepoCodePage({
                         remarkPlugins={[remarkGfm]}
                         rehypePlugins={[rehypeRaw]}
                         components={{
+                          img: ({ node, ...props }) => {
+                            // Transform relative image paths to absolute URLs
+                            let imageSrc = props.src || "";
+                            
+                            // If src is already an absolute URL (http:// or https://) or data URL, use it as-is
+                            if (imageSrc.startsWith("http://") || imageSrc.startsWith("https://") || imageSrc.startsWith("data:")) {
+                              return <img {...props} className="max-w-full h-auto rounded" alt={props.alt || ""} />;
+                            }
+                            
+                            // For relative paths, resolve them using the repository's sourceUrl or API
+                            if (imageSrc && repoData) {
+                              try {
+                                // Get the branch to use
+                                const branch = selectedBranch || repoData?.defaultBranch || "main";
+                                
+                          // Resolve relative path: remove leading slash or ./ if present
+                          // Images in markdown are typically relative to the repository root
+                          let imagePath = imageSrc;
+                          if (imagePath.startsWith("./")) {
+                            imagePath = imagePath.slice(2);
+                          } else if (imagePath.startsWith("/")) {
+                            imagePath = imagePath.slice(1);
+                          }
+                          
+                          // Construct raw URL based on git provider
+                          const sourceUrl = repoData.sourceUrl || '';
+                          const githubMatch = sourceUrl.match(/github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/);
+                          const gitlabMatch = sourceUrl.match(/gitlab\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/);
+                          const codebergMatch = sourceUrl.match(/codeberg\.org\/([^\/]+)\/([^\/]+?)(?:\.git)?$/);
+                          
+                          if (githubMatch) {
+                            const [, owner, repo] = githubMatch;
+                            imageSrc = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/${imagePath}`;
+                          } else if (gitlabMatch) {
+                            // GitLab raw URL format: https://gitlab.com/owner/repo/-/raw/branch/path
+                            const [, owner, repo] = gitlabMatch;
+                            imageSrc = `https://gitlab.com/${owner}/${repo}/-/raw/${encodeURIComponent(branch)}/${imagePath}`;
+                          } else if (codebergMatch) {
+                            // Codeberg raw URL format: https://codeberg.org/owner/repo/raw/branch/path
+                            const [, owner, repo] = codebergMatch;
+                            imageSrc = `https://codeberg.org/${owner}/${repo}/raw/branch/${encodeURIComponent(branch)}/${imagePath}`;
+                          } else {
+                                  // For other git providers, try to construct a raw URL pattern
+                                  // This is a best-effort approach for unknown providers
+                                  try {
+                                    const url = new URL((repoData.sourceUrl || '').replace(/\.git$/, ""));
+                                    const pathParts = url.pathname.split("/").filter(Boolean);
+                                    if (pathParts.length >= 2) {
+                                      const owner = pathParts[0];
+                                      const repo = pathParts[1];
+                                      // Try common raw URL patterns
+                                      imageSrc = `${url.protocol}//${url.host}/${owner}/${repo}/raw/${encodeURIComponent(branch)}/${imagePath}`;
+                                    } else {
+                                      console.warn("⚠️ [README] Could not parse sourceUrl for image:", repoData.sourceUrl);
+                                    }
+                                  } catch (e) {
+                                    console.warn("⚠️ [README] Failed to construct raw URL for image:", imageSrc, e);
+                                  }
+                                }
+                              } catch (e) {
+                                console.warn("⚠️ [README] Failed to resolve image URL:", imageSrc, e);
+                                // Fallback to original src
+                              }
+                            }
+                            
+                            return (
+                              <div className="my-4 overflow-x-auto">
+                                <img 
+                                  {...props} 
+                                  src={imageSrc} 
+                                  className="max-w-full h-auto rounded" 
+                                  alt={props.alt || ""} 
+                                  style={{ maxWidth: '100%', width: 'auto', height: 'auto' }}
+                                  onError={(e) => {
+                                    console.warn("⚠️ [README] Image failed to load:", imageSrc);
+                                    // Optionally hide broken images or show a placeholder
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                  }} 
+                                />
+                              </div>
+                            );
+                          },
                           a: ({ node, href, children, ...props }: any) => {
                             // Convert YouTube URLs to embeds
                             if (href && typeof href === 'string') {
