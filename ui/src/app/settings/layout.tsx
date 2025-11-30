@@ -113,7 +113,7 @@ export default function SettingsLayout({
         <div className="flex justify-between">
           <div className="space-x-4 items-center flex">
             <Avatar className="w-12 h-12 overflow-hidden shrink-0">
-              {actualPicture && actualPicture.startsWith("http") ? (
+              {mounted && actualPicture && actualPicture.startsWith("http") ? (
                 <AvatarImage 
                   src={actualPicture} 
                   className="w-12 h-12 object-cover max-w-12 max-h-12" 
@@ -127,8 +127,8 @@ export default function SettingsLayout({
                 />
               ) : null}
               {/* Only show fallback if no picture or picture failed to load */}
-              <AvatarFallback className="bg-purple-600 text-white">
-                {avatarInitials}
+              <AvatarFallback className="bg-purple-600 text-white" suppressHydrationWarning>
+                {mounted ? avatarInitials : "U"}
               </AvatarFallback>
             </Avatar>
             <header suppressHydrationWarning>
