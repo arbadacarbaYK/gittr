@@ -141,10 +141,15 @@ export function useContributorMetadata(pubkeys: string[]) {
   });
   
   // Load from localStorage after mount to prevent hydration mismatches
+  // CRITICAL: Invalidate module cache on mount to force fresh check from localStorage
+  // This ensures we get the latest cache data, not stale module-level cache
   useEffect(() => {
+    // Invalidate module cache to force fresh load from localStorage
+    invalidateModuleCache();
     const cached = loadMetadataCache();
     if (Object.keys(cached).length > 0) {
       setMetadataMap(cached);
+      console.log(`📦 [useContributorMetadata] Loaded ${Object.keys(cached).length} metadata entries from cache on mount`);
     }
   }, []);
   // Memoize pubkeysKey to prevent unnecessary re-renders - use stable string comparison
@@ -213,7 +218,23 @@ export function useContributorMetadata(pubkeys: string[]) {
     
     // CRITICAL: Check cache directly (not just state) to ensure we don't miss cached metadata
     // The state might not be updated yet, but the cache might have the data
+    // CRITICAL: Invalidate module cache first to ensure we get fresh data from localStorage
+    // This prevents stale module cache from preventing fresh fetches
+    invalidateModuleCache();
     const currentCache = loadMetadataCache();
+    
+    // Merge cache into state if cache has entries not in state
+    // This ensures state is up-to-date with cache
+    if (Object.keys(currentCache).length > 0) {
+      setMetadataMap(prev => {
+        const merged = { ...prev, ...currentCache };
+        // Only update if there are new entries
+        if (Object.keys(merged).length > Object.keys(prev).length) {
+          return merged;
+        }
+        return prev;
+      });
+    }
     
     // Check if any pubkeys are missing from cache (check both state and cache)
     const missingFromCache = validPubkeys.filter(p => {
