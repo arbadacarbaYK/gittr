@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 
 import { MobileNav } from "@/components/mobile-nav";
 import { cn } from "@/lib/utils";
@@ -29,9 +30,20 @@ interface MainNavProps {
 
 export function MainNav({ items, children }: MainNavProps) {
   const [showMobileMenu, setShowMobileMenu] = React.useState<boolean>(false);
+  const router = useRouter();
 
   const handleToggleMobileMenu = () => {
     setShowMobileMenu(!showMobileMenu);
+  };
+
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string, disabled?: boolean) => {
+    if (disabled || href === "#") {
+      e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    // Use Next.js router for client-side navigation - won't be interrupted by re-renders
+    router.push(href);
   };
 
   return (
@@ -48,12 +60,7 @@ export function MainNav({ items, children }: MainNavProps) {
             <a
               key={index}
               href={item.disabled ? "#" : item.href}
-              onClick={(e) => {
-                if (!item.disabled && item.href !== "#") {
-                  e.preventDefault();
-                  window.location.href = item.href;
-                }
-              }}
+              onClick={(e) => handleNavClick(e, item.href, item.disabled)}
               className={cn(
                 "flex items-center text-lg font-semibold text-white hover:text-white/80 sm:text-sm",
 
