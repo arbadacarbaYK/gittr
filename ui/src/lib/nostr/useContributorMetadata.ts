@@ -244,14 +244,25 @@ export function useContributorMetadata(pubkeys: string[]) {
       return !metadataMap[normalized] && !currentCache[normalized];
     });
     
+    // CRITICAL: On first mount with pubkeys, always fetch from Nostr to ensure fresh data
+    // This ensures metadata is fetched even if cache exists (cache might be stale)
+    const isFirstMountWithPubkeys = !hasFetchedOnMountRef.current && validPubkeys.length > 0;
+    
     // CRITICAL: Only subscribe if:
     // 1. First render, OR
-    // 2. Key changed AND there are missing pubkeys, OR
-    // 3. Key didn't change BUT there are new missing pubkeys (pubkeys list grew)
+    // 2. First mount with pubkeys (force fetch to ensure fresh data), OR
+    // 3. Key changed AND there are missing pubkeys, OR
+    // 4. Key didn't change BUT there are new missing pubkeys (pubkeys list grew)
     // This prevents re-subscribing for ALL pubkeys when only a few new ones are added
-    if (shouldSkip && missingFromCache.length === 0) {
+    if (shouldSkip && missingFromCache.length === 0 && !isFirstMountWithPubkeys) {
       // Same content and all metadata is cached, skip re-subscription to prevent render loops
+      // UNLESS it's the first mount (force fetch to ensure fresh data)
       return;
+    }
+    
+    // Mark that we've fetched on mount
+    if (isFirstMountWithPubkeys) {
+      hasFetchedOnMountRef.current = true;
     }
     
     // CRITICAL: If key didn't change but we have missing pubkeys, only subscribe for the missing ones
