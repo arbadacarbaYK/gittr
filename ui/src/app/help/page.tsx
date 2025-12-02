@@ -358,6 +358,12 @@ export default function HelpPage() {
           </h2>
           
           <div className="space-y-4 text-gray-300">
+            <p className="text-sm">
+              Select code in any file viewer to share it as a standalone snippet on Nostr. The action bar appears near your selection with options to copy a permalink or share as a snippet.
+            </p>
+            <p className="text-sm text-gray-400">
+              <strong>Mobile-friendly:</strong> Line numbers are hidden on mobile devices to avoid alignment issues, but all functionality is preserved. Code lines remain fully clickable for selection.
+            </p>
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Share Code Snippets</h3>
               <p>Share code snippets from your repositories as standalone, discoverable events on Nostr.</p>
