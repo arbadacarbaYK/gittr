@@ -22,6 +22,7 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
   const searchParams = useSearchParams();
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedLines, setSelectedLines] = useState<{ start: number; end: number } | null>(null);
+  const lastFileFromUrlRef = useRef<string>(""); // Track file from URL to detect changes
   const [showSnippetModal, setShowSnippetModal] = useState(false);
   const [snippetDescription, setSnippetDescription] = useState("");
   const [snippetPublishing, setSnippetPublishing] = useState(false);
@@ -36,16 +37,85 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
   const actionBarRef = useRef<HTMLDivElement>(null);
   const isUserSelectionRef = useRef<boolean>(false); // Track if selection is from user interaction
   const [currentHash, setCurrentHash] = useState<string>(""); // Track hash changes
+  const lastFilePathRef = useRef<string>(filePath); // Track file path changes
+  const fileJustChangedRef = useRef<boolean>(false); // Track if file just changed
+
+  // Clear selection when file changes - MUST run before hash parsing
+  useEffect(() => {
+    // Get current file from URL to detect file changes
+    const currentFileFromUrl = searchParams?.get('file') || '';
+    const fileChanged = filePath !== lastFilePathRef.current && filePath;
+    const urlFileChanged = currentFileFromUrl !== lastFileFromUrlRef.current && currentFileFromUrl;
+    
+    if (fileChanged || urlFileChanged) {
+      // File changed - clear all selection state IMMEDIATELY and synchronously
+      setSelectedLines(null);
+      setSelectionStart(null);
+      setRangeMode(false);
+      setShowSnippetModal(false);
+      setSnippetDescription("");
+      fileJustChangedRef.current = true; // Mark that file just changed
+      
+      if (urlFileChanged) {
+        lastFileFromUrlRef.current = currentFileFromUrl;
+      }
+      
+      // Clear hash synchronously if it contains line numbers (from previous file)
+      if (typeof window !== 'undefined') {
+        const hash = window.location.hash;
+        if (hash && hash.match(/#L\d/)) {
+          // Clear hash immediately - this must happen before hash parsing effect runs
+          const url = new URL(window.location.href);
+          url.hash = '';
+          window.history.replaceState(null, '', url.toString());
+          setCurrentHash('');
+          lastHashRef.current = ''; // Clear hash ref immediately
+        }
+      }
+      
+      // Update file path ref AFTER clearing hash
+      if (fileChanged) {
+        lastFilePathRef.current = filePath;
+      }
+      
+      // Reset the flag after a delay to allow hash parsing to skip
+      setTimeout(() => {
+        fileJustChangedRef.current = false;
+      }, 500); // Increased delay to ensure hash parsing doesn't run
+    }
+  }, [filePath, searchParams]);
 
   // Single unified hash parsing effect - no flickering
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!content || content.length === 0) return;
     
+    // Skip hash parsing if file just changed (prevents re-applying old selection)
+    if (fileJustChangedRef.current) {
+      return;
+    }
+    
+    // If file path doesn't match, don't parse hash (file changed but effect hasn't run yet)
+    if (filePath !== lastFilePathRef.current) {
+      return;
+    }
+    
+    // Also check URL file parameter to catch file changes
+    const currentFileFromUrl = searchParams?.get('file') || '';
+    if (currentFileFromUrl && currentFileFromUrl !== lastFileFromUrlRef.current && lastFileFromUrlRef.current) {
+      // File in URL changed - don't apply hash from previous file
+      return;
+    }
+    
     const hash = window.location.hash;
     
     // Skip if we've already processed this hash (unless it's a user selection)
     if (hash === lastHashRef.current && !isUserSelectionRef.current) {
+      return;
+    }
+    
+    // If hash exists but we just switched files, don't apply it
+    if (hash && hash.match(/#L\d/) && fileJustChangedRef.current) {
       return;
     }
     
@@ -91,7 +161,7 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
         }
       }, 100);
     });
-  }, [content, currentHash]); // Depend on currentHash to trigger on hash changes
+  }, [content, currentHash, filePath]); // Depend on currentHash to trigger on hash changes, and filePath to prevent applying old hash to new file
 
   // Listen for hash changes (navigation)
   useEffect(() => {
@@ -134,9 +204,8 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
   // Helper to scroll action bar into view
   const scrollToActionBar = () => {
     setTimeout(() => {
-      const actionBar = document.getElementById('selection-action-bar');
-      if (actionBar) {
-        actionBar.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      if (actionBarRef.current) {
+        actionBarRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
       }
     }, 150);
   };
@@ -651,6 +720,7 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
           {/* Floating action bar appears right after the selected code */}
           {selectedLines && (
             <div 
+              ref={actionBarRef}
               id="selection-action-bar"
               className="sticky top-2 z-10 my-2 p-2 bg-gray-900/95 backdrop-blur-sm border border-gray-600 rounded-lg shadow-lg"
               style={{ 
