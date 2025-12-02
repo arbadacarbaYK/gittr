@@ -30,14 +30,16 @@ digraph G {
     style="rounded";
     
     http_api [label="HTTP API\n(/api/event)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
-    direct_chan [label="directEvents queue\n(merge HTTP + relays)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
-    dedupe [label="Deduplication cache\n(seen events)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
-    watchall [label="Watch-all mode\n(public mirrors)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
-    logging [label="Structured logging", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+    direct_chan [label="directEvents queue\n(HTTP events)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+    merged_chan [label="mergedEvents channel\n(HTTP + relay events)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+    dedupe [label="Deduplication cache\n(seenEventIDs)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+    watchall [label="Watch-all mode\n(empty gitRepoOwners)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+    logging [label="Structured logging\n([Bridge], [Bridge API])", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
     
     http_api -> direct_chan;
-    relay_core -> direct_chan;
-    direct_chan -> dedupe;
+    relay_core -> merged_chan;
+    direct_chan -> merged_chan;
+    merged_chan -> dedupe;
     dedupe -> bridge_core;
   }
 
