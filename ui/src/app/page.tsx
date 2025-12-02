@@ -17,7 +17,7 @@ import { getRepoOwnerPubkey, getEntityDisplayName } from "@/lib/utils/entity-res
 import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
 import { nip19 } from "nostr-tools";
 import { ZapButton } from "@/components/ui/zap-button";
-import { loadStoredRepos, type StoredRepo } from "@/lib/repos/storage";
+import { loadStoredRepos } from "@/lib/repos/storage";
 
 // Parse NIP-34 repository announcement format
 function parseNIP34Repository(event: any): any {
