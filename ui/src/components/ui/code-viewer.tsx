@@ -33,6 +33,7 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
 
   // Track last processed hash to prevent re-processing
   const lastHashRef = useRef<string>("");
+  const actionBarRef = useRef<HTMLDivElement>(null);
   const isUserSelectionRef = useRef<boolean>(false); // Track if selection is from user interaction
   const [currentHash, setCurrentHash] = useState<string>(""); // Track hash changes
 
@@ -75,6 +76,11 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
     
     // Set selection (React will handle re-render optimization)
     setSelectedLines({ start, end });
+    
+    // Scroll to action bar after DOM is ready
+    setTimeout(() => {
+      scrollToActionBar();
+    }, 200);
     
     // Scroll to line after DOM is ready
     requestAnimationFrame(() => {
@@ -125,6 +131,16 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
   const [dragStart, setDragStart] = useState<number | null>(null);
   const [justDragged, setJustDragged] = useState(false);
 
+  // Helper to scroll action bar into view
+  const scrollToActionBar = () => {
+    setTimeout(() => {
+      const actionBar = document.getElementById('selection-action-bar');
+      if (actionBar) {
+        actionBar.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      }
+    }, 150);
+  };
+
   const handleLineMouseDown = (lineNum: number, e: React.MouseEvent) => {
     if (e.button !== 0) return; // Only left mouse button
     e.preventDefault();
@@ -161,6 +177,7 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
       isUserSelectionRef.current = true; // Mark as user selection to prevent hash re-processing
       lastHashRef.current = newHash; // Update last hash
       window.history.replaceState(null, "", window.location.pathname + window.location.search + newHash);
+      scrollToActionBar();
       
       // Mark that we just dragged
       setJustDragged(true);
@@ -196,6 +213,7 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
       isUserSelectionRef.current = true; // Mark as user selection
       lastHashRef.current = newHash;
       window.history.replaceState(null, "", window.location.pathname + window.location.search + newHash);
+      scrollToActionBar();
     } else if (rangeMode && selectionStart === null) {
       // First click in range mode - set start point
       setSelectionStart(lineNum);
@@ -285,6 +303,7 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
         
         const newHash = end > start ? `#L${start}-L${end}` : `#L${start}`;
         window.history.replaceState(null, "", window.location.pathname + window.location.search + newHash);
+        scrollToActionBar();
       } else if (rangeMode && selectionStart === null) {
         // First tap in range mode - set start point
         setSelectionStart(lineNum);
@@ -297,6 +316,7 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
         isUserSelectionRef.current = true;
         lastHashRef.current = newHash;
         window.history.replaceState(null, "", window.location.pathname + window.location.search + newHash);
+        scrollToActionBar();
       }
     }
     
@@ -412,17 +432,38 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
 
     setSnippetPublishing(true);
     try {
-      // Get private key
+      // Check for NIP-07 extension
       const hasNip07 = typeof window !== "undefined" && window.nostr;
       let privateKey: string | undefined;
+      let userPubkey: string | undefined = pubkey || undefined;
       
       if (!hasNip07) {
+        // No NIP-07, need private key
         privateKey = await getNostrPrivateKey() || undefined;
         if (!privateKey) {
           alert("No signing method available. Please use a NIP-07 extension or configure a private key in Settings.");
           setSnippetPublishing(false);
           return;
         }
+        // Derive pubkey from private key
+        const { getPublicKey } = await import("nostr-tools");
+        userPubkey = getPublicKey(privateKey);
+      } else if (!userPubkey) {
+        // NIP-07 available but no pubkey in context, get it from extension
+        try {
+          userPubkey = await window.nostr.getPublicKey();
+        } catch (e) {
+          console.error("Failed to get pubkey from NIP-07:", e);
+          alert("Failed to get public key from NIP-07 extension.");
+          setSnippetPublishing(false);
+          return;
+        }
+      }
+
+      if (!userPubkey) {
+        alert("Cannot share snippet: No public key available.");
+        setSnippetPublishing(false);
+        return;
       }
 
       // Get file extension and language
@@ -452,8 +493,8 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
         console.warn("Failed to create repo reference:", e);
       }
 
-      // Create snippet event
-      const snippetEvent = createCodeSnippetEvent(
+      // Create snippet event (without signature if using NIP-07)
+      let snippetEvent = createCodeSnippetEvent(
         {
           content: selectedCode,
           language: language,
@@ -462,8 +503,23 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
           description: snippetDescription.trim() || undefined,
           repo: repoReference,
         },
-        privateKey || "" // Will use NIP-07 if available
+        userPubkey,
+        privateKey // Only provided if not using NIP-07
       );
+
+      // Sign with NIP-07 if available
+      if (hasNip07 && window.nostr && !privateKey) {
+        try {
+          console.log("🔐 [Code Snippet] Signing with NIP-07...");
+          snippetEvent = await window.nostr.signEvent(snippetEvent as any);
+          console.log("✅ [Code Snippet] Event signed with NIP-07");
+        } catch (e: any) {
+          console.error("Failed to sign with NIP-07:", e);
+          alert(`Failed to sign snippet: ${e.message || "Unknown error"}`);
+          setSnippetPublishing(false);
+          return;
+        }
+      }
 
       // Publish with confirmation
       const result = await publishWithConfirmation(
@@ -506,8 +562,8 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
   return (
     <div ref={containerRef} className="relative">
       <div className="flex">
-        {/* Line numbers */}
-        <div className="select-none text-right pr-4 text-gray-500 text-sm font-mono border-r border-gray-700">
+        {/* Line numbers - hidden on mobile */}
+        <div className="hidden sm:block select-none text-right pr-4 text-gray-500 text-sm font-mono border-r border-gray-700">
           {lines.map((_, idx) => {
             const lineNum = idx + 1;
             // Calculate if this line is in the selected range
@@ -551,7 +607,7 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
         </div>
         
         {/* Code content */}
-        <div className="flex-1 overflow-x-auto">
+        <div className="flex-1 overflow-x-auto relative sm:border-l-0 border-l border-gray-700">
           <pre className="whitespace-pre-wrap font-mono text-sm">
             {lines.map((line, idx) => {
               const lineNum = idx + 1;
@@ -592,59 +648,70 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
               );
             })}
           </pre>
+          {/* Floating action bar appears right after the selected code */}
+          {selectedLines && (
+            <div 
+              id="selection-action-bar"
+              className="sticky top-2 z-10 my-2 p-2 bg-gray-900/95 backdrop-blur-sm border border-gray-600 rounded-lg shadow-lg"
+              style={{ 
+                scrollMarginTop: '80px' // Account for any fixed headers
+              }}
+            >
+              <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+                <span className="flex-shrink-0 font-semibold text-yellow-300 whitespace-nowrap">
+                  {selectedLines.end > selectedLines.start 
+                    ? `Lines ${selectedLines.start}-${selectedLines.end}`
+                    : `Line ${selectedLines.start}`
+                  }
+                </span>
+                <div className="flex flex-wrap items-center gap-2 flex-1">
+                  <button
+                    onClick={() => {
+                      if (!selectedLines) return;
+                      const hash = selectedLines.end > selectedLines.start 
+                        ? `#L${selectedLines.start}-L${selectedLines.end}` 
+                        : `#L${selectedLines.start}`;
+                      const fullUrl = `${window.location.origin}${window.location.pathname}${window.location.search}${hash}`;
+                      navigator.clipboard.writeText(fullUrl);
+                      
+                      // Show toast
+                      const toast = document.createElement("div");
+                      toast.className = "fixed bottom-4 right-4 bg-gray-800 border border-gray-600 text-white px-4 py-2 rounded shadow-lg z-50";
+                      toast.textContent = "Permalink copied to clipboard";
+                      document.body.appendChild(toast);
+                      setTimeout(() => {
+                        document.body.removeChild(toast);
+                      }, 2000);
+                    }}
+                    className="px-2 sm:px-3 py-1.5 sm:py-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded text-xs sm:text-sm font-medium touch-manipulation transition-colors whitespace-nowrap"
+                  >
+                    Copy permalink
+                  </button>
+                  {pubkey && (
+                    <button
+                      onClick={() => setShowSnippetModal(true)}
+                      className="px-2 sm:px-3 py-1.5 sm:py-2 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white rounded text-xs sm:text-sm font-medium flex items-center gap-1.5 touch-manipulation transition-colors whitespace-nowrap"
+                    >
+                      <Share2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      <span className="hidden sm:inline">Share as snippet</span>
+                      <span className="sm:hidden">Share</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       
-      {/* Always show selection controls */}
-      <div className="mt-3 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
-        {selectedLines ? (
-          <>
-            <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-2">
-              <span className="flex-shrink-0 text-sm font-semibold text-yellow-300">
-                {selectedLines.end > selectedLines.start 
-                  ? `Selected range: Lines ${selectedLines.start}-${selectedLines.end} (${selectedLines.end - selectedLines.start + 1} lines)`
-                  : `Selected line: ${selectedLines.start}`
-                }
-              </span>
-              <button
-                onClick={() => {
-                  const hash = selectedLines.end > selectedLines.start 
-                    ? `#L${selectedLines.start}-L${selectedLines.end}` 
-                    : `#L${selectedLines.start}`;
-                  const fullUrl = `${window.location.origin}${window.location.pathname}${window.location.search}${hash}`;
-                  navigator.clipboard.writeText(fullUrl);
-                  
-                  // Show toast
-                  const toast = document.createElement("div");
-                  toast.className = "fixed bottom-4 right-4 bg-gray-800 border border-gray-600 text-white px-4 py-2 rounded shadow-lg z-50";
-                  toast.textContent = "Permalink copied to clipboard";
-                  document.body.appendChild(toast);
-                  setTimeout(() => {
-                    document.body.removeChild(toast);
-                  }, 2000);
-                }}
-                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm font-medium touch-manipulation transition-colors"
-              >
-                Copy permalink
-              </button>
-              {pubkey && selectedLines.end > selectedLines.start && (
-                <button
-                  onClick={() => setShowSnippetModal(true)}
-                  className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-medium flex items-center gap-1.5 touch-manipulation transition-colors"
-                >
-                  <Share2 className="h-3.5 w-3.5" />
-                  Share as snippet
-                </button>
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="mb-2">
-            <p className="text-sm text-gray-300 mb-2">Select code to share:</p>
-          </div>
-        )}
-        
-        {/* Range selection mode toggle - always visible */}
+      {/* Selection instructions when no selection */}
+      {!selectedLines && (
+        <div className="mt-3 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
+          <p className="text-sm text-gray-300 mb-2">Select code to share:</p>
+        </div>
+      )}
+      
+      {/* Range selection mode toggle - always visible */}
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => {
@@ -712,7 +779,6 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
             💡 <strong>Want to select multiple lines?</strong> Click "Select Range" above, then click the first and last lines you want to share.
           </div>
         )}
-      </div>
 
       {/* Share Snippet Modal */}
       {showSnippetModal && selectedLines && (
@@ -755,7 +821,9 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
               <div className="text-xs text-gray-400">
                 <p>Language: {getLanguageFromExtension(filePath) || "auto-detect"}</p>
                 <p>File: {filePath}</p>
-                <p>Lines: {selectedLines.start}{selectedLines.end > selectedLines.start ? `-${selectedLines.end}` : ""}</p>
+                {selectedLines ? (
+                  <p>Lines: {selectedLines.start}{selectedLines.end > selectedLines.start ? `-${selectedLines.end}` : ""}</p>
+                ) : null}
               </div>
 
               <div className="flex gap-2 justify-end">
