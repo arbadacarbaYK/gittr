@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import { nip19 } from 'nostr-tools';
+import { resolveUserIconForMetadata } from '@/lib/utils/metadata-icon-resolver';
 
 export async function generateMetadata(
   { params }: { params: { entity: string } }
@@ -29,6 +30,20 @@ export async function generateMetadata(
   const title = displayName;
   const url = `${baseUrl}/${encodeURIComponent(params.entity)}`;
   
+  // Resolve user icon (profile picture or default)
+  let iconUrl = `${baseUrl}/logo.svg`; // Default fallback
+  try {
+    iconUrl = await resolveUserIconForMetadata(params.entity, baseUrl);
+  } catch (error) {
+    // If resolution fails, use default
+    console.warn('[Metadata] Failed to resolve user icon, using default:', error);
+  }
+  
+  // Ensure iconUrl is absolute
+  if (!iconUrl.startsWith('http')) {
+    iconUrl = `${baseUrl}${iconUrl.startsWith('/') ? '' : '/'}${iconUrl}`;
+  }
+  
   return {
     title,
     description: `Profile for ${displayName} on gittr - Decentralized Git Hosting on Nostr`,
@@ -40,10 +55,10 @@ export async function generateMetadata(
       siteName: 'gittr',
       images: [
         {
-          url: '/logo.svg',
+          url: iconUrl,
           width: 1200,
           height: 630,
-          alt: 'gittr logo',
+          alt: `${displayName} profile on gittr`,
         },
       ],
     },
@@ -51,7 +66,7 @@ export async function generateMetadata(
       card: 'summary',
       title,
       description: `View ${displayName}'s repositories on gittr`,
-      images: ['/logo.svg'],
+      images: [iconUrl],
     },
     alternates: {
       canonical: url,
