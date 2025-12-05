@@ -329,6 +329,15 @@ export default function HelpPage() {
               <p className="mt-2 text-sm text-gray-400">
                 We sign the NIP‑34 event, publish it to your relays, and sync the Git repo to relay.ngit.dev/gittr.space automatically. Only small metadata files live inside the Nostr event; the real Git objects stay on the bridge.
               </p>
+              <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded">
+                <p className="text-sm text-blue-200 font-semibold mb-1">📦 File Content During Push</p>
+                <p className="text-sm text-blue-100 mb-2">
+                  Files are sourced from your browser's localStorage (from create/import workflow) or from the bridge API if missing. The push process does NOT fetch files from external sources (GitHub, GitLab, etc.).
+                </p>
+                <p className="text-xs text-blue-200">
+                  <strong>If files are missing:</strong> Re-import the repository to load all files into localStorage before pushing.
+                </p>
+              </div>
             </div>
 
             <div>

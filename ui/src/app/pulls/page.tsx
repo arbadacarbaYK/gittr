@@ -346,16 +346,31 @@ export default function PullsPage({}) {
     if (userRepos.length === 0) return;
     
     // Build filters for all user repos - subscribe to PRs for each repo
-    const filters = userRepos.map((repo: any) => {
+    // NIP-34: Use "#a" tag for discovery, also include old "#repo" tag for backward compatibility
+    const filters: any[] = [];
+    userRepos.forEach((repo: any) => {
       const entity = repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
       const repoName = repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
-      if (!entity || !repoName) return null;
+      if (!entity || !repoName) return;
       
-      return {
+      const ownerPubkey = repo.ownerPubkey || 
+        (repo.contributors?.find((c: any) => c.weight === 100)?.pubkey) ||
+        (entity && /^[0-9a-f]{64}$/i.test(entity) ? entity : null);
+      
+      // Old format filter
+      filters.push({
         kinds: [KIND_PULL_REQUEST],
         "#repo": [entity, repoName],
-      };
-    }).filter(Boolean) as any[];
+      });
+      
+      // NIP-34 format filter (if we have owner pubkey)
+      if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+        filters.push({
+          kinds: [KIND_PULL_REQUEST],
+          "#a": [`30617:${ownerPubkey}:${repoName}`],
+        });
+      }
+    });
     
     if (filters.length === 0) return;
     
@@ -367,12 +382,32 @@ export default function PullsPage({}) {
         if (cancelled || event.kind !== KIND_PULL_REQUEST) return;
         
         try {
-          const prData = JSON.parse(event.content);
+          // NIP-34: Parse from tags and markdown content, but also support old JSON format
+          const aTag = event.tags.find((t: string[]) => t[0] === "a");
+          const subjectTag = event.tags.find((t: string[]) => t[0] === "subject");
           const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
-          if (!repoTag || repoTag.length < 3) return;
           
-          const entity = repoTag[1];
-          const repoName = repoTag[2];
+          let entity: string | undefined;
+          let repoName: string | undefined;
+          
+          // Try NIP-34 "a" tag first: "30617:<owner-pubkey>:<repo-id>"
+          if (aTag && aTag[1]) {
+            const aParts = aTag[1].split(":");
+            if (aParts.length >= 3 && aParts[0] === "30617") {
+              entity = aParts[1]; // Owner pubkey
+              repoName = aParts[2]; // Repo ID
+            }
+          }
+          
+          // Fallback to old "repo" tag format
+          if (!entity || !repoName) {
+            if (repoTag && repoTag.length >= 3) {
+              entity = repoTag[1];
+              repoName = repoTag[2];
+            } else {
+              return; // Can't determine repo
+            }
+          }
           
           if (!entity || !repoName) return;
           
@@ -393,23 +428,46 @@ export default function PullsPage({}) {
           }, 0);
           const nextNumber = maxNumber + 1;
           
+          // NIP-34: Title from "subject" tag, description from markdown content
+          // Old format: Both from JSON
+          let title = subjectTag ? subjectTag[1] : "";
+          let body = event.content || "";
+          let changedFiles: any[] = [];
+          
+          // Try to parse old JSON format for backward compatibility
+          if (!title && event.content) {
+            try {
+              const oldData = JSON.parse(event.content);
+              title = oldData.title || "";
+              body = oldData.description || "";
+              changedFiles = oldData.changedFiles || [];
+            } catch {
+              // Not JSON, use as-is (NIP-34 markdown)
+            }
+          }
+          
+          // Extract branch info from "branch-name" tag (NIP-34) or "branch" tag (old format)
+          const branchNameTag = event.tags.find((t: string[]) => t[0] === "branch-name");
           const branchTag = event.tags.find((t: string[]) => t[0] === "branch");
-          const linkedIssueTag = event.tags.find((t: string[]) => t[0] === "e" && t[3] === "linked");
+          const baseBranch = branchNameTag ? branchNameTag[1] : (branchTag ? branchTag[1] : "main");
+          const headBranch = branchTag ? branchTag[2] : undefined;
+          
+          const linkedIssueTag = event.tags.find((t: string[]) => t[0] === "e" && (t[3] === "linked" || t[3] === "root"));
           const statusTag = event.tags.find((t: string[]) => t[0] === "status");
-          const status = statusTag ? statusTag[1] : (prData.status || "open");
+          const status = statusTag ? statusTag[1] : "open";
           
           const pr = {
             id: event.id,
             entity: entity,
             repo: repoName,
-            title: prData.title || "",
-            body: prData.description || "",
+            title: title || "Untitled PR",
+            body: body,
             status: status,
             author: event.pubkey,
             contributors: [event.pubkey],
-            baseBranch: branchTag ? branchTag[1] : "main",
-            headBranch: branchTag ? branchTag[2] : undefined,
-            changedFiles: prData.changedFiles || [],
+            baseBranch: baseBranch,
+            headBranch: headBranch,
+            changedFiles: changedFiles,
             createdAt: event.created_at * 1000,
             number: String(nextNumber),
             linkedIssue: linkedIssueTag ? linkedIssueTag[1] : undefined,

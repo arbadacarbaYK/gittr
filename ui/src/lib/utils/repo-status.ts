@@ -74,8 +74,13 @@ export function getRepoStatus(repo: any): RepoStatus {
   // Check the raw value, not coerced to boolean, to distinguish undefined from false
   const bridgeProcessed = repo.bridgeProcessed;
   
-  // Check if repo has event ID (was published to Nostr)
-  const hasEventId = !!(repo.nostrEventId || repo.lastNostrEventId || repo.syncedFromNostr || repo.fromNostr);
+  // Check if repo has announcement event ID (kind 30617) - was published to Nostr
+  const hasAnnouncementEventId = !!(repo.nostrEventId || repo.lastNostrEventId || repo.syncedFromNostr || repo.fromNostr);
+  
+  // CRITICAL: Check if repo has state event ID (kind 30618) - required for full NIP-34 compliance
+  // Both announcement AND state events are required for "live" status
+  // gitworkshop.dev and other ngit clients need the state event to recognize "Nostr state"
+  const hasStateEventId = !!(repo.stateEventId || repo.lastStateEventId);
   
   // Check if repo has files (if it was pushed empty, it needs files pushed)
   const hasFiles = repo.files && Array.isArray(repo.files) && repo.files.length > 0;
@@ -85,21 +90,28 @@ export function getRepoStatus(repo: any): RepoStatus {
     (repo.lastNostrEventId && repo.lastModifiedAt && repo.lastNostrEventCreatedAt && 
      repo.lastModifiedAt > repo.lastNostrEventCreatedAt * 1000);
   
-  // Only mark as "live" if BOTH event ID exists AND bridge has processed it
-  // If event ID exists but bridge hasn't processed it, check if there are actual edits
-  if (hasEventId && bridgeProcessed === true) {
-    // Event published AND bridge processed - truly "live"
-  if (hasEventId && !hasFiles) {
+  // CRITICAL: Only mark as "live" if BOTH announcement AND state events exist AND bridge has processed it
+  // This ensures full NIP-34 compliance - both events are required for ngit clients
+  if (hasAnnouncementEventId && hasStateEventId && bridgeProcessed === true) {
+    // Both events published AND bridge processed - truly "live"
+    if (hasAnnouncementEventId && !hasFiles) {
       return "live_with_edits"; // Pushed but no files yet
-  }
+    }
     return hasUnpushedEdits ? "live_with_edits" : "live";
   }
   
-  // If event ID exists but bridge hasn't processed it yet:
+  // If announcement event exists but state event is missing:
+  if (hasAnnouncementEventId && !hasStateEventId) {
+    // Announcement published but state event missing - not fully "live"
+    // This can happen if user cancelled the second signature or state event failed
+    return "live_with_edits"; // Show as "Published (Awaiting Bridge)" - state event needed
+  }
+  
+  // If announcement event exists but bridge hasn't processed it yet:
   // Only show "live" if bridge has explicitly confirmed it processed the event
   // BUT: For repos pushed days ago, assume they're live until bridge check says otherwise
   // Only NEW pushes (recent eventCreatedAt) should show "awaiting bridge"
-  if (hasEventId && (bridgeProcessed === undefined || bridgeProcessed === false)) {
+  if (hasAnnouncementEventId && hasStateEventId && (bridgeProcessed === undefined || bridgeProcessed === false)) {
     // Check if this is a recent push (within last hour) or an old push (days ago)
     const eventCreatedAt = repo.lastNostrEventCreatedAt || repo.nostrEventCreatedAt;
     const isRecentPush = eventCreatedAt && (Date.now() / 1000 - eventCreatedAt) < 3600; // Within last hour
@@ -112,6 +124,11 @@ export function getRepoStatus(repo: any): RepoStatus {
       // Bridge check will update this when it runs
       return hasUnpushedEdits ? "live_with_edits" : "live";
     }
+  }
+  
+  // If only announcement event exists (no state event) - not fully "live"
+  if (hasAnnouncementEventId && !hasStateEventId) {
+    return "live_with_edits"; // State event missing - not fully compliant
   }
   
   // Only check explicit status if no event ID exists

@@ -4,10 +4,16 @@ import { getEventHash, signEvent, nip19, getPublicKey } from "nostr-tools";
 // Event kinds (from gitnostr protocol + custom for issues/PRs)
 export const KIND_REPOSITORY = 51; // gitnostr protocol
 export const KIND_REPOSITORY_NIP34 = 30617; // NIP-34: Repository announcements
+export const KIND_REPOSITORY_STATE = 30618; // NIP-34: Repository state (refs, branches, commits) - required by ngit clients
 export const KIND_REPOSITORY_PERMISSION = 50; // gitnostr protocol
 export const KIND_SSH_KEY = 52; // gitnostr protocol
-export const KIND_ISSUE = 9803; // Custom: Issues
-export const KIND_PULL_REQUEST = 9804; // Custom: Pull Requests
+export const KIND_ISSUE = 1621; // NIP-34: Issues
+export const KIND_PULL_REQUEST = 1618; // NIP-34: Pull Requests
+export const KIND_PR_UPDATE = 1619; // NIP-34: Pull Request Updates
+export const KIND_STATUS_OPEN = 1630; // NIP-34: Status - Open
+export const KIND_STATUS_APPLIED = 1631; // NIP-34: Status - Applied/Merged (PRs) or Resolved (Issues)
+export const KIND_STATUS_CLOSED = 1632; // NIP-34: Status - Closed
+export const KIND_STATUS_DRAFT = 1633; // NIP-34: Status - Draft
 export const KIND_DISCUSSION = 9805; // Custom: Discussions
 export const KIND_BOUNTY = 9806; // Custom: Bounties
 export const KIND_COMMENT = 1; // NIP-01: Notes (for comments)
@@ -57,15 +63,16 @@ export interface RepositoryEvent {
 }
 
 export interface IssueEvent {
-  repoEntity: string;
-  repoName: string;
+  repoEntity: string; // Owner entity (npub or pubkey)
+  repoName: string; // Repository identifier (matches "d" tag in announcement)
+  ownerPubkey: string; // Full 64-char hex pubkey of repository owner (for "a" tag)
+  earliestUniqueCommit?: string; // Earliest unique commit ID (for "r" tag)
   title: string;
-  description: string;
+  description: string; // Description text (will be used as markdown content in NIP-34 event)
   labels?: string[];
   assignees?: string[];
-  status: "open" | "closed";
-  bountyAmount?: number; // sats
-  bountyInvoice?: string;
+  status: "open" | "closed"; // Note: Status should be set via separate status events (kinds 1630-1632)
+  // Bounties, code snippets, etc. are handled via separate events, not in issue content
   projectId?: string;
   milestoneId?: string;
 }
@@ -80,23 +87,25 @@ export interface DiscussionEvent {
 }
 
 export interface PullRequestEvent {
-  repoEntity: string;
-  repoName: string;
+  repoEntity: string; // Owner entity (npub or pubkey)
+  repoName: string; // Repository identifier (matches "d" tag in announcement)
+  ownerPubkey: string; // Full 64-char hex pubkey of repository owner (for "a" tag)
+  earliestUniqueCommit?: string; // Earliest unique commit ID (for "r" tag)
   title: string;
-  description: string;
+  description: string; // Description text (will be used as markdown content in NIP-34 event)
   baseBranch: string;
   headBranch?: string;
+  currentCommitId?: string; // Tip of PR branch (for "c" tag) - REQUIRED
+  cloneUrls?: string[]; // At least one git clone URL (for "clone" tag) - REQUIRED
+  branchName?: string; // Recommended branch name (for "branch-name" tag)
+  mergeBase?: string; // Most recent common ancestor with target branch (for "merge-base" tag)
+  rootPatchEventId?: string; // If PR is revision of existing patch (for "e" tag)
   labels?: string[];
   assignees?: string[];
   reviewers?: string[];
-  status: "open" | "merged" | "closed";
+  status: "open" | "merged" | "closed"; // Note: Status should be set via separate status events (kinds 1630-1632)
   linkedIssue?: string; // Event ID of linked issue
-  changedFiles?: Array<{
-    path: string;
-    status: "added" | "modified" | "deleted";
-    before?: string;
-    after?: string;
-  }>;
+  // changedFiles, etc. are handled via separate events or custom tags, not in PR content
 }
 
 export interface CommentEvent {
@@ -288,10 +297,9 @@ export function createRepositoryEvent(
 
 export function createCodeSnippetEvent(
   snippet: CodeSnippetEvent,
-  privateKey: string
+  pubkey: string, // Changed: accept pubkey directly instead of deriving from privateKey
+  privateKey?: string // Optional: only needed if signing with private key
 ): any {
-  const pubkey = getPublicKey(privateKey);
-  
   const tags: string[][] = [];
   
   // NIP-C0: Add language tag (lowercase)
@@ -354,27 +362,111 @@ export function createCodeSnippetEvent(
   };
   
   event.id = getEventHash(event);
+  
+  // Only sign if privateKey is provided (for non-NIP-07 signing)
+  if (privateKey) {
+    event.sig = signEvent(event, privateKey);
+  }
+  
+  return event;
+}
+
+// Create and sign a Nostr repository state event (kind 30618)
+// Per NIP-34: https://nips.nostr.com/34#repository-state-announcements
+// This contains repository refs, branches, and commits - required by ngit clients like gitworkshop.dev
+export function createRepositoryStateEvent(
+  repositoryName: string,
+  refs: Array<{ ref: string; commit: string }>, // e.g., [{ ref: "refs/heads/main", commit: "abc123..." }]
+  privateKey: string,
+  defaultBranchRef: string | null = null // Optional: default branch ref (e.g., "refs/heads/main") for HEAD tag
+): any {
+  const pubkey = getPublicKey(privateKey);
+  
+  // NIP-34 state event: Build tags array
+  // Per NIP-34 spec: tags are ["refs/heads/main", "commit-id"] format
+  // The ref path itself is the tag name, commit-id is the tag value
+  const tags: string[][] = [
+    ["d", repositoryName], // Replaceable event identifier (NIP-34 required) - matches repo-id from announcement
+  ];
+  
+  // Add refs as tags per NIP-34 spec
+  // Format: ["refs/heads/main", "abc123..."] where ref path is tag name, commit-id is tag value
+  // Include refs even without commits (bridge will update them later)
+  refs.forEach(ref => {
+    if (ref.ref && typeof ref.ref === "string") {
+      tags.push([ref.ref, ref.commit || ""]); // NIP-34: ref path is tag name, commit is value
+    }
+  });
+  
+  // Add HEAD tag pointing to default branch (NIP-34 requirement)
+  // Format: ["HEAD", "ref: refs/heads/<branch-name>"]
+  // Use provided defaultBranchRef if available, otherwise extract from first refs/heads/ ref
+  let defaultBranchName: string | null = null;
+  if (defaultBranchRef && typeof defaultBranchRef === "string" && defaultBranchRef.startsWith("refs/heads/")) {
+    defaultBranchName = defaultBranchRef.replace("refs/heads/", "");
+  } else if (refs.length > 0) {
+    // Fallback: use first refs/heads/ ref as default
+    const firstHeadRef = refs.find(r => r.ref && typeof r.ref === "string" && r.ref.startsWith("refs/heads/"));
+    if (firstHeadRef && firstHeadRef.ref) {
+      defaultBranchName = firstHeadRef.ref.replace("refs/heads/", "");
+    }
+  }
+  
+  // HEAD tag is required per NIP-34 - always include it
+  if (defaultBranchName) {
+    tags.push(["HEAD", `ref: refs/heads/${defaultBranchName}`]);
+  } else {
+    // Last resort: use "main" as default (NIP-34 requires HEAD tag)
+    tags.push(["HEAD", "ref: refs/heads/main"]);
+  }
+  
+  // State event content is empty per NIP-34 spec
+  const content = "";
+  
+  const event = {
+    kind: KIND_REPOSITORY_STATE, // NIP-34: Use kind 30618 for state events
+    created_at: Math.floor(Date.now() / 1000),
+    tags,
+    content, // NIP-34: content is empty
+    pubkey,
+    id: "",
+    sig: "",
+  };
+
+  event.id = getEventHash(event);
   event.sig = signEvent(event, privateKey);
   return event;
 }
 
-// Create and sign a Nostr issue event
+// Create and sign a Nostr issue event (NIP-34 kind 1621)
+// Per NIP-34: https://nips.nostr.com/34#issues
 export function createIssueEvent(
   issue: IssueEvent,
   privateKey: string
 ): any {
   const pubkey = getPublicKey(privateKey);
   
+  // NIP-34 required tags
   const tags: string[][] = [
-    ["repo", issue.repoEntity, issue.repoName],
+    // ["a", "30617:<base-repo-owner-pubkey>:<base-repo-id>"] - REQUIRED
+    ["a", `30617:${issue.ownerPubkey}:${issue.repoName}`],
+    // ["r", "<earliest-unique-commit-id-of-repo>"] - REQUIRED (helps clients subscribe to all issues for a repo)
+    ...(issue.earliestUniqueCommit ? [["r", issue.earliestUniqueCommit]] : []),
+    // ["p", "<repository-owner>"] - REQUIRED
+    ["p", issue.ownerPubkey],
+    // ["subject", "<issue-subject>"] - REQUIRED
+    ["subject", issue.title],
   ];
   
+  // Optional tags
   if (issue.labels && issue.labels.length > 0) {
     issue.labels.forEach(label => tags.push(["t", label]));
   }
   
+  // Note: assignees, projectId, milestoneId are custom extensions - not in NIP-34 spec
+  // We'll keep them for backward compatibility but they're not standard
   if (issue.assignees && issue.assignees.length > 0) {
-    issue.assignees.forEach(assignee => tags.push(["p", assignee]));
+    issue.assignees.forEach(assignee => tags.push(["p", assignee, "assignee"]));
   }
   
   if (issue.projectId) {
@@ -385,17 +477,12 @@ export function createIssueEvent(
     tags.push(["milestone", issue.milestoneId]);
   }
 
+  // NIP-34: Content is markdown text, not JSON
   const event = {
-    kind: KIND_ISSUE,
+    kind: KIND_ISSUE, // NIP-34: kind 1621
     created_at: Math.floor(Date.now() / 1000),
     tags,
-    content: JSON.stringify({
-      title: issue.title,
-      description: issue.description,
-      status: issue.status,
-      bountyAmount: issue.bountyAmount,
-      bountyInvoice: issue.bountyInvoice,
-    }),
+    content: issue.description, // Markdown text per NIP-34
     pubkey,
     id: "",
     sig: "",
@@ -407,24 +494,52 @@ export function createIssueEvent(
 }
 
 
-// Create and sign a Nostr pull request event
+// Create and sign a Nostr pull request event (NIP-34 kind 1618)
+// Per NIP-34: https://nips.nostr.com/34#pull-requests
 export function createPullRequestEvent(
   pr: PullRequestEvent,
   privateKey: string
 ): any {
   const pubkey = getPublicKey(privateKey);
   
+  // NIP-34 required tags
   const tags: string[][] = [
-    ["repo", pr.repoEntity, pr.repoName],
-    ["branch", pr.baseBranch, pr.headBranch || pr.baseBranch],
+    // ["a", "30617:<base-repo-owner-pubkey>:<base-repo-id>"] - REQUIRED
+    ["a", `30617:${pr.ownerPubkey}:${pr.repoName}`],
+    // ["r", "<earliest-unique-commit-id-of-repo>"] - REQUIRED (helps clients subscribe to all PRs for a repo)
+    ...(pr.earliestUniqueCommit ? [["r", pr.earliestUniqueCommit]] : []),
+    // ["p", "<repository-owner>"] - REQUIRED
+    ["p", pr.ownerPubkey],
+    // ["subject", "<PR-subject>"] - REQUIRED
+    ["subject", pr.title],
+    // ["c", "<current-commit-id>"] - REQUIRED (tip of the PR branch)
+    ...(pr.currentCommitId ? [["c", pr.currentCommitId]] : []),
+    // ["clone", "<clone-url>", ...] - REQUIRED (at least one git clone URL where commit can be downloaded)
+    ...(pr.cloneUrls && pr.cloneUrls.length > 0 ? pr.cloneUrls.map(url => ["clone", url]) : []),
   ];
+  
+  // Optional tags
+  if (pr.branchName) {
+    tags.push(["branch-name", pr.branchName]);
+  }
+  
+  if (pr.mergeBase) {
+    tags.push(["merge-base", pr.mergeBase]);
+  }
+  
+  if (pr.rootPatchEventId) {
+    // If PR is a revision of an existing patch
+    tags.push(["e", pr.rootPatchEventId, "", "root"]);
+  }
   
   if (pr.labels && pr.labels.length > 0) {
     pr.labels.forEach(label => tags.push(["t", label]));
   }
   
+  // Note: assignees, reviewers, linkedIssue are custom extensions - not in NIP-34 spec
+  // We'll keep them for backward compatibility but they're not standard
   if (pr.assignees && pr.assignees.length > 0) {
-    pr.assignees.forEach(assignee => tags.push(["p", assignee]));
+    pr.assignees.forEach(assignee => tags.push(["p", assignee, "assignee"]));
   }
   
   if (pr.reviewers && pr.reviewers.length > 0) {
@@ -435,16 +550,159 @@ export function createPullRequestEvent(
     tags.push(["e", pr.linkedIssue, "", "linked"]);
   }
 
+  // NIP-34: Content is markdown text, not JSON
   const event = {
-    kind: KIND_PULL_REQUEST,
+    kind: KIND_PULL_REQUEST, // NIP-34: kind 1618
     created_at: Math.floor(Date.now() / 1000),
     tags,
-    content: JSON.stringify({
-      title: pr.title,
-      description: pr.description,
-      status: pr.status,
-      changedFiles: pr.changedFiles || [],
-    }),
+    content: pr.description, // Markdown text per NIP-34
+    pubkey,
+    id: "",
+    sig: "",
+  };
+
+  event.id = getEventHash(event);
+  event.sig = signEvent(event, privateKey);
+  return event;
+}
+
+// Create and sign a Nostr pull request update event (NIP-34 kind 1619)
+// Per NIP-34: https://nips.nostr.com/34#pull-request-updates
+export function createPullRequestUpdateEvent(
+  prUpdate: {
+    ownerPubkey: string; // Repository owner pubkey
+    repoName: string; // Repository identifier
+    earliestUniqueCommit?: string; // Earliest unique commit ID
+    pullRequestEventId: string; // Event ID of the PR being updated
+    pullRequestAuthor: string; // Pubkey of PR author
+    currentCommitId: string; // Updated tip of PR branch
+    cloneUrls: string[]; // At least one git clone URL
+    mergeBase?: string; // Most recent common ancestor with target branch
+  },
+  privateKey: string
+): any {
+  const pubkey = getPublicKey(privateKey);
+  
+  // NIP-34 required tags
+  const tags: string[][] = [
+    // ["a", "30617:<base-repo-owner-pubkey>:<base-repo-id>"] - REQUIRED
+    ["a", `30617:${prUpdate.ownerPubkey}:${prUpdate.repoName}`],
+    // ["r", "<earliest-unique-commit-id-of-repo>"] - REQUIRED
+    ...(prUpdate.earliestUniqueCommit ? [["r", prUpdate.earliestUniqueCommit]] : []),
+    // ["p", "<repository-owner>"] - REQUIRED
+    ["p", prUpdate.ownerPubkey],
+    // NIP-22 tags for PR update
+    ["E", prUpdate.pullRequestEventId], // PR event ID
+    ["P", prUpdate.pullRequestAuthor], // PR author
+    // ["c", "<current-commit-id>"] - REQUIRED (updated tip of PR)
+    ["c", prUpdate.currentCommitId],
+    // ["clone", "<clone-url>", ...] - REQUIRED
+    ...prUpdate.cloneUrls.map(url => ["clone", url]),
+  ];
+  
+  // Optional tags
+  if (prUpdate.mergeBase) {
+    tags.push(["merge-base", prUpdate.mergeBase]);
+  }
+
+  // NIP-34: Content is empty string for PR updates
+  const event = {
+    kind: KIND_PR_UPDATE, // NIP-34: kind 1619
+    created_at: Math.floor(Date.now() / 1000),
+    tags,
+    content: "", // Empty per NIP-34
+    pubkey,
+    id: "",
+    sig: "",
+  };
+
+  event.id = getEventHash(event);
+  event.sig = signEvent(event, privateKey);
+  return event;
+}
+
+// Create and sign a Nostr status event (NIP-34 kinds 1630-1633)
+// Per NIP-34: https://nips.nostr.com/34#status
+export function createStatusEvent(
+  status: {
+    statusKind: 1630 | 1631 | 1632 | 1633; // Open, Applied/Merged, Closed, Draft
+    rootEventId: string; // Issue, PR, or patch event ID
+    acceptedRevisionId?: string; // For when revisions are applied (kind 1631)
+    ownerPubkey: string; // Repository owner
+    rootEventAuthor: string; // Author of root event (issue/PR/patch)
+    revisionAuthor?: string; // Author of revision (for kind 1631)
+    repoName?: string; // Repository identifier (for optional "a" tag)
+    earliestUniqueCommit?: string; // For optional "r" tag
+    appliedPatchIds?: Array<{ eventId: string; relayUrl?: string; pubkey: string }>; // For kind 1631
+    mergeCommitId?: string; // For kind 1631 when merged
+    appliedCommitIds?: string[]; // For kind 1631 when applied as commits
+    content?: string; // Markdown text (optional)
+  },
+  privateKey: string
+): any {
+  const pubkey = getPublicKey(privateKey);
+  
+  // NIP-34 required tags
+  const tags: string[][] = [
+    // ["e", "<issue-or-PR-or-original-root-patch-id-hex>", "", "root"] - REQUIRED
+    ["e", status.rootEventId, "", "root"],
+    // ["p", "<repository-owner>"] - REQUIRED
+    ["p", status.ownerPubkey],
+    // ["p", "<root-event-author>"] - REQUIRED
+    ["p", status.rootEventAuthor],
+  ];
+  
+  // For kind 1631 (Applied/Merged), include accepted revision
+  if (status.statusKind === 1631 && status.acceptedRevisionId) {
+    tags.push(["e", status.acceptedRevisionId, "", "reply"]);
+  }
+  
+  // Include revision author if provided
+  if (status.revisionAuthor) {
+    tags.push(["p", status.revisionAuthor]);
+  }
+  
+  // Optional tags for improved subscription filter efficiency
+  if (status.repoName) {
+    tags.push(["a", `30617:${status.ownerPubkey}:${status.repoName}`]);
+  }
+  
+  if (status.earliestUniqueCommit) {
+    tags.push(["r", status.earliestUniqueCommit]);
+  }
+  
+  // For kind 1631 (Applied/Merged)
+  if (status.statusKind === 1631) {
+    // Applied/merged patch/PR event IDs
+    if (status.appliedPatchIds && status.appliedPatchIds.length > 0) {
+      status.appliedPatchIds.forEach(({ eventId, relayUrl, pubkey }) => {
+        const qTag = ["q", eventId];
+        if (relayUrl) qTag.push(relayUrl);
+        if (pubkey) qTag.push(pubkey);
+        tags.push(qTag);
+      });
+    }
+    
+    // Merge commit (when merged)
+    if (status.mergeCommitId) {
+      tags.push(["merge-commit", status.mergeCommitId]);
+      tags.push(["r", status.mergeCommitId]);
+    }
+    
+    // Applied as commits (when applied)
+    if (status.appliedCommitIds && status.appliedCommitIds.length > 0) {
+      tags.push(["applied-as-commits", ...status.appliedCommitIds]);
+      status.appliedCommitIds.forEach(commitId => {
+        tags.push(["r", commitId]);
+      });
+    }
+  }
+
+  const event: any = {
+    kind: status.statusKind, // NIP-34: 1630, 1631, 1632, or 1633
+    created_at: Math.floor(Date.now() / 1000),
+    tags,
+    content: status.content || "", // Markdown text (optional)
     pubkey,
     id: "",
     sig: "",

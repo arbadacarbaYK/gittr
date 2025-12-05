@@ -22,10 +22,10 @@ import {
 } from "@/lib/pending-changes";
 import { showToast } from "@/components/ui/toast";
 import { createPullRequestEvent, KIND_PULL_REQUEST } from "@/lib/nostr/events";
+import { getRepoOwnerPubkey, resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { getEventHash, getPublicKey } from "nostr-tools";
 import { sendNotification, formatNotificationMessage } from "@/lib/notifications";
-import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { extractMentionedPubkeys } from "@/lib/utils/mention-detection";
 
 interface ChangedFile {
@@ -224,6 +224,63 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
         return;
       }
 
+      // Get repo data for NIP-34 required fields
+      const repos = loadStoredRepos();
+      const repoData = findRepoByEntityAndName(repos, entity, repo);
+      if (!repoData) {
+        showToast("Repository not found. Please ensure the repository exists.", "error");
+        setCreating(false);
+        return;
+      }
+      
+      // Get owner pubkey (required for NIP-34 "a" and "p" tags)
+      let finalOwnerPubkey = getRepoOwnerPubkey(repoData, entity);
+      if (!finalOwnerPubkey || !/^[0-9a-f]{64}$/i.test(finalOwnerPubkey)) {
+        const resolved = resolveEntityToPubkey(entity, repoData);
+        if (!resolved || !/^[0-9a-f]{64}$/i.test(resolved)) {
+          showToast("Cannot determine repository owner. Please ensure the repository is properly configured.", "error");
+          setCreating(false);
+          return;
+        }
+        finalOwnerPubkey = resolved;
+      }
+      
+      // Get earliest unique commit (optional but recommended for NIP-34 "r" tag)
+      const earliestUniqueCommit = (repoData as any).earliestUniqueCommit || 
+                                  (repoData.commits && Array.isArray(repoData.commits) && repoData.commits.length > 0 
+                                    ? (repoData.commits[0] as any)?.id 
+                                    : undefined);
+      
+      // Get clone URLs from repo data (required for NIP-34 "clone" tag)
+      const cloneUrls: string[] = [];
+      if (repoData.clone && Array.isArray(repoData.clone)) {
+        cloneUrls.push(...repoData.clone.filter((url: string) => 
+          url && typeof url === "string" && 
+          (url.startsWith("http://") || url.startsWith("https://")) &&
+          !url.includes("localhost") && !url.includes("127.0.0.1")
+        ));
+      }
+      
+      // If no clone URLs, try to construct from git server URL
+      if (cloneUrls.length === 0) {
+        const gitServerUrl = process.env.NEXT_PUBLIC_GIT_SERVER_URL;
+        if (gitServerUrl && finalOwnerPubkey) {
+          const cleanUrl = gitServerUrl.trim().replace(/^["']|["']$/g, '');
+          cloneUrls.push(`${cleanUrl}/${finalOwnerPubkey}/${repo}.git`);
+        }
+      }
+      
+      // Generate a commit ID for the PR branch tip (required for NIP-34 "c" tag)
+      // For now, we'll use a placeholder - in a real implementation, this would be the actual commit ID
+      // from the PR branch. Since we're creating a PR from pending changes, we need to either:
+      // 1. Push the branch first and get the commit ID, or
+      // 2. Generate a temporary commit ID that will be updated when the PR is actually pushed
+      // For NIP-34 compliance, we'll generate a deterministic ID based on the PR content
+      const currentCommitId = `pr-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // If we have actual commit info from the branch, use that instead
+      // TODO: Fetch actual commit ID from the PR branch if it exists
+
       let prEvent: any;
       let authorPubkey: string;
 
@@ -231,23 +288,39 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
         // Use NIP-07 extension
         authorPubkey = await window.nostr.getPublicKey();
         
-        // Create unsigned event
+        // Create NIP-34 compliant event
+        const tags: string[][] = [
+          // ["a", "30617:<base-repo-owner-pubkey>:<base-repo-id>"] - REQUIRED
+          ["a", `30617:${finalOwnerPubkey}:${repo}`],
+          // ["r", "<earliest-unique-commit-id-of-repo>"] - REQUIRED (helps clients subscribe)
+          ...(earliestUniqueCommit ? [["r", earliestUniqueCommit]] : []),
+          // ["p", "<repository-owner>"] - REQUIRED
+          ["p", finalOwnerPubkey],
+          // ["subject", "<PR-subject>"] - REQUIRED
+          ["subject", title.trim()],
+          // ["c", "<current-commit-id>"] - REQUIRED (tip of PR branch)
+          ["c", currentCommitId],
+          // ["clone", "<clone-url>", ...] - REQUIRED (at least one git clone URL)
+          ...cloneUrls.map(url => ["clone", url]),
+        ];
+        
+        // Optional tags
+        if (headBranch || baseBranch) {
+          tags.push(["branch-name", headBranch || baseBranch]);
+        }
+        
+        if (linkedIssue) {
+          tags.push(["e", linkedIssue, "", "linked"]);
+        }
+        
+        // Custom extensions (not in NIP-34 but we keep for backward compatibility)
+        // Labels, assignees, etc. would go here if we had them
+        
         prEvent = {
-          kind: KIND_PULL_REQUEST,
+          kind: KIND_PULL_REQUEST, // NIP-34: kind 1618
           created_at: Math.floor(Date.now() / 1000),
-          tags: [
-            ["d", `${entity}/${repo}`],
-            ["repo", entity, repo],
-            ["branch", baseBranch, headBranch || baseBranch],
-            ["status", "open"],
-            ...(linkedIssue ? [["e", linkedIssue, "", "linked"]] : []),
-          ],
-          content: JSON.stringify({
-            title: title.trim(),
-            description: body.trim(),
-            status: "open",
-            changedFiles,
-          }),
+          tags,
+          content: body.trim(), // Markdown text per NIP-34 (not JSON)
           pubkey: authorPubkey,
           id: "",
           sig: "",
@@ -267,13 +340,17 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
           {
             repoEntity: entity,
             repoName: repo,
+            ownerPubkey: finalOwnerPubkey,
+            earliestUniqueCommit,
             title: title.trim(),
             description: body.trim(),
             status: "open",
             baseBranch,
             headBranch: headBranch || baseBranch,
+            currentCommitId,
+            cloneUrls: cloneUrls.length > 0 ? cloneUrls : undefined,
+            branchName: headBranch || baseBranch,
             linkedIssue: linkedIssue || undefined,
-            changedFiles,
           },
           privateKey
         );

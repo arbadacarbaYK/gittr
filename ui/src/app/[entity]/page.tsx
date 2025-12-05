@@ -1700,8 +1700,8 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                   const repoName = (repo.repo || repo.slug || repo.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
                   const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
                   
-                  // Find all potential icon files:
-                  // 1. Files with "logo" in name (highest priority)
+                  // Find all potential icon files with proper prioritization:
+                  // 1. Exact "logo" files (highest priority)
                   // 2. Files named after the repo (e.g., "tides.png" for tides repo)
                   // 3. Common icon names in root (repo.png, icon.png, etc.)
                   const iconFiles = repo.files
@@ -1714,8 +1714,8 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                       
                       if (!imageExts.includes(extension)) return false;
                       
-                      // Match logo files
-                      if (baseName.includes("logo")) return true;
+                      // Match logo files, but exclude third-party logos (alby, etc.)
+                      if (baseName.includes("logo") && !baseName.includes("logo-alby") && !baseName.includes("alby-logo")) return true;
                       
                       // Match repo-name-based files (e.g., "tides.png" for tides repo)
                       if (repoName && baseName === repoName) return true;
@@ -1724,28 +1724,123 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                       if (isRoot && (baseName === "repo" || baseName === "icon" || baseName === "favicon")) return true;
                       
                       return false;
+                    })
+                    .sort((a: string, b: string) => {
+                      const aParts = a.split("/");
+                      const bParts = b.split("/");
+                      const aName = aParts[aParts.length - 1]?.replace(/\.[^.]+$/, "").toLowerCase() || "";
+                      const bName = bParts[bParts.length - 1]?.replace(/\.[^.]+$/, "").toLowerCase() || "";
+                      const aIsRoot = aParts.length === 1;
+                      const bIsRoot = bParts.length === 1;
+                      
+                      // Priority 1: Exact "logo" match
+                      if (aName === "logo" && bName !== "logo") return -1;
+                      if (bName === "logo" && aName !== "logo") return 1;
+                      
+                      // Priority 2: Repo-name-based files
+                      if (repoName && aName === repoName && bName !== repoName && bName !== "logo") return -1;
+                      if (repoName && bName === repoName && aName !== repoName && aName !== "logo") return 1;
+                      
+                      // Priority 3: Root directory files
+                      if (aName === "logo" && bName === "logo") {
+                        if (aIsRoot && !bIsRoot) return -1;
+                        if (!aIsRoot && bIsRoot) return 1;
+                      }
+                      if (aIsRoot && !bIsRoot) return -1;
+                      if (!bIsRoot && aIsRoot) return 1;
+                      
+                      // Priority 4: Format preference (png > svg > webp > jpg > gif > ico)
+                      const formatPriority: Record<string, number> = { png: 0, svg: 1, webp: 2, jpg: 3, jpeg: 3, gif: 4, ico: 5 };
+                      const aExt = a.split(".").pop()?.toLowerCase() || "";
+                      const bExt = b.split(".").pop()?.toLowerCase() || "";
+                      const aPrio = formatPriority[aExt] ?? 10;
+                      const bPrio = formatPriority[bExt] ?? 10;
+                      
+                      return aPrio - bPrio;
                     });
                   
                   const logoFiles = iconFiles;
                   if (logoFiles.length > 0) {
                     const logoPath = logoFiles[0];
-                    if (repo.sourceUrl) {
+                    
+                    // Helper function to extract owner/repo from various URL formats
+                    const extractOwnerRepo = (urlString: string): { owner: string; repo: string; hostname: string } | null => {
                       try {
-                        const url = new URL(repo.sourceUrl);
-                        if (url.hostname === "github.com") {
-                          const parts = url.pathname.split("/").filter(Boolean);
-                          if (parts.length >= 2 && parts[0] && parts[1]) {
-                            const owner = parts[0];
-                            const repoName = parts[1].replace(/\.git$/, "");
-                            const branch = repo.defaultBranch || "main";
-                            iconUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${logoPath}`;
+                        // Handle SSH format: git@github.com:owner/repo.git
+                        if (urlString.includes('@') && urlString.includes(':')) {
+                          const match = urlString.match(/(?:git@|https?:\/\/)([^\/:]+)[\/:]([^\/]+)\/([^\/]+?)(?:\.git)?$/);
+                          if (match && match[1] && match[2] && match[3]) {
+                            const hostname = match[1]!;
+                            const owner = match[2]!;
+                            const repo = match[3]!.replace(/\.git$/, '');
+                            return { owner, repo, hostname };
                           }
                         }
-                      } catch {}
+                        
+                        // Handle HTTPS/HTTP URLs
+                        const url = new URL(urlString);
+                        const parts = url.pathname.split("/").filter(Boolean);
+                        if (parts.length >= 2 && parts[0] && parts[1]) {
+                          return {
+                            owner: parts[0],
+                            repo: parts[1].replace(/\.git$/, ''),
+                            hostname: url.hostname
+                          };
+                        }
+                      } catch (e) {
+                        // Invalid URL format
+                      }
+                      return null;
+                    };
+                    
+                    // Try sourceUrl first
+                    let gitUrl: string | undefined = repo.sourceUrl;
+                    let ownerRepo: { owner: string; repo: string; hostname: string } | null = null;
+                    
+                    if (gitUrl) {
+                      ownerRepo = extractOwnerRepo(gitUrl);
+                    }
+                    
+                    // If sourceUrl didn't work, try clone array
+                    if (!ownerRepo && (repo as any).clone && Array.isArray((repo as any).clone) && (repo as any).clone.length > 0) {
+                      // Find first GitHub/GitLab/Codeberg URL in clone array
+                      const gitCloneUrl = (repo as any).clone.find((url: string) => 
+                        url && (url.includes('github.com') || url.includes('gitlab.com') || url.includes('codeberg.org'))
+                      );
+                      if (gitCloneUrl) {
+                        ownerRepo = extractOwnerRepo(gitCloneUrl);
+                      }
+                    }
+                    
+                    // If we found a valid git URL, construct raw URL
+                    if (ownerRepo) {
+                      const { owner, repo: repoName, hostname } = ownerRepo;
+                      const branch = repo.defaultBranch || "main";
+                      
+                      if (hostname === "github.com" || hostname.includes("github.com")) {
+                        iconUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${logoPath}`;
+                      } else if (hostname === "gitlab.com" || hostname.includes("gitlab.com")) {
+                        iconUrl = `https://gitlab.com/${owner}/${repoName}/-/raw/${encodeURIComponent(branch)}/${logoPath}`;
+                      } else if (hostname === "codeberg.org" || hostname.includes("codeberg.org")) {
+                        iconUrl = `https://codeberg.org/${owner}/${repoName}/raw/branch/${encodeURIComponent(branch)}/${logoPath}`;
+                      }
                     } else {
                       // For native Nostr repos (without sourceUrl), use the API endpoint
+                      // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
+                      // Priority: repositoryName > repo > slug > name
                       const ownerPubkey = repo.ownerPubkey || getRepoOwnerPubkey(repo, repo.entity);
-                      const repoName = repo.repo || repo.slug || repo.name;
+                      const repoDataAny = repo as any;
+                      let repoName = repoDataAny?.repositoryName || repo.repo || repo.slug || repo.name;
+                      
+                      // Extract repo name (handle paths like "gitnostr.com/gitworkshop")
+                      if (repoName && typeof repoName === 'string' && repoName.includes('/')) {
+                        const parts = repoName.split('/');
+                        repoName = parts[parts.length - 1] || repoName;
+                      }
+                      if (repoName) {
+                        repoName = String(repoName).replace(/\.git$/, '');
+                      }
+                      
                       if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) && repoName) {
                         const branch = repo.defaultBranch || "main";
                         iconUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(logoPath)}&branch=${encodeURIComponent(branch)}`;

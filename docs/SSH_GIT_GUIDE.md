@@ -58,9 +58,15 @@ git clone nostr://alex@git.gittr.space/repo-name
 
 ### 3. Publish (Push to Nostr)
 
-1. In the repository UI click **“Push to Nostr”**.  
+1. In the repository UI click **"Push to Nostr"**.  
 2. Confirm the prompt in your NIP‑07 wallet (or use your stored private key).  
 3. We'll publish the NIP‑34 event **and** automatically sync the full Git repository to our bridge at `git.gittr.space` and other GRASP servers so other clients can clone it immediately.
+
+**Important Notes:**
+- **File Content Source**: Files are sourced from `localStorage` (primary) or bridge API (fallback if files are missing from `localStorage`)
+- **No External Fetching**: The push process does NOT fetch files from external sources (GitHub, GitLab, etc.) during push
+- **Workflow**: Files should already be in `localStorage` from the create or import workflow
+- **If Files Are Missing**: Re-import the repository to load all files into `localStorage` before pushing
 
 #### Optional: push via Git CLI
 If you prefer a traditional workflow you can still push directly to the bridge:

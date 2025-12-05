@@ -297,16 +297,31 @@ export default function IssuesPage({}) {
     if (userRepos.length === 0) return;
     
     // Build filters for all user repos - subscribe to issues for each repo
-    const filters = userRepos.map((repo: any) => {
+    // NIP-34: Use "#a" tag for discovery, also include old "#repo" tag for backward compatibility
+    const filters: any[] = [];
+    userRepos.forEach((repo: any) => {
       const entity = repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
       const repoName = repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
-      if (!entity || !repoName) return null;
+      if (!entity || !repoName) return;
       
-      return {
+      const ownerPubkey = repo.ownerPubkey || 
+        (repo.contributors?.find((c: any) => c.weight === 100)?.pubkey) ||
+        (entity && /^[0-9a-f]{64}$/i.test(entity) ? entity : null);
+      
+      // Old format filter
+      filters.push({
         kinds: [KIND_ISSUE],
         "#repo": [entity, repoName],
-      };
-    }).filter(Boolean) as any[];
+      });
+      
+      // NIP-34 format filter (if we have owner pubkey)
+      if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+        filters.push({
+          kinds: [KIND_ISSUE],
+          "#a": [`30617:${ownerPubkey}:${repoName}`],
+        });
+      }
+    });
     
     if (filters.length === 0) return;
     
@@ -318,12 +333,32 @@ export default function IssuesPage({}) {
         if (cancelled || event.kind !== KIND_ISSUE) return;
         
         try {
-          const issueData = JSON.parse(event.content);
+          // NIP-34: Parse from tags and markdown content, but also support old JSON format
+          const aTag = event.tags.find((t: string[]) => t[0] === "a");
+          const subjectTag = event.tags.find((t: string[]) => t[0] === "subject");
           const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
-          if (!repoTag || repoTag.length < 3) return;
           
-          const entity = repoTag[1];
-          const repoName = repoTag[2];
+          let entity: string | undefined;
+          let repoName: string | undefined;
+          
+          // Try NIP-34 "a" tag first: "30617:<owner-pubkey>:<repo-id>"
+          if (aTag && aTag[1]) {
+            const aParts = aTag[1].split(":");
+            if (aParts.length >= 3 && aParts[0] === "30617") {
+              entity = aParts[1]; // Owner pubkey
+              repoName = aParts[2]; // Repo ID
+            }
+          }
+          
+          // Fallback to old "repo" tag format
+          if (!entity || !repoName) {
+            if (repoTag && repoTag.length >= 3) {
+              entity = repoTag[1];
+              repoName = repoTag[2];
+            } else {
+              return; // Can't determine repo
+            }
+          }
           
           if (!entity || !repoName) return;
           
@@ -343,10 +378,35 @@ export default function IssuesPage({}) {
           );
           if (githubIssueWithSameNumber) return;
           
+          // NIP-34: Title from "subject" tag, description from markdown content
+          // Old format: Both from JSON
+          let title = subjectTag ? subjectTag[1] : "";
+          let description = event.content || "";
+          let bountyData: any = {};
+          
+          // Try to parse old JSON format for backward compatibility
+          if (!title && event.content) {
+            try {
+              const oldData = JSON.parse(event.content);
+              title = oldData.title || "";
+              description = oldData.description || "";
+              bountyData = {
+                bountyAmount: oldData.bountyAmount,
+                bountyInvoice: oldData.bountyInvoice,
+                bountyStatus: oldData.bountyStatus || (oldData.bountyAmount ? "pending" : undefined),
+                bountyWithdrawId: oldData.bountyWithdrawId,
+                bountyLnurl: oldData.bountyLnurl,
+                bountyWithdrawUrl: oldData.bountyWithdrawUrl,
+              };
+            } catch {
+              // Not JSON, use as-is (NIP-34 markdown)
+            }
+          }
+          
           const labels = event.tags.filter((t: string[]) => t[0] === "label" || t[0] === "t").map((t: string[]) => t[1]);
-          const assignees = event.tags.filter((t: string[]) => t[0] === "p").map((t: string[]) => t[1]);
+          const assignees = event.tags.filter((t: string[]) => t[0] === "p" && (t[2] === "assignee" || !t[2])).map((t: string[]) => t[1]);
           const statusTag = event.tags.find((t: string[]) => t[0] === "status");
-          const status = statusTag ? statusTag[1] : (issueData.status || "open");
+          const status = statusTag ? statusTag[1] : "open";
           
           const maxNumber = existingIssues.reduce((max: number, i: any) => {
             const num = parseInt(i.number || "0", 10);
@@ -358,20 +418,15 @@ export default function IssuesPage({}) {
             id: event.id,
             entity: entity,
             repo: repoName,
-            title: issueData.title || "",
-            description: issueData.description || "",
+            title: title || "Untitled Issue",
+            description: description,
             status: status,
             author: event.pubkey,
             labels: labels,
             assignees: assignees,
             createdAt: event.created_at * 1000,
             number: String(nextNumber),
-            bountyAmount: issueData.bountyAmount,
-            bountyInvoice: issueData.bountyInvoice,
-            bountyStatus: issueData.bountyStatus || (issueData.bountyAmount ? "pending" : undefined),
-            bountyWithdrawId: issueData.bountyWithdrawId,
-            bountyLnurl: issueData.bountyLnurl,
-            bountyWithdrawUrl: issueData.bountyWithdrawUrl,
+            ...bountyData,
           };
           
           if (existingIndex >= 0) {

@@ -151,23 +151,62 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
       const entityPubkey = await resolveEntityPubkey();
       if (cancelled) return;
 
+      // NIP-34: Use "#a" tag filter for discovery: "30617:<owner-pubkey>:<repo-id>"
+      // Also include old "#repo" tag for backward compatibility
+      const filters: any[] = [
+        {
+          kinds: [KIND_PULL_REQUEST],
+          "#repo": [params.entity, params.repo], // Old format
+        },
+      ];
+      
+      // Add NIP-34 "a" tag filter if we have owner pubkey
+      if (entityPubkey && /^[0-9a-f]{64}$/i.test(entityPubkey)) {
+        filters.push({
+          kinds: [KIND_PULL_REQUEST],
+          "#a": [`30617:${entityPubkey}:${params.repo}`], // NIP-34 format
+        });
+      }
+      
       const unsub = subscribe(
-        [
-          {
-            kinds: [KIND_PULL_REQUEST],
-            "#repo": [params.entity, params.repo], // Filter by repo tag
-          },
-        ],
+        filters,
         defaultRelays,
         (event, isAfterEose, relayURL) => {
           if (event.kind === KIND_PULL_REQUEST) {
             try {
-              const prData = JSON.parse(event.content);
-              const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
+              // NIP-34: Parse from tags, not JSON content
+              const aTag = event.tags.find((t: string[]) => t[0] === "a");
+              const subjectTag = event.tags.find((t: string[]) => t[0] === "subject");
+              const pTag = event.tags.find((t: string[]) => t[0] === "p" && !t[2]); // Repository owner (no marker)
+              const cTag = event.tags.find((t: string[]) => t[0] === "c"); // Current commit ID (NIP-34)
+              const branchNameTag = event.tags.find((t: string[]) => t[0] === "branch-name");
+              const cloneTags = event.tags.filter((t: string[]) => t[0] === "clone");
               
-              // Verify this PR belongs to the current repo
-              if (!repoTag || (repoTag[1] !== params.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== params.repo) {
-                return;
+              // Verify this PR belongs to the current repo via "a" tag
+              // Format: "30617:<owner-pubkey>:<repo-id>"
+              if (aTag && aTag[1]) {
+                const aParts = aTag[1].split(":");
+                if (aParts.length >= 3 && aParts[0] === "30617") {
+                  const repoOwnerPubkey = aParts[1];
+                  const repoId = aParts[2];
+                  
+                  // Check if this matches our repo
+                  if (repoId !== params.repo) {
+                    return; // Not for this repo
+                  }
+                } else {
+                  // Old format - try to parse from "repo" tag
+                  const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
+                  if (!repoTag || (repoTag[1] !== params.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== params.repo) {
+                    return;
+                  }
+                }
+              } else {
+                // Fallback: Old format with "repo" tag
+                const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
+                if (!repoTag || (repoTag[1] !== params.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== params.repo) {
+                  return;
+                }
               }
 
               const key = getRepoStorageKey("gittr_prs", params.entity, params.repo);
@@ -176,24 +215,50 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
               // Check if PR already exists
               const existingIndex = existingPRs.findIndex((pr: any) => pr.id === event.id);
               
-              // Extract branch info, linked issue from tags
+              // NIP-34: Extract from tags
+              // Title from "subject" tag (NIP-34) or JSON content (old format)
+              let title = subjectTag ? subjectTag[1] : "";
+              let body = event.content || ""; // NIP-34: content is markdown
+              let changedFiles: any[] = [];
+              
+              // Try to parse old JSON format for backward compatibility
+              if (!title && event.content) {
+                try {
+                  const oldData = JSON.parse(event.content);
+                  title = oldData.title || "";
+                  body = oldData.description || "";
+                  changedFiles = oldData.changedFiles || [];
+                } catch {
+                  // Not JSON, use as-is (NIP-34 markdown)
+                }
+              }
+              
+              // Extract branch info from "branch-name" tag (NIP-34) or "branch" tag (old format)
               const branchTag = event.tags.find((t: string[]) => t[0] === "branch");
-              const linkedIssueTag = event.tags.find((t: string[]) => t[0] === "e" && t[3] === "linked");
+              const baseBranch = branchNameTag ? branchNameTag[1] : (branchTag ? branchTag[1] : "main");
+              const headBranch = branchTag ? branchTag[2] : undefined;
+              
+              // Extract linked issue
+              const linkedIssueTag = event.tags.find((t: string[]) => t[0] === "e" && (t[3] === "linked" || t[3] === "root"));
+              
+              // Status: Check for status events (NIP-34) or status tag (old format)
               const statusTag = event.tags.find((t: string[]) => t[0] === "status");
-              const status = statusTag ? statusTag[1] : (prData.status || "open");
+              const status = statusTag ? statusTag[1] : "open";
 
               const pr = {
                 id: event.id,
                 entity: params.entity,
                 repo: params.repo,
-                title: prData.title || "",
-                body: prData.description || "",
+                title: title || "Untitled PR",
+                body: body,
                 status: status,
                 author: event.pubkey,
                 contributors: [event.pubkey],
-                baseBranch: branchTag ? branchTag[1] : "main",
-                headBranch: branchTag ? branchTag[2] : undefined,
-                changedFiles: prData.changedFiles || [],
+                baseBranch: baseBranch,
+                headBranch: headBranch,
+                currentCommitId: cTag ? cTag[1] : undefined, // NIP-34: commit ID
+                cloneUrls: cloneTags.map((t: string[]) => t[1]), // NIP-34: clone URLs
+                changedFiles: changedFiles,
                 createdAt: event.created_at * 1000,
                 number: String(existingPRs.length + 1), // Auto-number
                 linkedIssue: linkedIssueTag ? linkedIssueTag[1] : undefined,

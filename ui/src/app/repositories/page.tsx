@@ -72,10 +72,6 @@ export default function RepositoriesPage() {
     setMounted(true);
   }, []);
   
-  if (!mounted) {
-    return <div className="min-h-screen bg-[#0a0d11]"></div>; // Return empty div during SSR to prevent localStorage access
-  }
-  
   // Clear clicked repo state when navigation completes
   useEffect(() => {
     if (!clickedRepo) return;
@@ -1388,6 +1384,18 @@ export default function RepositoriesPage() {
       console.error("Failed to sync repos from activities:", error);
     }
   }, [pubkey]); // CRITICAL: Only run when pubkey changes, NOT when repos.length changes (prevents infinite loop)
+  
+  // CRITICAL: Show loading state during SSR or before mount, but don't return early (all hooks must be called)
+  if (typeof window === 'undefined' || !mounted) {
+    return (
+      <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-2xl font-bold">Your repositories</h1>
+        </div>
+        <p className="text-gray-400">Loading...</p>
+      </div>
+    );
+  }
   
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">

@@ -170,6 +170,12 @@ Handle binary vs text files
 - This normalization happens in all critical paths: file fetching, file opening, cloning, refetching, pushing to Nostr, and importing
 - Ensures seamless compatibility with repositories that use SSH clone URLs
 
+**Push to Nostr Process:**
+- Files are sourced from `localStorage` (primary) or bridge API (fallback)
+- The push process does NOT fetch files from external sources (GitHub, GitLab, etc.)
+- Files must already be available in `localStorage` from create/import workflow
+- If files are missing, re-import the repository to load all files into `localStorage`
+
 ## What's Stored WHERE
 
 #### ✅ Client-Side (Browser localStorage) - **ALL User Data**

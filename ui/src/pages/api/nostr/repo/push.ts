@@ -203,11 +203,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.warn(`⚠️ Failed to set ownership to www-data (this is OK for local dev):`, chownError?.message);
     }
 
+    // CRITICAL: Get commit SHAs immediately after push (no need to wait for bridge)
+    // This allows us to publish state event immediately with real commit SHAs
+    // Format: refs/heads/main abc123... or refs/tags/v1.0.0 def456...
+    let refs: Array<{ ref: string; commit: string }> = [];
+    try {
+      const { stdout: refsOutput } = await execAsync(
+        `git --git-dir="${repoPath}" for-each-ref --format="%(refname) %(objectname)" refs/heads/ refs/tags/`,
+        { timeout: 5000 }
+      );
+      
+      if (refsOutput.trim()) {
+        const lines = refsOutput.trim().split("\n");
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/);
+          if (parts.length >= 2 && parts[0] && parts[1]) {
+            refs.push({
+              ref: parts[0],
+              commit: parts[1],
+            });
+          }
+        }
+      }
+      console.log(`✅ [Bridge Push] Got ${refs.length} refs with commit SHAs immediately after push`);
+    } catch (refsError: any) {
+      console.warn(`⚠️ [Bridge Push] Failed to get refs after push (non-critical):`, refsError?.message);
+      // Non-critical - we can still return success, client can query refs later
+    }
+
     return res.status(200).json({
       success: true,
       message: "Bridge push completed",
       missingFiles,
       pushedFiles: writtenFiles,
+      refs, // Return commit SHAs immediately - no need to wait for bridge or query relays
     });
   } catch (error: any) {
     console.error("❌ Bridge push failed:", error);

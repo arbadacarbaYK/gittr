@@ -159,7 +159,7 @@ export default function HomePage() {
         clearTimeout(storageUpdateTimeoutRef.current);
       }
       storageUpdateTimeoutRef.current = setTimeout(() => {
-        loadRepos();
+      loadRepos();
       }, 500); // Debounce by 500ms
     };
     
