@@ -741,23 +741,7 @@ cp /path/to/gittr/ui/.env.local "$BACKUP_DIR/"
 
 ---
 
-## Recent Updates & Fixes
-
-### Push to Nostr Process (2025-01) ✅
-- **Fixed**: Push process now uses files from localStorage or bridge API, not external sources
-- **Change**: Removed GitHub/GitLab fetching during push - files must already be in localStorage from create/import workflow
-- **Result**: Faster, more reliable pushes with clear workflow expectations
-- **Technical**: Files are sourced from localStorage (primary) or bridge API (fallback). If files are missing, users should re-import the repository.
-
-### NWC Payment Implementation (2024-01) ✅
-- **Fixed**: NWC (Nostr Wallet Connect) payments now work reliably
-- **Change**: Simplified payment flow - send event, wait for relay `OK`, return success
-- **Result**: Payments complete quickly without timeouts
-- **Technical**: Removed complex subscription logic for wallet response events; relay acceptance confirms delivery
-
----
-
-**Last Updated:** 2024-01-XX  
+**Last Updated:** 2025-01  
 **For Issues:** See [GitHub Issues](https://github.com/arbadacarbaYK/gittr/issues)  
 **For Questions:** Contact the project maintainers
 
