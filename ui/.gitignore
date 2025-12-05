@@ -22,6 +22,11 @@
 /out/
 next-env.d.ts
 
+# Capacitor
+/android/
+/ios/
+/.capacitor/
+
 # production
 /build
 

@@ -24,11 +24,43 @@ jobs:
         working-directory: ./ui
         run: npm ci
 
-      - name: Build Next.js app
+      - name: Build Next.js app for Capacitor
         working-directory: ./ui
         env:
           NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL || 'https://gittr.space' }}
-        run: npm run build
+        run: |
+          # Build Next.js app
+          npm run build
+          # Prepare static assets for Capacitor
+          # Note: Next.js App Router doesn't support full static export
+          # We copy static assets and create a minimal entry point
+          mkdir -p out
+          cp -r public out/ 2>/dev/null || true
+          # Copy Next.js static chunks
+          mkdir -p out/_next/static
+          cp -r .next/static/* out/_next/static/ 2>/dev/null || true
+          # Create index.html entry point
+          # This is a minimal loader - for full functionality, the app should load from server
+          cat > out/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>gittr</title>
+            <script>
+              // Load Next.js app - redirect to server for full functionality
+              // For offline mode, would need Next.js standalone build
+              if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                window.location.href = 'https://gittr.space';
+              }
+            </script>
+          </head>
+          <body>
+            <div id="__next">Loading gittr...</div>
+          </body>
+          </html>
+          EOF
 
       - name: Setup Java
         uses: actions/setup-java@v4
