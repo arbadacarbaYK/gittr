@@ -743,7 +743,7 @@ cp /path/to/gittr/ui/.env.local "$BACKUP_DIR/"
 
 ## Recent Updates & Fixes
 
-### Push to Nostr Process (2024-12) ✅
+### Push to Nostr Process (2025-01) ✅
 - **Fixed**: Push process now uses files from localStorage or bridge API, not external sources
 - **Change**: Removed GitHub/GitLab fetching during push - files must already be in localStorage from create/import workflow
 - **Result**: Faster, more reliable pushes with clear workflow expectations
