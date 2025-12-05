@@ -8549,6 +8549,9 @@ export default function RepoCodePage({
                         <Upload className="h-4 w-4 mr-2" />
                         {isPushing ? "Pushing to Nostr..." : "Push to Nostr"}
                       </Button>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Requires 2 signatures. Confirmed after both are signed.
+                      </p>
                     </>
                   )}
                 </div>
