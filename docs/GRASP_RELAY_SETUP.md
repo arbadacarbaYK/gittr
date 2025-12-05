@@ -134,7 +134,11 @@ const DEFAULT_RELAYS = [
    - Used for: Repository metadata, discovery, announcements
    - Required for: Core repository functionality (replaces legacy kind 51)
 
-10. **Kind 9804** (Custom: Pull Requests) - Pull requests
+10. **Kind 30618** (NIP-34: Repository State) - Repository state announcements
+   - Used for: Tracking branches, tags, and commit SHAs
+   - Required for: Full NIP-34 compliance and ngit client recognition (e.g., gitworkshop.dev)
+
+11. **Kind 9804** (Custom: Pull Requests) - Pull requests
    - Used for: Code review and merging
    - Required for: PR workflow
 
@@ -148,7 +152,7 @@ const DEFAULT_RELAYS = [
 [relay]
 # Allow all kinds (recommended for public relays)
 # OR specify allowed kinds:
-allowed_kinds = [0, 1, 50, 51, 52, 1337, 30617, 9735, 9803, 9804]
+allowed_kinds = [0, 1, 50, 51, 52, 1337, 30617, 30618, 9735, 9803, 9804]
 ```
 
 **After updating config, restart relay:**
@@ -165,7 +169,7 @@ relay:
   # Allow all kinds (recommended)
   # Or use eventKinds section to whitelist:
   eventKinds:
-    allow: [0, 1, 50, 51, 52, 1337, 30617, 9735, 9803, 9804]
+    allow: [0, 1, 50, 51, 52, 1337, 30617, 30618, 9735, 9803, 9804]
 ```
 
 **After updating config, restart relay:**

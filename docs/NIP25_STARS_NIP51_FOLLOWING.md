@@ -369,7 +369,7 @@ Ensure your relays allow:
 Example relay config (nostr-rs-relay):
 ```toml
 [relay]
-allowed_kinds = [0, 1, 7, 50, 51, 52, 3000, 30617, 9735, 9803, 9804]
+allowed_kinds = [0, 1, 7, 50, 51, 52, 3000, 30617, 30618, 9735, 9803, 9804]
 ```
 
 ## References
