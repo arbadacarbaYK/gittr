@@ -67,7 +67,7 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
-                  const theme = localStorage.getItem('gittr_theme') || 'classic';
+                  const theme = localStorage.getItem('gittr_theme') || 'arcade80s';
                   document.documentElement.setAttribute('data-theme', theme);
                   document.documentElement.classList.add('dark');
                 } catch (e) {}

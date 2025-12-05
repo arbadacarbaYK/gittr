@@ -87,7 +87,7 @@ export default function ClientLayout({
   useEffect(() => {
     try {
       const applyTheme = () => {
-        const t = localStorage.getItem("gittr_theme") || "classic";
+        const t = localStorage.getItem("gittr_theme") || "arcade80s";
         document.documentElement.dataset.theme = t;
       };
       
