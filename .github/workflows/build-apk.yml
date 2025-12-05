@@ -1,0 +1,102 @@
+name: Build and Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./ui
+        run: npm ci
+
+      - name: Build Next.js app
+        working-directory: ./ui
+        env:
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL || 'https://gittr.space' }}
+        run: npm run build
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Capacitor CLI
+        run: npm install -g @capacitor/cli
+
+      - name: Check for Capacitor setup
+        working-directory: ./ui
+        id: capacitor-check
+        run: |
+          if [ -f "capacitor.config.ts" ] || [ -f "capacitor.config.js" ]; then
+            echo "capacitor_configured=true" >> $GITHUB_OUTPUT
+          else
+            echo "capacitor_configured=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Capacitor not configured. Please set up Capacitor first:"
+            echo "  cd ui && npx cap init 'gittr' 'com.gittr.app'"
+            echo "  npx cap add android"
+            exit 1
+          fi
+
+      - name: Sync Capacitor
+        working-directory: ./ui
+        if: steps.capacitor-check.outputs.capacitor_configured == 'true'
+        run: npx cap sync android
+
+      - name: Build APK
+        working-directory: ./ui/android
+        if: steps.capacitor-check.outputs.capacitor_configured == 'true'
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease
+
+      - name: Find APK
+        id: find-apk
+        working-directory: ./ui/android
+        if: steps.capacitor-check.outputs.capacitor_configured == 'true'
+        run: |
+          APK_PATH=$(find ./app/build/outputs/apk/release -name "*.apk" | head -1)
+          if [ -z "$APK_PATH" ]; then
+            APK_PATH=$(find . -name "*.apk" -path "*/release/*" | head -1)
+          fi
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          echo "Found APK: $APK_PATH"
+          ls -lh "$APK_PATH"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        if: steps.capacitor-check.outputs.capacitor_configured == 'true'
+        with:
+          name: gittr-apk
+          path: ${{ steps.find-apk.outputs.apk_path }}
+          retention-days: 30
+
+      - name: Create Release with APK
+        uses: softprops/action-gh-release@v1
+        if: steps.capacitor-check.outputs.capacitor_configured == 'true'
+        with:
+          files: ${{ steps.find-apk.outputs.apk_path }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
