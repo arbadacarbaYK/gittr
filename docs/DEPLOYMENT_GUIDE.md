@@ -77,7 +77,7 @@ Edit your relay config file (usually `/etc/nostr-rs-relay/config.toml`):
 [relay]
 # Allow all kinds (recommended for public relays)
 # OR specify allowed kinds:
-allowed_kinds = [0, 1, 50, 51, 52, 1337, 30617, 9735, 9803, 9804]
+allowed_kinds = [0, 1, 50, 51, 52, 1337, 30617, 30618, 9735, 9803, 9804]
 ```
 
 Restart the relay:
@@ -92,7 +92,7 @@ Edit your `strfry.conf`:
 ```yaml
 relay:
   eventKinds:
-    allow: [0, 1, 50, 51, 52, 1337, 30617, 9735, 9803, 9804]
+    allow: [0, 1, 50, 51, 52, 1337, 30617, 30618, 9735, 9803, 9804]
 ```
 
 Restart strfry:

@@ -109,6 +109,17 @@ This document lists all Nostr Improvement Proposals (NIPs) and event kinds used 
   - `release[]`: Release tags and metadata
   - `link[]`: Repository links (docs, social media, etc.)
 
+### Kind 30618: Repository State (NIP-34)
+- **Purpose**: Repository state announcements (required for ngit clients)
+- **Usage**: Tracks branches, tags, and commit SHAs for repository state
+- **Tags**: 
+  - `d`: Repository identifier (matches kind 30617)
+  - `refs/heads/<branch>`: Branch name and latest commit SHA
+  - `refs/tags/<tag>`: Tag name and commit SHA
+  - `HEAD`: Default branch reference (e.g., "ref: refs/heads/main")
+- **Content**: Empty (state is in tags)
+- **Required for**: Full NIP-34 compliance and recognition by ngit clients (e.g., gitworkshop.dev)
+
 ### Kind 9803: Issues
 - **Purpose**: Issue tracking
 - **Usage**: Repository issues with bounties
@@ -136,14 +147,14 @@ For relays to support gittr.space, they must allow these event kinds:
 ```toml
 # nostr-rs-relay config.toml
 [relay]
-allowed_kinds = [0, 1, 7, 50, 51, 52, 1337, 30617, 9735, 9803, 9804, 9806, 9807]
+allowed_kinds = [0, 1, 7, 50, 51, 52, 1337, 30617, 30618, 9735, 9803, 9804, 9806, 9807]
 ```
 
 ```yaml
 # strfry config
 relay:
   eventKinds:
-    allow: [0, 1, 7, 50, 51, 52, 1337, 30617, 9735, 9803, 9804, 9806, 9807]
+    allow: [0, 1, 7, 50, 51, 52, 1337, 30617, 30618, 9735, 9803, 9804, 9806, 9807]
 ```
 
 ## Summary Table
@@ -158,6 +169,7 @@ relay:
 | 52 | Custom | SSH Keys | Git authentication |
 | 1337 | NIP-C0 | Code Snippets | Code snippet sharing |
 | 30617 | NIP-34 | Repository Metadata | Repository announcements (primary) |
+| 30618 | NIP-34 | Repository State | Repository state (required for ngit clients) |
 | 9735 | NIP-57 | Zaps | Lightning payments |
 | 9803 | Custom | Issues | Issue tracking |
 | 9804 | Custom | Pull Requests | Code reviews |
