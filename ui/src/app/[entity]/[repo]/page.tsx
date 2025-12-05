@@ -7534,8 +7534,8 @@ export default function RepoCodePage({
                       branch={selectedBranch}
                     />
                   )
-                ) : (fileType === 'json' || fileType === 'xml' || fileType === 'yaml' || fileType === 'csv') && fileContent ? (
-                  // JSON, XML, YAML, CSV files: Show with syntax highlighting
+                ) : (fileType === 'code' || fileType === 'json' || fileType === 'xml' || fileType === 'yaml' || fileType === 'csv' || fileType === 'text') && fileContent ? (
+                  // Code, JSON, XML, YAML, CSV, and text files: Show with syntax highlighting and code snippet sharing
                   <CodeViewer 
                     content={fileContent}
                     filePath={selectedFile}
@@ -8444,6 +8444,20 @@ export default function RepoCodePage({
                             
                             setIsPushing(true);
                             
+                            // Warn user if they try to leave during push
+                            const beforeUnloadHandler = (e: BeforeUnloadEvent) => {
+                              e.preventDefault();
+                              e.returnValue = "Push is in progress! A second signature is required. Are you sure you want to leave?";
+                              return e.returnValue;
+                            };
+                            window.addEventListener("beforeunload", beforeUnloadHandler);
+                            
+                            // Track progress messages for user feedback
+                            const progressMessages: string[] = [];
+                            
+                            // Flag to track when state event signature is about to happen
+                            let stateEventReady = false;
+                            
                             const result = await pushRepoToNostr({
                               repoSlug: params.repo,
                               entity: params.entity,
@@ -8454,8 +8468,26 @@ export default function RepoCodePage({
                               pubkey: currentUserPubkey,
                               onProgress: (message) => {
                                 console.log(`[Push ${params.repo}] ${message}`);
+                                progressMessages.push(message);
+                                // Remove handler right before second signature (state event ready)
+                                if (message.includes("Second signature prompt appearing now")) {
+                                  stateEventReady = true;
+                                  window.removeEventListener("beforeunload", beforeUnloadHandler);
+                                }
+                                // Show critical warnings as alerts
+                                if (message.includes("⚠️ DO NOT close") || message.includes("Second signature")) {
+                                  // Don't spam alerts, but show important ones
+                                  if (progressMessages.filter(m => m.includes("⚠️ DO NOT close")).length === 1) {
+                                    alert("⚠️ IMPORTANT: Please stay on this page!\n\nA second signature prompt will appear shortly.\n\nDo not close or navigate away until both signatures are complete.");
+                                  }
+                                }
                               },
                             });
+                            
+                            // Remove warning handler after push completes (if not already removed)
+                            if (!stateEventReady) {
+                              window.removeEventListener("beforeunload", beforeUnloadHandler);
+                            }
                             
                             if (result.success && result.eventId) {
                               // Update state directly from push result
@@ -8491,14 +8523,17 @@ export default function RepoCodePage({
                                 }
                               }
 
+                              // Show success message BEFORE reload (so user can see it)
+                              if (result.confirmed) {
+                                const announcementId = result.eventId?.slice(0, 16) || "unknown";
+                                const stateId = result.stateEventId?.slice(0, 16) || "unknown";
+                                alert(`✅ Repository pushed to Nostr!\n\n✅ Announcement event (30617): ${announcementId}...\n✅ State event (30618): ${stateId}...\n\nBoth events published successfully.\n\nPage will reload to show updated status.`);
+                              } else {
+                                alert(`⚠️ Repository published but awaiting confirmation.\n\nEvent ID: ${result.eventId?.slice(0, 16)}...\n\nPage will reload to show updated status.`);
+                              }
+                              
                               // Reload page data after push + bridge sync
                               window.location.reload();
-                              
-                              if (result.confirmed) {
-                                alert(`✅ Repository pushed to Nostr!\nEvent ID: ${result.eventId?.slice(0, 16)}...`);
-                              } else {
-                                alert(`⚠️ Repository published but awaiting confirmation.\nEvent ID: ${result.eventId?.slice(0, 16)}...`);
-                              }
                             } else {
                               alert(`❌ Failed to push: ${result.error || "Unknown error"}`);
                             }

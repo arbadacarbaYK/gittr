@@ -796,6 +796,39 @@ const treeUrl = `${baseUrl}/api/v1/repos${fullPath}/git/trees/${branch}?recursiv
 
 ---
 
+## Push to Nostr Process
+
+### File Content Source During Push
+
+When pushing a repository to Nostr, the system uses the following strategy for file content:
+
+1. **Primary Source: localStorage** - Files should already be present in `localStorage` from the create or import workflow
+   - Created repos: Files are stored in `localStorage` during creation
+   - Imported repos: Files are fetched and stored in `localStorage` during import
+   
+2. **Fallback: Bridge API** - If files are missing from `localStorage` (e.g., imported in a different browser), the system attempts to fetch them from the bridge API endpoint `/api/nostr/repo/file-content`
+   - This is useful for imported repositories where files might already exist on the bridge but not in the current browser's `localStorage`
+   - Files are fetched in batches (5 concurrent requests) to avoid overwhelming the API
+   
+3. **Exclusion** - Files without content are excluded from the bridge push with a warning
+   - Directories are automatically excluded (no extension, no content)
+   - Files that cannot be fetched from either source are excluded with a clear warning message
+
+### Important Notes
+
+- **No GitHub/GitLab Fetching During Push**: The push process does NOT fetch files from external sources (GitHub, GitLab, etc.) during push. Files must already be available in `localStorage` or on the bridge.
+- **Workflow**: The expected workflow is:
+  1. Create repository → Files stored in `localStorage` → Push to Nostr
+  2. Import repository → Files fetched and stored in `localStorage` → Push to Nostr
+  3. If files are missing, re-import the repository to load all files into `localStorage`
+
+### Implementation Details
+
+- Location: `ui/src/lib/nostr/push-repo-to-nostr.ts` (lines 462-533)
+- Bridge API fallback: Uses `/api/nostr/repo/file-content` endpoint
+- Batch processing: Limits concurrent fetches to 5 files at a time
+- Error handling: Gracefully excludes files that cannot be fetched, with clear warning messages
+
 ## Related Files
 
 - `ui/src/app/[entity]/[repo]/page.tsx` - Main repository page, file list fetching and file opening
