@@ -8549,9 +8549,6 @@ export default function RepoCodePage({
                         <Upload className="h-4 w-4 mr-2" />
                         {isPushing ? "Pushing to Nostr..." : "Push to Nostr"}
                       </Button>
-                      <p className="text-xs text-gray-500 mt-2">
-                        This repository is only stored locally. Push it to Nostr to make it discoverable.
-                      </p>
                     </>
                   )}
                 </div>
