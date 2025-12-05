@@ -18,14 +18,39 @@ Learn more: https://ngit.dev/grasp/
 
 ## Public Grasp Instances
 
-The following public instances are available:
+The following public GRASP (Git Relays Authorized via Signed-Nostr Proofs) instances are available and supported by gittr.space:
 
-- **wss://gitnostr.com** - Public gitnostr relay instance (Grasp protocol)
+### Primary GRASP Git Servers
+
+These servers are both Nostr relays (wss://) AND git servers (git:///http:///https://) that support NIP-34:
+
 - **wss://relay.ngit.dev** - gitworkshop.dev relay instance (Grasp protocol, part of ngit ecosystem)
-- **https://gitworkshop.dev/danconwaydev.com/ngit-relay** - HTTP endpoint (may have separate WSS relay)
-- **https://gitworkshop.dev/danconwaydev.com/grasp-relay** - HTTP endpoint (may have separate WSS relay)
+- **wss://ngit-relay.nostrver.se** - NostrVer GRASP relay instance
+- **wss://gitnostr.com** - Public gitnostr relay instance (Grasp protocol)
+- **wss://ngit.danconwaydev.com** - Dan Conway's ngit relay instance
+- **wss://git.shakespeare.diy** - Shakespeare DIY GRASP server
+- **wss://git-01.uid.ovh** - UID OVH GRASP server instance 1
+- **wss://git-02.uid.ovh** - UID OVH GRASP server instance 2
+- **wss://git.jb55.com** - jb55's GRASP git server
+- **wss://git.gittr.space** - gittr.space's own GRASP server (for Git operations)
 
-**Note**: gittr.space runs its own bridge at `git.gittr.space` for Git operations, but uses public GRASP relays for Nostr event distribution.
+### Additional Public Relays
+
+These are regular Nostr relays (not GRASP servers) but are commonly used with gittr:
+
+- **wss://relay.damus.io** - Damus relay
+- **wss://nostr.fmt.wiz.biz** - FMT relay
+- **wss://nos.lol** - nos.lol relay
+- **wss://relay.azzamo.net** - Azzamo relay
+- **wss://nostr.mom** - nostr.mom relay
+- **wss://relay.nostr.band** - nostr.band relay
+- **wss://nostr.wine** - nostr.wine relay
+
+**Note**: 
+- GRASP servers (listed above) are BOTH Nostr relays AND git servers - they can host repositories
+- Regular Nostr relays are used for event distribution but don't host git repositories
+- gittr.space runs its own GRASP server at `git.gittr.space` for Git operations
+- All GRASP servers support the NIP-34 protocol for git repositories on Nostr
 
 ## Setting Up Your Own Relay Instance
 
@@ -75,22 +100,25 @@ The following public instances are available:
 
 Once your relay is running, add it to your client's relay configuration:
 
-**Option 1: Environment Variable**
+**Option 1: Environment Variable (Recommended)**
 ```bash
-# In your .env file
-NEXT_PUBLIC_NOSTR_RELAYS=wss://relay.yourdomain.com,wss://gitnostr.com,wss://relay.ngit.dev
+# In your ui/.env.local file
+NEXT_PUBLIC_NOSTR_RELAYS=wss://relay.yourdomain.com,wss://relay.ngit.dev,wss://ngit-relay.nostrver.se,wss://gitnostr.com,wss://git.shakespeare.diy,wss://git-01.uid.ovh,wss://git-02.uid.ovh,wss://git.jb55.com,wss://git.gittr.space,wss://relay.damus.io,wss://nos.lol,wss://nostr.wine
 ```
 
-**Option 2: Update Default Relays**
-Edit `ui/src/lib/nostr/NostrContext.tsx` and add your relay to `DEFAULT_RELAYS`:
+**Option 2: Update Default Relays in Code**
+Edit `ui/src/lib/nostr/NostrContext.tsx` and add your relay to the fallback list (not recommended - use environment variables instead):
 ```typescript
-const DEFAULT_RELAYS = [
+// Minimal fallback - should not be used in production (configure via .env.local)
+return [
   "wss://relay.yourdomain.com", // Your custom relay
-  "wss://gitnostr.com",
   "wss://relay.ngit.dev",
+  "wss://gitnostr.com",
   // ... other relays
 ];
 ```
+
+**Note**: Environment variables are preferred as they allow configuration without code changes.
 
 ### ⚠️ Important: Relay Event Kind Configuration
 
@@ -270,10 +298,10 @@ If events are rejected, check your relay logs for "event kind not allowed" error
 ### References
 
 - **Grasp Protocol**: https://ngit.dev/grasp/
-- **ngit-relay Repository**: https://github.com/danconwaydev/ngit-relay
-- **Protocol Documentation**: See `DEPLOYMENT.md` in ngit-relay repo
-- **Vision Article**: https://nostr.com/notes/... (Dan Conway's long-form article)
+- **GRASP Protocol Specification**: https://ngit.dev/grasp/
+- **ngit-relay Repository**: https://github.com/danconwaydev/ngit-relay (one implementation, but not the only one)
 - **Related Setup**: See [GIT_NOSTR_BRIDGE_SETUP.md](GIT_NOSTR_BRIDGE_SETUP.md) for git-nostr-bridge installation (handles Git operations)
+- **gittr GRASP Implementation**: See `ui/src/lib/utils/grasp-servers.ts` for the complete list of supported GRASP servers
 
 ### Next Steps
 
