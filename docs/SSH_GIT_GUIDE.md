@@ -77,6 +77,19 @@ git commit -m "Update code"
 git push origin main
 ```
 
+**Important**: SSH git operations (`git push`, `git pull`, `git clone`) work **directly with the git-nostr-bridge** via SSH. They are **completely separate** from the web UI push process:
+
+- **SSH operations**: Work with files already in your local git repository. When you `git push`, you're pushing your local commits directly to the bridge. The bridge receives the git objects (commits, trees, blobs) via the git protocol, not file content from localStorage.
+- **Web UI push**: Uses files from `localStorage` or bridge API to create/update the repository on the bridge. This is only for the initial push or when pushing from the web UI.
+
+**How git-remote-nostr works:**
+- `git-remote-nostr` is a helper tool that translates `nostr://` URLs into standard git operations
+- When you run `git clone nostr://...`, it:
+  1. Queries Nostr relays for NIP-34 repository events
+  2. Extracts clone URLs (SSH or HTTPS) from the event
+  3. Uses standard git operations to clone from those URLs
+- The actual git operations (clone/push/pull) still go through SSH or HTTPS to the bridge, just like regular git operations
+
 Only repository owners can push. Collaborators should use pull requests from their own forks or local copies.
 
 ## How It Works
