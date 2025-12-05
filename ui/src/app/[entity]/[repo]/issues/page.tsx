@@ -129,23 +129,67 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
       const entityPubkey = await resolveEntityPubkey();
       if (cancelled) return;
 
+      // NIP-34: Use "#a" tag filter for discovery: "30617:<owner-pubkey>:<repo-id>"
+      // Also include old "#repo" tag for backward compatibility
+      const filters: any[] = [
+        {
+          kinds: [KIND_ISSUE],
+          "#repo": [params.entity, params.repo], // Old format
+        },
+      ];
+      
+      // Add NIP-34 "a" tag filter if we have owner pubkey
+      if (entityPubkey && /^[0-9a-f]{64}$/i.test(entityPubkey)) {
+        filters.push({
+          kinds: [KIND_ISSUE],
+          "#a": [`30617:${entityPubkey}:${params.repo}`], // NIP-34 format
+        });
+      }
+      
       const unsub = subscribe(
-        [
-          {
-            kinds: [KIND_ISSUE],
-            "#repo": [params.entity, params.repo], // Filter by repo tag
-          },
-        ],
+        filters,
         defaultRelays,
         (event, isAfterEose, relayURL) => {
           if (event.kind === KIND_ISSUE) {
             try {
-              const issueData = JSON.parse(event.content);
-              const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
+              // NIP-34: Parse from tags, not JSON content
+              const aTag = event.tags.find((t: string[]) => t[0] === "a");
+              const subjectTag = event.tags.find((t: string[]) => t[0] === "subject");
+              const pTag = event.tags.find((t: string[]) => t[0] === "p" && !t[2]); // Repository owner (no marker)
               
-              // Verify this issue belongs to the current repo
-              if (!repoTag || (repoTag[1] !== params.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== params.repo) {
-                return;
+              // Verify this issue belongs to the current repo via "a" tag
+              // Format: "30617:<owner-pubkey>:<repo-id>"
+              if (aTag && aTag[1]) {
+                const aParts = aTag[1].split(":");
+                if (aParts.length >= 3 && aParts[0] === "30617") {
+                  const repoOwnerPubkey = aParts[1];
+                  const repoId = aParts[2];
+                  
+                  // Check if this matches our repo
+                  if (repoId !== params.repo) {
+                    return; // Not for this repo
+                  }
+                  
+                  // Also check if owner matches (entity or entityPubkey)
+                  if (repoOwnerPubkey && repoOwnerPubkey !== entityPubkey && 
+                      !params.entity.includes(repoOwnerPubkey.slice(0, 8)) &&
+                      repoOwnerPubkey !== entityPubkey) {
+                    // Might still be valid if entity resolves to this pubkey
+                    // Continue processing
+                  }
+                } else {
+                  // Old format - try to parse from "repo" tag
+                  const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
+                  if (!repoTag || (repoTag[1] !== params.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== params.repo) {
+                    return;
+                  }
+                }
+              } else {
+                // Fallback: Old format with "repo" tag
+                const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
+                if (!repoTag || (repoTag[1] !== params.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== params.repo) {
+                  return;
+                }
               }
 
               const key = getRepoStorageKey("gittr_issues", params.entity, params.repo);
@@ -154,30 +198,60 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
               // Check if issue already exists
               const existingIndex = existingIssues.findIndex((i: any) => i.id === event.id);
               
-              // Extract labels, assignees from tags
-              const labels = event.tags.filter((t: string[]) => t[0] === "label" || t[0] === "t").map((t: string[]) => t[1]);
-              const assignees = event.tags.filter((t: string[]) => t[0] === "p").map((t: string[]) => t[1]);
+              // NIP-34: Extract from tags
+              // Title from "subject" tag (NIP-34) or JSON content (old format)
+              let title = subjectTag ? subjectTag[1] : "";
+              let description = event.content || ""; // NIP-34: content is markdown
+              let bountyData: any = {};
+              
+              // Try to parse old JSON format for backward compatibility
+              if (!title && event.content) {
+                try {
+                  const oldData = JSON.parse(event.content);
+                  title = oldData.title || "";
+                  description = oldData.description || "";
+                  bountyData = {
+                    bountyAmount: oldData.bountyAmount,
+                    bountyInvoice: oldData.bountyInvoice,
+                    bountyStatus: oldData.bountyStatus || (oldData.bountyAmount ? "pending" : undefined),
+                    bountyWithdrawId: oldData.bountyWithdrawId,
+                    bountyLnurl: oldData.bountyLnurl,
+                    bountyWithdrawUrl: oldData.bountyWithdrawUrl,
+                  };
+                } catch {
+                  // Not JSON, use as-is (NIP-34 markdown)
+                }
+              }
+              
+              // Extract labels from "t" tags (NIP-34) or "label" tags (old format)
+              const labels = event.tags
+                .filter((t: string[]) => t[0] === "t" || t[0] === "label")
+                .map((t: string[]) => t[1]);
+              
+              // Extract assignees from "p" tags with "assignee" marker (custom) or all "p" tags (old format)
+              const assignees = event.tags
+                .filter((t: string[]) => t[0] === "p" && (t[2] === "assignee" || !t[2]))
+                .map((t: string[]) => t[1])
+                .filter((p: string | undefined): p is string => !!p && p !== pTag?.[1]); // Exclude repo owner
+              
+              // Status: Check for status events (NIP-34) or status tag (old format)
+              // For now, default to "open" - status events will update this
               const statusTag = event.tags.find((t: string[]) => t[0] === "status");
-              const status = statusTag ? statusTag[1] : (issueData.status || "open");
+              const status = statusTag ? statusTag[1] : (bountyData.bountyStatus ? "open" : "open");
 
               const issue = {
                 id: event.id,
                 entity: params.entity,
                 repo: params.repo,
-                title: issueData.title || "",
-                description: issueData.description || "",
+                title: title || "Untitled Issue",
+                description: description,
                 status: status,
                 author: event.pubkey,
                 labels: labels,
                 assignees: assignees,
                 createdAt: event.created_at * 1000,
                 number: String(existingIssues.length + 1), // Auto-number
-                bountyAmount: issueData.bountyAmount,
-                bountyInvoice: issueData.bountyInvoice,
-                bountyStatus: issueData.bountyStatus || (issueData.bountyAmount ? "pending" : undefined),
-                bountyWithdrawId: issueData.bountyWithdrawId,
-                bountyLnurl: issueData.bountyLnurl,
-                bountyWithdrawUrl: issueData.bountyWithdrawUrl,
+                ...bountyData,
               };
 
               if (existingIndex >= 0) {

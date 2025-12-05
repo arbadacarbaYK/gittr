@@ -64,9 +64,69 @@ export default function ZapsPage() {
     setMounted(true);
   }, []);
 
+  // Filter zaps by status and exclude deleted repos
+  // NOTE: This useMemo must be called BEFORE any early returns to follow React's rules of hooks
+  const filteredZaps = useMemo(() => {
+    if (!mounted || typeof window === "undefined") {
+      return [];
+    }
+    
+    // Helper function to check if a repo is deleted
+    const isRepoDeleted = (contextId: string): boolean => {
+      if (!contextId) return false;
+      
+      try {
+        // Load list of locally-deleted repos
+        const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
+        const deletedReposSet = new Set(deletedRepos.map(d => `${d.entity}/${d.repo}`.toLowerCase()));
+        
+        // For repo zaps, contextId is "entity/repo"
+        if (contextId.includes("/")) {
+          const repoKey = contextId.toLowerCase();
+          if (deletedReposSet.has(repoKey)) return true;
+          
+          // Also check if repo exists and is marked as deleted
+          const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
+          const [entity, repoName] = contextId.split("/");
+          const repo = repos.find((r: any) => {
+            const rEntity = r.entity || "";
+            const rRepo = r.repo || r.slug || "";
+            return rEntity.toLowerCase() === (entity || "").toLowerCase() &&
+                   rRepo.toLowerCase() === (repoName || "").toLowerCase();
+          });
+          
+          if (repo && (repo.deleted === true || repo.archived === true)) {
+            return true;
+          }
+        }
+        
+        return false;
+      } catch {
+        return false;
+      }
+    };
+    
+    let filtered = zaps;
+    
+    // Filter out zaps for deleted repos
+    filtered = filtered.filter(z => {
+      // Only filter repo-type zaps (issues/PRs might still be valid even if repo is deleted)
+      if (z.type === "repo" && z.contextId) {
+        return !isRepoDeleted(z.contextId);
+      }
+      return true; // Keep non-repo zaps and zaps without contextId
+    });
+    
+    // Filter by status
+    if (statusFilter !== "all") {
+      filtered = filtered.filter(z => z.status === statusFilter);
+    }
+    return filtered.sort((a, b) => b.createdAt - a.createdAt);
+  }, [zaps, statusFilter, mounted]);
+
   // Load zap history
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!mounted || !isLoggedIn || typeof window === "undefined") return;
     
     try {
       const allZaps = getZapHistory(undefined, undefined, 500);
@@ -111,7 +171,7 @@ export default function ZapsPage() {
       console.error("Failed to load zaps:", error);
       setZaps([]);
     }
-  }, [isLoggedIn, pubkey, filter]);
+  }, [mounted, isLoggedIn, pubkey, filter]);
 
   // Load wallet balances
   useEffect(() => {
@@ -241,70 +301,6 @@ export default function ZapsPage() {
       <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
         <h1 className="text-2xl font-bold mb-4">Your Zaps</h1>
         <p className="text-gray-400">Please sign in to view your zap history.</p>
-      </div>
-    );
-  }
-
-  // Filter zaps by status and exclude deleted repos
-  const filteredZaps = useMemo(() => {
-    // Helper function to check if a repo is deleted
-    const isRepoDeleted = (contextId: string): boolean => {
-      if (!contextId || typeof window === "undefined") return false;
-      
-      try {
-        // Load list of locally-deleted repos
-        const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
-        const deletedReposSet = new Set(deletedRepos.map(d => `${d.entity}/${d.repo}`.toLowerCase()));
-        
-        // For repo zaps, contextId is "entity/repo"
-        if (contextId.includes("/")) {
-          const repoKey = contextId.toLowerCase();
-          if (deletedReposSet.has(repoKey)) return true;
-          
-          // Also check if repo exists and is marked as deleted
-          const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
-          const [entity, repoName] = contextId.split("/");
-          const repo = repos.find((r: any) => {
-            const rEntity = r.entity || "";
-            const rRepo = r.repo || r.slug || "";
-            return rEntity.toLowerCase() === (entity || "").toLowerCase() &&
-                   rRepo.toLowerCase() === (repoName || "").toLowerCase();
-          });
-          
-          if (repo && (repo.deleted === true || repo.archived === true)) {
-            return true;
-          }
-        }
-        
-        return false;
-      } catch {
-        return false;
-      }
-    };
-    
-    let filtered = zaps;
-    
-    // Filter out zaps for deleted repos
-    filtered = filtered.filter(z => {
-      // Only filter repo-type zaps (issues/PRs might still be valid even if repo is deleted)
-      if (z.type === "repo" && z.contextId) {
-        return !isRepoDeleted(z.contextId);
-      }
-      return true; // Keep non-repo zaps and zaps without contextId
-    });
-    
-    // Filter by status
-    if (statusFilter !== "all") {
-      filtered = filtered.filter(z => z.status === statusFilter);
-    }
-    return filtered.sort((a, b) => b.createdAt - a.createdAt);
-  }, [zaps, statusFilter]);
-
-  if (!mounted) {
-    return (
-      <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
-        <h1 className="text-2xl font-bold mb-4">Your Zaps</h1>
-        <p className="text-gray-400">Loading...</p>
       </div>
     );
   }

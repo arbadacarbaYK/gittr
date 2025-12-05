@@ -113,26 +113,86 @@ export function ReposList({
         
         const logoPath = prioritized[0];
         
-        // For GitHub repos, use GitHub raw URL
-        if (repo.sourceUrl) {
+        // Helper function to extract owner/repo from various URL formats
+        const extractOwnerRepo = (urlString: string): { owner: string; repo: string; hostname: string } | null => {
           try {
-            const url = new URL(repo.sourceUrl);
-            if (url.hostname === "github.com") {
-              const parts = url.pathname.split("/").filter(Boolean);
-              if (parts.length >= 2 && parts[0] && parts[1]) {
-                const owner = parts[0];
-                const repoName = parts[1].replace(/\.git$/, "");
-                const branch = repo.defaultBranch || "main";
-                return `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${logoPath}`;
+            // Handle SSH format: git@github.com:owner/repo.git
+            if (urlString.includes('@') && urlString.includes(':')) {
+              const match = urlString.match(/(?:git@|https?:\/\/)([^\/:]+)[\/:]([^\/]+)\/([^\/]+?)(?:\.git)?$/);
+              if (match && match[1] && match[2] && match[3]) {
+                const hostname = match[1]!;
+                const owner = match[2]!;
+                const repo = match[3]!.replace(/\.git$/, '');
+                return { owner, repo, hostname };
               }
             }
-          } catch {}
+            
+            // Handle HTTPS/HTTP URLs
+            const url = new URL(urlString);
+            const parts = url.pathname.split("/").filter(Boolean);
+            if (parts.length >= 2 && parts[0] && parts[1]) {
+              return {
+                owner: parts[0],
+                repo: parts[1].replace(/\.git$/, ''),
+                hostname: url.hostname
+              };
+            }
+          } catch (e) {
+            // Invalid URL format
+          }
+          return null;
+        };
+        
+        // Try sourceUrl first
+        let gitUrl: string | undefined = repo.sourceUrl;
+        let ownerRepo: { owner: string; repo: string; hostname: string } | null = null;
+        
+        if (gitUrl) {
+          ownerRepo = extractOwnerRepo(gitUrl);
         }
         
-        // For native Nostr repos (without sourceUrl), use the API endpoint
-        if (!repo.sourceUrl) {
+        // If sourceUrl didn't work, try clone array
+        if (!ownerRepo && repo.clone && Array.isArray(repo.clone) && repo.clone.length > 0) {
+          // Find first GitHub/GitLab/Codeberg URL in clone array
+          const gitCloneUrl = repo.clone.find((url: string) => 
+            url && (url.includes('github.com') || url.includes('gitlab.com') || url.includes('codeberg.org'))
+          );
+          if (gitCloneUrl) {
+            ownerRepo = extractOwnerRepo(gitCloneUrl);
+          }
+        }
+        
+        // If we found a valid git URL, construct raw URL
+        if (ownerRepo) {
+          const { owner, repo: repoName, hostname } = ownerRepo;
+          const branch = repo.defaultBranch || "main";
+          
+          if (hostname === "github.com" || hostname.includes("github.com")) {
+            return `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${logoPath}`;
+          } else if (hostname === "gitlab.com" || hostname.includes("gitlab.com")) {
+            return `https://gitlab.com/${owner}/${repoName}/-/raw/${encodeURIComponent(branch)}/${logoPath}`;
+          } else if (hostname === "codeberg.org" || hostname.includes("codeberg.org")) {
+            return `https://codeberg.org/${owner}/${repoName}/raw/branch/${encodeURIComponent(branch)}/${logoPath}`;
+          }
+        }
+        
+        // For native Nostr repos (without sourceUrl or clone URLs), use the API endpoint
+        // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
+        // Priority: repositoryName > repo > slug > name
+        if (!ownerRepo) {
           const ownerPubkey = repo.entity ? getRepoOwnerPubkey(repo, repo.entity) : null;
-          const repoName = repo.repo || repo.slug || repo.name;
+          const repoDataAny = repo as any;
+          let repoName = repoDataAny?.repositoryName || repo.repo || repo.slug || repo.name;
+          
+          // Extract repo name (handle paths like "gitnostr.com/gitworkshop")
+          if (repoName && typeof repoName === 'string' && repoName.includes('/')) {
+            const parts = repoName.split('/');
+            repoName = parts[parts.length - 1] || repoName;
+          }
+          if (repoName) {
+            repoName = String(repoName).replace(/\.git$/, '');
+          }
+          
           if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) && repoName && logoPath) {
             const branch = repo.defaultBranch || "main";
             return `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(logoPath)}&branch=${encodeURIComponent(branch)}`;

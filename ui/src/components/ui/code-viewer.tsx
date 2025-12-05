@@ -729,45 +729,45 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
             >
               <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
                 <span className="flex-shrink-0 font-semibold text-yellow-300 whitespace-nowrap">
-                  {selectedLines.end > selectedLines.start 
+                {selectedLines.end > selectedLines.start 
                     ? `Lines ${selectedLines.start}-${selectedLines.end}`
                     : `Line ${selectedLines.start}`
-                  }
-                </span>
+                }
+              </span>
                 <div className="flex flex-wrap items-center gap-2 flex-1">
-                  <button
-                    onClick={() => {
+              <button
+                onClick={() => {
                       if (!selectedLines) return;
-                      const hash = selectedLines.end > selectedLines.start 
-                        ? `#L${selectedLines.start}-L${selectedLines.end}` 
-                        : `#L${selectedLines.start}`;
-                      const fullUrl = `${window.location.origin}${window.location.pathname}${window.location.search}${hash}`;
-                      navigator.clipboard.writeText(fullUrl);
-                      
-                      // Show toast
-                      const toast = document.createElement("div");
-                      toast.className = "fixed bottom-4 right-4 bg-gray-800 border border-gray-600 text-white px-4 py-2 rounded shadow-lg z-50";
-                      toast.textContent = "Permalink copied to clipboard";
-                      document.body.appendChild(toast);
-                      setTimeout(() => {
-                        document.body.removeChild(toast);
-                      }, 2000);
-                    }}
+                  const hash = selectedLines.end > selectedLines.start 
+                    ? `#L${selectedLines.start}-L${selectedLines.end}` 
+                    : `#L${selectedLines.start}`;
+                  const fullUrl = `${window.location.origin}${window.location.pathname}${window.location.search}${hash}`;
+                  navigator.clipboard.writeText(fullUrl);
+                  
+                  // Show toast
+                  const toast = document.createElement("div");
+                  toast.className = "fixed bottom-4 right-4 bg-gray-800 border border-gray-600 text-white px-4 py-2 rounded shadow-lg z-50";
+                  toast.textContent = "Permalink copied to clipboard";
+                  document.body.appendChild(toast);
+                  setTimeout(() => {
+                    document.body.removeChild(toast);
+                  }, 2000);
+                }}
                     className="px-2 sm:px-3 py-1.5 sm:py-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded text-xs sm:text-sm font-medium touch-manipulation transition-colors whitespace-nowrap"
-                  >
-                    Copy permalink
-                  </button>
+              >
+                Copy permalink
+              </button>
                   {pubkey && (
-                    <button
-                      onClick={() => setShowSnippetModal(true)}
+                <button
+                  onClick={() => setShowSnippetModal(true)}
                       className="px-2 sm:px-3 py-1.5 sm:py-2 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white rounded text-xs sm:text-sm font-medium flex items-center gap-1.5 touch-manipulation transition-colors whitespace-nowrap"
-                    >
+                >
                       <Share2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                       <span className="hidden sm:inline">Share as snippet</span>
                       <span className="sm:hidden">Share</span>
-                    </button>
-                  )}
-                </div>
+                </button>
+              )}
+            </div>
               </div>
             </div>
           )}
@@ -777,11 +777,11 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
       {/* Selection instructions when no selection */}
       {!selectedLines && (
         <div className="mt-3 p-3 bg-gray-800/50 border border-gray-700 rounded-lg">
-          <p className="text-sm text-gray-300 mb-2">Select code to share:</p>
-        </div>
-      )}
-      
-      {/* Range selection mode toggle - always visible */}
+            <p className="text-sm text-gray-300 mb-2">Select code to share:</p>
+          </div>
+        )}
+        
+        {/* Range selection mode toggle - always visible */}
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => {
@@ -892,7 +892,7 @@ export function CodeViewer({ content, filePath, entity, repo, branch }: CodeView
                 <p>Language: {getLanguageFromExtension(filePath) || "auto-detect"}</p>
                 <p>File: {filePath}</p>
                 {selectedLines ? (
-                  <p>Lines: {selectedLines.start}{selectedLines.end > selectedLines.start ? `-${selectedLines.end}` : ""}</p>
+                <p>Lines: {selectedLines.start}{selectedLines.end > selectedLines.start ? `-${selectedLines.end}` : ""}</p>
                 ) : null}
               </div>
 

@@ -35,14 +35,15 @@ import { Badge } from "@/components/ui/badge";
 import { BountyButton } from "@/components/ui/bounty-button";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { sendNotification, formatNotificationMessage } from "@/lib/notifications";
-import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import { getRepoOwnerPubkey, resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
 import { extractMentionedPubkeys } from "@/lib/utils/mention-detection";
+import { loadStoredRepos } from "@/lib/repos/storage";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 export default function RepoIssueNewPage() {
   const router = useRouter();
   const titleRef = useRef<HTMLInputElement>(null);
   const commentRef = useRef<HTMLTextAreaElement>(null);
-  const assigneesFilterRef = useRef<HTMLInputElement>(null);
   const labelsFilterRef = useRef<HTMLInputElement>(null);
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
@@ -196,6 +197,41 @@ export default function RepoIssueNewPage() {
       }
 
       try {
+        // Get repo data for NIP-34 required fields
+        const repos = loadStoredRepos();
+        const repoData = findRepoByEntityAndName(repos, entity, repo);
+        if (!repoData) {
+          setErrorMsg("Repository not found. Please ensure the repository exists.");
+          setSubmitting(false);
+          return;
+        }
+        
+        // Get owner pubkey (required for NIP-34 "a" and "p" tags)
+        let finalOwnerPubkey: string = getRepoOwnerPubkey(repoData, entity) || "";
+        if (!finalOwnerPubkey || !/^[0-9a-f]{64}$/i.test(finalOwnerPubkey)) {
+          // Try to resolve from entity
+          const resolved = resolveEntityToPubkey(entity, repoData);
+          if (!resolved || !/^[0-9a-f]{64}$/i.test(resolved)) {
+            setErrorMsg("Cannot determine repository owner. Please ensure the repository is properly configured.");
+            setSubmitting(false);
+            return;
+          }
+          finalOwnerPubkey = resolved;
+        }
+        
+        // TypeScript guard: ensure finalOwnerPubkey is defined
+        if (!finalOwnerPubkey || !/^[0-9a-f]{64}$/i.test(finalOwnerPubkey)) {
+          setErrorMsg("Cannot determine repository owner. Please ensure the repository is properly configured.");
+          setSubmitting(false);
+          return;
+        }
+        
+        // Get earliest unique commit (optional but recommended for NIP-34 "r" tag)
+        const earliestUniqueCommit = (repoData as any).earliestUniqueCommit || 
+                                    (repoData.commits && Array.isArray(repoData.commits) && repoData.commits.length > 0 
+                                      ? (repoData.commits[0] as any)?.id 
+                                      : undefined);
+        
         let issueEvent: any;
         let authorPubkey: string;
 
@@ -208,24 +244,39 @@ export default function RepoIssueNewPage() {
             ? selectedAssignees 
             : [authorPubkey, ...selectedAssignees];
           
-          // Create unsigned event
+          // Create NIP-34 compliant event
+          const tags: string[][] = [
+            // ["a", "30617:<base-repo-owner-pubkey>:<base-repo-id>"] - REQUIRED
+            ["a", `30617:${finalOwnerPubkey}:${repo}`],
+            // ["r", "<earliest-unique-commit-id-of-repo>"] - REQUIRED (helps clients subscribe)
+            ...(earliestUniqueCommit ? [["r", earliestUniqueCommit]] : []),
+            // ["p", "<repository-owner>"] - REQUIRED
+            ["p", finalOwnerPubkey],
+            // ["subject", "<issue-subject>"] - REQUIRED
+            ["subject", title],
+          ];
+          
+          // Optional tags
+          if (selectedLabels && selectedLabels.length > 0) {
+            selectedLabels.forEach(label => tags.push(["t", label]));
+          }
+          
+          // Custom extensions (not in NIP-34 but we keep for backward compatibility)
+          if (finalAssignees && finalAssignees.length > 0) {
+            finalAssignees.forEach(assignee => tags.push(["p", assignee, "assignee"]));
+          }
+          if (selectedProject) {
+            tags.push(["project", selectedProject]);
+          }
+          if (selectedMilestone) {
+            tags.push(["milestone", selectedMilestone]);
+          }
+          
           issueEvent = {
-            kind: KIND_ISSUE,
+            kind: KIND_ISSUE, // NIP-34: kind 1621
             created_at: Math.floor(Date.now() / 1000),
-            tags: [
-              ["d", `${entity}/${repo}`],
-              ["repo", entity, repo],
-              ["status", "open"],
-              ...(selectedLabels || []).map(label => ["label", label]),
-              ...(finalAssignees || []).map(assignee => ["p", assignee]),
-              ...(selectedProject ? [["project", selectedProject]] : []),
-              ...(selectedMilestone ? [["milestone", selectedMilestone]] : []),
-            ],
-            content: JSON.stringify({
-              title,
-              description,
-              status: "open",
-            }),
+            tags,
+            content: description, // Markdown text per NIP-34 (not JSON)
             pubkey: authorPubkey,
             id: "",
             sig: "",
@@ -250,6 +301,8 @@ export default function RepoIssueNewPage() {
             {
               repoEntity: entity,
               repoName: repo,
+              ownerPubkey: finalOwnerPubkey, // Required for NIP-34
+              earliestUniqueCommit,
               title,
               description,
               labels: selectedLabels,

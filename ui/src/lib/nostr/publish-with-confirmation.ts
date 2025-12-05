@@ -109,12 +109,14 @@ export async function publishWithConfirmation(
 
 /**
  * Store the event ID in repository data
+ * @param stateEventId - Optional state event ID (kind 30618) - if provided, stores it separately
  */
 export function storeRepoEventId(
   repoSlug: string,
   entity: string,
   eventId: string,
-  confirmed: boolean
+  confirmed: boolean,
+  stateEventId?: string
 ): void {
   try {
     const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
@@ -146,6 +148,9 @@ export function storeRepoEventId(
         nostrEventId: eventId,
         lastNostrEventId: eventId, // Store as "last successful commit-id-to-nostr"
         lastNostrEventCreatedAt: eventCreatedAt,
+        // CRITICAL: Store state event ID separately (kind 30618) - required for full NIP-34 compliance
+        // Both announcement (30617) and state (30618) events are required for "live" status
+        ...(stateEventId ? { stateEventId, lastStateEventId: stateEventId } : {}),
         status: confirmed ? "live" : existingRepo.status || "local",
         syncedFromNostr: confirmed ? true : existingRepo.syncedFromNostr,
         hasUnpushedEdits: false, // Clear unpushed edits flag after successful push

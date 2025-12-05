@@ -29,8 +29,8 @@ export const KNOWN_GRASP_DOMAINS = [
   'git-01.uid.ovh',
   'git-02.uid.ovh',
   'git.jb55.com',
-  // Add gittr.space if it's a GRASP server (our own server)
-  // Note: This will be added via NEXT_PUBLIC_GIT_SERVER_URL, but included here for completeness
+  // gittr.space GRASP server (our own server)
+  'git.gittr.space',
 ] as const;
 
 /**
