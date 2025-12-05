@@ -10,6 +10,8 @@
 const config = {
   reactStrictMode: true,
   swcMinify: true,
+  // For Capacitor/APK builds: enable static export (optional, can be enabled via env var)
+  // output: process.env.CAPACITOR_BUILD === 'true' ? 'export' : undefined,
   images: {
     domains: ["void.cat"],
     remotePatterns: [
