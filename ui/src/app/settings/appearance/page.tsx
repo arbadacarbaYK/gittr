@@ -16,11 +16,11 @@ const QR_STYLES = [
 ];
 
 export default function AppearancePage() {
-  const [theme, setTheme] = useState("classic");
+  const [theme, setTheme] = useState("arcade80s");
   const [qrStyle, setQrStyle] = useState("classic");
 
   useEffect(() => {
-    const t = localStorage.getItem("gittr_theme") || "classic";
+    const t = localStorage.getItem("gittr_theme") || "arcade80s";
     const q = localStorage.getItem("gittr_qr_style") || "classic";
     setTheme(t);
     setQrStyle(q);
