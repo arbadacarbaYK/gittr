@@ -6,9 +6,10 @@ const config: CapacitorConfig = {
   webDir: 'out', // Static assets directory (created during build)
   server: {
     androidScheme: 'https',
-    // For development: uncomment to load from local server
-    // url: 'http://localhost:3000',
-    // cleartext: true,
+    // Load from production server (Next.js App Router requires server)
+    // For offline support, would need Next.js standalone mode
+    url: 'https://gittr.space',
+    cleartext: false,
   },
   // Allow navigation to external URLs (for API calls, Nostr relays, etc.)
   plugins: {
