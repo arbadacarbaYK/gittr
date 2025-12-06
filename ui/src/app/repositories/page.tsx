@@ -2145,11 +2145,15 @@ export default function RepositoriesPage() {
                           )}
                         </Badge>
                       </div>
-                      {r.sourceUrl && (
+                      {r.description && r.description.trim() ? (
+                        <div className="text-sm opacity-70 line-clamp-2">
+                          {r.description}
+                        </div>
+                      ) : r.sourceUrl ? (
                         <div className="text-sm opacity-70 whitespace-nowrap overflow-hidden text-ellipsis">
                           Imported from {r.sourceUrl}
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 ml-4 flex-shrink-0">
