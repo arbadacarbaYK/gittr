@@ -34,9 +34,12 @@ cd gittr
 
 ### Step 2: Install Dependencies
 
+**Note**: This project uses **Yarn** as the primary package manager. `yarn.lock` is the source of truth (Dependabot updates it automatically). npm works but yarn is recommended.
+
 ```bash
 cd ui
-npm install
+yarn install
+# Or: npm install (works but yarn is preferred)
 ```
 
 ### Step 3: Configure Environment
@@ -52,7 +55,8 @@ All configuration is in `.env.local` - domain, relays, Blossom URL, GitHub OAuth
 
 ```bash
 cd ui
-npm run dev
+yarn dev
+# Or: npm run dev (works but yarn is preferred)
 ```
 
 Frontend runs on `http://localhost:3000`

@@ -56,9 +56,12 @@ cd gittr
 
 ### Step 2: Install Frontend Dependencies
 
+**Note**: This project uses **Yarn** as the primary package manager. `yarn.lock` is the source of truth (Dependabot updates it automatically). npm works but yarn is recommended.
+
 ```bash
 cd ui
-npm install
+yarn install
+# Or: npm install (works but yarn is preferred)
 ```
 
 ### Step 3: Configure Environment
@@ -74,7 +77,8 @@ Edit `ui/.env.local` with your values. All configuration is in this file - domai
 
 ```bash
 cd ui
-npm run build
+yarn build
+# Or: npm run build (works but yarn is preferred)
 ```
 
 ### Step 5: Install Go (for building git-nostr-bridge) OR Use Docker
