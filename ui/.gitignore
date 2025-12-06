@@ -49,8 +49,9 @@ yarn-error.log*
 #ide 
 .vscode/*
 
-# npm
-package-lock.json
+# npm (we use yarn as primary, but keep package-lock.json for compatibility)
+# package-lock.json is kept in repo for npm users, but yarn.lock is the source of truth
+# Dependabot updates yarn.lock, not package-lock.json
 
 # gitnostr (backend)
 bin
