@@ -30,7 +30,7 @@ jobs:
           NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL || 'https://gittr.space' }}
         run: |
           # Build Next.js app
-          yarn build
+          npm run build
           # Prepare static assets for Capacitor
           # Note: Next.js App Router doesn't support full static export
           # We copy static assets and create a minimal entry point
