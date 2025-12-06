@@ -100,10 +100,29 @@ export function getRepoStatus(repo: any): RepoStatus {
     return hasUnpushedEdits ? "live_with_edits" : "live";
   }
   
+  // CRITICAL: For repos synced from Nostr (syncedFromNostr or fromNostr), be more lenient
+  // If they're old (more than 1 hour), assume they're live even without state event or bridge verification
+  // This handles repos that were published before state events were required
+  const isSyncedFromNostr = !!(repo.syncedFromNostr || repo.fromNostr);
+  const eventCreatedAt = repo.lastNostrEventCreatedAt || repo.nostrEventCreatedAt;
+  const isOldRepo = eventCreatedAt && (Date.now() / 1000 - eventCreatedAt) >= 3600; // More than 1 hour old
+  
+  if (isSyncedFromNostr && hasAnnouncementEventId && isOldRepo) {
+    // Repo was synced from Nostr and is old - optimistically show as "live"
+    // Bridge check will update this when it runs, but for now assume it's live
+    return hasUnpushedEdits ? "live_with_edits" : "live";
+  }
+  
   // If announcement event exists but state event is missing:
   if (hasAnnouncementEventId && !hasStateEventId) {
     // Announcement published but state event missing - not fully "live"
     // This can happen if user cancelled the second signature or state event failed
+    // OR if repo was published before state events were required
+    // For recent pushes, show as "awaiting bridge", for old ones assume live
+    if (isOldRepo) {
+      // Old repo without state event - assume it's live (backward compatibility)
+      return hasUnpushedEdits ? "live_with_edits" : "live";
+    }
     return "live_with_edits"; // Show as "Published (Awaiting Bridge)" - state event needed
   }
   
@@ -113,7 +132,6 @@ export function getRepoStatus(repo: any): RepoStatus {
   // Only NEW pushes (recent eventCreatedAt) should show "awaiting bridge"
   if (hasAnnouncementEventId && hasStateEventId && (bridgeProcessed === undefined || bridgeProcessed === false)) {
     // Check if this is a recent push (within last hour) or an old push (days ago)
-    const eventCreatedAt = repo.lastNostrEventCreatedAt || repo.nostrEventCreatedAt;
     const isRecentPush = eventCreatedAt && (Date.now() / 1000 - eventCreatedAt) < 3600; // Within last hour
     
     if (isRecentPush) {
@@ -124,11 +142,6 @@ export function getRepoStatus(repo: any): RepoStatus {
       // Bridge check will update this when it runs
       return hasUnpushedEdits ? "live_with_edits" : "live";
     }
-  }
-  
-  // If only announcement event exists (no state event) - not fully "live"
-  if (hasAnnouncementEventId && !hasStateEventId) {
-    return "live_with_edits"; // State event missing - not fully compliant
   }
   
   // Only check explicit status if no event ID exists
