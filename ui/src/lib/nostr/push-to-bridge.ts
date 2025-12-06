@@ -20,30 +20,46 @@ export async function pushFilesToBridge({
     return { skipped: true };
   }
 
-  const response = await fetch("/api/nostr/repo/push", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      ownerPubkey,
-      repo: repoSlug,
-      branch,
-      files,
-    }),
-  });
-
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || "Bridge push failed");
-  }
+  // CRITICAL: Add timeout for large repos (5 minutes max)
+  const BRIDGE_PUSH_TIMEOUT = 300000; // 5 minutes
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), BRIDGE_PUSH_TIMEOUT);
 
   try {
-    await checkBridgeExists(ownerPubkey, repoSlug, entity);
-  } catch (error) {
-    console.warn("Failed to verify bridge sync:", error);
-  }
+    const response = await fetch("/api/nostr/repo/push", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPubkey,
+        repo: repoSlug,
+        branch,
+        files,
+      }),
+      signal: controller.signal,
+    });
 
-  return data;
+    clearTimeout(timeoutId);
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Bridge push failed");
+    }
+
+    try {
+      await checkBridgeExists(ownerPubkey, repoSlug, entity);
+    } catch (error) {
+      console.warn("Failed to verify bridge sync:", error);
+    }
+
+    return data;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error(`Bridge push timeout after ${BRIDGE_PUSH_TIMEOUT / 1000} seconds. The repository may be too large. Try pushing fewer files at once.`);
+    }
+    throw error;
+  }
 }
 

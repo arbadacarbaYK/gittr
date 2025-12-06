@@ -490,17 +490,48 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     }
     
     // Try to fetch missing content from bridge API (for imported repos where files are already on bridge)
+    // CRITICAL: Add timeout to prevent hanging on large repos
     if (filesNeedingContent.length > 0) {
       onProgress?.(`🔍 Fetching ${filesNeedingContent.length} file(s) from bridge API (missing from localStorage)...`);
+      onProgress?.(`⏱️ This may take a moment for large repos - timeout after 2 minutes`);
+      
+      // Helper function to add timeout to fetch
+      const fetchWithTimeout = async (url: string, timeoutMs: number = 30000): Promise<Response> => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const response = await fetch(url, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          return response;
+        } catch (error: any) {
+          clearTimeout(timeoutId);
+          if (error.name === 'AbortError') {
+            throw new Error(`Request timeout after ${timeoutMs}ms`);
+          }
+          throw error;
+        }
+      };
       
       // Limit concurrent fetches to avoid overwhelming the API
       const BATCH_SIZE = 5;
+      const FILE_FETCH_TIMEOUT = 30000; // 30 seconds per file
+      const TOTAL_FETCH_TIMEOUT = 120000; // 2 minutes total for all files
+      const fetchStartTime = Date.now();
+      
       for (let i = 0; i < filesNeedingContent.length; i += BATCH_SIZE) {
+        // Check if we've exceeded total timeout
+        if (Date.now() - fetchStartTime > TOTAL_FETCH_TIMEOUT) {
+          console.warn(`⚠️ [Push Repo] File fetch timeout after ${TOTAL_FETCH_TIMEOUT}ms - skipping remaining files`);
+          onProgress?.(`⚠️ File fetch timeout - skipping remaining files. Files should be in localStorage from import.`);
+          break;
+        }
+        
         const batch = filesNeedingContent.slice(i, i + BATCH_SIZE);
         await Promise.all(batch.map(async (file) => {
           try {
-            const response = await fetch(
-              `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(pubkey)}&repo=${encodeURIComponent(actualRepositoryName)}&path=${encodeURIComponent(file.path)}&branch=${encodeURIComponent(repo.defaultBranch || "main")}`
+            const response = await fetchWithTimeout(
+              `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(pubkey)}&repo=${encodeURIComponent(actualRepositoryName)}&path=${encodeURIComponent(file.path)}&branch=${encodeURIComponent(repo.defaultBranch || "main")}`,
+              FILE_FETCH_TIMEOUT
             );
             
             if (response.ok) {
@@ -521,8 +552,12 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
               // File doesn't exist on bridge yet - will be excluded
               console.warn(`⚠️ [Push Repo] File ${file.path} not found on bridge (404)`);
             }
-          } catch (err) {
-            console.warn(`⚠️ [Push Repo] Failed to fetch ${file.path} from bridge API:`, err);
+          } catch (err: any) {
+            if (err.message && err.message.includes('timeout')) {
+              console.warn(`⏱️ [Push Repo] Timeout fetching ${file.path} from bridge API (${FILE_FETCH_TIMEOUT}ms)`);
+            } else {
+              console.warn(`⚠️ [Push Repo] Failed to fetch ${file.path} from bridge API:`, err);
+            }
           }
           
           // If we couldn't fetch from bridge, exclude the file
@@ -947,7 +982,8 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       let refs: Array<{ ref: string; commit: string }> = [];
       
       if (filesForBridge && filesForBridge.length > 0) {
-        onProgress?.("📤 Pushing files to bridge...");
+        onProgress?.(`📤 Pushing ${filesForBridge.length} file(s) to bridge...`);
+        onProgress?.(`⏱️ This may take several minutes for large repos (timeout: 5 minutes)`);
         try {
           const { pushFilesToBridge } = await import("./push-to-bridge");
           const pushResult = await pushFilesToBridge({
