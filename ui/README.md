@@ -369,6 +369,22 @@ $ yarn dev
 
 **Note**: Make sure you've set up `ui/.env.local` with GitHub OAuth credentials before running `yarn dev`.
 
+## Package Manager: Yarn (Primary)
+
+This project uses **Yarn** as the primary package manager. The `yarn.lock` file is the source of truth for dependency versions.
+
+- **Dependabot updates `yarn.lock`** automatically for security updates
+- **All deployments use Yarn**: Hetzner server and GitHub Actions workflows
+- **npm still works** but `yarn.lock` takes precedence - if you use `npm install`, run `yarn install` afterward to keep lockfiles in sync
+
+**Commands:**
+- `yarn install` - Install dependencies (primary method)
+- `yarn dev` - Development server
+- `yarn build` - Production build
+- `yarn start` - Start production server
+
+**Note**: `package-lock.json` is kept in the repo for npm compatibility, but `yarn.lock` is the authoritative source. Dependabot only updates `yarn.lock`.
+
 # Questions or discussions
 
 Have a question or a proposal? Create a [new issue](https://github.com/NostrGit/NostrGit/issues/new).
@@ -468,7 +484,3 @@ Nostr
   - [ ] Follow a repo
   - [ ] Comment on a repo
   - [ ] Add bounties
-
-Special Thanks
-
-<a href="https://vercel.com?utm_source=nostrgit&utm_campaign=oss"><img src="https://images.ctfassets.net/e5382hct74si/78Olo8EZRdUlcDUFQvnzG7/fa4cdb6dc04c40fceac194134788a0e2/1618983297-powered-by-vercel.svg" />
