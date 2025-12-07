@@ -23,8 +23,9 @@ export async function queryRepoStars(
     
     const unsubscribe = subscribe(filters, (event: Event) => {
       // Only count positive reactions (stars)
+      // Normalize pubkey to lowercase to prevent case-sensitivity issues
       if (event.content === "+" || event.content === "⭐") {
-        starers.add(event.pubkey);
+        starers.add(event.pubkey.toLowerCase());
       }
     });
     
@@ -58,7 +59,7 @@ export async function publishStarReaction(
       tags: [
         ["e", repoEventId],
         ["k", "30617"],
-        ["p", repoOwnerPubkey],
+        ["p", repoOwnerPubkey.toLowerCase()],
       ],
       content: "+",
       pubkey: "", // Will be set by signer
@@ -103,7 +104,7 @@ export async function removeStarReaction(
       tags: [
         ["e", repoEventId],
         ["k", "30617"],
-        ["p", repoOwnerPubkey],
+        ["p", repoOwnerPubkey.toLowerCase()],
       ],
       content: "-", // Negative reaction (unstar)
       pubkey: "", // Will be set by signer
