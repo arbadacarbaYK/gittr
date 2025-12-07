@@ -3,32 +3,33 @@ import { nip19 } from 'nostr-tools';
 import { resolveRepoIconForMetadata } from '@/lib/utils/metadata-icon-resolver';
 
 export async function generateMetadata(
-  { params }: { params: { entity: string; repo: string } }
+  { params }: { params: Promise<{ entity: string; repo: string }> }
 ): Promise<Metadata> {
+  const resolvedParams = await params;
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space';
-  const decodedRepo = decodeURIComponent(params.repo);
+  const decodedRepo = decodeURIComponent(resolvedParams.repo);
   
   // Format owner name (convert pubkey to npub if needed)
-  let ownerName = params.entity;
+  let ownerName = resolvedParams.entity;
   try {
-    if (/^[0-9a-f]{64}$/i.test(params.entity)) {
-      ownerName = nip19.npubEncode(params.entity);
-    } else if (params.entity.startsWith('npub')) {
-      ownerName = params.entity;
+    if (/^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
+      ownerName = nip19.npubEncode(resolvedParams.entity);
+    } else if (resolvedParams.entity.startsWith('npub')) {
+      ownerName = resolvedParams.entity;
     }
   } catch {
     // Use entity as-is
   }
   
   const title = `${ownerName}/${decodedRepo}`;
-  const url = `${baseUrl}/${encodeURIComponent(params.entity)}/${encodeURIComponent(decodedRepo)}`;
+  const url = `${baseUrl}/${encodeURIComponent(resolvedParams.entity)}/${encodeURIComponent(decodedRepo)}`;
   
   // Resolve repository icon URL for Open Graph
   // We construct URLs based on common patterns - the browser/social media crawler will fetch them
   let iconUrl = `${baseUrl}/logo.svg`; // Default fallback
   try {
     iconUrl = await resolveRepoIconForMetadata(
-      params.entity,
+      resolvedParams.entity,
       decodedRepo,
       baseUrl
     );

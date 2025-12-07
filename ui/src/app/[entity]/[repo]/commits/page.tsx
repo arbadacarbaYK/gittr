@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, use } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -30,7 +30,8 @@ interface Commit {
   prId?: string; // Related PR ID if commit is from a merged PR
 }
 
-export default function CommitsPage({ params }: { params: { entity: string; repo: string } }) {
+export default function CommitsPage({ params }: { params: Promise<{ entity: string; repo: string }> }) {
+  const resolvedParams = use(params);
   const [mounted, setMounted] = useState(false);
   const searchParams = useSearchParams();
   const branch = searchParams?.get("branch") || "main";
@@ -61,7 +62,7 @@ export default function CommitsPage({ params }: { params: { entity: string; repo
     if (!mounted) return; // Don't load from localStorage until mounted
     try {
       // Load commits from localStorage
-      const commitsKey = getRepoStorageKey("gittr_commits", params.entity, params.repo);
+      const commitsKey = getRepoStorageKey("gittr_commits", resolvedParams.entity, resolvedParams.repo);
       const allCommits = JSON.parse(localStorage.getItem(commitsKey) || "[]") as Commit[];
       
       // Filter by branch if specified
@@ -73,7 +74,7 @@ export default function CommitsPage({ params }: { params: { entity: string; repo
           c.changedFiles?.some(f => f.path === fileFilter) ||
           (c as any).prId && (() => {
             try {
-              const prsKey = getRepoStorageKey("gittr_prs", params.entity, params.repo);
+              const prsKey = getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo);
               const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
               const pr = prs.find((p: any) => p.id === (c as any).prId);
               return pr?.path === fileFilter;
@@ -91,7 +92,7 @@ export default function CommitsPage({ params }: { params: { entity: string; repo
       console.error("Failed to load commits:", error);
       setLoading(false);
     }
-  }, [mounted, params.entity, params.repo, branch, fileFilter]);
+  }, [mounted, resolvedParams.entity, resolvedParams.repo, branch, fileFilter]);
 
   useEffect(() => {
     loadCommits();
@@ -99,7 +100,7 @@ export default function CommitsPage({ params }: { params: { entity: string; repo
 
   // Listen for new commits
   useEffect(() => {
-    const commitsKey = getRepoStorageKey("gittr_commits", params.entity, params.repo);
+    const commitsKey = getRepoStorageKey("gittr_commits", resolvedParams.entity, resolvedParams.repo);
     
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === commitsKey) {
@@ -118,7 +119,7 @@ export default function CommitsPage({ params }: { params: { entity: string; repo
       window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener("gittr:commit-created", handleCommitCreated);
     };
-  }, [params.entity, params.repo, loadCommits]);
+  }, [resolvedParams.entity, resolvedParams.repo, loadCommits]);
 
   const filteredCommits = useMemo(() => {
     if (!searchQuery.trim()) return commits;
@@ -204,7 +205,7 @@ export default function CommitsPage({ params }: { params: { entity: string; repo
                       <div className="flex items-start justify-between gap-4 mb-2">
                         <div className="flex-1 min-w-0">
                           <Link
-                            href={`/${params.entity}/${params.repo}/commits/${commit.id}`}
+                            href={`/${resolvedParams.entity}/${resolvedParams.repo}/commits/${commit.id}`}
                             className="text-lg font-semibold text-purple-400 hover:text-purple-300 hover:underline block truncate"
                           >
                             {commit.message}
@@ -271,7 +272,7 @@ export default function CommitsPage({ params }: { params: { entity: string; repo
                       </div>
                       <div className="flex items-center gap-2">
                         <Link
-                          href={`/${params.entity}/${params.repo}/commits/${commit.id}`}
+                          href={`/${resolvedParams.entity}/${resolvedParams.repo}/commits/${commit.id}`}
                           className="text-xs font-mono text-gray-500 hover:text-gray-400"
                         >
                           {commit.id.slice(0, 7)}

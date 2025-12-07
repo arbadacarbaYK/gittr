@@ -4,7 +4,7 @@ import { getRepoStorageKey, normalizeEntityForStorage } from "@/lib/utils/entity
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -22,7 +22,8 @@ interface BlameLine {
   timestamp: number;
 }
 
-export default function BlamePage({ params }: { params: { entity: string; repo: string } }) {
+export default function BlamePage({ params }: { params: Promise<{ entity: string; repo: string }> }) {
+  const resolvedParams = use(params);
   const searchParams = useSearchParams();
   const filePath = searchParams?.get("file") || null;
   const [blameLines, setBlameLines] = useState<BlameLine[]>([]);
@@ -39,11 +40,11 @@ export default function BlamePage({ params }: { params: { entity: string; repo: 
       try {
         // Load file content - same logic as main page
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const overrides: Record<string, string> = JSON.parse(localStorage.getItem(`gittr_overrides__${normalizeEntityForStorage(params.entity)}__${params.repo}`) || "{}");
+        const overrides: Record<string, string> = JSON.parse(localStorage.getItem(`gittr_overrides__${normalizeEntityForStorage(resolvedParams.entity)}__${resolvedParams.repo}`) || "{}");
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
         const repos: any[] = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const repo = findRepoByEntityAndName(repos, params.entity, params.repo);
+        const repo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
         
         let content: string = overrides[filePath] || "";
         
@@ -98,7 +99,7 @@ export default function BlamePage({ params }: { params: { entity: string; repo: 
         setFileContent(content || "");
 
       // Load commits that touched this file
-      const commitsKey = getRepoStorageKey("gittr_commits", params.entity, params.repo);
+      const commitsKey = getRepoStorageKey("gittr_commits", resolvedParams.entity, resolvedParams.repo);
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const allCommits = JSON.parse(localStorage.getItem(commitsKey) || "[]");
       
@@ -110,7 +111,7 @@ export default function BlamePage({ params }: { params: { entity: string; repo: 
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         (c.prId && (() => {
           try {
-            const prsKey = getRepoStorageKey("gittr_prs", params.entity, params.repo);
+            const prsKey = getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo);
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
@@ -172,7 +173,7 @@ export default function BlamePage({ params }: { params: { entity: string; repo: 
     return (
       <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
         <p className="text-gray-400">No file specified</p>
-        <Link href={`/${params.entity}/${params.repo}`} className="text-purple-500 hover:underline">
+        <Link href={`/${resolvedParams.entity}/${resolvedParams.repo}`} className="text-purple-500 hover:underline">
           Back to repository
         </Link>
       </div>
@@ -221,7 +222,7 @@ export default function BlamePage({ params }: { params: { entity: string; repo: 
           Click on a commit ID to view that commit&apos;s details.
         </p>
         <Link
-          href={`/${params.entity}/${params.repo}?file=${encodeURIComponent(filePath)}`}
+          href={`/${resolvedParams.entity}/${resolvedParams.repo}?file=${encodeURIComponent(filePath)}`}
           className="text-purple-400 hover:text-purple-300 hover:underline text-sm"
         >
           ← Back to file view
@@ -261,7 +262,7 @@ export default function BlamePage({ params }: { params: { entity: string; repo: 
                             {line.commitId !== "unknown" ? (
                               <>
                                 <Link
-                                  href={`/${params.entity}/${params.repo}/commits/${line.commitId}`}
+                                  href={`/${resolvedParams.entity}/${resolvedParams.repo}/commits/${line.commitId}`}
                                   className="text-purple-400 hover:text-purple-300 hover:underline truncate block text-xs"
                                   title={line.commitMessage}
                                 >

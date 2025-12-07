@@ -3,7 +3,7 @@
 import { normalizeEntityForStorage } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, use } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
@@ -38,7 +38,8 @@ interface SearchResult {
   }>;
 }
 
-export default function FindPage({ params }: { params: { entity: string; repo: string } }) {
+export default function FindPage({ params }: { params: Promise<{ entity: string; repo: string }> }) {
+  const resolvedParams = use(params);
   const searchParams = useSearchParams();
   const [query, setQuery] = useState<string>(searchParams?.get("q") || "");
   const [fileType, setFileType] = useState<string>("all");
@@ -50,7 +51,7 @@ export default function FindPage({ params }: { params: { entity: string; repo: s
     const loadRepoData = async () => {
       try {
         const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as StoredRepo[];
-        let repo = findRepoByEntityAndName(repos, params.entity, params.repo) as StoredRepo | undefined;
+        let repo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo) as StoredRepo | undefined;
         
         // If repo found but no files, try to fetch from API
         if (repo && (!repo.files || repo.files.length === 0) && repo.sourceUrl) {
@@ -65,7 +66,7 @@ export default function FindPage({ params }: { params: { entity: string; repo: s
               repo = { ...repo, files: data.files || [] };
               // Update localStorage
               const updated = repos.map((r) => 
-                (r.entity === params.entity && (r.repo === params.repo || r.slug === params.repo)) 
+                (r.entity === resolvedParams.entity && (r.repo === resolvedParams.repo || r.slug === resolvedParams.repo)) 
                   ? { ...r, files: data.files || [] }
                   : r
               );
@@ -83,7 +84,7 @@ export default function FindPage({ params }: { params: { entity: string; repo: s
     };
     
     void loadRepoData();
-  }, [params]);
+  }, [resolvedParams.entity, resolvedParams.repo]);
 
   const fileTypes = useMemo(() => {
     if (!repoData?.files) return [];
@@ -209,7 +210,7 @@ export default function FindPage({ params }: { params: { entity: string; repo: s
           let content = "";
           
           // Check overrides first
-          const overridesKey = `gittr_overrides__${normalizeEntityForStorage(params.entity)}__${params.repo}`;
+          const overridesKey = `gittr_overrides__${normalizeEntityForStorage(resolvedParams.entity)}__${resolvedParams.repo}`;
           const overrides = JSON.parse(localStorage.getItem(overridesKey) || "{}") as Record<string, string>;
           const overrideContent = overrides[file.path];
           if (overrideContent) {
@@ -290,7 +291,7 @@ export default function FindPage({ params }: { params: { entity: string; repo: s
     } finally {
       setLoading(false);
     }
-  }, [fileType, params.entity, params.repo, repoData]);
+  }, [fileType, resolvedParams.entity, resolvedParams.repo, repoData]);
 
   const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -406,7 +407,7 @@ export default function FindPage({ params }: { params: { entity: string; repo: s
             <div key={idx} className="border border-gray-700 rounded overflow-hidden">
               <div className="p-3 bg-gray-800 border-b border-gray-700">
                 <Link
-                  href={`/${params.entity}/${params.repo}?file=${encodeURIComponent(result.path)}`}
+                  href={`/${resolvedParams.entity}/${resolvedParams.repo}?file=${encodeURIComponent(result.path)}`}
                   className="text-purple-400 hover:text-purple-300 font-mono text-sm flex items-center gap-2"
                 >
                   <File className="h-4 w-4" />

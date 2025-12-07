@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -69,7 +69,8 @@ interface PRData {
   headBranch?: string;
 }
 
-export default function PRDetailPage({ params }: { params: { entity: string; repo: string; id: string } }) {
+export default function PRDetailPage({ params }: { params: Promise<{ entity: string; repo: string; id: string }> }) {
+  const resolvedParams = use(params);
   const router = useRouter();
   const { pubkey: currentUserPubkey, publish, defaultRelays } = useNostrContext();
   const { picture: userPicture, name: userName } = useSession();
@@ -114,11 +115,11 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
   useEffect(() => {
     try {
       const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+      const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
       // requiredApprovals is not in StoredRepo interface, default to 0
       setRequiredApprovals(0);
     } catch {}
-  }, [params.entity, params.repo]);
+  }, [resolvedParams.entity, resolvedParams.repo]);
 
   // Subscribe to snippets referenced in PR description and snippets that reference this PR
   useEffect(() => {
@@ -179,7 +180,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
           // Check if snippet references this PR or is in PR description
           const referencesThisPR = prEventId && eTags.some((t) => t[1] === prEventId);
           const isInDescription = pr?.body && pr.body.includes(event.id);
-          const isForThisRepo = repoTag && repoTag[1] === params.entity && repoTag[2] === params.repo;
+          const isForThisRepo = repoTag && repoTag[1] === resolvedParams.entity && repoTag[2] === resolvedParams.repo;
           
           if ((referencesThisPR || isInDescription) && (isForThisRepo || !repoTag)) {
             setSnippetEvents((prev) => {
@@ -195,18 +196,18 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
     return () => {
       unsub();
     };
-  }, [subscribe, defaultRelays, pr?.body, prEventId, params.entity, params.repo]);
+  }, [subscribe, defaultRelays, pr?.body, prEventId, resolvedParams.entity, resolvedParams.repo]);
 
   // Load PR data
   useEffect(() => {
     try {
-      const key = getRepoStorageKey("gittr_prs", params.entity, params.repo);
+      const key = getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo);
       const prs = JSON.parse(localStorage.getItem(key) || "[]") as any[];
-      const prData = prs.find((p: any) => p.id === params.id || String(prs.indexOf(p) + 1) === params.id);
+      const prData = prs.find((p: any) => p.id === resolvedParams.id || String(prs.indexOf(p) + 1) === resolvedParams.id);
       
       if (prData) {
         setPR({
-          id: prData.id || params.id,
+          id: prData.id || resolvedParams.id,
           title: prData.title || "",
           body: prData.body || "",
           path: prData.path,
@@ -233,23 +234,23 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
         const repos = loadStoredRepos();
         // Try multiple lookup strategies - repo might be stored with different field names
         let repo = repos.find((r: StoredRepo) => {
-          const entityMatch = r.entity === params.entity;
-          const repoMatch = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
+          const entityMatch = r.entity === resolvedParams.entity;
+          const repoMatch = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
           return entityMatch && repoMatch;
         });
         
         if (repo && currentUserPubkey) {
           // CRITICAL: Use proper role-based permission checks
-          const repoOwnerPubkey = getRepoOwnerPubkey(repo, params.entity);
+          const repoOwnerPubkey = getRepoOwnerPubkey(repo, resolvedParams.entity);
           const userIsOwnerValue = checkIsOwner(currentUserPubkey, repo.contributors, repoOwnerPubkey);
           const userCanMerge = hasWriteAccess(currentUserPubkey, repo.contributors, repoOwnerPubkey);
           
           setIsOwner(userIsOwnerValue);
           setCanMerge(userCanMerge);
         } else if (currentUserPubkey) {
-          // FALLBACK: If repo not found, check if params.entity (npub) matches current user
+          // FALLBACK: If repo not found, check if resolvedParams.entity (npub) matches current user
           // Decode npub to compare with full pubkey
-          const entityPubkey = resolveEntityToPubkey(params.entity);
+          const entityPubkey = resolveEntityToPubkey(resolvedParams.entity);
           const entityMatches = entityPubkey && entityPubkey.toLowerCase() === currentUserPubkey.toLowerCase();
           
           if (entityMatches) {
@@ -270,7 +271,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
         
         // Load linked issue if present
         if (prData.linkedIssue || prData.issueId) {
-          const issueKey = getRepoStorageKey("gittr_issues", params.entity, params.repo);
+          const issueKey = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
           const issues = JSON.parse(localStorage.getItem(issueKey) || "[]");
           const issue = issues.find((i: any) => 
             i.id === (prData.linkedIssue || prData.issueId) || 
@@ -284,7 +285,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
       console.error("Failed to load PR:", error);
       setLoading(false);
     }
-  }, [params.id, params.entity, params.repo, currentUserPubkey]);
+  }, [resolvedParams.id, resolvedParams.entity, resolvedParams.repo, currentUserPubkey]);
 
   const changedFiles = useMemo(() => {
     if (pr?.changedFiles && pr.changedFiles.length > 0) {
@@ -326,14 +327,14 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
     const repos = loadStoredRepos();
     // Try multiple lookup strategies
     const repo = repos.find((r: StoredRepo) => {
-      const entityMatch = r.entity === params.entity;
-      const repoMatch = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
+      const entityMatch = r.entity === resolvedParams.entity;
+      const repoMatch = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
       return entityMatch && repoMatch;
     });
     
     // CRITICAL: Use proper role-based permission checks (no sliced pubkeys!)
-    // params.entity is in npub format, repo.entity should also be npub
-    const repoOwnerPubkey = repo ? getRepoOwnerPubkey(repo, params.entity) : null;
+    // resolvedParams.entity is in npub format, repo.entity should also be npub
+    const repoOwnerPubkey = repo ? getRepoOwnerPubkey(repo, resolvedParams.entity) : null;
     const isRepoOwner = repoOwnerPubkey && currentUserPubkey && 
       repoOwnerPubkey.toLowerCase() === currentUserPubkey.toLowerCase();
     
@@ -349,7 +350,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
     // Check reviews for required approvals (skip if owner/maintainer is merging their own PR)
     if (!canMergeOwnPR && requiredApprovals > 0) {
     try {
-      const storageKey = `gittr_pr_reviews__${normalizeEntityForStorage(params.entity)}__${params.repo}__${pr.id}`;
+      const storageKey = `gittr_pr_reviews__${normalizeEntityForStorage(resolvedParams.entity)}__${resolvedParams.repo}__${pr.id}`;
       const reviews = JSON.parse(localStorage.getItem(storageKey) || "[]");
         
         // Only count approvals from users with merge rights (owners/maintainers), excluding the person doing the merge
@@ -396,9 +397,9 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
     try {
       // 0. Detect conflicts before merging
       const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+      const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
       
-      const overrides = loadRepoOverrides(params.entity, params.repo);
+      const overrides = loadRepoOverrides(resolvedParams.entity, resolvedParams.repo);
       
       const changedFiles: ChangedFile[] = pr.changedFiles || 
         (pr.path ? [{ 
@@ -470,14 +471,14 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
         }
       });
       
-      saveRepoOverrides(params.entity, params.repo, overrides);
+      saveRepoOverrides(resolvedParams.entity, resolvedParams.repo, overrides);
       try {
         const storedRepos = loadStoredRepos();
         const repoIndex = storedRepos.findIndex((storedRepo: StoredRepo) => {
-          const repoMatches = storedRepo.repo === params.repo || storedRepo.slug === params.repo || storedRepo.name === params.repo;
+          const repoMatches = storedRepo.repo === resolvedParams.repo || storedRepo.slug === resolvedParams.repo || storedRepo.name === resolvedParams.repo;
           const entityMatches =
-            storedRepo.entity === params.entity ||
-            storedRepo.entity?.toLowerCase() === params.entity.toLowerCase();
+            storedRepo.entity === resolvedParams.entity ||
+            storedRepo.entity?.toLowerCase() === resolvedParams.entity.toLowerCase();
           return repoMatches && entityMatches;
         });
 
@@ -485,7 +486,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
           const repoRecord = { ...storedRepos[repoIndex] };
           // Ensure entity is set (required by StoredRepo type)
           if (!repoRecord.entity) {
-            repoRecord.entity = params.entity;
+            repoRecord.entity = resolvedParams.entity;
           }
           const existingFiles: RepoFileEntry[] = Array.isArray(repoRecord.files) ? [...repoRecord.files] : [];
           const fileMap = new Map<string, RepoFileEntry>();
@@ -508,7 +509,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
           repoRecord.files = updatedFilesArray;
           storedRepos[repoIndex] = repoRecord as StoredRepo;
           saveStoredRepos(storedRepos);
-          saveRepoFiles(params.entity, params.repo, updatedFilesArray);
+          saveRepoFiles(resolvedParams.entity, resolvedParams.repo, updatedFilesArray);
           window.dispatchEvent(new Event("gittr:repo-updated"));
         }
       } catch (error) {
@@ -522,7 +523,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
       const authorName = authorMeta?.display_name || authorMeta?.name || (pr.author && pr.author.length === 64 ? pr.author.slice(0, 8) + "..." : pr.author || "unknown");
       const commit: any = {
         id: commitId,
-        message: mergeMessage.trim() || `Merge pull request #${params.id} from ${authorName}\n\n${pr.title}`,
+        message: mergeMessage.trim() || `Merge pull request #${resolvedParams.id} from ${authorName}\n\n${pr.title}`,
         author: currentUserPubkey,
         timestamp: Date.now(),
         branch: pr.baseBranch || "main",
@@ -536,7 +537,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
         })),
       };
 
-      const commitsKey = getRepoStorageKey("gittr_commits", params.entity, params.repo);
+      const commitsKey = getRepoStorageKey("gittr_commits", resolvedParams.entity, resolvedParams.repo);
       const commits = JSON.parse(localStorage.getItem(commitsKey) || "[]");
       commits.unshift(commit);
       localStorage.setItem(commitsKey, JSON.stringify(commits));
@@ -550,9 +551,9 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
           recordActivity({
             type: "commit_created",
             user: currentUserPubkey,
-            repo: `${params.entity}/${params.repo}`,
-            entity: params.entity,
-            repoName: repo?.name || params.repo,
+            repo: `${resolvedParams.entity}/${resolvedParams.repo}`,
+            entity: resolvedParams.entity,
+            repoName: repo?.name || resolvedParams.repo,
             metadata: {
               commitId: commitId,
               prId: pr.id,
@@ -565,7 +566,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
       }
 
       // 3. Update PR status
-      const prsKey = getRepoStorageKey("gittr_prs", params.entity, params.repo);
+      const prsKey = getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo);
       const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
       const updatedPRs = prs.map((p: any) => 
         p.id === pr.id 
@@ -586,7 +587,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
         try {
           const updatedRepos = loadStoredRepos();
           const repoIndex = updatedRepos.findIndex((r: StoredRepo) => 
-            r.entity === params.entity && (r.repo === params.repo || r.slug === params.repo)
+            r.entity === resolvedParams.entity && (r.repo === resolvedParams.repo || r.slug === resolvedParams.repo)
           );
           
           if (repoIndex >= 0) {
@@ -643,7 +644,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
 
       // 4. Close linked issue if present
       if (linkedIssue) {
-        const issueKey = getRepoStorageKey("gittr_issues", params.entity, params.repo);
+        const issueKey = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
         const issues = JSON.parse(localStorage.getItem(issueKey) || "[]");
         const updatedIssues = issues.map((i: any) => 
           (i.id === linkedIssue.id || i.number === linkedIssue.number)
@@ -682,8 +683,8 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
                 amount: linkedIssue.bountyAmount,
                 issueId: String(linkedIssue.id || linkedIssue.number),
                 issueTitle: linkedIssue.title,
-                repoId: `${params.entity}/${params.repo}`,
-                repoName: params.repo,
+                repoId: `${resolvedParams.entity}/${resolvedParams.repo}`,
+                repoName: resolvedParams.repo,
                 from: linkedIssue.bountyCreator || currentUserPubkey, // Bounty creator
                 earnedAt: Date.now(),
                 status: "released" as const, // Withdraw link released to PR author
@@ -705,7 +706,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
             }
             
             // Update issue bounty status to "released"
-            const issueKey = getRepoStorageKey("gittr_issues", params.entity, params.repo);
+            const issueKey = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
             const issues = JSON.parse(localStorage.getItem(issueKey) || "[]");
             const updatedIssues = issues.map((i: any) => 
               (i.id === linkedIssue.id || i.number === linkedIssue.number)
@@ -720,11 +721,11 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
             try {
               if (recipientPubkey) {
                 const notification = formatNotificationMessage("bounty_released", {
-                  repoEntity: params.entity,
-                  repoName: params.repo,
+                  repoEntity: resolvedParams.entity,
+                  repoName: resolvedParams.repo,
                   issueId: String(linkedIssue.id || linkedIssue.number),
                   issueTitle: linkedIssue.title,
-                  url: typeof window !== "undefined" ? `${window.location.origin}/${params.entity}/${params.repo}/issues/${linkedIssue.id || linkedIssue.number}` : undefined,
+                  url: typeof window !== "undefined" ? `${window.location.origin}/${resolvedParams.entity}/${resolvedParams.repo}/issues/${linkedIssue.id || linkedIssue.number}` : undefined,
                 });
 
                 await sendNotification({
@@ -732,8 +733,8 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
                   title: notification.title,
                   message: `${notification.message}\n\nAmount: ${linkedIssue.bountyAmount} sats\n\nYou can claim the bounty using the withdraw link.`,
                   url: notification.url,
-                  repoEntity: params.entity,
-                  repoName: params.repo,
+                  repoEntity: resolvedParams.entity,
+                  repoName: resolvedParams.repo,
                   recipientPubkey: recipientPubkey,
                 });
               }
@@ -760,7 +761,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
                     created_at: Math.floor(Date.now() / 1000),
                     tags: [
                       ["e", linkedIssue.id, "", "issue"],
-                      ["repo", params.entity, params.repo],
+                      ["repo", resolvedParams.entity, resolvedParams.repo],
                       ["status", "released"],
                       ["p", linkedIssue.bountyCreator || authorPubkey, "creator"],
                       ["p", recipientPubkey, "claimed_by"],
@@ -783,8 +784,8 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
                 } else if (privateKey) {
                   bountyEvent = createBountyEvent({
                     issueId: linkedIssue.id,
-                    repoEntity: params.entity,
-                    repoName: params.repo,
+                    repoEntity: resolvedParams.entity,
+                    repoName: resolvedParams.repo,
                     amount: linkedIssue.bountyAmount || 0,
                     status: "released",
                     withdrawId: linkedIssue.bountyWithdrawId,
@@ -827,9 +828,9 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
           recordActivity({
             type: "pr_merged",
             user: pr.author, // PR author gets credit for merge
-            repo: `${params.entity}/${params.repo}`,
-            entity: params.entity,
-            repoName: repo?.name || params.repo,
+            repo: `${resolvedParams.entity}/${resolvedParams.repo}`,
+            entity: resolvedParams.entity,
+            repoName: repo?.name || resolvedParams.repo,
             metadata: {
               prId: pr.id,
               commitId: commitId,
@@ -840,11 +841,11 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
           // Send notification to PR author about merge
           try {
             const notification = formatNotificationMessage("pr_merged", {
-              repoEntity: params.entity,
-              repoName: params.repo,
+              repoEntity: resolvedParams.entity,
+              repoName: resolvedParams.repo,
               prId: pr.id,
               prTitle: pr.title,
-              url: typeof window !== "undefined" ? `${window.location.origin}/${params.entity}/${params.repo}/pulls/${pr.id}` : undefined,
+              url: typeof window !== "undefined" ? `${window.location.origin}/${resolvedParams.entity}/${resolvedParams.repo}/pulls/${pr.id}` : undefined,
             });
 
             await sendNotification({
@@ -852,8 +853,8 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
               title: notification.title,
               message: notification.message,
               url: notification.url,
-              repoEntity: params.entity,
-              repoName: params.repo,
+              repoEntity: resolvedParams.entity,
+              repoName: resolvedParams.repo,
               recipientPubkey: pr.author,
             });
           } catch (error) {
@@ -871,9 +872,9 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
           recordActivity({
             type: "bounty_claimed",
             user: pr.author,
-            repo: `${params.entity}/${params.repo}`,
-            entity: params.entity,
-            repoName: repo?.name || params.repo,
+            repo: `${resolvedParams.entity}/${resolvedParams.repo}`,
+            entity: resolvedParams.entity,
+            repoName: repo?.name || resolvedParams.repo,
             metadata: {
               issueId: linkedIssue.id,
               prId: pr.id,
@@ -952,8 +953,8 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
     
     try {
       const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
-      const overrides = loadRepoOverrides(params.entity, params.repo);
+      const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
+      const overrides = loadRepoOverrides(resolvedParams.entity, resolvedParams.repo);
       
       const changedFiles: ChangedFile[] = pr?.changedFiles || [];
       
@@ -975,7 +976,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
       
       // Update PR with resolved conflicts
       if (pr) {
-        const prsKey = getRepoStorageKey("gittr_prs", params.entity, params.repo);
+        const prsKey = getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo);
         const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
         const updatedPRs = prs.map((p: any) => 
           p.id === pr.id ? { ...p, changedFiles: updatedChangedFiles } : p
@@ -987,7 +988,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
         setPR(updatedPR);
         
         // Also update overrides to reflect resolved conflicts
-        const overridesKey = `gittr_overrides__${normalizeEntityForStorage(params.entity)}__${params.repo}`;
+        const overridesKey = `gittr_overrides__${normalizeEntityForStorage(resolvedParams.entity)}__${resolvedParams.repo}`;
         const currentOverrides = JSON.parse(localStorage.getItem(overridesKey) || "{}");
         updatedChangedFiles.forEach((file: ChangedFile) => {
           if (file.status === "modified" || file.status === "added") {
@@ -1034,7 +1035,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
               <X className="h-6 w-6 text-gray-600" />
             )}
             <h1 className="text-2xl font-bold">{pr.title}</h1>
-            <Badge className="bg-gray-700">#{params.id}</Badge>
+            <Badge className="bg-gray-700">#{resolvedParams.id}</Badge>
             {pr.status === "merged" && <Badge className="bg-purple-600">Merged</Badge>}
           </div>
           <div className="text-sm text-gray-400">
@@ -1167,7 +1168,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
                   className="w-full border border-gray-600 bg-gray-800 text-white rounded p-2 h-24"
                   value={mergeMessage}
                   onChange={(e) => setMergeMessage(e.target.value)}
-                  placeholder={`Merge pull request #${params.id} from ${(() => {
+                  placeholder={`Merge pull request #${resolvedParams.id} from ${(() => {
                     const authorMeta = pr?.author ? recipientMetadata[pr.author] : null;
                     return authorMeta?.display_name || authorMeta?.name || (pr?.author && pr.author.length === 64 ? pr.author.slice(0, 8) + "..." : pr?.author || "unknown");
                   })()}\n\n${pr?.title || ""}`}
@@ -1247,8 +1248,8 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
               <Reactions
                 targetId={pr.id}
                 targetType="pr"
-                entity={params.entity}
-                repo={params.repo}
+                entity={resolvedParams.entity}
+                repo={resolvedParams.repo}
               />
             </div>
           </div>
@@ -1262,7 +1263,7 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
                 </h3>
                 {changedFiles.map((file, idx) => {
                   const handleOwnerEdit = (newContent: string) => {
-                    const key = getRepoStorageKey("gittr_prs", params.entity, params.repo);
+                    const key = getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo);
                     const prs = JSON.parse(localStorage.getItem(key) || "[]");
                     const updatedPRs = prs.map((p: any) => {
                       if (p.id === pr.id) {
@@ -1316,8 +1317,8 @@ export default function PRDetailPage({ params }: { params: { entity: string; rep
           {pr.status === "open" && (
             <PRReviewSection
               prId={pr.id}
-              entity={params.entity}
-              repo={params.repo}
+              entity={resolvedParams.entity}
+              repo={resolvedParams.repo}
               requiredApprovals={requiredApprovals}
               prAuthor={pr.author}
               isOwner={isOwner}

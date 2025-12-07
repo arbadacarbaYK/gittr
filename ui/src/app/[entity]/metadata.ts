@@ -3,22 +3,23 @@ import { nip19 } from 'nostr-tools';
 import { resolveUserIconForMetadata } from '@/lib/utils/metadata-icon-resolver';
 
 export async function generateMetadata(
-  { params }: { params: { entity: string } }
+  { params }: { params: Promise<{ entity: string }> }
 ): Promise<Metadata> {
+  const resolvedParams = await params;
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space';
   
   // Try to decode npub to get pubkey
   let pubkey: string | null = null;
-  let displayName = params.entity;
+  let displayName = resolvedParams.entity;
   
   try {
-    if (params.entity.startsWith('npub')) {
-      const decoded = nip19.decode(params.entity);
+    if (resolvedParams.entity.startsWith('npub')) {
+      const decoded = nip19.decode(resolvedParams.entity);
       if (decoded.type === 'npub') {
         pubkey = decoded.data as string;
       }
-    } else if (/^[0-9a-f]{64}$/i.test(params.entity)) {
-      pubkey = params.entity;
+    } else if (/^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
+      pubkey = resolvedParams.entity;
       try {
         displayName = nip19.npubEncode(pubkey);
       } catch {}
@@ -28,12 +29,12 @@ export async function generateMetadata(
   }
   
   const title = displayName;
-  const url = `${baseUrl}/${encodeURIComponent(params.entity)}`;
+  const url = `${baseUrl}/${encodeURIComponent(resolvedParams.entity)}`;
   
   // Resolve user icon (profile picture or default)
   let iconUrl = `${baseUrl}/logo.svg`; // Default fallback
   try {
-    iconUrl = await resolveUserIconForMetadata(params.entity, baseUrl);
+    iconUrl = await resolveUserIconForMetadata(resolvedParams.entity, baseUrl);
   } catch (error) {
     // If resolution fails, use default
     console.warn('[Metadata] Failed to resolve user icon, using default:', error);

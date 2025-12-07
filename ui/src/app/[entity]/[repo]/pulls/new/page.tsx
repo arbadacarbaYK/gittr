@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, use } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,8 @@ interface ChangedFile {
   mimeType?: string;
 }
 
-export default function NewPullRequestPage({ params }: { params: { entity: string; repo: string } }) {
+export default function NewPullRequestPage({ params }: { params: Promise<{ entity: string; repo: string }> }) {
+  const resolvedParams = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
   const { pubkey: currentUserPubkey, publish, defaultRelays } = useNostrContext();
@@ -75,7 +76,7 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
       try {
         // Load branches and get repo owner
         const repos = loadStoredRepos();
-        const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+        const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
         if (repo?.branches && Array.isArray(repo.branches)) {
           setBranches(repo.branches as string[]);
           if (!baseBranchParam) {
@@ -94,7 +95,7 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
         }
 
         // Load pending edits and uploads
-        const { edits, uploads } = getAllPendingChanges(params.entity, params.repo, currentUserPubkey);
+        const { edits, uploads } = getAllPendingChanges(resolvedParams.entity, resolvedParams.repo, currentUserPubkey);
         
         // Convert to changedFiles format
         const files: ChangedFile[] = [];
@@ -152,13 +153,13 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
     };
 
     loadPendingChanges();
-  }, [params.entity, params.repo, currentUserPubkey, isLoggedIn, baseBranchParam, compareBranchParam, title]);
+  }, [resolvedParams.entity, resolvedParams.repo, currentUserPubkey, isLoggedIn, baseBranchParam, compareBranchParam, title]);
 
   // Load issues for linking
   const [issues, setIssues] = useState<Array<{ id: string; title: string; status: string }>>([]);
   useEffect(() => {
     try {
-      const issuesKey = getRepoStorageKey("gittr_issues", params.entity, params.repo);
+      const issuesKey = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
       const allIssues = JSON.parse(localStorage.getItem(issuesKey) || "[]");
       setIssues(allIssues.filter((i: any) => i.status === "open"));
       
@@ -177,7 +178,7 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
         }
       }
     } catch {}
-  }, [params.entity, params.repo, searchParams, linkedIssue]);
+  }, [resolvedParams.entity, resolvedParams.repo, searchParams, linkedIssue]);
 
   const canSubmit = useMemo(() => {
     return title.trim().length > 0 && changedFiles.length > 0 && baseBranch;
@@ -191,9 +192,9 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
 
     // Remove from pending changes
     if (file.status === "added") {
-      removePendingUpload(params.entity, params.repo, currentUserPubkey, path);
+      removePendingUpload(resolvedParams.entity, resolvedParams.repo, currentUserPubkey, path);
     } else {
-      removePendingEdit(params.entity, params.repo, currentUserPubkey, path);
+      removePendingEdit(resolvedParams.entity, resolvedParams.repo, currentUserPubkey, path);
     }
 
     // Update UI
@@ -205,8 +206,8 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
 
     setCreating(true);
     try {
-      const entity = params.entity;
-      const repo = params.repo;
+      const entity = resolvedParams.entity;
+      const repo = resolvedParams.repo;
       
       if (!entity || !repo) {
         showToast("Invalid repository context", "error");
@@ -511,7 +512,7 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
             You need to edit files or upload files before creating a pull request.
           </p>
           <Link 
-            href={`/${params.entity}/${params.repo}`}
+            href={`/${resolvedParams.entity}/${resolvedParams.repo}`}
             className="text-purple-500 hover:underline"
           >
             Go to repository
@@ -540,14 +541,14 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
       <h1 className="text-2xl font-bold mb-4">Open a pull request</h1>
       
       <div className="mb-4 text-sm text-gray-400">
-        Repository: <Link href={`/${params.entity}/${params.repo}`} className="text-purple-500 hover:underline">
+        Repository: <Link href={`/${resolvedParams.entity}/${resolvedParams.repo}`} className="text-purple-500 hover:underline">
           {(() => {
             // Show owner name if available, otherwise fallback to entity
             if (repoOwnerPubkey && repoOwnerMetadata[repoOwnerPubkey]) {
               const meta = repoOwnerMetadata[repoOwnerPubkey];
-              return (meta?.display_name || meta?.name || params.entity) + "/" + params.repo;
+              return (meta?.display_name || meta?.name || resolvedParams.entity) + "/" + resolvedParams.repo;
             }
-            return `${params.entity}/${params.repo}`;
+            return `${resolvedParams.entity}/${resolvedParams.repo}`;
           })()}
         </Link>
       </div>
@@ -601,14 +602,14 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
             </div>
             <div className="flex items-center gap-3">
               <Link
-                href={`/${params.entity}/${params.repo}/new-file`}
+                href={`/${resolvedParams.entity}/${resolvedParams.repo}/new-file`}
                 className="text-sm text-purple-500 hover:text-purple-400 hover:underline flex items-center gap-1"
               >
                 <Plus className="h-4 w-4" />
                 Add file
               </Link>
               <Link
-                href={`/${params.entity}/${params.repo}`}
+                href={`/${resolvedParams.entity}/${resolvedParams.repo}`}
                 className="text-sm text-purple-500 hover:text-purple-400 hover:underline flex items-center gap-1"
               >
                 <Plus className="h-4 w-4" />
@@ -701,7 +702,7 @@ export default function NewPullRequestPage({ params }: { params: { entity: strin
           {creating ? "Creating..." : "Create pull request"}
         </Button>
         <Link 
-          href={`/${params.entity}/${params.repo}`}
+          href={`/${resolvedParams.entity}/${resolvedParams.repo}`}
           className="text-sm text-gray-400 hover:text-white"
         >
           Cancel

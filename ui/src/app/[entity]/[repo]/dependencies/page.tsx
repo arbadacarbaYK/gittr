@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, use } from "react";
 import { useSearchParams } from "next/navigation";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { resolveEntityToPubkey, getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
@@ -48,8 +48,9 @@ interface GitHubTreeItem {
 export default function DependenciesPage({
   params,
 }: {
-  params: { entity: string; repo: string };
+  params: Promise<{ entity: string; repo: string }>;
 }) {
+  const resolvedParams = use(params);
   const searchParams = useSearchParams();
   const branch = searchParams?.get("branch") || "main";
   
@@ -68,7 +69,7 @@ export default function DependenciesPage({
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     loadDependencies();
-  }, [params.entity, params.repo, branch]);
+  }, [resolvedParams.entity, resolvedParams.repo, branch]);
 
   const cytoscapeStylesheet: CytoscapeStylesheet[] = [
     {
@@ -352,18 +353,18 @@ export default function DependenciesPage({
       const repos = loadStoredRepos();
 
       // Get repo data
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+      const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
       if (!repo) {
         throw new Error("Repository not found");
       }
 
       setStatus("Resolving repository owner...");
       // getRepoOwnerPubkey expects (repo, entity) not (entity, repoName)
-      let ownerPubkey = getRepoOwnerPubkey(repo, params.entity);
+      let ownerPubkey = getRepoOwnerPubkey(repo, resolvedParams.entity);
       
       // If not found in repo, try to resolve from entity directly
       if (!ownerPubkey) {
-        ownerPubkey = resolveEntityToPubkey(params.entity, repo);
+        ownerPubkey = resolveEntityToPubkey(resolvedParams.entity, repo);
       }
       
       if (!ownerPubkey) {
@@ -371,9 +372,9 @@ export default function DependenciesPage({
       }
 
       // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
-      // Priority: repositoryName > repo > slug > name > params.repo
+      // Priority: repositoryName > repo > slug > name > resolvedParams.repo
       const repoDataAny = repo as any; // Type assertion for dynamic fields
-      let actualRepoName = repoDataAny?.repositoryName || repoDataAny?.repo || repoDataAny?.slug || repoDataAny?.name || params.repo;
+      let actualRepoName = repoDataAny?.repositoryName || repoDataAny?.repo || repoDataAny?.slug || repoDataAny?.name || resolvedParams.repo;
       
       // Extract repo name (handle paths like "gitnostr.com/gitworkshop")
       if (actualRepoName.includes('/')) {
@@ -626,11 +627,11 @@ export default function DependenciesPage({
       const allRepos = loadStoredRepos();
       const matchingRepo = allRepos.find((r) => {
         const repoEntity = r.entity || r.ownerPubkey;
-        const normalizedEntity = params.entity.startsWith("npub") 
-          ? params.entity 
-          : (repoEntity && /^[0-9a-f]{64}$/i.test(repoEntity) ? repoEntity : params.entity);
-        return (normalizedEntity === params.entity || repoEntity === params.entity) && 
-               (r.repo === params.repo || r.name === params.repo || r.slug === params.repo);
+        const normalizedEntity = resolvedParams.entity.startsWith("npub") 
+          ? resolvedParams.entity 
+          : (repoEntity && /^[0-9a-f]{64}$/i.test(repoEntity) ? repoEntity : resolvedParams.entity);
+        return (normalizedEntity === resolvedParams.entity || repoEntity === resolvedParams.entity) && 
+               (r.repo === resolvedParams.repo || r.name === resolvedParams.repo || r.slug === resolvedParams.repo);
       });
       
       if (matchingRepo?.files && Array.isArray(matchingRepo.files) && matchingRepo.files.length > 0) {
@@ -641,7 +642,7 @@ export default function DependenciesPage({
       // CRITICAL: Check separate files storage key (for optimized storage)
       if (matchingRepo) {
         try {
-          const storedFiles = loadRepoFiles(params.entity, params.repo);
+          const storedFiles = loadRepoFiles(resolvedParams.entity, resolvedParams.repo);
           if (storedFiles && storedFiles.length > 0) {
             console.log(`✅ [Dependencies] Using ${storedFiles.length} files from separate storage key`);
             return storedFiles.map((f: RepoFileEntry) => ({ type: f.type, path: f.path }));
@@ -713,7 +714,7 @@ export default function DependenciesPage({
     sourceUrl?: string
   ): Promise<string | null> {
     // Check localStorage overrides first
-    const overrides = loadRepoOverrides(params.entity, params.repo);
+    const overrides = loadRepoOverrides(resolvedParams.entity, resolvedParams.repo);
     if (overrides[filePath]) {
       return overrides[filePath];
     }
