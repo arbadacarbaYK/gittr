@@ -1238,7 +1238,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
   
   // Handle follow/unfollow
   const handleFollow = async () => {
-    if (!isLoggedIn || !currentUserPubkey || !publish || !fullPubkeyForMeta || !/^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)) {
+    if (!isLoggedIn || !currentUserPubkey || !publish || !subscribe || !fullPubkeyForMeta || !/^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)) {
       alert("Please log in to follow users");
       return;
     }
@@ -1278,7 +1278,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
             if (!resolved) {
               resolved = true;
               console.warn("⚠️ [Follow] Timeout fetching contact list, using state as fallback");
-              resolve(contactList.length > 0 ? [...contactList] : []);
+              resolve(contactList.length > 0 ? contactList.map(p => p.toLowerCase()) : []);
             }
           }, 3000); // 3 second timeout
           
@@ -1296,12 +1296,19 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 try {
                   const contacts = JSON.parse(event.content);
                   if (contacts && typeof contacts === 'object' && contacts.p && Array.isArray(contacts.p)) {
-                    const pubkeys = contacts.p.map((p: any) => typeof p === 'string' ? p : (p[0] || p.pubkey || ''));
+                    const pubkeys = contacts.p
+                      .map((p: any) => typeof p === 'string' ? p : (p[0] || p.pubkey || ''))
+                      .filter((p: string) => p && typeof p === 'string' && p.length > 0)
+                      .map((p: string) => p.toLowerCase());
                     console.log(`✅ [Follow] Fetched ${pubkeys.length} contacts from Nostr`);
                     resolve(pubkeys);
                   } else {
                     // Also check tags as fallback (some clients use tags instead of content)
-                    const pTags = event.tags.filter(tag => tag[0] === 'p').map(tag => tag[1]);
+                    const pTags = event.tags
+                      .filter(tag => tag[0] === 'p' && tag[1])
+                      .map(tag => tag[1] as string)
+                      .filter((p: string) => p && p.length > 0)
+                      .map((p: string) => p.toLowerCase());
                     if (pTags.length > 0) {
                       console.log(`✅ [Follow] Fetched ${pTags.length} contacts from tags`);
                       resolve(pTags);
@@ -1313,12 +1320,12 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 } catch (e) {
                   console.error("❌ [Follow] Failed to parse contact list:", e);
                   // Fallback: extract from tags
-                 const pTags = event.tags
-                 .filter(tag => tag[0] === 'p' && tag[1])
-                 .map(tag => tag[1] as string)
-                 .filter((p: string) => p && p.length > 0)
-                 .map((p: string) => p.toLowerCase());
-                resolve(pTags.length > 0 ? pTags : (contactList.length > 0 ? [...contactList] : []));
+                  const pTags = event.tags
+                    .filter(tag => tag[0] === 'p' && tag[1])
+                    .map(tag => tag[1] as string)
+                    .filter((p: string) => p && p.length > 0)
+                    .map((p: string) => p.toLowerCase());
+                  resolve(pTags.length > 0 ? pTags : (contactList.length > 0 ? contactList.map(p => p.toLowerCase()) : []));
                 }
                 if (unsub) unsub();
               }
@@ -1329,7 +1336,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 resolved = true;
                 clearTimeout(timeout);
                 console.warn("⚠️ [Follow] Subscription ended without event, using state as fallback");
-                resolve(contactList.length > 0 ? [...contactList] : []);
+                resolve(contactList.length > 0 ? contactList.map(p => p.toLowerCase()) : []);
               }
               if (unsub) unsub();
             }
