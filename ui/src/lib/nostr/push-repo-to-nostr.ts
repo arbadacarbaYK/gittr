@@ -958,6 +958,29 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       confirmedRelays: result.confirmedRelays,
     });
     
+    // CRITICAL: Send announcement event directly to bridge API for immediate processing
+    // This avoids waiting for relay propagation which can take 10-60 seconds
+    if (result.eventId && repoEvent.kind === KIND_REPOSITORY_NIP34) {
+      onProgress?.("📡 Sending event directly to bridge for immediate processing...");
+      try {
+        const bridgeResponse = await fetch("/api/nostr/repo/event", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(repoEvent),
+        });
+        if (bridgeResponse.ok) {
+          const bridgeResult = await bridgeResponse.json();
+          console.log(`✅ [Push Repo] Event sent directly to bridge:`, bridgeResult);
+          onProgress?.("✅ Bridge received event - processing immediately!");
+        } else {
+          console.warn(`⚠️ [Push Repo] Bridge API returned ${bridgeResponse.status} - bridge will receive via relay subscription`);
+        }
+      } catch (bridgeError: any) {
+        // Don't fail - bridge will receive via relay subscription
+        console.warn(`⚠️ [Push Repo] Failed to send to bridge API (will receive via relay):`, bridgeError?.message);
+      }
+    }
+    
     // CRITICAL: Log event structure for debugging - verify clone tags are present
     const publishedCloneTags = repoEvent.tags.filter((t: any[]) => Array.isArray(t) && t[0] === "clone");
     console.log(`🔍 [Push Repo] Published event structure:`, {
