@@ -8323,7 +8323,7 @@ export default function RepoCodePage({
                             }
                             
                             // Query Nostr for the latest repository event
-                            const repoName = repo.repo || repo.slug || resolvedParams.repo;
+                            const repoName = repo?.repo || repo?.slug || resolvedParams.repo;
                             let latestEvent: any = null;
                             let latestEventCreatedAt = 0;
                             
