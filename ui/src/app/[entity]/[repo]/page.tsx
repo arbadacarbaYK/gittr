@@ -8264,7 +8264,35 @@ export default function RepoCodePage({
                               window.location.reload();
                             }
                           } else {
-                            throw new Error("Repository not found in localStorage");
+                            // Repo not in localStorage - CREATE it from fetched data
+                            console.log(`📝 [Refetch] Repo not in localStorage, creating new entry from source`);
+                            const newRepo: StoredRepo = {
+                              slug: resolvedParams.repo,
+                              entity: resolvedParams.entity,
+                              repo: resolvedParams.repo,
+                              repositoryName: resolvedParams.repo,
+                              name: importData.name || resolvedParams.repo,
+                              sourceUrl: repo.sourceUrl,
+                              forkedFrom: repo.sourceUrl,
+                              readme: importData.readme || "",
+                              files: newFiles,
+                              description: importData.description || "",
+                              stars: importData.stars || 0,
+                              forks: importData.forks || 0,
+                              languages: importData.languages || [],
+                              topics: importData.topics || [],
+                              defaultBranch: importData.defaultBranch || "main",
+                              branches: importData.branches || [],
+                              contributors: importData.contributors || [],
+                              createdAt: Date.now(),
+                              ownerPubkey: repo.ownerPubkey || undefined,
+                            } as StoredRepo & { releases?: unknown[]; lastModifiedAt?: number };
+                            
+                            repos.push(newRepo);
+                            saveStoredRepos(repos);
+                            
+                            alert(`✅ Refetched from GitHub!\n\nFound ${newFiles.filter((f: any) => f.type === "file").length} files.\n\nRepository created in localStorage.`);
+                            window.location.reload();
                           }
                         } catch (error: any) {
                           console.error("Failed to refetch from source:", error);
@@ -8377,7 +8405,39 @@ export default function RepoCodePage({
                             if (repoIndex >= 0) {
                               const existingRepo = repos[repoIndex];
                               if (!existingRepo) {
-                                throw new Error("Repository not found in localStorage");
+                                // Repo index found but repo is null - create new entry
+                                console.log(`📝 [Refetch] Repo index found but repo is null, creating new entry from Nostr`);
+                                const newRepo: StoredRepo = {
+                                  slug: resolvedParams.repo,
+                                  entity: resolvedParams.entity,
+                                  repo: eventRepoData.repositoryName || resolvedParams.repo,
+                                  repositoryName: eventRepoData.repositoryName || resolvedParams.repo,
+                                  name: eventRepoData.name || eventRepoData.repositoryName || resolvedParams.repo,
+                                  readme: eventRepoData.readme || "",
+                                  files: eventRepoData.files || [],
+                                  description: eventRepoData.description || "",
+                                  stars: eventRepoData.stars || 0,
+                                  forks: eventRepoData.forks || 0,
+                                  languages: eventRepoData.languages || [],
+                                  topics: eventRepoData.topics || [],
+                                  defaultBranch: eventRepoData.defaultBranch || "main",
+                                  branches: eventRepoData.branches || [],
+                                  contributors: eventRepoData.contributors || [],
+                                  clone: eventRepoData.clone || [],
+                                  nostrEventId: latestEvent.id,
+                                  lastNostrEventId: latestEvent.id,
+                                  syncedFromNostr: true,
+                                  hasUnpushedEdits: false,
+                                  ownerPubkey: ownerPubkey,
+                                  createdAt: Date.now(),
+                                } as StoredRepo & { lastNostrEventCreatedAt?: number; logoUrl?: string };
+                                
+                                repos[repoIndex] = newRepo;
+                                saveStoredRepos(repos);
+                                
+                                alert(`✅ Refetched from Nostr!\n\nFound ${eventRepoData.files?.length || 0} files.\n\nRepository created in localStorage.`);
+                                window.location.reload();
+                                return;
                               }
                               
                               // COMPLETE REPLACEMENT: Use Nostr event data exactly as returned
@@ -8412,7 +8472,38 @@ export default function RepoCodePage({
                               alert(`✅ Refetched from Nostr!\n\nFound ${eventRepoData.files?.length || 0} files.\n\nLocal edits have been replaced with the latest version from Nostr.`);
                               window.location.reload();
                             } else {
-                              throw new Error("Repository not found in localStorage");
+                              // Repo not in localStorage - CREATE it from Nostr data
+                              console.log(`📝 [Refetch] Repo not in localStorage, creating new entry from Nostr`);
+                              const newRepo: StoredRepo = {
+                                slug: resolvedParams.repo,
+                                entity: resolvedParams.entity,
+                                repo: eventRepoData.repositoryName || resolvedParams.repo,
+                                repositoryName: eventRepoData.repositoryName || resolvedParams.repo,
+                                name: eventRepoData.name || eventRepoData.repositoryName || resolvedParams.repo,
+                                readme: eventRepoData.readme || "",
+                                files: eventRepoData.files || [],
+                                description: eventRepoData.description || "",
+                                stars: eventRepoData.stars || 0,
+                                forks: eventRepoData.forks || 0,
+                                languages: eventRepoData.languages || [],
+                                topics: eventRepoData.topics || [],
+                                defaultBranch: eventRepoData.defaultBranch || "main",
+                                branches: eventRepoData.branches || [],
+                                contributors: eventRepoData.contributors || [],
+                                clone: eventRepoData.clone || [],
+                                nostrEventId: latestEvent.id,
+                                lastNostrEventId: latestEvent.id,
+                                syncedFromNostr: true,
+                                hasUnpushedEdits: false,
+                                ownerPubkey: ownerPubkey,
+                                createdAt: Date.now(),
+                              } as StoredRepo & { lastNostrEventCreatedAt?: number; logoUrl?: string };
+                              
+                              repos.push(newRepo);
+                              saveStoredRepos(repos);
+                              
+                              alert(`✅ Refetched from Nostr!\n\nFound ${eventRepoData.files?.length || 0} files.\n\nRepository created in localStorage.`);
+                              window.location.reload();
                             }
                           } catch (error: any) {
                             console.error("Failed to refetch from Nostr:", error);
