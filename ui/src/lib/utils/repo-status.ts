@@ -159,6 +159,65 @@ export function getRepoStatus(repo: any): RepoStatus {
 }
 
 /**
+ * Query Nostr for state event (30618) when missing from localStorage
+ * This restores the state event ID if localStorage was cleared but the event exists on relays
+ */
+export async function queryStateEventFromNostr(
+  subscribe: (filters: any[], onEvent: (event: any) => void) => () => void,
+  ownerPubkey: string,
+  repoName: string,
+  defaultRelays: string[]
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+      resolve(null);
+      return;
+    }
+
+    const { KIND_REPOSITORY_STATE } = require("@/lib/nostr/events");
+    let foundStateEventId: string | null = null;
+    let resolved = false;
+
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        resolve(foundStateEventId);
+      }
+    }, 5000); // 5 second timeout
+
+    const unsub = subscribe(
+      [{
+        kinds: [KIND_REPOSITORY_STATE],
+        authors: [ownerPubkey],
+        "#d": [repoName],
+        limit: 1,
+      }],
+      defaultRelays,
+      (event) => {
+        if (event.kind === KIND_REPOSITORY_STATE && !resolved) {
+          foundStateEventId = event.id;
+          resolved = true;
+          clearTimeout(timeout);
+          unsub();
+          resolve(foundStateEventId);
+        }
+      },
+      5000 // 5 second timeout
+    );
+
+    // Also handle EOSE (End of Stored Events)
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timeout);
+        unsub();
+        resolve(foundStateEventId);
+      }
+    }, 5000);
+  });
+}
+
+/**
  * Set repository status
  */
 export function setRepoStatus(repoSlug: string, entity: string, status: RepoStatus): void {
