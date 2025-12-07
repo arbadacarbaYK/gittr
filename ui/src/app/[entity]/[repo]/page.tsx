@@ -1353,7 +1353,7 @@ export default function RepoCodePage({
               const { storeRepoEventId } = require("@/lib/nostr/publish-with-confirmation");
               storeRepoEventId(repoName, resolvedParams.entity, eventId, true, stateEventId);
             }
-          }).catch(err => {
+          }).catch((err: any) => {
             console.warn("Failed to query state event from Nostr:", err);
           });
         }
