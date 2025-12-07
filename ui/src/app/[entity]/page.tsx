@@ -1215,13 +1215,48 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
           try {
             const contacts = JSON.parse(event.content);
             if (contacts && typeof contacts === 'object' && contacts.p && Array.isArray(contacts.p)) {
-              const pubkeys = contacts.p.map((p: any) => typeof p === 'string' ? p : (p[0] || p.pubkey || ''));
+              const pubkeys = contacts.p
+                .map((p: any) => typeof p === 'string' ? p : (p[0] || p.pubkey || ''))
+                .filter((p: string) => p && typeof p === 'string' && p.length > 0)
+                .map((p: string) => p.toLowerCase());
               setContactList(pubkeys);
               setIsFollowing(pubkeys.includes(fullPubkeyForMeta.toLowerCase()));
+            } else {
+              // Also check tags as fallback (some clients use tags instead of content)
+              const pTags = event.tags
+                .filter(tag => tag[0] === 'p' && tag[1])
+                .map(tag => tag[1] as string)
+                .filter((p: string) => p && p.length > 0)
+                .map((p: string) => p.toLowerCase());
+              if (pTags.length > 0) {
+                setContactList(pTags);
+                setIsFollowing(pTags.includes(fullPubkeyForMeta.toLowerCase()));
+              } else {
+                setContactList([]);
+                setIsFollowing(false);
+              }
             }
           } catch (e) {
             console.error("Failed to parse contact list:", e, "Content:", event.content?.slice(0, 100));
-            setContactList([]);
+            // Fallback: extract from tags
+            try {
+              const pTags = event.tags
+                .filter(tag => tag[0] === 'p' && tag[1])
+                .map(tag => tag[1] as string)
+                .filter((p: string) => p && p.length > 0)
+                .map((p: string) => p.toLowerCase());
+              if (pTags.length > 0) {
+                setContactList(pTags);
+                setIsFollowing(pTags.includes(fullPubkeyForMeta.toLowerCase()));
+              } else {
+                setContactList([]);
+                setIsFollowing(false);
+              }
+            } catch (tagError) {
+              console.error("Failed to parse contact list from tags:", tagError);
+              setContactList([]);
+              setIsFollowing(false);
+            }
           }
         }
       },
