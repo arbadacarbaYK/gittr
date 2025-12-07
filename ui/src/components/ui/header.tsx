@@ -89,7 +89,6 @@ export const DropdownItems = [
   {
     title: "Help",
     href: "/help",
-    mobile: false,
   },
 ];
 
