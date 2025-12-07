@@ -1353,12 +1353,13 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
       }
       
       // Start with the fetched contact list (or state as fallback)
-      let newContacts = [...currentContacts];
+      // Normalize all existing contacts to lowercase for consistent comparison
+      let newContacts = currentContacts.map(p => p.toLowerCase());
       const targetPubkey = fullPubkeyForMeta.toLowerCase();
       
       if (isFollowing) {
         // Unfollow: remove from list
-        newContacts = newContacts.filter(p => p.toLowerCase() !== targetPubkey);
+        newContacts = newContacts.filter(p => p !== targetPubkey);
       } else {
         // Follow: add to list
         if (!newContacts.includes(targetPubkey)) {
