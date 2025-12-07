@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef, use } from "react";
-import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -80,17 +79,14 @@ interface Comment {
 
 export default function IssueDetailPage({ params }: { params: Promise<{ entity: string; repo: string; id: string }> }) {
   const resolvedParams = use(params);
-  const router = useRouter();
+  const { entity, repo, id } = resolvedParams; // Extract primitives to avoid stale closures
   const { pubkey: currentUserPubkey, publish, defaultRelays } = useNostrContext();
-  const { picture: userPicture, name: userName } = useSession();
+  const { name: userName } = useSession();
   const [issue, setIssue] = useState<Issue | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [assigneeInput, setAssigneeInput] = useState("");
   const [assigneeSearch, setAssigneeSearch] = useState("");
   const [labelSearch, setLabelSearch] = useState("");
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
-  const [bountyAmount, setBountyAmount] = useState(0);
   const [isOwner, setIsOwner] = useState(false);
   const [repoContributors, setRepoContributors] = useState<Array<{pubkey: string; name?: string; picture?: string; weight?: number; role?: string}>>([]);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -134,14 +130,14 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
   // Load issue data
   useEffect(() => {
     try {
-      const key = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
+      const key = getRepoStorageKey("gittr_issues", entity, repo);
       const issuesRaw = localStorage.getItem(key);
       const issues: Issue[] = issuesRaw ? (JSON.parse(issuesRaw) as Issue[]) : [];
-      const issueData = issues.find((i) => i.id === resolvedParams.id || String(issues.indexOf(i) + 1) === resolvedParams.id);
+      const issueData = issues.find((i) => i.id === id || String(issues.indexOf(i) + 1) === id);
       
       if (issueData) {
         setIssue({
-          id: issueData.id || resolvedParams.id,
+          id: issueData.id || id,
           title: issueData.title || "",
           description: issueData.description || "",
           author: issueData.author || "unknown",
@@ -159,23 +155,23 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
         
         // Check if current user is owner and get repo owner pubkey for display
         const repos = loadStoredRepos();
-        const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
-        setIsOwner(repo?.entity === currentUserPubkey || repo?.ownerPubkey === currentUserPubkey);
+        const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+        setIsOwner(repoData?.entity === currentUserPubkey || repoData?.ownerPubkey === currentUserPubkey);
         
         // Get owner pubkey for display name
-        if (repo?.ownerPubkey && /^[a-f0-9]{64}$/i.test(repo.ownerPubkey)) {
-          setRepoOwnerPubkey(repo.ownerPubkey);
-        } else if (repo?.contributors && repo.contributors.length > 0) {
-          const owner = repo.contributors.find((c): c is StoredContributor => (c.weight === 100 || !c.weight)) || repo.contributors[0];
+        if (repoData?.ownerPubkey && /^[a-f0-9]{64}$/i.test(repoData.ownerPubkey)) {
+          setRepoOwnerPubkey(repoData.ownerPubkey);
+        } else if (repoData?.contributors && repoData.contributors.length > 0) {
+          const owner = repoData.contributors.find((c): c is StoredContributor => (c.weight === 100 || !c.weight)) || repoData.contributors[0];
           if (owner?.pubkey && /^[a-f0-9]{64}$/i.test(owner.pubkey)) {
             setRepoOwnerPubkey(owner.pubkey);
           }
         }
 
         // Load repo contributors for assignee dropdown
-        if (repo && repo.contributors && Array.isArray(repo.contributors)) {
+        if (repoData && repoData.contributors && Array.isArray(repoData.contributors)) {
           // Filter to only contributors with valid 64-char pubkeys
-          const validContributors = repo.contributors
+          const validContributors = repoData.contributors
             .filter((c): c is StoredContributor & { pubkey: string } => c.pubkey !== undefined && typeof c.pubkey === "string" && c.pubkey.length === 64 && /^[0-9a-f]{64}$/i.test(c.pubkey))
             .map((c) => ({
               pubkey: c.pubkey.toLowerCase(),
@@ -195,7 +191,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
         }
 
         // Load comments from localStorage
-        const commentsKey = `gittr_issue_comments_${resolvedParams.entity}_${resolvedParams.repo}_${issueData.id}`;
+        const commentsKey = `gittr_issue_comments_${entity}_${repo}_${issueData.id}`;
         const storedComments = JSON.parse(localStorage.getItem(commentsKey) || "[]") as Comment[];
         setComments(storedComments);
       }
@@ -204,21 +200,21 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
     } finally {
       setLoading(false);
     }
-  }, [resolvedParams.entity, resolvedParams.repo, resolvedParams.id, currentUserPubkey]);
+  }, [entity, repo, id, currentUserPubkey]);
 
   // Load available labels from repo topics
   useEffect(() => {
     try {
       const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
-      if (repo?.topics) {
-        const labels = repo.topics
-          .map(t => typeof t === "string" ? t : (typeof t === "object" && t !== null && "name" in t && typeof (t as { name: string }).name === "string" ? (t as { name: string }).name : null))
+      const repoData: StoredRepo | undefined = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+      if (repoData?.topics) {
+        const labels = repoData.topics
+          .map((t: string | { name: string }) => typeof t === "string" ? t : (typeof t === "object" && t !== null && "name" in t && typeof (t as { name: string }).name === "string" ? (t as { name: string }).name : null))
           .filter((t): t is string => typeof t === "string" && t.length > 0);
         setAvailableLabels(labels);
       }
     } catch {}
-  }, [resolvedParams.entity, resolvedParams.repo]);
+  }, [entity, repo]);
 
   // Subscribe to comments from Nostr relays
   const { subscribe } = useNostrContext();
@@ -243,7 +239,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
             
             // Verify this snippet is for our issue and repo
             const isForThisIssue = eTags.some((t) => t[1] === issueEventId);
-            const isForThisRepo = repoTag && repoTag[1] === resolvedParams.entity && repoTag[2] === resolvedParams.repo;
+            const isForThisRepo = repoTag && repoTag[1] === entity && repoTag[2] === repo;
             
             if (isForThisIssue && isForThisRepo) {
               // Store snippet event
@@ -267,7 +263,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
             
             // Verify this comment is for our issue and repo
             const isForThisIssue = eTags.some((t) => t[1] === issueEventId);
-            const isForThisRepo = repoTag && repoTag[1] === resolvedParams.entity && repoTag[2] === resolvedParams.repo;
+            const isForThisRepo = repoTag && repoTag[1] === entity && repoTag[2] === repo;
             
             if (isForThisIssue && isForThisRepo) {
               // Find parent comment ID (NIP-10 reply tag)
@@ -292,7 +288,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
               });
 
               // Also save to localStorage
-              const commentsKey = `gittr_issue_comments_${resolvedParams.entity}_${resolvedParams.repo}_${issue.id}`;
+              const commentsKey = `gittr_issue_comments_${entity}_${repo}_${issue.id}`;
               const storedComments = JSON.parse(localStorage.getItem(commentsKey) || "[]") as Comment[];
               const exists = storedComments.some((c) => c.id === comment.id || c.nostrEventId === comment.id);
               if (!exists) {
@@ -310,13 +306,13 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
     return () => {
       unsub();
     };
-  }, [subscribe, defaultRelays, issue?.id, issueEventId, resolvedParams.entity, resolvedParams.repo]);
+  }, [subscribe, defaultRelays, issue?.id, issueEventId, entity, repo]);
 
   const handleToggleStatus = useCallback(async () => {
     if (!issue || !isOwner) return;
     
     try {
-      const key = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
+      const key = getRepoStorageKey("gittr_issues", entity, repo);
       const issuesRaw = localStorage.getItem(key);
       const issues: Issue[] = issuesRaw ? (JSON.parse(issuesRaw) as Issue[]) : [];
       const newStatus = issue.status === "open" ? "closed" : "open";
@@ -380,8 +376,8 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                 if (publish && defaultRelays && defaultRelays.length > 0 && privateKey) {
                   const bountyEvent = createBountyEvent({
                     issueId: issue.id,
-                    repoEntity: resolvedParams.entity,
-                    repoName: resolvedParams.repo,
+                    repoEntity: entity,
+                    repoName: repo,
                     amount: issue.bountyAmount || 0,
                     status: "pending", // Cancelled bounties are marked as pending (not released)
                     withdrawId: issue.bountyWithdrawId,
@@ -403,11 +399,11 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
               if (issue.bountyCreator && issue.bountyCreator !== currentUserPubkey) {
                 try {
                   const { title, message, url } = formatNotificationMessage("bounty_cancelled", {
-                    repoEntity: resolvedParams.entity,
-                    repoName: resolvedParams.repo,
+                    repoEntity: entity,
+                    repoName: repo,
                     issueId: issue.id,
                     issueTitle: issue.title,
-                    url: `/${resolvedParams.entity}/${resolvedParams.repo}/issues/${issue.id}`,
+                    url: `/${entity}/${repo}/issues/${issue.id}`,
                   });
                   
                   await sendNotification({
@@ -416,8 +412,8 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                     title,
                     message,
                     url,
-                    repoEntity: resolvedParams.entity,
-                    repoName: resolvedParams.repo,
+                    repoEntity: entity,
+                    repoName: repo,
                   });
                 } catch (notifError) {
                   console.error("Failed to send bounty cancellation notification:", notifError);
@@ -442,15 +438,15 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
       window.dispatchEvent(new CustomEvent("gittr:activity-recorded", { 
         detail: { 
           type: newStatus === "closed" ? "issue_closed" : "issue_reopened",
-          repo: `${resolvedParams.entity}/${resolvedParams.repo}`,
-          entity: resolvedParams.entity,
-          repoName: resolvedParams.repo
+          repo: `${entity}/${repo}`,
+          entity: entity,
+          repoName: repo
         } 
       }));
     } catch (error) {
       console.error("Failed to update issue status:", error);
     }
-  }, [issue, isOwner, resolvedParams.entity, resolvedParams.repo, resolvedParams.id, currentUserPubkey, publish, defaultRelays]);
+  }, [issue, isOwner, entity, repo, id, currentUserPubkey, publish, defaultRelays]);
 
   const handleAddAssignee = useCallback((input: string) => {
     if (!issue || !isOwner || !input.trim()) return;
@@ -476,7 +472,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
         return; // Already assigned
       }
       
-      const key = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
+      const key = getRepoStorageKey("gittr_issues", entity, repo);
       const issuesRaw = localStorage.getItem(key);
       const issues: Issue[] = issuesRaw ? (JSON.parse(issuesRaw) as Issue[]) : [];
       const updated = issues.map((i) => 
@@ -484,18 +480,17 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
       );
       localStorage.setItem(key, JSON.stringify(updated));
       setIssue({ ...issue, assignees: [...issue.assignees, pubkey] });
-      setAssigneeInput("");
       setAssigneeSearch("");
     } catch (error) {
       alert(`Failed to add assignee: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
-  }, [issue, isOwner, resolvedParams.entity, resolvedParams.repo, resolvedParams.id]);
+  }, [issue, isOwner, entity, repo, id]);
 
   const handleRemoveAssignee = useCallback((pubkey: string) => {
     if (!issue || !isOwner) return;
     
     try {
-      const key = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
+      const key = getRepoStorageKey("gittr_issues", entity, repo);
       const issuesRaw = localStorage.getItem(key);
       const issues: Issue[] = issuesRaw ? (JSON.parse(issuesRaw) as Issue[]) : [];
       const updated = issues.map((i) => 
@@ -506,13 +501,13 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
     } catch (error) {
       console.error("Failed to remove assignee:", error);
     }
-  }, [issue, isOwner, resolvedParams.entity, resolvedParams.repo, resolvedParams.id]);
+  }, [issue, isOwner, entity, repo, id]);
 
   const handleToggleLabel = useCallback((label: string) => {
     if (!issue || !isOwner) return;
     
     try {
-      const key = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
+      const key = getRepoStorageKey("gittr_issues", entity, repo);
       const issuesRaw = localStorage.getItem(key);
       const issues: Issue[] = issuesRaw ? (JSON.parse(issuesRaw) as Issue[]) : [];
       const updated = issues.map((i) => {
@@ -527,7 +522,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
     } catch (error) {
       console.error("Failed to toggle label:", error);
     }
-  }, [issue, isOwner, resolvedParams.entity, resolvedParams.repo, resolvedParams.id]);
+  }, [issue, isOwner, entity, repo, id]);
 
   const handleBountyCreated = useCallback(async (withdrawId: string, lnurl: string, withdrawUrl: string, amount: number) => {
     // Store bounty info in issue
@@ -535,7 +530,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
     if (!issue) return;
     
     try {
-      const key = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
+      const key = getRepoStorageKey("gittr_issues", entity, repo);
       const issuesRaw = localStorage.getItem(key);
       const issues: Issue[] = issuesRaw ? (JSON.parse(issuesRaw) as Issue[]) : [];
       const updated = issues.map((i) => 
@@ -552,7 +547,6 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
           : i
       );
       localStorage.setItem(key, JSON.stringify(updated));
-      setBountyAmount(amount);
       
       // Update issue state
       setIssue({ ...issue, bountyWithdrawId: withdrawId, bountyLnurl: lnurl, bountyWithdrawUrl: withdrawUrl, bountyAmount: amount, bountyStatus: "paid", bountyCreator: currentUserPubkey || undefined });
@@ -564,7 +558,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
         const bountyEntry = {
           issueId: issue.id,
           issueTitle: issue.title,
-          repoId: `${resolvedParams.entity}/${resolvedParams.repo}`,
+          repoId: `${entity}/${repo}`,
           amount: amount,
           withdrawId: withdrawId,
           lnurl: lnurl,
@@ -598,11 +592,11 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
         
         if (issueOwnerPubkey) {
           const notification = formatNotificationMessage("bounty_funded", {
-            repoEntity: resolvedParams.entity,
-            repoName: resolvedParams.repo,
+            repoEntity: entity,
+            repoName: repo,
             issueId: issue.id,
             issueTitle: issue.title,
-            url: typeof window !== "undefined" ? `${window.location.origin}/${resolvedParams.entity}/${resolvedParams.repo}/issues/${issue.id}` : undefined,
+            url: typeof window !== "undefined" ? `${window.location.origin}/${entity}/${repo}/issues/${issue.id}` : undefined,
           });
 
           await sendNotification({
@@ -610,8 +604,8 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
             title: notification.title,
             message: `${notification.message}\n\nAmount: ${amount} sats`,
             url: notification.url,
-            repoEntity: resolvedParams.entity,
-            repoName: resolvedParams.repo,
+            repoEntity: entity,
+            repoName: repo,
             recipientPubkey: issueOwnerPubkey,
           });
         }
@@ -641,7 +635,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
             created_at: Math.floor(Date.now() / 1000),
             tags: [
               ["e", issue.id, "", "issue"],
-              ["repo", resolvedParams.entity, resolvedParams.repo],
+              ["repo", entity, repo],
               ["status", "paid"],
               ["p", authorPubkey, "creator"],
             ],
@@ -663,8 +657,8 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
           // Use private key
           bountyEvent = createBountyEvent({
             issueId: issue.id,
-            repoEntity: resolvedParams.entity,
-            repoName: resolvedParams.repo,
+            repoEntity: entity,
+            repoName: repo,
             amount: amount,
             status: "paid",
             withdrawId: withdrawId,
@@ -695,7 +689,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
     } catch (error) {
       console.error("Failed to store bounty:", error);
     }
-  }, [issue, resolvedParams.entity, resolvedParams.repo, resolvedParams.id, currentUserPubkey, publish, defaultRelays]);
+  }, [issue, entity, repo, id, currentUserPubkey, publish, defaultRelays]);
 
   // Handle comment creation
   const handleAddComment = useCallback(async () => {
@@ -722,7 +716,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
       };
 
       // Save to localStorage first
-      const commentsKey = `gittr_issue_comments_${resolvedParams.entity}_${resolvedParams.repo}_${issue.id}`;
+      const commentsKey = `gittr_issue_comments_${entity}_${repo}_${issue.id}`;
       const storedComments = JSON.parse(localStorage.getItem(commentsKey) || "[]") as Comment[];
       storedComments.push(newComment);
       localStorage.setItem(commentsKey, JSON.stringify(storedComments));
@@ -739,7 +733,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
         const authorPubkey = await window.nostr.getPublicKey();
         
         const tags: string[][] = [
-          ["repo", resolvedParams.entity, resolvedParams.repo],
+          ["repo", entity, repo],
         ];
 
         // NIP-10 threading: root is the issue event ID, reply is parent comment ID
@@ -771,8 +765,8 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
         commentEvent = createCommentEvent(
           {
             replyTo: replyParentId || issueEventId || undefined,
-            repoEntity: resolvedParams.entity,
-            repoName: resolvedParams.repo,
+            repoEntity: entity,
+            repoName: repo,
             issueId: issue.id,
             content: commentContent.trim(),
           },
@@ -805,12 +799,12 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
         // Notify issue author (if not the commenter)
         if (issue.author && issue.author.toLowerCase() !== currentUserPubkey.toLowerCase()) {
           const notification = formatNotificationMessage("issue_commented", {
-            repoEntity: resolvedParams.entity,
-            repoName: resolvedParams.repo,
+            repoEntity: entity,
+            repoName: repo,
             issueId: issue.id,
             issueTitle: issue.title,
             authorName: userName || "Someone",
-            url: typeof window !== "undefined" ? `${window.location.origin}/${resolvedParams.entity}/${resolvedParams.repo}/issues/${issue.id}` : undefined,
+            url: typeof window !== "undefined" ? `${window.location.origin}/${entity}/${repo}/issues/${issue.id}` : undefined,
           });
 
           await sendNotification({
@@ -818,8 +812,8 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
             title: notification.title,
             message: notification.message,
             url: notification.url,
-            repoEntity: resolvedParams.entity,
-            repoName: resolvedParams.repo,
+            repoEntity: entity,
+            repoName: repo,
             recipientPubkey: issue.author,
           });
         }
@@ -835,12 +829,12 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
 
         if (mentionsToNotify.length > 0) {
           const notification = formatNotificationMessage("mention", {
-            repoEntity: resolvedParams.entity,
-            repoName: resolvedParams.repo,
+            repoEntity: entity,
+            repoName: repo,
             issueId: issue.id,
             issueTitle: issue.title,
             authorName: userName || "Someone",
-            url: typeof window !== "undefined" ? `${window.location.origin}/${resolvedParams.entity}/${resolvedParams.repo}/issues/${issue.id}` : undefined,
+            url: typeof window !== "undefined" ? `${window.location.origin}/${entity}/${repo}/issues/${issue.id}` : undefined,
           });
 
           await Promise.all(
@@ -850,8 +844,8 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                 title: notification.title,
                 message: notification.message,
                 url: notification.url,
-                repoEntity: resolvedParams.entity,
-                repoName: resolvedParams.repo,
+                repoEntity: entity,
+                repoName: repo,
                 recipientPubkey: pubkey,
               }).catch((err) => {
                 console.error(`Failed to send mention notification to ${pubkey.slice(0, 8)}...:`, err);
@@ -866,7 +860,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
       console.error("Failed to add comment:", error);
       alert("Failed to add comment: " + (error as Error).message);
     }
-  }, [commentContent, issue, currentUserPubkey, replyParentId, issueEventId, resolvedParams.entity, resolvedParams.repo, resolvedParams.id, publish, defaultRelays, userName]);
+  }, [commentContent, issue, currentUserPubkey, replyParentId, issueEventId, entity, repo, id, publish, defaultRelays, userName]);
 
   const startReply = useCallback((parentId?: string, authorPubkey?: string) => {
     setReplyParentId(parentId || null);
@@ -939,7 +933,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
     return (
       <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
         <p className="text-gray-400">Issue not found</p>
-        <Link href={`/${resolvedParams.entity}/${resolvedParams.repo}/issues`} className="text-purple-500 hover:underline">
+        <Link href={`/${entity}/${repo}/issues`} className="text-purple-500 hover:underline">
           Back to issues
         </Link>
       </div>
@@ -950,15 +944,15 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
       {/* Breadcrumbs - Match URL format for consistency */}
       <nav className="mb-4 text-sm text-gray-400">
-        <Link href={`/${resolvedParams.entity}/${resolvedParams.repo}`} className="hover:text-purple-400">
-          {repoOwnerPubkey ? getEntityDisplayName(repoOwnerPubkey, repoOwnerMetadata, resolvedParams.entity) : (resolvedParams.entity.startsWith('npub') ? resolvedParams.entity.slice(0, 16) + '...' : resolvedParams.entity)}/{resolvedParams.repo}
+        <Link href={`/${entity}/${repo}`} className="hover:text-purple-400">
+          {repoOwnerPubkey ? getEntityDisplayName(repoOwnerPubkey, repoOwnerMetadata, entity) : (entity.startsWith('npub') ? entity.slice(0, 16) + '...' : entity)}/{repo}
         </Link>
         {" / "}
-        <Link href={`/${resolvedParams.entity}/${resolvedParams.repo}/issues`} className="hover:text-purple-400">
+        <Link href={`/${entity}/${repo}/issues`} className="hover:text-purple-400">
           Issues
         </Link>
         {" / #"}
-        {resolvedParams.id}
+        {id}
       </nav>
 
       {/* Issue Header */}
@@ -971,7 +965,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
               <CheckCircle2 className="h-5 w-5 text-purple-600" />
             )}
             <h1 className="text-2xl font-bold">{issue.title}</h1>
-            <Badge className="bg-gray-700">#{resolvedParams.id}</Badge>
+            <Badge className="bg-gray-700">#{id}</Badge>
           </div>
           <div className="text-sm text-gray-400">
             {issue.status === "open" ? "Opened" : "Closed"} {formatDateTime24h(issue.createdAt)} by{" "}
@@ -1012,8 +1006,8 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
               <Reactions
                 targetId={issue.id}
                 targetType="issue"
-                entity={resolvedParams.entity}
-                repo={resolvedParams.repo}
+                entity={entity}
+                repo={repo}
               />
             </div>
           </div>
@@ -1034,7 +1028,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                   </p>
                 </div>
                 {!issue.linkedPR && (
-                  <Link href={`/${resolvedParams.entity}/${resolvedParams.repo}/pulls/new?issue=${issue.id}`}>
+                  <Link href={`/${entity}/${repo}/pulls/new?issue=${issue.id}`}>
                     <Button className="bg-gradient-to-r from-purple-600 to-orange-600 hover:from-purple-700 hover:to-orange-700">
                       <GitBranch className="mr-2 h-4 w-4" />
                       Propose a Fix
@@ -1149,8 +1143,8 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                                 <Reactions
                                   targetId={comment.id}
                                   targetType="comment"
-                                  entity={resolvedParams.entity}
-                                  repo={resolvedParams.repo}
+                                  entity={entity}
+                                  repo={repo}
                                 />
                               </div>
                             </div>
@@ -1520,8 +1514,8 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                 <BountyButton
                   issueId={issue.id}
                   issueTitle={issue.title}
-                  repoEntity={resolvedParams.entity}
-                  repoName={resolvedParams.repo}
+                  repoEntity={entity}
+                  repoName={repo}
                   repoOwnerDisplayName={repoOwnerPubkey && repoOwnerMetadata[repoOwnerPubkey] 
                     ? (repoOwnerMetadata[repoOwnerPubkey]?.display_name || repoOwnerMetadata[repoOwnerPubkey]?.name)
                     : undefined}
