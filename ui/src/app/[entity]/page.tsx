@@ -1313,8 +1313,12 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 } catch (e) {
                   console.error("❌ [Follow] Failed to parse contact list:", e);
                   // Fallback: extract from tags
-                  const pTags = event.tags.filter(tag => tag[0] === 'p').map(tag => tag[1]);
-                  resolve(pTags.length > 0 ? pTags : (contactList.length > 0 ? [...contactList] : []));
+                 const pTags = event.tags
+                 .filter(tag => tag[0] === 'p' && tag[1])
+                 .map(tag => tag[1] as string)
+                 .filter((p: string) => p && p.length > 0)
+                 .map((p: string) => p.toLowerCase());
+                resolve(pTags.length > 0 ? pTags : (contactList.length > 0 ? [...contactList] : []));
                 }
                 if (unsub) unsub();
               }
@@ -2031,4 +2035,3 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
     </div>
   );
 }
-
