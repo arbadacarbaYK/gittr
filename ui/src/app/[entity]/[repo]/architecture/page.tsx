@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, use } from "react";
 import { useSearchParams } from "next/navigation";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { getRepoOwnerPubkey, resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
@@ -16,8 +16,9 @@ import { loadStoredRepos, loadRepoFiles, type StoredRepo, type RepoFileEntry } f
 export default function ArchitecturePage({
   params,
 }: {
-  params: { entity: string; repo: string };
+  params: Promise<{ entity: string; repo: string }>;
 }) {
+  const resolvedParams = use(params);
   const searchParams = useSearchParams();
   const branch = searchParams?.get("branch") || "main";
 
@@ -34,7 +35,7 @@ export default function ArchitecturePage({
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     loadArchitecture();
-  }, [params.entity, params.repo, branch]);
+  }, [resolvedParams.entity, resolvedParams.repo, branch]);
 
   // Render Mermaid diagram when ready
   useEffect(() => {
@@ -268,18 +269,18 @@ export default function ArchitecturePage({
       const repos = loadStoredRepos();
 
       // Get repo data
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+      const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
       if (!repo) {
         throw new Error("Repository not found");
       }
 
       setStatus("Resolving repository owner...");
       // getRepoOwnerPubkey expects (repo, entity) not (entity, repoName)
-      let ownerPubkey = getRepoOwnerPubkey(repo, params.entity);
+      let ownerPubkey = getRepoOwnerPubkey(repo, resolvedParams.entity);
       
       // If not found in repo, try to resolve from entity directly
       if (!ownerPubkey) {
-        ownerPubkey = resolveEntityToPubkey(params.entity, repo);
+        ownerPubkey = resolveEntityToPubkey(resolvedParams.entity, repo);
       }
       
       if (!ownerPubkey) {
@@ -287,7 +288,7 @@ export default function ArchitecturePage({
       }
 
       setStatus("Fetching file list...");
-      const files = await fetchFileList(ownerPubkey, params.repo, branch, repo);
+      const files = await fetchFileList(ownerPubkey, resolvedParams.repo, branch, repo);
       if (!files || files.length === 0) {
         throw new Error("No files found in repository. The repository may be empty or not yet cloned by git-nostr-bridge.");
       }
@@ -334,11 +335,11 @@ export default function ArchitecturePage({
       const allRepos = loadStoredRepos();
       const matchingRepo = allRepos.find((r) => {
         const repoEntity = r.entity || r.ownerPubkey;
-        const normalizedEntity = params.entity.startsWith("npub") 
-          ? params.entity 
-          : (repoEntity && /^[0-9a-f]{64}$/i.test(repoEntity) ? repoEntity : params.entity);
-        return (normalizedEntity === params.entity || repoEntity === params.entity) && 
-               (r.repo === params.repo || r.name === params.repo || r.slug === params.repo);
+        const normalizedEntity = resolvedParams.entity.startsWith("npub") 
+          ? resolvedParams.entity 
+          : (repoEntity && /^[0-9a-f]{64}$/i.test(repoEntity) ? repoEntity : resolvedParams.entity);
+        return (normalizedEntity === resolvedParams.entity || repoEntity === resolvedParams.entity) && 
+               (r.repo === resolvedParams.repo || r.name === resolvedParams.repo || r.slug === resolvedParams.repo);
       });
       
       if (matchingRepo?.files && Array.isArray(matchingRepo.files) && matchingRepo.files.length > 0) {
@@ -349,7 +350,7 @@ export default function ArchitecturePage({
       // CRITICAL: Check separate files storage key (for optimized storage)
       if (matchingRepo) {
         try {
-          const storedFiles = loadRepoFiles(params.entity, params.repo);
+          const storedFiles = loadRepoFiles(resolvedParams.entity, resolvedParams.repo);
           if (storedFiles && storedFiles.length > 0) {
             console.log(`✅ [Architecture] Using ${storedFiles.length} files from separate storage key`);
             return storedFiles.map((f: RepoFileEntry) => ({ type: f.type, path: f.path }));

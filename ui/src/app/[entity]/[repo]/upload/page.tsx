@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { addPendingUpload } from "@/lib/pending-changes";
@@ -12,7 +12,8 @@ import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { nip19 } from "nostr-tools";
 
-export default function UploadPage({ params }: { params: { entity: string; repo: string } }) {
+export default function UploadPage({ params }: { params: Promise<{ entity: string; repo: string }> }) {
+  const resolvedParams = use(params);
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -31,22 +32,22 @@ export default function UploadPage({ params }: { params: { entity: string; repo:
 
     try {
       const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName(repos, params.entity, params.repo);
+      const repo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
 
       const entityMatchesCurrentUser = (() => {
         if (!pubkey) return false;
         const hex = pubkey.toLowerCase();
-        if (params.entity?.toLowerCase() === hex) return true;
+        if (resolvedParams.entity?.toLowerCase() === hex) return true;
         try {
           const npub = nip19.npubEncode(pubkey);
-          return params.entity === npub;
+          return resolvedParams.entity === npub;
         } catch {
           return false;
         }
       })();
 
       if (repo) {
-        const ownerPubkey = getRepoOwnerPubkey(repo, params.entity);
+        const ownerPubkey = getRepoOwnerPubkey(repo, resolvedParams.entity);
         const userIsOwner = isOwner(pubkey, repo.contributors, ownerPubkey);
         setIsOwnerUser(userIsOwner || entityMatchesCurrentUser);
       } else {
@@ -56,7 +57,7 @@ export default function UploadPage({ params }: { params: { entity: string; repo:
       console.error("Error checking owner status:", error);
       setIsOwnerUser(false);
     }
-  }, [pubkey, params.entity, params.repo]);
+  }, [pubkey, resolvedParams.entity, resolvedParams.repo]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -102,12 +103,12 @@ export default function UploadPage({ params }: { params: { entity: string; repo:
 
       // If user is owner, add files directly to repo (immediate display)
       if (isOwnerUser) {
-        const success = addFilesToRepo(params.entity, params.repo, fileData, pubkey);
+        const success = addFilesToRepo(resolvedParams.entity, resolvedParams.repo, fileData, pubkey);
         
         if (success) {
           setStatus(`Added ${fileData.length} file(s)! Redirecting to repository...`);
           setTimeout(() => {
-            router.push(`/${params.entity}/${params.repo}`);
+            router.push(`/${resolvedParams.entity}/${resolvedParams.repo}`);
           }, 1000);
         } else {
           setStatus("Error: Failed to add files to repository");
@@ -116,7 +117,7 @@ export default function UploadPage({ params }: { params: { entity: string; repo:
       } else {
         // Non-owners: Add as pending uploads (requires PR)
         for (const file of fileData) {
-          addPendingUpload(params.entity, params.repo, pubkey, { 
+          addPendingUpload(resolvedParams.entity, resolvedParams.repo, pubkey, { 
             path: file.path, 
             content: file.content, 
             timestamp: Date.now(),
@@ -127,7 +128,7 @@ export default function UploadPage({ params }: { params: { entity: string; repo:
 
         setStatus(`Added ${fileData.length} file(s)! Redirecting to create pull request...`);
       setTimeout(() => {
-        router.push(`/${params.entity}/${params.repo}/pulls/new`);
+        router.push(`/${resolvedParams.entity}/${resolvedParams.repo}/pulls/new`);
       }, 1000);
       }
     } catch (error: any) {
@@ -208,7 +209,7 @@ export default function UploadPage({ params }: { params: { entity: string; repo:
   return (
     <div className="container mx-auto max-w-4xl p-6">
       <div className="mb-4">
-        <Link href={`/${params.entity}/${params.repo}`} className="text-purple-500 hover:underline">
+        <Link href={`/${resolvedParams.entity}/${resolvedParams.repo}`} className="text-purple-500 hover:underline">
           ← Back to repository
         </Link>
       </div>
@@ -262,7 +263,7 @@ export default function UploadPage({ params }: { params: { entity: string; repo:
             {uploading ? "Uploading..." : "Upload files"}
           </button>
           <Link
-            href={`/${params.entity}/${params.repo}`}
+            href={`/${resolvedParams.entity}/${resolvedParams.repo}`}
             className="px-4 py-2 border rounded hover:bg-gray-800"
           >
             Cancel

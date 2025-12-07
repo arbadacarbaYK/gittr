@@ -3,7 +3,7 @@ import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { loadStoredRepos, type StoredRepo } from "@/lib/repos/storage";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,8 @@ interface DiffFile {
   after?: string;
 }
 
-export default function ComparePage({ params }: { params: { entity: string; repo: string } }) {
+export default function ComparePage({ params }: { params: Promise<{ entity: string; repo: string }> }) {
+  const resolvedParams = use(params);
   const searchParams = useSearchParams();
   const [baseRef, setBaseRef] = useState<string>(searchParams?.get("base") || "main");
   const [compareRef, setCompareRef] = useState<string>(searchParams?.get("compare") || "");
@@ -32,11 +33,11 @@ export default function ComparePage({ params }: { params: { entity: string; repo
   useEffect(() => {
     try {
       const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+      const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
       setBranches((repo?.branches as string[] | undefined) || ["main"]);
       setTags((repo?.tags as string[] | undefined)?.map((t: string | { name: string }) => typeof t === "string" ? t : t.name) || []);
     } catch {}
-  }, [params]);
+  }, [resolvedParams.entity, resolvedParams.repo]);
 
   const handleCompare = async () => {
     if (!baseRef || !compareRef) {
@@ -47,7 +48,7 @@ export default function ComparePage({ params }: { params: { entity: string; repo
     setLoading(true);
     try {
       // Load commits for both refs
-      const commitsKey = getRepoStorageKey("gittr_commits", params.entity, params.repo);
+      const commitsKey = getRepoStorageKey("gittr_commits", resolvedParams.entity, resolvedParams.repo);
       const allCommits = JSON.parse(localStorage.getItem(commitsKey) || "[]");
       
       // Find commits in base branch/tag
@@ -79,7 +80,7 @@ export default function ComparePage({ params }: { params: { entity: string; repo
             // Try to get file content from PR
             if (c.prId) {
               try {
-                const prsKey = getRepoStorageKey("gittr_prs", params.entity, params.repo);
+                const prsKey = getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo);
                 const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
                 const pr = prs.find((p: any) => p.id === c.prId);
                 if (pr && pr.path === f.path) {
@@ -202,7 +203,7 @@ export default function ComparePage({ params }: { params: { entity: string; repo
             {diffFiles.length > 0 && (
               <Button
                 onClick={() => {
-                  window.location.href = `/${params.entity}/${params.repo}/pulls/new?base=${encodeURIComponent(baseRef)}&compare=${encodeURIComponent(compareRef)}`;
+                  window.location.href = `/${resolvedParams.entity}/${resolvedParams.repo}/pulls/new?base=${encodeURIComponent(baseRef)}&compare=${encodeURIComponent(compareRef)}`;
                 }}
                 variant="default"
                 className="bg-green-600 hover:bg-green-700"
@@ -251,7 +252,7 @@ export default function ComparePage({ params }: { params: { entity: string; repo
                       {file.status}
                     </Badge>
                     <Link
-                      href={`/${params.entity}/${params.repo}?file=${encodeURIComponent(file.path)}`}
+                      href={`/${resolvedParams.entity}/${resolvedParams.repo}?file=${encodeURIComponent(file.path)}`}
                       className="text-purple-400 hover:text-purple-300 font-mono text-sm"
                     >
                       {file.path}

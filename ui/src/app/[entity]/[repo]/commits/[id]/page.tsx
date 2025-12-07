@@ -2,7 +2,7 @@
 
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -36,16 +36,17 @@ interface FileDiff {
   after?: string;
 }
 
-export default function CommitDetailPage({ params }: { params: { entity: string; repo: string; id: string } }) {
+export default function CommitDetailPage({ params }: { params: Promise<{ entity: string; repo: string; id: string }> }) {
+  const resolvedParams = use(params);
   const [commit, setCommit] = useState<Commit | null>(null);
   const [loading, setLoading] = useState(true);
   const [fileDiffs, setFileDiffs] = useState<FileDiff[]>([]);
 
   useEffect(() => {
     try {
-      const commitsKey = getRepoStorageKey("gittr_commits", params.entity, params.repo);
+      const commitsKey = getRepoStorageKey("gittr_commits", resolvedParams.entity, resolvedParams.repo);
       const commits = JSON.parse(localStorage.getItem(commitsKey) || "[]") as Commit[];
-      const commitData = commits.find(c => c.id === params.id || c.id.startsWith(params.id));
+      const commitData = commits.find(c => c.id === resolvedParams.id || c.id.startsWith(resolvedParams.id));
       
       if (commitData) {
         setCommit(commitData);
@@ -62,7 +63,7 @@ export default function CommitDetailPage({ params }: { params: { entity: string;
             
             if (commitData.prId) {
               try {
-                const prsKey = getRepoStorageKey("gittr_prs", params.entity, params.repo);
+                const prsKey = getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo);
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
                 const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
@@ -96,7 +97,7 @@ export default function CommitDetailPage({ params }: { params: { entity: string;
         } else if (commitData.prId) {
           // Commit doesn't have changedFiles, but has prId - load from PR
           try {
-            const prsKey = getRepoStorageKey("gittr_prs", params.entity, params.repo);
+            const prsKey = getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo);
             const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
             const pr = prs.find((p: any) => p.id === commitData.prId);
             if (pr) {
@@ -127,7 +128,7 @@ export default function CommitDetailPage({ params }: { params: { entity: string;
     } finally {
       setLoading(false);
     }
-  }, [params]);
+  }, [resolvedParams.entity, resolvedParams.repo]);
 
   if (loading) {
     return <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">Loading commit...</div>;
@@ -137,7 +138,7 @@ export default function CommitDetailPage({ params }: { params: { entity: string;
     return (
       <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
         <p className="text-gray-400">Commit not found</p>
-        <Link href={`/${params.entity}/${params.repo}/commits`} className="text-purple-500 hover:underline">
+        <Link href={`/${resolvedParams.entity}/${resolvedParams.repo}/commits`} className="text-purple-500 hover:underline">
           Back to commits
         </Link>
       </div>
@@ -153,11 +154,11 @@ export default function CommitDetailPage({ params }: { params: { entity: string;
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
       {/* Breadcrumbs */}
       <nav className="mb-4 text-sm text-gray-400">
-        <Link href={`/${params.entity}/${params.repo}`} className="hover:text-purple-400">
-          {params.entity}/{params.repo}
+        <Link href={`/${resolvedParams.entity}/${resolvedParams.repo}`} className="hover:text-purple-400">
+          {resolvedParams.entity}/{resolvedParams.repo}
         </Link>
         {" / "}
-        <Link href={`/${params.entity}/${params.repo}/commits`} className="hover:text-purple-400">
+        <Link href={`/${resolvedParams.entity}/${resolvedParams.repo}/commits`} className="hover:text-purple-400">
           Commits
         </Link>
         {" / "}
@@ -259,7 +260,7 @@ export default function CommitDetailPage({ params }: { params: { entity: string;
                       {diff.status}
                     </Badge>
                     <Link
-                      href={`/${params.entity}/${params.repo}?file=${diff.path}`}
+                      href={`/${resolvedParams.entity}/${resolvedParams.repo}?file=${diff.path}`}
                       className="text-purple-400 hover:text-purple-300 font-mono text-sm"
                     >
                       {diff.path}

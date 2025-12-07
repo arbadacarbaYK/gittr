@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { addPendingUpload } from "@/lib/pending-changes";
@@ -12,7 +12,8 @@ import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { nip19 } from "nostr-tools";
 
-export default function NewFilePage({ params }: { params: { entity: string; repo: string } }) {
+export default function NewFilePage({ params }: { params: Promise<{ entity: string; repo: string }> }) {
+  const resolvedParams = use(params);
   const [path, setPath] = useState("");
   const [content, setContent] = useState("");
   const [status, setStatus] = useState("");
@@ -30,22 +31,22 @@ export default function NewFilePage({ params }: { params: { entity: string; repo
 
     try {
       const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName(repos, params.entity, params.repo);
+      const repo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
 
       const entityMatchesCurrentUser = (() => {
         if (!pubkey) return false;
         const hex = pubkey.toLowerCase();
-        if (params.entity?.toLowerCase() === hex) return true;
+        if (resolvedParams.entity?.toLowerCase() === hex) return true;
         try {
           const npub = nip19.npubEncode(pubkey);
-          return params.entity === npub;
+          return resolvedParams.entity === npub;
         } catch {
           return false;
         }
       })();
 
       if (repo) {
-        const ownerPubkey = getRepoOwnerPubkey(repo, params.entity);
+        const ownerPubkey = getRepoOwnerPubkey(repo, resolvedParams.entity);
         const userIsOwner = isOwner(pubkey, repo.contributors, ownerPubkey);
         setIsOwnerUser(userIsOwner || entityMatchesCurrentUser);
       } else {
@@ -55,7 +56,7 @@ export default function NewFilePage({ params }: { params: { entity: string; repo
       console.error("Error checking owner status:", error);
       setIsOwnerUser(false);
     }
-  }, [pubkey, params.entity, params.repo]);
+  }, [pubkey, resolvedParams.entity, resolvedParams.repo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,21 +81,21 @@ export default function NewFilePage({ params }: { params: { entity: string; repo
     try {
       // If user is owner, add file directly to repo (immediate display)
       if (isOwnerUser) {
-        const success = addFilesToRepo(params.entity, params.repo, [
+        const success = addFilesToRepo(resolvedParams.entity, resolvedParams.repo, [
           { path: normalizedPath, content, type: "file" }
         ], pubkey);
         
         if (success) {
           setStatus("File created! Redirecting to repository...");
           setTimeout(() => {
-            router.push(`/${params.entity}/${params.repo}`);
+            router.push(`/${resolvedParams.entity}/${resolvedParams.repo}`);
           }, 1000);
         } else {
           setStatus("Error: Failed to add file to repository");
         }
       } else {
         // Non-owners: Add as pending upload (requires PR)
-        addPendingUpload(params.entity, params.repo, pubkey, { 
+        addPendingUpload(resolvedParams.entity, resolvedParams.repo, pubkey, { 
           path: normalizedPath, 
           content, 
           timestamp: Date.now() 
@@ -102,7 +103,7 @@ export default function NewFilePage({ params }: { params: { entity: string; repo
       
       setStatus("File added! Redirecting to create pull request...");
       setTimeout(() => {
-        router.push(`/${params.entity}/${params.repo}/pulls/new`);
+        router.push(`/${resolvedParams.entity}/${resolvedParams.repo}/pulls/new`);
       }, 1000);
       }
     } catch (error: any) {
@@ -113,7 +114,7 @@ export default function NewFilePage({ params }: { params: { entity: string; repo
   return (
     <div className="container mx-auto max-w-4xl p-6">
       <div className="mb-4">
-        <Link href={`/${params.entity}/${params.repo}`} className="text-purple-500 hover:underline">
+        <Link href={`/${resolvedParams.entity}/${resolvedParams.repo}`} className="text-purple-500 hover:underline">
           ← Back to repository
         </Link>
       </div>
@@ -165,7 +166,7 @@ export default function NewFilePage({ params }: { params: { entity: string; repo
             Create file
           </button>
           <Link
-            href={`/${params.entity}/${params.repo}`}
+            href={`/${resolvedParams.entity}/${resolvedParams.repo}`}
             className="px-4 py-2 border rounded hover:bg-gray-800"
           >
             Cancel

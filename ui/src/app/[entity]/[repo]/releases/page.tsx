@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, use } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import useSession from "@/lib/nostr/useSession";
@@ -53,7 +53,8 @@ function slugify(text: string): string {
     .replace(/^_+|_+$/g, "");
 }
 
-export default function RepoReleasesPage({ params }: { params: { entity: string; repo: string } }) {
+export default function RepoReleasesPage({ params }: { params: Promise<{ entity: string; repo: string }> }) {
+  const resolvedParams = use(params);
   const searchParams = useSearchParams();
   const [releases, setReleases] = useState<Release[]>([]);
   const [sourceUrl, setSourceUrl] = useState<string | undefined>(undefined);
@@ -79,9 +80,9 @@ export default function RepoReleasesPage({ params }: { params: { entity: string;
   useEffect(() => {
     try {
       const repos = loadStoredRepos();
-      const rec = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+      const rec = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
       if (rec && currentUserPubkey) {
-        const repoOwnerPubkey = getRepoOwnerPubkey(rec, params.entity);
+        const repoOwnerPubkey = getRepoOwnerPubkey(rec, resolvedParams.entity);
         const userHasWrite = hasWriteAccess(currentUserPubkey, rec.contributors, repoOwnerPubkey);
         setHasWrite(userHasWrite);
       } else {
@@ -90,10 +91,10 @@ export default function RepoReleasesPage({ params }: { params: { entity: string;
     } catch {
       setHasWrite(false);
     }
-  }, [params.entity, params.repo, currentUserPubkey]);
+  }, [resolvedParams.entity, resolvedParams.repo, currentUserPubkey]);
   
   // Preserve branch in "Back to code" link if present
-  const codeUrl = `/${params.entity}/${params.repo}${
+  const codeUrl = `/${resolvedParams.entity}/${resolvedParams.repo}${
     searchParams?.get("branch") ? `?branch=${encodeURIComponent(searchParams.get("branch")!)}` : ""
   }`;
 
@@ -111,7 +112,7 @@ export default function RepoReleasesPage({ params }: { params: { entity: string;
   useEffect(() => {
     try {
       const repos = loadStoredRepos();
-      const rec = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+      const rec = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
       if (rec) {
       // Load releases from repo object (imported from GitHub or created natively)
       const repoWithReleases = rec as StoredRepo & { releases?: Release[] };
@@ -137,7 +138,7 @@ export default function RepoReleasesPage({ params }: { params: { entity: string;
         }
       }
     } catch {}
-  }, [params.entity, params.repo]);
+  }, [resolvedParams.entity, resolvedParams.repo]);
 
   const onCreateRelease = useCallback(() => {
     setShowForm(true);
@@ -190,14 +191,14 @@ export default function RepoReleasesPage({ params }: { params: { entity: string;
     try {
       const repos = loadStoredRepos();
       const idx = repos.findIndex((r: StoredRepo) => {
-        const found = findRepoByEntityAndName<StoredRepo>([r], params.entity, params.repo);
+        const found = findRepoByEntityAndName<StoredRepo>([r], resolvedParams.entity, resolvedParams.repo);
         return found !== undefined;
       });
       if (idx < 0) { setCreating(false); return; }
       const now = new Date().toISOString();
       // For new releases, store creator's Nostr info (not GitHub)
       const author = { 
-        login: ownerSlug || params.entity,
+        login: ownerSlug || resolvedParams.entity,
         pubkey: currentUserPubkey || undefined,
         picture: userPicture || userMetadata.picture || undefined,
       };
@@ -239,7 +240,7 @@ export default function RepoReleasesPage({ params }: { params: { entity: string;
     } finally {
       setCreating(false);
     }
-  }, [notesInput, ownerSlug, params.entity, params.repo, tagInput, titleInput, isPrerelease, assets, currentUserPubkey, userPicture, userMetadata.picture]);
+  }, [notesInput, ownerSlug, resolvedParams.entity, resolvedParams.repo, tagInput, titleInput, isPrerelease, assets, currentUserPubkey, userPicture, userMetadata.picture]);
 
   const downloadZipUrl = (tag: string) => {
     if (!sourceUrl) return undefined;

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo, use } from "react";
 
 import FilterBar from "@/components/filter-bar";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,8 @@ interface IPullsData {
   createdAt?: number;
 }
 
-export default function RepoPullsPage({ params }: { params: { entity: string; repo: string } }) {
+export default function RepoPullsPage({ params }: { params: Promise<{ entity: string; repo: string }> }) {
+  const resolvedParams = use(params);
   const [mounted, setMounted] = useState(false);
   const [issueStatus, setIssueStatus] = useState<"open" | "closed">("open");
   const [search, setSearch] = useState<string>(`is:open is:pr`);
@@ -61,14 +62,14 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
   }, []);
 
   useEffect(() => {
-    if (!mounted || !params?.entity || !params?.repo) {
+    if (!mounted || !resolvedParams?.entity || !resolvedParams?.repo) {
       setIssues([]);
       setAllPRs([]);
       return;
     }
     
     try {
-      const key = getRepoStorageKey("gittr_prs", params.entity, params.repo);
+      const key = getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo);
       const list = JSON.parse(localStorage.getItem(key) || "[]");
       
       // Filter PRs by status
@@ -84,8 +85,8 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
       
       const mapped: IPullsData[] = filtered.map((pr: any, idx: number) => ({
         id: pr.id || String(idx),
-        entity: params.entity,
-        repo: params.repo,
+        entity: resolvedParams.entity,
+        repo: resolvedParams.repo,
         title: pr.title || `PR ${idx+1}`,
         number: pr.number || String(idx + 1), // Use PR's number field if available
         date: pr.createdAt ? formatDateTime24h(pr.createdAt) : "",
@@ -105,8 +106,8 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
       // Also store all PRs for counting closed/merged
       const allMapped: IPullsData[] = list.map((pr: any, idx: number) => ({
         id: pr.id || String(idx),
-        entity: params.entity,
-        repo: params.repo,
+        entity: resolvedParams.entity,
+        repo: resolvedParams.repo,
         title: pr.title || `PR ${idx+1}`,
         number: pr.number || String(idx + 1),
         date: pr.createdAt ? formatDateTime24h(pr.createdAt) : "",
@@ -128,22 +129,22 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
       setIssues([]);
       setAllPRs([]);
     }
-  }, [params?.entity, params?.repo, issueStatus]);
+  }, [resolvedParams?.entity, resolvedParams?.repo, issueStatus, mounted]);
 
   // Subscribe to PRs from Nostr relays for this repo
   useEffect(() => {
-    if (!subscribe || !defaultRelays || defaultRelays.length === 0 || !params?.entity || !params?.repo) return;
+    if (!subscribe || !defaultRelays || defaultRelays.length === 0 || !resolvedParams?.entity || !resolvedParams?.repo) return;
 
     // Resolve full pubkey from entity (could be prefix or full pubkey)
     const resolveEntityPubkey = async () => {
       // If entity is already a full 64-char pubkey, use it
-      if (params.entity && /^[0-9a-f]{64}$/i.test(params.entity)) {
-        return params.entity;
+      if (resolvedParams.entity && /^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
+        return resolvedParams.entity;
       }
       // Otherwise, try to find the repo and get ownerPubkey
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
-      const repo = findRepoByEntityAndName(repos, params.entity, params.repo);
-      return repo?.ownerPubkey || params.entity;
+      const repo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
+      return repo?.ownerPubkey || resolvedParams.entity;
     };
 
     let cancelled = false;
@@ -156,7 +157,7 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
       const filters: any[] = [
         {
           kinds: [KIND_PULL_REQUEST],
-          "#repo": [params.entity, params.repo], // Old format
+          "#repo": [resolvedParams.entity, resolvedParams.repo], // Old format
         },
       ];
       
@@ -164,7 +165,7 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
       if (entityPubkey && /^[0-9a-f]{64}$/i.test(entityPubkey)) {
         filters.push({
           kinds: [KIND_PULL_REQUEST],
-          "#a": [`30617:${entityPubkey}:${params.repo}`], // NIP-34 format
+          "#a": [`30617:${entityPubkey}:${resolvedParams.repo}`], // NIP-34 format
         });
       }
       
@@ -191,25 +192,25 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
                   const repoId = aParts[2];
                   
                   // Check if this matches our repo
-                  if (repoId !== params.repo) {
+                  if (repoId !== resolvedParams.repo) {
                     return; // Not for this repo
                   }
                 } else {
                   // Old format - try to parse from "repo" tag
                   const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
-                  if (!repoTag || (repoTag[1] !== params.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== params.repo) {
+                  if (!repoTag || (repoTag[1] !== resolvedParams.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== resolvedParams.repo) {
                     return;
                   }
                 }
               } else {
                 // Fallback: Old format with "repo" tag
                 const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
-                if (!repoTag || (repoTag[1] !== params.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== params.repo) {
+                if (!repoTag || (repoTag[1] !== resolvedParams.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== resolvedParams.repo) {
                   return;
                 }
               }
 
-              const key = getRepoStorageKey("gittr_prs", params.entity, params.repo);
+              const key = getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo);
               const existingPRs = JSON.parse(localStorage.getItem(key) || "[]");
               
               // Check if PR already exists
@@ -247,8 +248,8 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
 
               const pr = {
                 id: event.id,
-                entity: params.entity,
-                repo: params.repo,
+                entity: resolvedParams.entity,
+                repo: resolvedParams.repo,
                 title: title || "Untitled PR",
                 body: body,
                 status: status,
@@ -284,8 +285,8 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
               
               const mapped: IPullsData[] = filtered.map((pr: any, idx: number) => ({
                 id: pr.id || String(idx),
-                entity: params.entity,
-                repo: params.repo,
+                entity: resolvedParams.entity,
+                repo: resolvedParams.repo,
                 title: pr.title || `PR ${idx+1}`,
                 number: pr.number || String(idx + 1),
                 date: pr.createdAt ? formatDateTime24h(pr.createdAt) : "",
@@ -303,8 +304,8 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
               
               const allMapped: IPullsData[] = existingPRs.map((pr: any, idx: number) => ({
                 id: pr.id || String(idx),
-                entity: params.entity,
-                repo: params.repo,
+                entity: resolvedParams.entity,
+                repo: resolvedParams.repo,
                 title: pr.title || `PR ${idx+1}`,
                 number: pr.number || String(idx + 1),
                 date: pr.createdAt ? formatDateTime24h(pr.createdAt) : "",
@@ -333,7 +334,7 @@ export default function RepoPullsPage({ params }: { params: { entity: string; re
         if (unsub) unsub();
       };
     })();
-  }, [subscribe, defaultRelays, params?.entity, params?.repo, issueStatus]);
+  }, [subscribe, defaultRelays, resolvedParams?.entity, resolvedParams?.repo, issueStatus]);
 
   const handleIssueStatusOpen = useCallback(() => setIssueStatus("open"), []);
   const handleIssueStatusClosed = useCallback(

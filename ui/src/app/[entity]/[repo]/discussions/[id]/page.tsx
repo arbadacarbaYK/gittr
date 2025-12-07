@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, use } from "react";
 import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,8 @@ import { formatDateTime24h } from "@/lib/utils/date-format";
 
 type ThreadedComment = DiscussionComment & { depth: number; children: ThreadedComment[] };
 
-export default function DiscussionDetailPage({ params }: { params: { entity: string; repo: string; id: string } }) {
+export default function DiscussionDetailPage({ params }: { params: Promise<{ entity: string; repo: string; id: string }> }) {
+  const resolvedParams = use(params);
   const { pubkey: currentUserPubkey } = useNostrContext();
   const [discussion, setDiscussion] = useState<Discussion | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,14 +37,14 @@ export default function DiscussionDetailPage({ params }: { params: { entity: str
   // Load discussion
   useEffect(() => {
     try {
-      const foundDiscussion = loadDiscussionById(params.entity, params.repo, params.id);
+      const foundDiscussion = loadDiscussionById(resolvedParams.entity, resolvedParams.repo, resolvedParams.id);
       setDiscussion(foundDiscussion);
     } catch (error) {
       console.error("Failed to load discussion:", error);
     } finally {
       setLoading(false);
     }
-  }, [params.entity, params.id, params.repo]);
+  }, [resolvedParams.entity, resolvedParams.id, resolvedParams.repo]);
 
   // Get all participant pubkeys for metadata
   const participantPubkeys = discussion
@@ -76,7 +77,7 @@ export default function DiscussionDetailPage({ params }: { params: { entity: str
         commentCount: updatedComments.length,
       };
 
-      persistDiscussion(params.entity, params.repo, updatedDiscussion);
+      persistDiscussion(resolvedParams.entity, resolvedParams.repo, updatedDiscussion);
 
       setDiscussion(updatedDiscussion);
       setReplyContent("");
@@ -199,8 +200,8 @@ export default function DiscussionDetailPage({ params }: { params: { entity: str
                 <Reactions
                   targetId={comment.id}
                   targetType="comment"
-                  entity={params.entity}
-                  repo={params.repo}
+                  entity={resolvedParams.entity}
+                  repo={resolvedParams.repo}
                 />
               </div>
             </div>
@@ -227,7 +228,7 @@ export default function DiscussionDetailPage({ params }: { params: { entity: str
         <div className="text-center py-12">
           <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-500" />
           <h2 className="text-xl font-semibold mb-2">Discussion not found</h2>
-          <Link href={`/${params.entity}/${params.repo}/discussions`}>
+          <Link href={`/${resolvedParams.entity}/${resolvedParams.repo}/discussions`}>
             <Button variant="outline">Back to Discussions</Button>
           </Link>
         </div>
@@ -242,7 +243,7 @@ export default function DiscussionDetailPage({ params }: { params: { entity: str
     <div className="container mx-auto max-w-4xl p-6">
       <div className="mb-6">
         <Link
-          href={`/${params.entity}/${params.repo}/discussions`}
+          href={`/${resolvedParams.entity}/${resolvedParams.repo}/discussions`}
           className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-purple-400 mb-4"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -288,8 +289,8 @@ export default function DiscussionDetailPage({ params }: { params: { entity: str
               <Reactions
                 targetId={discussion.id}
                 targetType="discussion"
-                entity={params.entity}
-                repo={params.repo}
+                entity={resolvedParams.entity}
+                repo={resolvedParams.repo}
               />
             </div>
           </div>

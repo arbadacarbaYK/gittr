@@ -5,7 +5,7 @@ import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { getRepoOwnerPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
 
 import * as React from "react";
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo, use } from "react";
 
 import FilterBar from "@/components/filter-bar";
 import { Button } from "@/components/ui/button";
@@ -46,7 +46,8 @@ interface IIssueData {
   createdAt?: number;
 }
 
-export default function RepoIssuesPage({ params }: { params: { entity: string; repo: string } }) {
+export default function RepoIssuesPage({ params }: { params: Promise<{ entity: string; repo: string }> }) {
+  const resolvedParams = use(params);
   const [mounted, setMounted] = useState(false);
   const [issueStatus, setIssueStatus] = useState<"open" | "closed">("open");
 
@@ -63,7 +64,7 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
 
   const loadIssues = useCallback(() => {
     try {
-      const key = getRepoStorageKey("gittr_issues", params.entity, params.repo);
+      const key = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
       const list = JSON.parse(localStorage.getItem(key) || "[]");
       // Filter by status and map correctly
       const filtered = list.filter((it: any) => {
@@ -72,8 +73,8 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
       });
       const mapped: IIssueData[] = filtered.map((it: any, idx: number) => ({
         id: it.id || String(idx),
-        entity: it.entity || params.entity,
-        repo: it.repo || params.repo,
+        entity: it.entity || resolvedParams.entity,
+        repo: it.repo || resolvedParams.repo,
         title: it.title || `Issue ${idx+1}`,
         number: it.number || String(idx + 1), // Use actual number from saved issue
         date: it.createdAt ? formatDateTime24h(it.createdAt) : "",
@@ -92,7 +93,7 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
     } catch {
       setIssues([]);
     }
-  }, [params.entity, params.repo, issueStatus]);
+  }, [resolvedParams.entity, resolvedParams.repo, issueStatus]);
 
   useEffect(() => {
     loadIssues();
@@ -110,18 +111,18 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
 
   // Subscribe to Issues from Nostr relays for this repo
   useEffect(() => {
-    if (!subscribe || !defaultRelays || defaultRelays.length === 0 || !params.entity || !params.repo) return;
+    if (!subscribe || !defaultRelays || defaultRelays.length === 0 || !resolvedParams.entity || !resolvedParams.repo) return;
 
     // Resolve full pubkey from entity (could be prefix or full pubkey)
     const resolveEntityPubkey = async () => {
       // If entity is already a full 64-char pubkey, use it
-      if (params.entity && /^[0-9a-f]{64}$/i.test(params.entity)) {
-        return params.entity;
+      if (resolvedParams.entity && /^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
+        return resolvedParams.entity;
       }
       // Otherwise, try to find the repo and get ownerPubkey
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
-      const repo = findRepoByEntityAndName(repos, params.entity, params.repo);
-      return repo?.ownerPubkey || params.entity;
+      const repo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
+      return repo?.ownerPubkey || resolvedParams.entity;
     };
 
     let cancelled = false;
@@ -134,7 +135,7 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
       const filters: any[] = [
         {
           kinds: [KIND_ISSUE],
-          "#repo": [params.entity, params.repo], // Old format
+          "#repo": [resolvedParams.entity, resolvedParams.repo], // Old format
         },
       ];
       
@@ -142,7 +143,7 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
       if (entityPubkey && /^[0-9a-f]{64}$/i.test(entityPubkey)) {
         filters.push({
           kinds: [KIND_ISSUE],
-          "#a": [`30617:${entityPubkey}:${params.repo}`], // NIP-34 format
+          "#a": [`30617:${entityPubkey}:${resolvedParams.repo}`], // NIP-34 format
         });
       }
       
@@ -166,13 +167,13 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
                   const repoId = aParts[2];
                   
                   // Check if this matches our repo
-                  if (repoId !== params.repo) {
+                  if (repoId !== resolvedParams.repo) {
                     return; // Not for this repo
                   }
                   
                   // Also check if owner matches (entity or entityPubkey)
                   if (repoOwnerPubkey && repoOwnerPubkey !== entityPubkey && 
-                      !params.entity.includes(repoOwnerPubkey.slice(0, 8)) &&
+                      !resolvedParams.entity.includes(repoOwnerPubkey.slice(0, 8)) &&
                       repoOwnerPubkey !== entityPubkey) {
                     // Might still be valid if entity resolves to this pubkey
                     // Continue processing
@@ -180,19 +181,19 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
                 } else {
                   // Old format - try to parse from "repo" tag
                   const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
-                  if (!repoTag || (repoTag[1] !== params.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== params.repo) {
+                  if (!repoTag || (repoTag[1] !== resolvedParams.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== resolvedParams.repo) {
                     return;
                   }
                 }
               } else {
                 // Fallback: Old format with "repo" tag
                 const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
-                if (!repoTag || (repoTag[1] !== params.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== params.repo) {
+                if (!repoTag || (repoTag[1] !== resolvedParams.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== resolvedParams.repo) {
                   return;
                 }
               }
 
-              const key = getRepoStorageKey("gittr_issues", params.entity, params.repo);
+              const key = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
               const existingIssues = JSON.parse(localStorage.getItem(key) || "[]");
               
               // Check if issue already exists
@@ -241,8 +242,8 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
 
               const issue = {
                 id: event.id,
-                entity: params.entity,
-                repo: params.repo,
+                entity: resolvedParams.entity,
+                repo: resolvedParams.repo,
                 title: title || "Untitled Issue",
                 description: description,
                 status: status,
@@ -274,7 +275,7 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
         if (unsub) unsub();
       };
     })();
-  }, [subscribe, defaultRelays, params.entity, params.repo, loadIssues]);
+  }, [subscribe, defaultRelays, resolvedParams.entity, resolvedParams.repo, loadIssues]);
 
   const handleIssueStatusOpen = useCallback(() => setIssueStatus("open"), []);
   const handleIssueStatusClosed = useCallback(
@@ -384,7 +385,7 @@ export default function RepoIssuesPage({ params }: { params: { entity: string; r
                 >
                   <Check className="h-5 w-5 mr-2 mt-0.5" /> {mounted ? (() => {
                     try {
-                      const key = getRepoStorageKey("gittr_issues", params.entity, params.repo);
+                      const key = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
                       const list = JSON.parse(localStorage.getItem(key) || "[]");
                       return list.filter((it: any) => (it.status || "open") === "closed").length;
                     } catch {
