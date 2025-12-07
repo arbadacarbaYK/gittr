@@ -8313,8 +8313,8 @@ export default function RepoCodePage({
                             setIsRefetching(true);
                             console.log(`🔄 [Refetch] Starting refetch for ${resolvedParams.repo} from Nostr`);
                             
-                            // Get owner pubkey
-                            const ownerPubkey = repo.ownerPubkey || (resolvedParams.entity.startsWith("npub") 
+                            // Get owner pubkey - handle case where repo might not be in localStorage
+                            const ownerPubkey = repo?.ownerPubkey || (resolvedParams.entity.startsWith("npub") 
                               ? (nip19.decode(resolvedParams.entity).data as string)
                               : resolvedParams.entity);
                             
