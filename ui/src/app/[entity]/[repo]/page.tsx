@@ -8266,6 +8266,9 @@ export default function RepoCodePage({
                           } else {
                             // Repo not in localStorage - CREATE it from fetched data
                             console.log(`📝 [Refetch] Repo not in localStorage, creating new entry from source`);
+                            const githubFiles = importData.files || [];
+                            const newFiles = githubFiles;
+                            
                             const newRepo: StoredRepo = {
                               slug: resolvedParams.repo,
                               entity: resolvedParams.entity,
