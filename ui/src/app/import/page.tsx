@@ -849,7 +849,7 @@ export default function ImportPage() {
                 if (errorJson?.status === "repo_too_large") {
                   errorMessage =
                     errorJson.message ||
-                    "Repository is too large to import (>4MB of metadata). Remove large binaries/releases and try again.";
+                    "Repository is too large to import. Please try importing a smaller repository or contact support.";
                 } else if (errorJson?.message) {
                   errorMessage = errorJson.message;
                 }
@@ -875,7 +875,7 @@ export default function ImportPage() {
           if (importData.status === "repo_too_large") {
             const largeMessage =
               importData.message ||
-              `Cannot import ${fullName}: repository export exceeds the 4MB API limit. Remove large release assets/binaries and try again.`;
+              `Cannot import ${fullName}: repository is too large. Please try importing a smaller repository or contact support.`;
             console.warn("⚠️ [Import] Repo too large:", largeMessage);
             setStatus(largeMessage);
             skippedCount++;
