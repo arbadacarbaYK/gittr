@@ -1789,7 +1789,6 @@ export default function RepositoriesPage() {
               </div>
             </div>
           )}
-          <Link href="/new" className="border px-3 py-1">New</Link>
         </div>
       </div>
       <div className="space-y-2">
