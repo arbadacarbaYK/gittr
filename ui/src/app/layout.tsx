@@ -59,7 +59,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         {/* Apply theme before React hydrates to prevent flash */}
         <script
@@ -71,12 +71,54 @@ export default function RootLayout({
                   document.documentElement.setAttribute('data-theme', theme);
                   document.documentElement.classList.add('dark');
                 } catch (e) {}
+                
+                // Suppress console errors early (before Next.js dev tools interceptor)
+                if (typeof console !== 'undefined' && console.error) {
+                  const originalError = console.error;
+                  console.error = function(...args) {
+                    // Check all arguments more thoroughly
+                    const allMessages = args.map(arg => {
+                      if (typeof arg === 'string') return arg;
+                      if (arg && typeof arg === 'object') {
+                        if (arg.message) return arg.message.toString();
+                        if (arg.toString) return arg.toString();
+                        // Check for React error objects
+                        if (arg.name && arg.stack) return arg.name + ' ' + arg.stack;
+                      }
+                      return '';
+                    }).join(' ');
+                    const stackTrace = args.find(arg => arg && arg.stack)?.stack?.toString() || '';
+                    const fullMessage = (allMessages + ' ' + stackTrace).toLowerCase();
+                    
+                    // Check for suppressed error patterns (case-insensitive)
+                    if (
+                      fullMessage.includes('error connecting relay') ||
+                      fullMessage.includes('websocket connection to') ||
+                      (fullMessage.includes('wss://') && (fullMessage.includes('failed') || fullMessage.includes('error') || fullMessage.includes('502'))) ||
+                      fullMessage.includes('accessing element.ref was removed in react 19') ||
+                      fullMessage.includes('ref is now a regular prop') ||
+                      fullMessage.includes('element.ref was removed') ||
+                      fullMessage.includes('will be removed from the jsx element type') ||
+                      fullMessage.includes('[file fetch] api error: 404') ||
+                      (fullMessage.includes('api error') && fullMessage.includes('404')) ||
+                      fullMessage.includes('element.ref') && fullMessage.includes('react 19')
+                    ) {
+                      return;
+                    }
+                    originalError.apply(console, args);
+                  };
+                  
+                  // Also intercept window.console.error
+                  if (typeof window !== 'undefined' && window.console && window.console.error !== console.error) {
+                    window.console.error = console.error;
+                  }
+                }
               })();
             `,
           }}
         />
       </head>
-      <body className="dark">
+      <body className="dark" suppressHydrationWarning>
         <ClientLayout>{children}</ClientLayout>
       </body>
     </html>

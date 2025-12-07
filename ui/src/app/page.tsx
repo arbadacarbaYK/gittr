@@ -226,9 +226,23 @@ export default function HomePage() {
             // Process events immediately (for responsive UI)
             if (event.kind === KIND_REPOSITORY || event.kind === KIND_REPOSITORY_NIP34) {
               try {
-                const repoData = event.kind === KIND_REPOSITORY_NIP34 
-                  ? parseNIP34Repository(event)
-                  : JSON.parse(event.content);
+                let repoData;
+                if (event.kind === KIND_REPOSITORY_NIP34) {
+                  repoData = parseNIP34Repository(event);
+                } else {
+                  try {
+                    repoData = JSON.parse(event.content);
+                  } catch (parseError) {
+                    console.warn(`[Home] Failed to parse repo event content as JSON:`, parseError, `Content: ${event.content?.substring(0, 50)}...`);
+                    return; // Skip this event if content is not valid JSON
+                  }
+                }
+                
+                // Ensure repoData is defined before proceeding
+                if (!repoData) {
+                  console.warn(`[Home] repoData is undefined after parsing`);
+                  return;
+                }
                 
                 const existingRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
                 const repoName = repoData.repositoryName || repoData.name || "";
@@ -1145,8 +1159,9 @@ export default function HomePage() {
                         ? getRepoUrl(activity.entity, activity.repo.split("/").pop() || activity.repo)
                         : "#";
                       
-                      const timeAgo = Math.floor((Date.now() - activity.timestamp) / 1000 / 60);
-                      const timeStr = timeAgo < 1 ? "just now" : timeAgo < 60 ? `${timeAgo}m ago` : timeAgo < 1440 ? `${Math.floor(timeAgo / 60)}h ago` : `${Math.floor(timeAgo / 1440)}d ago`;
+                      // Use mounted state to prevent hydration mismatch
+                      const timeAgo = mounted ? Math.floor((Date.now() - activity.timestamp) / 1000 / 60) : 0;
+                      const timeStr = !mounted ? "" : timeAgo < 1 ? "just now" : timeAgo < 60 ? `${timeAgo}m ago` : timeAgo < 1440 ? `${Math.floor(timeAgo / 60)}h ago` : `${Math.floor(timeAgo / 1440)}d ago`;
                       
                       const activityText = activity.type === "bounty_created" 
                         ? `Set bounty on ${activity.repoName || activity.repo}`
@@ -1165,7 +1180,7 @@ export default function HomePage() {
                               <div className="text-xs text-yellow-300 truncate">
                                 {activityText}
                               </div>
-                              <div className="text-[10px] text-gray-500 mt-0.5">
+                              <div className="text-[10px] text-gray-500 mt-0.5" suppressHydrationWarning>
                                 {timeStr}
                               </div>
                             </div>
@@ -1311,8 +1326,9 @@ export default function HomePage() {
                 ? getRepoUrl(activity.entity, activity.repo.split("/").pop() || activity.repo)
                 : "#";
 
-              const timeAgo = Math.floor((Date.now() - activity.timestamp) / 1000 / 60);
-              const timeStr = timeAgo < 1 ? "just now" : timeAgo < 60 ? `${timeAgo}m ago` : timeAgo < 1440 ? `${Math.floor(timeAgo / 60)}h ago` : `${Math.floor(timeAgo / 1440)}d ago`;
+              // Use mounted state to prevent hydration mismatch
+              const timeAgo = mounted ? Math.floor((Date.now() - activity.timestamp) / 1000 / 60) : 0;
+              const timeStr = !mounted ? "" : timeAgo < 1 ? "just now" : timeAgo < 60 ? `${timeAgo}m ago` : timeAgo < 1440 ? `${Math.floor(timeAgo / 60)}h ago` : `${Math.floor(timeAgo / 1440)}d ago`;
 
               return (
                 <Link
@@ -1326,7 +1342,7 @@ export default function HomePage() {
                       <div className="text-sm text-gray-300 truncate">
                         {getActivityText()}
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">
+                      <div className="text-xs text-gray-500 mt-1" suppressHydrationWarning>
                         {timeStr}
                       </div>
                     </div>

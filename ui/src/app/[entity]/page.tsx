@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useContributorMetadata, ClaimedIdentity } from "@/lib/nostr/useContributorMetadata";
@@ -21,7 +21,8 @@ function isValidPubkey(str: string): boolean {
   return /^[0-9a-f]{64}$/i.test(str);
 }
 
-export default function EntityPage({ params }: { params: { entity: string } }) {
+export default function EntityPage({ params }: { params: Promise<{ entity: string }> }) {
+  const resolvedParams = use(params);
   // CRITICAL: All hooks must be called at the top level, before any conditional returns
   const router = useRouter();
   const redirectedRef = useRef(false);
@@ -37,12 +38,12 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
   
   // For metadata lookup, use full pubkey if we resolved one, otherwise use entity
   // CRITICAL: Handle npub format entities by decoding them first
-  // Also try to resolve from localStorage immediately
+  // Don't access localStorage in useState initializer to prevent hydration errors
   const [fullPubkeyForMeta, setFullPubkeyForMeta] = useState<string>(() => {
-    // If entity is npub, decode it immediately
-    if (params.entity.startsWith("npub")) {
+    // If entity is npub, decode it immediately (no localStorage needed)
+    if (resolvedParams.entity.startsWith("npub")) {
       try {
-        const decoded = nip19.decode(params.entity);
+        const decoded = nip19.decode(resolvedParams.entity);
         if (decoded.type === "npub") {
           const pubkey = decoded.data as string;
           if (/^[0-9a-f]{64}$/i.test(pubkey)) {
@@ -55,41 +56,12 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
       }
     }
     // If entity is already a full 64-char pubkey, use it
-    if (params.entity.length === 64 && /^[0-9a-f]{64}$/i.test(params.entity)) {
-      console.log(`✅ [Profile] Entity is full pubkey: ${params.entity.slice(0, 8)}`);
-      return params.entity;
+    if (resolvedParams.entity.length === 64 && /^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
+      console.log(`✅ [Profile] Entity is full pubkey: ${resolvedParams.entity.slice(0, 8)}`);
+      return resolvedParams.entity;
     }
-    // Try to resolve from localStorage immediately
-    try {
-      const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
-      const activities = JSON.parse(localStorage.getItem("gittr_activities") || "[]") as any[];
-      
-      // Try to find full pubkey from repos
-      const matchingRepo = repos.find((r: any) => 
-        r.entity === params.entity || 
-        (params.entity.length === 8 && r.entity?.toLowerCase().startsWith(params.entity.toLowerCase())) ||
-        (r.ownerPubkey && /^[0-9a-f]{64}$/i.test(r.ownerPubkey) && r.ownerPubkey.toLowerCase().startsWith(params.entity.toLowerCase()))
-      );
-      
-      if (matchingRepo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(matchingRepo.ownerPubkey)) {
-        console.log(`✅ [Profile] Resolved pubkey from repo: ${matchingRepo.ownerPubkey.slice(0, 8)}`);
-        return matchingRepo.ownerPubkey;
-      }
-      
-      // Try from activities
-      const matchingActivity = activities.find((a: any) => 
-        a.user && /^[0-9a-f]{64}$/i.test(a.user) && a.user.toLowerCase().startsWith(params.entity.toLowerCase())
-      );
-      if (matchingActivity?.user) {
-        console.log(`✅ [Profile] Resolved pubkey from activity: ${matchingActivity.user.slice(0, 8)}`);
-        return matchingActivity.user;
-      }
-    } catch (e) {
-      console.error("Failed to resolve pubkey from localStorage:", e);
-    }
-    
-    console.log(`⚠️ [Profile] Could not resolve full pubkey for entity: ${params.entity}`);
-    return params.entity;
+    // Return entity as-is initially, will resolve from localStorage in useEffect (existing one below)
+    return resolvedParams.entity;
   });
   
   // Check if current user is following this profile
@@ -104,9 +76,9 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
     const pubkeys = new Set<string>();
     
     // Priority 1: If entity is npub, decode it immediately
-    if (params.entity.startsWith("npub")) {
+    if (resolvedParams.entity.startsWith("npub")) {
       try {
-        const decoded = nip19.decode(params.entity);
+        const decoded = nip19.decode(resolvedParams.entity);
         const fullPubkey = decoded.data as string;
         if (decoded.type === "npub" && /^[0-9a-f]{64}$/i.test(fullPubkey)) {
           const normalized = fullPubkey.toLowerCase();
@@ -134,41 +106,14 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
     }
     
     // Priority 3: If entity is already a full pubkey, use it
-    if (params.entity && /^[0-9a-f]{64}$/i.test(params.entity)) {
-      const normalized = params.entity.toLowerCase();
+    if (resolvedParams.entity && /^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
+      const normalized = resolvedParams.entity.toLowerCase();
       console.log(`📡 [Profile] Fetching metadata for entity (full pubkey): ${normalized.slice(0, 8)} (normalized to lowercase)`);
       pubkeys.add(normalized);
     }
     
-    // Priority 4: Try to resolve from localStorage immediately (don't wait for useEffect)
-    if (params.entity && /^[0-9a-f]{8}$/i.test(params.entity)) {
-      try {
-        const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
-        const activities = JSON.parse(localStorage.getItem("gittr_activities") || "[]") as any[];
-        
-        // Try to find full pubkey from repos
-        const matchingRepo = repos.find((r: any) => 
-          (r.ownerPubkey && /^[0-9a-f]{64}$/i.test(r.ownerPubkey) && r.ownerPubkey.toLowerCase().startsWith(params.entity.toLowerCase())) ||
-          (r.entity && /^[0-9a-f]{64}$/i.test(r.entity) && r.entity.toLowerCase().startsWith(params.entity.toLowerCase()))
-        );
-        
-        if (matchingRepo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(matchingRepo.ownerPubkey)) {
-          console.log(`📡 [Profile] Resolved pubkey from repo (useMemo): ${matchingRepo.ownerPubkey.slice(0, 8)}`);
-          pubkeys.add(matchingRepo.ownerPubkey.toLowerCase());
-        }
-        
-        // Try from activities
-        const matchingActivity = activities.find((a: any) => 
-          a.user && /^[0-9a-f]{64}$/i.test(a.user) && a.user.toLowerCase().startsWith(params.entity.toLowerCase())
-        );
-        if (matchingActivity?.user) {
-          console.log(`📡 [Profile] Resolved pubkey from activity (useMemo): ${matchingActivity.user.slice(0, 8)}`);
-          pubkeys.add(matchingActivity.user.toLowerCase());
-        }
-      } catch (e) {
-        console.error(`❌ [Profile] Failed to resolve from localStorage in useMemo:`, e);
-      }
-    }
+    // Priority 4: Use fullPubkeyForMeta if it was resolved from localStorage (via useEffect)
+    // Don't access localStorage here to prevent hydration errors - useEffect will set fullPubkeyForMeta
     
     // CRITICAL: When viewing own profile, ensure currentUserPubkey is included for metadata fetch
     // This ensures banner and other metadata are loaded even if URL format differs
@@ -187,9 +132,9 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
       } else {
         // Strategy 2: If we don't have a resolved pubkey yet, check if entity matches currentUserPubkey
         // This handles cases where the URL format doesn't match but it's still our profile
-        if (params.entity.startsWith("npub")) {
+        if (resolvedParams.entity.startsWith("npub")) {
           try {
-            const decoded = nip19.decode(params.entity);
+            const decoded = nip19.decode(resolvedParams.entity);
             if (decoded.type === "npub") {
               const decodedPubkey = (decoded.data as string).toLowerCase();
               if (decodedPubkey === normalizedCurrentPubkey) {
@@ -198,7 +143,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
               }
             }
           } catch {}
-        } else if (params.entity && /^[0-9a-f]{64}$/i.test(params.entity) && params.entity.toLowerCase() === normalizedCurrentPubkey) {
+        } else if (resolvedParams.entity && /^[0-9a-f]{64}$/i.test(resolvedParams.entity) && resolvedParams.entity.toLowerCase() === normalizedCurrentPubkey) {
           console.log(`📡 [Profile] Entity pubkey matches currentUserPubkey - adding to metadata fetch: ${currentUserPubkey.slice(0, 8)}`);
           pubkeys.add(normalizedCurrentPubkey);
         }
@@ -207,10 +152,10 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
     
     const pubkeysArray = Array.from(pubkeys);
     if (pubkeysArray.length === 0) {
-      console.log(`⏭️ [Profile] Skipping metadata fetch - no valid pubkey. Entity: ${params.entity} (${params.entity.length} chars), fullPubkeyForMeta: ${fullPubkeyForMeta} (${fullPubkeyForMeta?.length || 0} chars)`);
+      console.log(`⏭️ [Profile] Skipping metadata fetch - no valid pubkey. Entity: ${resolvedParams.entity} (${resolvedParams.entity.length} chars), fullPubkeyForMeta: ${fullPubkeyForMeta} (${fullPubkeyForMeta?.length || 0} chars)`);
     }
     return pubkeysArray;
-  }, [fullPubkeyForMeta, params.entity, currentUserPubkey]);
+  }, [fullPubkeyForMeta, resolvedParams.entity, currentUserPubkey]);
   
   // CRITICAL: This hook returns the FULL metadataMap from cache, not just the pubkeys passed to it
   // The hook loads all cached metadata on initialization, so we should have access to all 15+ entries
@@ -228,14 +173,14 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
     if (fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)) {
       return fullPubkeyForMeta;
     }
-    // Priority 2: Try params.entity if it's a full pubkey
-    if (params.entity && /^[0-9a-f]{64}$/i.test(params.entity)) {
-      return params.entity;
+    // Priority 2: Try resolvedParams.entity if it's a full pubkey
+    if (resolvedParams.entity && /^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
+      return resolvedParams.entity;
     }
     // Priority 3: Try decoding npub
-    if (params.entity && params.entity.startsWith("npub")) {
+    if (resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
       try {
-        const decoded = nip19.decode(params.entity);
+        const decoded = nip19.decode(resolvedParams.entity);
         if (decoded.type === "npub") {
           const pubkey = decoded.data as string;
           if (/^[0-9a-f]{64}$/i.test(pubkey)) {
@@ -247,7 +192,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
       }
     }
     return null;
-  }, [fullPubkeyForMeta, params.entity]);
+  }, [fullPubkeyForMeta, resolvedParams.entity]);
   
   // CRITICAL: Use centralized metadata lookup function for consistent behavior across all pages
   // This ensures the profile page uses the same lookup logic as settings/profile page
@@ -343,15 +288,15 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
         });
       }
     } else {
-      console.log(`⚠️ [Profile] No pubkey for metadata! Entity: ${params.entity}, fullPubkeyForMeta: ${fullPubkeyForMeta}`);
+      console.log(`⚠️ [Profile] No pubkey for metadata! Entity: ${resolvedParams.entity}, fullPubkeyForMeta: ${fullPubkeyForMeta}`);
     }
-  }, [userMeta, pubkeyForMetadata, metadataMap, params.entity, fullPubkeyForMeta]);
+  }, [userMeta, pubkeyForMetadata, metadataMap, resolvedParams.entity, fullPubkeyForMeta]);
 
   // Check if entity is a pubkey (user profile) or repo slug
   useEffect(() => {
     if (redirectedRef.current) return; // Prevent multiple redirects
     
-    const entityParam = params.entity;
+    const entityParam = resolvedParams.entity;
     
     // Reserved routes that should not be treated as entity/repo
     const reservedRoutes = ["stars", "zaps", "explore", "pulls", "issues", "repositories", "settings", "profile", "projects", "organizations", "sponsors", "upgrade", "help", "new", "login", "signup", "bounty-hunt"];
@@ -1011,79 +956,108 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.entity]);
+  }, [resolvedParams.entity]);
   
+  // Resolve pubkey from localStorage after mount to prevent hydration errors
+  // Use ref to track last processed entity to prevent re-processing
+  const lastProcessedEntityRef = useRef<string>("");
   useEffect(() => {
-    // Only update if we don't already have a full pubkey
-    if (isPubkey && (!fullPubkeyForMeta || !/^[0-9a-f]{64}$/i.test(fullPubkeyForMeta))) {
-      // If entityParam is npub, decode it
-      if (params.entity.startsWith("npub")) {
+    // Skip if we already processed this entity
+    if (lastProcessedEntityRef.current === resolvedParams.entity) {
+      return;
+    }
+    
+    // Only resolve if isPubkey is true (user profile, not repo)
+    if (!isPubkey) {
+      lastProcessedEntityRef.current = resolvedParams.entity;
+      return;
+    }
+    
+    // Check if we already have the correct pubkey
+    if (fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)) {
+      // If entity is npub, check if decoded matches
+      if (resolvedParams.entity.startsWith("npub")) {
         try {
-          const decoded = nip19.decode(params.entity);
-          if (decoded.type === "npub" && /^[0-9a-f]{64}$/i.test(decoded.data as string)) {
-            const fullPubkey = decoded.data as string;
-            if (fullPubkeyForMeta !== fullPubkey) {
-              console.log(`✅ [Profile] useEffect: Setting fullPubkeyForMeta from npub: ${fullPubkey.slice(0, 8)}`);
-              setFullPubkeyForMeta(fullPubkey);
-            }
-            return;
+          const decoded = nip19.decode(resolvedParams.entity);
+          if (decoded.type === "npub" && decoded.data === fullPubkeyForMeta) {
+            lastProcessedEntityRef.current = resolvedParams.entity;
+            return; // Already correct
           }
-        } catch (e) {
-          console.error(`❌ [Profile] useEffect: Failed to decode npub:`, e);
-        }
+        } catch {}
+      } else if (resolvedParams.entity === fullPubkeyForMeta || (resolvedParams.entity.length === 64 && resolvedParams.entity.toLowerCase() === fullPubkeyForMeta.toLowerCase())) {
+        lastProcessedEntityRef.current = resolvedParams.entity;
+        return; // Already correct
+      } else if (resolvedParams.entity.length === 8 && fullPubkeyForMeta.toLowerCase().startsWith(resolvedParams.entity.toLowerCase())) {
+        lastProcessedEntityRef.current = resolvedParams.entity;
+        return; // Already correct (8-char prefix matches)
       }
-      
-      // If entityParam is already a full pubkey, use it directly
-      if (isValidPubkey(params.entity) && params.entity.length === 64) {
-        if (fullPubkeyForMeta !== params.entity) {
-          console.log(`✅ [Profile] useEffect: Setting fullPubkeyForMeta from entity (full): ${params.entity.slice(0, 8)}`);
-        setFullPubkeyForMeta(params.entity);
+    }
+    
+    // If entityParam is npub, decode it (no localStorage needed)
+    if (resolvedParams.entity.startsWith("npub")) {
+      try {
+        const decoded = nip19.decode(resolvedParams.entity);
+        if (decoded.type === "npub" && /^[0-9a-f]{64}$/i.test(decoded.data as string)) {
+          const fullPubkey = decoded.data as string;
+          console.log(`✅ [Profile] useEffect: Setting fullPubkeyForMeta from npub: ${fullPubkey.slice(0, 8)}`);
+          setFullPubkeyForMeta(fullPubkey);
+          return;
         }
-        return;
+      } catch (e) {
+        console.error(`❌ [Profile] useEffect: Failed to decode npub:`, e);
       }
-      
-      // Try to resolve full pubkey from repos or activities (only if we don't have one yet)
-      if (params.entity && /^[0-9a-f]{8}$/i.test(params.entity)) {
+    }
+    
+    // If entityParam is already a full pubkey, use it directly
+    if (isValidPubkey(resolvedParams.entity) && resolvedParams.entity.length === 64) {
+      console.log(`✅ [Profile] useEffect: Setting fullPubkeyForMeta from entity (full): ${resolvedParams.entity.slice(0, 8)}`);
+      setFullPubkeyForMeta(resolvedParams.entity);
+      return;
+    }
+    
+    // Try to resolve full pubkey from localStorage (only for 8-char prefixes)
+    if (resolvedParams.entity && /^[0-9a-f]{8}$/i.test(resolvedParams.entity)) {
       try {
         const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
         
         // First try to find by ownerPubkey (most reliable for imported repos)
         const matchingRepoByOwner = repos.find((r: any) => 
-            r.ownerPubkey && /^[0-9a-f]{64}$/i.test(r.ownerPubkey) && r.ownerPubkey.toLowerCase().startsWith(params.entity.toLowerCase()));
+            r.ownerPubkey && /^[0-9a-f]{64}$/i.test(r.ownerPubkey) && r.ownerPubkey.toLowerCase().startsWith(resolvedParams.entity.toLowerCase()));
         
         if (matchingRepoByOwner?.ownerPubkey) {
-            if (fullPubkeyForMeta !== matchingRepoByOwner.ownerPubkey) {
-              console.log(`✅ [Profile] useEffect: Setting fullPubkeyForMeta from repo ownerPubkey: ${matchingRepoByOwner.ownerPubkey.slice(0, 8)}`);
+          console.log(`✅ [Profile] useEffect: Setting fullPubkeyForMeta from repo ownerPubkey: ${matchingRepoByOwner.ownerPubkey.slice(0, 8)}`);
           setFullPubkeyForMeta(matchingRepoByOwner.ownerPubkey);
-            }
           return;
         }
         
         // Then try by entity
-          const matchingRepo = repos.find((r: any) => 
-            r.entity && /^[0-9a-f]{64}$/i.test(r.entity) && r.entity.toLowerCase().startsWith(params.entity.toLowerCase()));
+        const matchingRepo = repos.find((r: any) => 
+          r.entity && /^[0-9a-f]{64}$/i.test(r.entity) && r.entity.toLowerCase().startsWith(resolvedParams.entity.toLowerCase()));
         
-          if (matchingRepo?.entity) {
-            if (fullPubkeyForMeta !== matchingRepo.entity) {
-              console.log(`✅ [Profile] useEffect: Setting fullPubkeyForMeta from repo entity: ${matchingRepo.entity.slice(0, 8)}`);
+        if (matchingRepo?.entity) {
+          console.log(`✅ [Profile] useEffect: Setting fullPubkeyForMeta from repo entity: ${matchingRepo.entity.slice(0, 8)}`);
           setFullPubkeyForMeta(matchingRepo.entity);
-            }
-        } else {
-          // Try from activities
-          const activities = JSON.parse(localStorage.getItem("gittr_activities") || "[]");
-          const matchingActivity = activities.find((a: any) => 
-              a.user && /^[0-9a-f]{64}$/i.test(a.user) && a.user.toLowerCase().startsWith(params.entity.toLowerCase()));
-            if (matchingActivity?.user && fullPubkeyForMeta !== matchingActivity.user) {
-              console.log(`✅ [Profile] useEffect: Setting fullPubkeyForMeta from activity: ${matchingActivity.user.slice(0, 8)}`);
-            setFullPubkeyForMeta(matchingActivity.user);
-          }
+          return;
         }
-        } catch (e) {
-          console.error(`❌ [Profile] useEffect: Failed to resolve from localStorage:`, e);
+        
+        // Try from activities
+        const activities = JSON.parse(localStorage.getItem("gittr_activities") || "[]");
+        const matchingActivity = activities.find((a: any) => 
+            a.user && /^[0-9a-f]{64}$/i.test(a.user) && a.user.toLowerCase().startsWith(resolvedParams.entity.toLowerCase()));
+        if (matchingActivity?.user) {
+          console.log(`✅ [Profile] useEffect: Setting fullPubkeyForMeta from activity: ${matchingActivity.user.slice(0, 8)}`);
+          setFullPubkeyForMeta(matchingActivity.user);
+          lastProcessedEntityRef.current = resolvedParams.entity;
+          return;
         }
+      } catch (e) {
+        console.error(`❌ [Profile] useEffect: Failed to resolve from localStorage:`, e);
       }
     }
-  }, [params.entity, isPubkey, fullPubkeyForMeta]);
+    
+    // Mark as processed even if we didn't find a match
+    lastProcessedEntityRef.current = resolvedParams.entity;
+  }, [resolvedParams.entity, isPubkey]); // Removed fullPubkeyForMeta from deps - use ref to prevent loops
   
   
   // Use getEntityDisplayName for consistent display name resolution
@@ -1113,14 +1087,14 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
     }
     
     // Priority 3: If we have npub, show shortened npub (not pubkey prefix)
-    if (params.entity.startsWith("npub")) {
+    if (resolvedParams.entity.startsWith("npub")) {
       // Show first 16 chars of npub: "npub1n2ph08n4pqz..."
-      return params.entity.substring(0, 16) + "...";
+      return resolvedParams.entity.substring(0, 16) + "...";
     }
     
     // Fallback: show 8-char prefix only if entity is exactly 8 chars
-    return params.entity.length === 8 ? params.entity : params.entity.slice(0, 8);
-  }, [userMeta, fullPubkeyForMeta, metadataMap, params.entity]);
+    return resolvedParams.entity.length === 8 ? resolvedParams.entity : resolvedParams.entity.slice(0, 8);
+  }, [userMeta, fullPubkeyForMeta, metadataMap, resolvedParams.entity]);
   
   // CRITICAL: Get all metadata fields from userMeta (which uses centralized getUserMetadata function)
   // If userMeta is empty, try direct lookup as fallback (same logic as settings/profile page)
@@ -1197,7 +1171,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
   // Get full pubkey for display (always show npub format, never shortened pubkey)
   const displayPubkey = fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta) 
     ? nip19.npubEncode(fullPubkeyForMeta) 
-    : (params.entity.startsWith("npub") ? params.entity : null);
+    : (resolvedParams.entity.startsWith("npub") ? resolvedParams.entity : null);
   
   // Load current user's contact list (kind 3) to check if following
   useEffect(() => {

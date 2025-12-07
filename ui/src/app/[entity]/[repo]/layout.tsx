@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, use } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -108,8 +108,9 @@ export default function RepoLayout({
   params,
 }: {
   children: React.ReactNode;
-  params: { entity: string; repo: string; subpage?: string };
+  params: Promise<{ entity: string; repo: string; subpage?: string }>;
 }) {
+  const resolvedParams = use(params);
   const pathname = usePathname() || "";
   const searchParams = useSearchParams();
   // Use consistent default width on server and initial client render to prevent hydration mismatch
@@ -129,18 +130,18 @@ export default function RepoLayout({
   
   // Calculate safe initial display name that matches on server and client
   const safeInitialDisplayName = useMemo(() => {
-    if (params.entity?.startsWith("npub")) {
-      return `${params.entity.substring(0, 16)}...`;
+    if (resolvedParams.entity?.startsWith("npub")) {
+      return `${resolvedParams.entity.substring(0, 16)}...`;
     }
-    return params.entity || "Unknown";
-  }, [params.entity]);
+    return resolvedParams.entity || "Unknown";
+  }, [resolvedParams.entity]);
   
   // Resolve owner using utility hook (needs repo to be loaded)
   // Note: ownerMetadata is fetched internally by the hook but not used directly here
   const { ownerPubkey: rawOwnerPubkey, ownerDisplayName: rawOwnerDisplayName, ownerPicture: rawOwnerPicture } = useEntityOwner({
-    entity: params.entity,
+    entity: resolvedParams.entity,
     repo: repo,
-    repoName: params.repo,
+    repoName: resolvedParams.repo,
   });
   
   // Use safe initial values on server/initial render to prevent hydration mismatches
@@ -152,15 +153,15 @@ export default function RepoLayout({
   // Helper function to generate href for repo links (avoids duplication)
   // Use consistent href on initial render to prevent hydration mismatches
   const getRepoLink = useCallback((subpath: string = "", includeSearchParams: boolean = false) => {
-    // On initial render (before mount), always use params.entity to ensure consistency
+    // On initial render (before mount), always use resolvedParams.entity to ensure consistency
     const effectiveOwnerPubkey = mounted ? ownerPubkey : null;
     const basePath = effectiveOwnerPubkey && /^[0-9a-f]{64}$/i.test(effectiveOwnerPubkey) 
-      ? `/${nip19.npubEncode(effectiveOwnerPubkey)}/${params.repo}${subpath ? `/${subpath}` : ""}`
-      : `/${params.entity}/${params.repo}${subpath ? `/${subpath}` : ""}`;
+      ? `/${nip19.npubEncode(effectiveOwnerPubkey)}/${resolvedParams.repo}${subpath ? `/${subpath}` : ""}`
+      : `/${resolvedParams.entity}/${resolvedParams.repo}${subpath ? `/${subpath}` : ""}`;
     return includeSearchParams && searchParams?.toString() 
       ? `${basePath}?${searchParams.toString()}`
       : basePath;
-  }, [mounted, ownerPubkey, params.entity, params.repo, searchParams]);
+  }, [mounted, ownerPubkey, resolvedParams.entity, resolvedParams.repo, searchParams]);
   
   // Track mount state to prevent hydration mismatch
   useEffect(() => {
@@ -173,7 +174,7 @@ export default function RepoLayout({
     
     try {
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
-      const foundRepo = findRepoByEntityAndName(repos, params.entity, params.repo);
+      const foundRepo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
       setRepo(foundRepo || null);
       
       // Load repo logo if available
@@ -323,8 +324,8 @@ export default function RepoLayout({
           // For Nostr-native repos without sourceUrl, try bridge API directly
           // Get owner pubkey from entity or repo
           let ownerPubkeyForBridge: string | undefined;
-          if (params.entity && params.entity.length === 64 && /^[0-9a-f]{64}$/i.test(params.entity)) {
-            ownerPubkeyForBridge = params.entity;
+          if (resolvedParams.entity && resolvedParams.entity.length === 64 && /^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
+            ownerPubkeyForBridge = resolvedParams.entity;
           } else if (foundRepo.ownerPubkey && /^[0-9a-f]{64}$/i.test(foundRepo.ownerPubkey)) {
             ownerPubkeyForBridge = foundRepo.ownerPubkey;
           } else if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
@@ -359,7 +360,7 @@ export default function RepoLayout({
       // No repo logo found
       setRepoLogo(null);
     } catch {}
-  }, [params.entity, params.repo, mounted, ownerPubkey]);
+  }, [resolvedParams.entity, resolvedParams.repo, mounted, ownerPubkey]);
   
   // Initial load
   useEffect(() => {
@@ -390,7 +391,7 @@ export default function RepoLayout({
   useEffect(() => {
     if (!pubkey) return;
     try {
-      const repoId = `${params.entity}/${params.repo}`;
+      const repoId = `${resolvedParams.entity}/${resolvedParams.repo}`;
       const watched = JSON.parse(localStorage.getItem("gittr_watched_repos") || "[]") as string[];
       const starred = JSON.parse(localStorage.getItem("gittr_starred_repos") || "[]") as string[];
       setIsWatching(watched.includes(repoId));
@@ -399,25 +400,25 @@ export default function RepoLayout({
       // Get star count from repo data
       setStarCount(repo?.stars || 0);
     } catch {}
-  }, [params.entity, params.repo, pubkey, repo]);
+  }, [resolvedParams.entity, resolvedParams.repo, pubkey, repo]);
   
   // Update zap total badge (local tracker for now)
   useEffect(() => {
     try {
-      const contextId = `${params.entity}/${params.repo}`;
+      const contextId = `${resolvedParams.entity}/${resolvedParams.repo}`;
       const total = pubkey ? getZapTotal(pubkey, contextId) : 0;
       setZapTotal(total);
     } catch {
       setZapTotal(0);
     }
-  }, [params.entity, params.repo, pubkey, isStarred, isWatching]);
+  }, [resolvedParams.entity, resolvedParams.repo, pubkey, isStarred, isWatching]);
 
   // Dynamic counts for issues/PRs (only open items)
   useEffect(() => {
     const updateCounts = () => {
     try {
-      const prKey = getRepoStorageKey("gittr_prs", params.entity, params.repo);
-      const issueKey = getRepoStorageKey("gittr_issues", params.entity, params.repo);
+      const prKey = getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo);
+      const issueKey = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
         const prs = JSON.parse(localStorage.getItem(prKey) || "[]") as any[];
         const issues = JSON.parse(localStorage.getItem(issueKey) || "[]") as any[];
         // Only count open PRs and issues
@@ -433,8 +434,8 @@ export default function RepoLayout({
     
     // Listen for changes to PRs and issues
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key?.includes(getRepoStorageKey("gittr_prs", params.entity, params.repo)) || 
-          e.key?.includes(getRepoStorageKey("gittr_issues", params.entity, params.repo))) {
+      if (e.key?.includes(getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo)) || 
+          e.key?.includes(getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo))) {
         updateCounts();
       }
     };
@@ -452,12 +453,12 @@ export default function RepoLayout({
       window.removeEventListener("gittr:pr-updated", handlePRUpdate);
       window.removeEventListener("gittr:issue-updated", handleIssueUpdate);
     };
-  }, [params.entity, params.repo]);
+  }, [resolvedParams.entity, resolvedParams.repo]);
 
   const handleWatch = useCallback(() => {
     if (!pubkey) return;
     try {
-      const repoId = `${params.entity}/${params.repo}`;
+      const repoId = `${resolvedParams.entity}/${resolvedParams.repo}`;
       const watched = JSON.parse(localStorage.getItem("gittr_watched_repos") || "[]") as string[];
       if (isWatching) {
         localStorage.setItem("gittr_watched_repos", JSON.stringify(watched.filter(r => r !== repoId)));
@@ -471,18 +472,18 @@ export default function RepoLayout({
         window.dispatchEvent(new Event("gittr:repos-updated"));
       }
     } catch {}
-  }, [params.entity, params.repo, isWatching, pubkey]);
+  }, [resolvedParams.entity, resolvedParams.repo, isWatching, pubkey]);
   
   const handleStar = useCallback(() => {
     if (!pubkey) return;
     try {
-      const repoId = `${params.entity}/${params.repo}`;
+      const repoId = `${resolvedParams.entity}/${resolvedParams.repo}`;
       const starred = JSON.parse(localStorage.getItem("gittr_starred_repos") || "[]") as string[];
       
       // Update repos list to increment/decrement star count
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
       const repoIndex = repos.findIndex(r => {
-        const found = findRepoByEntityAndName([r], params.entity, params.repo);
+        const found = findRepoByEntityAndName([r], resolvedParams.entity, resolvedParams.repo);
         return found !== undefined;
       });
       
@@ -505,9 +506,9 @@ export default function RepoLayout({
           // Repo not found in repos list, create minimal entry
           repos.push({
             slug: repoId,
-            entity: params.entity,
-            repo: params.repo,
-            name: params.repo,
+            entity: resolvedParams.entity,
+            repo: resolvedParams.repo,
+            name: resolvedParams.repo,
             stars: 1,
           });
           setStarCount(1);
@@ -520,15 +521,15 @@ export default function RepoLayout({
         window.dispatchEvent(new Event("gittr:repos-updated"));
       }
     } catch {}
-  }, [params.entity, params.repo, isStarred, pubkey]);
+  }, [resolvedParams.entity, resolvedParams.repo, isStarred, pubkey]);
   
   const handleFork = useCallback(() => {
     // Fork functionality - navigate to fork page or show modal
     // For now, just navigate to new repo page with fork info
     if (typeof window !== "undefined") {
-      window.location.href = `/new?fork=${params.entity}/${params.repo}`;
+      window.location.href = `/new?fork=${resolvedParams.entity}/${resolvedParams.repo}`;
     }
-  }, [params.entity, params.repo]);
+  }, [resolvedParams.entity, resolvedParams.repo]);
   
 
   useEffect(() => {
@@ -602,10 +603,10 @@ export default function RepoLayout({
             </div>
             <a
               className="text-purple-500 hover:underline cursor-pointer"
-              href={ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) ? `/${nip19.npubEncode(ownerPubkey)}` : `/${params.entity}`}
+              href={ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) ? `/${nip19.npubEncode(ownerPubkey)}` : `/${resolvedParams.entity}`}
               onClick={(e) => {
                 e.preventDefault();
-                window.location.href = ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) ? `/${nip19.npubEncode(ownerPubkey)}` : `/${params.entity}`;
+                window.location.href = ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) ? `/${nip19.npubEncode(ownerPubkey)}` : `/${resolvedParams.entity}`;
               }}
               suppressHydrationWarning
             >
@@ -620,7 +621,7 @@ export default function RepoLayout({
                 window.location.href = getRepoLink();
               }}
             >
-              {decodeURIComponent(params.repo)}
+              {decodeURIComponent(resolvedParams.repo)}
             </a>
             <span className="border-lightgray text-gray-400 ml-1.5 mt-px rounded-full border px-1.5 text-xs">
               Public
@@ -637,26 +638,26 @@ export default function RepoLayout({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="ml-8 mt-2">
-              <DropdownMenuItem onClick={handleWatch}>
+              <DropdownMenuItem key="watch" onClick={handleWatch}>
                 <Eye className="mr-2 h-4 w-4" /> {isWatching ? "Unwatch" : "Watch"}
                 <Badge className="ml-2">{isWatching ? 1 : 0}</Badge>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild>
+              <DropdownMenuItem key="zaps" asChild>
                 <a href={getRepoLink("", false) + "?zap=true"} onClick={(e) => { e.preventDefault(); window.location.href = getRepoLink("", false) + "?zap=true"; }} className="flex items-center">
                 <Zap className="mr-2 h-4 w-4" /> Zaps
                   <Badge className="ml-2">{zapTotal}</Badge>
                 </a>
               </DropdownMenuItem>
               {/* Relays status not yet implemented */}
-              <DropdownMenuItem onClick={handleFork}>
+              <DropdownMenuItem key="fork" onClick={handleFork}>
                 <GitFork className="mr-2 h-4 w-4" /> Fork
                 <Badge className="ml-2">0</Badge>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleStar}>
+              <DropdownMenuItem key="star" onClick={handleStar}>
                 <Star className={`mr-2 h-4 w-4 ${isStarred ? "text-yellow-500 fill-yellow-500" : ""}`} /> {isStarred ? "Starred" : "Star"}
                 <Badge className="ml-2">{starCount}</Badge>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setShowRepoQR(true)}>
+              <DropdownMenuItem key="share" onClick={() => setShowRepoQR(true)}>
                 <Share2 className="mr-2 h-4 w-4" /> Share
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -720,8 +721,8 @@ export default function RepoLayout({
             <ul className="my-4 flex items-center gap-x-4 min-w-max">
               {menuItems
                 .slice(0, visibleMenuItemsCount)
-                .map((item) => (
-                  <li key={item.name} className="flex-shrink-0">
+                .map((item, index) => (
+                  <li key={`${item.name}-${item.link}-${index}`} className="flex-shrink-0">
                     <a
                       href={getRepoLink(item.link || "", item.name === "Code")}
                       onClick={(e) => {
@@ -734,9 +735,9 @@ export default function RepoLayout({
                         {
                           "border-b-purple-600":
                             item.name === "Code"
-                              ? pathname === `/${params.entity}/${params.repo}`
+                              ? pathname === `/${resolvedParams.entity}/${resolvedParams.repo}`
                               : pathname.includes(
-                                  `/${params.entity}/${params.repo}/${item.link}`
+                                  `/${resolvedParams.entity}/${resolvedParams.repo}/${item.link}`
                                 ),
                         }
                       )}
@@ -772,9 +773,9 @@ export default function RepoLayout({
                     menuItems.length - visibleMenuItemsCount
                   )
                 )
-                .map((item) => (
+                .map((item, index) => (
                   <DropdownMenuItem 
-                    key={item.name} 
+                    key={`${item.name}-${item.link}-${index}`} 
                     className="p-0"
                     onSelect={(e) => {
                       e.preventDefault();
@@ -792,9 +793,9 @@ export default function RepoLayout({
                         {
                           "border-b-purple-600":
                             item.name === "Code"
-                              ? pathname === `/${params.entity}/${params.repo}`
+                              ? pathname === `/${resolvedParams.entity}/${resolvedParams.repo}`
                               : pathname.includes(
-                                  `/${params.entity}/${params.repo}/${item.link}`
+                                  `/${resolvedParams.entity}/${resolvedParams.repo}/${item.link}`
                                 ),
                         }
                       )}
@@ -814,10 +815,10 @@ export default function RepoLayout({
       </section>
       {showRepoQR && (
         <RepoQRShare
-          repoUrl={`/${params.entity}/${params.repo}${
+          repoUrl={`/${resolvedParams.entity}/${resolvedParams.repo}${
             searchParams?.toString() ? `?${searchParams.toString()}` : ""
           }`}
-          repoName={`${ownerDisplayName}/${decodeURIComponent(params.repo)}`}
+          repoName={`${ownerDisplayName}/${decodeURIComponent(resolvedParams.repo)}`}
           onClose={() => setShowRepoQR(false)}
         />
       )}

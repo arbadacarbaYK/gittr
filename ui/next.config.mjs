@@ -9,7 +9,7 @@
 /** @type {import("next").NextConfig} */
 const config = {
   reactStrictMode: true,
-  swcMinify: true,
+  // swcMinify is enabled by default in Next.js 15+
   // For Capacitor/APK builds: enable static export (optional, can be enabled via env var)
   // output: process.env.CAPACITOR_BUILD === 'true' ? 'export' : undefined,
   images: {

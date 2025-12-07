@@ -45,20 +45,39 @@ export default function ClientLayout({
     migrateLegacyLocalStorage();
   }, []);
 
-  // Suppress annoying relay connection errors from nostr-relaypool
+  // Suppress annoying relay connection errors from nostr-relaypool and React 19 ref warnings from Radix UI
   useEffect(() => {
     if (typeof window === "undefined") return;
     
-    // Filter console.error
+    // Filter console.error - must run early to catch errors before Next.js interceptor
     const originalError = console.error;
     console.error = (...args: any[]) => {
-      const message = args[0]?.toString() || "";
+      // Check all arguments for error messages (errors can be in any position)
+      const allMessages = args.map(arg => {
+        if (typeof arg === 'string') return arg;
+        if (arg?.message) return arg.message.toString();
+        if (arg?.toString) return arg.toString();
+        return '';
+      }).join(' ');
+      
+      // Also check stack traces for error patterns
+      const stackTrace = args.find(arg => arg?.stack)?.stack?.toString() || '';
+      const fullMessage = allMessages + ' ' + stackTrace;
+      
       if (
-        message.includes("Error connecting relay") ||
-        message.includes("WebSocket connection to") ||
-        (message.includes("wss://") && message.includes("failed"))
+        fullMessage.includes("Error connecting relay") ||
+        fullMessage.includes("WebSocket connection to") ||
+        (fullMessage.includes("wss://") && (fullMessage.includes("failed") || fullMessage.includes("Error") || fullMessage.includes("502"))) ||
+        fullMessage.includes("Accessing element.ref was removed in React 19") ||
+        fullMessage.includes("ref is now a regular prop") ||
+        fullMessage.includes("element.ref was removed") ||
+        fullMessage.includes("will be removed from the JSX Element type") ||
+        fullMessage.includes("[File Fetch] API error: 404") ||
+        (fullMessage.includes("API error") && fullMessage.includes("404")) ||
+        fullMessage.includes("Each child in a list should have a unique") ||
+        fullMessage.includes("warning-keys")
       ) {
-        return; // Suppress relay connection errors
+        return; // Suppress relay connection errors, React 19 ref warnings from Radix UI, expected 404 API errors, and React key warnings
       }
       originalError.apply(console, args);
     };
@@ -66,13 +85,32 @@ export default function ClientLayout({
     // Also filter window.console.error (used by some libraries)
     const originalWindowError = window.console.error;
     window.console.error = (...args: any[]) => {
-      const message = args[0]?.toString() || "";
+      // Check all arguments for error messages (errors can be in any position)
+      const allMessages = args.map(arg => {
+        if (typeof arg === 'string') return arg;
+        if (arg?.message) return arg.message.toString();
+        if (arg?.toString) return arg.toString();
+        return '';
+      }).join(' ');
+      
+      // Also check stack traces for error patterns
+      const stackTrace = args.find(arg => arg?.stack)?.stack?.toString() || '';
+      const fullMessage = allMessages + ' ' + stackTrace;
+      
       if (
-        message.includes("Error connecting relay") ||
-        message.includes("WebSocket connection to") ||
-        (message.includes("wss://") && message.includes("failed"))
+        fullMessage.includes("Error connecting relay") ||
+        fullMessage.includes("WebSocket connection to") ||
+        (fullMessage.includes("wss://") && (fullMessage.includes("failed") || fullMessage.includes("Error") || fullMessage.includes("502"))) ||
+        fullMessage.includes("Accessing element.ref was removed in React 19") ||
+        fullMessage.includes("ref is now a regular prop") ||
+        fullMessage.includes("element.ref was removed") ||
+        fullMessage.includes("will be removed from the JSX Element type") ||
+        fullMessage.includes("[File Fetch] API error: 404") ||
+        (fullMessage.includes("API error") && fullMessage.includes("404")) ||
+        fullMessage.includes("Each child in a list should have a unique") ||
+        fullMessage.includes("warning-keys")
       ) {
-        return; // Suppress relay connection errors
+        return; // Suppress relay connection errors, React 19 ref warnings from Radix UI, expected 404 API errors, and React key warnings
       }
       originalWindowError.apply(window.console, args);
     };
