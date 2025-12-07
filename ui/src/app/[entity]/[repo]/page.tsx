@@ -8547,12 +8547,18 @@ export default function RepoCodePage({
                               }
 
                               // Show success message BEFORE reload (so user can see it)
-                              if (result.confirmed) {
+                              if (result.confirmed && result.stateEventId) {
                                 const announcementId = result.eventId?.slice(0, 16) || "unknown";
                                 const stateId = result.stateEventId?.slice(0, 16) || "unknown";
-                                alert(`✅ Repository pushed to Nostr!\n\n✅ Announcement event (30617): ${announcementId}...\n✅ State event (30618): ${stateId}...\n\nBoth events published successfully.\n\nPage will reload to show updated status.`);
+                                alert(`✅ Repository pushed to Nostr!\n\n✅ Announcement event (30617): ${announcementId}...\n✅ State event (30618): ${stateId}...\n\nBoth events published and confirmed.\n\nPage will reload to show updated status.`);
+                              } else if (result.stateEventId) {
+                                // Both events published but not yet confirmed
+                                const announcementId = result.eventId?.slice(0, 16) || "unknown";
+                                const stateId = result.stateEventId?.slice(0, 16) || "unknown";
+                                alert(`⚠️ Repository published but awaiting confirmation.\n\n✅ Announcement event (30617): ${announcementId}...\n✅ State event (30618): ${stateId}...\n\nBoth events published - confirmation may take a few moments.\n\nPage will reload to show updated status.`);
                               } else {
-                                alert(`⚠️ Repository published but awaiting confirmation.\n\nEvent ID: ${result.eventId?.slice(0, 16)}...\n\nPage will reload to show updated status.`);
+                                // Only first event published (shouldn't happen with the fix, but handle gracefully)
+                                alert(`⚠️ Repository partially published.\n\nEvent ID: ${result.eventId?.slice(0, 16)}...\n\nSecond signature may not have completed. Please try pushing again.\n\nPage will reload.`);
                               }
                               
                               // Reload page data after push + bridge sync

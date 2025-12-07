@@ -970,11 +970,18 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       note: "Verify clone tags on nostr.watch or gitworkshop.dev - they should match the URLs above",
     });
 
-    if (result.confirmed) {
+    // CRITICAL: Continue to second signature even if first event isn't confirmed yet
+    // As long as the event was published (has eventId), we should continue to publish the state event
+    // The final confirmed status will reflect whether BOTH events are confirmed
+    if (result.eventId) {
       // Step 7: Store event ID and update status
-      storeRepoEventId(repoSlug, entity, result.eventId, true);
-      setRepoStatus(repoSlug, entity, "live");
-      onProgress?.("✅ Published to Nostr!");
+      storeRepoEventId(repoSlug, entity, result.eventId, result.confirmed);
+      if (result.confirmed) {
+        setRepoStatus(repoSlug, entity, "live");
+        onProgress?.("✅ Published to Nostr!");
+      } else {
+        onProgress?.("⚠️ First event published but awaiting confirmation - continuing to second signature...");
+      }
       
       // Step 7.5: Push files to bridge and get commit SHAs IMMEDIATELY (no waiting, no querying relays!)
       // CRITICAL: The push endpoint now returns commit SHAs directly after push completes
@@ -1337,14 +1344,15 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         success: true,
         eventId: result.eventId, // Announcement event ID (for backward compatibility)
         stateEventId: stateResult.eventId, // State event ID (for verification)
-        confirmed: true,
+        confirmed: result.confirmed && stateResult.confirmed, // Both events must be confirmed
         filesForBridge,
       };
     } else {
-      // Still store event ID even if not confirmed (might be delayed)
-      storeRepoEventId(repoSlug, entity, result.eventId, false);
+      // First event was published but we couldn't continue to second signature
+      // This should only happen if there was an error, not just lack of confirmation
+      storeRepoEventId(repoSlug, entity, result.eventId, result.confirmed);
       setRepoStatus(repoSlug, entity, "local"); // Revert to local if not confirmed
-      onProgress?.("⚠️ Published but awaiting confirmation");
+      onProgress?.("⚠️ First event published but second signature could not proceed");
       
       return {
         success: true,
