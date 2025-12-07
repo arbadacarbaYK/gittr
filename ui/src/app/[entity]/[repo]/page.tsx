@@ -1346,7 +1346,7 @@ export default function RepoCodePage({
         const hasStateEventId = !!((repo as any).stateEventId || (repo as any).lastStateEventId);
         if (!hasStateEventId && subscribe && defaultRelays) {
           const { queryStateEventFromNostr } = require("@/lib/utils/repo-status");
-          queryStateEventFromNostr(subscribe, repo.ownerPubkey, repoName, defaultRelays).then(stateEventId => {
+          queryStateEventFromNostr(subscribe, repo.ownerPubkey, repoName, defaultRelays).then((stateEventId: string | null) => {
             if (stateEventId) {
               console.log(`✅ [Repo Page] Found state event on Nostr: ${stateEventId.slice(0, 16)}...`);
               // Store state event ID in localStorage
