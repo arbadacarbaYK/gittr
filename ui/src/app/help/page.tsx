@@ -163,7 +163,59 @@ export default function HelpPage() {
           <div className="space-y-4 text-gray-300">
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">1. Login with NIP-07</h3>
-              <p>Install a NIP-07 browser extension (like Alby or nos2x) and log in to access all features.</p>
+              <div className="space-y-2">
+                <p>For better security, download a NIP-07 browser extension like:</p>
+                <ul className="list-disc list-inside space-y-1 ml-4">
+                  <li>
+                    <a
+                      className="underline text-purple-400 hover:text-purple-300"
+                      href="https://www.getflamingo.org"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Flamingo
+                    </a>{" "}
+                    (Chrome/Edge)
+                  </li>
+                  <li>
+                    <a
+                      className="underline text-purple-400 hover:text-purple-300"
+                      href="https://addons.mozilla.org/en-US/firefox/addon/nos2x-fox/"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      nos2x-fox
+                    </a>{" "}
+                    (Firefox)
+                  </li>
+                  <li>
+                    <a
+                      className="underline text-purple-400 hover:text-purple-300"
+                      href="https://getalby.com"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Alby
+                    </a>{" "}
+                    (Chrome/Firefox)
+                  </li>
+                </ul>
+                <p className="text-sm text-gray-400 mt-3">
+                  <strong className="text-white">On mobile browsers:</strong> Mobile browsers don't support browser extensions. Install{" "}
+                  <a
+                    className="underline text-purple-400 hover:text-purple-300"
+                    href="https://github.com/haorendashu/nowser"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Nowser
+                  </a>{" "}
+                  to sign via NIP-46/NIP-07, or use a remote signer (NIP-46) with a hardware device.
+                </p>
+                <p className="text-sm text-gray-400 mt-2">
+                  Once installed, the extension will automatically detect when you visit the login page and allow you to sign in securely.
+                </p>
+              </div>
             </div>
 
             <div>
