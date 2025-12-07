@@ -1343,7 +1343,7 @@ export default function RepoCodePage({
         
         // CRITICAL: If announcement event exists but state event is missing, query Nostr for it
         // This restores state event ID if localStorage was cleared but event exists on relays
-        const hasStateEventId = !!(repo.stateEventId || repo.lastStateEventId);
+        const hasStateEventId = !!((repo as any).stateEventId || (repo as any).lastStateEventId);
         if (!hasStateEventId && subscribe && defaultRelays) {
           const { queryStateEventFromNostr } = require("@/lib/utils/repo-status");
           queryStateEventFromNostr(subscribe, repo.ownerPubkey, repoName, defaultRelays).then(stateEventId => {
