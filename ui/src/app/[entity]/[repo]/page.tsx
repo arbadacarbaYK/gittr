@@ -1340,12 +1340,29 @@ export default function RepoCodePage({
         checkBridgeExists(repo.ownerPubkey, repoName, resolvedParams.entity).catch(err => {
           console.warn("Failed to check bridge:", err);
         });
+        
+        // CRITICAL: If announcement event exists but state event is missing, query Nostr for it
+        // This restores state event ID if localStorage was cleared but event exists on relays
+        const hasStateEventId = !!(repo.stateEventId || repo.lastStateEventId);
+        if (!hasStateEventId && subscribe && defaultRelays) {
+          const { queryStateEventFromNostr } = require("@/lib/utils/repo-status");
+          queryStateEventFromNostr(subscribe, repo.ownerPubkey, repoName, defaultRelays).then(stateEventId => {
+            if (stateEventId) {
+              console.log(`✅ [Repo Page] Found state event on Nostr: ${stateEventId.slice(0, 16)}...`);
+              // Store state event ID in localStorage
+              const { storeRepoEventId } = require("@/lib/nostr/publish-with-confirmation");
+              storeRepoEventId(repoName, resolvedParams.entity, eventId, true, stateEventId);
+            }
+          }).catch(err => {
+            console.warn("Failed to query state event from Nostr:", err);
+          });
+        }
       }
     } catch (error) {
       console.error("Failed to load Nostr event ID:", error);
       setNostrEventId(null);
     }
-  }, [resolvedParams.entity, resolvedParams.repo]);
+  }, [resolvedParams.entity, resolvedParams.repo, subscribe, defaultRelays]);
   
   // Reset fetchStatuses when params change (new repo or entity)
   useEffect(() => {
