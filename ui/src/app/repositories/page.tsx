@@ -2097,7 +2097,7 @@ export default function RepositoriesPage() {
                     : "hover:bg-white/5"
                 }`}
               >
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                   <div
                     className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
                     onClick={(e) => {
@@ -2136,13 +2136,12 @@ export default function RepositoriesPage() {
                     {/* Repo name and info - flex column to avoid wrapping issues */}
                     <div className="flex flex-col gap-1 min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis flex items-center gap-2">
+                        <div className="font-semibold text-cyan-400 min-w-0 flex-1 flex items-center gap-2">
                           {isNavigating && (
                             <Loader2 className="h-4 w-4 animate-spin text-purple-400 flex-shrink-0" />
                           )}
-                          <span>
-                          {displayName} <span className="opacity-70">/ {entityDisplay}/{displayName}</span>
-                          </span>
+                          <span className="truncate">{displayName}</span>
+                          <span className="opacity-70 hidden sm:inline">/ {entityDisplay}</span>
                         </div>
                         {/* Status badge */}
                         {(() => {
@@ -2178,13 +2177,14 @@ export default function RepositoriesPage() {
                       ) : null}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:ml-4 flex-shrink-0 w-full sm:w-auto">
                     {/* Push button for local repos - only visible to owner */}
                     {isLocal && pubkey && isOwner(pubkey, r.contributors, r.ownerPubkey) && (
                       <Button
                         size="sm"
                         variant="outline"
                         disabled={isPushing}
+                        className="text-xs whitespace-nowrap w-full sm:w-auto"
                         onClick={async (e) => {
                           e.preventDefault();
                           e.stopPropagation();
