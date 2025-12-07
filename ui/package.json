@@ -73,5 +73,9 @@
   },
   "ct3aMetadata": {
     "initVersion": "7.5.9"
+  },
+  "resolutions": {
+    "fsevents": "^2.3.3",
+    "@babel/core": "^7.23.0"
   }
 }
