@@ -7948,7 +7948,8 @@ export default function RepoCodePage({
                         onClick={async () => {
                         // Handle refetch for GitHub/GitLab/Codeberg repos
                         if (hasSourceUrl) {
-                        if (!repo.sourceUrl) {
+                        const sourceUrl = repo?.sourceUrl;
+                        if (!sourceUrl) {
                           alert("No source URL found for this repository");
                           return;
                         }
@@ -7962,7 +7963,7 @@ export default function RepoCodePage({
                           const importResponse = await fetch("/api/import", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ sourceUrl: sourceUrl }),
+                            body: JSON.stringify({ sourceUrl }),
                           });
                           
                           console.log(`📡 [Refetch] Import API response status: ${importResponse.status}`);
