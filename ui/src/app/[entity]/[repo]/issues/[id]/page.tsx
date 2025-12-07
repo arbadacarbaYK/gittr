@@ -204,7 +204,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
     } finally {
       setLoading(false);
     }
-  }, [params, currentUserPubkey]);
+  }, [resolvedParams.entity, resolvedParams.repo, resolvedParams.id, currentUserPubkey]);
 
   // Load available labels from repo topics
   useEffect(() => {
@@ -450,7 +450,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
     } catch (error) {
       console.error("Failed to update issue status:", error);
     }
-  }, [issue, isOwner, params, currentUserPubkey, publish, defaultRelays]);
+  }, [issue, isOwner, resolvedParams.entity, resolvedParams.repo, resolvedParams.id, currentUserPubkey, publish, defaultRelays]);
 
   const handleAddAssignee = useCallback((input: string) => {
     if (!issue || !isOwner || !input.trim()) return;
@@ -489,7 +489,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
     } catch (error) {
       alert(`Failed to add assignee: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
-  }, [issue, isOwner, params]);
+  }, [issue, isOwner, resolvedParams.entity, resolvedParams.repo, resolvedParams.id]);
 
   const handleRemoveAssignee = useCallback((pubkey: string) => {
     if (!issue || !isOwner) return;
@@ -506,7 +506,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
     } catch (error) {
       console.error("Failed to remove assignee:", error);
     }
-  }, [issue, isOwner, params]);
+  }, [issue, isOwner, resolvedParams.entity, resolvedParams.repo, resolvedParams.id]);
 
   const handleToggleLabel = useCallback((label: string) => {
     if (!issue || !isOwner) return;
@@ -527,7 +527,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
     } catch (error) {
       console.error("Failed to toggle label:", error);
     }
-  }, [issue, isOwner, params]);
+  }, [issue, isOwner, resolvedParams.entity, resolvedParams.repo, resolvedParams.id]);
 
   const handleBountyCreated = useCallback(async (withdrawId: string, lnurl: string, withdrawUrl: string, amount: number) => {
     // Store bounty info in issue
@@ -695,7 +695,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
     } catch (error) {
       console.error("Failed to store bounty:", error);
     }
-  }, [issue, params, currentUserPubkey, publish, defaultRelays]);
+  }, [issue, resolvedParams.entity, resolvedParams.repo, resolvedParams.id, currentUserPubkey, publish, defaultRelays]);
 
   // Handle comment creation
   const handleAddComment = useCallback(async () => {
@@ -866,7 +866,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
       console.error("Failed to add comment:", error);
       alert("Failed to add comment: " + (error as Error).message);
     }
-  }, [commentContent, issue, currentUserPubkey, replyParentId, issueEventId, params, publish, defaultRelays, userName]);
+  }, [commentContent, issue, currentUserPubkey, replyParentId, issueEventId, resolvedParams.entity, resolvedParams.repo, resolvedParams.id, publish, defaultRelays, userName]);
 
   const startReply = useCallback((parentId?: string, authorPubkey?: string) => {
     setReplyParentId(parentId || null);
