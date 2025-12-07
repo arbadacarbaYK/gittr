@@ -2271,15 +2271,34 @@ export default function RepositoriesPage() {
                             });
                           }
                         }}
-                        className="text-xs"
                       >
                         <Upload className="h-3 w-3 mr-1" />
                         {isPushing ? "Pushing..." : "Push to Nostr"}
                       </Button>
                     )}
-                    <div className="opacity-70 text-sm whitespace-nowrap">
-                    {formatDateTime24h(r.createdAt)}
-                  </div>
+                    <div className="opacity-70 text-xs sm:text-sm whitespace-nowrap">
+                      {(r as any).lastNostrEventCreatedAt ? (
+                        <>
+                          <span className="hidden sm:inline">Last push: </span>
+                          {formatDateTime24h((r as any).lastNostrEventCreatedAt * 1000)}
+                        </>
+                      ) : (r as any).lastPushAttempt ? (
+                        <>
+                          <span className="hidden sm:inline">Push attempted: </span>
+                          {formatDateTime24h((r as any).lastPushAttempt)}
+                        </>
+                      ) : (r as any).lastModifiedAt ? (
+                        <>
+                          <span className="hidden sm:inline">Modified: </span>
+                          {formatDateTime24h((r as any).lastModifiedAt)}
+                        </>
+                      ) : (
+                        <>
+                          <span className="hidden sm:inline">Created: </span>
+                          {formatDateTime24h(r.createdAt)}
+                        </>
+                      )}
+                    </div>
                 </div>
                 </div>
               </div>
