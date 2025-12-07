@@ -130,16 +130,24 @@ export function getRepoStatus(repo: any): RepoStatus {
   // Only show "live" if bridge has explicitly confirmed it processed the event
   // BUT: For repos pushed days ago, assume they're live until bridge check says otherwise
   // Only NEW pushes (recent eventCreatedAt) should show "awaiting bridge"
+  // CRITICAL: If both events exist and were confirmed, show as "live" even if bridge hasn't processed yet
+  // The bridge will update it later, but the repo is already live on Nostr
   if (hasAnnouncementEventId && hasStateEventId && (bridgeProcessed === undefined || bridgeProcessed === false)) {
     // Check if this is a recent push (within last hour) or an old push (days ago)
     const isRecentPush = eventCreatedAt && (Date.now() / 1000 - eventCreatedAt) < 3600; // Within last hour
     
-    if (isRecentPush) {
-      // Recent push - bridge might not have processed it yet, show as "awaiting bridge"
-      return "live_with_edits"; // Show as "Published (Awaiting Bridge)" for recent pushes
+    // CRITICAL: If both events exist, the repo is live on Nostr regardless of bridge processing
+    // Bridge processing is for file serving, not for determining if repo is "live"
+    // Only show "awaiting bridge" if it's a very recent push (within 5 minutes) AND no files
+    const isVeryRecentPush = eventCreatedAt && (Date.now() / 1000 - eventCreatedAt) < 300; // Within 5 minutes
+    const hasNoFiles = !hasFiles || (Array.isArray(repo.files) && repo.files.length === 0);
+    
+    if (isVeryRecentPush && hasNoFiles) {
+      // Very recent push with no files - bridge might still be processing, show as "awaiting bridge"
+      return "live_with_edits"; // Show as "Published (Awaiting Bridge)" for very recent pushes
     } else {
-      // Old push (days ago) - assume it was processed by bridge, show as "live" optimistically
-      // Bridge check will update this when it runs
+      // Both events exist - repo is live on Nostr, show as "live" even if bridge hasn't processed yet
+      // Bridge processing is for file serving, not for determining live status
       return hasUnpushedEdits ? "live_with_edits" : "live";
     }
   }

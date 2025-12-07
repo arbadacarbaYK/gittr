@@ -592,6 +592,14 @@ export default function HomePage() {
       
       if (isDeleted) return false;
       
+      // Filter out test/profile repos (common noise) - same as explore page
+      const repoName = (repo || '').toLowerCase();
+      const isTestRepo = repoName.startsWith("test") || repoName.includes("test-") || repoName === "test";
+      const isProfileRepo = repoName === "profile" || repoName === "profile-page" || repoName.includes("profile-");
+      if (isTestRepo || isProfileRepo) {
+        return false; // Filter out test/profile repos
+      }
+      
       return true;
     });
     
