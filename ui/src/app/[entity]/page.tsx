@@ -1267,8 +1267,82 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
         }
       }
       
-      // Get current contact list
-      let newContacts = [...contactList];
+      // CRITICAL: Fetch current contact list from Nostr BEFORE modifying it
+      // Don't rely on state which might be empty if subscription hasn't completed yet
+      // This prevents erasing all existing follows when clicking Follow
+      let currentContacts: string[] = [];
+      try {
+        const contactListPromise = new Promise<string[]>((resolve) => {
+          let resolved = false;
+          const timeout = setTimeout(() => {
+            if (!resolved) {
+              resolved = true;
+              console.warn("⚠️ [Follow] Timeout fetching contact list, using state as fallback");
+              resolve(contactList.length > 0 ? [...contactList] : []);
+            }
+          }, 3000); // 3 second timeout
+          
+          const unsub = subscribe(
+            [{
+              kinds: [3], // Contact list
+              authors: [signerPubkey],
+              limit: 1,
+            }],
+            defaultRelays,
+            (event) => {
+              if (event.kind === 3 && !resolved) {
+                resolved = true;
+                clearTimeout(timeout);
+                try {
+                  const contacts = JSON.parse(event.content);
+                  if (contacts && typeof contacts === 'object' && contacts.p && Array.isArray(contacts.p)) {
+                    const pubkeys = contacts.p.map((p: any) => typeof p === 'string' ? p : (p[0] || p.pubkey || ''));
+                    console.log(`✅ [Follow] Fetched ${pubkeys.length} contacts from Nostr`);
+                    resolve(pubkeys);
+                  } else {
+                    // Also check tags as fallback (some clients use tags instead of content)
+                    const pTags = event.tags.filter(tag => tag[0] === 'p').map(tag => tag[1]);
+                    if (pTags.length > 0) {
+                      console.log(`✅ [Follow] Fetched ${pTags.length} contacts from tags`);
+                      resolve(pTags);
+                    } else {
+                      console.warn("⚠️ [Follow] Contact list event has no contacts");
+                      resolve([]);
+                    }
+                  }
+                } catch (e) {
+                  console.error("❌ [Follow] Failed to parse contact list:", e);
+                  // Fallback: extract from tags
+                  const pTags = event.tags.filter(tag => tag[0] === 'p').map(tag => tag[1]);
+                  resolve(pTags.length > 0 ? pTags : (contactList.length > 0 ? [...contactList] : []));
+                }
+                if (unsub) unsub();
+              }
+            },
+            undefined,
+            () => {
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timeout);
+                console.warn("⚠️ [Follow] Subscription ended without event, using state as fallback");
+                resolve(contactList.length > 0 ? [...contactList] : []);
+              }
+              if (unsub) unsub();
+            }
+          );
+        });
+        
+        currentContacts = await contactListPromise;
+        console.log(`✅ [Follow] Using ${currentContacts.length} contacts from Nostr (state had ${contactList.length})`);
+      } catch (error) {
+        console.error("❌ [Follow] Error fetching contact list:", error);
+        // Fallback to state if fetch fails
+        currentContacts = contactList.length > 0 ? [...contactList] : [];
+        console.warn(`⚠️ [Follow] Falling back to state: ${currentContacts.length} contacts`);
+      }
+      
+      // Start with the fetched contact list (or state as fallback)
+      let newContacts = [...currentContacts];
       const targetPubkey = fullPubkeyForMeta.toLowerCase();
       
       if (isFollowing) {
