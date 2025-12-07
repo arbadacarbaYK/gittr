@@ -397,73 +397,93 @@ export default function RepoSettingsPage() {
         (repoToDelete as any).syncedFromNostr
       );
       
+      // CRITICAL: Publish deletion marker to Nostr (non-blocking)
+      // Don't wait for publish to complete - local deletion is done, button should be re-enabled
       if (publish && pubkey && repoToDelete && wasPublishedToNostr) {
-        try {
-          // Sign with NIP-07 or private key
-          const hasNip07 = typeof window !== "undefined" && window.nostr;
-          const privateKey = hasNip07 ? null : await getNostrPrivateKey();
-          
-          if (hasNip07 || privateKey) {
-            // Publish a replacement event with deleted: true
-            // This uses the same "d" tag, so it replaces the previous event (NIP-34 replaceable events)
-            const repoWithExtras = repoToDelete as StoredRepo & {
-              publicRead?: boolean;
-              sourceUrl?: string;
-              forkedFrom?: string;
-            };
+        // Publish deletion marker in background (non-blocking)
+        // This ensures the button is re-enabled immediately after local deletion
+        (async () => {
+          try {
+            // Sign with NIP-07 or private key
+            const hasNip07 = typeof window !== "undefined" && window.nostr;
+            const privateKey = hasNip07 ? null : await getNostrPrivateKey();
             
-            let deletionEvent: any;
-            if (hasNip07 && window.nostr) {
-              // Use NIP-07 (supports remote signer)
-              const { getEventHash } = await import("nostr-tools");
-              const authorPubkey = await window.nostr.getPublicKey();
-              deletionEvent = {
-                kind: KIND_REPOSITORY_NIP34,
-                created_at: Math.floor(Date.now() / 1000),
-                tags: [
-                  ["d", repo],
-                  ["name", repo],
-                  ...(repoWithExtras.description ? [["description", repoWithExtras.description]] : []),
-                  ...(repoWithExtras.sourceUrl ? [["source", repoWithExtras.sourceUrl]] : []),
-                  ...(repoWithExtras.forkedFrom ? [["forkedFrom", repoWithExtras.forkedFrom]] : []),
-                ],
-                content: JSON.stringify({
-                  deleted: true,
-                  publicRead: repoWithExtras.publicRead !== false,
-                  publicWrite: false,
-                }),
-                pubkey: authorPubkey,
-                id: "",
-                sig: "",
+            if (hasNip07 || privateKey) {
+              // Publish a replacement event with deleted: true
+              // This uses the same "d" tag, so it replaces the previous event (NIP-34 replaceable events)
+              const repoWithExtras = repoToDelete as StoredRepo & {
+                publicRead?: boolean;
+                sourceUrl?: string;
+                forkedFrom?: string;
               };
-              deletionEvent.id = getEventHash(deletionEvent);
-              deletionEvent = await window.nostr.signEvent(deletionEvent);
-            } else if (privateKey) {
-              // Use private key (fallback)
-              deletionEvent = createRepositoryEvent(
-                {
-                  repositoryName: repo,
-                  publicRead: repoWithExtras.publicRead !== false,
-                  publicWrite: false,
-                  description: repoToDelete.description,
-                  deleted: true, // Mark as deleted on Nostr - other clients will respect this
-                  // Preserve other metadata for context
-                  sourceUrl: repoWithExtras.sourceUrl,
-                  forkedFrom: repoWithExtras.forkedFrom,
-                },
-                privateKey
-              );
-            } else {
-              throw new Error("No signing method available");
+              
+              let deletionEvent: any;
+              if (hasNip07 && window.nostr) {
+                // Use NIP-07 (supports remote signer)
+                // CRITICAL: Add timeout for mobile NIP-07 signing (can hang)
+                const { getEventHash } = await import("nostr-tools");
+                const authorPubkey = await window.nostr.getPublicKey();
+                deletionEvent = {
+                  kind: KIND_REPOSITORY_NIP34,
+                  created_at: Math.floor(Date.now() / 1000),
+                  tags: [
+                    ["d", repo],
+                    ["name", repo],
+                    ...(repoWithExtras.description ? [["description", repoWithExtras.description]] : []),
+                    ...(repoWithExtras.sourceUrl ? [["source", repoWithExtras.sourceUrl]] : []),
+                    ...(repoWithExtras.forkedFrom ? [["forkedFrom", repoWithExtras.forkedFrom]] : []),
+                  ],
+                  content: JSON.stringify({
+                    deleted: true,
+                    publicRead: repoWithExtras.publicRead !== false,
+                    publicWrite: false,
+                  }),
+                  pubkey: authorPubkey,
+                  id: "",
+                  sig: "",
+                };
+                deletionEvent.id = getEventHash(deletionEvent);
+                
+                // CRITICAL: Add timeout for NIP-07 signing on mobile (can hang)
+                const signPromise = window.nostr.signEvent(deletionEvent);
+                const timeoutPromise = new Promise((_, reject) => 
+                  setTimeout(() => reject(new Error("Signing timeout - please try again")), 30000)
+                );
+                deletionEvent = await Promise.race([signPromise, timeoutPromise]);
+              } else if (privateKey) {
+                // Use private key (fallback)
+                deletionEvent = createRepositoryEvent(
+                  {
+                    repositoryName: repo,
+                    publicRead: repoWithExtras.publicRead !== false,
+                    publicWrite: false,
+                    description: repoToDelete.description,
+                    deleted: true, // Mark as deleted on Nostr - other clients will respect this
+                    // Preserve other metadata for context
+                    sourceUrl: repoWithExtras.sourceUrl,
+                    forkedFrom: repoWithExtras.forkedFrom,
+                  },
+                  privateKey
+                );
+              } else {
+                throw new Error("No signing method available");
+              }
+              
+              // CRITICAL: Don't await publish - make it non-blocking
+              // Local deletion is complete, button should be re-enabled
+              try {
+                publish(deletionEvent, defaultRelays);
+                console.log("✅ Published deletion marker to Nostr - other clients will hide this repo");
+              } catch (error: any) {
+                console.error("Failed to publish deletion marker to Nostr:", error);
+                // Local deletion is already done, so this is just a warning
+              }
             }
-            
-            await publish(deletionEvent, defaultRelays);
-            console.log("✅ Published deletion marker to Nostr - other clients will hide this repo");
+          } catch (error: any) {
+            console.error("Failed to create/publish deletion marker to Nostr:", error);
+            // Continue - local deletion is already done
           }
-        } catch (error: any) {
-          console.error("Failed to publish deletion marker to Nostr:", error);
-          // Continue with local deletion even if publishing fails
-        }
+        })();
       } else if (repoToDelete && !wasPublishedToNostr) {
         console.log("ℹ️ Repo was not published to Nostr, skipping deletion event");
       }
@@ -504,11 +524,15 @@ export default function RepoSettingsPage() {
       const zapRepoKey = `${entity}/${repo}`;
       localStorage.removeItem(`gittr_accumulated_zaps_${zapRepoKey}`);
       
+      // CRITICAL: Re-enable button immediately after local deletion is complete
+      // Nostr publish is non-blocking, so don't wait for it
+      setDeleting(false);
       setStatus("Repository deleted successfully");
-      // Navigate away
+      
+      // Navigate away after a short delay to show success message
       setTimeout(() => {
         window.location.href = "/repositories";
-      }, 500);
+      }, 1000);
     } catch (e) {
       console.error("Delete error:", e);
       setDeleting(false);
