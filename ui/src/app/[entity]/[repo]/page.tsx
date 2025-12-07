@@ -7955,14 +7955,14 @@ export default function RepoCodePage({
                         
                         try {
                           setIsRefetching(true);
-                            console.log(`🔄 [Refetch] Starting refetch for ${resolvedParams.repo} from source: ${repo.sourceUrl}`);
+                            console.log(`🔄 [Refetch] Starting refetch for ${resolvedParams.repo} from source: ${sourceUrl}`);
                           
                           // Call import API to fetch latest from GitHub
-                          console.log(`📡 [Refetch] Calling /api/import with sourceUrl: ${repo.sourceUrl}`);
+                          console.log(`📡 [Refetch] Calling /api/import with sourceUrl: ${sourceUrl}`);
                           const importResponse = await fetch("/api/import", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ sourceUrl: repo.sourceUrl }),
+                            body: JSON.stringify({ sourceUrl: sourceUrl }),
                           });
                           
                           console.log(`📡 [Refetch] Import API response status: ${importResponse.status}`);
@@ -8275,8 +8275,8 @@ export default function RepoCodePage({
                               repo: resolvedParams.repo,
                               repositoryName: resolvedParams.repo,
                               name: importData.name || resolvedParams.repo,
-                              sourceUrl: repo.sourceUrl,
-                              forkedFrom: repo.sourceUrl,
+                              sourceUrl: repo?.sourceUrl || importData.sourceUrl || "",
+                              forkedFrom: repo?.sourceUrl || importData.sourceUrl || "",
                               readme: importData.readme || "",
                               files: newFiles,
                               description: importData.description || "",
@@ -8288,7 +8288,7 @@ export default function RepoCodePage({
                               branches: importData.branches || [],
                               contributors: importData.contributors || [],
                               createdAt: Date.now(),
-                              ownerPubkey: repo.ownerPubkey || undefined,
+                              ownerPubkey: repo?.ownerPubkey || currentUserPubkey || undefined,
                             } as StoredRepo & { releases?: unknown[]; lastModifiedAt?: number };
                             
                             repos.push(newRepo);
