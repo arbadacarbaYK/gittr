@@ -163,7 +163,7 @@ export default function BlamePage({ params }: { params: Promise<{ entity: string
 
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
     void loadFileContent();
-  }, [filePath, params]);
+  }, [filePath, resolvedParams.entity, resolvedParams.repo]);
 
   if (loading) {
     return <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">Loading blame...</div>;
