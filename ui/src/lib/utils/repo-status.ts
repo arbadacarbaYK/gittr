@@ -163,7 +163,14 @@ export function getRepoStatus(repo: any): RepoStatus {
  * This restores the state event ID if localStorage was cleared but the event exists on relays
  */
 export async function queryStateEventFromNostr(
-  subscribe: (filters: any[], onEvent: (event: any) => void) => () => void,
+  subscribe: (
+    filters: any[],
+    relays: string[],
+    onEvent: (event: any, isAfterEose: boolean, relayURL?: string) => void,
+    maxDelayms?: number,
+    onEose?: (relayUrl: string, minCreatedAt: number) => void,
+    options?: any
+  ) => () => void,
   ownerPubkey: string,
   repoName: string,
   defaultRelays: string[]
@@ -193,7 +200,7 @@ export async function queryStateEventFromNostr(
         limit: 1,
       }],
       defaultRelays,
-      (event) => {
+      (event: any, isAfterEose: boolean, relayURL?: string) => {
         if (event.kind === KIND_REPOSITORY_STATE && !resolved) {
           foundStateEventId = event.id;
           resolved = true;
