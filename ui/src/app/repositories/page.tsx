@@ -150,7 +150,13 @@ export default function RepositoriesPage() {
         if (typeof window === 'undefined') return; // Don't access localStorage during SSR
         if ((event.kind === KIND_REPOSITORY || event.kind === KIND_REPOSITORY_NIP34) && !isAfterEose && /^[0-9a-f]{64}$/i.test(event.pubkey)) {
           try {
-            const repoData = JSON.parse(event.content);
+            let repoData;
+            try {
+              repoData = JSON.parse(event.content);
+            } catch (parseError) {
+              console.warn(`[Repositories] Failed to parse repo event content as JSON:`, parseError, `Content: ${event.content?.substring(0, 50)}...`);
+              return; // Skip this event if content is not valid JSON
+            }
             
             // Find matching repo
             const matchingRepo = reposToResolve.find((r: any) => 
@@ -675,7 +681,18 @@ export default function RepositoriesPage() {
               repoData.publicRead = true;
               repoData.publicWrite = false;
             } else {
-              repoData = JSON.parse(event.content);
+              try {
+                repoData = JSON.parse(event.content);
+              } catch (parseError) {
+                console.warn(`[Repositories] Failed to parse repo event content as JSON:`, parseError, `Content: ${event.content?.substring(0, 50)}...`);
+                return; // Skip this event if content is not valid JSON
+              }
+            }
+            
+            // Ensure repoData is defined before proceeding
+            if (!repoData) {
+              console.warn(`[Repositories] repoData is undefined after parsing`);
+              return;
             }
             
             // GRASP-01: Parse clone, relays, topics, contributors, source, and forkedFrom from event.tags
@@ -1004,8 +1021,9 @@ export default function RepositoriesPage() {
             // Save to localStorage
             localStorage.setItem("gittr_repos", JSON.stringify(existingRepos));
             
-            // Update state
-            setRepos([...existingRepos]);
+            // CRITICAL: Don't call setRepos here - it causes infinite loops
+            // The repos will be loaded from localStorage via loadRepos() when needed
+            // or via storage event listeners. This prevents maximum update depth errors.
           } catch (error) {
             console.error("Failed to process repo event from Nostr:", error);
           }
@@ -1058,6 +1076,10 @@ export default function RepositoriesPage() {
             relayList: defaultRelays,
             currentUserPubkey: pubkey ? pubkey.slice(0, 8) : 'none'
           });
+          
+          // CRITICAL: Reload repos from localStorage after all events are processed
+          // This updates the UI without causing infinite loops (only called once after EOSE)
+          loadRepos();
         }, 2000); // Wait 2 seconds after last EOSE to ensure all relays have finished
       },
       { allowDuplicateEvents: false }

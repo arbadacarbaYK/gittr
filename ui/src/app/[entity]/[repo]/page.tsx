@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useEffect, useLayoutEffect, useState, useMemo, useCallback, useRef, use } from "react";
 import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -88,22 +88,25 @@ import {
 export default function RepoCodePage({
   params,
 }: {
-  params: { entity: string; repo: string };
+  params: Promise<{ entity: string; repo: string }>;
 }) {
-  const decodedRepo = decodeURIComponent(params.repo);
+  const resolvedParams = use(params);
+  const decodedRepo = decodeURIComponent(resolvedParams.repo);
   const { pubkey: currentUserPubkey, subscribe, publish, defaultRelays, getRelayStatuses } = useNostrContext();
-  // Also get pubkey from session as fallback - memoize to prevent infinite loops
-  const effectiveUserPubkey = useMemo(() => {
-    if (currentUserPubkey) return currentUserPubkey;
-    if (typeof window !== 'undefined') {
+  // Also get pubkey from session as fallback - use state to prevent hydration errors
+  const [effectiveUserPubkey, setEffectiveUserPubkey] = useState<string | undefined>(currentUserPubkey || undefined);
+  
+  useEffect(() => {
+    if (currentUserPubkey) {
+      setEffectiveUserPubkey(currentUserPubkey);
+    } else if (typeof window !== 'undefined') {
       try {
         const session = JSON.parse(localStorage.getItem('nostr:session') || '{}');
-        return session.pubkey || undefined;
+        setEffectiveUserPubkey(session.pubkey || undefined);
       } catch {
-        return undefined;
+        setEffectiveUserPubkey(undefined);
       }
     }
-    return undefined;
   }, [currentUserPubkey]);
   const { picture: userPicture, name: userName } = useSession();
   const searchParams = useSearchParams();
@@ -120,6 +123,7 @@ export default function RepoCodePage({
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [proposeEdit, setProposeEdit] = useState<boolean>(false);
   const [proposedContent, setProposedContent] = useState<string>("");
+  const [mounted, setMounted] = useState(false);
   const fileViewerRef = useRef<HTMLDivElement | null>(null);
   const repoProcessedRef = useRef<string>(""); // Track which repo we've already processed
   const fileFetchInProgressRef = useRef<boolean>(false); // Prevent multiple simultaneous file fetches
@@ -128,37 +132,41 @@ export default function RepoCodePage({
   const repoDataRef = useRef<StoredRepo | null>(null); // Ref to access latest repoData without causing dependency loops
 
   const entityPubkey = useMemo(() => {
-    if (!params.entity) return null;
-    if (params.entity.startsWith("npub")) {
+    if (!resolvedParams.entity) return null;
+    if (resolvedParams.entity.startsWith("npub")) {
       try {
-        const decoded = nip19.decode(params.entity);
+        const decoded = nip19.decode(resolvedParams.entity);
         if (decoded.type === "npub") {
           return (decoded.data as string).toLowerCase();
         }
       } catch {
         return null;
       }
-    } else if (/^[0-9a-f]{64}$/i.test(params.entity)) {
-      return params.entity.toLowerCase();
+    } else if (/^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
+      return resolvedParams.entity.toLowerCase();
     }
     return null;
-  }, [params.entity]);
+  }, [resolvedParams.entity]);
 
-  const repoOwnerPubkey = useMemo(() => {
+  const [repoOwnerPubkey, setRepoOwnerPubkey] = useState<string | null>(null);
+  
+  useEffect(() => {
     if ((repoData as any)?.ownerPubkey && typeof (repoData as any).ownerPubkey === "string") {
-      return (repoData as any).ownerPubkey.toLowerCase();
-    }
-    try {
-      const repos = loadStoredRepos();
-      const match = findRepoByEntityAndName<StoredRepo>(repos, params.entity, decodedRepo);
-      if (match?.ownerPubkey && typeof match.ownerPubkey === "string") {
-        return match.ownerPubkey.toLowerCase();
+      setRepoOwnerPubkey((repoData as any).ownerPubkey.toLowerCase());
+    } else if (mounted) {
+      try {
+        const repos = loadStoredRepos();
+        const match = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
+        if (match?.ownerPubkey && typeof match.ownerPubkey === "string") {
+          setRepoOwnerPubkey(match.ownerPubkey.toLowerCase());
+        } else {
+          setRepoOwnerPubkey(null);
+        }
+      } catch {
+        setRepoOwnerPubkey(null);
       }
-    } catch {
-      // Ignore errors reading localStorage (server render etc.)
     }
-    return null;
-  }, [repoData?.ownerPubkey, params.entity, decodedRepo]);
+  }, [repoData?.ownerPubkey, resolvedParams.entity, decodedRepo, mounted]);
 
   const repoIsOwner = useMemo(() => {
     if (!currentUserPubkey) return false;
@@ -200,15 +208,22 @@ export default function RepoCodePage({
   const tagsRef = useRef<string[]>([]); // Ref to track previous tags array to prevent render loops
   const ownerQueryRef = useRef<string>(""); // Prevent multiple Nostr queries for owner pubkey
   // Initialize stable ref from localStorage if available to prevent empty → populated transition
-  const getInitialPubkeys = () => {
-    const repos = loadStoredRepos();
-    const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, decodedRepo);
-    if (repo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)) {
-      return [repo.ownerPubkey];
+  // Initialize as empty array to prevent hydration errors, will be populated in useEffect
+  const ownerPubkeysStableRef = useRef<string[]>([]);
+  
+  useEffect(() => {
+    if (mounted) {
+      try {
+        const repos = loadStoredRepos();
+        const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
+        if (repo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)) {
+          ownerPubkeysStableRef.current = [repo.ownerPubkey];
+        }
+      } catch {
+        // Ignore errors
+      }
     }
-    return [];
-  };
-  const ownerPubkeysStableRef = useRef<string[]>(getInitialPubkeys());
+  }, [resolvedParams.entity, decodedRepo, mounted]);
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [deletedPaths, setDeletedPaths] = useState<string[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -230,7 +245,6 @@ export default function RepoCodePage({
   const [isRefetching, setIsRefetching] = useState<boolean>(false);
   const [fetchStatusExpanded, setFetchStatusExpanded] = useState<boolean>(false);
   const [cloneUrlsExpanded, setCloneUrlsExpanded] = useState<boolean>(false);
-  const [mounted, setMounted] = useState(false);
   
   // Get owner metadata for Nostr profile picture fallback
   // Fetch metadata for both entity and actual owner pubkey (CRITICAL for imported repos)
@@ -250,8 +264,8 @@ export default function RepoCodePage({
   // Compute owner pubkeys for metadata using useMemo (like explore page) - NO useState/useEffect to prevent render loops
   const ownerPubkeysForMetadata = useMemo(() => {
     const repos = loadStoredRepos();
-    const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, decodedRepo);
-    const prefix = params.entity?.length === 8 ? params.entity.toLowerCase() : null;
+    const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
+    const prefix = resolvedParams.entity?.length === 8 ? resolvedParams.entity.toLowerCase() : null;
     const pubkeySet = new Set<string>();
 
     const addPubkey = (value?: string) => {
@@ -262,9 +276,9 @@ export default function RepoCodePage({
 
     // CRITICAL: Decode npub FIRST (before other checks) to ensure we always have a pubkey
     // This ensures the metadata hook gets called even if repo.ownerPubkey is missing
-    if (params.entity && params.entity.startsWith("npub")) {
+    if (resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
       try {
-        const decoded = nip19.decode(params.entity);
+        const decoded = nip19.decode(resolvedParams.entity);
         if (decoded.type === "npub") {
           const pubkey = decoded.data as string;
           addPubkey(pubkey);
@@ -273,7 +287,7 @@ export default function RepoCodePage({
             repo.ownerPubkey = pubkey;
             // Update localStorage to persist ownerPubkey
             const repoIndex = repos.findIndex((r: StoredRepo) => 
-              (r.slug === decodedRepo || r.repo === decodedRepo) && r.entity === params.entity
+              (r.slug === decodedRepo || r.repo === decodedRepo) && r.entity === resolvedParams.entity
             );
             if (repoIndex >= 0 && repos[repoIndex]) {
               repos[repoIndex].ownerPubkey = pubkey;
@@ -282,7 +296,7 @@ export default function RepoCodePage({
           }
         }
       } catch (e) {
-        console.warn("[ownerPubkeysForMetadata] Failed to decode npub:", params.entity, e);
+        console.warn("[ownerPubkeysForMetadata] Failed to decode npub:", resolvedParams.entity, e);
       }
     }
 
@@ -296,8 +310,8 @@ export default function RepoCodePage({
       addPubkey(ownerContributor?.pubkey);
     }
 
-    if (params.entity && params.entity.length === 64) {
-      addPubkey(params.entity);
+    if (resolvedParams.entity && resolvedParams.entity.length === 64) {
+      addPubkey(resolvedParams.entity);
     } else if (prefix) {
       const prefixRegex = /^[0-9a-f]{8}$/i;
       if (prefixRegex.test(prefix)) {
@@ -328,7 +342,7 @@ export default function RepoCodePage({
           const matchingRepo = repos.find(
             (storedRepo) =>
               storedRepo.entity &&
-              storedRepo.entity.toLowerCase() === params.entity?.toLowerCase() &&
+              storedRepo.entity.toLowerCase() === resolvedParams.entity?.toLowerCase() &&
               storedRepo.ownerPubkey &&
               storedRepo.ownerPubkey.toLowerCase().startsWith(prefix)
           );
@@ -339,9 +353,9 @@ export default function RepoCodePage({
 
     // CRITICAL: If no pubkeys found and entity is npub, decode it as fallback
     // This MUST happen before checking cached values to ensure we always have a pubkey
-    if (pubkeySet.size === 0 && params.entity && params.entity.startsWith("npub")) {
+    if (pubkeySet.size === 0 && resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
       try {
-        const decoded = nip19.decode(params.entity);
+        const decoded = nip19.decode(resolvedParams.entity);
         if (decoded.type === "npub") {
           const pubkey = decoded.data as string;
           if (/^[0-9a-f]{64}$/i.test(pubkey)) {
@@ -351,7 +365,7 @@ export default function RepoCodePage({
             if (repo && !repo.ownerPubkey) {
               repo.ownerPubkey = pubkey;
               const repoIndex = repos.findIndex((r: StoredRepo) => 
-                (r.slug === decodedRepo || r.repo === decodedRepo) && r.entity === params.entity
+                (r.slug === decodedRepo || r.repo === decodedRepo) && r.entity === resolvedParams.entity
               );
               if (repoIndex >= 0 && repos[repoIndex]) {
                 repos[repoIndex].ownerPubkey = pubkey;
@@ -383,11 +397,11 @@ export default function RepoCodePage({
     if (result.length > 0) {
       console.log(`[ownerPubkeysForMetadata] Returning ${result.length} pubkey(s):`, result.map(p => p.slice(0, 16) + "..."));
     } else {
-      console.warn("[ownerPubkeysForMetadata] WARNING: Returning empty array - no pubkeys found! Entity:", params.entity);
+      console.warn("[ownerPubkeysForMetadata] WARNING: Returning empty array - no pubkeys found! Entity:", resolvedParams.entity);
     }
     
     return result;
-  }, [decodedRepo, params.entity, resolvedOwnerPubkey]); // Only recompute when these change
+  }, [decodedRepo, resolvedParams.entity, resolvedOwnerPubkey]); // Only recompute when these change
   const ownerMetadata = useContributorMetadata(ownerPubkeysForMetadata);
   
   // Keep ref in sync with ownerMetadata - update ref directly (refs don't cause re-renders)
@@ -422,8 +436,17 @@ export default function RepoCodePage({
         return resolvedOwnerPubkey;
       }
       
+      // Only access localStorage after mount to prevent hydration errors
+      if (!mounted) {
+        // Fallback to entity if it's a full pubkey
+        if (resolvedParams.entity && resolvedParams.entity.length === 64 && /^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
+          return resolvedParams.entity;
+        }
+        return null;
+      }
+      
       const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, decodedRepo);
+      const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
       
       // Priority 2: Use ownerPubkey if available (most reliable, especially for Nostr-synced repos)
       if (repo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)) {
@@ -438,22 +461,22 @@ export default function RepoCodePage({
         }
       }
       
-      // Priority 4: If params.entity is a full 64-char pubkey, use it directly
-      if (params.entity && params.entity.length === 64 && /^[0-9a-f]{64}$/i.test(params.entity)) {
-        return params.entity;
+      // Priority 4: If resolvedParams.entity is a full 64-char pubkey, use it directly
+      if (resolvedParams.entity && resolvedParams.entity.length === 64 && /^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
+        return resolvedParams.entity;
       }
       
-      // Priority 5: If params.entity is an 8-char prefix, try to resolve full pubkey from repo data
+      // Priority 5: If resolvedParams.entity is an 8-char prefix, try to resolve full pubkey from repo data
       // Check if repo has ownerPubkey that matches the prefix
-      if (params.entity && params.entity.length === 8 && /^[0-9a-f]{8}$/i.test(params.entity)) {
+      if (resolvedParams.entity && resolvedParams.entity.length === 8 && /^[0-9a-f]{8}$/i.test(resolvedParams.entity)) {
         // Try to find ownerPubkey that starts with this prefix
-        if (repo?.ownerPubkey && repo.ownerPubkey.toLowerCase().startsWith(params.entity.toLowerCase())) {
+        if (repo?.ownerPubkey && repo.ownerPubkey.toLowerCase().startsWith(resolvedParams.entity.toLowerCase())) {
           return repo.ownerPubkey;
         }
         // Try to find contributor with pubkey matching prefix
         if (repo?.contributors && Array.isArray(repo.contributors)) {
           const matchingContributor = repo.contributors.find((c) => 
-            c.pubkey && /^[0-9a-f]{64}$/i.test(c.pubkey) && c.pubkey.toLowerCase().startsWith(params.entity.toLowerCase())
+            c.pubkey && /^[0-9a-f]{64}$/i.test(c.pubkey) && c.pubkey.toLowerCase().startsWith(resolvedParams.entity.toLowerCase())
           );
           if (matchingContributor?.pubkey) {
             return matchingContributor.pubkey;
@@ -463,7 +486,7 @@ export default function RepoCodePage({
         try {
           const activities = getActivities();
           const matchingActivity = activities.find((a) => 
-            a.user && typeof a.user === "string" && /^[0-9a-f]{64}$/i.test(a.user) && a.user.toLowerCase().startsWith(params.entity.toLowerCase())
+            a.user && typeof a.user === "string" && /^[0-9a-f]{64}$/i.test(a.user) && a.user.toLowerCase().startsWith(resolvedParams.entity.toLowerCase())
           );
           if (matchingActivity?.user) {
             return matchingActivity.user;
@@ -471,22 +494,22 @@ export default function RepoCodePage({
         } catch {}
       }
       
-      // Default: use params.entity as-is (might be GitHub username or pubkey prefix)
-      return params.entity;
+      // Default: use resolvedParams.entity as-is (might be GitHub username or pubkey prefix)
+      return resolvedParams.entity;
     } catch {
-      return params.entity;
+      return resolvedParams.entity;
     }
-  }, [params.entity, params.repo, resolvedOwnerPubkey]);
+  }, [resolvedParams.entity, resolvedParams.repo, resolvedOwnerPubkey, decodedRepo, mounted]);
   
   // Helper function to generate href for repo links (avoids duplication)
   const getRepoLink = useCallback((subpath: string = "", includeSearchParams: boolean = false) => {
     const basePath = ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) 
-      ? `/${nip19.npubEncode(ownerPubkeyForLink)}/${params.repo}${subpath ? `/${subpath}` : ""}`
-      : `/${params.entity}/${params.repo}${subpath ? `/${subpath}` : ""}`;
+      ? `/${nip19.npubEncode(ownerPubkeyForLink)}/${resolvedParams.repo}${subpath ? `/${subpath}` : ""}`
+      : `/${resolvedParams.entity}/${resolvedParams.repo}${subpath ? `/${subpath}` : ""}`;
     return includeSearchParams && searchParams?.toString() 
       ? `${basePath}?${searchParams.toString()}`
       : basePath;
-  }, [ownerPubkeyForLink, params.entity, params.repo, searchParams]);
+  }, [ownerPubkeyForLink, resolvedParams.entity, resolvedParams.repo, searchParams]);
   
   // Ref to prevent infinite loops when opening files from URL
   const openingFromURLRef = useRef(false);
@@ -495,7 +518,7 @@ export default function RepoCodePage({
   // Clear failed files when repo changes
   useEffect(() => {
     failedFilesRef.current.clear();
-  }, [params.entity, params.repo]);
+  }, [resolvedParams.entity, resolvedParams.repo]);
   // Ref to track if we're updating state from URL (prevents loops)
   const updatingFromURLRef = useRef(false);
 
@@ -526,14 +549,14 @@ export default function RepoCodePage({
     const query = currentParams.toString();
     // Preserve hash (e.g., #L5-L17 for code line selection) when updating URL
     const currentHash = typeof window !== 'undefined' ? window.location.hash : '';
-    const newUrl = `/${params.entity}/${params.repo}${query ? `?${query}` : ""}${currentHash}`;
+    const newUrl = `/${resolvedParams.entity}/${resolvedParams.repo}${query ? `?${query}` : ""}${currentHash}`;
     router.replace(newUrl, { scroll: false });
     
     // Reset flag after a short delay to allow URL to update
     setTimeout(() => {
       isUpdatingURLRef.current = false;
     }, 100);
-  }, [params.entity, params.repo, router]);
+  }, [resolvedParams.entity, resolvedParams.repo, router]);
 
   const ownerSlug = useMemo(() => {
     if (!userName) return "";
@@ -546,11 +569,11 @@ export default function RepoCodePage({
       .replace(/^_+|_+$/g, '');
   }, [userName]);
   const isOwner = useMemo(() => {
-    if (!params?.entity || !currentUserPubkey) return false;
+    if (!resolvedParams?.entity || !currentUserPubkey) return false;
     
     try {
       const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, decodedRepo);
+      const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
       
       if (repo) {
         // Priority 1: Check resolvedOwnerPubkey (set by Nostr query if missing)
@@ -574,24 +597,24 @@ export default function RepoCodePage({
     } catch {}
     
     // Fallback: original logic
-    if (ownerSlug && ownerSlug === params.entity) return true;
-    if (params.entity && currentUserPubkey && params.entity === currentUserPubkey.slice(0, 8).toLowerCase()) return true;
+    if (ownerSlug && ownerSlug === resolvedParams.entity) return true;
+    if (resolvedParams.entity && currentUserPubkey && resolvedParams.entity === currentUserPubkey.slice(0, 8).toLowerCase()) return true;
     
     return false;
-  }, [ownerSlug, params.entity, currentUserPubkey, params.repo, resolvedOwnerPubkey]);
+  }, [ownerSlug, resolvedParams.entity, currentUserPubkey, resolvedParams.repo, resolvedOwnerPubkey]);
 
   // This must run BEFORE the main useEffect to ensure resolvedOwnerPubkey is set early
   useEffect(() => {
     // Only query if we don't have resolvedOwnerPubkey yet and entity is an 8-char prefix
-    if (resolvedOwnerPubkey || !params.entity || params.entity.length !== 8 || !/^[0-9a-f]{8}$/i.test(params.entity)) {
+    if (resolvedOwnerPubkey || !resolvedParams.entity || resolvedParams.entity.length !== 8 || !/^[0-9a-f]{8}$/i.test(resolvedParams.entity)) {
       return;
     }
     
-    if (!subscribe || !defaultRelays || ownerQueryRef.current === `${params.entity}/${params.repo}`) {
+    if (!subscribe || !defaultRelays || ownerQueryRef.current === `${resolvedParams.entity}/${resolvedParams.repo}`) {
       return;
     }
     
-    ownerQueryRef.current = `${params.entity}/${params.repo}`;
+    ownerQueryRef.current = `${resolvedParams.entity}/${resolvedParams.repo}`;
     
     (async () => {
       try {
@@ -610,13 +633,13 @@ export default function RepoCodePage({
                 } else {
                   // NIP-34 format
                   const repoTag = event.tags.find((t): t is string[] => Array.isArray(t) && t[0] === "d");
-                  if (repoTag && repoTag[1] === params.repo) {
-                    repoData = { repositoryName: params.repo };
+                  if (repoTag && repoTag[1] === resolvedParams.repo) {
+                    repoData = { repositoryName: resolvedParams.repo };
                   }
                 }
                 
-                if (repoData?.repositoryName === params.repo && 
-                    event.pubkey.toLowerCase().startsWith(params.entity.toLowerCase())) {
+                if (repoData?.repositoryName === resolvedParams.repo && 
+                    event.pubkey.toLowerCase().startsWith(resolvedParams.entity.toLowerCase())) {
                   found = true;
                   setResolvedOwnerPubkey(event.pubkey);
                   if (unsub) unsub();
@@ -645,16 +668,16 @@ export default function RepoCodePage({
         console.error("Failed to query Nostr for foreign repo:", error);
       }
     })();
-  }, [params.entity, params.repo, subscribe, defaultRelays, resolvedOwnerPubkey]);
+  }, [resolvedParams.entity, resolvedParams.repo, subscribe, defaultRelays, resolvedOwnerPubkey]);
 
   useEffect(() => {
-    const repoKey = `${params.entity}/${params.repo}`;
+    const repoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
     if (repoProcessedRef.current === repoKey) {
       return;
     }
 
     const repos = loadStoredRepos();
-    const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, decodedRepo);
+    const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
 
     if (!repo) {
       return;
@@ -774,9 +797,9 @@ export default function RepoCodePage({
 
     let ownerPubkey: string | undefined = repo.ownerPubkey;
 
-    if (!ownerPubkey && params.entity?.startsWith("npub")) {
+    if (!ownerPubkey && resolvedParams.entity?.startsWith("npub")) {
       try {
-        const decoded = nip19.decode(params.entity);
+        const decoded = nip19.decode(resolvedParams.entity);
         if (decoded.type === "npub") {
           ownerPubkey = decoded.data as string;
           console.log("🔑 Decoded npub to pubkey:", ownerPubkey.slice(0, 8));
@@ -795,13 +818,13 @@ export default function RepoCodePage({
       }
     }
 
-    if (!ownerPubkey && params.entity && params.entity.length === 8 && /^[0-9a-f]{8}$/i.test(params.entity)) {
+    if (!ownerPubkey && resolvedParams.entity && resolvedParams.entity.length === 8 && /^[0-9a-f]{8}$/i.test(resolvedParams.entity)) {
       const matchingActivity = getActivities().find(
         (activity) =>
           activity.user &&
           typeof activity.user === "string" &&
           /^[0-9a-f]{64}$/i.test(activity.user) &&
-          activity.user.toLowerCase().startsWith(params.entity.toLowerCase())
+          activity.user.toLowerCase().startsWith(resolvedParams.entity.toLowerCase())
       );
       if (matchingActivity?.user) {
         ownerPubkey = matchingActivity.user;
@@ -860,9 +883,9 @@ export default function RepoCodePage({
         const ownerMeta = ownerMetadata[ownerPubkey.toLowerCase()] || ownerMetadata[ownerPubkey];
         const ownerName = ownerMeta?.name || ownerMeta?.display_name || repo.entityDisplayName;
         // Fallback to shortened npub if no name available
-        const fallbackName = params.entity && params.entity.startsWith("npub") 
-          ? params.entity.substring(0, 16) + "..." 
-          : params.entity;
+        const fallbackName = resolvedParams.entity && resolvedParams.entity.startsWith("npub") 
+          ? resolvedParams.entity.substring(0, 16) + "..." 
+          : resolvedParams.entity;
         contributors.unshift({
           pubkey: ownerPubkey,
           name: ownerName || fallbackName,
@@ -871,15 +894,15 @@ export default function RepoCodePage({
           role: "owner" as const,
         });
       }
-    } else if (params.entity && params.entity.length === 8 && /^[0-9a-f]{8}$/i.test(params.entity)) {
+    } else if (resolvedParams.entity && resolvedParams.entity.length === 8 && /^[0-9a-f]{8}$/i.test(resolvedParams.entity)) {
       const ownerExists = contributors.some(
         (contributor) =>
           contributor.pubkey &&
           contributor.pubkey.length === 64 &&
-          contributor.pubkey.toLowerCase().startsWith(params.entity.toLowerCase())
+          contributor.pubkey.toLowerCase().startsWith(resolvedParams.entity.toLowerCase())
       );
       if (!ownerExists) {
-        contributors.unshift({ name: params.entity, weight: 100 });
+        contributors.unshift({ name: resolvedParams.entity, weight: 100 });
       }
     } else if (!contributors.length && repo.entityDisplayName) {
       const fallbackPubkey = ownerPubkey || effectiveUserPubkey;
@@ -897,10 +920,10 @@ export default function RepoCodePage({
     if (contributors.length > 0 && ownerPubkey) {
       const repoIndex = repos.findIndex(
         (storedRepo) =>
-          storedRepo.entity === params.entity &&
-          (storedRepo.repo === params.repo ||
-            storedRepo.slug === params.repo ||
-            storedRepo.slug === `${params.entity}/${params.repo}`)
+          storedRepo.entity === resolvedParams.entity &&
+          (storedRepo.repo === resolvedParams.repo ||
+            storedRepo.slug === resolvedParams.repo ||
+            storedRepo.slug === `${resolvedParams.entity}/${resolvedParams.repo}`)
       );
       if (repoIndex >= 0 && repos[repoIndex]) {
         const repoToUpdate = repos[repoIndex];
@@ -923,8 +946,8 @@ export default function RepoCodePage({
         // If ownerPubkey is missing and entity is an 8-char prefix, query Nostr for the repository event
         // This fixes repos synced before the ownerPubkey fix
         // Use a ref to prevent multiple queries (declared at component level)
-        if (!repo.ownerPubkey && params.entity && params.entity.length === 8 && /^[0-9a-f]{8}$/i.test(params.entity) && subscribe && defaultRelays && !resolvedOwnerPubkey && ownerQueryRef.current !== `${params.entity}/${params.repo}`) {
-          ownerQueryRef.current = `${params.entity}/${params.repo}`;
+        if (!repo.ownerPubkey && resolvedParams.entity && resolvedParams.entity.length === 8 && /^[0-9a-f]{8}$/i.test(resolvedParams.entity) && subscribe && defaultRelays && !resolvedOwnerPubkey && ownerQueryRef.current !== `${resolvedParams.entity}/${resolvedParams.repo}`) {
+          ownerQueryRef.current = `${resolvedParams.entity}/${resolvedParams.repo}`;
           console.log("🔍 Querying Nostr for repository event to resolve ownerPubkey...");
           (async () => {
             try {
@@ -943,8 +966,8 @@ export default function RepoCodePage({
                     try {
                       const repoData = JSON.parse(event.content);
                       // Use the FULL pubkey from event.pubkey (not the prefix) once found
-                      if (repoData.repositoryName === params.repo && 
-                          event.pubkey.toLowerCase().startsWith(params.entity.toLowerCase())) {
+                      if (repoData.repositoryName === resolvedParams.repo && 
+                          event.pubkey.toLowerCase().startsWith(resolvedParams.entity.toLowerCase())) {
                         console.log("✅ Found repository event! Full pubkey:", event.pubkey);
                         found = true;
                         
@@ -955,7 +978,7 @@ export default function RepoCodePage({
                         // Found match - update repo with ownerPubkey
                         const repos = loadStoredRepos();
                         const repoIndex = repos.findIndex((r) => 
-                          r.entity === params.entity && (r.repo === params.repo || r.slug === params.repo)
+                          r.entity === resolvedParams.entity && (r.repo === resolvedParams.repo || r.slug === resolvedParams.repo)
                         );
                         if (repoIndex >= 0 && repos[repoIndex]) {
                           const repoToUpdate = repos[repoIndex];
@@ -1018,7 +1041,7 @@ export default function RepoCodePage({
             filesArray = repo.files; // Use files from repo object if available
           } else if ((repo as StoredRepo & { fileCount?: number }).fileCount && (repo as StoredRepo & { fileCount?: number }).fileCount! > 0) {
             // Try loading from separate storage key
-            filesArray = loadRepoFiles(params.entity, params.repo);
+            filesArray = loadRepoFiles(resolvedParams.entity, resolvedParams.repo);
             if (filesArray.length > 0) {
               console.log(`✅ [File Load] Loaded ${filesArray.length} files from separate storage key`);
             }
@@ -1028,7 +1051,7 @@ export default function RepoCodePage({
           
           setRepoData({ 
             entity: repo.entity,
-            repo: repo.repo || params.repo,
+            repo: repo.repo || resolvedParams.repo,
             readme: repo.readme || "", 
             files: filesArray,
             sourceUrl: repo.sourceUrl, 
@@ -1127,14 +1150,14 @@ export default function RepoCodePage({
                           // Ensure owner is always present
                           // Use ownerPubkey if available, otherwise try to resolve from entity
                           const ownerPubkey = repo.ownerPubkey || effectiveUserPubkey || 
-                            (params.entity && params.entity.length === 8 && /^[0-9a-f]{8}$/i.test(params.entity) 
+                            (resolvedParams.entity && resolvedParams.entity.length === 8 && /^[0-9a-f]{8}$/i.test(resolvedParams.entity) 
                               ? undefined // If entity is a pubkey prefix, we need full pubkey - try to resolve
                               : undefined);
                           
                           if (ownerPubkey && !contributors.some((c) => c.pubkey === ownerPubkey)) {
                             contributors.unshift({ 
                               pubkey: ownerPubkey, 
-                              name: repo.entityDisplayName || params.entity, 
+                              name: repo.entityDisplayName || resolvedParams.entity, 
                   weight: 100,
                   role: "owner"
                             });
@@ -1148,7 +1171,7 @@ export default function RepoCodePage({
               // Now set repoData with all contributors
               setRepoData({ 
                 entity: repo.entity,
-                repo: repo.repo || params.repo,
+                repo: repo.repo || resolvedParams.repo,
                 readme: d.readme || "", 
                 files: (d.files || []) as RepoFileEntry[], // Ensure files is always an array, never undefined 
                 sourceUrl: repo.sourceUrl, 
@@ -1181,7 +1204,7 @@ export default function RepoCodePage({
                 if (!r.entity || r.entity === "user") return r;
                 const rEntity = r.entity;
                 const rRepo = r.repo || r.slug || "";
-                if (rEntity === params.entity && rRepo === params.repo) {
+                if (rEntity === resolvedParams.entity && rRepo === resolvedParams.repo) {
                   return {
                     ...r,
                     readme: d.readme,
@@ -1206,19 +1229,19 @@ export default function RepoCodePage({
           // Repo not in localStorage - check if it's marked as deleted first
           const deletedRepos = loadDeletedRepos();
           const isDeleted = deletedRepos.some((d) => {
-            const entityMatch = d.entity.toLowerCase() === params.entity.toLowerCase();
-            const repoMatch = d.repo.toLowerCase() === params.repo.toLowerCase();
+            const entityMatch = d.entity.toLowerCase() === resolvedParams.entity.toLowerCase();
+            const repoMatch = d.repo.toLowerCase() === resolvedParams.repo.toLowerCase();
             return entityMatch && repoMatch;
           });
           
           if (isDeleted) {
             console.log("⏭️ [Foreign Repo] Repo is marked as deleted, showing deleted message");
             setRepoData({
-              entity: params.entity,
-              repo: params.repo,
+              entity: resolvedParams.entity,
+              repo: resolvedParams.repo,
               readme: "",
               files: [],
-              name: params.repo,
+              name: resolvedParams.repo,
               description: "This repository has been deleted.",
               contributors: [],
               defaultBranch: "main",
@@ -1229,18 +1252,18 @@ export default function RepoCodePage({
           
           // Repo not in localStorage - create minimal repoData so page can render
           // The Nostr query in the separate useEffect will resolve ownerPubkey
-          console.log("⚠️ [Foreign Repo] Repo not found in localStorage, creating minimal repoData:", `entity=${params.entity}, repo=${params.repo}`);
+          console.log("⚠️ [Foreign Repo] Repo not found in localStorage, creating minimal repoData:", `entity=${resolvedParams.entity}, repo=${resolvedParams.repo}`);
           
           // Mark as processed to prevent re-running
           repoProcessedRef.current = repoKey;
           
           // Create minimal repoData with empty files - files will be fetched from Nostr if available
           setRepoData({
-            entity: params.entity,
-            repo: params.repo,
+            entity: resolvedParams.entity,
+            repo: resolvedParams.repo,
             readme: "",
             files: [],
-            name: params.repo,
+            name: resolvedParams.repo,
             description: "",
             contributors: resolvedOwnerPubkey ? [{ pubkey: resolvedOwnerPubkey, weight: 100 }] : [],
             defaultBranch: "main",
@@ -1249,9 +1272,9 @@ export default function RepoCodePage({
           }
           // Load local overrides and deletions
           try {
-            const savedOverrides = loadRepoOverrides(params.entity, params.repo);
+            const savedOverrides = loadRepoOverrides(resolvedParams.entity, resolvedParams.repo);
             setOverrides(savedOverrides);
-            const savedDeleted = loadRepoDeletedPaths(params.entity, params.repo);
+            const savedDeleted = loadRepoDeletedPaths(resolvedParams.entity, resolvedParams.repo);
             setDeletedPaths(savedDeleted);
           } catch {}
         } catch (e) {
@@ -1262,14 +1285,14 @@ export default function RepoCodePage({
     const handleRepoUpdate = () => {
       try {
         const repos = loadStoredRepos();
-        const updatedRepo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+        const updatedRepo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
         if (updatedRepo) {
           // Reload files from storage
           let filesArray: RepoFileEntry[] = [];
           if (updatedRepo.files && Array.isArray(updatedRepo.files) && updatedRepo.files.length > 0) {
             filesArray = updatedRepo.files;
           } else {
-            filesArray = loadRepoFiles(params.entity, params.repo);
+            filesArray = loadRepoFiles(resolvedParams.entity, resolvedParams.repo);
           }
           
           // Update repoData with new files
@@ -1295,7 +1318,7 @@ export default function RepoCodePage({
       fileFetchAttemptedRef.current = "";
       eoseProcessedRef.current.clear(); // Reset EOSE tracking when repo changes
     };
-  }, [params.entity, params.repo]);
+  }, [resolvedParams.entity, resolvedParams.repo]);
 
   // Keep repoDataRef in sync
   useEffect(() => {
@@ -1306,15 +1329,15 @@ export default function RepoCodePage({
   useEffect(() => {
     try {
       const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+      const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
       const eventId = repo?.lastNostrEventId || repo?.nostrEventId || null;
       setNostrEventId(eventId);
       
       // CRITICAL: Check bridge if repo has event ID (was pushed to Nostr)
       // This ensures "live" status only shows if bridge has actually processed the event
       if (eventId && repo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)) {
-        const repoName = repo.repo || repo.slug || params.repo;
-        checkBridgeExists(repo.ownerPubkey, repoName, params.entity).catch(err => {
+        const repoName = repo.repo || repo.slug || resolvedParams.repo;
+        checkBridgeExists(repo.ownerPubkey, repoName, resolvedParams.entity).catch(err => {
           console.warn("Failed to check bridge:", err);
         });
       }
@@ -1322,14 +1345,14 @@ export default function RepoCodePage({
       console.error("Failed to load Nostr event ID:", error);
       setNostrEventId(null);
     }
-  }, [params.entity, params.repo]);
+  }, [resolvedParams.entity, resolvedParams.repo]);
   
   // Reset fetchStatuses when params change (new repo or entity)
   useEffect(() => {
     setFetchStatuses([]);
     fileFetchAttemptedRef.current = "";
     fileFetchInProgressRef.current = false;
-  }, [params.entity, params.repo]);
+  }, [resolvedParams.entity, resolvedParams.repo]);
   
   // Separate useEffect for file fetching - only runs when repoData is first set and files are missing
   // Use a ref to track if we've already attempted to fetch for this repo
@@ -1338,13 +1361,13 @@ export default function RepoCodePage({
     const currentRepoData = repoDataRef.current;
     
     // This prevents 15 second delays waiting for Nostr queries
-    // We can resolve ownerPubkey from params.entity (npub) directly
+    // We can resolve ownerPubkey from resolvedParams.entity (npub) directly
     let ownerPubkeyForFetch: string | null = null;
     
-    // Try to resolve ownerPubkey immediately from params.entity (npub)
-    if (params.entity && params.entity.startsWith("npub")) {
+    // Try to resolve ownerPubkey immediately from resolvedParams.entity (npub)
+    if (resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
       try {
-        const decoded = nip19.decode(params.entity);
+        const decoded = nip19.decode(resolvedParams.entity);
         if (decoded.type === "npub" && /^[0-9a-f]{64}$/i.test(decoded.data as string)) {
           ownerPubkeyForFetch = decoded.data as string;
           console.log("✅ [File Fetch] Resolved ownerPubkey immediately from npub:", ownerPubkeyForFetch.slice(0, 8) + "...");
@@ -1366,9 +1389,9 @@ export default function RepoCodePage({
       try {
         const repos = loadStoredRepos();
         const matchingRepo = repos.find((r) => {
-          const entityMatch = r.entity === params.entity || 
-            (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
-          const repoMatch = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
+          const entityMatch = r.entity === resolvedParams.entity || 
+            (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
+          const repoMatch = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
           return entityMatch && repoMatch;
         });
         if (matchingRepo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(matchingRepo.ownerPubkey)) {
@@ -1383,7 +1406,7 @@ export default function RepoCodePage({
     if (!ownerPubkeyForFetch) {
       // CRITICAL: Log only primitives to avoid React re-render loops
       console.log("⏭️ [File Fetch] Skipping - no ownerPubkey yet", 
-        `hasResolvedOwnerPubkey=${!!resolvedOwnerPubkey}, hasOwnerPubkeyForLink=${!!ownerPubkeyForLink}, hasRepoData=${!!currentRepoData}, entity=${params.entity}`
+        `hasResolvedOwnerPubkey=${!!resolvedOwnerPubkey}, hasOwnerPubkeyForLink=${!!ownerPubkeyForLink}, hasRepoData=${!!currentRepoData}, entity=${resolvedParams.entity}`
       );
       return;
     }
@@ -1393,7 +1416,7 @@ export default function RepoCodePage({
       return;
     }
     
-    const repoKey = `${params.entity}/${params.repo}`;
+    const repoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
     const currentBranch = selectedBranch || repoData?.defaultBranch || "main";
     const repoKeyWithBranch = `${repoKey}:${currentBranch}`; // Include branch in key
     const hasAttempted = fileFetchAttemptedRef.current === repoKeyWithBranch;
@@ -1487,14 +1510,14 @@ export default function RepoCodePage({
     if (!hasSourceUrl && !hasCloneUrls && !hasFiles) {
       try {
         const repos = loadStoredRepos();
-        const matchingRepo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+        const matchingRepo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
         if (matchingRepo) {
           // Check if files exist in repo.files or separate storage
           let localFiles: RepoFileEntry[] = [];
           if (matchingRepo.files && Array.isArray(matchingRepo.files) && matchingRepo.files.length > 0) {
             localFiles = matchingRepo.files;
           } else {
-            localFiles = loadRepoFiles(params.entity, params.repo);
+            localFiles = loadRepoFiles(resolvedParams.entity, resolvedParams.repo);
           }
           
           if (localFiles.length > 0) {
@@ -1549,7 +1572,7 @@ export default function RepoCodePage({
           try {
             const repos = loadStoredRepos();
             // CRITICAL: Use findRepoByEntityAndName for consistent matching (handles npub, case-insensitive, etc.)
-            const matchingRepo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+            const matchingRepo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
             if (matchingRepo?.clone && Array.isArray(matchingRepo.clone)) {
               matchingRepo.clone.forEach((url: string) => {
                 // CRITICAL: Filter out localhost URLs - they're not real git servers
@@ -1571,7 +1594,7 @@ export default function RepoCodePage({
           try {
             const repos = loadStoredRepos();
             // CRITICAL: Use findRepoByEntityAndName for consistent matching (handles npub, case-insensitive, etc.)
-            const matchingRepo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, params.repo);
+            const matchingRepo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
             // Priority 1: Use sourceUrl or forkedFrom if available
             sourceUrl = matchingRepo?.sourceUrl || matchingRepo?.forkedFrom;
             // Priority 2: If no sourceUrl, try to find GitHub/GitLab/Codeberg clone URL (preferred)
@@ -1687,7 +1710,7 @@ export default function RepoCodePage({
         
         // If we have clone URLs, try multi-source fetch immediately (before querying Nostr)
         // CRITICAL: Check if we've already attempted this fetch to prevent multiple runs
-        const repoKey = `${params.entity}/${params.repo}`;
+        const repoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
         const currentBranch = String(initialRepoData?.defaultBranch || "main");
         const repoKeyWithBranch = `${repoKey}:${currentBranch}`;
         
@@ -1905,9 +1928,9 @@ export default function RepoCodePage({
               const updated = repos.map((r) => {
                 const matchesOwner = r.ownerPubkey && ownerPubkey && 
                   (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
-                const matchesRepo = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
-                const matchesEntity = r.entity === params.entity || 
-                  (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
+                const matchesRepo = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
+                const matchesEntity = r.entity === resolvedParams.entity || 
+                  (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
                 
                 if ((matchesOwner || matchesEntity) && matchesRepo) {
                   return { ...r, files };
@@ -1948,8 +1971,8 @@ export default function RepoCodePage({
         try {
           // Capture variables in closure for use in nested callbacks
           const setRepoDataFn = setRepoData;
-          const paramsEntity = params.entity;
-          const paramsRepo = params.repo;
+          const paramsEntity = resolvedParams.entity;
+          const paramsRepo = resolvedParams.repo;
           let foundFiles = false;
           let unsub: (() => void) | undefined;
           // Store sourceUrl and clone URLs from events for fallback use (accessible in closure)
@@ -2251,7 +2274,7 @@ export default function RepoCodePage({
                       console.log("⏭️ [File Fetch] Repo is marked as deleted/archived on Nostr, showing deleted message:", {
                         deleted: eventRepoData.deleted,
                         archived: eventRepoData.archived,
-                        repoName: params.repo,
+                        repoName: resolvedParams.repo,
                       });
                       setRepoData((prev: any) => prev ? ({ 
                         ...prev, 
@@ -2301,7 +2324,7 @@ export default function RepoCodePage({
                   return name.toLowerCase().replace(/[_-]/g, "");
                 };
                 
-                const expectedRepoNormalized = normalizeRepoName(params.repo);
+                const expectedRepoNormalized = normalizeRepoName(resolvedParams.repo);
                 const eventRepoNormalized = normalizeRepoName(eventRepoData.repositoryName);
                 
                 // Match by repository name (case-insensitive, normalized)
@@ -2310,9 +2333,9 @@ export default function RepoCodePage({
                 // Also check if repo name appears in the content JSON (for kind 51)
                 const contentMatches = event.kind === KIND_REPOSITORY && 
                   event.content && 
-                  (event.content.toLowerCase().includes(`"repositoryname":"${params.repo.toLowerCase()}"`) ||
-                   event.content.toLowerCase().includes(`"repositoryname":"${params.repo.replace(/_/g, '-').toLowerCase()}"`) ||
-                   event.content.toLowerCase().includes(`"repositoryname":"${params.repo.replace(/-/g, '_').toLowerCase()}"`));
+                  (event.content.toLowerCase().includes(`"repositoryname":"${resolvedParams.repo.toLowerCase()}"`) ||
+                   event.content.toLowerCase().includes(`"repositoryname":"${resolvedParams.repo.replace(/_/g, '-').toLowerCase()}"`) ||
+                   event.content.toLowerCase().includes(`"repositoryname":"${resolvedParams.repo.replace(/-/g, '_').toLowerCase()}"`));
                 
                 // Also check if the event pubkey matches the owner (for repos without proper repositoryName)
                 const pubkeyMatches = event.pubkey.toLowerCase() === ownerPubkey.toLowerCase();
@@ -2332,9 +2355,9 @@ export default function RepoCodePage({
                     const existingRepo = repos.find((r) => {
                       const matchesOwner = r.ownerPubkey && ownerPubkey && 
                         (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
-                      const matchesRepo = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
-                      const matchesEntity = r.entity === params.entity || 
-                        (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
+                      const matchesRepo = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
+                      const matchesEntity = r.entity === resolvedParams.entity || 
+                        (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
                       return (matchesOwner || matchesEntity) && matchesRepo;
                     });
                     
@@ -2473,9 +2496,9 @@ export default function RepoCodePage({
                       const existingRepo = repos.find((r) => {
                         const matchesOwner = r.ownerPubkey && ownerPubkey && 
                           (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
-                        const matchesRepo = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
-                        const matchesEntity = r.entity === params.entity || 
-                          (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
+                        const matchesRepo = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
+                        const matchesEntity = r.entity === resolvedParams.entity || 
+                          (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
                         return (matchesOwner || matchesEntity) && matchesRepo;
                       });
                       
@@ -2491,7 +2514,7 @@ export default function RepoCodePage({
                           });
                         } else {
                           // Try loading from separate storage
-                          const separateFiles = loadRepoFiles(params.entity, params.repo);
+                          const separateFiles = loadRepoFiles(resolvedParams.entity, resolvedParams.repo);
                           if (separateFiles.length > 0) {
                             localFiles = separateFiles;
                             useLocalFiles = true;
@@ -2611,7 +2634,7 @@ export default function RepoCodePage({
                   
                   const eventKeys = Object.keys(eventRepoData).join(',');
                   const eventContentPreview = event.content ? event.content.substring(0, 100) : "no content";
-                  console.log(`⚠️ [File Fetch] Event found but files not accepted: reason=${reason}, eventRepoName=${eventRepoData.repositoryName || 'none'}, expectedRepoName=${params.repo}, repoNameMatches=${repoNameMatches}, contentMatches=${contentMatches}, pubkeyMatches=${pubkeyMatches}, hasFiles=${!!(eventRepoData.files && Array.isArray(eventRepoData.files))}, filesLength=${eventRepoData.files?.length || 0}, eventKeys=${eventKeys}, contentPreview=${eventContentPreview}`);
+                  console.log(`⚠️ [File Fetch] Event found but files not accepted: reason=${reason}, eventRepoName=${eventRepoData.repositoryName || 'none'}, expectedRepoName=${resolvedParams.repo}, repoNameMatches=${repoNameMatches}, contentMatches=${contentMatches}, pubkeyMatches=${pubkeyMatches}, hasFiles=${!!(eventRepoData.files && Array.isArray(eventRepoData.files))}, filesLength=${eventRepoData.files?.length || 0}, eventKeys=${eventKeys}, contentPreview=${eventContentPreview}`);
                   
                   // CRITICAL: Even if event doesn't have files, we should still extract sourceUrl
                   // This is needed for the GitHub fallback when git-nostr-bridge returns 404
@@ -2709,7 +2732,7 @@ export default function RepoCodePage({
             async (events, relayURL) => {
               // CRITICAL: Prevent multiple EOSE callbacks from triggering file fetching
               // Each relay sends EOSE, but we only want to process file fetching once
-              const repoKey = `${params.entity}/${params.repo}`;
+              const repoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
               
               // Check if we've already processed EOSE for this repo (from any relay)
               // Only process the FIRST EOSE that arrives
@@ -2784,9 +2807,9 @@ export default function RepoCodePage({
                   try {
                     const repos = loadStoredRepos();
                     const matchingRepo = repos.find((r) => {
-                      const entityMatch = r.entity === params.entity || 
-                        (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
-                      const repoMatch = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
+                      const entityMatch = r.entity === resolvedParams.entity || 
+                        (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
+                      const repoMatch = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
                       const ownerMatch = r.ownerPubkey && ownerPubkey && 
                         (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
                       return (entityMatch || ownerMatch) && repoMatch;
@@ -2814,9 +2837,9 @@ export default function RepoCodePage({
                     try {
                       const repos = loadStoredRepos();
                       const matchingRepo = repos.find((r) => {
-                        const entityMatch = r.entity === params.entity || 
-                          (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
-                        const repoMatch = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
+                        const entityMatch = r.entity === resolvedParams.entity || 
+                          (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
+                        const repoMatch = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
                         const ownerMatch = r.ownerPubkey && ownerPubkey && 
                           (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
                         return (entityMatch || ownerMatch) && repoMatch;
@@ -2880,7 +2903,7 @@ export default function RepoCodePage({
                   
                   // If we have clone URLs, try multi-source fetching (NIP-34)
                   // CRITICAL: Check if we've already attempted this fetch to prevent multiple runs
-                  const repoKey = `${params.entity}/${params.repo}`;
+                  const repoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
                   const currentBranch = String(currentData?.defaultBranch || "main");
                   const repoKeyWithBranch = `${repoKey}:${currentBranch}`;
                   
@@ -3089,9 +3112,9 @@ export default function RepoCodePage({
                         const updated = repos.map((r) => {
                           const matchesOwner = r.ownerPubkey && ownerPubkey && 
                             (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
-                          const matchesRepo = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
-                          const matchesEntity = r.entity === params.entity || 
-                            (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
+                          const matchesRepo = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
+                          const matchesEntity = r.entity === resolvedParams.entity || 
+                            (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
                           
                           if ((matchesOwner || matchesEntity) && matchesRepo) {
                             return { ...r, files };
@@ -3111,7 +3134,7 @@ export default function RepoCodePage({
                       
                       fileFetchInProgressRef.current = false;
                       // CRITICAL: Mark as attempted to prevent re-fetching (files are now loaded)
-                      const currentRepoKey = `${params.entity}/${params.repo}`;
+                      const currentRepoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
                       const currentBranch = String(currentData?.defaultBranch || "main");
                       fileFetchAttemptedRef.current = `${currentRepoKey}:${currentBranch}`;
                       if (unsub) unsub();
@@ -3174,9 +3197,9 @@ export default function RepoCodePage({
               try {
                 const repos = loadStoredRepos();
                 const matchingRepo = repos.find((r) => {
-                  const entityMatch = r.entity === params.entity || 
-                    (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
-                  const repoMatch = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
+                  const entityMatch = r.entity === resolvedParams.entity || 
+                    (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
+                  const repoMatch = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
                   const ownerMatch = r.ownerPubkey && ownerPubkey && 
                     (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
                   return (entityMatch || ownerMatch) && repoMatch;
@@ -3374,9 +3397,9 @@ export default function RepoCodePage({
                     const updated = repos.map((r) => {
                       const matchesOwner = r.ownerPubkey && ownerPubkey && 
                         (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
-                      const matchesRepo = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
-                      const matchesEntity = r.entity === params.entity || 
-                        (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
+                      const matchesRepo = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
+                      const matchesEntity = r.entity === resolvedParams.entity || 
+                        (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
                       
                       if ((matchesOwner || matchesEntity) && matchesRepo) {
                         return { 
@@ -3496,7 +3519,7 @@ export default function RepoCodePage({
                   
                   // CRITICAL: Store files separately to avoid localStorage quota issues
                   try {
-                    saveRepoFiles(params.entity, params.repo, data.files as RepoFileEntry[]);
+                    saveRepoFiles(resolvedParams.entity, resolvedParams.repo, data.files as RepoFileEntry[]);
                     console.log(`✅ [File Fetch] Saved ${data.files.length} files to separate storage key`);
                   } catch (e: any) {
                     if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
@@ -3513,9 +3536,9 @@ export default function RepoCodePage({
                     const updated = repos.map((r) => {
                       const matchesOwner = r.ownerPubkey && ownerPubkey && 
                         (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
-                      const matchesRepo = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
-                      const matchesEntity = r.entity === params.entity || 
-                        (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
+                      const matchesRepo = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
+                      const matchesEntity = r.entity === resolvedParams.entity || 
+                        (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
                       
                       if ((matchesOwner || matchesEntity) && matchesRepo) {
                         console.log("💾 [File Fetch] Updating repo in localStorage:", { 
@@ -3566,7 +3589,7 @@ export default function RepoCodePage({
                   let sourceUrlFromStorage: string | undefined;
                   try {
                     // Method 1: Per-repo storage
-                    const storageKey = `gittr_repo_${ownerPubkey}_${params.repo}`;
+                    const storageKey = `gittr_repo_${ownerPubkey}_${resolvedParams.repo}`;
                     const stored = localStorage.getItem(storageKey);
                     if (stored) {
                       const parsed = JSON.parse(stored);
@@ -3577,7 +3600,7 @@ export default function RepoCodePage({
                     if (!sourceUrlFromStorage) {
                       const repos = loadStoredRepos();
                       // CRITICAL: Use findRepoByEntityAndName for consistent matching (handles npub, case-insensitive, etc.)
-                      const matchingRepo = findRepoByEntityAndName(repos, params.entity, params.repo);
+                      const matchingRepo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
                       if (matchingRepo) {
                         sourceUrlFromStorage = matchingRepo.sourceUrl || matchingRepo.forkedFrom;
                       }
@@ -3592,7 +3615,7 @@ export default function RepoCodePage({
                     try {
                       const repos = loadStoredRepos();
                       // CRITICAL: Use findRepoByEntityAndName for consistent matching (handles npub, case-insensitive, etc.)
-                      const matchingRepo = findRepoByEntityAndName(repos, params.entity, params.repo);
+                      const matchingRepo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
                       if (matchingRepo?.clone && Array.isArray(matchingRepo.clone) && matchingRepo.clone.length > 0) {
                         sourceUrlFromStorage = matchingRepo.clone[0];
                         console.log("✅ [File Fetch] Using clone URL as sourceUrl (before final check):", sourceUrlFromStorage);
@@ -3617,8 +3640,8 @@ export default function RepoCodePage({
                     currentDataFull: currentData ? JSON.stringify(currentData, null, 2).substring(0, 2000) : null,
                     finalSourceUrl: sourceUrl,
                     ownerPubkey: ownerPubkey.slice(0, 8),
-                    repoName: params.repo,
-                    entity: params.entity,
+                    repoName: resolvedParams.repo,
+                    entity: resolvedParams.entity,
                   });
                   
                   // CRITICAL: Also check localStorage directly with console.log to see what's actually there
@@ -3626,7 +3649,7 @@ export default function RepoCodePage({
                     const repos = loadStoredRepos();
                     console.log("🔍 [File Fetch] ALL repos in localStorage:", repos.length);
                     // CRITICAL: Use findRepoByEntityAndName for consistent matching (handles npub, case-insensitive, etc.)
-                    const matchingRepo = findRepoByEntityAndName(repos, params.entity, params.repo);
+                    const matchingRepo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
                     if (matchingRepo) {
                       console.log("🔍 [File Fetch] Matching repo found:", {
                         repo: matchingRepo.repo || matchingRepo.slug || matchingRepo.name,
@@ -3700,9 +3723,9 @@ export default function RepoCodePage({
                   try {
                     const repos = loadStoredRepos();
                     const matchingRepo = repos.find((r) => {
-                      const entityMatch = r.entity === params.entity || 
-                        (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
-                      const repoMatch = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
+                      const entityMatch = r.entity === resolvedParams.entity || 
+                        (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
+                      const repoMatch = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
                       const ownerMatch = r.ownerPubkey && ownerPubkey && 
                         (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
                       return (entityMatch || ownerMatch) && repoMatch;
@@ -3809,9 +3832,9 @@ export default function RepoCodePage({
                         const updated = repos.map((r) => {
                           const matchesOwner = r.ownerPubkey && ownerPubkey && 
                             (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
-                          const matchesRepo = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
-                          const matchesEntity = r.entity === params.entity || 
-                            (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
+                          const matchesRepo = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
+                          const matchesEntity = r.entity === resolvedParams.entity || 
+                            (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
                           
                           if ((matchesOwner || matchesEntity) && matchesRepo) {
                             return { ...r, files };
@@ -3889,9 +3912,9 @@ export default function RepoCodePage({
                       const repos = loadStoredRepos();
                       const matchingRepo = repos.find((r) => {
                         // Match by entity (npub format) and repo name
-                        const entityMatch = r.entity === params.entity || 
-                          (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
-                        const repoMatch = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
+                        const entityMatch = r.entity === resolvedParams.entity || 
+                          (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
+                        const repoMatch = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
                         // Also match by ownerPubkey if available
                         const ownerMatch = r.ownerPubkey && ownerPubkey && 
                           (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
@@ -4035,7 +4058,7 @@ export default function RepoCodePage({
                                             try {
                                               const urlParts = effectiveSourceUrl.replace(/^https?:\/\//, '').split('/');
                                               const owner = urlParts[1];
-                                              const repoName = urlParts[2]?.replace(/\.git$/, '') || params.repo;
+                                              const repoName = urlParts[2]?.replace(/\.git$/, '') || resolvedParams.repo;
                                               // Use finalBranch (the branch we actually fetched from) instead of the original branch
                                               const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(finalBranch || branch)}/${readmeFile.path}`;
                                               const rawResponse = await fetch(rawUrl);
@@ -4064,9 +4087,9 @@ export default function RepoCodePage({
                                     const updated = repos.map((r) => {
                                       const matchesOwner = r.ownerPubkey && ownerPubkey && 
                                         (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
-                                      const matchesRepo = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
-                                      const matchesEntity = r.entity === params.entity || 
-                                        (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
+                                      const matchesRepo = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
+                                      const matchesEntity = r.entity === resolvedParams.entity || 
+                                        (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
                                       
                                       if ((matchesOwner || matchesEntity) && matchesRepo) {
                                         return { ...r, files: allFiles, readme: readmeContent || r.readme };
@@ -4237,9 +4260,9 @@ export default function RepoCodePage({
                               const matchingRepo = repos.find((r) => {
                                 const matchesOwner = r.ownerPubkey && ownerPubkey && 
                                   (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
-                                const matchesRepo = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
-                                const matchesEntity = r.entity === params.entity || 
-                                  (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
+                                const matchesRepo = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
+                                const matchesEntity = r.entity === resolvedParams.entity || 
+                                  (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
                                 return (matchesOwner || matchesEntity) && matchesRepo;
                               });
                               if (matchingRepo) {
@@ -4265,9 +4288,9 @@ export default function RepoCodePage({
                               const updated = repos.map((r) => {
                                 const matchesOwner = r.ownerPubkey && ownerPubkey && 
                                   (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
-                                const matchesRepo = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
-                                const matchesEntity = r.entity === params.entity || 
-                                  (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
+                                const matchesRepo = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
+                                const matchesEntity = r.entity === resolvedParams.entity || 
+                                  (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
                                 
                                 if ((matchesOwner || matchesEntity) && matchesRepo) {
                                   return { ...r, files: allFiles };
@@ -4386,9 +4409,9 @@ export default function RepoCodePage({
                               const matchingRepo = repos.find((r) => {
                                 const matchesOwner = r.ownerPubkey && ownerPubkey && 
                                   (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
-                                const matchesRepo = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
-                                const matchesEntity = r.entity === params.entity || 
-                                  (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
+                                const matchesRepo = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
+                                const matchesEntity = r.entity === resolvedParams.entity || 
+                                  (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
                                 return (matchesOwner || matchesEntity) && matchesRepo;
                               });
                               if (matchingRepo) {
@@ -4439,9 +4462,9 @@ export default function RepoCodePage({
                               const updated = repos.map((r) => {
                                 const matchesOwner = r.ownerPubkey && ownerPubkey && 
                                   (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
-                                const matchesRepo = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
-                                const matchesEntity = r.entity === params.entity || 
-                                  (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
+                                const matchesRepo = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
+                                const matchesEntity = r.entity === resolvedParams.entity || 
+                                  (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
                                 
                                 if ((matchesOwner || matchesEntity) && matchesRepo) {
                                   return { ...r, files: allFiles, readme: readmeContent || r.readme };
@@ -4499,7 +4522,7 @@ export default function RepoCodePage({
     return () => {
       fileFetchInProgressRef.current = false;
     };
-  }, [params.entity, params.repo, resolvedOwnerPubkey, ownerPubkeyForLink, subscribe, defaultRelays, selectedBranch]); // Include selectedBranch so it re-runs when branch changes
+  }, [resolvedParams.entity, resolvedParams.repo, resolvedOwnerPubkey, ownerPubkeyForLink, subscribe, defaultRelays, selectedBranch]); // Include selectedBranch so it re-runs when branch changes
 
   // Extract URL params with state to prevent infinite loops
   const [urlParams, setUrlParams] = useState<{branch: string | null; file: string | null; path: string | null}>({branch: null, file: null, path: null});
@@ -4642,7 +4665,7 @@ export default function RepoCodePage({
       try {
         if (!repoData) return;
         const repos = loadStoredRepos();
-        const record = findRepoByEntityAndName(repos, params.entity, params.repo);
+        const record = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
         
         // Priority 1: Stored logoUrl (check if it exists in the record, even if not in interface)
         const stored = (record as StoredRepo & { logoUrl?: string })?.logoUrl;
@@ -4800,7 +4823,7 @@ export default function RepoCodePage({
           // Get owner pubkey for bridge API
           const ownerPubkeyForBridge = ownerPubkeysForMetadata.length > 0 ? ownerPubkeysForMetadata[0] : 
                                      (record?.ownerPubkey && /^[0-9a-f]{64}$/i.test(record.ownerPubkey) ? record.ownerPubkey : 
-                                     (params.entity && params.entity.length === 64 && /^[0-9a-f]{64}$/i.test(params.entity) ? params.entity : undefined));
+                                     (resolvedParams.entity && resolvedParams.entity.length === 64 && /^[0-9a-f]{64}$/i.test(resolvedParams.entity) ? resolvedParams.entity : undefined));
           
           // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
           // Priority: record.repositoryName > repoData.repositoryName > name > repo > slug
@@ -4885,7 +4908,7 @@ export default function RepoCodePage({
         // This ensures we have the full 64-char pubkey for metadata lookup
         const ownerPubkey = ownerPubkeysForMetadata.length > 0 ? ownerPubkeysForMetadata[0] : 
                            (record?.ownerPubkey && /^[0-9a-f]{64}$/i.test(record.ownerPubkey) ? record.ownerPubkey : 
-                           (params.entity && params.entity.length === 64 && /^[0-9a-f]{64}$/i.test(params.entity) ? params.entity : undefined));
+                           (resolvedParams.entity && resolvedParams.entity.length === 64 && /^[0-9a-f]{64}$/i.test(resolvedParams.entity) ? resolvedParams.entity : undefined));
         // CRITICAL: Only use full pubkey for metadata, not 8-char prefix
         // Use ref to access latest metadata without causing dependency loop
         const metadata = ownerPubkey ? ownerMetadataRef.current[ownerPubkey] : undefined;
@@ -4905,7 +4928,7 @@ export default function RepoCodePage({
     }
     resolveLogo();
     return () => { cancelled = true; };
-  }, [repoData, params.entity, params.repo, ownerPubkeysForMetadata.length]); // Use length only to prevent loops - join creates new string each render
+  }, [repoData, resolvedParams.entity, resolvedParams.repo, ownerPubkeysForMetadata.length]); // Use length only to prevent loops - join creates new string each render
 
   const pathParts = useMemo(() => currentPath.split("/").filter(Boolean), [currentPath]);
   const items = useMemo(() => {
@@ -5012,7 +5035,7 @@ export default function RepoCodePage({
       // Persist to localStorage and update state
       const repos = loadStoredRepos();
       const idx = repos.findIndex((r) => {
-        const found = findRepoByEntityAndName([r], params.entity, params.repo);
+        const found = findRepoByEntityAndName([r], resolvedParams.entity, resolvedParams.repo);
         return found !== undefined;
       });
       if (idx >= 0 && repos[idx]) {
@@ -5025,18 +5048,18 @@ export default function RepoCodePage({
       setRepoData(prev => prev ? ({ ...prev, languages: counts }) : prev);
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.entity, params.repo]); // Remove repoData from dependencies - use ref instead
+  }, [resolvedParams.entity, resolvedParams.repo]); // Remove repoData from dependencies - use ref instead
 
   // Compute live counts from localStorage and repo record
   const computeLiveCounts = useCallback(() => {
     try {
-      const repoId = `${params.entity}/${params.repo}`;
+      const repoId = `${resolvedParams.entity}/${resolvedParams.repo}`;
       const repos = loadStoredRepos() as any[];
       const rec = repos.find(r => {
         const slug = r.slug || "";
         const entity = r.entity || "";
         const repoName = r.repo || slug;
-        return (entity === params.entity && repoName === params.repo) || slug === repoId;
+        return (entity === resolvedParams.entity && repoName === resolvedParams.repo) || slug === repoId;
       });
       setLiveStarCount(rec?.stars || 0);
       setLiveForkCount(rec?.forks || 0);
@@ -5044,7 +5067,7 @@ export default function RepoCodePage({
       const watched = watchedRaw ? (JSON.parse(watchedRaw) as string[]) : [];
       setLiveWatchCount(watched.includes(repoId) ? 1 : 0);
     } catch {}
-  }, [params.entity, params.repo]);
+  }, [resolvedParams.entity, resolvedParams.repo]);
 
   // DISABLED: Storage event listener was causing render loops
   // The storage listener triggers when localStorage is updated, which happens in the main useEffect
@@ -5062,7 +5085,7 @@ export default function RepoCodePage({
   //     window.removeEventListener("storage", handleStorageChange);
   //     window.removeEventListener("gittr:repo-updated", handleStorageChange);
   //   };
-  // }, [params.entity, params.repo]);
+  // }, [resolvedParams.entity, resolvedParams.repo]);
   
   useEffect(() => {
     computeLiveCounts();
@@ -5077,7 +5100,7 @@ export default function RepoCodePage({
       const currentOwnerPubkey = resolvedOwnerPubkey || ownerPubkeyForLink;
       const matchesOwner = currentOwnerPubkey && clonedOwnerPubkey && 
         (currentOwnerPubkey.toLowerCase() === clonedOwnerPubkey.toLowerCase());
-      const matchesRepo = clonedRepo === params.repo;
+      const matchesRepo = clonedRepo === resolvedParams.repo;
       
       if (matchesOwner && matchesRepo && files && Array.isArray(files) && files.length > 0) {
         console.log(`✅ [File Fetch] Received files from GRASP clone completion event: ${files.length} files`);
@@ -5089,9 +5112,9 @@ export default function RepoCodePage({
           const updated = repos.map((r: any) => {
             const matchesOwner = r.ownerPubkey && currentOwnerPubkey && 
               (r.ownerPubkey === currentOwnerPubkey || r.ownerPubkey.toLowerCase() === currentOwnerPubkey.toLowerCase());
-            const matchesRepo = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
-            const matchesEntity = r.entity === params.entity || 
-              (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
+            const matchesRepo = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
+            const matchesEntity = r.entity === resolvedParams.entity || 
+              (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
             
             if ((matchesOwner || matchesEntity) && matchesRepo) {
               return { ...r, files };
@@ -5111,7 +5134,7 @@ export default function RepoCodePage({
       window.removeEventListener("gittr:repos-updated", onUpdate as EventListener);
       window.removeEventListener("grasp-repo-cloned", handleGraspRepoCloned as EventListener);
     };
-  }, [computeLiveCounts, resolvedOwnerPubkey, ownerPubkeyForLink, params.entity, params.repo]);
+  }, [computeLiveCounts, resolvedOwnerPubkey, ownerPubkeyForLink, resolvedParams.entity, resolvedParams.repo]);
 
   // Keyboard shortcut handler for fuzzy file finder (cmd/ctrl-p)
   useEffect(() => {
@@ -5144,7 +5167,7 @@ export default function RepoCodePage({
       const u = new URL(repoData.sourceUrl);
       const parts = u.pathname.split("/").filter(Boolean);
       const owner = parts[0];
-      const repo = (parts[1] || params.repo).replace(/\.git$/, "");
+      const repo = (parts[1] || resolvedParams.repo).replace(/\.git$/, "");
       const branch = selectedBranch || repoData?.defaultBranch || "main";
       return `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/${path}`;
     } catch {
@@ -5272,9 +5295,9 @@ export default function RepoCodePage({
       try {
         const repos = loadStoredRepos();
         const matchingRepo = repos.find((r) => {
-          const entityMatch = r.entity === params.entity || 
-            (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
-          const repoMatch = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
+          const entityMatch = r.entity === resolvedParams.entity || 
+            (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
+          const repoMatch = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
           return entityMatch && repoMatch;
         });
         if (matchingRepo && matchingRepo.ownerPubkey) {
@@ -5288,11 +5311,11 @@ export default function RepoCodePage({
       }
     }
     
-    // If still not found, decode npub from params.entity
+    // If still not found, decode npub from resolvedParams.entity
     if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-      if (params.entity && params.entity.startsWith("npub")) {
+      if (resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
         try {
-          const decoded = nip19.decode(params.entity);
+          const decoded = nip19.decode(resolvedParams.entity);
           if (decoded.type === "npub" && /^[0-9a-f]{64}$/i.test(decoded.data as string)) {
             ownerPubkey = decoded.data as string;
             console.log(`✅ [fetchGithubRaw] Decoded ownerPubkey from npub: ${ownerPubkey.slice(0, 8)}...`);
@@ -5305,7 +5328,7 @@ export default function RepoCodePage({
     
     // Final fallback: use resolveEntityToPubkey utility
     if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-      const resolved = resolveEntityToPubkey(params.entity, repoData);
+      const resolved = resolveEntityToPubkey(resolvedParams.entity, repoData);
       if (resolved && /^[0-9a-f]{64}$/i.test(resolved)) {
         ownerPubkey = resolved;
         console.log(`⚠️ [fetchGithubRaw] Using resolveEntityToPubkey fallback: ${ownerPubkey.slice(0, 8)}...`);
@@ -5481,9 +5504,9 @@ export default function RepoCodePage({
         try {
           const repos = loadStoredRepos();
           const matchingRepo = repos.find((r: any) => {
-            const entityMatch = r.entity === params.entity || 
-              (r.entity && params.entity && r.entity.toLowerCase() === params.entity.toLowerCase());
-            const repoMatch = r.repo === params.repo || r.slug === params.repo || r.name === params.repo;
+            const entityMatch = r.entity === resolvedParams.entity || 
+              (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
+            const repoMatch = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
             return entityMatch && repoMatch;
           });
           if (matchingRepo) {
@@ -5774,7 +5797,7 @@ export default function RepoCodePage({
     const normalizedPath = normalizePath(path);
     
     // Use override if present - check both localStorage directly and state
-    const keyBase = `${params.entity}__${params.repo}`;
+    const keyBase = `${resolvedParams.entity}__${resolvedParams.repo}`;
     // Check localStorage directly to ensure we have the latest
     const savedOverrides = JSON.parse(
       localStorage.getItem(`gittr_overrides__${keyBase}`) || 
@@ -5884,14 +5907,14 @@ export default function RepoCodePage({
     if (!selectedFile) return;
     if (!confirm(`Delete ${selectedFile}? This will apply locally.`)) return;
     try {
-      const keyBase = `${params.entity}__${params.repo}`;
+      const keyBase = `${resolvedParams.entity}__${resolvedParams.repo}`;
       const nextDeleted = deletedPaths.includes(selectedFile) ? deletedPaths : [...deletedPaths, selectedFile];
       setDeletedPaths(nextDeleted);
       localStorage.setItem(`gittr_repo_deleted__${keyBase}`, JSON.stringify(nextDeleted));
       
       // CRITICAL: Mark repo as having unpushed edits so push button appears
       // This ensures the "Push to Nostr" button is shown after deleting files
-      markRepoAsEdited(params.repo, params.entity);
+      markRepoAsEdited(resolvedParams.repo, resolvedParams.entity);
       console.log(`🗑️ [Delete File] Marked repo as having unpushed edits after deleting: ${selectedFile}`);
       
       setSelectedFile(null);
@@ -5901,7 +5924,7 @@ export default function RepoCodePage({
     } catch (e) {
       console.error("Failed to delete file:", e);
     }
-  }, [selectedFile, deletedPaths, params.entity, params.repo]);
+  }, [selectedFile, deletedPaths, resolvedParams.entity, resolvedParams.repo]);
 
   // Memoize BranchTagSwitcher callbacks to prevent infinite loops
   const handleBranchSelect = useCallback((branch: string) => {
@@ -5913,7 +5936,7 @@ export default function RepoCodePage({
     setFileContent("");
     const repos = loadStoredRepos();
     const repo = repos.find((r: any) => 
-      r.entity === params.entity && (r.repo === params.repo || r.slug === params.repo)
+      r.entity === resolvedParams.entity && (r.repo === resolvedParams.repo || r.slug === resolvedParams.repo)
     );
     if (repo) {
       setRepoData(prev => prev ? { ...prev, defaultBranch: branch } : prev);
@@ -5921,14 +5944,14 @@ export default function RepoCodePage({
     
     // CRITICAL: Trigger file refetch for the new branch
     // Clear the file fetch attempt ref so files are refetched
-    const repoKey = `${params.entity}/${params.repo}`;
+    const repoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
     fileFetchAttemptedRef.current = ""; // Clear so useEffect will refetch
     fileFetchInProgressRef.current = false; // Allow new fetch
     
     // Force a re-render to trigger file fetch useEffect
     // The useEffect will see the branch change and refetch files
     console.log("🔄 [Branch Switch] Cleared file fetch state, will refetch files for branch:", branch);
-  }, [params.entity, params.repo, updateURL]);
+  }, [resolvedParams.entity, resolvedParams.repo, updateURL]);
 
   const handleTagSelect = useCallback((tag: string) => {
     console.log("Switching to tag:", tag);
@@ -5938,7 +5961,7 @@ export default function RepoCodePage({
     try {
       const repos = loadStoredRepos();
       const idx = repos.findIndex((r) => {
-        const found = findRepoByEntityAndName([r], params.entity, params.repo);
+        const found = findRepoByEntityAndName([r], resolvedParams.entity, resolvedParams.repo);
         return found !== undefined;
       });
       if (idx >= 0 && repos[idx]) {
@@ -5960,7 +5983,7 @@ export default function RepoCodePage({
     } catch (error) {
       console.error("Failed to create branch:", error);
     }
-  }, [params.entity, params.repo, updateURL]);
+  }, [resolvedParams.entity, resolvedParams.repo, updateURL]);
   
   const fileType = selectedFile ? getFileType(selectedFile) : null;
   // Check if fileContent is a URL (http/https) or data URL (data:)
@@ -6204,21 +6227,21 @@ export default function RepoCodePage({
                                 // Open SSH/Git help modal
                                 const repos = loadStoredRepos();
                                 const repo = repos.find((r: any) => 
-                                  r.entity === params.entity && (r.repo === params.repo || r.slug === params.repo)
+                                  r.entity === resolvedParams.entity && (r.repo === resolvedParams.repo || r.slug === resolvedParams.repo)
                                 );
                                 const gitSshBase = (repo as StoredRepo & { gitSshBase?: string })?.gitSshBase || process.env.NEXT_PUBLIC_GIT_SSH_BASE || 
                                   (typeof window !== 'undefined' ? window.location.hostname : '');
                                 if (!gitSshBase) {
                                   console.error("NEXT_PUBLIC_GIT_SSH_BASE is not configured in environment variables");
                                 }
-                                const sshUrl = `git@${gitSshBase}:${params.entity}/${params.repo}.git`;
+                                const sshUrl = `git@${gitSshBase}:${resolvedParams.entity}/${resolvedParams.repo}.git`;
                                 const cloneUrls = (repoData as any)?.clone || [];
                                 const httpsUrls = cloneUrls.filter((url: string) => typeof url === "string" && (url.startsWith("http://") || url.startsWith("https://")));
                                 const nostrUrls = cloneUrls.filter((url: string) => typeof url === "string" && url.startsWith("nostr://"));
                                 
                                 // Set state to show modal (render outside dropdown)
                                 setShowSshGitHelp(true);
-                                setSshGitHelpData({ entity: params.entity, repo: params.repo, sshUrl, httpsUrls, nostrUrls });
+                                setSshGitHelpData({ entity: resolvedParams.entity, repo: resolvedParams.repo, sshUrl, httpsUrls, nostrUrls });
                               }}
                             >
                               <HelpCircle className="mr-2 h-4 w-4" />
@@ -6252,7 +6275,7 @@ export default function RepoCodePage({
                                         // Base URL - check if it's a GRASP server and construct full path
                                         const { isGraspServer } = require("@/lib/utils/grasp-servers");
                                         if (isGraspServer(cloneUrl)) {
-                                          cloneUrl = `${cloneUrl}/${ownerPubkeyForLink}/${params.repo}.git`;
+                                          cloneUrl = `${cloneUrl}/${ownerPubkeyForLink}/${resolvedParams.repo}.git`;
                                 } else {
                                           // Not a GRASP server, just add .git if missing
                                           if (!cloneUrl.endsWith('.git')) {
@@ -6284,7 +6307,7 @@ export default function RepoCodePage({
                                 
                                 // Priority 3: Fallback to localhost (for local development)
                                 if (!cloneUrl) {
-                                  cloneUrl = `${window.location.origin}/${params.entity}/${params.repo}.git`;
+                                  cloneUrl = `${window.location.origin}/${resolvedParams.entity}/${resolvedParams.repo}.git`;
                                 }
                                 
                                   await navigator.clipboard.writeText(`git clone ${cloneUrl}`);
@@ -6305,37 +6328,37 @@ export default function RepoCodePage({
                               // Try to get gitSshBase from repo data (from Nostr event)
                               const repos = loadStoredRepos();
                               const repo = repos.find((r: any) => 
-                                r.entity === params.entity && (r.repo === params.repo || r.slug === params.repo)
+                                r.entity === resolvedParams.entity && (r.repo === resolvedParams.repo || r.slug === resolvedParams.repo)
                               );
                               
                               const gitSshBase = (repo as StoredRepo & { gitSshBase?: string })?.gitSshBase || process.env.NEXT_PUBLIC_GIT_SSH_BASE || "gittr.space";
                               
-                              // CRITICAL: Use ownerPubkeyForLink (full pubkey) instead of params.entity (might be npub)
+                              // CRITICAL: Use ownerPubkeyForLink (full pubkey) instead of resolvedParams.entity (might be npub)
                               let ownerPubkey: string;
                               if (ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink)) {
                                 ownerPubkey = ownerPubkeyForLink;
                               } else if (repo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)) {
                                 ownerPubkey = repo.ownerPubkey;
-                              } else if (params.entity && params.entity.length === 64 && /^[0-9a-f]{64}$/i.test(params.entity)) {
-                                ownerPubkey = params.entity;
-                              } else if (params.entity && params.entity.startsWith("npub")) {
+                              } else if (resolvedParams.entity && resolvedParams.entity.length === 64 && /^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
+                                ownerPubkey = resolvedParams.entity;
+                              } else if (resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
                                 // Decode npub to pubkey
                                 try {
-                                  const decoded = nip19.decode(params.entity);
+                                  const decoded = nip19.decode(resolvedParams.entity);
                                   if (decoded.type === "npub") {
                                     ownerPubkey = decoded.data as string;
                                   } else {
-                                    ownerPubkey = params.entity; // Fallback
+                                    ownerPubkey = resolvedParams.entity; // Fallback
                                   }
                                 } catch {
-                                  ownerPubkey = params.entity; // Fallback
+                                  ownerPubkey = resolvedParams.entity; // Fallback
                                 }
                               } else {
-                                ownerPubkey = params.entity; // Fallback (might be 8-char prefix, but better than nothing)
+                                ownerPubkey = resolvedParams.entity; // Fallback (might be 8-char prefix, but better than nothing)
                               }
                               
                               // Construct SSH URL: git@gitSshBase:ownerPubkey/repoName.git
-                              sshUrl = `git@${gitSshBase}:${ownerPubkey}/${params.repo}.git`;
+                              sshUrl = `git@${gitSshBase}:${ownerPubkey}/${resolvedParams.repo}.git`;
                               
                               try {
                                 await navigator.clipboard.writeText(`git clone ${sshUrl}`);
@@ -6397,7 +6420,7 @@ export default function RepoCodePage({
                                     const u = new URL(repoData.sourceUrl);
                                     const parts = u.pathname.replace(/\.git$/, "").split("/").filter(Boolean);
                                     const owner = parts[0];
-                                    const repoName = parts[1] || params.repo;
+                                    const repoName = parts[1] || resolvedParams.repo;
                                     const branch = repoData?.defaultBranch || "main";
                                     const zipUrl = `https://github.com/${owner}/${repoName}/archive/refs/heads/${branch}.zip`;
                                     window.open(zipUrl, "_blank");
@@ -6488,8 +6511,8 @@ export default function RepoCodePage({
                 <span className="inline-block h-5 w-5 rounded-sm bg-[#22262C]" />
               )}
               <a 
-                href={ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${params.entity}`}
-                onClick={(e) => { e.preventDefault(); window.location.href = ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${params.entity}`; }}
+                href={ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${resolvedParams.entity}`}
+                onClick={(e) => { e.preventDefault(); window.location.href = ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${resolvedParams.entity}`; }}
                 className="text-purple-500 hover:underline font-semibold"
               >
                 {(() => {
@@ -6504,7 +6527,7 @@ export default function RepoCodePage({
                   const currentMetadata = ownerMetadataRef.current;
                   
                   // Use getEntityDisplayName for consistent username resolution
-                  return getEntityDisplayName(ownerPubkey ?? null, currentMetadata, params.entity ?? null);
+                  return getEntityDisplayName(ownerPubkey ?? null, currentMetadata, resolvedParams.entity ?? null);
                 })()}
               </a>
               <span className="text-gray-500">/</span>
@@ -6557,24 +6580,24 @@ export default function RepoCodePage({
                         displayName = ownerMeta?.display_name || ownerMeta?.name || "";
                         if (!displayName || displayName.trim().length === 0 || displayName === "Anonymous Nostrich") {
                           // Fallback to shortened npub format
-                          if (params.entity && params.entity.startsWith("npub")) {
-                            displayName = params.entity.substring(0, 16) + "...";
+                          if (resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
+                            displayName = resolvedParams.entity.substring(0, 16) + "...";
                           } else {
-                            displayName = params.entity || "U";
+                            displayName = resolvedParams.entity || "U";
                           }
                         }
                       } else {
                         // On server/initial render, use consistent fallback
-                        if (params.entity && params.entity.startsWith("npub")) {
-                          displayName = params.entity.substring(0, 16) + "...";
+                        if (resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
+                          displayName = resolvedParams.entity.substring(0, 16) + "...";
                         } else {
-                          displayName = params.entity || "U";
+                          displayName = resolvedParams.entity || "U";
                         }
                       }
                   const ownerNpub = mounted && ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) 
                     ? nip19.npubEncode(ownerPubkeyForLink) 
                     : null;
-                  const profileUrl = ownerNpub ? `/${ownerNpub}` : `/${params.entity}`;
+                  const profileUrl = ownerNpub ? `/${ownerNpub}` : `/${resolvedParams.entity}`;
                   // Use safe initial tooltip content to prevent hydration mismatch
                   const tooltipContent = mounted ? [
                     displayName,
@@ -6618,8 +6641,8 @@ export default function RepoCodePage({
                 {repoData?.forkedFrom ? (
               <>
                     <a 
-                      href={ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${params.entity}`}
-                      onClick={(e) => { e.preventDefault(); window.location.href = ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${params.entity}`; }}
+                      href={ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${resolvedParams.entity}`}
+                      onClick={(e) => { e.preventDefault(); window.location.href = ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${resolvedParams.entity}`; }}
                       className="text-purple-500 hover:underline font-semibold"
                     >
                       {(() => {
@@ -6630,7 +6653,7 @@ export default function RepoCodePage({
                         const ownerMeta = ownerPubkeyForLink && ownerPubkeyForLink.length === 64 
                           ? currentMetadata[ownerPubkeyForLink] 
                           : undefined;
-                        return ownerMeta?.display_name || ownerMeta?.name || params.entity;
+                        return ownerMeta?.display_name || ownerMeta?.name || resolvedParams.entity;
                       })()}
                   </a>
                     <span className="text-gray-400 whitespace-nowrap">forked</span>
@@ -6645,15 +6668,15 @@ export default function RepoCodePage({
                   </>
                 ) : (
                   <a 
-                    href={ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${params.entity}`}
-                    onClick={(e) => { e.preventDefault(); window.location.href = ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${params.entity}`; }}
+                    href={ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${resolvedParams.entity}`}
+                    onClick={(e) => { e.preventDefault(); window.location.href = ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${resolvedParams.entity}`; }}
                     className="text-purple-500 hover:underline font-semibold"
                   >
                     {(() => {
                       // CRITICAL: Use ref to access metadata without causing re-renders that block clicks
                       const currentMetadata = ownerMetadataRef.current;
                       // Use getEntityDisplayName for consistent username resolution
-                      return getEntityDisplayName(ownerPubkeyForLink, currentMetadata, params.entity);
+                      return getEntityDisplayName(ownerPubkeyForLink, currentMetadata, resolvedParams.entity);
                     })()}
                   </a>
                 )}
@@ -7359,8 +7382,8 @@ export default function RepoCodePage({
                         return fileContent;
                       })()}
                       filePath={selectedFile}
-                      entity={params.entity}
-                      repo={params.repo}
+                      entity={resolvedParams.entity}
+                      repo={resolvedParams.repo}
                       branch={selectedBranch}
                     />
                   )
@@ -7529,8 +7552,8 @@ export default function RepoCodePage({
                         return fileContent;
                       })()}
                       filePath={selectedFile}
-                      entity={params.entity}
-                      repo={params.repo}
+                      entity={resolvedParams.entity}
+                      repo={resolvedParams.repo}
                       branch={selectedBranch}
                     />
                   )
@@ -7539,8 +7562,8 @@ export default function RepoCodePage({
                   <CodeViewer 
                     content={fileContent}
                     filePath={selectedFile}
-                    entity={params.entity}
-                    repo={params.repo}
+                    entity={resolvedParams.entity}
+                    repo={resolvedParams.repo}
                     branch={selectedBranch}
                   />
                 ) : isBinaryUrl ? (
@@ -7609,8 +7632,8 @@ export default function RepoCodePage({
                                   // This allows owners to create PRs with multiple files instead of auto-committing
                                   const { addPendingEdit } = await import("@/lib/pending-changes");
                                   addPendingEdit(
-                                    params.entity,
-                                    params.repo,
+                                    resolvedParams.entity,
+                                    resolvedParams.repo,
                                     currentUserPubkey || "",
                                     {
                                       path: selectedFile,
@@ -7622,7 +7645,7 @@ export default function RepoCodePage({
                                   );
                                   setProposeEdit(false);
                                   setProposedContent("");
-                                  window.location.href = `/${params.entity}/${params.repo}/pulls/new`;
+                                  window.location.href = `/${resolvedParams.entity}/${resolvedParams.repo}/pulls/new`;
                                 } catch (error) {
                                   console.error('Failed to create PR/commit:', error);
                                   alert('Failed to save changes. Please try again.');
@@ -7647,8 +7670,8 @@ export default function RepoCodePage({
                       <CodeViewer 
                         content={fileContent} 
                         filePath={selectedFile} 
-                        entity={params.entity}
-                        repo={params.repo}
+                        entity={resolvedParams.entity}
+                        repo={resolvedParams.repo}
                         branch={selectedBranch}
                       />
                     )}
@@ -7817,7 +7840,7 @@ export default function RepoCodePage({
           try {
             const repos = loadStoredRepos();
             // CRITICAL: Use findRepoByEntityAndName to support npub format
-            const repo = findRepoByEntityAndName(repos, params.entity, decodedRepo);
+            const repo = findRepoByEntityAndName(repos, resolvedParams.entity, decodedRepo);
             
             // Check ownership even if repo is not in localStorage
             const ownsByRepoRecord = currentUserPubkey && repo?.ownerPubkey &&
@@ -7861,7 +7884,7 @@ export default function RepoCodePage({
               const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
               if (lastPushAttempt < fiveMinutesAgo) {
                 // Status stuck for more than 5 minutes - reset to local
-                setRepoStatus(params.repo, params.entity, "local");
+                setRepoStatus(resolvedParams.repo, resolvedParams.entity, "local");
                 status = "local";
                 console.log("🔄 [Push Button] Reset stuck 'pushing' status to 'local'");
               }
@@ -7932,7 +7955,7 @@ export default function RepoCodePage({
                         
                         try {
                           setIsRefetching(true);
-                            console.log(`🔄 [Refetch] Starting refetch for ${params.repo} from source: ${repo.sourceUrl}`);
+                            console.log(`🔄 [Refetch] Starting refetch for ${resolvedParams.repo} from source: ${repo.sourceUrl}`);
                           
                           // Call import API to fetch latest from GitHub
                           console.log(`📡 [Refetch] Calling /api/import with sourceUrl: ${repo.sourceUrl}`);
@@ -7979,7 +8002,7 @@ export default function RepoCodePage({
                           // Update repo in localStorage with new data
                           const repos = loadStoredRepos();
                           const repoIndex = repos.findIndex((r: any) => 
-                            (r.slug === params.repo || r.repo === params.repo) && r.entity === params.entity
+                            (r.slug === resolvedParams.repo || r.repo === resolvedParams.repo) && r.entity === resolvedParams.entity
                           );
                           
                           if (repoIndex >= 0) {
@@ -8112,11 +8135,11 @@ export default function RepoCodePage({
                           // CRITICAL: Also save issues, pulls, and commits to separate localStorage keys
                           if (importData.issues && Array.isArray(importData.issues) && importData.issues.length > 0) {
                             try {
-                              const issuesKey = getRepoStorageKey("gittr_issues", params.entity, params.repo);
+                              const issuesKey = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
                               const formattedIssues = importData.issues.map((issue: any) => ({
                                 id: `issue-${issue.number}`,
-                                entity: params.entity,
-                                repo: params.repo,
+                                entity: resolvedParams.entity,
+                                repo: resolvedParams.repo,
                                 title: issue.title || "",
                                 number: String(issue.number || ""),
                                 status: issue.state === "closed" ? "closed" : "open",
@@ -8136,11 +8159,11 @@ export default function RepoCodePage({
                           
                           if (importData.pulls && Array.isArray(importData.pulls) && importData.pulls.length > 0) {
                             try {
-                              const pullsKey = getRepoStorageKey("gittr_prs", params.entity, params.repo);
+                              const pullsKey = getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo);
                               const formattedPRs = importData.pulls.map((pr: any) => ({
                                 id: `pr-${pr.number}`,
-                                entity: params.entity,
-                                repo: params.repo,
+                                entity: resolvedParams.entity,
+                                repo: resolvedParams.repo,
                                 title: pr.title || "",
                                 number: String(pr.number || ""),
                                 status: pr.merged_at ? "merged" : (pr.state === "closed" ? "closed" : "open"),
@@ -8163,7 +8186,7 @@ export default function RepoCodePage({
                           
                           if (importData.commits && Array.isArray(importData.commits) && importData.commits.length > 0) {
                             try {
-                              const commitsKey = getRepoStorageKey("gittr_commits", params.entity, params.repo);
+                              const commitsKey = getRepoStorageKey("gittr_commits", resolvedParams.entity, resolvedParams.repo);
                               interface CommitData {
                                 sha?: string;
                                 message?: string;
@@ -8198,7 +8221,7 @@ export default function RepoCodePage({
                               const wasLive = existingRepo.lastNostrEventId || existingRepo.nostrEventId || existingRepo.syncedFromNostr;
                               if (wasLive && hasDiff) {
                                 repoToUpdate.hasUnpushedEdits = true;
-                                markRepoAsEdited(params.repo, params.entity);
+                                markRepoAsEdited(resolvedParams.repo, resolvedParams.entity);
                                 console.log(`📝 [Refetch] Marked repo as having unpushed edits after refetch (diff detected)`);
                               } else if (wasLive && !hasDiff) {
                                 // No diff - clear unpushed edits flag if it was set
@@ -8218,7 +8241,7 @@ export default function RepoCodePage({
                             // Verify files were saved
                             const savedRepos = loadStoredRepos();
                             const savedRepo = savedRepos.find((r: any) => 
-                              (r.slug === params.repo || r.repo === params.repo) && r.entity === params.entity
+                              (r.slug === resolvedParams.repo || r.repo === resolvedParams.repo) && r.entity === resolvedParams.entity
                             );
                             const savedFileCount = savedRepo?.files?.filter((f: any) => f.type === "file").length || 0;
                             
@@ -8256,19 +8279,19 @@ export default function RepoCodePage({
                         if (isNostrRepo) {
                           try {
                             setIsRefetching(true);
-                            console.log(`🔄 [Refetch] Starting refetch for ${params.repo} from Nostr`);
+                            console.log(`🔄 [Refetch] Starting refetch for ${resolvedParams.repo} from Nostr`);
                             
                             // Get owner pubkey
-                            const ownerPubkey = repo.ownerPubkey || (params.entity.startsWith("npub") 
-                              ? (nip19.decode(params.entity).data as string)
-                              : params.entity);
+                            const ownerPubkey = repo.ownerPubkey || (resolvedParams.entity.startsWith("npub") 
+                              ? (nip19.decode(resolvedParams.entity).data as string)
+                              : resolvedParams.entity);
                             
                             if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
                               throw new Error("Could not determine repository owner");
                             }
                             
                             // Query Nostr for the latest repository event
-                            const repoName = repo.repo || repo.slug || params.repo;
+                            const repoName = repo.repo || repo.slug || resolvedParams.repo;
                             let latestEvent: any = null;
                             let latestEventCreatedAt = 0;
                             
@@ -8348,7 +8371,7 @@ export default function RepoCodePage({
                             // CRITICAL: Complete replacement from Nostr - erase localStorage and rewrite
                             const repos = loadStoredRepos();
                             const repoIndex = repos.findIndex((r: any) => 
-                              (r.slug === params.repo || r.repo === params.repo) && r.entity === params.entity
+                              (r.slug === resolvedParams.repo || r.repo === resolvedParams.repo) && r.entity === resolvedParams.entity
                             );
                             
                             if (repoIndex >= 0) {
@@ -8459,15 +8482,15 @@ export default function RepoCodePage({
                             let stateEventReady = false;
                             
                             const result = await pushRepoToNostr({
-                              repoSlug: params.repo,
-                              entity: params.entity,
+                              repoSlug: resolvedParams.repo,
+                              entity: resolvedParams.entity,
                               publish,
                               subscribe,
                               defaultRelays,
                               privateKey, // Optional - will use NIP-07 if available
                               pubkey: currentUserPubkey,
                               onProgress: (message) => {
-                                console.log(`[Push ${params.repo}] ${message}`);
+                                console.log(`[Push ${resolvedParams.repo}] ${message}`);
                                 progressMessages.push(message);
                                 // Remove handler right before second signature (state event ready)
                                 if (message.includes("Second signature prompt appearing now")) {
@@ -8509,7 +8532,7 @@ export default function RepoCodePage({
                                   await pushFilesToBridge({
                                     ownerPubkey: bridgeOwnerPubkey!,
                                     repoSlug: decodedRepo,
-                                    entity: params.entity,
+                                    entity: resolvedParams.entity,
                                     branch: repo.defaultBranch || repoData?.defaultBranch || "main",
                                     files: result.filesForBridge!,
                                   });
@@ -8565,28 +8588,28 @@ export default function RepoCodePage({
           <div className="mb-4 pb-4 border-b border-lightgray">
             <h3 className="text-sm font-semibold mb-2">Zap this repo</h3>
             <RepoZapButton
-              repoId={`${params.entity}/${params.repo}`}
+              repoId={`${resolvedParams.entity}/${resolvedParams.repo}`}
               ownerPubkey={(() => {
                 // Resolve actual owner pubkey
                 if (isOwner && currentUserPubkey) return currentUserPubkey;
                 // Try to get owner pubkey from repo data or entity lookup
                 try {
       const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, params.entity, decodedRepo);
+      const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
                   if (repo?.ownerPubkey) return repo.ownerPubkey;
                   // Fallback: try to resolve from entity/pubkey mapping
-                  if (params.entity && params.entity.length === 8) {
+                  if (resolvedParams.entity && resolvedParams.entity.length === 8) {
                     // Might be a pubkey prefix, try to match
                     const sess = JSON.parse(localStorage.getItem('nostr:session') || '{}');
                     const pk = sess?.pubkey || "";
-                    if (pk && pk.slice(0, 8).toLowerCase() === params.entity.toLowerCase()) return pk;
+                    if (pk && pk.slice(0, 8).toLowerCase() === resolvedParams.entity.toLowerCase()) return pk;
                   }
                 } catch {}
                 return currentUserPubkey || ""; // Final fallback
               })()}
               contributors={(repoData?.contributors || []).map(c => ({ ...c, weight: c.weight ?? 0 }))}
               amount={10}
-              comment={`Zap for ${params.entity}/${params.repo}`}
+              comment={`Zap for ${resolvedParams.entity}/${resolvedParams.repo}`}
             />
           </div>
         )}
