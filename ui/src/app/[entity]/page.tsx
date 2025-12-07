@@ -1348,7 +1348,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
       } catch (error) {
         console.error("❌ [Follow] Error fetching contact list:", error);
         // Fallback to state if fetch fails
-        currentContacts = contactList.length > 0 ? [...contactList] : [];
+        currentContacts = contactList.length > 0 ? contactList.map(p => p.toLowerCase()) : [];
         console.warn(`⚠️ [Follow] Falling back to state: ${currentContacts.length} contacts`);
       }
       
