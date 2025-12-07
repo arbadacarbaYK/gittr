@@ -128,7 +128,7 @@ export default function CommitDetailPage({ params }: { params: Promise<{ entity:
     } finally {
       setLoading(false);
     }
-  }, [resolvedParams.entity, resolvedParams.repo]);
+  }, [resolvedParams.entity, resolvedParams.repo, resolvedParams.id]);
 
   if (loading) {
     return <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">Loading commit...</div>;
