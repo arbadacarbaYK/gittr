@@ -127,18 +127,12 @@ export function getRepoStatus(repo: any): RepoStatus {
   }
   
   // If announcement event exists but bridge hasn't processed it yet:
-  // Only show "live" if bridge has explicitly confirmed it processed the event
-  // BUT: For repos pushed days ago, assume they're live until bridge check says otherwise
-  // Only NEW pushes (recent eventCreatedAt) should show "awaiting bridge"
   // CRITICAL: If both events exist and were confirmed, show as "live" even if bridge hasn't processed yet
   // The bridge will update it later, but the repo is already live on Nostr
+  // Bridge processing is for file serving, not for determining if repo is "live"
   if (hasAnnouncementEventId && hasStateEventId && (bridgeProcessed === undefined || bridgeProcessed === false)) {
-    // Check if this is a recent push (within last hour) or an old push (days ago)
-    const isRecentPush = eventCreatedAt && (Date.now() / 1000 - eventCreatedAt) < 3600; // Within last hour
-    
-    // CRITICAL: If both events exist, the repo is live on Nostr regardless of bridge processing
-    // Bridge processing is for file serving, not for determining if repo is "live"
     // Only show "awaiting bridge" if it's a very recent push (within 5 minutes) AND no files
+    // This handles the edge case where bridge might still be processing files
     const isVeryRecentPush = eventCreatedAt && (Date.now() / 1000 - eventCreatedAt) < 300; // Within 5 minutes
     const hasNoFiles = !hasFiles || (Array.isArray(repo.files) && repo.files.length === 0);
     
