@@ -1286,9 +1286,9 @@ export default function HomePage() {
         </>
       )}
 
-      {/* Recent Activity - Full Width - Always show */}
+      {/* Recent Activity - Full Width - Hidden on mobile */}
       {statsLoaded && (
-        <div className="mb-6 border border-[#383B42] rounded p-4">
+        <div className="hidden md:block mb-6 border border-[#383B42] rounded p-4">
           <h3 className="font-semibold mb-4 text-purple-400">⚡ Recent Activity</h3>
           {recentActivity.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
