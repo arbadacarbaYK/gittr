@@ -47,7 +47,22 @@ export async function resolveRepoIconForMetadata(
   repoName: string,
   baseUrl: string
 ): Promise<string> {
-  const decodedRepo = decodeURIComponent(repoName);
+  // Note: repoName is expected to be already URL-decoded by the caller
+  // If it contains encoded characters, try to decode safely
+  let decodedRepo: string;
+  try {
+    // Only decode if the string contains percent-encoded characters
+    // This prevents errors when repo names contain '%' that isn't part of encoding
+    if (repoName.includes('%')) {
+      decodedRepo = decodeURIComponent(repoName);
+    } else {
+      decodedRepo = repoName;
+    }
+  } catch {
+    // If decoding fails (e.g., invalid % encoding), use original string
+    decodedRepo = repoName;
+  }
+  
   const ownerPubkey = resolveEntityToPubkey(entity);
   
   // For Nostr-native repos, try API endpoint for logo files
