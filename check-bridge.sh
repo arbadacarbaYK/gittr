@@ -46,7 +46,12 @@ if [ -n "$1" ] && [ -n "$2" ]; then
     
     # Check if repo exists in database (if sqlite3 available)
     echo "💾 Database Check:"
-    ssh -i "$SSH_KEY" "$SERVER" "sudo -u git-nostr sqlite3 /home/git-nostr/git-nostr-bridge.db 'SELECT OwnerPubKey, RepositoryName, UpdatedAt FROM Repository WHERE RepositoryName = \"${REPO_NAME}\" AND OwnerPubKey = \"${OWNER_PUBKEY}\" LIMIT 1;' 2>&1" || echo "  ⚠️ Could not query database (sqlite3 may not be installed)"
+    # Try to read database path from config, fallback to default
+    DB_PATH=$(ssh -i "$SSH_KEY" "$SERVER" "sudo -u git-nostr cat /home/git-nostr/.config/git-nostr/git-nostr-bridge.json 2>/dev/null | grep -o '\"DbFile\":\"[^\"]*\"' | cut -d'\"' -f4" || echo "/home/git-nostr/.config/git-nostr/git-nostr-db.sqlite")
+    if [ -z "$DB_PATH" ] || [ "$DB_PATH" = "/home/git-nostr/.config/git-nostr/git-nostr-db.sqlite" ]; then
+        DB_PATH="/home/git-nostr/.config/git-nostr/git-nostr-db.sqlite"
+    fi
+    ssh -i "$SSH_KEY" "$SERVER" "sudo -u git-nostr sqlite3 \"$DB_PATH\" 'SELECT OwnerPubKey, RepositoryName, UpdatedAt FROM Repository WHERE RepositoryName = \"${REPO_NAME}\" AND OwnerPubKey = \"${OWNER_PUBKEY}\" LIMIT 1;' 2>&1" || echo "  ⚠️ Could not query database (sqlite3 may not be installed or database not found at $DB_PATH)"
     echo ""
     
     # Check bridge logs for this specific repo
@@ -55,14 +60,28 @@ if [ -n "$1" ] && [ -n "$2" ]; then
     echo ""
 fi
 
-# Check bridge binary
+# Check bridge binary (try multiple possible locations)
 echo "🔧 Bridge Binary:"
-ssh -i "$SSH_KEY" "$SERVER" "ls -lh /opt/ngit/ui/gitnostr/bin/git-nostr-bridge" || true
-echo ""
-
-# Check HTTP server status
-echo "🌐 HTTP Server Status:"
-ssh -i "$SSH_KEY" "$SERVER" "curl -s http://localhost:8080/api/event -X POST -H 'Content-Type: application/json' -d '{}' 2>&1 | head -1" || echo "  ❌ HTTP server not responding"
+# Try to get path from systemd service file
+BINARY_PATH=$(ssh -i "$SSH_KEY" "$SERVER" "grep ExecStart= /etc/systemd/system/git-nostr-bridge.service 2>/dev/null | cut -d'=' -f2" || echo "")
+if [ -n "$BINARY_PATH" ]; then
+    echo "  From systemd service: $BINARY_PATH"
+    ssh -i "$SSH_KEY" "$SERVER" "ls -lh \"$BINARY_PATH\"" || echo "  ❌ Binary not found at service path"
+else
+    # Try common locations
+    FOUND=false
+    for path in "/opt/ngit/ui/gitnostr/bin/git-nostr-bridge" "/home/git-nostr/gittr/ui/gitnostr/bin/git-nostr-bridge" "/home/git-nostr/ngit/ui/gitnostr/bin/git-nostr-bridge"; do
+        if ssh -i "$SSH_KEY" "$SERVER" "test -f \"$path\"" 2>/dev/null; then
+            echo "  Found at: $path"
+            ssh -i "$SSH_KEY" "$SERVER" "ls -lh \"$path\""
+            FOUND=true
+            break
+        fi
+    done
+    if [ "$FOUND" = false ]; then
+        echo "  ⚠️ Could not locate bridge binary in common locations"
+    fi
+fi
 echo ""
 
 # Check connected relays
