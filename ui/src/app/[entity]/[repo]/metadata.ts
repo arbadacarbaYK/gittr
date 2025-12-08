@@ -32,6 +32,7 @@ async function fetchRepoDescription(
     // Query Nostr directly for repository event (kind 30617 or 51)
     // Use Promise.race with timeout to prevent blocking
     const queryPromise = (async () => {
+      let pool: any = null;
       try {
         // Use dynamic import to avoid SSR issues
         const { RelayPool } = await import("nostr-relaypool");
@@ -45,61 +46,93 @@ async function fetchRepoDescription(
           "wss://gitnostr.com",
         ];
         
-        const pool = new RelayPool(DEFAULT_RELAYS);
+        pool = new RelayPool(DEFAULT_RELAYS);
         
         return new Promise<string | null>((resolve) => {
           let resolved = false;
           const timeout = setTimeout(() => {
             if (!resolved) {
               resolved = true;
-              pool.close();
+              try {
+                pool?.close();
+              } catch (closeError) {
+                // Ignore errors during cleanup
+              }
               resolve(null);
             }
           }, timeoutMs);
           
-          pool.subscribe(
-            [
-              {
-                kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
-                authors: [ownerPubkey],
-                "#d": [repoName], // Query for specific repo
-                limit: 1,
-              },
-            ],
-            DEFAULT_RELAYS,
-            (event) => {
-              if (resolved) return;
-              resolved = true;
-              clearTimeout(timeout);
-              pool.close();
-              
-              try {
-                // Parse NIP-34 event
-                const content = JSON.parse(event.content || "{}");
-                const description = content.description || null;
-                
-                // Also check description tag (NIP-34 standard)
-                const descTag = event.tags.find((t: string[]) => t[0] === "description");
-                const tagDescription = descTag?.[1] || null;
-                
-                resolve(description || tagDescription);
-              } catch {
-                resolve(null);
-              }
-            },
-            undefined,
-            () => {
-              // EOSE - no more events
-              if (!resolved) {
+          try {
+            pool.subscribe(
+              [
+                {
+                  kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
+                  authors: [ownerPubkey],
+                  "#d": [repoName], // Query for specific repo
+                  limit: 1,
+                },
+              ],
+              DEFAULT_RELAYS,
+              (event: any) => {
+                if (resolved) return;
                 resolved = true;
                 clearTimeout(timeout);
-                pool.close();
-                resolve(null);
+                try {
+                  pool?.close();
+                } catch (closeError) {
+                  // Ignore errors during cleanup
+                }
+                
+                try {
+                  // Parse NIP-34 event
+                  const content = JSON.parse(event.content || "{}");
+                  const description = content.description || null;
+                  
+                  // Also check description tag (NIP-34 standard)
+                  const descTag = event.tags.find((t: string[]) => t[0] === "description");
+                  const tagDescription = descTag?.[1] || null;
+                  
+                  resolve(description || tagDescription);
+                } catch {
+                  resolve(null);
+                }
+              },
+              undefined,
+              () => {
+                // EOSE - no more events
+                if (!resolved) {
+                  resolved = true;
+                  clearTimeout(timeout);
+                  try {
+                    pool?.close();
+                  } catch (closeError) {
+                    // Ignore errors during cleanup
+                  }
+                  resolve(null);
+                }
               }
+            );
+          } catch (subscribeError) {
+            // If subscribe() throws, ensure pool is closed and promise resolves
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeout);
+              try {
+                pool?.close();
+              } catch (closeError) {
+                // Ignore errors during cleanup
+              }
+              resolve(null);
             }
-          );
+          }
         });
       } catch (error) {
+        // Ensure pool is closed even if error occurs before subscribe
+        try {
+          pool?.close();
+        } catch (closeError) {
+          // Ignore errors during cleanup
+        }
         // Timeout or other error - return null to use fallback
         console.warn('[Metadata] Failed to fetch repo description:', error);
         return null;
