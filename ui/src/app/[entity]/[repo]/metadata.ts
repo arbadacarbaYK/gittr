@@ -153,9 +153,13 @@ async function fetchRepoDescription(
 export async function generateMetadata(
   { params }: { params: Promise<{ entity: string; repo: string }> }
 ): Promise<Metadata> {
-  const resolvedParams = await params;
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space';
-  const decodedRepo = decodeURIComponent(resolvedParams.repo);
+  try {
+    const resolvedParams = await params;
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space';
+    const decodedRepo = decodeURIComponent(resolvedParams.repo);
+    
+    // Debug logging
+    console.log('[Metadata] Generating metadata for:', resolvedParams.entity, decodedRepo);
   
   // Format owner name (convert pubkey to npub if needed)
   let ownerName = resolvedParams.entity;
@@ -254,5 +258,32 @@ export async function generateMetadata(
       canonical: url,
     },
   };
+  } catch (error) {
+    // If metadata generation fails, return basic metadata to prevent page crash
+    console.error('[Metadata] Error generating metadata:', error);
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space';
+    const resolvedParams = await params;
+    const decodedRepo = decodeURIComponent(resolvedParams.repo);
+    const title = `${resolvedParams.entity}/${decodedRepo}`;
+    
+    return {
+      title,
+      description: `Repository ${title} on gittr - Decentralized Git Hosting on Nostr. A censorship-resistant alternative to GitHub.`,
+      openGraph: {
+        title,
+        description: `Repository ${title} on gittr - Decentralized Git Hosting on Nostr`,
+        url: `${baseUrl}/${encodeURIComponent(resolvedParams.entity)}/${encodeURIComponent(decodedRepo)}`,
+        type: 'website',
+        siteName: 'gittr',
+        images: [{ url: `${baseUrl}/logo.svg`, width: 1200, height: 630, alt: `${decodedRepo} repository on gittr` }],
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title,
+        description: `Repository ${title} on gittr - Decentralized Git Hosting on Nostr`,
+        images: [`${baseUrl}/logo.svg`],
+      },
+    };
+  }
 }
 
