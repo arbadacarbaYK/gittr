@@ -114,6 +114,7 @@ return [
   "wss://relay.yourdomain.com", // Your custom relay
   "wss://relay.ngit.dev",
   "wss://gitnostr.com",
+  "wss://git.gittr.space", // gittr.space's own GRASP server
   // ... other relays
 ];
 ```
