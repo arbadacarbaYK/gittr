@@ -79,14 +79,30 @@ export async function resolveRepoIconForMetadata(
  */
 export async function resolveUserIconForMetadata(
   entity: string,
-  baseUrl: string
+  baseUrl: string,
+  timeoutMs: number = 1000
 ): Promise<string> {
   const ownerPubkey = resolveEntityToPubkey(entity);
   
-  // For now, we'll use the platform default
-  // In the future, we could fetch Nostr metadata here, but that would require
-  // making async calls to Nostr relays, which is slow for metadata generation
-  // The client-side code will handle showing the actual profile picture
+  if (!ownerPubkey) {
+    return `${baseUrl}/logo.svg`;
+  }
+  
+  try {
+    // Fetch user metadata with timeout to keep it fast
+    const { fetchUserMetadata } = await import("@/lib/nostr/fetch-metadata-server");
+    const ownerMetadata = await Promise.race([
+      fetchUserMetadata(ownerPubkey),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs))
+    ]);
+    
+    if (ownerMetadata?.picture && ownerMetadata.picture.startsWith('http')) {
+      return ownerMetadata.picture;
+    }
+  } catch (error) {
+    // Fall back to default logo
+    console.warn('[Metadata Icon Resolver] Failed to fetch user metadata:', error);
+  }
   
   return `${baseUrl}/logo.svg`;
 }
