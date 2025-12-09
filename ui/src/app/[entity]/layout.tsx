@@ -53,9 +53,35 @@ export async function generateMetadata(
   
   // Use actual user name from Nostr if available, otherwise use displayName
   // Nostr kind 0 metadata can have 'name' or 'display_name'
-  const actualName = (userMetadata?.name || userMetadata?.display_name || displayName) as string;
+  // CRITICAL: Validate that name/display_name are actually strings
+  // Nostr metadata is parsed JSON and could contain any type
+  let actualName = displayName; // Fallback
+  if (userMetadata) {
+    const nameValue = userMetadata.name;
+    const displayNameValue = userMetadata.display_name;
+    
+    // Only use if it's a non-empty string
+    if (typeof nameValue === 'string' && nameValue.trim().length > 0) {
+      actualName = nameValue;
+    } else if (typeof displayNameValue === 'string' && displayNameValue.trim().length > 0) {
+      actualName = displayNameValue;
+    }
+  }
+  
   // Nostr kind 0 metadata typically uses 'about' for description
-  const userDescription = (userMetadata?.about || userMetadata?.description || null) as string | null;
+  // CRITICAL: Validate that about/description are actually strings
+  let userDescription: string | null = null;
+  if (userMetadata) {
+    const aboutValue = userMetadata.about;
+    const descriptionValue = userMetadata.description;
+    
+    // Only use if it's a non-empty string
+    if (typeof aboutValue === 'string' && aboutValue.trim().length > 0) {
+      userDescription = aboutValue;
+    } else if (typeof descriptionValue === 'string' && descriptionValue.trim().length > 0) {
+      userDescription = descriptionValue;
+    }
+  }
   
   // Build description - use user's about text if available, otherwise generic
   const description = userDescription 
