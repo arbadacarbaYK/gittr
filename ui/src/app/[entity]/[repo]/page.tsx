@@ -6093,8 +6093,125 @@ export default function RepoCodePage({
     return "code";
   }, [pathname]);
 
+  // Get owner display name for header
+  const ownerDisplayName = useMemo(() => {
+    if (!mounted) return resolvedParams.entity;
+    const currentMetadata = ownerMetadataRef.current;
+    const ownerMeta = ownerPubkeyForLink && ownerPubkeyForLink.length === 64 
+      ? currentMetadata[ownerPubkeyForLink] 
+      : undefined;
+    return ownerMeta?.display_name || ownerMeta?.name || resolvedParams.entity;
+  }, [mounted, ownerPubkeyForLink, resolvedParams.entity]);
+
+  // Watch/unwatch functionality
+  const [isWatching, setIsWatching] = useState(false);
+  useEffect(() => {
+    if (!mounted) return;
+    const watchedRaw = localStorage.getItem("gittr_watched_repos");
+    const watched = watchedRaw ? (JSON.parse(watchedRaw) as string[]) : [];
+    const repoId = `${resolvedParams.entity}/${resolvedParams.repo}`;
+    setIsWatching(watched.includes(repoId));
+  }, [mounted, resolvedParams.entity, resolvedParams.repo]);
+
+  const handleWatch = useCallback(() => {
+    const watchedRaw = localStorage.getItem("gittr_watched_repos");
+    const watched = watchedRaw ? (JSON.parse(watchedRaw) as string[]) : [];
+    const repoId = `${resolvedParams.entity}/${resolvedParams.repo}`;
+    if (isWatching) {
+      const newWatched = watched.filter(id => id !== repoId);
+      localStorage.setItem("gittr_watched_repos", JSON.stringify(newWatched));
+      setIsWatching(false);
+      setLiveWatchCount(0);
+    } else {
+      watched.push(repoId);
+      localStorage.setItem("gittr_watched_repos", JSON.stringify([...new Set(watched)]));
+      setIsWatching(true);
+      setLiveWatchCount(1);
+    }
+  }, [isWatching, resolvedParams.entity, resolvedParams.repo]);
+
+  const handleStar = useCallback(() => {
+    // Star functionality would be implemented via Nostr reactions
+    // For now, just show a message
+    alert("Star functionality coming soon - will use Nostr reactions");
+  }, []);
+
+  const handleFork = useCallback(() => {
+    // Fork functionality
+    window.location.href = `/import?forkFrom=${encodeURIComponent(`${resolvedParams.entity}/${resolvedParams.repo}`)}`;
+  }, [resolvedParams.entity, resolvedParams.repo]);
+
+  const handleShare = useCallback(() => {
+    const url = window.location.href;
+    if (navigator.share) {
+      navigator.share({
+        title: `${ownerDisplayName}/${decodedRepo}`,
+        text: repoData?.description || `Repository ${ownerDisplayName}/${decodedRepo} on gittr`,
+        url: url,
+      }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(url).then(() => {
+        alert("Link copied to clipboard!");
+      }).catch(() => {});
+    }
+  }, [ownerDisplayName, decodedRepo, repoData?.description]);
+
   return (
     <div className="mt-4">
+      {/* Repository Header */}
+      <div className="mb-4 pb-4 border-b border-[#383B42]">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <a
+              href={ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${resolvedParams.entity}`}
+              onClick={(e) => { e.preventDefault(); window.location.href = ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? `/${nip19.npubEncode(ownerPubkeyForLink)}` : `/${resolvedParams.entity}`; }}
+              className="text-purple-500 hover:underline font-semibold truncate"
+            >
+              {ownerDisplayName}
+            </a>
+            <span className="text-gray-400">/</span>
+            <span className="text-gray-300 font-semibold truncate">{decodedRepo}</span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleWatch}
+              className="!border-lightgray bg-dark"
+            >
+              <Eye className="h-4 w-4 mr-2" />
+              {isWatching ? "Unwatch" : "Watch"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleFork}
+              className="!border-lightgray bg-dark"
+            >
+              <GitFork className="h-4 w-4 mr-2" />
+              Fork
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleStar}
+              className="!border-lightgray bg-dark"
+            >
+              <Star className="h-4 w-4 mr-2" />
+              Star
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleShare}
+              className="!border-lightgray bg-dark"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
       {/* Navigation Tabs */}
       <div className="border-b border-[#383B42] mb-4">
         <nav className="flex gap-1 overflow-x-auto">
