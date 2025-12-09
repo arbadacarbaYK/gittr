@@ -127,7 +127,6 @@ curl -X GET https://blossom.gittr.space/nip96/info
 # Clone repository
 git clone https://github.com/arbadacarbaYK/gittr.git 
 cd gittr
->>>>>>> 59046ae (Fix repo references: use 'gittr' instead of incorrect 'ngit' legacy name comments)
 
 # Install frontend dependencies
 cd ui
@@ -195,11 +194,12 @@ cp .env.example .env.local
 
 ```bash
 # Linux (Ubuntu/Debian)
-wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
-sudo tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz
+# Check latest Go version at https://go.dev/dl/
+wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz
 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
 source ~/.bashrc
-go version  # Verify: should show go1.21.5 or higher
+go version  # Verify: should show go1.23.4 or higher
 ```
 
 #### 5.2: Create Dedicated User
@@ -241,8 +241,8 @@ Edit `~/.config/git-nostr/git-nostr-bridge.json`:
     "repositoryDir": "/home/git-nostr/git-nostr-repositories",
     "DbFile": "/home/git-nostr/.config/git-nostr/git-nostr-db.sqlite",
     "relays": [
-        "wss://relay.noderunner.network",
-        "wss://nostr.azzamo.net",
+        "wss://relay.noderunners.network",
+        "wss://relay.azzamo.net",
         "wss://relay.damus.io",
         "wss://nos.lol",
         "wss://gitnostr.com",
@@ -532,8 +532,8 @@ sudo systemctl status git-nostr-bridge
 sudo journalctl -u git-nostr-bridge -n 50
 
 # Should see:
-# Connected to relay: wss://relay.noderunner.network
-# Connected to relay: wss://nostr.azzamo.net
+# Connected to relay: wss://relay.noderunners.network
+# Connected to relay: wss://relay.azzamo.net
 ```
 
 ### 3. Test Git Operations
@@ -611,8 +611,8 @@ git clone git@gittr.space:<pubkey>/<repo-name>.git
 
 3. **Test network connectivity:**
    ```bash
-   ping relay.noderunner.network
-   curl -v wss://relay.noderunner.network
+   ping relay.noderunners.network
+   curl -v wss://relay.noderunners.network
    ```
 
 ### Git Clone Fails
@@ -673,7 +673,10 @@ sudo systemctl restart gittr-frontend
 
 ```bash
 sudo systemctl stop git-nostr-bridge
-sudo -u git-nostr bash -c "cd ~/gittr && git pull && cd ui/gitnostr && make git-nostr-bridge"
+# If bridge is in /opt/ngit (same as frontend):
+sudo -u git-nostr bash -c "cd /opt/ngit && git pull && cd ui/gitnostr && make git-nostr-bridge"
+# OR if bridge is in /home/git-nostr/gittr (standalone):
+# sudo -u git-nostr bash -c "cd ~/gittr && git pull && cd ui/gitnostr && make git-nostr-bridge"
 sudo systemctl start git-nostr-bridge
 ```
 
