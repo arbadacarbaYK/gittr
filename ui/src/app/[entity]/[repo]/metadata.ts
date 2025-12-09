@@ -44,6 +44,7 @@ async function fetchRepoDescription(
           "wss://nos.lol",
           "wss://relay.ngit.dev",
           "wss://gitnostr.com",
+          "wss://relay.azzamo.net",
         ];
         
         pool = new RelayPool(DEFAULT_RELAYS);
