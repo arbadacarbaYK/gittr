@@ -1,4 +1,7 @@
 "use client";
+// Force dynamic rendering - metadata.ts needs to run on each request
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useState, useRef, useMemo, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
