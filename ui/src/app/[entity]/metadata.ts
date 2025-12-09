@@ -5,8 +5,13 @@ import { resolveUserIconForMetadata } from '@/lib/utils/metadata-icon-resolver';
 export async function generateMetadata(
   { params }: { params: Promise<{ entity: string }> }
 ): Promise<Metadata> {
+  // CRITICAL: Log immediately to verify function is being called
+  console.log('[Metadata] ===== generateMetadata for [entity] CALLED =====');
+  
   const resolvedParams = await params;
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space';
+  
+  console.log('[Metadata] Entity:', resolvedParams.entity);
   
   // Try to decode npub to get pubkey
   let pubkey: string | null = null;
@@ -31,10 +36,45 @@ export async function generateMetadata(
   const title = displayName;
   const url = `${baseUrl}/${encodeURIComponent(resolvedParams.entity)}`;
   
+  // Fetch user metadata from Nostr (name, description, picture) - with timeout
+  let userMetadata: { [key: string]: any; lud16?: string; lnurl?: string } | null = null;
+  if (pubkey) {
+    try {
+      const { fetchUserMetadata } = await import("@/lib/nostr/fetch-metadata-server");
+      userMetadata = await Promise.race([
+        fetchUserMetadata(pubkey),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500))
+      ]);
+      console.log('[Metadata] User metadata fetched:', userMetadata ? 'yes' : 'no');
+    } catch (error) {
+      console.warn('[Metadata] Failed to fetch user metadata:', error);
+    }
+  }
+  
+  // Use actual user name from Nostr if available, otherwise use displayName
+  // Nostr kind 0 metadata can have 'name' or 'display_name'
+  const actualName = (userMetadata?.name || userMetadata?.display_name || displayName) as string;
+  // Nostr kind 0 metadata typically uses 'about' for description
+  const userDescription = (userMetadata?.about || userMetadata?.description || null) as string | null;
+  
+  // Build description - use user's about text if available, otherwise generic
+  const description = userDescription 
+    ? userDescription.length > 160 
+      ? userDescription.substring(0, 157) + '...'
+      : userDescription
+    : `Profile for ${actualName} on gittr - Decentralized Git Hosting on Nostr`;
+  
   // Resolve user icon (profile picture or default)
   let iconUrl = `${baseUrl}/logo.svg`; // Default fallback
   try {
-    iconUrl = await resolveUserIconForMetadata(resolvedParams.entity, baseUrl);
+    // Try user's picture from metadata first
+    if (userMetadata?.picture && userMetadata.picture.startsWith('http')) {
+      iconUrl = userMetadata.picture;
+      console.log('[Metadata] Using user picture from metadata:', iconUrl.substring(0, 50));
+    } else {
+      // Fallback to resolver
+      iconUrl = await resolveUserIconForMetadata(resolvedParams.entity, baseUrl, 800);
+    }
   } catch (error) {
     // If resolution fails, use default
     console.warn('[Metadata] Failed to resolve user icon, using default:', error);
@@ -45,12 +85,14 @@ export async function generateMetadata(
     iconUrl = `${baseUrl}${iconUrl.startsWith('/') ? '' : '/'}${iconUrl}`;
   }
   
+  console.log('[Metadata] Final metadata:', { title: actualName, description: description.substring(0, 50), iconUrl: iconUrl.substring(0, 50) });
+  
   return {
-    title,
-    description: `Profile for ${displayName} on gittr - Decentralized Git Hosting on Nostr`,
+    title: actualName,
+    description,
     openGraph: {
-      title,
-      description: `View ${displayName}'s repositories on gittr`,
+      title: actualName,
+      description,
       url,
       type: 'profile',
       siteName: 'gittr',
@@ -59,14 +101,14 @@ export async function generateMetadata(
           url: iconUrl,
           width: 1200,
           height: 630,
-          alt: `${displayName} profile on gittr`,
+          alt: `${actualName} profile on gittr`,
         },
       ],
     },
     twitter: {
       card: 'summary',
-      title,
-      description: `View ${displayName}'s repositories on gittr`,
+      title: actualName,
+      description,
       images: [iconUrl],
     },
     alternates: {
