@@ -196,8 +196,29 @@ export async function generateMetadata(
     // Use entity as-is
   }
   
-  const title = `${ownerName}/${decodedRepo}`;
   const url = `${baseUrl}/${encodeURIComponent(resolvedParams.entity)}/${encodeURIComponent(decodedRepo)}`;
+  
+  // Fetch owner's actual name from Nostr (kind 0 metadata) - with timeout
+  let ownerDisplayName = ownerName; // Fallback to npub/entity
+  if (ownerPubkey) {
+    try {
+      const { fetchUserMetadata } = await import("@/lib/nostr/fetch-metadata-server");
+      const ownerMetadata = await Promise.race([
+        fetchUserMetadata(ownerPubkey),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000))
+      ]);
+      
+      if (ownerMetadata) {
+        // Use owner's actual name from Nostr if available
+        ownerDisplayName = (ownerMetadata.name || ownerMetadata.display_name || ownerName) as string;
+        console.log('[Metadata] Owner display name:', ownerDisplayName);
+      }
+    } catch (error) {
+      console.warn('[Metadata] Failed to fetch owner metadata, using fallback:', error);
+    }
+  }
+  
+  const title = `${ownerDisplayName}/${decodedRepo}`;
   
   // Fetch repo description (with timeout to keep it fast) - make it non-blocking
   // Start the fetch but don't wait for it - use a fast fallback
