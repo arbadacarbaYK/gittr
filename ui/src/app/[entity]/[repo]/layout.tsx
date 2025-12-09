@@ -2,6 +2,11 @@ import { Metadata } from 'next';
 import { nip19 } from 'nostr-tools';
 import { resolveRepoIconForMetadata, resolveUserIconForMetadata } from '@/lib/utils/metadata-icon-resolver';
 
+// Cache configuration for link previews
+// Force dynamic rendering to ensure fresh metadata for social media crawlers
+// Social media platforms cache aggressively on their end, so we ensure our content is always fresh
+export const dynamic = 'force-dynamic';
+
 async function fetchRepoDescription(
   entity: string,
   repoName: string,
