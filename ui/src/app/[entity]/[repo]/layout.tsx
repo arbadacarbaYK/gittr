@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import { nip19 } from 'nostr-tools';
 import { resolveRepoIconForMetadata, resolveUserIconForMetadata } from '@/lib/utils/metadata-icon-resolver';
+import RepoLayoutClient from './layout-client';
 
 // Cache configuration for link previews
 // Force dynamic rendering to ensure fresh metadata for social media crawlers
@@ -375,8 +376,10 @@ export async function generateMetadata(
 
 export default function RepoLayout({
   children,
+  params,
 }: {
   children: React.ReactNode;
+  params: Promise<{ entity: string; repo: string; subpage?: string }>;
 }) {
-  return <>{children}</>;
+  return <RepoLayoutClient params={params}>{children}</RepoLayoutClient>;
 }
