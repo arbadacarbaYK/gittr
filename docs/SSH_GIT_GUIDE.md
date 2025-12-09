@@ -149,7 +149,7 @@ SSH keys are managed entirely client-side and published directly to Nostr:
 - Most relays accept any kind number, so KIND_52 should work on most relays
 - Some relays may reject or filter KIND_52 if they specifically implement NIP-52
 - If you experience issues publishing SSH keys, try:
-  1. Using a different relay (relay.damus.io, nos.lol, nostr.azzamo.net typically work)
+  1. Using a different relay (relay.damus.io, nos.lol, relay.azzamo.net typically work)
   2. Checking relay logs for rejection messages
   3. Using a relay that explicitly supports gitnostr protocol (KIND 50-52)
 

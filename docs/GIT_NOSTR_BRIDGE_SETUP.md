@@ -18,15 +18,16 @@ The git-nostr-bridge is **essential** for Git operations (`git clone`, `git push
 sudo rm -rf /usr/local/go
 
 # Download and install Go
-wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
-sudo tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz
+# Check latest Go version at https://go.dev/dl/
+wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz
 
 # Add to PATH (add to ~/.bashrc or ~/.zshrc)
 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
 source ~/.bashrc
 
 # Verify installation
-go version  # Should show go1.21.5 or higher
+go version  # Should show go1.23.4 or higher
 ```
 
 #### macOS:
@@ -125,7 +126,7 @@ nano ~/.config/git-nostr/git-nostr-bridge.json
         "wss://relay.ngit.dev",
         "wss://relay.damus.io",
         "wss://nos.lol",
-        "wss://nostr.azzamo.net",
+        "wss://relay.azzamo.net",
         "wss://nostr.mom",
         "wss://relay.nostr.band"
     ],

@@ -67,8 +67,9 @@ Frontend runs on `http://localhost:3000`
 
 **Option 1: System-wide installation (requires sudo):**
 ```bash
-wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
-sudo tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz
+# Check latest Go version at https://go.dev/dl/
+wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz
 echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
 export PATH=$PATH:/usr/local/go/bin  # For immediate use in current session
 go version
@@ -78,9 +79,10 @@ go version
 
 **Option 2: User-local installation (no sudo required):**
 ```bash
-wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
+# Check latest Go version at https://go.dev/dl/
+wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
 mkdir -p ~/go-local
-tar -xzf go1.21.5.linux-amd64.tar.gz -C ~/go-local
+tar -xzf go1.23.4.linux-amd64.tar.gz -C ~/go-local
 export PATH=$HOME/go-local/go/bin:$PATH  # For immediate use
 echo 'export PATH=$HOME/go-local/go/bin:$PATH' >> ~/.bashrc  # For future sessions
 go version
