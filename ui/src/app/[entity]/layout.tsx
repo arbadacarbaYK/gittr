@@ -117,3 +117,11 @@ export async function generateMetadata(
   };
 }
 
+export default function EntityLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return <>{children}</>;
+}
+
