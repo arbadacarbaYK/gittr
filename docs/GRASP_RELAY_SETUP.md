@@ -2,7 +2,7 @@
 
 This guide explains how to set up a relay instance (Grasp protocol server) for your gittr.space client application.
 
-> **Note**: This is separate from `git-nostr-bridge` (see [GIT_NOSTR_BRIDGE_SETUP.md](GIT_NOSTR_BRIDGE_SETUP.md)). The bridge handles Git operations (clone/push/pull), while the relay handles repository discovery and distributed hosting via Nostr relays.
+> **Note**: This is separate from `git-nostr-bridge` (see [GIT_NOSTR_BRIDGE_SETUP.md](docs/GIT_NOSTR_BRIDGE_SETUP.md)). The bridge handles Git operations (clone/push/pull), while the relay handles repository discovery and distributed hosting via Nostr relays.
 
 ## What is Grasp?
 
@@ -301,7 +301,7 @@ If events are rejected, check your relay logs for "event kind not allowed" error
 - **Grasp Protocol**: https://ngit.dev/grasp/
 - **GRASP Protocol Specification**: https://ngit.dev/grasp/
 - **ngit-relay Repository**: https://github.com/danconwaydev/ngit-relay (one implementation, but not the only one)
-- **Related Setup**: See [GIT_NOSTR_BRIDGE_SETUP.md](GIT_NOSTR_BRIDGE_SETUP.md) for git-nostr-bridge installation (handles Git operations)
+- **Related Setup**: See [GIT_NOSTR_BRIDGE_SETUP.md](docs/GIT_NOSTR_BRIDGE_SETUP.md) for git-nostr-bridge installation (handles Git operations)
 - **gittr GRASP Implementation**: See `ui/src/lib/utils/grasp-servers.ts` for the complete list of supported GRASP servers
 
 ### Next Steps
