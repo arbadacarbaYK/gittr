@@ -92,7 +92,7 @@ go version
 
 **Important clarification:** "Your user" means the **Linux system user account** you're logged in as (e.g., `homie`, `www-data`). This is **NOT** the Nostr nsec/pubkey from your `.env.local` file. The Nostr keys are for platform authentication, while the system user is your Linux account.
 
-**For Docker installations:** If you're using Docker, Go is already included in the Docker image, so you don't need to install it separately. See Docker setup in [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md).
+**For Docker installations:** If you're using Docker, Go is already included in the Docker image, so you don't need to install it separately. See Docker setup in [SETUP_INSTRUCTIONS.md](docs/SETUP_INSTRUCTIONS.md).
 
 **Important:** After installing Go, you must either:
 - Run `export PATH=$PATH:/usr/local/go/bin` (Option 1) or `export PATH=$HOME/go-local/go/bin:$PATH` (Option 2) in your current terminal session, OR

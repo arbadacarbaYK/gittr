@@ -352,7 +352,7 @@ Edit `~/.config/git-nostr/git-nostr-cli.json`:
 
 **For Docker containers** (as in original NostrGit example), use `root@localhost` because Docker runs as root. For production, use `git-nostr@gittr.space` (the dedicated user you created).
 
-**See [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md) for complete server admin setup guide including Docker, relay configuration, and connecting all parts together.**
+**See [SETUP_INSTRUCTIONS.md](docs/SETUP_INSTRUCTIONS.md) for complete server admin setup guide including Docker, relay configuration, and connecting all parts together.**
 
 ### 2. Publish SSH Keys
 
@@ -505,7 +505,7 @@ Then use: `git clone git@localhost-git:<pubkey>/repo.git`
 
 ## Additional Resources
 
-- **[SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md)**: Complete server admin setup guide (Docker, relays, Blossom, step-by-step order)
+- **[SETUP_INSTRUCTIONS.md](docs/SETUP_INSTRUCTIONS.md)**: Complete server admin setup guide (Docker, relays, Blossom, step-by-step order)
 - Original gitnostr README: `ui/gitnostr/README.md`
 - Git Commands Test Plan: `GIT_COMMANDS_TEST_PLAN.md`
 - SSH & Git Guide: `docs/SSH_GIT_GUIDE.md`
