@@ -153,6 +153,9 @@ async function fetchRepoDescription(
 export async function generateMetadata(
   { params }: { params: Promise<{ entity: string; repo: string }> }
 ): Promise<Metadata> {
+  // CRITICAL: Log immediately to verify function is being called
+  console.log('[Metadata] generateMetadata called');
+  
   try {
     const resolvedParams = await params;
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space';
@@ -195,8 +198,57 @@ export async function generateMetadata(
   const title = `${ownerName}/${decodedRepo}`;
   const url = `${baseUrl}/${encodeURIComponent(resolvedParams.entity)}/${encodeURIComponent(decodedRepo)}`;
   
-  // Fetch repo description (with timeout to keep it fast)
-  const repoDescription = await fetchRepoDescription(resolvedParams.entity, decodedRepo, 2000);
+  // Fetch repo description (with timeout to keep it fast) - make it non-blocking
+  // Start the fetch but don't wait for it - use a fast fallback
+  const repoDescriptionPromise = fetchRepoDescription(resolvedParams.entity, decodedRepo, 1500);
+  
+  // Resolve repository icon URL for Open Graph (also non-blocking)
+  // Priority: repo logo -> owner profile picture -> default logo
+  let iconUrl = `${baseUrl}/logo.svg`; // Default fallback
+  const iconUrlPromise = (async () => {
+    try {
+      // Try repo logo first
+      let resolvedIcon = await resolveRepoIconForMetadata(
+        resolvedParams.entity,
+        decodedRepo,
+        baseUrl
+      );
+      
+      // Ensure iconUrl is absolute
+      if (!resolvedIcon.startsWith('http')) {
+        resolvedIcon = `${baseUrl}${resolvedIcon.startsWith('/') ? '' : '/'}${resolvedIcon}`;
+      }
+      
+      // If repo logo is just the default, try owner profile picture
+      if (resolvedIcon === `${baseUrl}/logo.svg` && ownerPubkey) {
+        try {
+          const ownerIcon = await resolveUserIconForMetadata(resolvedParams.entity, baseUrl, 800);
+          if (ownerIcon !== `${baseUrl}/logo.svg`) {
+            resolvedIcon = ownerIcon;
+          }
+        } catch (error) {
+          // Fall back to default logo
+          console.warn('[Metadata] Failed to fetch owner icon:', error);
+        }
+      }
+      
+      return resolvedIcon;
+    } catch (error) {
+      // If resolution fails, use default logo
+      console.warn('[Metadata] Failed to resolve repo icon, using default:', error);
+      return `${baseUrl}/logo.svg`;
+    }
+  })();
+  
+  // Wait for both with a timeout - if they take too long, use fallbacks
+  const [repoDescription, resolvedIconUrl] = await Promise.race([
+    Promise.all([repoDescriptionPromise, iconUrlPromise]),
+    new Promise<[string | null, string]>((resolve) => 
+      setTimeout(() => resolve([null, `${baseUrl}/logo.svg`]), 2000)
+    )
+  ]).catch(() => [null, `${baseUrl}/logo.svg`] as [string | null, string]);
+  
+  iconUrl = resolvedIconUrl || iconUrl;
   
   // Build description text - use repo description if available, otherwise generic
   const description = repoDescription 
@@ -205,38 +257,7 @@ export async function generateMetadata(
       : repoDescription
     : `Repository ${title} on gittr - Decentralized Git Hosting on Nostr. A censorship-resistant alternative to GitHub.`;
   
-  // Resolve repository icon URL for Open Graph
-  // Priority: repo logo -> owner profile picture -> default logo
-  let iconUrl = `${baseUrl}/logo.svg`; // Default fallback
-  try {
-    // Try repo logo first
-    iconUrl = await resolveRepoIconForMetadata(
-      resolvedParams.entity,
-      decodedRepo,
-      baseUrl
-    );
-    
-    // Ensure iconUrl is absolute
-    if (!iconUrl.startsWith('http')) {
-      iconUrl = `${baseUrl}${iconUrl.startsWith('/') ? '' : '/'}${iconUrl}`;
-    }
-    
-    // If repo logo is just the default, try owner profile picture
-    if (iconUrl === `${baseUrl}/logo.svg` && ownerPubkey) {
-      try {
-        const ownerIcon = await resolveUserIconForMetadata(resolvedParams.entity, baseUrl, 1000);
-        if (ownerIcon !== `${baseUrl}/logo.svg`) {
-          iconUrl = ownerIcon;
-        }
-      } catch (error) {
-        // Fall back to default logo
-        console.warn('[Metadata] Failed to fetch owner icon:', error);
-      }
-    }
-  } catch (error) {
-    // If resolution fails, use default logo
-    console.warn('[Metadata] Failed to resolve repo icon, using default:', error);
-  }
+  console.log('[Metadata] Final metadata:', { title, description: description.substring(0, 50), iconUrl });
   
   return {
     title,
