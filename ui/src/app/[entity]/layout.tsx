@@ -130,8 +130,8 @@ export async function generateMetadata(
       images: [
         {
           url: iconUrl,
-          width: 1200,
-          height: 630,
+          width: 400,
+          height: 400,
           alt: `${actualName} profile on gittr`,
         },
       ],

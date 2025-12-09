@@ -321,8 +321,8 @@ export async function generateMetadata(
         images: [
           {
             url: iconUrl,
-            width: 1200,
-            height: 630,
+            width: 600,
+            height: 600,
             alt: `${decodedRepo} repository on gittr`,
           },
         ],
@@ -362,7 +362,7 @@ export async function generateMetadata(
         url: `${baseUrl}/${encodeURIComponent(resolvedParams.entity)}/${encodeURIComponent(decodedRepo)}`,
         type: 'website',
         siteName: 'gittr',
-        images: [{ url: `${baseUrl}/logo.svg`, width: 1200, height: 630, alt: `${decodedRepo} repository on gittr` }],
+        images: [{ url: `${baseUrl}/logo.svg`, width: 600, height: 600, alt: `${decodedRepo} repository on gittr` }],
       },
       twitter: {
         card: 'summary_large_image',
