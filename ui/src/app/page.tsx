@@ -1562,9 +1562,9 @@ export default function HomePage() {
             amount={10}
             comment="Donation to gittr.space"
             recipientMetadata={{
-              lud16: "gittr@bitcoindelta.club",
-              // LNURL provided as fallback, but LUD-16 will be tried first
-              lnurl: "LNURL1DP68GURN8GHJ7CNFW33K76TWV3JKCARP9E3KCATZ9AKXUATJD3CZ75MHVFERYNQARADUV",
+              lud16: "arbadacarba@btip.nl",
+              // LNURL provided as fallback for older wallets that don't support LUD-16
+              lnurl: "LNURL1DP68GURN8GHJ7CN5D9CZUMNV9UH8WETVDSKKKMN0WAHZ7MRWW4EXCUP0X9UXGDEEXQ6XVVM9XUMXGDFCXY6NQS43TRV",
             }}
             variant="outline"
             size="sm"

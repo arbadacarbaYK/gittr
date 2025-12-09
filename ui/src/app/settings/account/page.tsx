@@ -921,7 +921,7 @@ export default function AccountSettingsPage() {
               error={errors.lnbitsUrl}
               isValid={validation.lnbitsUrl}
               showError={showValidation}
-              helpText="Your LNbits instance URL (for split payments and bounties). https:// will be added automatically."
+              helpText="Your LNbits instance URL (for split payments and bounties). Examples: bitcoindelta.club (v0.12.12) or azzamo.online (latest). https:// will be added automatically. The system automatically detects and supports both API versions."
             />
             <InputField
               label="LNbits Admin Key"

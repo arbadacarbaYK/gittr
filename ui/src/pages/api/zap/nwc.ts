@@ -2,6 +2,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { validatePaymentAmount, validateTextContent, validatePubkey, validateUrl } from "@/lib/security/input-validation";
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
+import type { LNbitsConfig, LNbitsPaymentRequest } from "@/lib/payments/lnbits-adapter";
+import { createPayment } from "@/lib/payments/lnbits-adapter";
 
 // NWC Zap endpoint - creates zap invoice via Nostr Wallet Connect
 // For now, if NWC is not fully implemented, fall back to LNbits
@@ -67,32 +69,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ status: "invalid_lnbits_key", message: "Invalid LNbits admin key format" });
       }
       
-      // Remove trailing slash and build API URL
-      finalUrl = finalUrl.replace(/\/+$/, "");
-      const apiUrl = `${finalUrl}/api/v1/payments`;
-      
-      console.log("NWC fallback - Creating LNbits invoice:", { apiUrl, amount });
-      
-      const invoiceResponse = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          "X-Api-Key": lnbitsAdminKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          out: false, // Create invoice for receiving
-          amount: amount * 1000, // LNbits API expects millisats
-          memo: comment || `Zap to ${recipient.slice(0, 8)}...`,
-        }),
-      });
+      // Use adapter to create invoice (handles both API versions)
+      const config: LNbitsConfig = {
+        url: finalUrl,
+        adminKey: lnbitsAdminKey,
+      };
 
-      if (!invoiceResponse.ok) {
-        const errorText = await invoiceResponse.text();
-        console.error("LNbits invoice creation failed:", { status: invoiceResponse.status, errorText });
-        throw new Error(`Failed to create LNbits invoice: ${errorText}`);
-      }
+      const paymentRequest: LNbitsPaymentRequest = {
+        out: false, // Create invoice for receiving
+        amount: amount * 1000, // LNbits API expects millisats
+        memo: comment || `Zap to ${recipient.slice(0, 8)}...`,
+      };
 
-      const invoiceData = await invoiceResponse.json();
+      console.log("NWC fallback - Creating LNbits invoice:", { url: finalUrl, amount });
+      
+      const invoiceData = await createPayment(config, paymentRequest);
       const fullInvoice = invoiceData.payment_request || invoiceData.bolt11;
       
       console.log("LNbits invoice received:", { 

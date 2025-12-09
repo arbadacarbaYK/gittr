@@ -328,7 +328,7 @@ export async function generateMetadata(
         ],
       },
       twitter: {
-        card: 'summary_large_image',
+        card: 'summary',
         title,
         description,
         images: [iconUrl],
@@ -365,7 +365,7 @@ export async function generateMetadata(
         images: [{ url: `${baseUrl}/logo.svg`, width: 600, height: 600, alt: `${decodedRepo} repository on gittr` }],
       },
       twitter: {
-        card: 'summary_large_image',
+        card: 'summary',
         title,
         description: `Repository ${title} on gittr - Decentralized Git Hosting on Nostr`,
         images: [`${baseUrl}/logo.svg`],
