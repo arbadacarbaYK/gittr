@@ -234,39 +234,51 @@ export async function generateMetadata(
     const repoDescriptionPromise = fetchRepoDescription(resolvedParams.entity, decodedRepo, 1500);
     
     // Resolve repository icon URL for Open Graph (also non-blocking)
-    // Priority: repo logo -> owner profile picture -> default logo
+    // Priority: owner profile picture -> repo logo -> default logo
+    // Note: We prioritize owner picture because repo logos may not exist
     let iconUrl = `${baseUrl}/logo.svg`; // Default fallback
     const iconUrlPromise = (async () => {
       try {
-        // Try repo logo first
-        let resolvedIcon = await resolveRepoIconForMetadata(
-          resolvedParams.entity,
-          decodedRepo,
-          baseUrl
-        );
-        
-        // Ensure iconUrl is absolute
-        if (!resolvedIcon.startsWith('http')) {
-          resolvedIcon = `${baseUrl}${resolvedIcon.startsWith('/') ? '' : '/'}${resolvedIcon}`;
-        }
-        
-        // If repo logo is just the default, try owner profile picture
-        if (resolvedIcon === `${baseUrl}/logo.svg` && ownerPubkey) {
+        // First, try owner profile picture (most reliable)
+        if (ownerPubkey) {
           try {
-            const ownerIcon = await resolveUserIconForMetadata(resolvedParams.entity, baseUrl, 800);
-            if (ownerIcon !== `${baseUrl}/logo.svg`) {
-              resolvedIcon = ownerIcon;
+            const ownerIcon = await resolveUserIconForMetadata(resolvedParams.entity, baseUrl, 1000);
+            if (ownerIcon && ownerIcon !== `${baseUrl}/logo.svg` && ownerIcon.startsWith('http')) {
+              console.log('[Metadata] Using owner profile picture:', ownerIcon.substring(0, 60));
+              return ownerIcon;
             }
           } catch (error) {
-            // Fall back to default logo
             console.warn('[Metadata] Failed to fetch owner icon:', error);
           }
         }
         
-        return resolvedIcon;
+        // Then try repo logo (may not exist, so this is secondary)
+        try {
+          let resolvedIcon = await resolveRepoIconForMetadata(
+            resolvedParams.entity,
+            decodedRepo,
+            baseUrl
+          );
+          
+          // Ensure iconUrl is absolute
+          if (!resolvedIcon.startsWith('http')) {
+            resolvedIcon = `${baseUrl}${resolvedIcon.startsWith('/') ? '' : '/'}${resolvedIcon}`;
+          }
+          
+          // Only use repo logo if it's not the default
+          if (resolvedIcon !== `${baseUrl}/logo.svg`) {
+            console.log('[Metadata] Using repo logo:', resolvedIcon.substring(0, 60));
+            return resolvedIcon;
+          }
+        } catch (error) {
+          console.warn('[Metadata] Failed to resolve repo icon:', error);
+        }
+        
+        // Fall back to default logo
+        return `${baseUrl}/logo.svg`;
       } catch (error) {
         // If resolution fails, use default logo
-        console.warn('[Metadata] Failed to resolve repo icon, using default:', error);
+        console.warn('[Metadata] Failed to resolve icon, using default:', error);
         return `${baseUrl}/logo.svg`;
       }
     })();
