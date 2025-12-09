@@ -210,7 +210,19 @@ export async function generateMetadata(
       
       if (ownerMetadata) {
         // Use owner's actual name from Nostr if available
-        ownerDisplayName = (ownerMetadata.name || ownerMetadata.display_name || ownerName) as string;
+        // CRITICAL: Validate that name/display_name are actually strings
+        // Nostr metadata is parsed JSON and could contain any type
+        const nameValue = ownerMetadata.name;
+        const displayNameValue = ownerMetadata.display_name;
+        
+        // Only use if it's a non-empty string
+        if (typeof nameValue === 'string' && nameValue.trim().length > 0) {
+          ownerDisplayName = nameValue;
+        } else if (typeof displayNameValue === 'string' && displayNameValue.trim().length > 0) {
+          ownerDisplayName = displayNameValue;
+        }
+        // Otherwise keep the fallback (ownerName)
+        
         console.log('[Metadata] Owner display name:', ownerDisplayName);
       }
     } catch (error) {
