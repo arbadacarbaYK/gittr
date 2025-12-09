@@ -3,6 +3,7 @@ import { createInvoiceFromLightningAddress, createInvoiceFromLNURL } from "@/lib
 import { validatePaymentAmount, validateTextContent, validatePubkey, validateLightningAddress, validateLNURL } from "@/lib/security/input-validation";
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
+import { createPayment, type LNbitsConfig, type LNbitsPaymentRequest } from "@/lib/payments/lnbits-adapter";
 
 // LNbits Zap endpoint - creates invoice from recipient, then pays with LNbits
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -93,30 +94,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log("LNbits Split: Creating invoice from source wallet for auto-split");
       console.log("Split info (for reference only):", splits.map((s: any) => ({ pubkey: s.pubkey, weight: s.weight + "%" })));
       
-      // Create invoice from source wallet using LNbits core API
+      // Create invoice from source wallet using LNbits adapter (handles both API versions)
       // This is the wallet with SplitPayments extension configured in UI
-      const invoiceResponse = await fetch(`${lnbitsUrl}/api/v1/payments`, {
-        method: "POST",
-        headers: {
-          "X-Api-Key": lnbitsAdminKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          out: false, // Create invoice for receiving (source wallet receives, then splits automatically)
-          amount: amountNum * 1000, // LNbits API expects millisats
-          memo: comment || `Zap with splits: ${splits.length} recipients`,
-          // Note: 'extra' field is just for our reference - LNbits doesn't use it for splits
-          // Splits are handled by SplitPayments extension configuration in UI
-        }),
-      });
+      const config: LNbitsConfig = {
+        url: lnbitsUrl,
+        adminKey: lnbitsAdminKey,
+      };
 
-      if (!invoiceResponse.ok) {
-        const errorText = await invoiceResponse.text();
-        console.error("LNbits invoice creation failed:", { status: invoiceResponse.status, errorText });
-        throw new Error(`Failed to create split invoice: ${errorText}`);
-      }
+      const paymentRequest: LNbitsPaymentRequest = {
+        out: false, // Create invoice for receiving (source wallet receives, then splits automatically)
+        amount: amountNum * 1000, // LNbits API expects millisats
+        memo: comment || `Zap with splits: ${splits.length} recipients`,
+      };
 
-      const invoiceData = await invoiceResponse.json();
+      const invoiceData = await createPayment(config, paymentRequest);
       const fullInvoice = invoiceData.payment_request || invoiceData.bolt11;
       
       if (!fullInvoice || fullInvoice.length < 50) {
@@ -180,27 +171,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       console.log("LNbits Zap: Invoice created from recipient:", invoice.substring(0, 50) + "...");
 
-      // Now pay the invoice using LNbits (out: true = sending payment)
-      // LNbits requires 'comment' or 'extra' field for payments in some versions
-      const payResponse = await fetch(`${lnbitsUrl}/api/v1/payments`, {
-        method: "POST",
-        headers: {
-          "X-Api-Key": lnbitsAdminKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          out: true, // Paying invoice (sending payment)
-          bolt11: invoice,
-          extra: {
-            comment: comment || `Zap: ${amountNum} sats to ${recipient.slice(0, 8)}...`,
-            recipient,
-          },
-        }),
-      });
+      // Now pay the invoice using LNbits adapter (handles both API versions)
+      const config: LNbitsConfig = {
+        url: lnbitsUrl,
+        adminKey: lnbitsAdminKey,
+      };
 
-      if (!payResponse.ok) {
-        const errorText = await payResponse.text();
-        console.error("LNbits payment failed:", { status: payResponse.status, errorText });
+      const paymentRequest: LNbitsPaymentRequest = {
+        out: true, // Paying invoice (sending payment)
+        bolt11: invoice,
+        memo: comment || `Zap: ${amountNum} sats to ${recipient.slice(0, 8)}...`,
+        extra: {
+          comment: comment || `Zap: ${amountNum} sats to ${recipient.slice(0, 8)}...`,
+          recipient,
+        },
+      };
+
+      let payData;
+      try {
+        payData = await createPayment(config, paymentRequest);
+      } catch (paymentError: any) {
+        console.error("LNbits payment failed:", paymentError);
         // Return the invoice anyway so user can pay it manually
         return res.status(200).json({
           paymentRequest: invoice,
@@ -209,8 +200,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           note: "Invoice created from recipient. LNbits payment attempt failed - you can pay manually.",
         });
       }
-
-      const payData = await payResponse.json();
       
       return res.status(200).json({
         paymentRequest: invoice,

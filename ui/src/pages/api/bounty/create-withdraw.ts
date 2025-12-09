@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { validatePaymentAmount } from "@/lib/security/input-validation";
 import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
+import { createWithdrawLink, listWithdrawLinks, type LNbitsConfig } from "@/lib/payments/lnbits-adapter";
 
 /**
  * Create LNURL-withdraw link for bounty
@@ -79,31 +80,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.warn("Extension activation check failed (user may need to enable manually):", activateError.message);
     }
 
-    // Step 2: Create withdraw link
+    // Step 2: Create withdraw link using adapter (handles both API versions)
     // Note: The withdraw link is automatically funded from the wallet associated with the admin key
     // Use provided title (with user-friendly format) or fallback to simple format
     const withdrawTitle = title || `Bounty for issue ${issueId}`;
     
-    // Try fetch without timeout first to see actual error
-    let withdrawResponse: Response;
+    const config: LNbitsConfig = {
+      url: finalLnbitsUrl,
+      adminKey: finalLnbitsAdminKey,
+      invoiceKey: lnbitsInvoiceKey,
+    };
+
+    let withdrawData;
     try {
-      console.log(`Attempting to create withdraw link at: ${finalLnbitsUrl}/withdraw/api/v1/links`);
-      withdrawResponse = await fetch(`${finalLnbitsUrl}/withdraw/api/v1/links`, {
-        method: "POST",
-        headers: {
-          "X-Api-Key": finalLnbitsAdminKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title: withdrawTitle,
-          min_withdrawable: amount * 1000, // millisats
-          max_withdrawable: amount * 1000, // millisats
-          uses: 1, // Single use withdraw link
-          wait_time: 1, // Minimum wait time (1 second)
-          is_unique: true, // Single use only
-        }),
+      withdrawData = await createWithdrawLink(config, {
+        title: withdrawTitle,
+        min_withdrawable: amount * 1000, // millisats
+        max_withdrawable: amount * 1000, // millisats
+        uses: 1, // Single use withdraw link
+        wait_time: 1, // Minimum wait time (1 second)
+        is_unique: true, // Single use only
       });
-      console.log(`Withdraw link creation response status: ${withdrawResponse.status}`);
     } catch (fetchError: any) {
       // Log the actual error details for debugging
       console.error("Fetch error details:", {
@@ -121,19 +118,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (fetchError.message?.includes('fetch failed') || fetchError.cause?.code === 'ECONNREFUSED' || fetchError.cause?.code === 'ETIMEDOUT' || fetchError.cause?.code === 'ENOTFOUND') {
         throw new Error(`Network error: Unable to connect to LNbits at ${finalLnbitsUrl}. Error: ${fetchError.cause?.code || fetchError.message}. Please check your LNbits URL and network connection.`);
       }
-      throw fetchError;
-    }
-
-    if (!withdrawResponse.ok) {
-      const errorText = await withdrawResponse.text();
+      
       // Check if extension is not enabled
-      if (withdrawResponse.status === 404 || errorText.includes("not enabled")) {
+      if (fetchError.message?.includes("not enabled") || fetchError.message?.includes("404")) {
         throw new Error(`Withdraw extension is not enabled. Please enable it in LNbits UI (Extensions → Withdraw) for your wallet.`);
       }
-      throw new Error(`Failed to create withdraw link: ${errorText}`);
+      
+      throw fetchError;
     }
-
-    const withdrawData = await withdrawResponse.json();
 
     // Response format from POST: Full object with id, lnurl, title, etc.
     // Example: {"id":"gnDBSXT9jicWBmiMLaswVF","lnurl":"LNURL1DP68G...","title":"...",...}
@@ -143,7 +135,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error("Invalid response from LNbits: missing lnurl");
     }
 
-    // Extract withdraw ID directly from POST response (it's included in the response!)
+    // Extract withdraw ID directly from response (adapter normalizes this)
     const withdrawId = withdrawData.id;
     
     if (!withdrawId) {
@@ -160,21 +152,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       }
       
-      // Add timeout for list request using Promise.race
-      const listPromise = fetch(`${finalLnbitsUrl}/withdraw/api/v1/links`, {
-        method: "GET",
-        headers: {
-          "X-Api-Key": lnbitsInvoiceKey,
-        },
-      });
-      
-      const listTimeout = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('TIMEOUT')), 10000);
-      });
-      
-      let listResponse: Response;
+      // Use adapter to list withdraw links (handles both API versions)
+      let allLinks;
       try {
-        listResponse = await Promise.race([listPromise, listTimeout]);
+        allLinks = await listWithdrawLinks(config);
       } catch (listError: any) {
         console.warn("Failed to list withdraw links to get ID:", listError.message);
         return res.status(200).json({
@@ -183,19 +164,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           amount: amount,
         });
       }
-
-      if (!listResponse.ok) {
-        console.warn("Failed to list withdraw links to get ID:", await listResponse.text());
-        return res.status(200).json({
-          status: "ok",
-          lnurl: withdrawData.lnurl,
-          amount: amount,
-        });
-      }
-
-      const listData = await listResponse.json();
-      // Handle format: {"data":[...], "total":N} or [...]
-      const allLinks = Array.isArray(listData) ? listData : (listData.data || []);
       
       // Find the link we just created by matching the title
       const bountyTitle = withdrawTitle;

@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
+import { getWithdrawLink, createPayment, type LNbitsConfig, type LNbitsPaymentRequest } from "@/lib/payments/lnbits-adapter";
 
 /**
  * Programmatically claim an LNURL-withdraw link
@@ -83,22 +84,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Alternative: Use LNbits withdraw API to get the withdraw link details
     // Then claim it using the LNURL callback
     
-    // Get withdraw link details
-    const linkResponse = await fetch(
-      `${finalLnbitsUrl}/withdraw/api/v1/links/${withdrawLinkId}`,
-      {
-        method: "GET",
-        headers: {
-          "X-Api-Key": finalLnbitsAdminKey,
-        },
-      }
-    );
+    // Get withdraw link details using adapter (handles both API versions)
+    const config: LNbitsConfig = {
+      url: finalLnbitsUrl,
+      adminKey: finalLnbitsAdminKey,
+    };
 
-    if (!linkResponse.ok) {
-      throw new Error("Failed to get withdraw link details");
+    let linkData;
+    try {
+      linkData = await getWithdrawLink(config, withdrawLinkId);
+    } catch (error: any) {
+      throw new Error(`Failed to get withdraw link details: ${error.message}`);
     }
-
-    const linkData = await linkResponse.json();
 
     // Step 2: Create invoice from recipient
     // Use LNURL-pay or LUD-16 to get invoice
@@ -183,27 +180,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error(claimData.reason || "Withdraw claim failed");
     }
 
-    // Step 4: Pay the invoice from the wallet that funds the withdraw link
+    // Step 4: Pay the invoice from the wallet that funds the withdraw link using adapter
     // The withdraw link is funded by the wallet associated with the admin key
     // So we pay the invoice from that wallet
-    const paymentResponse = await fetch(`${finalLnbitsUrl}/api/v1/payments`, {
-      method: "POST",
-      headers: {
-        "X-Api-Key": finalLnbitsAdminKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        out: true, // Outgoing payment
-        bolt11: invoice,
-      }),
-    });
+    const paymentRequest: LNbitsPaymentRequest = {
+      out: true, // Outgoing payment
+      bolt11: invoice,
+    };
 
-    if (!paymentResponse.ok) {
-      const errorText = await paymentResponse.text();
-      throw new Error(`Failed to pay invoice: ${errorText}`);
+    let paymentData;
+    try {
+      paymentData = await createPayment(config, paymentRequest);
+    } catch (error: any) {
+      throw new Error(`Failed to pay invoice: ${error.message}`);
     }
-
-    const paymentData = await paymentResponse.json();
     
     return res.status(200).json({
       status: "ok",
