@@ -156,7 +156,16 @@ export async function generateMetadata(
   try {
     const resolvedParams = await params;
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space';
-    const decodedRepo = decodeURIComponent(resolvedParams.repo);
+    
+    // Safely decode repo name - handle invalid percent-encoding gracefully
+    let decodedRepo: string;
+    try {
+      decodedRepo = decodeURIComponent(resolvedParams.repo);
+    } catch (decodeError) {
+      // If decoding fails (e.g., invalid % encoding like %ZZ), use original string
+      console.warn('[Metadata] Failed to decode repo name, using original:', decodeError);
+      decodedRepo = resolvedParams.repo;
+    }
     
     // Debug logging
     console.log('[Metadata] Generating metadata for:', resolvedParams.entity, decodedRepo);
@@ -263,7 +272,15 @@ export async function generateMetadata(
     console.error('[Metadata] Error generating metadata:', error);
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space';
     const resolvedParams = await params;
-    const decodedRepo = decodeURIComponent(resolvedParams.repo);
+    
+    // Safely decode repo name in error handler too
+    let decodedRepo: string;
+    try {
+      decodedRepo = decodeURIComponent(resolvedParams.repo);
+    } catch (decodeError) {
+      decodedRepo = resolvedParams.repo;
+    }
+    
     const title = `${resolvedParams.entity}/${decodedRepo}`;
     
     return {
