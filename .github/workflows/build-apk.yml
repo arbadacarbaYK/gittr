@@ -116,12 +116,26 @@ jobs:
         working-directory: ./ui/android
         if: steps.capacitor-check.outputs.capacitor_configured == 'true'
         run: |
-          APK_PATH=$(find ./app/build/outputs/apk/release -name "*.apk" | head -1)
+          echo "Searching for APK files..."
+          find . -name "*.apk" -type f 2>/dev/null | head -20
+          echo "---"
+          APK_PATH=$(find ./app/build/outputs/apk/release -name "*.apk" -type f 2>/dev/null | head -1)
           if [ -z "$APK_PATH" ]; then
-            APK_PATH=$(find . -name "*.apk" -path "*/release/*" | head -1)
+            echo "APK not found in ./app/build/outputs/apk/release, searching elsewhere..."
+            APK_PATH=$(find . -name "*.apk" -type f -path "*/release/*" 2>/dev/null | head -1)
           fi
+          if [ -z "$APK_PATH" ]; then
+            echo "APK not found in release folders, searching all locations..."
+            APK_PATH=$(find . -name "*.apk" -type f 2>/dev/null | head -1)
+          fi
+          if [ -z "$APK_PATH" ]; then
+            echo "❌ ERROR: No APK file found!"
+            exit 1
+          fi
+          # Convert to absolute path
+          APK_PATH=$(realpath "$APK_PATH")
           echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
-          echo "Found APK: $APK_PATH"
+          echo "✅ Found APK: $APK_PATH"
           ls -lh "$APK_PATH"
 
       - name: Upload APK artifact
@@ -134,11 +148,10 @@ jobs:
 
       - name: Create Release with APK
         uses: softprops/action-gh-release@v1
-        if: steps.capacitor-check.outputs.capacitor_configured == 'true'
+        if: steps.capacitor-check.outputs.capacitor_configured == 'true' && steps.find-apk.outputs.apk_path != ''
         with:
           files: ${{ steps.find-apk.outputs.apk_path }}
           draft: false
           prerelease: false
           generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
