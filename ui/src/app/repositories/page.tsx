@@ -153,7 +153,7 @@ export default function RepositoriesPage() {
       defaultRelays,
       (event: NostrEvent, isAfterEose: boolean, relayURL?: string) => {
         if (typeof window === 'undefined') return; // Don't access localStorage during SSR
-        if ((event.kind === KIND_REPOSITORY || (event.kind as number) === KIND_REPOSITORY_NIP34) && !isAfterEose && /^[0-9a-f]{64}$/i.test(event.pubkey)) {
+        if (((event.kind as number) === KIND_REPOSITORY || (event.kind as number) === KIND_REPOSITORY_NIP34) && !isAfterEose && /^[0-9a-f]{64}$/i.test(event.pubkey)) {
           try {
             let repoData;
             try {
@@ -662,7 +662,7 @@ export default function RepositoriesPage() {
         }
         
         // Process ALL events, not just before EOSE (EOSE just means "end of stored events", but new events can still arrive)
-        if (event.kind === KIND_REPOSITORY || (event.kind as number) === KIND_REPOSITORY_NIP34) {
+        if ((event.kind as number) === KIND_REPOSITORY || (event.kind as number) === KIND_REPOSITORY_NIP34) {
           try {
             let repoData: any;
             if ((event.kind as number) === KIND_REPOSITORY_NIP34) {
