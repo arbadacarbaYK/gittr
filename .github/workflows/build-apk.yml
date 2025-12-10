@@ -88,6 +88,17 @@ jobs:
             exit 1
           fi
 
+      - name: Add Android platform if missing
+        working-directory: ./ui
+        if: steps.capacitor-check.outputs.capacitor_configured == 'true'
+        run: |
+          if [ ! -d "android" ]; then
+            echo "Android platform not found, adding it..."
+            npx cap add android
+          else
+            echo "Android platform already exists"
+          fi
+
       - name: Sync Capacitor
         working-directory: ./ui
         if: steps.capacitor-check.outputs.capacitor_configured == 'true'
