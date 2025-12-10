@@ -463,7 +463,7 @@ export default function RepositoriesPage() {
       }
       
       // Load list of locally-deleted repos (user deleted them, don't re-add from Nostr)
-      const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
+      const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number; ownerPubkey?: string}>;
       const deletedReposSet = new Set(deletedRepos.map(d => `${d.entity}/${d.repo}`.toLowerCase()));
       
       // AUTO-FIX: Delete test_repo_icon_check_fork
@@ -761,7 +761,7 @@ export default function RepositoriesPage() {
             const existingRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as Repo[];
             
             // Check if this repo was locally deleted (user deleted it, don't re-add from Nostr)
-            const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
+            const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number; ownerPubkey?: string}>;
             // CRITICAL: Use npub format for entity (GRASP protocol standard)
             let entity: string;
             try {
@@ -770,11 +770,57 @@ export default function RepositoriesPage() {
               entity = event.pubkey; // Fallback to full pubkey if encoding fails
             }
             const repoKey = `${entity}/${repoData.repositoryName}`.toLowerCase();
+            
+            // CRITICAL: Check if repo owner marked it as deleted/archived on Nostr FIRST
+            // This is the most authoritative source - if owner says it's deleted, respect it
+            if (repoData.deleted === true || repoData.archived === true) {
+              console.log(`⏭️ Skipping owner-deleted/archived repo from Nostr: ${repoKey}`, {
+                deleted: repoData.deleted,
+                archived: repoData.archived,
+                owner: entity.slice(0, 12) + "..."
+              });
+              // CRITICAL: Also mark as locally deleted to prevent re-adding
+              const deletedReposForMarking = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number; ownerPubkey?: string}>;
+              const deletedRepoKey = `${entity}/${repoData.repositoryName}`.toLowerCase();
+              if (!deletedReposForMarking.some(d => {
+                // Check by ownerPubkey field (most reliable)
+                if (d.ownerPubkey && d.ownerPubkey.toLowerCase() === event.pubkey.toLowerCase()) {
+                  return d.repo.toLowerCase() === repoData.repositoryName.toLowerCase();
+                }
+                const dKey = `${d.entity}/${d.repo}`.toLowerCase();
+                if (dKey === deletedRepoKey) return true;
+                // Also check by ownerPubkey via npub decoding
+                if (d.entity.startsWith("npub")) {
+                  try {
+                    const dDecoded = nip19.decode(d.entity);
+                    if (dDecoded.type === "npub" && (dDecoded.data as string).toLowerCase() === event.pubkey.toLowerCase()) {
+                      return d.repo.toLowerCase() === repoData.repositoryName.toLowerCase();
+                    }
+                  } catch {}
+                }
+                return false;
+              })) {
+                deletedReposForMarking.push({
+                  entity: entity,
+                  repo: repoData.repositoryName,
+                  deletedAt: Date.now(),
+                  ownerPubkey: event.pubkey, // Store ownerPubkey for robust matching
+                });
+                localStorage.setItem("gittr_deleted_repos", JSON.stringify(deletedReposForMarking));
+              }
+              return;
+            }
+            
+            // Check if repo was locally deleted (user deleted it themselves)
             const isDeleted = deletedRepos.some(d => {
-              // Check by npub entity or by ownerPubkey (handles both formats)
+              // Priority 1: Check by ownerPubkey field (most reliable - works across all entity formats)
+              if (d.ownerPubkey && d.ownerPubkey.toLowerCase() === event.pubkey.toLowerCase()) {
+                return d.repo.toLowerCase() === repoData.repositoryName.toLowerCase();
+              }
+              // Priority 2: Check by npub entity
               const dEntityMatch = d.entity.toLowerCase() === entity.toLowerCase();
               if (dEntityMatch && d.repo.toLowerCase() === repoData.repositoryName.toLowerCase()) return true;
-              // Also check if deleted entity is npub for same pubkey
+              // Priority 3: Check if deleted entity is npub for same pubkey
               if (d.entity.startsWith("npub")) {
                 try {
                   const dDecoded = nip19.decode(d.entity);
@@ -783,23 +829,16 @@ export default function RepositoriesPage() {
                   }
                 } catch {}
               }
+              // Priority 4: Check by ownerPubkey directly (if deleted entry has pubkey format in entity field)
+              if (d.entity && /^[0-9a-f]{64}$/i.test(d.entity) && d.entity.toLowerCase() === event.pubkey.toLowerCase()) {
+                return d.repo.toLowerCase() === repoData.repositoryName.toLowerCase();
+              }
               return false;
             });
             
             // Skip if repo was locally deleted
             if (isDeleted) {
               console.log(`⏭️ Skipping locally-deleted repo: ${repoKey}`);
-              return;
-            }
-            
-            // CRITICAL: Check if repo owner marked it as deleted/archived on Nostr
-            // Respect owner's deletion request - don't show repos they've marked as deleted
-            if (repoData.deleted === true || repoData.archived === true) {
-              console.log(`⏭️ Skipping owner-deleted/archived repo from Nostr: ${repoKey}`, {
-                deleted: repoData.deleted,
-                archived: repoData.archived,
-                owner: entity.slice(0, 12) + "..."
-              });
               return;
             }
             

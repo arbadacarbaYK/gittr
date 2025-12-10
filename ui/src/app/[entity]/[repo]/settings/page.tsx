@@ -489,17 +489,33 @@ export default function RepoSettingsPage() {
       }
       
       // CRITICAL: Mark repo as locally deleted so it won't be re-added from Nostr sync
-      const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
+      // Store deletion with BOTH entity (npub) and ownerPubkey for robust matching
+      const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number; ownerPubkey?: string}>;
       const deletedRepoKey = `${entity}/${repo}`.toLowerCase();
-      // Check if already in deleted list
-      if (!deletedRepos.some(d => `${d.entity}/${d.repo}`.toLowerCase() === deletedRepoKey)) {
+      
+      // Get ownerPubkey if available (for robust matching during sync)
+      const ownerPubkey = repoToDelete?.ownerPubkey || pubkey;
+      
+      // Check if already in deleted list (by entity/repo or by ownerPubkey/repo)
+      const alreadyDeleted = deletedRepos.some(d => {
+        const dKey = `${d.entity}/${d.repo}`.toLowerCase();
+        if (dKey === deletedRepoKey) return true;
+        // Also check by ownerPubkey if available (most reliable)
+        if (ownerPubkey && d.ownerPubkey && d.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase()) {
+          return d.repo.toLowerCase() === repo.toLowerCase();
+        }
+        return false;
+      });
+      
+      if (!alreadyDeleted) {
         deletedRepos.push({
           entity: entity,
           repo: repo,
           deletedAt: Date.now(),
+          ownerPubkey: ownerPubkey, // Store ownerPubkey for robust matching
         });
         localStorage.setItem("gittr_deleted_repos", JSON.stringify(deletedRepos));
-        console.log(`✅ Marked repo as locally deleted: ${deletedRepoKey}`);
+        console.log(`✅ Marked repo as locally deleted: ${deletedRepoKey} (ownerPubkey: ${ownerPubkey?.slice(0, 16)}...)`);
       }
       
       // Clean all possible localStorage keys related to this repo
