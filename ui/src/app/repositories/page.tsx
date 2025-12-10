@@ -949,10 +949,15 @@ export default function RepositoriesPage() {
               return; // Skip this repo - name corruption detected
             }
             
+            // CRITICAL: Never use entity from repoData - it might be corrupted
+            // Always use entity derived from event.pubkey (the actual owner)
+            // Remove any entity field from repoData if it exists
+            const { entity: _, ...cleanRepoData } = repoData as any;
+            
             // Merge ALL metadata from Nostr event
             const repo: any = {
               slug: repoData.repositoryName,
-              entity: entity, // Use npub format (GRASP protocol standard)
+              entity: entity, // ALWAYS use npub format derived from event.pubkey (GRASP protocol standard)
               entityDisplayName: entityDisplayName, // Will be overridden by ownerMetadata when fetched
               repo: repoData.repositoryName,
               // CRITICAL: Use human-readable name from event content if available, otherwise use repositoryName
