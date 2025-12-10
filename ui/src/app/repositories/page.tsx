@@ -1055,20 +1055,32 @@ export default function RepositoriesPage() {
               existingRepos.push(newRepo);
             }
             
-            // CRITICAL: Clean up any repos with corrupted entities before saving
+            // CRITICAL: Clean up ONLY repos with "gittr.space" as entity (the specific corruption bug)
+            // Don't remove repos with other entity formats - they might be valid
             const cleanedRepos = existingRepos.filter((r: any) => {
-              if (!r.entity || r.entity === "gittr.space" || (!r.entity.startsWith("npub") && r.entity.includes("."))) {
-                console.error("❌ [Repositories] Removing repo with corrupted entity:", {
+              // Only remove if entity is exactly "gittr.space" (the known corruption)
+              if (r.entity === "gittr.space") {
+                const repoName = r.repo || r.slug || r.name || "";
+                console.error("❌ [Repositories] Removing repo with corrupted entity 'gittr.space':", {
                   entity: r.entity,
-                  repo: r.repo || r.name,
-                  ownerPubkey: (r as any).ownerPubkey?.slice(0, 8)
+                  repo: repoName,
+                  ownerPubkey: (r as any).ownerPubkey?.slice(0, 16),
+                  nostrEventId: (r as any).nostrEventId?.slice(0, 16),
+                  lastNostrEventId: (r as any).lastNostrEventId?.slice(0, 16),
+                  syncedFromNostr: r.syncedFromNostr
                 });
-                return false; // Remove corrupted repos
+                return false; // Remove only repos with "gittr.space" entity
               }
-              return true;
+              return true; // Keep all other repos
             });
             
-            // Save to localStorage (with corrupted repos removed)
+            // Log how many were removed
+            const removedCount = existingRepos.length - cleanedRepos.length;
+            if (removedCount > 0) {
+              console.log(`🧹 [Repositories] Cleaned up ${removedCount} repo(s) with corrupted entity 'gittr.space'`);
+            }
+            
+            // Save to localStorage (with only "gittr.space" corrupted repos removed)
             localStorage.setItem("gittr_repos", JSON.stringify(cleanedRepos));
             
             // CRITICAL: Don't call setRepos here - it causes infinite loops
@@ -1172,6 +1184,17 @@ export default function RepositoriesPage() {
       // - ownerPubkey: full 64-char pubkey
       // - contributors: array with owner having weight 100
       const userReposList = allRepos.filter((r: any) => {
+        // CRITICAL: Exclude repos with "gittr.space" entity (the corruption bug)
+        if (r.entity === "gittr.space") {
+          const repoName = r.repo || r.slug || r.name || "";
+          console.log("❌ [Repositories] Excluding repo with corrupted entity 'gittr.space':", {
+            repo: repoName,
+            ownerPubkey: (r as any).ownerPubkey?.slice(0, 8),
+            nostrEventId: (r as any).nostrEventId?.slice(0, 8)
+          });
+          return false;
+        }
+        
         if (!r.entity || r.entity === "user") {
           const repoName = r.repo || r.slug || r.name || "";
           if (repoName.toLowerCase() === "tides") {
@@ -1182,6 +1205,19 @@ export default function RepositoriesPage() {
         
         const repoName = r.repo || r.slug || r.name || "";
         const isTides = repoName.toLowerCase() === "tides";
+        
+        // CRITICAL: Additional check - if tides repo has wrong owner, exclude it
+        if (isTides && (r as any).ownerPubkey && pubkey) {
+          const ownerMatches = (r as any).ownerPubkey.toLowerCase() === pubkey.toLowerCase();
+          if (!ownerMatches) {
+            console.log("❌ [Repositories] Excluding tides repo - owner doesn't match:", {
+              repoOwner: (r as any).ownerPubkey?.slice(0, 8),
+              currentUser: pubkey.slice(0, 8),
+              entity: r.entity
+            });
+            return false;
+          }
+        }
         
         if (isTides) {
           // Try to decode npub to show pubkey in logs

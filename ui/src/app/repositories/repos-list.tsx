@@ -228,11 +228,28 @@ export function ReposList({
   
   // Filter repos to only show user's repos
   const filteredRepos = repos.filter(r => {
+    // CRITICAL: Exclude repos with "gittr.space" entity (the corruption bug)
+    if (r.entity === "gittr.space") {
+      const repoName = r.repo || r.slug || r.name || "";
+      console.log("❌ [ReposList] Excluding repo with corrupted entity 'gittr.space':", {
+        repo: repoName,
+        ownerPubkey: (r as any).ownerPubkey?.slice(0, 8)
+      });
+      return false;
+    }
+    
     // CRITICAL: "Your repositories" should ONLY show repos owned by the current user
     if (!pubkey) return false; // Not logged in = no repos
     
     // Priority 1: Check direct ownerPubkey match (most reliable)
-    if ((r as any).ownerPubkey && (r as any).ownerPubkey.toLowerCase() === pubkey.toLowerCase()) return true;
+    if ((r as any).ownerPubkey && (r as any).ownerPubkey.toLowerCase() === pubkey.toLowerCase()) {
+      // Additional check: if it's "tides" repo, ensure entity is valid
+      const repoName = (r.repo || r.slug || r.name || "").toLowerCase();
+      if (repoName === "tides" && r.entity === "gittr.space") {
+        return false; // Exclude corrupted tides repos
+      }
+      return true;
+    }
     
     // Priority 2: Check via getRepoOwnerPubkey (uses ownerPubkey or contributors)
     const repoOwnerPubkey = getRepoOwnerPubkey(r as any, r.entity);
