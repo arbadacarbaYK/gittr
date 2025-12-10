@@ -23,7 +23,7 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { useMemo } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { RepoLink } from "@/components/ui/repo-links";
-import { formatDateTime24h, formatDate24h, formatTime24h } from "@/lib/utils/date-format";
+import { formatDate24h } from "@/lib/utils/date-format";
 import { isOwner, canManageSettings } from "@/lib/repo-permissions";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 
