@@ -107,9 +107,36 @@ jobs:
         if: steps.capacitor-check.outputs.capacitor_configured == 'true'
         run: npx cap sync android
 
+      - name: Setup Android Keystore
+        working-directory: ./ui/android
+        if: steps.capacitor-check.outputs.capacitor_configured == 'true'
+        run: |
+          # Create .android directory if it doesn't exist
+          mkdir -p ~/.android
+          
+          # Generate debug keystore if it doesn't exist
+          if [ ! -f ~/.android/debug.keystore ]; then
+            echo "Generating debug keystore..."
+            keytool -genkey -v -keystore ~/.android/debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          
+          # Copy keystore to project directory for build
+          mkdir -p app
+          cp ~/.android/debug.keystore app/debug.keystore || true
+
       - name: Build APK
         working-directory: ./ui/android
         if: steps.capacitor-check.outputs.capacitor_configured == 'true'
+        env:
+          # Use debug keystore for signing (for testing)
+          # For production, use secrets with a proper release keystore
+          RELEASE_STORE_FILE: ${{ github.workspace }}/ui/android/app/debug.keystore
+          RELEASE_STORE_PASSWORD: android
+          RELEASE_KEY_ALIAS: androiddebugkey
+          RELEASE_KEY_PASSWORD: android
         run: |
           chmod +x ./gradlew
           ./gradlew assembleRelease
