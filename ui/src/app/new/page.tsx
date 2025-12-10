@@ -596,7 +596,7 @@ function NewRepoPageContent() {
           Bulk Import from GitHub
         </button>
         <p className="text-xs mt-2 text-gray-400">
-          Enter a GitHub username (e.g., <code className="bg-gray-800 px-1 rounded">arbadacarbaYK</code>) in the field above, then click this button to import all their repositories.
+          Enter a GitHub username (e.g., <code className="bg-gray-800 px-1 rounded">arbadacarbaYK</code>) in the field above, then click this button to browse and select which repositories to import. You can import all or just select specific ones.
         </p>
       </div>
       {/* Debug: Show entity info - only render on client to avoid hydration mismatch */}

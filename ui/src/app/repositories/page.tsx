@@ -771,15 +771,16 @@ export default function RepositoriesPage() {
             }
             const repoKey = `${entity}/${repoData.repositoryName}`.toLowerCase();
             
-            // CRITICAL: Check if repo owner marked it as deleted/archived on Nostr FIRST
-            // This is the most authoritative source - if owner says it's deleted, respect it
+            // CRITICAL: Respect deletion events from Nostr (both our own and others')
+            // If repo owner marked it as deleted/archived on Nostr, respect it and don't re-add
+            // This is the authoritative source - if owner says it's deleted, respect it
             if (repoData.deleted === true || repoData.archived === true) {
               console.log(`⏭️ Skipping owner-deleted/archived repo from Nostr: ${repoKey}`, {
                 deleted: repoData.deleted,
                 archived: repoData.archived,
                 owner: entity.slice(0, 12) + "..."
               });
-              // CRITICAL: Also mark as locally deleted to prevent re-adding
+              // Also mark in deletion list as a safety mechanism (prevents re-adding if event hasn't propagated)
               const deletedReposForMarking = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number; ownerPubkey?: string}>;
               const deletedRepoKey = `${entity}/${repoData.repositoryName}`.toLowerCase();
               if (!deletedReposForMarking.some(d => {
@@ -811,7 +812,7 @@ export default function RepositoriesPage() {
               return;
             }
             
-            // Check if repo was locally deleted (user deleted it themselves)
+            // Check if repo was locally deleted (user deleted it themselves, before deletion event propagated)
             const isDeleted = deletedRepos.some(d => {
               // Priority 1: Check by ownerPubkey field (most reliable - works across all entity formats)
               if (d.ownerPubkey && d.ownerPubkey.toLowerCase() === event.pubkey.toLowerCase()) {
