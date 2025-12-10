@@ -208,7 +208,7 @@ export default function RepositoriesPage() {
         }
       },
       undefined,
-      (events: NostrEvent[], relayURL: string) => {
+      (relayUrl: string, minCreatedAt: number) => {
         // EOSE - done resolving
         if (unsub) unsub();
       }
@@ -1157,7 +1157,7 @@ export default function RepositoriesPage() {
         }
       },
       undefined,
-      (events: NostrEvent[], relayURL: string) => {
+      (relayUrl: string, minCreatedAt: number) => {
         // Final EOSE callback - all events from all relays received
         // Note: This is called per relay, so we need to track when ALL relays are done
         // For now, we'll use a delay to ensure all relays have sent EOSE
