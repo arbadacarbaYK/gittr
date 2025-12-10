@@ -26,6 +26,7 @@ function slugify(text: string): string {
 }
 
 function NewRepoPageContent() {
+  const [mounted, setMounted] = useState(false);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [status, setStatus] = useState("");
@@ -34,6 +35,10 @@ function NewRepoPageContent() {
   const searchParams = useSearchParams();
   const { name: userName, isLoggedIn } = useSession();
   const { publish, subscribe, defaultRelays, pubkey } = useNostrContext();
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   // If called as a fork (/new?fork=entity/repo), prefill and stage source
   const forkParam = searchParams?.get("fork") || "";
