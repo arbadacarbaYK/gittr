@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./ui
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Build Next.js app for Capacitor
         working-directory: ./ui
