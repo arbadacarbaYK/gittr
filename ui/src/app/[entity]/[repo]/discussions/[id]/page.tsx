@@ -19,6 +19,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
+import { CopyableCodeBlock } from "@/components/ui/copyable-code-block";
 import { Reactions } from "@/components/ui/reactions";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 
@@ -183,6 +184,18 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   rehypePlugins={[rehypeRaw]}
+                  components={{
+                    code: ({ node, inline, className, children, ...props }: any) => {
+                      return (
+                        <CopyableCodeBlock 
+                          inline={inline} 
+                          className={inline ? "bg-gray-900 px-1 rounded text-green-400" : className || "bg-gray-900 rounded p-4 overflow-x-auto"}
+                        >
+                          {children}
+                        </CopyableCodeBlock>
+                      );
+                    },
+                  }}
                 >
                   {comment.content}
                 </ReactMarkdown>
@@ -281,6 +294,18 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
+                components={{
+                  code: ({ node, inline, className, children, ...props }: any) => {
+                    return (
+                      <CopyableCodeBlock 
+                        inline={inline} 
+                        className={inline ? "bg-gray-900 px-1 rounded text-green-400" : className || "bg-gray-900 rounded p-4 overflow-x-auto"}
+                      >
+                        {children}
+                      </CopyableCodeBlock>
+                    );
+                  },
+                }}
               >
                 {discussion.description}
               </ReactMarkdown>
