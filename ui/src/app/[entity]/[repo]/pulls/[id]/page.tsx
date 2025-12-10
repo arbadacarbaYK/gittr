@@ -12,6 +12,7 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
+import { CopyableCodeBlock } from "@/components/ui/copyable-code-block";
 import {
   CheckCircle2,
   GitMerge,
@@ -1206,6 +1207,18 @@ export default function PRDetailPage({ params }: { params: Promise<{ entity: str
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
+                components={{
+                  code: ({ node, inline, className, children, ...props }: any) => {
+                    return (
+                      <CopyableCodeBlock 
+                        inline={inline} 
+                        className={inline ? "bg-gray-900 px-1 rounded text-green-400" : className || "bg-gray-900 rounded p-4 overflow-x-auto"}
+                      >
+                        {children}
+                      </CopyableCodeBlock>
+                    );
+                  },
+                }}
               >
                 {pr.body || "No description provided"}
               </ReactMarkdown>

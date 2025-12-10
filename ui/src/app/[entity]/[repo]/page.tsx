@@ -57,6 +57,7 @@ import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
 import { CodeViewer } from "@/components/ui/code-viewer";
 import { BranchTagSwitcher } from "@/components/ui/branch-tag-switcher";
+import { CopyableCodeBlock } from "@/components/ui/copyable-code-block";
 import { nip19 } from "nostr-tools";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { isOwner as checkIsOwner } from "@/lib/repo-permissions";
@@ -7083,20 +7084,14 @@ export default function RepoCodePage({
                         return <MermaidRenderer code={content} className="my-4" />;
                       }
 
-                      if (!inline && match) {
-                        return (
-                          <pre className="bg-gray-900 rounded p-4 overflow-x-auto">
-                            <code className={className} {...props}>
-                              {children}
-                            </code>
-                          </pre>
-                        );
-                      }
-
+                      // Use CopyableCodeBlock for all code blocks
                       return (
-                        <code className="bg-gray-900 px-1 rounded text-green-400" {...props}>
+                        <CopyableCodeBlock 
+                          inline={inline} 
+                          className={inline ? "bg-gray-900 px-1 rounded text-green-400" : className || "bg-gray-900 rounded p-4 overflow-x-auto"}
+                        >
                           {children}
-                        </code>
+                        </CopyableCodeBlock>
                       );
                     },
                   }}
@@ -7519,6 +7514,21 @@ export default function RepoCodePage({
                             }
                             // Regular link
                             return <a href={href} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300" {...props}>{children}</a>;
+                          },
+                          code: ({ node, inline, className, children, ...props }: any) => {
+                            const match = /language-([\w-]+)/.exec(className || "");
+                            const language = match?.[1]?.toLowerCase();
+                            const content = String(children).replace(/\n$/, "");
+
+                            // Use CopyableCodeBlock for all code blocks
+                            return (
+                              <CopyableCodeBlock 
+                                inline={inline} 
+                                className={inline ? "bg-gray-900 px-1 rounded text-green-400" : className || "bg-gray-900 rounded p-4 overflow-x-auto"}
+                              >
+                                {children}
+                              </CopyableCodeBlock>
+                            );
                           },
                         }}
                       >
