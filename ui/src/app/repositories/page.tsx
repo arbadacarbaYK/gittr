@@ -3,7 +3,7 @@
 // Force dynamic rendering - this page uses localStorage which is not available during static generation
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef, type MouseEvent, type SyntheticEvent } from "react";
 import { useRouter } from "next/navigation";
 import useSession from "@/lib/nostr/useSession";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
@@ -1588,7 +1588,7 @@ export default function RepositoriesPage() {
           {/* Clear Foreign Repos Confirmation Modal */}
           {showClearForeignConfirm && (
             <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setShowClearForeignConfirm(false)}>
-              <div className="bg-[#0E1116] border border-[#383B42] rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+              <div className="bg-[#0E1116] border border-[#383B42] rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e: MouseEvent) => e.stopPropagation()}>
                 <h2 className="text-xl font-bold mb-4 text-orange-400">⚠️ Clear Foreign Repositories</h2>
                 
                 <div className="space-y-4 mb-6">
@@ -1840,7 +1840,7 @@ export default function RepositoriesPage() {
           {/* Clear Local Repos Confirmation Modal */}
           {showClearConfirm && (
             <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setShowClearConfirm(false)}>
-              <div className="bg-[#0E1116] border border-[#383B42] rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+              <div className="bg-[#0E1116] border border-[#383B42] rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e: MouseEvent) => e.stopPropagation()}>
                 <h2 className="text-xl font-bold mb-4 text-red-400">⚠️ Clear Local Repositories</h2>
                 
                 <div className="space-y-4 mb-6">
@@ -2319,7 +2319,7 @@ export default function RepositoriesPage() {
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                   <div
                     className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
-                    onClick={(e: React.MouseEvent) => {
+                    onClick={(e: MouseEvent) => {
                       // CRITICAL: Use window.location for immediate navigation (bypasses React completely)
                       // This ensures navigation happens instantly, even during heavy re-renders
                       e.preventDefault();
@@ -2338,7 +2338,7 @@ export default function RepositoriesPage() {
                         src={iconUrl} 
                         alt="repo" 
                         className="h-6 w-6 rounded-sm object-contain flex-shrink-0"
-                        onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+                        onError={(e: SyntheticEvent<HTMLImageElement, Event>) => {
                           // Fallback to empty square on error
                           e.currentTarget.style.display = 'none';
                           const parent = e.currentTarget.parentElement;
@@ -2404,7 +2404,7 @@ export default function RepositoriesPage() {
                         variant="outline"
                         disabled={isPushing}
                         className="text-xs whitespace-nowrap w-full sm:w-auto"
-                        onClick={async (e: React.MouseEvent) => {
+                        onClick={async (e: MouseEvent) => {
                           e.preventDefault();
                           e.stopPropagation();
                           
