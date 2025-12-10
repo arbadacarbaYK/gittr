@@ -130,16 +130,16 @@ jobs:
       - name: Build APK
         working-directory: ./ui/android
         if: steps.capacitor-check.outputs.capacitor_configured == 'true'
-        env:
-          # Use debug keystore for signing (for testing)
-          # For production, use secrets with a proper release keystore
-          RELEASE_STORE_FILE: ${{ github.workspace }}/ui/android/app/debug.keystore
-          RELEASE_STORE_PASSWORD: android
-          RELEASE_KEY_ALIAS: androiddebugkey
-          RELEASE_KEY_PASSWORD: android
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleRelease
+          # Build with signing using debug keystore
+          # The build.gradle will use the debug keystore fallback if env vars aren't set
+          # For production, use: -PRELEASE_STORE_FILE=... -PRELEASE_STORE_PASSWORD=... etc.
+          ./gradlew assembleRelease \
+            -PRELEASE_STORE_FILE=$HOME/.android/debug.keystore \
+            -PRELEASE_STORE_PASSWORD=android \
+            -PRELEASE_KEY_ALIAS=androiddebugkey \
+            -PRELEASE_KEY_PASSWORD=android
 
       - name: Find APK
         id: find-apk
