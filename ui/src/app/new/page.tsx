@@ -104,22 +104,33 @@ function NewRepoPageContent() {
       return;
     }
     if (url) {
+      // Normalize the URL - support GitHub name-only format (owner/repo)
+      let normalizedUrl = url.trim();
+      
+      // Check if it's just "owner/repo" format (no protocol, no dots, has slash)
+      const githubNamePattern = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
+      if (githubNamePattern.test(normalizedUrl) && !normalizedUrl.includes("://") && !normalizedUrl.includes("@")) {
+        // Convert to GitHub URL
+        normalizedUrl = `https://github.com/${normalizedUrl}`;
+        setUrl(normalizedUrl); // Update the input field
+      }
+      
       // Check if it's a GitHub URL or custom git server
-      const isGitHub = url.includes("github.com");
-      const isGitLab = url.includes("gitlab.com");
-      const isCodeberg = url.includes("codeberg.org");
+      const isGitHub = normalizedUrl.includes("github.com");
+      const isGitLab = normalizedUrl.includes("gitlab.com");
+      const isCodeberg = normalizedUrl.includes("codeberg.org");
       
       let r: Response;
       let d: any;
       
       if (isGitHub || isGitLab || isCodeberg) {
         // Use existing import API for GitHub/GitLab/Codeberg
-        r = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceUrl: url }) });
+        r = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceUrl: normalizedUrl }) });
         d = await r.json();
       } else {
         // Custom git server - use new import endpoint
         setStatus("Importing from custom git server...");
-        r = await fetch("/api/import-git", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceUrl: url }) });
+        r = await fetch("/api/import-git", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceUrl: normalizedUrl }) });
         d = await r.json();
       }
       
@@ -475,27 +486,31 @@ function NewRepoPageContent() {
       <div className="mb-6 p-4 bg-blue-900/20 border border-blue-500/50 rounded">
         <h2 className="font-semibold text-blue-400 mb-2">💡 Import from existing Git repository</h2>
         <p className="text-sm text-gray-300 mb-3">
-          You can import from any Git server (GitHub, GitLab, Codeberg, or custom servers like <code className="bg-gray-800 px-1 rounded">git.btclock.dev</code>).
-          Just paste the repository URL below and click "Import & Create".
+          Import a single repository from GitHub, GitLab, Codeberg, or any custom Git server. 
+          For bulk imports, use the "Bulk Import from GitHub" button below.
         </p>
-        <label className="block text-sm font-medium mb-2">Repository URL</label>
+        <label className="block text-sm font-medium mb-2">Repository URL or GitHub name</label>
         <input 
           className="w-full border p-2 text-black" 
           value={url} 
           onChange={(e)=>setUrl(e.target.value)}
           onBlur={(e) => {
             // Auto-add https:// for web URLs, but not for git@ or git:// URLs
+            // Also don't auto-add for GitHub name format (owner/repo)
             const value = e.target.value.trim();
+            const githubNamePattern = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
             if (value && !value.startsWith("http://") && !value.startsWith("https://") && 
                 !value.startsWith("git@") && !value.startsWith("git://") && 
+                !githubNamePattern.test(value) &&
                 value.includes(".") && !value.includes("@")) {
               setUrl(`https://${value}`);
             }
           }}
-          placeholder="https://github.com/owner/repo or git@git.btclock.dev:btclock/webui.git or https://git.btclock.dev/btclock/webui.git" 
+          placeholder="owner/repo (GitHub) or full URL" 
         />
         <p className="text-xs mt-1 text-gray-400">
-          Examples: <code className="bg-gray-800 px-1 rounded">https://github.com/owner/repo</code>, 
+          <strong>Easiest:</strong> Just enter <code className="bg-gray-800 px-1 rounded">owner/repo</code> for GitHub (e.g., <code className="bg-gray-800 px-1 rounded">arbadacarbaYK/gittr</code>).<br/>
+          <strong>Full URLs:</strong> <code className="bg-gray-800 px-1 rounded">https://github.com/owner/repo</code>, 
           <code className="bg-gray-800 px-1 rounded">git@git.btclock.dev:btclock/webui.git</code>, 
           <code className="bg-gray-800 px-1 rounded">https://git.btclock.dev/btclock/webui.git</code>
         </p>
