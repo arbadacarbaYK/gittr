@@ -1,9 +1,16 @@
 /**
  * Utility script to find corrupt "tides" repos with entity "gittr.space"
  * Run this in browser console to identify the Nostr event IDs causing the issue
+ * 
+ * Usage: findCorruptTidesRepos() in browser console
  */
 
-export function findCorruptTidesRepos() {
+export function findCorruptTidesRepos(): {
+  corruptCount: number;
+  validCount: number;
+  corruptRepos: any[];
+  eventIds: string[];
+} {
   if (typeof window === 'undefined') {
     console.error("This script must be run in the browser");
     return;
