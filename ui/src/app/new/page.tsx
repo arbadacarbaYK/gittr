@@ -594,8 +594,8 @@ function NewRepoPageContent() {
           Enter a GitHub username (e.g., <code className="bg-gray-800 px-1 rounded">arbadacarbaYK</code>) in the field above, then click this button to import all their repositories.
         </p>
       </div>
-      {/* Debug: Show entity info */}
-      {isLoggedIn && pubkey && (
+      {/* Debug: Show entity info - only render on client to avoid hydration mismatch */}
+      {mounted && isLoggedIn && pubkey && (
         <div className="mt-4 p-3 bg-gray-800 rounded text-sm">
           <div className="text-gray-400">Your Nostr Identity (npub):</div>
           <div className="text-purple-400 font-mono break-all">
