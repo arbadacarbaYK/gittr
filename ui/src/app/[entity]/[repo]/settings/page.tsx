@@ -516,7 +516,7 @@ export default function RepoSettingsPage() {
           entity: entity,
           repo: repo,
           deletedAt: Date.now(),
-          ownerPubkey: ownerPubkey, // Store ownerPubkey for robust matching
+          ownerPubkey: ownerPubkey || undefined, // Store ownerPubkey for robust matching (convert null to undefined)
         });
         localStorage.setItem("gittr_deleted_repos", JSON.stringify(deletedRepos));
         console.log(`✅ Marked repo as deleted in deletion list: ${deletedRepoKey} (ownerPubkey: ${ownerPubkey?.slice(0, 16)}...)`);
