@@ -1060,10 +1060,11 @@ export default function RepositoriesPage() {
               existingRepos.push(newRepo);
             }
             
-            // CRITICAL: Clean up ONLY repos with "gittr.space" as entity (the specific corruption bug)
-            // Don't remove repos with other entity formats - they might be valid
+            // CRITICAL: Clean up repos with invalid entity formats
+            // Remove repos with "gittr.space" entity (the specific corruption bug)
+            // Also remove repos with entity that's not npub format (domain names, etc.)
             const cleanedRepos = existingRepos.filter((r: any) => {
-              // Only remove if entity is exactly "gittr.space" (the known corruption)
+              // Remove if entity is exactly "gittr.space" (the known corruption)
               if (r.entity === "gittr.space") {
                 const repoName = r.repo || r.slug || r.name || "";
                 console.error("❌ [Repositories] Removing repo with corrupted entity 'gittr.space':", {
@@ -1074,18 +1075,32 @@ export default function RepositoriesPage() {
                   lastNostrEventId: (r as any).lastNostrEventId?.slice(0, 16),
                   syncedFromNostr: r.syncedFromNostr
                 });
-                return false; // Remove only repos with "gittr.space" entity
+                return false; // Remove corrupted repos
               }
-              return true; // Keep all other repos
+              
+              // Remove if entity is not npub format (domain names, etc. are invalid)
+              // Entity MUST be npub format (starts with "npub") - this is the GRASP protocol standard
+              if (r.entity && !r.entity.startsWith("npub")) {
+                const repoName = r.repo || r.slug || r.name || "";
+                console.error("❌ [Repositories] Removing repo with invalid entity format (not npub):", {
+                  entity: r.entity,
+                  repo: repoName,
+                  ownerPubkey: (r as any).ownerPubkey?.slice(0, 16),
+                  nostrEventId: (r as any).nostrEventId?.slice(0, 16)
+                });
+                return false; // Remove repos with invalid entity format
+              }
+              
+              return true; // Keep repos with valid npub entity
             });
             
             // Log how many were removed
             const removedCount = existingRepos.length - cleanedRepos.length;
             if (removedCount > 0) {
-              console.log(`🧹 [Repositories] Cleaned up ${removedCount} repo(s) with corrupted entity 'gittr.space'`);
+              console.log(`🧹 [Repositories] Cleaned up ${removedCount} repo(s) with corrupted/invalid entity`);
             }
             
-            // Save to localStorage (with only "gittr.space" corrupted repos removed)
+            // Save to localStorage (with corrupted repos removed)
             localStorage.setItem("gittr_repos", JSON.stringify(cleanedRepos));
             
             // CRITICAL: Don't call setRepos here - it causes infinite loops
