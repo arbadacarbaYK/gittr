@@ -10,7 +10,7 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { createRepositoryEvent, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { useParams, useRouter } from "next/navigation";
-import { Zap, ArrowRight, CheckCircle, X, Plus, User, Lock, Globe, BookOpen, MessageSquare, Youtube, Twitter, Github, Link as LinkIcon } from "lucide-react";
+import { Zap, ArrowRight, CheckCircle, X, Plus, Lock, Globe, BookOpen, MessageSquare, Youtube, Twitter, Github, Link as LinkIcon } from "lucide-react";
 import DistributeZaps from "@/components/ui/distribute-zaps";
 import { getAccumulatedZaps } from "@/lib/payments/zap-repo";
 import RepoWalletConfig from "./RepoWalletConfig";
