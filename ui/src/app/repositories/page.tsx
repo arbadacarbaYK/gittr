@@ -1588,7 +1588,7 @@ export default function RepositoriesPage() {
           {/* Clear Foreign Repos Confirmation Modal */}
           {showClearForeignConfirm && (
             <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setShowClearForeignConfirm(false)}>
-              <div className="bg-[#0E1116] border border-[#383B42] rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-[#0E1116] border border-[#383B42] rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
                 <h2 className="text-xl font-bold mb-4 text-orange-400">⚠️ Clear Foreign Repositories</h2>
                 
                 <div className="space-y-4 mb-6">
@@ -1840,7 +1840,7 @@ export default function RepositoriesPage() {
           {/* Clear Local Repos Confirmation Modal */}
           {showClearConfirm && (
             <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setShowClearConfirm(false)}>
-              <div className="bg-[#0E1116] border border-[#383B42] rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-[#0E1116] border border-[#383B42] rounded-lg p-6 max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
                 <h2 className="text-xl font-bold mb-4 text-red-400">⚠️ Clear Local Repositories</h2>
                 
                 <div className="space-y-4 mb-6">
@@ -1934,7 +1934,7 @@ export default function RepositoriesPage() {
         </div>
       </div>
       <div className="space-y-2">
-        {repos.filter(r => {
+        {repos.filter((r: Repo) => {
           // CRITICAL: "Your repositories" should ONLY show repos owned by the current user
           if (!pubkey) return false; // Not logged in = no repos
           
@@ -2005,7 +2005,7 @@ export default function RepositoriesPage() {
           };
           
           // Filter, sort, and deduplicate repos
-          const filtered = repos.filter(r => {
+          const filtered = repos.filter((r: Repo) => {
             const repoName = (r.repo || r.slug || r.name || "").toLowerCase();
             const isTides = repoName === "tides";
             
@@ -2173,7 +2173,7 @@ export default function RepositoriesPage() {
                     console.error("Failed to encode npub for entity migration:", e);
                     return false; // Can't migrate without valid npub
                   }
-                  const updated = repos.map(rr => rr === r ? { 
+                  const updated = repos.map((rr: Repo) => rr === r ? { 
                     ...rr, 
                     entity: entityNpub, 
                     entityDisplayName: userName || entityNpub.slice(0, 12) + "...", // Use userName or shortened npub for display
@@ -2194,7 +2194,7 @@ export default function RepositoriesPage() {
           // CRITICAL: Sort by latest event date (lastNostrEventCreatedAt) if available, otherwise by createdAt
           // This ensures repos with recent updates appear first
           // Note: lastNostrEventCreatedAt is in SECONDS (NIP-34 format), createdAt/updatedAt are in MILLISECONDS
-          const sorted = filtered.sort((a, b) => {
+          const sorted = filtered.sort((a: Repo, b: Repo) => {
             // Get latest event date in milliseconds for comparison
             const aLatest = (a as any).lastNostrEventCreatedAt 
               ? (a as any).lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
@@ -2319,7 +2319,7 @@ export default function RepositoriesPage() {
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
                   <div
                     className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
-                    onClick={(e) => {
+                    onClick={(e: React.MouseEvent) => {
                       // CRITICAL: Use window.location for immediate navigation (bypasses React completely)
                       // This ensures navigation happens instantly, even during heavy re-renders
                       e.preventDefault();
@@ -2338,7 +2338,7 @@ export default function RepositoriesPage() {
                         src={iconUrl} 
                         alt="repo" 
                         className="h-6 w-6 rounded-sm object-contain flex-shrink-0"
-                        onError={(e) => {
+                        onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
                           // Fallback to empty square on error
                           e.currentTarget.style.display = 'none';
                           const parent = e.currentTarget.parentElement;
@@ -2404,7 +2404,7 @@ export default function RepositoriesPage() {
                         variant="outline"
                         disabled={isPushing}
                         className="text-xs whitespace-nowrap w-full sm:w-auto"
-                        onClick={async (e) => {
+                        onClick={async (e: React.MouseEvent) => {
                           e.preventDefault();
                           e.stopPropagation();
                           
@@ -2427,7 +2427,7 @@ export default function RepositoriesPage() {
                               }
                             }
                             
-                            setPushingRepos(prev => new Set(prev).add(`${entity}/${repoForUrl}`));
+                            setPushingRepos((prev: Set<string>) => new Set(prev).add(`${entity}/${repoForUrl}`));
                             
                             const result = await pushRepoToNostr({
                               repoSlug: repoForUrl,
@@ -2483,7 +2483,7 @@ export default function RepositoriesPage() {
                             console.error("Failed to push repo:", error);
                             alert(`Failed to push: ${error.message || "Unknown error"}`);
                           } finally {
-                            setPushingRepos(prev => {
+                            setPushingRepos((prev: Set<string>) => {
                               const next = new Set(prev);
                               next.delete(`${entity}/${repoForUrl}`);
                               return next;
