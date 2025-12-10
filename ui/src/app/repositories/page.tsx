@@ -1070,23 +1070,13 @@ export default function RepositoriesPage() {
               const repoName = (r.repo || r.slug || r.name || "").toLowerCase();
               const isTides = repoName === "tides";
               
-              // Remove known corrupted tides repos by event ID
+              // Remove known corrupted tides repos by event ID (silently - no console spam)
               if (isTides && ((r as any).nostrEventId && corruptEventIds.includes((r as any).nostrEventId))) {
-                console.error("❌ [Repositories] Removing known corrupted tides repo by event ID:", {
-                  entity: r.entity,
-                  repo: repoName,
-                  eventId: (r as any).nostrEventId,
-                  ownerPubkey: (r as any).ownerPubkey?.slice(0, 16)
-                });
+                // Silently remove - don't spam console for everyone
                 return false; // Remove known corrupted repos
               }
               if (isTides && ((r as any).lastNostrEventId && corruptEventIds.includes((r as any).lastNostrEventId))) {
-                console.error("❌ [Repositories] Removing known corrupted tides repo by lastNostrEventId:", {
-                  entity: r.entity,
-                  repo: repoName,
-                  eventId: (r as any).lastNostrEventId,
-                  ownerPubkey: (r as any).ownerPubkey?.slice(0, 16)
-                });
+                // Silently remove - don't spam console for everyone
                 return false; // Remove known corrupted repos
               }
               
