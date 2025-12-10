@@ -1980,10 +1980,37 @@ export default function RepositoriesPage() {
           
           // Filter, sort, and deduplicate repos
           const filtered = repos.filter(r => {
+            const repoName = (r.repo || r.slug || r.name || "").toLowerCase();
+            const isTides = repoName === "tides";
+            
+            // CRITICAL: Exclude known corrupted tides repos by event ID
+            // These specific event IDs are known to be corrupted
+            const corruptEventIds = [
+              "28cd39385801bb7683e06e7489f89afff8df045a4d6fe7319d75a60341165ae2",
+              "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b"
+            ];
+            if (isTides && ((r as any).nostrEventId && corruptEventIds.includes((r as any).nostrEventId))) {
+              console.log("❌ [Repositories] Filtering out known corrupted tides repo by event ID:", {
+                repo: repoName,
+                eventId: (r as any).nostrEventId?.slice(0, 16),
+                entity: r.entity,
+                ownerPubkey: (r as any).ownerPubkey?.slice(0, 16)
+              });
+              return false; // Always exclude known corrupted repos
+            }
+            if (isTides && ((r as any).lastNostrEventId && corruptEventIds.includes((r as any).lastNostrEventId))) {
+              console.log("❌ [Repositories] Filtering out known corrupted tides repo by lastNostrEventId:", {
+                repo: repoName,
+                eventId: (r as any).lastNostrEventId?.slice(0, 16),
+                entity: r.entity,
+                ownerPubkey: (r as any).ownerPubkey?.slice(0, 16)
+              });
+              return false; // Always exclude known corrupted repos
+            }
+            
             // CRITICAL: Exclude repos with "gittr.space" entity FIRST (before any other checks)
             // These are corrupted repos that should never exist
             if (r.entity === "gittr.space") {
-              const repoName = r.repo || r.slug || r.name || "";
               console.log("❌ [Repositories] Filtering out corrupted repo with entity 'gittr.space':", {
                 repo: repoName,
                 ownerPubkey: (r as any).ownerPubkey?.slice(0, 16)
@@ -1994,13 +2021,41 @@ export default function RepositoriesPage() {
             // CRITICAL: Entity must be npub format (starts with "npub")
             // Domain names are NOT valid entities
             if (!r.entity || !r.entity.startsWith("npub")) {
-              const repoName = r.repo || r.slug || r.name || "";
               console.log("❌ [Repositories] Filtering out repo with invalid entity format:", {
                 repo: repoName,
                 entity: r.entity,
                 ownerPubkey: (r as any).ownerPubkey?.slice(0, 16)
               });
               return false; // Only npub format is valid
+            }
+            
+            // CRITICAL: Filter out duplicate/corrupted tides repos
+            // If there are multiple tides repos with the same entity but different ownerPubkeys, exclude all but one
+            // This handles the case where corrupted repos were created with wrong ownerPubkey
+            if (isTides && pubkey) {
+              // Check if ownerPubkey matches current user - if not, exclude it
+              const ownerPubkey = (r as any).ownerPubkey;
+              if (ownerPubkey && ownerPubkey.toLowerCase() !== pubkey.toLowerCase()) {
+                // Also check if entity matches current user
+                try {
+                  if (r.entity && r.entity.startsWith("npub")) {
+                    const decoded = nip19.decode(r.entity);
+                    if (decoded.type === "npub") {
+                      const entityPubkey = decoded.data as string;
+                      if (entityPubkey.toLowerCase() !== pubkey.toLowerCase()) {
+                        console.log("❌ [Repositories] Filtering out tides repo - owner doesn't match:", {
+                          repo: repoName,
+                          entity: r.entity,
+                          entityPubkey: entityPubkey.slice(0, 16),
+                          ownerPubkey: ownerPubkey.slice(0, 16),
+                          currentUser: pubkey.slice(0, 16)
+                        });
+                        return false; // Exclude if neither entity nor ownerPubkey matches
+                      }
+                    }
+                  }
+                } catch {}
+              }
             }
             
             // CRITICAL: Filter out deleted repos FIRST (before ownership checks)
