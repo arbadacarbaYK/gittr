@@ -2371,7 +2371,7 @@ export default function RepositoriesPage() {
                             </span>
                           );
                         })()}
-                        <Badge variant="outline" className="text-xs flex items-center gap-1 flex-shrink-0">
+                        <Badge className="border border-gray-600 text-gray-300 bg-transparent text-xs flex items-center gap-1 flex-shrink-0">
                           {r.publicRead !== false ? (
                             <>
                               <Globe className="h-3 w-3" />
