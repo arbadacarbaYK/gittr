@@ -638,7 +638,7 @@ export default function RepositoriesPage() {
         ...(pubkey ? [{
           kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34], // Support both gitnostr and NIP-34
           authors: [pubkey], // Also get user's own repos (for private repos in future)
-          limit: 200, // User's own repos - smaller limit is fine
+          limit: 2000, // User's own repos - increased to support users with many repos
           // No since parameter = get all user's repos (no time limit)
         }] : []),
       ],
