@@ -1201,14 +1201,16 @@ export default function RepositoriesPage() {
       // - contributors: array with owner having weight 100
       const userReposList = allRepos.filter((r: any) => {
         // CRITICAL: Exclude repos with "gittr.space" entity (the corruption bug)
+        // These are corrupted repos that should never exist - exclude them completely
         if (r.entity === "gittr.space") {
           const repoName = r.repo || r.slug || r.name || "";
           console.log("❌ [Repositories] Excluding repo with corrupted entity 'gittr.space':", {
             repo: repoName,
-            ownerPubkey: (r as any).ownerPubkey?.slice(0, 8),
-            nostrEventId: (r as any).nostrEventId?.slice(0, 8)
+            ownerPubkey: (r as any).ownerPubkey?.slice(0, 16),
+            nostrEventId: (r as any).nostrEventId?.slice(0, 16),
+            lastNostrEventId: (r as any).lastNostrEventId?.slice(0, 16)
           });
-          return false;
+          return false; // Always exclude - these are corrupted
         }
         
         if (!r.entity || r.entity === "user") {
@@ -1219,20 +1221,16 @@ export default function RepositoriesPage() {
           return false;
         }
         
-        const repoName = r.repo || r.slug || r.name || "";
-        const isTides = repoName.toLowerCase() === "tides";
-        
-        // CRITICAL: Additional check - if tides repo has wrong owner, exclude it
-        if (isTides && (r as any).ownerPubkey && pubkey) {
-          const ownerMatches = (r as any).ownerPubkey.toLowerCase() === pubkey.toLowerCase();
-          if (!ownerMatches) {
-            console.log("❌ [Repositories] Excluding tides repo - owner doesn't match:", {
-              repoOwner: (r as any).ownerPubkey?.slice(0, 8),
-              currentUser: pubkey.slice(0, 8),
-              entity: r.entity
-            });
-            return false;
-          }
+        // CRITICAL: Entity must be npub format (starts with "npub")
+        // Domain names like "gittr.space" are NOT valid entities
+        if (!r.entity.startsWith("npub")) {
+          const repoName = r.repo || r.slug || r.name || "";
+          console.log("❌ [Repositories] Excluding repo with invalid entity format (not npub):", {
+            repo: repoName,
+            entity: r.entity,
+            ownerPubkey: (r as any).ownerPubkey?.slice(0, 16)
+          });
+          return false; // Only npub format is valid
         }
         
         if (isTides) {
@@ -1966,6 +1964,29 @@ export default function RepositoriesPage() {
           
           // Filter, sort, and deduplicate repos
           const filtered = repos.filter(r => {
+            // CRITICAL: Exclude repos with "gittr.space" entity FIRST (before any other checks)
+            // These are corrupted repos that should never exist
+            if (r.entity === "gittr.space") {
+              const repoName = r.repo || r.slug || r.name || "";
+              console.log("❌ [Repositories] Filtering out corrupted repo with entity 'gittr.space':", {
+                repo: repoName,
+                ownerPubkey: (r as any).ownerPubkey?.slice(0, 16)
+              });
+              return false; // Always exclude - these are corrupted
+            }
+            
+            // CRITICAL: Entity must be npub format (starts with "npub")
+            // Domain names are NOT valid entities
+            if (!r.entity || !r.entity.startsWith("npub")) {
+              const repoName = r.repo || r.slug || r.name || "";
+              console.log("❌ [Repositories] Filtering out repo with invalid entity format:", {
+                repo: repoName,
+                entity: r.entity,
+                ownerPubkey: (r as any).ownerPubkey?.slice(0, 16)
+              });
+              return false; // Only npub format is valid
+            }
+            
             // CRITICAL: Filter out deleted repos FIRST (before ownership checks)
             // Skip if locally deleted (completely hidden - no note shown)
             if (isRepoDeleted(r)) return false;
