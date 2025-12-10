@@ -208,7 +208,7 @@ export default function RepositoriesPage() {
         }
       },
       undefined,
-      (events, relayURL) => {
+      (events: NostrEvent[], relayURL: string) => {
         // EOSE - done resolving
         if (unsub) unsub();
       }
