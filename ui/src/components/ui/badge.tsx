@@ -17,7 +17,7 @@ const badgeVariants = cva(
 );
 
 export interface BadgeProps extends VariantProps<typeof badgeVariants> {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   className?: string;
 }
 
