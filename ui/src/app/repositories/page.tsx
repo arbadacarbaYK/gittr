@@ -1058,13 +1058,40 @@ export default function RepositoriesPage() {
               existingRepos.push(newRepo);
             }
             
-            // CRITICAL: Clean up repos with invalid entity formats
+            // CRITICAL: Clean up repos with invalid entity formats and known corrupted repos
             // Remove repos with "gittr.space" entity (the specific corruption bug)
             // Also remove repos with entity that's not npub format (domain names, etc.)
+            // Also remove known corrupted tides repos by event ID
+            const corruptEventIds = [
+              "28cd39385801bb7683e06e7489f89afff8df045a4d6fe7319d75a60341165ae2",
+              "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b"
+            ];
             const cleanedRepos = existingRepos.filter((r: any) => {
+              const repoName = (r.repo || r.slug || r.name || "").toLowerCase();
+              const isTides = repoName === "tides";
+              
+              // Remove known corrupted tides repos by event ID
+              if (isTides && ((r as any).nostrEventId && corruptEventIds.includes((r as any).nostrEventId))) {
+                console.error("❌ [Repositories] Removing known corrupted tides repo by event ID:", {
+                  entity: r.entity,
+                  repo: repoName,
+                  eventId: (r as any).nostrEventId,
+                  ownerPubkey: (r as any).ownerPubkey?.slice(0, 16)
+                });
+                return false; // Remove known corrupted repos
+              }
+              if (isTides && ((r as any).lastNostrEventId && corruptEventIds.includes((r as any).lastNostrEventId))) {
+                console.error("❌ [Repositories] Removing known corrupted tides repo by lastNostrEventId:", {
+                  entity: r.entity,
+                  repo: repoName,
+                  eventId: (r as any).lastNostrEventId,
+                  ownerPubkey: (r as any).ownerPubkey?.slice(0, 16)
+                });
+                return false; // Remove known corrupted repos
+              }
+              
               // Remove if entity is exactly "gittr.space" (the known corruption)
               if (r.entity === "gittr.space") {
-                const repoName = r.repo || r.slug || r.name || "";
                 console.error("❌ [Repositories] Removing repo with corrupted entity 'gittr.space':", {
                   entity: r.entity,
                   repo: repoName,
@@ -1079,7 +1106,6 @@ export default function RepositoriesPage() {
               // Remove if entity is not npub format (domain names, etc. are invalid)
               // Entity MUST be npub format (starts with "npub") - this is the GRASP protocol standard
               if (r.entity && !r.entity.startsWith("npub")) {
-                const repoName = r.repo || r.slug || r.name || "";
                 console.error("❌ [Repositories] Removing repo with invalid entity format (not npub):", {
                   entity: r.entity,
                   repo: repoName,
