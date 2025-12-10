@@ -484,10 +484,9 @@ function NewRepoPageContent() {
       <h1 className="text-2xl font-bold mb-4">Create repository</h1>
       
       <div className="mb-6 p-4 bg-blue-900/20 border border-blue-500/50 rounded">
-        <h2 className="font-semibold text-blue-400 mb-2">💡 Import from existing Git repository</h2>
+        <h2 className="font-semibold text-blue-400 mb-2">📥 Option 1: Import single repository</h2>
         <p className="text-sm text-gray-300 mb-3">
-          Import a single repository from GitHub, GitLab, Codeberg, or any custom Git server. 
-          For bulk imports, use the "Bulk Import from GitHub" button below.
+          Clone one repository from GitHub, GitLab, Codeberg, or any custom Git server.
         </p>
         <label className="block text-sm font-medium mb-2">Repository URL or GitHub name</label>
         <input 
@@ -524,7 +523,10 @@ function NewRepoPageContent() {
       </div>
 
       <div className="mb-6 p-4 bg-gray-800/50 border border-gray-700 rounded">
-        <h2 className="font-semibold mb-2">Or create a new empty repository</h2>
+        <h2 className="font-semibold mb-2">➕ Option 2: Create empty repository</h2>
+        <p className="text-sm text-gray-300 mb-2">
+          Create a new empty repository from scratch.
+        </p>
         <label className="block text-sm font-medium mb-2">Repository Name</label>
         <input 
           className="w-full border p-2 text-black" 
@@ -541,9 +543,13 @@ function NewRepoPageContent() {
         </button>
       </div>
 
-      <div className="flex gap-2 mt-4">
+      <div className="mb-6 p-4 bg-purple-900/20 border border-purple-500/50 rounded">
+        <h2 className="font-semibold text-purple-400 mb-2">📦 Option 3: Bulk import from GitHub</h2>
+        <p className="text-sm text-gray-300 mb-3">
+          Import multiple repositories at once from a GitHub user or organization.
+        </p>
         <button 
-          className="border px-4 py-2 inline-block bg-gray-700 hover:bg-gray-600 text-white rounded"
+          className="border px-4 py-2 inline-block bg-purple-600 hover:bg-purple-700 text-white rounded"
           onClick={() => {
             // Extract GitHub username from URL field
             let githubUser = "";
@@ -584,6 +590,9 @@ function NewRepoPageContent() {
         >
           Bulk Import from GitHub
         </button>
+        <p className="text-xs mt-2 text-gray-400">
+          Enter a GitHub username (e.g., <code className="bg-gray-800 px-1 rounded">arbadacarbaYK</code>) in the field above, then click this button to import all their repositories.
+        </p>
       </div>
       {/* Debug: Show entity info */}
       {isLoggedIn && pubkey && (
