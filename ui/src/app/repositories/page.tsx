@@ -1152,6 +1152,17 @@ export default function RepositoriesPage() {
     };
   }, [subscribe, pubkey, defaultRelays, userName]); // Note: pubkey optional - syncs ALL repos even when not logged in
   
+  // Make findCorruptTidesRepos available in console for debugging
+  useEffect(() => {
+    if (typeof window !== 'undefined' && mounted) {
+      // Dynamic import to avoid SSR issues
+      import("./find-corrupt-tides-repos").then(({ findCorruptTidesRepos }) => {
+        (window as any).findCorruptTidesRepos = findCorruptTidesRepos;
+        console.log("💡 Run findCorruptTidesRepos() in console to find corrupt tides repos with entity 'gittr.space'");
+      });
+    }
+  }, [mounted]);
+  
   // CRITICAL: Sync repos from activities if they're missing from localStorage
   // This handles the case where repos were created locally but not synced to localStorage
   useEffect(() => {
