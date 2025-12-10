@@ -2068,7 +2068,7 @@ export default function RepositoriesPage() {
             // CRITICAL: "Your repositories" should ONLY show repos owned by the current user
             if (!pubkey) return false; // Not logged in = no repos
             
-            const repoName = r.repo || r.slug || r.name || "";
+            // repoName already defined above in the filter
             const repoOwnerPubkey = getRepoOwnerPubkey(r as any, r.entity);
             const directOwnerPubkey = (r as any).ownerPubkey;
             
