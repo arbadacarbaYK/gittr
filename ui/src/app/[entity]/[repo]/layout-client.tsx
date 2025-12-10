@@ -662,6 +662,7 @@ export default function RepoLayoutClient({
               <Button
                 className="h-8 !border-[#383B42] bg-[#22262C] text-xs md:hidden"
                 variant="outline"
+                type="button"
               >
                 Actions <ChevronDown className="ml-2 h-4 w-4 text-white" />
               </Button>

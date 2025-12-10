@@ -300,22 +300,22 @@ export function ReposList({
   }
   
   // Load list of locally-deleted repos (user deleted them, don't show)
-  const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
+  const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number; ownerPubkey?: string}>;
   
   // Helper function to check if repo is deleted (robust matching)
   const isRepoDeleted = (r: any): boolean => {
     const repo = r.repo || r.slug || "";
     const entity = r.entity || "";
     
-    // Check direct match by entity (npub format)
-    const repoKey = `${entity}/${repo}`.toLowerCase();
-    if (deletedRepos.some(d => `${d.entity}/${d.repo}`.toLowerCase() === repoKey)) return true;
-    
-    // Check by ownerPubkey (most reliable - handles npub entity mismatches)
+    // Priority 1: Check by ownerPubkey (most reliable - works across all entity formats)
     if (r.ownerPubkey && /^[0-9a-f]{64}$/i.test(r.ownerPubkey)) {
       const ownerPubkey = r.ownerPubkey.toLowerCase();
-      // Check if deleted entity is npub for same pubkey
       if (deletedRepos.some(d => {
+        // Check by ownerPubkey field (if stored)
+        if (d.ownerPubkey && d.ownerPubkey.toLowerCase() === ownerPubkey) {
+          return d.repo.toLowerCase() === repo.toLowerCase();
+        }
+        // Check if deleted entity is npub for same pubkey
         if (d.entity.startsWith("npub")) {
           try {
             const dDecoded = nip19.decode(d.entity);
@@ -324,9 +324,17 @@ export function ReposList({
             }
           } catch {}
         }
+        // Check if deleted entity is pubkey format
+        if (d.entity && /^[0-9a-f]{64}$/i.test(d.entity) && d.entity.toLowerCase() === ownerPubkey) {
+          return d.repo.toLowerCase() === repo.toLowerCase();
+        }
         return false;
       })) return true;
     }
+    
+    // Priority 2: Check direct match by entity (npub format)
+    const repoKey = `${entity}/${repo}`.toLowerCase();
+    if (deletedRepos.some(d => `${d.entity}/${d.repo}`.toLowerCase() === repoKey)) return true;
     
     return false;
   };
