@@ -1454,6 +1454,26 @@ function ExplorePageContent() {
     
     const result = sorted
       .filter(r => {
+        // CRITICAL: Exclude repos with "gittr.space" entity FIRST (corrupted repos)
+        if (r.entity === "gittr.space") {
+          console.log("❌ [Explore] Filtering out corrupted repo with entity 'gittr.space':", {
+            repo: r.slug || r.repo,
+            ownerPubkey: r.ownerPubkey?.slice(0, 16)
+          });
+          return false; // Always exclude - these are corrupted
+        }
+        
+        // CRITICAL: Entity must be npub format (starts with "npub")
+        // Domain names are NOT valid entities
+        if (r.entity && !r.entity.startsWith("npub")) {
+          console.log("❌ [Explore] Filtering out repo with invalid entity format (not npub):", {
+            repo: r.slug || r.repo,
+            entity: r.entity,
+            ownerPubkey: r.ownerPubkey?.slice(0, 16)
+          });
+          return false; // Only npub format is valid
+        }
+        
         // CRITICAL: Filter out deleted repos FIRST (before other checks)
         // Skip if locally deleted (completely hidden from explore - no note shown)
         if (isRepoDeleted(r)) return false;

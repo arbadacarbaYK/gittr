@@ -665,8 +665,29 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
             const viewingOwnProfile = currentUserPubkey && fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta) && 
               currentUserPubkey.toLowerCase() === fullPubkeyForMeta.toLowerCase();
             
+            // CRITICAL: Filter out corrupted repos with entity="gittr.space" or invalid entity format
+            const validRepos = updatedUserReposList.filter((r: any) => {
+              // Exclude repos with "gittr.space" entity (corrupted)
+              if (r.entity === "gittr.space") {
+                console.log("❌ [EntityPage] Filtering out corrupted repo with entity 'gittr.space':", {
+                  repo: r.slug || r.repo,
+                  ownerPubkey: r.ownerPubkey?.slice(0, 16)
+                });
+                return false;
+              }
+              // Entity must be npub format (starts with "npub")
+              if (r.entity && !r.entity.startsWith("npub")) {
+                console.log("❌ [EntityPage] Filtering out repo with invalid entity format:", {
+                  repo: r.slug || r.repo,
+                  entity: r.entity
+                });
+                return false;
+              }
+              return true;
+            });
+            
             // Filter out deleted repos and local repos (if viewing someone else's profile)
-            const filteredUpdatedRepos = updatedUserReposList.filter((r: any) => {
+            const filteredUpdatedRepos = validRepos.filter((r: any) => {
               // Skip if locally deleted (using robust check)
               if (isRepoDeleted(r)) return false;
               
