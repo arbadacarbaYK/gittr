@@ -68,6 +68,12 @@ function NewRepoPageContent() {
     if (!/^[0-9a-f]{64}$/i.test(pubkeyStr)) {
       throw new Error("Invalid pubkey format");
     }
+    
+    // CRITICAL: Never allow entity to be "gittr.space" or any domain name
+    if (pubkeyStr.toLowerCase().includes("gittr") || pubkeyStr.toLowerCase().includes("space")) {
+      throw new Error("Invalid pubkey: cannot use domain name as entity");
+    }
+    
     const displayName = (userName && userName !== "Anonymous Nostrich" && userName.trim() !== "") 
       ? userName.trim() 
       : pubkeyStr.slice(0, 8);
@@ -78,6 +84,12 @@ function NewRepoPageContent() {
     } catch (e) {
       throw new Error("Failed to encode npub");
     }
+    
+    // CRITICAL: Validate entity is not a domain name
+    if (entityNpub.includes("gittr.space") || entityNpub.includes(".") && !entityNpub.startsWith("npub")) {
+      throw new Error("Invalid entity: cannot use domain name as entity");
+    }
+    
     console.log("getEntityInfo:", { userName, isLoggedIn, displayName, entity: entityNpub, pubkey: pubkeyStr.slice(0, 8) });
     return { entitySlug: entityNpub, displayName };
   };
@@ -150,7 +162,13 @@ function NewRepoPageContent() {
           // Use slugified version for URLs (slug, repo, repositoryName)
           const originalRepoName = d.repo || d.slug || name || importedRepoSlug; // Original name from GitHub (may have dots)
           
-          const rec = { 
+          // CRITICAL: Validate entity is not a domain name or empty
+        if (!entity || entity === "gittr.space" || (entity.includes(".") && !entity.startsWith("npub"))) {
+          setStatus(`Error: Invalid entity "${entity}". Repository not created.`);
+          return;
+        }
+        
+        const rec = { 
             slug: importedRepoSlug, // Use slugified repo name for URLs
             entity, 
             entityDisplayName: entityInfo.displayName, 
@@ -183,8 +201,17 @@ function NewRepoPageContent() {
             ownerPubkey: rec.ownerPubkey?.slice(0, 8),
             expectedEntity: entityInfo.entitySlug,
             pubkey: pubkey?.slice(0, 8),
-            repoName: rec.name
+            repoName: rec.name,
+            isValidEntity: rec.entity.startsWith("npub") && !rec.entity.includes("gittr.space")
           });
+          
+          // CRITICAL: Final validation before saving
+          if (!rec.entity || rec.entity === "gittr.space" || (!rec.entity.startsWith("npub") && rec.entity.includes("."))) {
+            setStatus(`Error: Invalid entity "${rec.entity}". Repository not saved.`);
+            console.error("❌ [New Repo] Invalid entity detected, not saving:", rec.entity);
+            return;
+          }
+          
           localStorage.setItem("gittr_repos", JSON.stringify(exists ? repos : [rec, ...repos]));
           
           // Dispatch event to update repositories page
@@ -226,9 +253,14 @@ function NewRepoPageContent() {
             }
           }
         } catch {}
-        setTimeout(()=> router.push("/repositories"), 600);
+        // Only redirect if repo was successfully created
+        if (importedRepoSlug && entityInfo) {
+          setTimeout(()=> router.push("/repositories"), 600);
+        } else {
+          setStatus(`Import failed: Repository was not created. ${d.message || d.status || "Unknown error"}`);
+        }
       } else {
-        setStatus(`Import failed: ${d.status}`);
+        setStatus(`Import failed: ${d.message || d.status || "Unknown error"}`);
       }
     } else {
       // Create new repo - slugify the name to ensure URL-safe format
@@ -273,6 +305,12 @@ function NewRepoPageContent() {
         // Ensure we always have at least the owner (if pubkey exists)
         if (!contributors.length && pubkey) {
           contributors = [{ pubkey, name: entityInfo.displayName, weight: 100 }];
+        }
+        
+        // CRITICAL: Validate entity is not a domain name or empty
+        if (!entity || entity === "gittr.space" || (entity.includes(".") && !entity.startsWith("npub"))) {
+          setStatus(`Error: Invalid entity "${entity}". Repository not created.`);
+          return;
         }
         
         const rec = {
@@ -332,8 +370,18 @@ function NewRepoPageContent() {
           entityDisplayName: rec.entityDisplayName,
           ownerPubkey: rec.ownerPubkey?.slice(0, 8),
           expectedEntity: entityInfo.entitySlug,
-          pubkey: pubkey?.slice(0, 8)
+          pubkey: pubkey?.slice(0, 8),
+          isValidEntity: rec.entity.startsWith("npub") && !rec.entity.includes("gittr.space"),
+          repoName: rec.name
         });
+        
+        // CRITICAL: Final validation before saving
+        if (!rec.entity || rec.entity === "gittr.space" || (!rec.entity.startsWith("npub") && rec.entity.includes("."))) {
+          setStatus(`Error: Invalid entity "${rec.entity}". Repository not saved.`);
+          console.error("❌ [New Repo] Invalid entity detected, not saving:", rec.entity);
+          return;
+        }
+        
         localStorage.setItem("gittr_repos", JSON.stringify(exists ? repos : [rec, ...repos]));
         
         // Dispatch event to update repositories page
@@ -406,8 +454,17 @@ function NewRepoPageContent() {
             console.error("Failed to publish repo to Nostr:", error);
           }
         }
-      } catch {}
-      setTimeout(()=> router.push("/repositories"), 400);
+        
+        // Only redirect if repo was successfully created
+        if (repoSlug && entity) {
+          setTimeout(()=> router.push("/repositories"), 400);
+        } else {
+          setStatus("Error: Repository was not created. Please check the name and try again.");
+        }
+      } catch (error: any) {
+        console.error("Failed to create repo:", error);
+        setStatus(`Error: Failed to create repository. ${error.message || "Unknown error"}`);
+      }
     }
   }
 
