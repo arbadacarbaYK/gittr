@@ -644,7 +644,7 @@ export default function RepositoriesPage() {
         }] : []),
       ],
       defaultRelays,
-      ((event, isAfterEose, relayURL) => {
+      (event, isAfterEose, relayURL) => {
         // CRITICAL: For NIP-34 replaceable events, collect ALL events first
         // Don't process immediately - wait for EOSE to pick the latest one
         if ((event.kind as number) === KIND_REPOSITORY_NIP34) {
