@@ -4,13 +4,11 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import useSession from "@/lib/nostr/useSession";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
-import { useEntityOwner } from "@/lib/utils/use-entity-owner";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
