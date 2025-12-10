@@ -1248,6 +1248,9 @@ export default function RepositoriesPage() {
           return false; // Only npub format is valid
         }
         
+        const repoName = r.repo || r.slug || r.name || "";
+        const isTides = repoName.toLowerCase() === "tides";
+        
         if (isTides) {
           // Try to decode npub to show pubkey in logs
           let decodedEntityPubkey: string | null = null;
