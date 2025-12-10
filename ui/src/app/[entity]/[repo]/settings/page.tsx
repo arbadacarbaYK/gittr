@@ -379,6 +379,7 @@ export default function RepoSettingsPage() {
       // Find the repo to get its full data for deletion event
       const repoToDelete = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
       
+      // STEP 1: Delete locally first (remove from repos list)
       // Match by entity (exact) or slug (if entity is slug) or ownerPubkey
       // Also match by repo name exactly
       const next = repos.filter((r: StoredRepo) => {
@@ -388,7 +389,7 @@ export default function RepoSettingsPage() {
       
       saveStoredRepos(next);
       
-      // CRITICAL: Publish deletion marker to Nostr (if repo was published)
+      // STEP 2: Publish deletion marker to Nostr (if repo was published)
       // This notifies other clients that the owner has deleted the repo
       // Only publish if repo was actually committed to Nostr (has event ID)
       const wasPublishedToNostr = repoToDelete && (
@@ -488,7 +489,10 @@ export default function RepoSettingsPage() {
         console.log("ℹ️ Repo was not published to Nostr, skipping deletion event");
       }
       
-      // CRITICAL: Mark repo as locally deleted so it won't be re-added from Nostr sync
+      // STEP 3: Mark repo as deleted in deletion list to prevent re-adding from Nostr sync
+      // This is a safety mechanism: even if our deletion event hasn't propagated yet,
+      // or if the repo was never published, we prevent it from being re-added when syncing.
+      // When syncing, we respect deletion events from Nostr (both our own and others').
       // Store deletion with BOTH entity (npub) and ownerPubkey for robust matching
       const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number; ownerPubkey?: string}>;
       const deletedRepoKey = `${entity}/${repo}`.toLowerCase();
@@ -515,7 +519,7 @@ export default function RepoSettingsPage() {
           ownerPubkey: ownerPubkey, // Store ownerPubkey for robust matching
         });
         localStorage.setItem("gittr_deleted_repos", JSON.stringify(deletedRepos));
-        console.log(`✅ Marked repo as locally deleted: ${deletedRepoKey} (ownerPubkey: ${ownerPubkey?.slice(0, 16)}...)`);
+        console.log(`✅ Marked repo as deleted in deletion list: ${deletedRepoKey} (ownerPubkey: ${ownerPubkey?.slice(0, 16)}...)`);
       }
       
       // Clean all possible localStorage keys related to this repo
