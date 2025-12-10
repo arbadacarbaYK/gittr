@@ -20,6 +20,7 @@ import { pushFilesToBridge } from "@/lib/nostr/push-to-bridge";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { isOwner } from "@/lib/repo-permissions";
 import { nip19, type Event as NostrEvent } from "nostr-tools";
+import type { OnEvent } from "nostr-relaypool";
 import { Lock, Globe, Upload, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -643,7 +644,7 @@ export default function RepositoriesPage() {
         }] : []),
       ],
       defaultRelays,
-      (event: NostrEvent, isAfterEose: boolean, relayURL?: string) => {
+      ((event, isAfterEose, relayURL) => {
         // CRITICAL: For NIP-34 replaceable events, collect ALL events first
         // Don't process immediately - wait for EOSE to pick the latest one
         if ((event.kind as number) === KIND_REPOSITORY_NIP34) {
