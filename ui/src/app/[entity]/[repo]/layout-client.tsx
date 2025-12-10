@@ -14,6 +14,9 @@ import {
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { clsx } from "clsx";
+import { isOwner, canManageSettings } from "@/lib/repo-permissions";
+import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import { loadStoredRepos, type StoredRepo, type StoredContributor } from "@/lib/repos/storage";
 import {
   BarChart4,
   Book,
@@ -127,6 +130,7 @@ export default function RepoLayoutClient({
   const [repo, setRepo] = useState<any>(null);
   const [repoLogo, setRepoLogo] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [isOwnerUser, setIsOwnerUser] = useState(false);
   
   // Calculate safe initial display name that matches on server and client
   const safeInitialDisplayName = useMemo(() => {
@@ -173,15 +177,30 @@ export default function RepoLayoutClient({
     if (!mounted) return; // Don't access localStorage until mounted
     
     try {
-      const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
-      const foundRepo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
+      const repos = loadStoredRepos();
+      const foundRepo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
       setRepo(foundRepo || null);
+      
+      // Check if current user is owner
+      if (foundRepo && pubkey) {
+        const repoOwnerPubkey = getRepoOwnerPubkey(foundRepo, resolvedParams.entity);
+        const userIsOwner = isOwner(pubkey, foundRepo.contributors, repoOwnerPubkey);
+        const canManage = canManageSettings(
+          foundRepo.contributors?.find((c: StoredContributor) => 
+            c.pubkey && c.pubkey.toLowerCase() === pubkey.toLowerCase()
+          ) || null
+        );
+        setIsOwnerUser(userIsOwner || canManage);
+      } else {
+        setIsOwnerUser(false);
+      }
       
       // Load repo logo if available
       if (foundRepo) {
-        // Priority 1: Stored logoUrl
-        if (foundRepo.logoUrl) {
-          let logoUrl = foundRepo.logoUrl.trim();
+        // Priority 1: Stored logoUrl (runtime property, not in type)
+        const repoAny = foundRepo as any;
+        if (repoAny.logoUrl) {
+          let logoUrl = repoAny.logoUrl.trim();
           // Auto-add https:// if missing
           if (!logoUrl.startsWith("http://") && !logoUrl.startsWith("https://") && 
               !logoUrl.startsWith("data:") && !logoUrl.startsWith("/") &&
@@ -360,7 +379,7 @@ export default function RepoLayoutClient({
       // No repo logo found
       setRepoLogo(null);
     } catch {}
-  }, [resolvedParams.entity, resolvedParams.repo, mounted, ownerPubkey]);
+  }, [resolvedParams.entity, resolvedParams.repo, mounted, ownerPubkey, pubkey]);
   
   // Initial load
   useEffect(() => {
@@ -553,6 +572,16 @@ export default function RepoLayoutClient({
     };
   }, []); // Add empty dependency array to prevent re-running on every render
 
+  // Filter menu items based on permissions (hide Settings for non-owners)
+  const filteredMenuItems = useMemo(() => {
+    return menuItems.filter(item => {
+      // Always show all items except Settings
+      if (item.link !== "settings") return true;
+      // Only show Settings if user is owner
+      return isOwnerUser;
+    });
+  }, [isOwnerUser]);
+  
   // Memoize the number of visible menu items to prevent recalculation on every render
   const visibleMenuItemsCount = useMemo(() => {
     return mounted ? Math.floor(windowWidth / MENU_ITEM_WIDTH) : Math.floor(1920 / MENU_ITEM_WIDTH);
@@ -719,7 +748,7 @@ export default function RepoLayoutClient({
         <div className="flex justify-between items-center gap-4">
           <div className="flex-1 overflow-x-hidden">
             <ul className="my-4 flex items-center gap-x-4 min-w-max">
-              {menuItems
+              {filteredMenuItems
                 .slice(0, visibleMenuItemsCount)
                 .map((item, index) => (
                   <li key={`${item.name}-${item.link}-${index}`} className="flex-shrink-0">
@@ -754,7 +783,7 @@ export default function RepoLayoutClient({
 
             <DropdownMenuTrigger asChild className={clsx("block", {
               "hidden":
-                (menuItems.length - visibleMenuItemsCount) === 0
+                (filteredMenuItems.length - visibleMenuItemsCount) === 0
             })}>
               <div className="flex items-center cursor-pointer">
                 <MoreHorizontal className="h-4 w-4 hover:text-white/80" />
@@ -767,10 +796,10 @@ export default function RepoLayoutClient({
                 e.preventDefault();
               }
             }}>
-              {menuItems
+              {filteredMenuItems
                 .slice(
                   -(
-                    menuItems.length - visibleMenuItemsCount
+                    filteredMenuItems.length - visibleMenuItemsCount
                   )
                 )
                 .map((item, index) => (
