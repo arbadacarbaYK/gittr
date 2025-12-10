@@ -19,7 +19,7 @@ import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
 import { pushFilesToBridge } from "@/lib/nostr/push-to-bridge";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { isOwner } from "@/lib/repo-permissions";
-import { nip19 } from "nostr-tools";
+import { nip19, type Event as NostrEvent } from "nostr-tools";
 import { Lock, Globe, Upload, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -144,7 +144,7 @@ export default function RepositoriesPage() {
     const unsub = subscribe(
       [{ kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34] }], // Support both gitnostr and NIP-34
       defaultRelays,
-      (event, isAfterEose, relayURL) => {
+      (event: NostrEvent, isAfterEose: boolean, relayURL?: string) => {
         if (typeof window === 'undefined') return; // Don't access localStorage during SSR
         if ((event.kind === KIND_REPOSITORY || event.kind === KIND_REPOSITORY_NIP34) && !isAfterEose && /^[0-9a-f]{64}$/i.test(event.pubkey)) {
           try {
