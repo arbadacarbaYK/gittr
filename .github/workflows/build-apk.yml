@@ -8,6 +8,9 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create releases
+      actions: read     # Required to read workflow status
     
     steps:
       - name: Checkout code
