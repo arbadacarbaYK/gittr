@@ -646,7 +646,7 @@ export default function RepositoriesPage() {
       (event: NostrEvent, isAfterEose: boolean, relayURL?: string) => {
         // CRITICAL: For NIP-34 replaceable events, collect ALL events first
         // Don't process immediately - wait for EOSE to pick the latest one
-        if (event.kind === KIND_REPOSITORY_NIP34) {
+        if ((event.kind as number) === KIND_REPOSITORY_NIP34) {
           const dTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "d");
           const repoName = dTag?.[1];
           if (repoName && event.pubkey) {
@@ -662,10 +662,10 @@ export default function RepositoriesPage() {
         }
         
         // Process ALL events, not just before EOSE (EOSE just means "end of stored events", but new events can still arrive)
-        if (event.kind === KIND_REPOSITORY || event.kind === KIND_REPOSITORY_NIP34) {
+        if (event.kind === KIND_REPOSITORY || (event.kind as number) === KIND_REPOSITORY_NIP34) {
           try {
             let repoData: any;
-            if (event.kind === KIND_REPOSITORY_NIP34) {
+            if ((event.kind as number) === KIND_REPOSITORY_NIP34) {
               // NIP-34 format: Parse from tags
               repoData = { repositoryName: "", description: "", clone: [], relays: [], topics: [] };
               if (event.tags && Array.isArray(event.tags)) {
