@@ -153,7 +153,7 @@ export default function RepositoriesPage() {
       defaultRelays,
       (event: NostrEvent, isAfterEose: boolean, relayURL?: string) => {
         if (typeof window === 'undefined') return; // Don't access localStorage during SSR
-        if ((event.kind === KIND_REPOSITORY || event.kind === KIND_REPOSITORY_NIP34) && !isAfterEose && /^[0-9a-f]{64}$/i.test(event.pubkey)) {
+        if ((event.kind === KIND_REPOSITORY || (event.kind as number) === KIND_REPOSITORY_NIP34) && !isAfterEose && /^[0-9a-f]{64}$/i.test(event.pubkey)) {
           try {
             let repoData;
             try {
@@ -1066,7 +1066,7 @@ export default function RepositoriesPage() {
                 ((existingRepo as any)?.updatedAt ? Math.floor((existingRepo as any).updatedAt / 1000) : 0);
               const newEventCreatedAtSeconds = event.created_at; // Already in seconds (Nostr format)
               
-              if (event.kind === KIND_REPOSITORY_NIP34 && newEventCreatedAtSeconds <= existingEventCreatedAtSeconds) {
+              if ((event.kind as number) === KIND_REPOSITORY_NIP34 && newEventCreatedAtSeconds <= existingEventCreatedAtSeconds) {
                 console.log(`⏭️ [Repos] Skipping older NIP-34 event: existing=${new Date(existingEventCreatedAtSeconds * 1000).toISOString()}, new=${new Date(newEventCreatedAtSeconds * 1000).toISOString()}`);
                 return; // Skip older events
               }
