@@ -152,7 +152,7 @@ export default function RepositoriesPage() {
     const unsub = subscribe(
       [{ kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34] }], // Support both gitnostr and NIP-34
       defaultRelays,
-      (event: NostrEvent, isAfterEose: boolean, relayURL?: string) => {
+      (event, isAfterEose, relayURL) => {
         if (typeof window === 'undefined') return; // Don't access localStorage during SSR
         if (((event.kind as number) === KIND_REPOSITORY || (event.kind as number) === KIND_REPOSITORY_NIP34) && !isAfterEose && /^[0-9a-f]{64}$/i.test(event.pubkey)) {
           try {
