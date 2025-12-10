@@ -613,6 +613,8 @@ export default function RepositoriesPage() {
   // This allows users to see repos from all users, not just their own
   // PERFORMANCE: Reduced limit from 10k to 500 to prevent slowdown, but still get all repos (no time limit)
   useEffect(() => {
+    if (typeof window === 'undefined') return; // Don't run during SSR
+    if (!mounted) return; // Wait for client-side mount
     if (!subscribe || !defaultRelays || defaultRelays.length === 0) return;
     
     setSyncing(true);
