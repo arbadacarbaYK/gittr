@@ -43,7 +43,6 @@ import useSession from "@/lib/nostr/useSession";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { getZapTotal } from "@/lib/payments/zap-tracker";
 import { RepoQRShare } from "@/components/ui/repo-qr-share";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useEntityOwner } from "@/lib/utils/use-entity-owner";
 import { nip19 } from "nostr-tools";
 
@@ -118,7 +117,6 @@ export default function RepoLayoutClient({
   const searchParams = useSearchParams();
   // Use consistent default width on server and initial client render to prevent hydration mismatch
   const [windowWidth, setWindowWidth] = useState(1920);
-  const { name: userName } = useSession();
   const { pubkey } = useNostrContext();
   const [isWatching, setIsWatching] = useState(false);
   const [isStarred, setIsStarred] = useState(false);
