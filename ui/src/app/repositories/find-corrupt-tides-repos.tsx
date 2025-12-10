@@ -13,7 +13,12 @@ export function findCorruptTidesRepos(): {
 } {
   if (typeof window === 'undefined') {
     console.error("This script must be run in the browser");
-    return;
+    return {
+      corruptCount: 0,
+      validCount: 0,
+      corruptRepos: [],
+      eventIds: []
+    };
   }
 
   const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
