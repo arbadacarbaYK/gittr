@@ -39,7 +39,6 @@ import {
   Layers,
 } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
-import useSession from "@/lib/nostr/useSession";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { getZapTotal } from "@/lib/payments/zap-tracker";
 import { RepoQRShare } from "@/components/ui/repo-qr-share";
