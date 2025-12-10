@@ -2006,21 +2006,11 @@ export default function RepositoriesPage() {
               "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b"
             ];
             if (isTides && ((r as any).nostrEventId && corruptEventIds.includes((r as any).nostrEventId))) {
-              console.log("❌ [Repositories] Filtering out known corrupted tides repo by event ID:", {
-                repo: repoName,
-                eventId: (r as any).nostrEventId?.slice(0, 16),
-                entity: r.entity,
-                ownerPubkey: (r as any).ownerPubkey?.slice(0, 16)
-              });
+              // Silently filter out - don't spam console for everyone
               return false; // Always exclude known corrupted repos
             }
             if (isTides && ((r as any).lastNostrEventId && corruptEventIds.includes((r as any).lastNostrEventId))) {
-              console.log("❌ [Repositories] Filtering out known corrupted tides repo by lastNostrEventId:", {
-                repo: repoName,
-                eventId: (r as any).lastNostrEventId?.slice(0, 16),
-                entity: r.entity,
-                ownerPubkey: (r as any).ownerPubkey?.slice(0, 16)
-              });
+              // Silently filter out - don't spam console for everyone
               return false; // Always exclude known corrupted repos
             }
             
