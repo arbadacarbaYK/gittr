@@ -107,16 +107,23 @@ export default function RepositoriesPage() {
   
   // Get owner metadata for all repos (for profile pictures)
   // CRITICAL: Always use FULL pubkeys for metadata fetching, never 8-char prefixes
+  // PERFORMANCE: Limit ownerPubkeys to first 100 unique owners to prevent excessive metadata requests
+  // This prevents the page from making 600+ metadata requests which causes severe slowdown
   const ownerPubkeys = useMemo(() => {
     const pubkeys = new Set<string>();
     
-    for (const repo of repos) {
+    // Limit to first 200 repos to reduce metadata requests (still covers most visible repos)
+    const reposToProcess = repos.slice(0, 200);
+    
+    for (const repo of reposToProcess) {
       if (!repo.entity || repo.entity === "user") continue;
       
       // Use getRepoOwnerPubkey to resolve full pubkey (handles all cases)
       const fullPubkey = getRepoOwnerPubkey(repo as any, repo.entity);
       if (fullPubkey && /^[0-9a-f]{64}$/i.test(fullPubkey)) {
         pubkeys.add(fullPubkey);
+        // Stop if we've collected 100 unique pubkeys
+        if (pubkeys.size >= 100) break;
       }
     }
     
