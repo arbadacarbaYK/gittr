@@ -608,32 +608,30 @@ export default function RepositoriesPage() {
     };
   }, [loadRepos]);
 
-  // Sync from Nostr relays - query for recent public repos (Nostr cloud)
+  // Sync from Nostr relays - query for ALL public repos (Nostr cloud)
   // This allows users to see repos from all users, not just their own
-  // PERFORMANCE: Limit to recent repos (last 30 days) and reasonable count to prevent slowdown
+  // PERFORMANCE: Reduced limit from 10k to 500 to prevent slowdown, but still get all repos (no time limit)
   useEffect(() => {
     if (!subscribe || !defaultRelays || defaultRelays.length === 0) return;
     
     setSyncing(true);
     
-    // Query Nostr for recent repositories (last 30 days) to keep performance reasonable
-    // Also query user's own repos (no time limit for user's own repos)
+    // Query Nostr for ALL repositories (no time limit - we need all non-deleted repos)
+    // Also query user's own repos to ensure they're included
     // PERFORMANCE: Reduced limit from 10k to 500 for public repos to prevent slowdown
     // Relays will handle pagination/limits if needed
+    // CRITICAL: No since parameter = get ALL repos (no time limit) - we need all non-deleted repos
     
     // CRITICAL: For NIP-34 replaceable events, collect ALL events per repo and pick the latest
     // Map: repoKey (pubkey + d tag) -> array of events
     const nip34EventsByRepo = new Map<string, Array<{event: any; relayURL?: string}>>();
-    
-    // Get repos from last 30 days (recent activity)
-    const thirtyDaysAgo = Math.floor(Date.now() / 1000) - (30 * 24 * 60 * 60);
     
     const unsub = subscribe(
       [
         {
           kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34], // Support both gitnostr and NIP-34
           limit: 500, // PERFORMANCE: Reduced from 10k to 500 for public repos
-          since: thirtyDaysAgo, // Only get repos from last 30 days (recent activity)
+          // No since parameter = get ALL repos (no time limit) - we need all non-deleted repos
           // No authors filter = get ALL public repos from all users
           // This is the "Nostr cloud" - repos are stored on relays, not locally
         },
@@ -641,7 +639,7 @@ export default function RepositoriesPage() {
           kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34], // Support both gitnostr and NIP-34
           authors: [pubkey], // Also get user's own repos (for private repos in future)
           limit: 200, // User's own repos - smaller limit is fine
-          // No since parameter = get all user's repos (no time limit for user's own repos)
+          // No since parameter = get all user's repos (no time limit)
         }] : []),
       ],
       defaultRelays,
