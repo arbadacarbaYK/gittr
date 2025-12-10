@@ -693,6 +693,17 @@ export default function RepositoriesPage() {
               return;
             }
             
+            // Ensure repositoryName exists (required field)
+            if (!repoData.repositoryName) {
+              console.warn(`[Repositories] repositoryName is missing from event`, {
+                kind: event.kind,
+                eventId: event.id?.slice(0, 16),
+                hasContent: !!event.content,
+                hasTags: !!event.tags
+              });
+              return; // Skip events without repositoryName
+            }
+            
             // GRASP-01: Parse clone, relays, topics, contributors, source, and forkedFrom from event.tags
             const cloneTags: string[] = [];
             const relaysTags: string[] = [];
