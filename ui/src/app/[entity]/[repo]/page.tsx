@@ -7396,6 +7396,20 @@ export default function RepoCodePage({
                         remarkPlugins={[remarkGfm]}
                         rehypePlugins={[rehypeRaw]}
                         components={{
+                          p: ({ node, children, ...props }: any) => {
+                            // Check if paragraph only contains block-level elements (like our wrapped images)
+                            // If so, render as div to avoid invalid HTML (<p><div>...</div></p>)
+                            const hasBlockChildren = node?.children?.some((child: any) => 
+                              child.type === 'element' && 
+                              (child.tagName === 'div' || child.tagName === 'iframe' || child.tagName === 'img')
+                            );
+                            
+                            if (hasBlockChildren) {
+                              return <div {...props}>{children}</div>;
+                            }
+                            
+                            return <p {...props}>{children}</p>;
+                          },
                           img: ({ node, ...props }) => {
                             // Transform relative image paths to absolute URLs
                             let imageSrc = props.src || "";
