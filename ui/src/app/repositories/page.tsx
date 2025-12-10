@@ -2002,7 +2002,7 @@ export default function RepositoriesPage() {
         }).length === 0 && <p>No repositories yet.</p>}
         {(() => {
           // Load list of locally-deleted repos (user deleted them, don't show)
-          const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
+          const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number; ownerPubkey?: string}>;
           
           // Helper function to check if repo is deleted (robust matching)
           const isRepoDeleted = (r: any): boolean => {
