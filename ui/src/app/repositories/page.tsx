@@ -1247,7 +1247,7 @@ export default function RepositoriesPage() {
     return () => {
       unsub();
     };
-  }, [subscribe, pubkey, defaultRelays, userName]); // Note: pubkey optional - syncs ALL repos even when not logged in
+  }, [mounted, subscribe, pubkey, defaultRelays, userName]); // Note: pubkey optional - syncs ALL repos even when not logged in
   
   // Make findCorruptTidesRepos available in console for debugging
   useEffect(() => {
