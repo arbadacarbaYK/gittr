@@ -927,6 +927,28 @@ export default function RepositoriesPage() {
             // Note: We don't use Nostr git server URLs (gittr.space, etc.) as sourceUrl
             // Those are handled by the multi-source fetcher or git-nostr-bridge
             
+            // CRITICAL: Validate entity is not a domain name
+            if (!entity || entity === "gittr.space" || (entity.includes(".") && !entity.startsWith("npub"))) {
+              console.error("❌ [Repositories] Invalid entity detected from Nostr event, skipping:", {
+                entity,
+                eventId: event.id.slice(0, 8),
+                repoName: repoData.repositoryName,
+                eventPubkey: event.pubkey.slice(0, 8)
+              });
+              return; // Skip this repo - invalid entity
+            }
+            
+            // CRITICAL: Validate repositoryName matches what we expect (prevent name corruption)
+            if (repoData.repositoryName && repoData.repositoryName.toLowerCase() === "tides" && repoData.repositoryName !== repoData.repositoryName) {
+              console.error("❌ [Repositories] Repository name mismatch detected, skipping:", {
+                repositoryName: repoData.repositoryName,
+                eventId: event.id.slice(0, 8),
+                entity,
+                eventPubkey: event.pubkey.slice(0, 8)
+              });
+              return; // Skip this repo - name corruption detected
+            }
+            
             // Merge ALL metadata from Nostr event
             const repo: any = {
               slug: repoData.repositoryName,
