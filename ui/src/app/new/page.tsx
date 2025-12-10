@@ -92,9 +92,26 @@ function NewRepoPageContent() {
       return;
     }
     if (url) {
-      const r = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceUrl: url }) });
-      const d = await r.json();
-      if (d.status === "completed") {
+      // Check if it's a GitHub URL or custom git server
+      const isGitHub = url.includes("github.com");
+      const isGitLab = url.includes("gitlab.com");
+      const isCodeberg = url.includes("codeberg.org");
+      
+      let r: Response;
+      let d: any;
+      
+      if (isGitHub || isGitLab || isCodeberg) {
+        // Use existing import API for GitHub/GitLab/Codeberg
+        r = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceUrl: url }) });
+        d = await r.json();
+      } else {
+        // Custom git server - use new import endpoint
+        setStatus("Importing from custom git server...");
+        r = await fetch("/api/import-git", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceUrl: url }) });
+        d = await r.json();
+      }
+      
+      if (d.status === "completed" || d.success) {
         // Slugify the imported repo name to ensure URL-safe format
         const importedRepoSlug = slugify(d.repo || d.slug);
         if (!importedRepoSlug) {
@@ -397,29 +414,64 @@ function NewRepoPageContent() {
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
       <h1 className="text-2xl font-bold mb-4">Create repository</h1>
-      <label className="block">Name</label>
-      <input className="w-full border p-2 text-black" value={name} onChange={(e)=>setName(e.target.value)} placeholder="repo-name" />
-      <label className="block mt-4">Import from URL (optional)</label>
-      <input 
-        className="w-full border p-2 text-black" 
-        value={url} 
-        onChange={(e)=>setUrl(e.target.value)}
-        onBlur={(e) => {
-          // Auto-add https:// for web URLs, but not for git@ or git:// URLs
-          const value = e.target.value.trim();
-          if (value && !value.startsWith("http://") && !value.startsWith("https://") && 
-              !value.startsWith("git@") && !value.startsWith("git://") && 
-              value.includes(".") && !value.includes("@")) {
-            setUrl(`https://${value}`);
-          }
-        }}
-        placeholder="github.com/owner/repo or https://... or git@host:owner/repo.git" 
-      />
-      <p className="text-sm mt-1">Examples: https://github.com/owner/repo(.git), https://host/owner/repo(.git), git@host:owner/repo(.git), git://host/owner/repo(.git)</p>
-      <div className="flex gap-2 mt-4">
-        <button className="border px-4 py-2" onClick={submit}>Create</button>
+      
+      <div className="mb-6 p-4 bg-blue-900/20 border border-blue-500/50 rounded">
+        <h2 className="font-semibold text-blue-400 mb-2">💡 Import from existing Git repository</h2>
+        <p className="text-sm text-gray-300 mb-3">
+          You can import from any Git server (GitHub, GitLab, Codeberg, or custom servers like <code className="bg-gray-800 px-1 rounded">git.btclock.dev</code>).
+          Just paste the repository URL below and click "Import & Create".
+        </p>
+        <label className="block text-sm font-medium mb-2">Repository URL</label>
+        <input 
+          className="w-full border p-2 text-black" 
+          value={url} 
+          onChange={(e)=>setUrl(e.target.value)}
+          onBlur={(e) => {
+            // Auto-add https:// for web URLs, but not for git@ or git:// URLs
+            const value = e.target.value.trim();
+            if (value && !value.startsWith("http://") && !value.startsWith("https://") && 
+                !value.startsWith("git@") && !value.startsWith("git://") && 
+                value.includes(".") && !value.includes("@")) {
+              setUrl(`https://${value}`);
+            }
+          }}
+          placeholder="https://github.com/owner/repo or git@git.btclock.dev:btclock/webui.git or https://git.btclock.dev/btclock/webui.git" 
+        />
+        <p className="text-xs mt-1 text-gray-400">
+          Examples: <code className="bg-gray-800 px-1 rounded">https://github.com/owner/repo</code>, 
+          <code className="bg-gray-800 px-1 rounded">git@git.btclock.dev:btclock/webui.git</code>, 
+          <code className="bg-gray-800 px-1 rounded">https://git.btclock.dev/btclock/webui.git</code>
+        </p>
         <button 
-          className="border px-4 py-2 inline-block"
+          className="mt-3 border border-blue-500 bg-blue-600 hover:bg-blue-700 px-4 py-2 text-white rounded"
+          onClick={submit}
+          disabled={!url.trim()}
+        >
+          {url.trim() ? "Import & Create" : "Enter URL to import"}
+        </button>
+      </div>
+
+      <div className="mb-6 p-4 bg-gray-800/50 border border-gray-700 rounded">
+        <h2 className="font-semibold mb-2">Or create a new empty repository</h2>
+        <label className="block text-sm font-medium mb-2">Repository Name</label>
+        <input 
+          className="w-full border p-2 text-black" 
+          value={name} 
+          onChange={(e)=>setName(e.target.value)} 
+          placeholder="repo-name" 
+        />
+        <button 
+          className="mt-3 border px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded"
+          onClick={submit}
+          disabled={!name.trim()}
+        >
+          {name.trim() ? "Create Empty Repository" : "Enter name to create"}
+        </button>
+      </div>
+
+      <div className="flex gap-2 mt-4">
+        <button 
+          className="border px-4 py-2 inline-block bg-gray-700 hover:bg-gray-600 text-white rounded"
           onClick={() => {
             // Extract GitHub username from URL field
             let githubUser = "";
