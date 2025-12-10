@@ -634,7 +634,7 @@ export default function RepositoriesPage() {
         }] : []),
       ],
       defaultRelays,
-      (event, isAfterEose, relayURL) => {
+      (event: NostrEvent, isAfterEose: boolean, relayURL?: string) => {
         // CRITICAL: For NIP-34 replaceable events, collect ALL events first
         // Don't process immediately - wait for EOSE to pick the latest one
         if (event.kind === KIND_REPOSITORY_NIP34) {
@@ -1157,7 +1157,7 @@ export default function RepositoriesPage() {
         }
       },
       undefined,
-      (events, relayURL) => {
+      (events: NostrEvent[], relayURL: string) => {
         // Final EOSE callback - all events from all relays received
         // Note: This is called per relay, so we need to track when ALL relays are done
         // For now, we'll use a delay to ensure all relays have sent EOSE
