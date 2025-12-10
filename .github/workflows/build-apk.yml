@@ -22,9 +22,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./ui
-        run: |
-          echo "Using legacy-peer-deps for dependency resolution"
-          npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+        run: npm install --legacy-peer-deps
 
       - name: Build Next.js app for Capacitor
         working-directory: ./ui
