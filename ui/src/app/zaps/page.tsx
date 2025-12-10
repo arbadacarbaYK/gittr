@@ -490,7 +490,7 @@ export default function ZapsPage() {
                         </Link>
                       )}
                       <div className="text-xs text-gray-500 mt-1">
-                        {formatDateTime24h(zap.createdAt * 1000)}
+                        {formatDateTime24h(zap.createdAt)}
                       </div>
                     </div>
                   </div>
