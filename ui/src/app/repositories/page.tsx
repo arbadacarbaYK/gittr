@@ -1008,12 +1008,27 @@ export default function RepositoriesPage() {
                 return; // Skip older events
               }
               
+              // CRITICAL: Validate existing repo entity is not corrupted
+              const existingEntity = existingRepos[existingIndex].entity;
+              if (existingEntity === "gittr.space" || (!existingEntity?.startsWith("npub") && existingEntity?.includes("."))) {
+                console.error("❌ [Repositories] Existing repo has corrupted entity, fixing:", {
+                  oldEntity: existingEntity,
+                  newEntity: entity,
+                  repoName: repoData.repositoryName,
+                  eventId: event.id.slice(0, 8)
+                });
+                // Replace corrupted entity with correct one
+                repo.entity = entity;
+              }
+              
               // CRITICAL: Preserve existing sourceUrl if new one is not available
               // This prevents losing GitHub/GitLab/Codeberg sourceUrl when syncing from Nostr
               const preservedSourceUrl = repo.sourceUrl || existingRepos[existingIndex].sourceUrl;
               existingRepos[existingIndex] = { 
                 ...existingRepos[existingIndex], 
                 ...repo,
+                // CRITICAL: Ensure entity is never "gittr.space" or a domain name
+                entity: (repo.entity && repo.entity !== "gittr.space" && (repo.entity.startsWith("npub") || !repo.entity.includes("."))) ? repo.entity : entity,
                 // Preserve sourceUrl if it was set (don't overwrite with undefined)
                 sourceUrl: preservedSourceUrl,
                 // Force update ownerPubkey and contributors to fix old repos
@@ -1040,8 +1055,21 @@ export default function RepositoriesPage() {
               existingRepos.push(newRepo);
             }
             
-            // Save to localStorage
-            localStorage.setItem("gittr_repos", JSON.stringify(existingRepos));
+            // CRITICAL: Clean up any repos with corrupted entities before saving
+            const cleanedRepos = existingRepos.filter((r: any) => {
+              if (!r.entity || r.entity === "gittr.space" || (!r.entity.startsWith("npub") && r.entity.includes("."))) {
+                console.error("❌ [Repositories] Removing repo with corrupted entity:", {
+                  entity: r.entity,
+                  repo: r.repo || r.name,
+                  ownerPubkey: (r as any).ownerPubkey?.slice(0, 8)
+                });
+                return false; // Remove corrupted repos
+              }
+              return true;
+            });
+            
+            // Save to localStorage (with corrupted repos removed)
+            localStorage.setItem("gittr_repos", JSON.stringify(cleanedRepos));
             
             // CRITICAL: Don't call setRepos here - it causes infinite loops
             // The repos will be loaded from localStorage via loadRepos() when needed
