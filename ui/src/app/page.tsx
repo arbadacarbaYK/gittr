@@ -1376,6 +1376,24 @@ export default function HomePage() {
           ) : (
             <ul className="divide-y divide-[#383B42]">
               {recent.filter((r: any) => {
+                // CRITICAL: Exclude repos with "gittr.space" entity (corrupted repos)
+                if (r.entity === "gittr.space") {
+                  console.log("❌ [Home] Filtering out corrupted repo with entity 'gittr.space':", {
+                    repo: r.slug || r.repo,
+                    ownerPubkey: r.ownerPubkey?.slice(0, 16)
+                  });
+                  return false;
+                }
+                
+                // CRITICAL: Entity must be npub format (starts with "npub")
+                if (r.entity && !r.entity.startsWith("npub")) {
+                  console.log("❌ [Home] Filtering out repo with invalid entity format:", {
+                    repo: r.slug || r.repo,
+                    entity: r.entity
+                  });
+                  return false;
+                }
+                
                 // Filter out deleted repos
                 return !r.deleted && !r.archived;
               }).map((r, index) => {
