@@ -132,14 +132,32 @@ jobs:
         if: steps.capacitor-check.outputs.capacitor_configured == 'true'
         run: |
           chmod +x ./gradlew
+          # Verify keystore exists
+          if [ ! -f ~/.android/debug.keystore ]; then
+            echo "❌ ERROR: Debug keystore not found!"
+            exit 1
+          fi
+          echo "✅ Keystore found at: ~/.android/debug.keystore"
+          
           # Build with signing using debug keystore
-          # The build.gradle will use the debug keystore fallback if env vars aren't set
-          # For production, use: -PRELEASE_STORE_FILE=... -PRELEASE_STORE_PASSWORD=... etc.
+          # Pass properties to Gradle for signing
           ./gradlew assembleRelease \
             -PRELEASE_STORE_FILE=$HOME/.android/debug.keystore \
             -PRELEASE_STORE_PASSWORD=android \
             -PRELEASE_KEY_ALIAS=androiddebugkey \
-            -PRELEASE_KEY_PASSWORD=android
+            -PRELEASE_KEY_PASSWORD=android \
+            --info 2>&1 | grep -i "sign\|keystore\|release" || true
+          
+          # Verify APK is signed
+          echo "Verifying APK signature..."
+          APK_FILE=$(find ./app/build/outputs/apk/release -name "*.apk" | head -1)
+          if [ -n "$APK_FILE" ]; then
+            if command -v apksigner &> /dev/null; then
+              apksigner verify --print-certs "$APK_FILE" && echo "✅ APK is signed" || echo "⚠️ APK signature verification failed"
+            else
+              echo "⚠️ apksigner not available, cannot verify signature"
+            fi
+          fi
 
       - name: Find APK
         id: find-apk
