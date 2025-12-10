@@ -12,7 +12,7 @@ import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { useParams, useRouter } from "next/navigation";
 import { Zap, ArrowRight, CheckCircle, X, Plus, User, Lock, Globe, BookOpen, MessageSquare, Youtube, Twitter, Github, Link as LinkIcon } from "lucide-react";
 import DistributeZaps from "@/components/ui/distribute-zaps";
-import { getAccumulatedZaps, recordAccumulatedZap } from "@/lib/payments/zap-repo";
+import { getAccumulatedZaps } from "@/lib/payments/zap-repo";
 import RepoWalletConfig from "./RepoWalletConfig";
 import { Textarea } from "@/components/ui/textarea";
 import { normalizeUrlOnBlur } from "@/lib/utils/url-normalize";
