@@ -51,27 +51,33 @@ export function isRepoCorrupted(
     return true;
   }
 
-  // CRITICAL: For "tides" repos, verify they actually belong to the entity
-  // If ownerPubkey doesn't match entity, it's corrupted
-  if (isTides && repo.ownerPubkey && entity) {
+  // CRITICAL: For "tides" repos, ALWAYS verify they belong to the entity
+  // If ownerPubkey doesn't match entity OR is missing, it's corrupted
+  if (isTides && entity && entity.startsWith("npub")) {
     try {
-      // Decode entity to get pubkey
-      if (entity.startsWith("npub")) {
-        const { nip19 } = require("nostr-tools");
-        const decoded = nip19.decode(entity);
-        if (decoded.type === "npub") {
-          const entityPubkey = (decoded.data as string).toLowerCase();
-          const ownerPubkey = repo.ownerPubkey.toLowerCase();
-          // If ownerPubkey doesn't match entity pubkey, it's corrupted
-          if (ownerPubkey !== entityPubkey) {
-            return true; // Corrupted - tides repo doesn't belong to this entity
-          }
+      const { nip19 } = require("nostr-tools");
+      const decoded = nip19.decode(entity);
+      if (decoded.type === "npub") {
+        const entityPubkey = (decoded.data as string).toLowerCase();
+        // If ownerPubkey is missing, assume corrupted (tides repos must have ownerPubkey)
+        if (!repo.ownerPubkey) {
+          return true; // Corrupted - tides repo without ownerPubkey
+        }
+        const ownerPubkey = repo.ownerPubkey.toLowerCase();
+        // If ownerPubkey doesn't match entity pubkey, it's corrupted
+        if (ownerPubkey !== entityPubkey) {
+          return true; // Corrupted - tides repo doesn't belong to this entity
         }
       }
     } catch (e) {
-      // If we can't decode, assume corrupted
+      // If we can't decode entity, assume corrupted
       return true;
     }
+  }
+  
+  // CRITICAL: If it's a tides repo and we couldn't verify ownership above, it's corrupted
+  if (isTides && (!entity || !entity.startsWith("npub") || !repo.ownerPubkey)) {
+    return true; // Corrupted - tides repo without proper verification
   }
 
   return false;
