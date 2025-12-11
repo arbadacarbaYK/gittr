@@ -1459,54 +1459,65 @@ export default function HomePage() {
                       href={href} 
                       className="flex items-center gap-3 sm:gap-4 hover:bg-gray-800/50 rounded p-2 -m-2 cursor-pointer"
                     >
-                      {/* Icon priority: repo icon -> user icon -> platform default */}
-                      <div className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10">
-                        {iconUrl ? (
-                          // Priority 1: Repo icon (square)
-                          <img 
+                      {/* Icon priority: repo icon -> user icon -> platform default (all circular) */}
+                      {iconUrl ? (
+                        // Priority 1: Repo icon (circular like Avatar)
+                        <Avatar className="h-8 w-8 sm:h-10 sm:h-10 ring-1 ring-gray-700">
+                          <AvatarImage 
                             src={iconUrl} 
-                            alt="repo" 
-                            className="h-8 w-8 sm:h-10 sm:h-10 rounded-sm object-contain border border-gray-700"
+                            alt="repo"
                             loading="lazy"
                             onError={(e) => {
                               e.currentTarget.style.display = 'none';
                             }}
                           />
-                        ) : ownerPicture ? (
-                          // Priority 2: Owner profile picture (circle)
-                          <Avatar className="h-8 w-8 sm:h-10 sm:h-10 ring-1 ring-gray-700">
-                            <AvatarImage 
-                              src={ownerPicture} 
-                              alt={displayName}
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                              }}
-                            />
-                            <AvatarFallback className="bg-[#22262C]">
-                              <img 
-                                src="/logo.svg" 
-                                alt="platform default"
-                                className="h-full w-full object-contain p-1"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none';
-                                }}
-                              />
-                            </AvatarFallback>
-                          </Avatar>
-                        ) : (
-                          // Priority 3: Platform default icon
-                          <div className="h-8 w-8 sm:h-10 sm:h-10 rounded-full bg-[#22262C] ring-1 ring-gray-700 flex items-center justify-center">
+                          <AvatarFallback className="bg-[#22262C]">
                             <img 
                               src="/logo.svg" 
                               alt="platform default"
-                              className="h-4 w-4 sm:h-5 sm:w-5 object-contain opacity-50"
+                              className="h-full w-full object-contain p-1"
                               onError={(e) => {
                                 e.currentTarget.style.display = 'none';
                               }}
                             />
-                          </div>
-                        )}
-                      </div>
+                          </AvatarFallback>
+                        </Avatar>
+                      ) : ownerPicture ? (
+                        // Priority 2: Owner profile picture (circular)
+                        <Avatar className="h-8 w-8 sm:h-10 sm:h-10 ring-1 ring-gray-700">
+                          <AvatarImage 
+                            src={ownerPicture} 
+                            alt={displayName}
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                          <AvatarFallback className="bg-[#22262C]">
+                            <img 
+                              src="/logo.svg" 
+                              alt="platform default"
+                              className="h-full w-full object-contain p-1"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                          </AvatarFallback>
+                        </Avatar>
+                      ) : (
+                        // Priority 3: Platform default icon (circular)
+                        <Avatar className="h-8 w-8 sm:h-10 sm:h-10 ring-1 ring-gray-700">
+                          <AvatarFallback className="bg-[#22262C]">
+                            <img 
+                              src="/logo.svg" 
+                              alt="platform default"
+                              className="h-full w-full object-contain p-1"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
                       <div className="flex-1 min-w-0 min-w-[0]">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <div className="text-purple-500 hover:underline font-semibold truncate min-w-0">
