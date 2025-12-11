@@ -8271,8 +8271,11 @@ export default function RepoCodePage({
                           });
                           
                           // Update repo with COMPLETE REPLACEMENT from GitHub (GitHub is absolute source of truth)
+                          // CRITICAL: Preserve sourceUrl from effectiveSourceUrl (from Nostr event) or existing repo
+                          // This ensures bridge sync doesn't trigger for GitHub repos
                           repos[repoIndex] = {
                             ...existingRepo,
+                            sourceUrl: effectiveSourceUrl || existingRepo.sourceUrl || importData.sourceUrl || "", // CRITICAL: Preserve sourceUrl to prevent bridge sync
                             files: newFiles, // COMPLETE REPLACEMENT - use GitHub files exactly as returned
                             readme: importData.readme || existingRepo.readme,
                             description: importData.description || existingRepo.description,
