@@ -37,10 +37,12 @@ export async function createDeletionEvent(
   // NIP-09: Deletion events use kind 5
   // Tags: [["e", eventId, relay, "deletion"]]
   const tags: string[][] = [["e", eventIdToDelete]];
-  if (relayUrl) {
+  if (relayUrl && tags[0]) {
     tags[0].push(relayUrl);
   }
-  tags[0].push("deletion");
+  if (tags[0]) {
+    tags[0].push("deletion");
+  }
   
   const deletionEvent = {
     kind: 5, // NIP-09: Deletion
