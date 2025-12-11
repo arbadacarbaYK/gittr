@@ -5467,7 +5467,6 @@ export default function RepoCodePage({
           const sourceUrlForFetch =
             effectiveSourceUrl ||
             repoData?.sourceUrl ||
-            (repo as any)?.sourceUrl ||
             null;
 
           if (
