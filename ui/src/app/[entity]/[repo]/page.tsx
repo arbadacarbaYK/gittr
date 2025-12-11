@@ -699,10 +699,10 @@ export default function RepoCodePage({
     }
 
     // CRITICAL: For "tides" repos, ALWAYS verify ownership matches entity BEFORE processing
-    const repoName = (repo.repo || repo.slug || repo.name || "").toLowerCase();
-    const isTides = repoName === "tides";
+    const checkRepoName = (repo.repo || repo.slug || repo.name || "").toLowerCase();
+    const checkIsTides = checkRepoName === "tides";
     
-    if (isTides && resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
+    if (checkIsTides && resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
       try {
         const decoded = nip19.decode(resolvedParams.entity);
         if (decoded.type === "npub") {
@@ -1091,10 +1091,10 @@ export default function RepoCodePage({
         
         // CRITICAL: Check if repo is corrupted BEFORE displaying
         // For "tides" repos, ALWAYS verify ownership matches entity
-        const repoName = (repo.repo || repo.slug || repo.name || "").toLowerCase();
-        const isTides = repoName === "tides";
+        const verifyRepoName = (repo.repo || repo.slug || repo.name || "").toLowerCase();
+        const verifyIsTides = verifyRepoName === "tides";
         
-        if (isTides && resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
+        if (verifyIsTides && resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
           try {
             const decoded = nip19.decode(resolvedParams.entity);
             if (decoded.type === "npub") {
