@@ -58,24 +58,105 @@ git clone nostr://alex@git.gittr.space/repo-name
 
 **⚠️ Important: Getting Files Into Your Repository**
 
-After cloning a repository, you need to **push files to it** before they appear in the web UI. The workflow is:
+## Repository Creation Methods
 
-1. **Clone the repository**: `git clone git@gittr.space:<owner-pubkey>/<repo-name>.git`
-2. **Add your files**: Copy files into the cloned directory, or create new files
-3. **Commit your changes**: `git add . && git commit -m "Initial commit"` (or your commit message)
-4. **Push to the repository**: `git push origin main` (or your branch name)
+gittr.space supports three ways to create repositories:
 
-**Why this is necessary**: The git-nostr-bridge stores repositories as bare Git repositories. Files only appear in the web UI after they've been committed and pushed via Git. If you create a repository through the web UI but don't push any files yet, the repository will be empty until you push your first commit.
+### 1. Import from GitHub/GitLab/Codeberg (Recommended for Existing Projects)
 
-**For new repositories**:
-- Create the repository via the web UI (or import from GitHub/GitLab)
-- Clone it: `git clone git@gittr.space:<your-pubkey>/<repo-name>.git`
-- Add your files and commit: `git add . && git commit -m "Initial commit"`
-- Push: `git push origin main`
+When you import a repository from GitHub, GitLab, or Codeberg:
+- Files are **automatically fetched** during import
+- Files appear **immediately** in the web UI
+- No Git CLI required for initial setup
+- The repository maintains a link to its source (`sourceUrl`)
 
-**For existing repositories**:
-- Clone: `git clone git@gittr.space:<owner-pubkey>/<repo-name>.git`
-- Make changes, commit, and push as normal
+**Workflow:**
+1. Go to **"Create repository"** page
+2. Enter `owner/repo` (e.g., `arbadacarbaYK/gittr`) or full URL
+3. Click **"Import & Create"**
+4. Files are fetched and stored in your browser
+5. Optionally click **"Push to Nostr"** to publish to the network
+
+### 2. Create Empty Repository (For New Projects)
+
+When you create an empty repository via the web UI:
+- The repository is created but **contains no files**
+- Files **will not appear** in the web UI until you push them via Git CLI
+- You must use Git commands to add files
+
+**Complete Workflow for Empty Repositories:**
+
+1. **Create the repository via web UI:**
+   - Go to **"Create repository"** page
+   - Enter a repository name
+   - Click **"Create Empty Repository"**
+
+2. **Set up SSH keys** (if not already done):
+   - Go to **Settings → SSH Keys**
+   - Generate a new key or add an existing public key
+   - Download the private key and save it to `~/.ssh/id_ed25519` (or your preferred location)
+   - Set correct permissions: `chmod 600 ~/.ssh/id_ed25519`
+
+3. **Clone the repository:**
+   ```bash
+   git clone git@gittr.space:<your-pubkey>/<repo-name>.git
+   ```
+   Replace `<your-pubkey>` with your Nostr pubkey (64-char hex) and `<repo-name>` with your repository name.
+
+4. **Add your files:**
+   - Copy files into the cloned directory, or create new files
+   - Example: `echo "# My Project" > README.md`
+
+5. **Commit your changes:**
+   ```bash
+   git add .
+   git commit -m "Initial commit"
+   ```
+
+6. **Push to the repository:**
+   ```bash
+   git push origin main
+   ```
+   (Use your branch name if different from `main`)
+
+7. **Files appear in web UI:** After pushing, refresh the repository page in your browser. Files will now be visible.
+
+**Why this workflow is necessary:** The git-nostr-bridge stores repositories as bare Git repositories. Files only appear in the web UI after they've been committed and pushed via Git. This is the standard Git workflow - the web UI is a viewer, not a file editor.
+
+### 3. Bulk Import from GitHub
+
+For importing multiple repositories at once:
+- Click **"Bulk Import from GitHub"** on the create repository page
+- Browse and select which repositories to import
+- Files are automatically fetched for all selected repositories
+
+## For Existing Repositories (Making Changes)
+
+If you want to make changes to an existing repository (whether imported or created empty):
+
+1. **Clone the repository:**
+   ```bash
+   git clone git@gittr.space:<owner-pubkey>/<repo-name>.git
+   ```
+
+2. **Make your changes:**
+   - Edit files, add new files, delete files, etc.
+
+3. **Commit and push:**
+   ```bash
+   git add .
+   git commit -m "Your commit message"
+   git push origin main
+   ```
+
+4. **Changes appear in web UI:** After pushing, refresh the repository page to see your changes.
+
+## Key Points
+
+- **Imported repositories:** Files appear immediately (no Git CLI needed for initial setup)
+- **Empty repositories:** Must use Git CLI to add files (clone, add, commit, push)
+- **All repositories:** Use Git CLI for ongoing changes (standard Git workflow)
+- **Web UI:** Primarily a viewer - use Git CLI for file operations
 
 ### 3. Publish (Push to Nostr)
 

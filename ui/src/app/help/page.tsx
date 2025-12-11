@@ -220,7 +220,58 @@ export default function HelpPage() {
 
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">2. Create or Import a Repository</h3>
-              <p>Click "Create repository" to start a new repo, or "Import" to bring in an existing GitHub repository.</p>
+              <p className="mb-3">You can create a new repository or import from GitHub/GitLab/Codeberg. There are three ways to get started:</p>
+              
+              <div className="space-y-3 mt-3">
+                <div className="p-3 bg-blue-900/20 border border-blue-600/30 rounded">
+                  <p className="text-sm font-semibold text-blue-200 mb-2">📦 Option 1: Import Single Repository</p>
+                  <p className="text-sm text-gray-300 mb-2">Import an existing repository from GitHub, GitLab, or Codeberg:</p>
+                  <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside ml-2">
+                    <li>Enter <code className="bg-gray-800 px-1 rounded">owner/repo</code> (e.g., <code className="bg-gray-800 px-1 rounded">arbadacarbaYK/gittr</code>)</li>
+                    <li>Or provide a full URL: <code className="bg-gray-800 px-1 rounded">https://github.com/owner/repo</code></li>
+                    <li>Files are automatically fetched and stored in your browser</li>
+                  </ul>
+                </div>
+
+                <div className="p-3 bg-purple-900/20 border border-purple-600/30 rounded">
+                  <p className="text-sm font-semibold text-purple-200 mb-2">➕ Option 2: Create Empty Repository</p>
+                  <p className="text-sm text-gray-300 mb-2">Create a new empty repository from scratch:</p>
+                  <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside ml-2">
+                    <li>Enter a repository name</li>
+                    <li>Click "Create Empty Repository"</li>
+                    <li><strong className="text-yellow-400">Important:</strong> The repository will be empty until you push files via Git (see below)</li>
+                  </ul>
+                </div>
+
+                <div className="p-3 bg-green-900/20 border border-green-600/30 rounded">
+                  <p className="text-sm font-semibold text-green-200 mb-2">📚 Option 3: Bulk Import from GitHub</p>
+                  <p className="text-sm text-gray-300 mb-2">Import multiple repositories at once from a GitHub user or organization:</p>
+                  <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside ml-2">
+                    <li>Click "Bulk Import from GitHub"</li>
+                    <li>Browse and select which repositories to import</li>
+                    <li>You can import all or just specific ones</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-600/30 rounded">
+                <p className="text-sm font-semibold text-yellow-200 mb-2">⚠️ Important: Getting Files Into Your Repository</p>
+                <p className="text-sm text-gray-300 mb-2">
+                  <strong>For empty repositories created via web UI:</strong> After creating an empty repository, you need to push files to it before they appear in the web UI. The workflow is:
+                </p>
+                <ol className="text-sm text-gray-300 space-y-1 list-decimal list-inside ml-2">
+                  <li><strong>Clone the repository:</strong> <code className="bg-gray-800 px-1 rounded">git clone git@gittr.space:&lt;your-pubkey&gt;/&lt;repo-name&gt;.git</code></li>
+                  <li><strong>Add your files:</strong> Copy files into the cloned directory, or create new files</li>
+                  <li><strong>Commit your changes:</strong> <code className="bg-gray-800 px-1 rounded">git add . && git commit -m "Initial commit"</code></li>
+                  <li><strong>Push to the repository:</strong> <code className="bg-gray-800 px-1 rounded">git push origin main</code></li>
+                </ol>
+                <p className="text-sm text-gray-300 mt-2">
+                  <strong>Why this is necessary:</strong> The git-nostr-bridge stores repositories as bare Git repositories. Files only appear in the web UI after they've been committed and pushed via Git.
+                </p>
+                <p className="text-sm text-gray-300 mt-2">
+                  <strong>For imported repositories:</strong> Files are automatically fetched during import, so they appear immediately in the web UI.
+                </p>
+              </div>
             </div>
 
             <div>
@@ -240,7 +291,30 @@ export default function HelpPage() {
           <div className="space-y-4 text-gray-300">
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Creating Repositories</h3>
-              <p>Create new repositories from scratch or import from GitHub. All repos are stored locally in your browser and can be pushed to Nostr for public access.</p>
+              <p className="mb-3">You can create repositories in three ways:</p>
+              <ul className="list-disc list-inside space-y-1 ml-4 mb-3">
+                <li><strong>Import from GitHub/GitLab/Codeberg:</strong> Files are automatically fetched and stored in your browser</li>
+                <li><strong>Create empty repository:</strong> Creates an empty repo that you must populate via Git CLI (clone, add files, commit, push)</li>
+                <li><strong>Bulk import:</strong> Import multiple repositories at once from a GitHub user/organization</li>
+              </ul>
+              <p className="text-sm text-gray-400 mb-3">
+                All repos are stored locally in your browser and can be pushed to Nostr for public access. 
+                <strong className="text-yellow-400"> Important:</strong> Empty repositories created via web UI will not show files until you push them via Git.
+              </p>
+              <div className="p-3 bg-blue-900/20 border border-blue-600/30 rounded">
+                <p className="text-sm font-semibold text-blue-200 mb-2">📖 Complete Workflow for Empty Repositories</p>
+                <p className="text-sm text-gray-300 mb-2">After creating an empty repository via web UI:</p>
+                <ol className="text-sm text-gray-300 space-y-1 list-decimal list-inside ml-2">
+                  <li>Set up SSH keys in <strong>Settings → SSH Keys</strong> (if not already done)</li>
+                  <li>Clone: <code className="bg-gray-800 px-1 rounded">git clone git@gittr.space:&lt;your-pubkey&gt;/&lt;repo-name&gt;.git</code></li>
+                  <li>Add files: Copy files into the cloned directory or create new files</li>
+                  <li>Commit: <code className="bg-gray-800 px-1 rounded">git add . && git commit -m "Initial commit"</code></li>
+                  <li>Push: <code className="bg-gray-800 px-1 rounded">git push origin main</code></li>
+                </ol>
+                <p className="text-sm text-gray-300 mt-2">
+                  Files will appear in the web UI after pushing. See <a href="#git-operations" className="text-blue-300 underline">Git Operations</a> section for detailed instructions.
+                </p>
+              </div>
             </div>
 
             <div>
