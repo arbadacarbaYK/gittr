@@ -69,7 +69,7 @@ import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { fetchFilesFromMultipleSources, parseGitSource, type FetchStatus } from "@/lib/utils/git-source-fetcher";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { getActivities } from "@/lib/activity-tracking";
-import { validateRepoForForkOrSign } from "@/lib/utils/repo-corruption-check";
+import { validateRepoForForkOrSign, isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
 import {
   loadStoredRepos,
   saveStoredRepos,

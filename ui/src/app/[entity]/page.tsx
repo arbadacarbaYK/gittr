@@ -325,8 +325,20 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
         // CRITICAL: Must find ALL repos where this user has any role, not just owner
         const userReposList = repos.filter((r: any) => {
           // CRITICAL: Filter out corrupted repos FIRST (before any other checks)
+          // For "tides" repos, also verify they belong to this entity
           if (isRepoCorrupted(r, r.nostrEventId || r.lastNostrEventId)) {
             return false; // Never show corrupted repos
+          }
+          
+          // CRITICAL: Additional check for "tides" repos - verify they belong to this entity
+          const repoName = (r.repositoryName || r.repo || r.slug || r.name || "").toLowerCase();
+          if (repoName === "tides" && r.ownerPubkey && fullPubkeyForMeta) {
+            const ownerPubkey = r.ownerPubkey.toLowerCase();
+            const entityPubkey = fullPubkeyForMeta.toLowerCase();
+            if (ownerPubkey !== entityPubkey) {
+              // This tides repo doesn't belong to this entity - it's corrupted
+              return false;
+            }
           }
           
           if (!r.entity || r.entity === "user") return false;
