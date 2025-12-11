@@ -1358,7 +1358,11 @@ export default function RepoCodePage({
   
   // Check Nostr event for sourceUrl if missing from local repo (for button text)
   useEffect(() => {
-    if (!mounted || !repoData) return;
+    console.log("🔍 [effectiveSourceUrl] useEffect triggered:", { mounted, hasRepoData: !!repoData });
+    if (!mounted || !repoData) {
+      console.log("🔍 [effectiveSourceUrl] Early return:", { mounted, hasRepoData: !!repoData });
+      return;
+    }
     
     // CRITICAL: Check multiple sources for sourceUrl in priority order:
     // 1. repoData.sourceUrl (direct field)
