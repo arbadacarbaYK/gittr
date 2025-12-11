@@ -8027,6 +8027,24 @@ export default function RepoCodePage({
             // 2. repoData.sourceUrl (React state)
             // 3. repo.sourceUrl (localStorage)
             // 4. Clone URLs from repoData or repo (extract GitHub/GitLab/Codeberg URLs)
+            // Check clone URLs as fallback (for repos synced from Nostr that have clone URLs but no sourceUrl)
+            const hasCloneUrl = (
+              ((repoData as any)?.clone && Array.isArray((repoData as any).clone) && (repoData as any).clone.some((url: string) => 
+                url && typeof url === "string" && (
+                  url.includes("github.com") || 
+                  url.includes("gitlab.com") || 
+                  url.includes("codeberg.org")
+                )
+              )) ||
+              (repo.clone && Array.isArray(repo.clone) && repo.clone.some((url: string) => 
+                url && typeof url === "string" && (
+                  url.includes("github.com") || 
+                  url.includes("gitlab.com") || 
+                  url.includes("codeberg.org")
+                )
+              ))
+            );
+            
             const hasSourceUrl = (
               (effectiveSourceUrl && typeof effectiveSourceUrl === "string" && (
                 effectiveSourceUrl.includes("github.com") || 
@@ -8043,21 +8061,7 @@ export default function RepoCodePage({
                 repo.sourceUrl.includes("gitlab.com") || 
                 repo.sourceUrl.includes("codeberg.org")
               )) ||
-              // Check clone URLs as fallback (for repos synced from Nostr that have clone URLs but no sourceUrl)
-              ((repoData as any)?.clone && Array.isArray((repoData as any).clone) && (repoData as any).clone.some((url: string) => 
-                url && typeof url === "string" && (
-                  url.includes("github.com") || 
-                  url.includes("gitlab.com") || 
-                  url.includes("codeberg.org")
-                )
-              )) ||
-              (repo.clone && Array.isArray(repo.clone) && repo.clone.some((url: string) => 
-                url && typeof url === "string" && (
-                  url.includes("github.com") || 
-                  url.includes("gitlab.com") || 
-                  url.includes("codeberg.org")
-                )
-              )))
+              hasCloneUrl
             );
             const isNostrRepo = repo.syncedFromNostr || repo.lastNostrEventId || repo.nostrEventId;
             const hasLocalEdits = repo.hasUnpushedEdits || (repo.files && Array.isArray(repo.files) && repo.files.length > 0);
