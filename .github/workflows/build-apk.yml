@@ -157,22 +157,53 @@ jobs:
       - name: Build APK
         working-directory: ./ui/android
         if: steps.capacitor-check.outputs.capacitor_configured == 'true'
+        env:
+          RELEASE_STORE_FILE: ${{ secrets.RELEASE_STORE_FILE }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           chmod +x ./gradlew
-          # Verify keystore exists
-          if [ ! -f ~/.android/debug.keystore ]; then
-            echo "❌ ERROR: Debug keystore not found!"
-            exit 1
-          fi
-          echo "✅ Keystore found at: ~/.android/debug.keystore"
           
-          # Build with signing using debug keystore
-          # Pass properties to Gradle for signing
+          # Check if real release keys are available
+          if [ -n "$RELEASE_STORE_FILE" ] && [ -n "$RELEASE_STORE_PASSWORD" ] && [ -n "$RELEASE_KEY_ALIAS" ] && [ -n "$RELEASE_KEY_PASSWORD" ]; then
+            echo "✅ Using real release signing keys from GitHub secrets"
+            # Decode base64 keystore if provided as secret
+            if [ -f "$RELEASE_STORE_FILE" ]; then
+              echo "✅ Keystore file found at: $RELEASE_STORE_FILE"
+            else
+              # If RELEASE_STORE_FILE is base64 encoded, decode it
+              echo "$RELEASE_STORE_FILE" | base64 -d > /tmp/release.keystore 2>/dev/null && RELEASE_STORE_FILE=/tmp/release.keystore || true
+              if [ -f "$RELEASE_STORE_FILE" ]; then
+                echo "✅ Decoded keystore from base64 secret"
+              else
+                echo "⚠️ WARNING: Release keystore not found, falling back to debug keystore"
+                RELEASE_STORE_FILE=""
+              fi
+            fi
+          fi
+          
+          # Fallback to debug keystore if release keys not available
+          if [ -z "$RELEASE_STORE_FILE" ] || [ ! -f "$RELEASE_STORE_FILE" ]; then
+            echo "⚠️ Using debug keystore (release keys not configured)"
+            if [ ! -f ~/.android/debug.keystore ]; then
+              echo "❌ ERROR: Debug keystore not found!"
+              exit 1
+            fi
+            RELEASE_STORE_FILE="$HOME/.android/debug.keystore"
+            RELEASE_STORE_PASSWORD="android"
+            RELEASE_KEY_ALIAS="androiddebugkey"
+            RELEASE_KEY_PASSWORD="android"
+          fi
+          
+          echo "✅ Building APK with keystore: $RELEASE_STORE_FILE"
+          
+          # Build with signing
           ./gradlew assembleRelease \
-            -PRELEASE_STORE_FILE=$HOME/.android/debug.keystore \
-            -PRELEASE_STORE_PASSWORD=android \
-            -PRELEASE_KEY_ALIAS=androiddebugkey \
-            -PRELEASE_KEY_PASSWORD=android \
+            -PRELEASE_STORE_FILE="$RELEASE_STORE_FILE" \
+            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD" \
             --info 2>&1 | grep -i "sign\|keystore\|release" || true
           
           # Verify APK is signed
