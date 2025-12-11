@@ -7711,6 +7711,7 @@ export default function RepoCodePage({
                             const hasBlockCode = node?.children?.some(checkForBlockCode);
                             
                             // Check React children for CopyableCodeBlock components or div/pre elements
+                            // IMPORTANT: We need to check if ANY child will render as a block-level element
                             const childrenArray = Array.isArray(children) ? children : [children];
                             const hasBlockElement = childrenArray.some((child: any) => {
                               if (!child || typeof child !== 'object') return false;
@@ -7719,9 +7720,12 @@ export default function RepoCodePage({
                               if (child.type) {
                                 const componentName = child.type.name || child.type.displayName || '';
                                 if (componentName === 'CopyableCodeBlock') {
-                                  // If inline is false or undefined, it renders as div/pre (block-level)
-                                  if (child.props?.inline === false || child.props?.inline === undefined) {
-                                    return true;
+                                  // CopyableCodeBlock renders as div/pre when inline is false or undefined
+                                  // Default is inline=false, so we need to check the actual prop value
+                                  // If inline is explicitly true, it renders as <code> (inline)
+                                  // Otherwise, it renders as <div><pre> (block)
+                                  if (child.props?.inline !== true) {
+                                    return true; // Block-level rendering
                                   }
                                 }
                                 
