@@ -224,11 +224,11 @@ Configure in Settings → Account:
 
 ## 📚 Setup & Documentation
 
-- **[SETUP_INSTRUCTIONS.md](docs/SETUP_INSTRUCTIONS.md)** - Complete production setup guide
-- **[LOCAL_SETUP.md](docs/LOCAL_SETUP.md)** - Local development setup
-- **[DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Server deployment guide
-- **[Grasp Relay Setup](docs/GRASP_RELAY_SETUP.md)** - How to set up your own relay instance (Grasp protocol)
-- **[SSH & Git Guide](docs/SSH_GIT_GUIDE.md)** - SSH and Git operations guide
+- **[SETUP_INSTRUCTIONS.md](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FSETUP_INSTRUCTIONS.md)** - Complete production setup guide
+- **[LOCAL_SETUP.md](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FLOCAL_SETUP.md)** - Local development setup
+- **[DEPLOYMENT_GUIDE.md](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FDEPLOYMENT_GUIDE.md)** - Server deployment guide
+- **[Grasp Relay Setup](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FGRASP_RELAY_SETUP.md)** - How to set up your own relay instance (Grasp protocol)
+- **[SSH & Git Guide](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FSSH_GIT_GUIDE.md)** - SSH and Git operations guide
 
 
 ### ⚠️ Repository import size limit
@@ -310,7 +310,7 @@ This diagram shows **all enhancements** added to the gittr.space platform across
 
 ### Supported NIPs & Event Kinds
 
-See [`docs/NIPS_AND_EVENT_KINDS.md`](docs/NIPS_AND_EVENT_KINDS.md) for complete documentation.
+See **[NIPS_AND_EVENT_KINDS.md](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FNIPS_AND_EVENT_KINDS.md)** for complete documentation.
 
 **Standard NIPs:**
 - NIP-01 (Basic Protocol), NIP-11 (Relay Info), NIP-19 (bech32), NIP-25 (Reactions/Stars)
