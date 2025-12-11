@@ -184,6 +184,17 @@ Where:
 - Verify the clone URL format is correct
 - Ensure you have read permission for the repository
 
+### "Network is unreachable" (port 22)
+- **You must clone the repository first**: `git fetch --all` only works if you've already cloned the repo. You can't fetch from a remote that doesn't exist in your local repo.
+- Verify SSH port 22 is accessible: `ssh -v git-nostr@gittr.space` (should connect, not ask for password)
+- Check if your network/firewall blocks port 22
+- Ensure `git-nostr-bridge` service is running on the server
+- Try HTTPS clone instead: `git clone https://git.gittr.space/<owner-pubkey>/<repo-name>.git`
+
+**Note**: `git fetch --all` fetches from **all remotes configured in your current repository**, not "all repositories". You must first:
+1. Clone the repo: `git clone git@gittr.space:<owner-pubkey>/<repo-name>.git`
+2. Then you can fetch: `git fetch --all` (fetches from all remotes in that repo)
+
 ### "Push rejected"
 - Only repository owners can push directly
 - For collaborative changes, create a pull request via the web UI
