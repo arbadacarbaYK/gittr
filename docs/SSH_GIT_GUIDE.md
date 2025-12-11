@@ -2,7 +2,7 @@
 
 This guide explains how to access gittr.space repositories via SSH and Git command-line tools.
 
-**⚠️ Setup Required**: Git commands (`git clone`, `git push`, `git pull`) require the **git-nostr-bridge service** to be installed and running. See [GIT_NOSTR_BRIDGE_SETUP.md](docs/GIT_NOSTR_BRIDGE_SETUP.md) for complete installation instructions.
+**⚠️ Setup Required**: Git commands (`git clone`, `git push`, `git pull`) require the **git-nostr-bridge service** to be installed and running. See [GIT_NOSTR_BRIDGE_SETUP.md](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FGIT_NOSTR_BRIDGE_SETUP.md) for complete installation instructions.
 
 ## Quick Start
 
