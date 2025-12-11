@@ -7989,16 +7989,25 @@ export default function RepoCodePage({
             
             // Show refetch button if repo has sourceUrl (imported from GitHub/GitLab/Codeberg) OR is synced from Nostr
             // Also show if user owns it and repo has files (even if missing sourceUrl, they might want to refetch from Nostr)
-            // Check for sourceUrl in local repo OR in effectiveSourceUrl state (from Nostr event)
-            const hasSourceUrl = (effectiveSourceUrl && typeof effectiveSourceUrl === "string" && (
-              effectiveSourceUrl.includes("github.com") || 
-              effectiveSourceUrl.includes("gitlab.com") || 
-              effectiveSourceUrl.includes("codeberg.org")
-            )) || (repo.sourceUrl && typeof repo.sourceUrl === "string" && (
-              repo.sourceUrl.includes("github.com") || 
-              repo.sourceUrl.includes("gitlab.com") || 
-              repo.sourceUrl.includes("codeberg.org")
-            ));
+            // Check for sourceUrl in: effectiveSourceUrl state, repoData state, OR localStorage repo
+            // CRITICAL: Check all three sources to ensure button text is correct
+            const hasSourceUrl = (
+              (effectiveSourceUrl && typeof effectiveSourceUrl === "string" && (
+                effectiveSourceUrl.includes("github.com") || 
+                effectiveSourceUrl.includes("gitlab.com") || 
+                effectiveSourceUrl.includes("codeberg.org")
+              )) ||
+              (repoData?.sourceUrl && typeof repoData.sourceUrl === "string" && (
+                repoData.sourceUrl.includes("github.com") || 
+                repoData.sourceUrl.includes("gitlab.com") || 
+                repoData.sourceUrl.includes("codeberg.org")
+              )) ||
+              (repo.sourceUrl && typeof repo.sourceUrl === "string" && (
+                repo.sourceUrl.includes("github.com") || 
+                repo.sourceUrl.includes("gitlab.com") || 
+                repo.sourceUrl.includes("codeberg.org")
+              ))
+            );
             const isNostrRepo = repo.syncedFromNostr || repo.lastNostrEventId || repo.nostrEventId;
             const hasLocalEdits = repo.hasUnpushedEdits || (repo.files && Array.isArray(repo.files) && repo.files.length > 0);
             // Show refetch if: (has sourceUrl OR is Nostr repo) AND user owns it AND (has local edits OR no files found)
