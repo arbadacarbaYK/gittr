@@ -3,7 +3,7 @@
  * This queries Nostr relays to get the actual pubkey that signed the corrupted events
  */
 
-import { subscribe } from "nostr-relaypool";
+import { RelayPool } from "nostr-relaypool";
 
 // Known corrupted tides repo event IDs
 export const CORRUPTED_TIDES_EVENT_IDS = [
@@ -23,53 +23,66 @@ export async function findCorruptedEventPublishers(
   
   return new Promise((resolve) => {
     const timeout = setTimeout(() => {
+      pool.close();
       resolve(results);
     }, 10000); // 10 second timeout
     
-    const unsub = subscribe(
+    const pool = new RelayPool(defaultRelays);
+    
+    const onEvent = (event: any, relayURL?: string) => {
+      console.log(`🔍 Found corrupted event: ${event.id.slice(0, 8)}...`);
+      console.log(`   Published by pubkey: ${event.pubkey}`);
+      
+      // Try to decode pubkey to npub
+      let entity: string | undefined;
+      try {
+        const { nip19 } = require("nostr-tools");
+        entity = nip19.npubEncode(event.pubkey);
+        console.log(`   Entity (npub): ${entity}`);
+      } catch (e) {
+        console.log(`   Could not encode to npub: ${e}`);
+      }
+      
+      // Parse content to see if entity is corrupted
+      let content: any;
+      try {
+        content = JSON.parse(event.content || "{}");
+        if (content.entity) {
+          console.log(`   ⚠️  CORRUPTED entity in content: ${content.entity}`);
+        }
+      } catch (e) {
+        console.log(`   Content parse error: ${e}`);
+      }
+      
+      results.set(event.id, {
+        pubkey: event.pubkey,
+        entity,
+        content
+      });
+      
+      // If we found all events, resolve early
+      if (results.size === CORRUPTED_TIDES_EVENT_IDS.length) {
+        clearTimeout(timeout);
+        pool.close();
+        resolve(results);
+      }
+    };
+    
+    const onEose = () => {
+      // All relays have sent their stored events
+      if (results.size < CORRUPTED_TIDES_EVENT_IDS.length) {
+        console.log(`⚠️  Only found ${results.size} of ${CORRUPTED_TIDES_EVENT_IDS.length} corrupted events`);
+      }
+    };
+    
+    pool.subscribe(
       [{
         ids: CORRUPTED_TIDES_EVENT_IDS,
       }],
       defaultRelays,
-      (event) => {
-        console.log(`🔍 Found corrupted event: ${event.id.slice(0, 8)}...`);
-        console.log(`   Published by pubkey: ${event.pubkey}`);
-        
-        // Try to decode pubkey to npub
-        let entity: string | undefined;
-        try {
-          const { nip19 } = require("nostr-tools");
-          entity = nip19.npubEncode(event.pubkey);
-          console.log(`   Entity (npub): ${entity}`);
-        } catch (e) {
-          console.log(`   Could not encode to npub: ${e}`);
-        }
-        
-        // Parse content to see if entity is corrupted
-        let content: any;
-        try {
-          content = JSON.parse(event.content || "{}");
-          if (content.entity) {
-            console.log(`   ⚠️  CORRUPTED entity in content: ${content.entity}`);
-          }
-        } catch (e) {
-          console.log(`   Content parse error: ${e}`);
-        }
-        
-        results.set(event.id, {
-          pubkey: event.pubkey,
-          entity,
-          content
-        });
-        
-        // If we found all events, resolve early
-        if (results.size === CORRUPTED_TIDES_EVENT_IDS.length) {
-          clearTimeout(timeout);
-          unsub();
-          resolve(results);
-        }
-      },
-      10000
+      onEvent,
+      undefined, // maxDelayms
+      onEose
     );
   });
 }
@@ -79,9 +92,10 @@ export async function findCorruptedEventPublishers(
  */
 if (typeof window !== "undefined") {
   (window as any).findCorruptedEventPublishers = async () => {
-    const { useNostrContext } = await import("../lib/nostr/NostrContext");
-    console.log("💡 This needs to be called from a component with NostrContext access");
-    console.log("💡 Or use findCorruptedEventPublishers(defaultRelays) directly");
+    // This function should be called with defaultRelays parameter
+    // It's already exported and can be used directly
+    console.log("💡 Use findCorruptedEventPublishers(defaultRelays) directly");
+    console.log("💡 Example: findCorruptedEventPublishers(['wss://relay.example.com'])");
   };
 }
 
