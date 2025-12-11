@@ -429,7 +429,46 @@ export default function RepositoriesPage() {
       return; // Don't access localStorage during SSR
     }
     try {
-      const list = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as Repo[];
+      let list = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as Repo[];
+      
+      // CRITICAL: Clean up corrupted repos on page load
+      const corruptEventIds = [
+        "28cd39385801bb7683e06e7489f89afff8df045a4d6fe7319d75a60341165ae2",
+        "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b",
+        "1dbc5322b24b3481e5ce078349f527b04ad6251e9f0499b851d78cc9f92c4559"
+      ];
+      
+      const beforeCount = list.length;
+      list = list.filter((r: any) => {
+        const repoName = (r.repo || r.slug || r.name || "").toLowerCase();
+        const isTides = repoName === "tides";
+        
+        // Remove known corrupted tides repos by event ID
+        if (isTides && ((r as any).nostrEventId && corruptEventIds.includes((r as any).nostrEventId))) {
+          return false;
+        }
+        if (isTides && ((r as any).lastNostrEventId && corruptEventIds.includes((r as any).lastNostrEventId))) {
+          return false;
+        }
+        
+        // CRITICAL: For "tides" repos, only keep if they belong to the current user
+        if (isTides && pubkey && (r as any).ownerPubkey && (r as any).ownerPubkey.toLowerCase() !== pubkey.toLowerCase()) {
+          return false; // Remove tides repos that don't belong to current user
+        }
+        
+        // Remove if entity is "gittr.space" or not npub format
+        if (r.entity === "gittr.space" || (r.entity && !r.entity.startsWith("npub"))) {
+          return false;
+        }
+        
+        return true;
+      });
+      
+      if (list.length < beforeCount) {
+        const removed = beforeCount - list.length;
+        console.log(`🧹 [Repositories] Cleaned up ${removed} corrupted repo(s) on page load`);
+        localStorage.setItem("gittr_repos", JSON.stringify(list));
+      }
       
       // Debug: Check for tides repo (case-insensitive)
       const tidesRepo = list.find(r => {
@@ -1245,6 +1284,13 @@ export default function RepositoriesPage() {
                 return false; // Remove known corrupted repos
               }
               
+              // CRITICAL: For "tides" repos, only keep if they belong to the current user
+              // This prevents corrupted tides repos from appearing in "my repositories"
+              if (isTides && pubkey && (r as any).ownerPubkey && (r as any).ownerPubkey.toLowerCase() !== pubkey.toLowerCase()) {
+                // Silently remove - don't spam console
+                return false; // Remove tides repos that don't belong to current user
+              }
+              
               // Remove if entity is exactly "gittr.space" (the known corruption)
               if (r.entity === "gittr.space") {
                 console.error("❌ [Repositories] Removing repo with corrupted entity 'gittr.space':", {
@@ -1362,7 +1408,7 @@ export default function RepositoriesPage() {
             console.log("💡 Run findCorruptTidesRepos() in console to find corrupt tides repos with entity 'gittr.space'");
           });
           
-          // Make deleteCorruptedTidesRepos available if user has publish and defaultRelays
+          // Make deleteCorruptedTidesRepos and findCorruptedEventPublishers available if user has publish and defaultRelays
           if (publish && defaultRelays && defaultRelays.length > 0) {
             import("../lib/nostr/delete-corrupted-events").then(({ deleteCorruptedTidesRepos }) => {
               (window as any).deleteCorruptedTidesRepos = () => {
@@ -1371,6 +1417,13 @@ export default function RepositoriesPage() {
               console.log("💡 Run deleteCorruptedTidesRepos() in console to publish NIP-09 deletion events for corrupted tides repos");
               console.log("⚠️  WARNING: This only works if you have the private key that published the original events");
               console.log("⚠️  If events were published by someone else, you cannot delete them - contact relay operators");
+            });
+            
+            import("../lib/nostr/find-corrupted-event-publisher").then(({ findCorruptedEventPublishers }) => {
+              (window as any).findCorruptedEventPublishers = () => {
+                return findCorruptedEventPublishers(defaultRelays);
+              };
+              console.log("💡 Run findCorruptedEventPublishers() in console to find who published the corrupted tides events");
             });
           }
         } catch (e) {
