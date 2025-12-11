@@ -575,10 +575,22 @@ export default function RepoCodePage({
     if (!resolvedParams?.entity || !currentUserPubkey) return false;
     
     try {
-      const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
-      
-      if (repo) {
+          const repos = loadStoredRepos();
+          const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
+          
+          // CRITICAL: Check if repo is corrupted BEFORE displaying
+          if (repo && isRepoCorrupted(repo, repo.nostrEventId || repo.lastNostrEventId)) {
+            console.error("❌ [Repo Page] Blocking corrupted repo from display:", {
+              entity: resolvedParams.entity,
+              repo: decodedRepo,
+              ownerPubkey: (repo as any).ownerPubkey?.slice(0, 8)
+            });
+            // Redirect to 404 or show error
+            router.push("/404");
+            return;
+          }
+          
+          if (repo) {
         // Priority 1: Check resolvedOwnerPubkey (set by Nostr query if missing)
         if (resolvedOwnerPubkey && resolvedOwnerPubkey === currentUserPubkey) return true;
         
@@ -683,6 +695,18 @@ export default function RepoCodePage({
     const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
 
     if (!repo) {
+      return;
+    }
+
+    // CRITICAL: Check if repo is corrupted BEFORE processing
+    if (isRepoCorrupted(repo, repo.nostrEventId || repo.lastNostrEventId)) {
+      console.error("❌ [Repo Page] Blocking corrupted repo from processing:", {
+        entity: resolvedParams.entity,
+        repo: decodedRepo,
+        ownerPubkey: (repo as any).ownerPubkey?.slice(0, 8)
+      });
+      // Redirect to 404
+      router.push("/404");
       return;
     }
 
@@ -1031,6 +1055,18 @@ export default function RepoCodePage({
               console.error("Failed to query Nostr for repository event:", error);
             }
           })();
+        }
+        
+        // CRITICAL: Check if repo is corrupted BEFORE displaying
+        if (isRepoCorrupted(repo, repo.nostrEventId || repo.lastNostrEventId)) {
+          console.error("❌ [Repo Page] Blocking corrupted repo from display:", {
+            entity: resolvedParams.entity,
+            repo: decodedRepo,
+            ownerPubkey: (repo as any).ownerPubkey?.slice(0, 8)
+          });
+          // Redirect to 404
+          router.push("/404");
+          return;
         }
         
         // Always set repoData, even if files/readme are empty (for foreign repos synced from Nostr)
