@@ -717,6 +717,10 @@ export default function RepoCodePage({
             });
             // Set repoData to null to prevent rendering
             setRepoData(null);
+            // CRITICAL: Remove corrupted repo from localStorage
+            const updatedRepos = repos.filter((r) => r !== repo);
+            saveStoredRepos(updatedRepos);
+            console.log("🗑️ [Repo Page] Removed corrupted tides repo from localStorage");
             repoProcessedRef.current = repoKey;
             return;
           }
@@ -724,6 +728,10 @@ export default function RepoCodePage({
       } catch (e) {
         console.error("❌ [Repo Page] Failed to decode entity for tides repo:", e);
         setRepoData(null);
+        // CRITICAL: Remove corrupted repo from localStorage
+        const updatedRepos = repos.filter((r) => r !== repo);
+        saveStoredRepos(updatedRepos);
+        console.log("🗑️ [Repo Page] Removed corrupted tides repo from localStorage (decode failed)");
         repoProcessedRef.current = repoKey;
         return;
       }
@@ -738,6 +746,10 @@ export default function RepoCodePage({
       });
       // Set repoData to null to prevent rendering
       setRepoData(null);
+      // CRITICAL: Remove corrupted repo from localStorage
+      const updatedRepos = repos.filter((r) => r !== repo);
+      saveStoredRepos(updatedRepos);
+      console.log("🗑️ [Repo Page] Removed corrupted repo from localStorage");
       repoProcessedRef.current = repoKey;
       return;
     }
