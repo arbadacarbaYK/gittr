@@ -1433,11 +1433,13 @@ export default function RepoCodePage({
     if (!subscribe || !defaultRelays || defaultRelays.length === 0) {
       // If we already checked clone URLs above and didn't find any, keep null
       // Otherwise, don't set to null - wait for repoData to be updated with clone URLs from Nostr event
+      console.log("🔍 [effectiveSourceUrl] No subscribe/relays, skipping Nostr query");
       return;
     }
     
     const isNostrRepo = (repoData as any)?.syncedFromNostr || (repoData as any)?.lastNostrEventId || (repoData as any)?.nostrEventId;
     if (!isNostrRepo) {
+      console.log("🔍 [effectiveSourceUrl] Not a Nostr repo, setting to null");
       setEffectiveSourceUrl(null);
       return;
     }
@@ -1448,12 +1450,16 @@ export default function RepoCodePage({
     const repoName = repoData.repo || repoData.slug || resolvedParams.repo;
     
     if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+      console.log("🔍 [effectiveSourceUrl] Invalid ownerPubkey, setting to null");
       setEffectiveSourceUrl(null);
       return;
     }
     
+    console.log("🔍 [effectiveSourceUrl] Querying Nostr for source URL:", { ownerPubkey: ownerPubkey.slice(0, 16) + "...", repoName });
+    
     // Query Nostr for sourceUrl
     const timeout = setTimeout(() => {
+      console.log("⏱️ [effectiveSourceUrl] Nostr query timeout - no source URL found");
       // Timeout - keep null (or keep clone URL if we found one above)
     }, 5000);
     
@@ -1465,11 +1471,14 @@ export default function RepoCodePage({
       }],
       defaultRelays,
       (event) => {
+        console.log("🔍 [effectiveSourceUrl] Received Nostr event, checking tags:", event.tags.filter(t => Array.isArray(t) && t[0] === "source"));
         // Extract sourceUrl from "source" tag
         for (const tag of event.tags) {
           if (Array.isArray(tag) && tag[0] === "source" && tag[1]) {
             const foundSourceUrl = tag[1];
+            console.log("🔍 [effectiveSourceUrl] Found source tag:", foundSourceUrl);
             if (foundSourceUrl.includes("github.com") || foundSourceUrl.includes("gitlab.com") || foundSourceUrl.includes("codeberg.org")) {
+              console.log("✅ [effectiveSourceUrl] Setting effectiveSourceUrl to:", foundSourceUrl);
               clearTimeout(timeout);
               setEffectiveSourceUrl(foundSourceUrl);
               unsub();
@@ -1480,6 +1489,7 @@ export default function RepoCodePage({
       },
       undefined,
       () => {
+        console.log("✅ [effectiveSourceUrl] Nostr query EOSE");
         clearTimeout(timeout);
         unsub();
       }
