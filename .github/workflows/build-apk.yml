@@ -198,13 +198,27 @@ jobs:
           
           echo "✅ Building APK with keystore: $RELEASE_STORE_FILE"
           
-          # Build with signing
-          ./gradlew assembleRelease \
+          # Build with signing - capture full output for debugging
+          if ./gradlew assembleRelease \
             -PRELEASE_STORE_FILE="$RELEASE_STORE_FILE" \
             -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
             -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
             -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD" \
-            --info 2>&1 | grep -i "sign\|keystore\|release" || true
+            --stacktrace 2>&1 | tee /tmp/gradle-build.log; then
+            echo "✅ Gradle build completed successfully"
+          else
+            echo "❌ Gradle build failed! Full log:"
+            cat /tmp/gradle-build.log
+            echo "---"
+            echo "Checking for APK files despite error..."
+            find . -name "*.apk" -type f 2>/dev/null || echo "No APK files found"
+            exit 1
+          fi
+          
+          # Show build summary
+          echo "---"
+          echo "Build summary:"
+          grep -i "BUILD\|FAILED\|SUCCESS\|ERROR" /tmp/gradle-build.log | tail -10 || true
           
           # Verify APK is signed
           echo "Verifying APK signature..."
