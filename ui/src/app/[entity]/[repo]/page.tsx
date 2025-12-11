@@ -5462,6 +5462,56 @@ export default function RepoCodePage({
             fileEntry: fileEntry ? { path: fileEntry.path, type: fileEntry.type, keys: Object.keys(fileEntry), fullEntry: fileEntry } : null,
             allFiles: repoData.files.slice(0, 5).map((f: any) => ({ path: f.path, keys: Object.keys(f) })),
           });
+
+          // NEW: If we have a GitHub/GitLab/Codeberg source URL, fetch latest content directly
+          const sourceUrlForFetch =
+            effectiveSourceUrl ||
+            repoData?.sourceUrl ||
+            (repo as any)?.sourceUrl ||
+            null;
+
+          if (
+            sourceUrlForFetch &&
+            (sourceUrlForFetch.includes("github.com") ||
+              sourceUrlForFetch.includes("gitlab.com") ||
+              sourceUrlForFetch.includes("codeberg.org"))
+          ) {
+            try {
+              const branchToUse =
+                selectedBranch || repoData?.defaultBranch || "main";
+              const apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+                sourceUrlForFetch
+              )}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(
+                branchToUse
+              )}`;
+              console.log(
+                `🌐 [fetchGithubRaw] Fetching missing content from source: ${apiUrl}`
+              );
+              const resp = await fetch(apiUrl);
+              if (resp.ok) {
+                const data = await resp.json();
+                if (data?.content !== undefined) {
+                  console.log(
+                    `✅ [fetchGithubRaw] Fetched latest content from source for ${path}`
+                  );
+                  return {
+                    content: data.content,
+                    url: null,
+                    isBinary: !!data.isBinary,
+                  };
+                }
+              } else {
+                console.warn(
+                  `⚠️ [fetchGithubRaw] Source fetch failed ${resp.status} for ${path}`
+                );
+              }
+            } catch (e) {
+              console.warn(
+                `⚠️ [fetchGithubRaw] Source fetch errored for ${path}:`,
+                e
+              );
+            }
+          }
         }
       } else {
         console.log(`⚠️ [fetchGithubRaw] File ${path} NOT found in files array`, {
