@@ -77,7 +77,7 @@ import {
   loadRepoFiles,
   saveRepoFiles,
   loadRepoOverrides,
-  saveRepoOverrides,
+  saveRepoOverrides, // NOTE: Currently unused - overrides are loaded for display but editing uses addPendingEdit (PR system)
   loadRepoDeletedPaths,
   saveRepoDeletedPaths,
   type StoredRepo,
@@ -6195,10 +6195,9 @@ export default function RepoCodePage({
     if (!selectedFile) return;
     if (!confirm(`Delete ${selectedFile}? This will apply locally.`)) return;
     try {
-      const keyBase = `${resolvedParams.entity}__${resolvedParams.repo}`;
       const nextDeleted = deletedPaths.includes(selectedFile) ? deletedPaths : [...deletedPaths, selectedFile];
       setDeletedPaths(nextDeleted);
-      localStorage.setItem(`gittr_repo_deleted__${keyBase}`, JSON.stringify(nextDeleted));
+      saveRepoDeletedPaths(resolvedParams.entity, resolvedParams.repo, nextDeleted);
       
       // CRITICAL: Mark repo as having unpushed edits so push button appears
       // This ensures the "Push to Nostr" button is shown after deleting files
