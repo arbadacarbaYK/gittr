@@ -1000,8 +1000,8 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       // Step 7: Store event ID and update status
       storeRepoEventId(repoSlug, entity, result.eventId, result.confirmed);
       if (result.confirmed) {
-        setRepoStatus(repoSlug, entity, "live");
-        onProgress?.("✅ Published to Nostr!");
+      setRepoStatus(repoSlug, entity, "live");
+      onProgress?.("✅ Published to Nostr!");
       } else {
         onProgress?.("⚠️ First event published but awaiting confirmation - continuing to second signature...");
       }
@@ -1136,7 +1136,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         const defaultBranch = repo.defaultBranch || "main";
         refs = repo.branches.map((b: any) => {
           const branchName = typeof b === "string" ? b : b.name || defaultBranch;
-          return {
+      return {
             ref: `refs/heads/${branchName}`,
             commit: "", // Empty commit - last resort fallback
           };
@@ -1281,11 +1281,11 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             setRepoStatus(repoSlug, entity, "local");
             return {
               success: false,
-              eventId: result.eventId,
+        eventId: result.eventId,
               confirmed: false,
               error: "State event signature cancelled - both announcement and state events are required per NIP-34",
-              filesForBridge,
-            };
+        filesForBridge,
+      };
           }
           throw signError; // Re-throw if not a cancellation
         }
@@ -1296,7 +1296,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         const defaultBranch = repo.defaultBranch || "main";
         const defaultBranchRef = `refs/heads/${defaultBranch}`;
         stateEvent = createRepositoryStateEvent(actualRepositoryName, refs, privateKey, defaultBranchRef);
-      } else {
+    } else {
         throw new Error("Cannot sign state event - no NIP-07 or private key available");
       }
       

@@ -94,12 +94,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let withdrawData;
     try {
       withdrawData = await createWithdrawLink(config, {
-        title: withdrawTitle,
-        min_withdrawable: amount * 1000, // millisats
-        max_withdrawable: amount * 1000, // millisats
-        uses: 1, // Single use withdraw link
-        wait_time: 1, // Minimum wait time (1 second)
-        is_unique: true, // Single use only
+          title: withdrawTitle,
+          min_withdrawable: amount * 1000, // millisats
+          max_withdrawable: amount * 1000, // millisats
+          uses: 1, // Single use withdraw link
+          wait_time: 1, // Minimum wait time (1 second)
+          is_unique: true, // Single use only
       });
     } catch (fetchError: any) {
       // Log the actual error details for debugging
@@ -117,8 +117,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       if (fetchError.message?.includes('fetch failed') || fetchError.cause?.code === 'ECONNREFUSED' || fetchError.cause?.code === 'ETIMEDOUT' || fetchError.cause?.code === 'ENOTFOUND') {
         throw new Error(`Network error: Unable to connect to LNbits at ${finalLnbitsUrl}. Error: ${fetchError.cause?.code || fetchError.message}. Please check your LNbits URL and network connection.`);
-      }
-      
+    }
+
       // Check if extension is not enabled
       if (fetchError.message?.includes("not enabled") || fetchError.message?.includes("404")) {
         throw new Error(`Withdraw extension is not enabled. Please enable it in LNbits UI (Extensions → Withdraw) for your wallet.`);

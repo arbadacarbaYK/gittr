@@ -102,9 +102,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
 
       const paymentRequest: LNbitsPaymentRequest = {
-        out: false, // Create invoice for receiving (source wallet receives, then splits automatically)
-        amount: amountNum * 1000, // LNbits API expects millisats
-        memo: comment || `Zap with splits: ${splits.length} recipients`,
+          out: false, // Create invoice for receiving (source wallet receives, then splits automatically)
+          amount: amountNum * 1000, // LNbits API expects millisats
+          memo: comment || `Zap with splits: ${splits.length} recipients`,
       };
 
       const invoiceData = await createPayment(config, paymentRequest);
@@ -178,13 +178,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
 
       const paymentRequest: LNbitsPaymentRequest = {
-        out: true, // Paying invoice (sending payment)
-        bolt11: invoice,
+          out: true, // Paying invoice (sending payment)
+          bolt11: invoice,
         memo: comment || `Zap: ${amountNum} sats to ${recipient.slice(0, 8)}...`,
-        extra: {
-          comment: comment || `Zap: ${amountNum} sats to ${recipient.slice(0, 8)}...`,
-          recipient,
-        },
+          extra: {
+            comment: comment || `Zap: ${amountNum} sats to ${recipient.slice(0, 8)}...`,
+            recipient,
+          },
       };
 
       let payData;

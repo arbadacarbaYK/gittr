@@ -34,7 +34,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Use adapter to get balance (handles both API versions)
     const balance = await getWalletBalance(config);
-
+    
     return res.status(200).json({
       status: "ok",
       balance: balance.balance, // Raw balance in millisats
