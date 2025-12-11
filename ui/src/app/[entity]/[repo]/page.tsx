@@ -246,6 +246,7 @@ export default function RepoCodePage({
   const [isRefetching, setIsRefetching] = useState<boolean>(false);
   const [fetchStatusExpanded, setFetchStatusExpanded] = useState<boolean>(false);
   const [cloneUrlsExpanded, setCloneUrlsExpanded] = useState<boolean>(false);
+  const [effectiveSourceUrl, setEffectiveSourceUrl] = useState<string | null>(null); // sourceUrl from local repo or Nostr event
   
   // Get owner metadata for Nostr profile picture fallback
   // Fetch metadata for both entity and actual owner pubkey (CRITICAL for imported repos)
@@ -1354,6 +1355,76 @@ export default function RepoCodePage({
     fileFetchAttemptedRef.current = "";
     fileFetchInProgressRef.current = false;
   }, [resolvedParams.entity, resolvedParams.repo]);
+  
+  // Check Nostr event for sourceUrl if missing from local repo (for button text)
+  useEffect(() => {
+    if (!mounted || !repoData || !subscribe || !defaultRelays || defaultRelays.length === 0) return;
+    
+    // If we already have sourceUrl in local repo, use it
+    if (repoData.sourceUrl && typeof repoData.sourceUrl === "string" && (
+      repoData.sourceUrl.includes("github.com") || 
+      repoData.sourceUrl.includes("gitlab.com") || 
+      repoData.sourceUrl.includes("codeberg.org")
+    )) {
+      setEffectiveSourceUrl(repoData.sourceUrl);
+      return;
+    }
+    
+    // If no sourceUrl in local repo, check Nostr event
+    const isNostrRepo = (repoData as any)?.syncedFromNostr || (repoData as any)?.lastNostrEventId || (repoData as any)?.nostrEventId;
+    if (!isNostrRepo) {
+      setEffectiveSourceUrl(null);
+      return;
+    }
+    
+    const ownerPubkey = repoData.ownerPubkey || (resolvedParams.entity.startsWith("npub") 
+      ? (nip19.decode(resolvedParams.entity).data as string)
+      : resolvedParams.entity);
+    const repoName = repoData.repo || repoData.slug || resolvedParams.repo;
+    
+    if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+      setEffectiveSourceUrl(null);
+      return;
+    }
+    
+    // Query Nostr for sourceUrl
+    const timeout = setTimeout(() => {
+      // Timeout - keep null
+    }, 5000);
+    
+    const unsub = subscribe(
+      [{
+        kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
+        authors: [ownerPubkey],
+        "#d": [repoName],
+      }],
+      defaultRelays,
+      (event) => {
+        // Extract sourceUrl from "source" tag
+        for (const tag of event.tags) {
+          if (Array.isArray(tag) && tag[0] === "source" && tag[1]) {
+            const foundSourceUrl = tag[1];
+            if (foundSourceUrl.includes("github.com") || foundSourceUrl.includes("gitlab.com") || foundSourceUrl.includes("codeberg.org")) {
+              clearTimeout(timeout);
+              setEffectiveSourceUrl(foundSourceUrl);
+              unsub();
+              return;
+            }
+          }
+        }
+      },
+      undefined,
+      () => {
+        clearTimeout(timeout);
+        unsub();
+      }
+    );
+    
+    return () => {
+      clearTimeout(timeout);
+      unsub();
+    };
+  }, [mounted, repoData, subscribe, defaultRelays, resolvedParams.entity, resolvedParams.repo]);
   
   // Separate useEffect for file fetching - only runs when repoData is first set and files are missing
   // Use a ref to track if we've already attempted to fetch for this repo
@@ -7918,12 +7989,16 @@ export default function RepoCodePage({
             
             // Show refetch button if repo has sourceUrl (imported from GitHub/GitLab/Codeberg) OR is synced from Nostr
             // Also show if user owns it and repo has files (even if missing sourceUrl, they might want to refetch from Nostr)
-            // Check for sourceUrl in local repo, but also note that it might be in Nostr event
-            const hasSourceUrl = repo.sourceUrl && typeof repo.sourceUrl === "string" && (
+            // Check for sourceUrl in local repo OR in effectiveSourceUrl state (from Nostr event)
+            const hasSourceUrl = (effectiveSourceUrl && typeof effectiveSourceUrl === "string" && (
+              effectiveSourceUrl.includes("github.com") || 
+              effectiveSourceUrl.includes("gitlab.com") || 
+              effectiveSourceUrl.includes("codeberg.org")
+            )) || (repo.sourceUrl && typeof repo.sourceUrl === "string" && (
               repo.sourceUrl.includes("github.com") || 
               repo.sourceUrl.includes("gitlab.com") || 
               repo.sourceUrl.includes("codeberg.org")
-            );
+            ));
             const isNostrRepo = repo.syncedFromNostr || repo.lastNostrEventId || repo.nostrEventId;
             const hasLocalEdits = repo.hasUnpushedEdits || (repo.files && Array.isArray(repo.files) && repo.files.length > 0);
             // Show refetch if: (has sourceUrl OR is Nostr repo) AND user owns it AND (has local edits OR no files found)
@@ -8611,7 +8686,7 @@ export default function RepoCodePage({
                       }
                     </Button>
                     <p className="text-xs text-gray-500 mt-1 mb-2 px-1">
-                      ⚠️ This will completely overwrite your local repository with the latest version from {hasSourceUrl ? `the source (${repo.sourceUrl})` : "Nostr"}. 
+                      ⚠️ This will completely overwrite your local repository with the latest version from {hasSourceUrl ? `the source (${effectiveSourceUrl || repo.sourceUrl})` : "Nostr"}. 
                       Files deleted {hasSourceUrl ? "on the source" : "on Nostr"} will be removed locally. Local edits not pushed will be lost.
                     </p>
                     </>
