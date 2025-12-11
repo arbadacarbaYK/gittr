@@ -126,32 +126,12 @@ jobs:
             echo "✅ Debug keystore already exists"
           fi
           
-          # Ensure build.gradle has signing config
-          if ! grep -q "signingConfigs" app/build.gradle; then
-            echo "Adding signing configuration to build.gradle..."
-            # Create backup
-            cp app/build.gradle app/build.gradle.bak
-            
-            # Create signing config file using echo to avoid YAML parsing issues
-            echo "    signingConfigs {" > /tmp/signing_config.txt
-            echo "        release {" >> /tmp/signing_config.txt
-            echo "            def debugKeystore = file(System.getProperty(\"user.home\") + \"/.android/debug.keystore\")" >> /tmp/signing_config.txt
-            echo "            if (debugKeystore.exists()) {" >> /tmp/signing_config.txt
-            echo "                storeFile debugKeystore" >> /tmp/signing_config.txt
-            echo "                storePassword \"android\"" >> /tmp/signing_config.txt
-            echo "                keyAlias \"androiddebugkey\"" >> /tmp/signing_config.txt
-            echo "                keyPassword \"android\"" >> /tmp/signing_config.txt
-            echo "            }" >> /tmp/signing_config.txt
-            echo "        }" >> /tmp/signing_config.txt
-            echo "    }" >> /tmp/signing_config.txt
-            
-            # Insert the signing config before buildTypes
-            sed -i '/buildTypes {/r /tmp/signing_config.txt' app/build.gradle
-            # Add signingConfig to release buildType
-            sed -i '/release {/,/}/ s/minifyEnabled false/signingConfig signingConfigs.release\n            minifyEnabled false/' app/build.gradle
-            echo "✅ Signing config added to build.gradle"
-          else
+          # Verify build.gradle has signing config (it should already be there)
+          if grep -q "signingConfigs" app/build.gradle; then
             echo "✅ Signing config already exists in build.gradle"
+          else
+            echo "❌ ERROR: build.gradle missing signingConfigs block!"
+            exit 1
           fi
 
       - name: Build APK
