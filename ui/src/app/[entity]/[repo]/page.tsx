@@ -7924,8 +7924,6 @@ export default function RepoCodePage({
               repo.sourceUrl.includes("gitlab.com") || 
               repo.sourceUrl.includes("codeberg.org")
             );
-            // Store sourceUrl for use in refetch handler
-            const sourceUrl = repo.sourceUrl;
             const isNostrRepo = repo.syncedFromNostr || repo.lastNostrEventId || repo.nostrEventId;
             const hasLocalEdits = repo.hasUnpushedEdits || (repo.files && Array.isArray(repo.files) && repo.files.length > 0);
             // Show refetch if: (has sourceUrl OR is Nostr repo) AND user owns it AND (has local edits OR no files found)
