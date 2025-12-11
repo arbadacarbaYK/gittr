@@ -698,6 +698,37 @@ export default function RepoCodePage({
       return;
     }
 
+    // CRITICAL: For "tides" repos, ALWAYS verify ownership matches entity BEFORE processing
+    const repoName = (repo.repo || repo.slug || repo.name || "").toLowerCase();
+    const isTides = repoName === "tides";
+    
+    if (isTides && resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
+      try {
+        const decoded = nip19.decode(resolvedParams.entity);
+        if (decoded.type === "npub") {
+          const entityPubkey = (decoded.data as string).toLowerCase();
+          // If ownerPubkey doesn't match entity OR is missing, it's corrupted
+          if (!repo.ownerPubkey || repo.ownerPubkey.toLowerCase() !== entityPubkey) {
+            console.error("❌ [Repo Page] Blocking corrupted tides repo - ownerPubkey doesn't match entity:", {
+              entity: resolvedParams.entity,
+              repo: decodedRepo,
+              entityPubkey: entityPubkey.slice(0, 8),
+              ownerPubkey: repo.ownerPubkey?.slice(0, 8) || "missing"
+            });
+            // Set repoData to null to prevent rendering
+            setRepoData(null);
+            repoProcessedRef.current = repoKey;
+            return;
+          }
+        }
+      } catch (e) {
+        console.error("❌ [Repo Page] Failed to decode entity for tides repo:", e);
+        setRepoData(null);
+        repoProcessedRef.current = repoKey;
+        return;
+      }
+    }
+    
     // CRITICAL: Check if repo is corrupted BEFORE processing
     if (isRepoCorrupted(repo, repo.nostrEventId || repo.lastNostrEventId)) {
       console.error("❌ [Repo Page] Blocking corrupted repo from processing:", {
@@ -705,8 +736,9 @@ export default function RepoCodePage({
         repo: decodedRepo,
         ownerPubkey: (repo as any).ownerPubkey?.slice(0, 8)
       });
-      // Redirect to 404
-      router.push("/404");
+      // Set repoData to null to prevent rendering
+      setRepoData(null);
+      repoProcessedRef.current = repoKey;
       return;
     }
 
@@ -1058,14 +1090,43 @@ export default function RepoCodePage({
         }
         
         // CRITICAL: Check if repo is corrupted BEFORE displaying
+        // For "tides" repos, ALWAYS verify ownership matches entity
+        const repoName = (repo.repo || repo.slug || repo.name || "").toLowerCase();
+        const isTides = repoName === "tides";
+        
+        if (isTides && resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
+          try {
+            const decoded = nip19.decode(resolvedParams.entity);
+            if (decoded.type === "npub") {
+              const entityPubkey = (decoded.data as string).toLowerCase();
+              // If ownerPubkey doesn't match entity OR is missing, it's corrupted
+              if (!repo.ownerPubkey || repo.ownerPubkey.toLowerCase() !== entityPubkey) {
+                console.error("❌ [Repo Page] Blocking corrupted tides repo - ownerPubkey doesn't match entity:", {
+                  entity: resolvedParams.entity,
+                  repo: decodedRepo,
+                  entityPubkey: entityPubkey.slice(0, 8),
+                  ownerPubkey: repo.ownerPubkey?.slice(0, 8) || "missing"
+                });
+                // Set repoData to null and show error
+                setRepoData(null);
+                return;
+              }
+            }
+          } catch (e) {
+            console.error("❌ [Repo Page] Failed to decode entity for tides repo:", e);
+            setRepoData(null);
+            return;
+          }
+        }
+        
         if (isRepoCorrupted(repo, repo.nostrEventId || repo.lastNostrEventId)) {
           console.error("❌ [Repo Page] Blocking corrupted repo from display:", {
             entity: resolvedParams.entity,
             repo: decodedRepo,
             ownerPubkey: (repo as any).ownerPubkey?.slice(0, 8)
           });
-          // Redirect to 404
-          router.push("/404");
+          // Set repoData to null to prevent rendering
+          setRepoData(null);
           return;
         }
         
@@ -6415,6 +6476,28 @@ export default function RepoCodePage({
     if (pathname.includes("/releases")) return "releases";
     return "code";
   }, [pathname]);
+
+  // CRITICAL: Check if repo was blocked due to corruption
+  if (mounted && !repoData) {
+    const repos = loadStoredRepos();
+    const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
+    if (repo && isRepoCorrupted(repo, repo.nostrEventId || repo.lastNostrEventId)) {
+      return (
+        <div className="mt-4 p-8 text-center">
+          <h1 className="text-2xl font-bold text-red-400 mb-4">Repository Not Found</h1>
+          <p className="text-gray-400 mb-2">
+            This repository appears to be corrupted or invalid.
+          </p>
+          <p className="text-sm text-gray-500 mb-4">
+            The repository "{decodedRepo}" for entity "{resolvedParams.entity}" could not be displayed.
+          </p>
+          <Link href="/" className="text-purple-400 hover:text-purple-300 underline">
+            Return to Homepage
+          </Link>
+        </div>
+      );
+    }
+  }
 
   return (
     <div className="mt-4">
