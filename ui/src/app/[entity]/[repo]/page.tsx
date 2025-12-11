@@ -6490,33 +6490,66 @@ export default function RepoCodePage({
   }, [pathname]);
 
   // CRITICAL: Check if repo was blocked due to corruption
-  // Use useMemo to check corruption status without calling loadStoredRepos during render
+  // For "tides" repos, ALWAYS check ownership even if not in localStorage
   const isCorruptedRepo = useMemo(() => {
-    if (!mounted || repoData) return false; // If repoData exists, it passed corruption checks
+    if (!mounted) return false;
+    
+    // CRITICAL: For "tides" repos, check ownership even if repoData exists
+    // This catches repos that were loaded but shouldn't be displayed
+    const repoName = decodedRepo.toLowerCase();
+    if (repoName === "tides" && resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
+      try {
+        const decoded = nip19.decode(resolvedParams.entity);
+        if (decoded.type === "npub") {
+          const entityPubkey = (decoded.data as string).toLowerCase();
+          
+          // Check if repoData exists and has ownerPubkey
+          if (repoData && (repoData as any).ownerPubkey) {
+            const ownerPubkey = ((repoData as any).ownerPubkey as string).toLowerCase();
+            if (ownerPubkey !== entityPubkey) {
+              return true; // Corrupted - tides repo doesn't belong to this entity
+            }
+          } else {
+            // Check localStorage
+            try {
+              const repos = loadStoredRepos();
+              const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
+              if (repo) {
+                if (!repo.ownerPubkey || repo.ownerPubkey.toLowerCase() !== entityPubkey) {
+                  return true; // Corrupted - tides repo doesn't belong to this entity
+                }
+              } else {
+                // Repo not in localStorage - for tides, this is suspicious
+                // But we can't block it without more info, so return false
+                // The useEffect will handle blocking it when it tries to load
+                return false;
+              }
+            } catch (e) {
+              return false;
+            }
+          }
+        }
+      } catch (e) {
+        return true; // Can't decode = corrupted
+      }
+    }
+    
+    // For non-tides repos or if repoData exists, check general corruption
+    if (repoData) {
+      return isRepoCorrupted(repoData as any, (repoData as any).nostrEventId || (repoData as any).lastNostrEventId);
+    }
+    
+    // Check localStorage
     try {
       const repos = loadStoredRepos();
       const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
       if (repo) {
-        // For tides repos, check ownership
-        const tidesRepoName = (repo.repo || repo.slug || repo.name || "").toLowerCase();
-        if (tidesRepoName === "tides" && resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
-          try {
-            const decoded = nip19.decode(resolvedParams.entity);
-            if (decoded.type === "npub") {
-              const entityPubkey = (decoded.data as string).toLowerCase();
-              if (!repo.ownerPubkey || repo.ownerPubkey.toLowerCase() !== entityPubkey) {
-                return true; // Corrupted - tides repo doesn't belong to this entity
-              }
-            }
-          } catch (e) {
-            return true; // Can't decode = corrupted
-          }
-        }
         return isRepoCorrupted(repo, repo.nostrEventId || repo.lastNostrEventId);
       }
     } catch (e) {
-      return false; // If we can't check, don't block (might be a new repo)
+      return false;
     }
+    
     return false;
   }, [mounted, repoData, resolvedParams.entity, decodedRepo]);
 
