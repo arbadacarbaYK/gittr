@@ -1351,16 +1351,34 @@ export default function RepositoriesPage() {
     };
   }, [mounted, subscribe, pubkey, defaultRelays, userName]); // Note: pubkey optional - syncs ALL repos even when not logged in
   
-  // Make findCorruptTidesRepos available in console for debugging
+  // Make findCorruptTidesRepos and deleteCorruptedTidesRepos available in console for debugging
   useEffect(() => {
     if (typeof window !== 'undefined' && mounted) {
       // Dynamic import to avoid SSR issues
-      import("./find-corrupt-tides-repos").then(({ findCorruptTidesRepos }) => {
-        (window as any).findCorruptTidesRepos = findCorruptTidesRepos;
-        console.log("💡 Run findCorruptTidesRepos() in console to find corrupt tides repos with entity 'gittr.space'");
-      });
+      (async () => {
+        try {
+          import("./find-corrupt-tides-repos").then(({ findCorruptTidesRepos }) => {
+            (window as any).findCorruptTidesRepos = findCorruptTidesRepos;
+            console.log("💡 Run findCorruptTidesRepos() in console to find corrupt tides repos with entity 'gittr.space'");
+          });
+          
+          // Make deleteCorruptedTidesRepos available if user has publish and defaultRelays
+          if (publish && defaultRelays && defaultRelays.length > 0) {
+            import("../lib/nostr/delete-corrupted-events").then(({ deleteCorruptedTidesRepos }) => {
+              (window as any).deleteCorruptedTidesRepos = () => {
+                return deleteCorruptedTidesRepos(publish, defaultRelays);
+              };
+              console.log("💡 Run deleteCorruptedTidesRepos() in console to publish NIP-09 deletion events for corrupted tides repos");
+              console.log("⚠️  WARNING: This only works if you have the private key that published the original events");
+              console.log("⚠️  If events were published by someone else, you cannot delete them - contact relay operators");
+            });
+          }
+        } catch (e) {
+          console.error("Failed to load utility functions:", e);
+        }
+      })();
     }
-  }, [mounted]);
+  }, [mounted, publish, defaultRelays]);
   
   // CRITICAL: Sync repos from activities if they're missing from localStorage
   // This handles the case where repos were created locally but not synced to localStorage
