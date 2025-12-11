@@ -7678,54 +7678,56 @@ export default function RepoCodePage({
                         rehypePlugins={[rehypeRaw]}
                         components={{
                           p: ({ node, children, ...props }: any) => {
-                            // Check if paragraph contains block-level elements
-                            // ReactMarkdown sometimes wraps code blocks in paragraphs, which creates invalid HTML
-                            const hasBlockChildren = node?.children?.some((child: any) => {
-                              if (child.type !== 'element') return false;
-                              // Check for block-level tags
-                              if (child.tagName === 'div' || child.tagName === 'iframe' || child.tagName === 'img' || child.tagName === 'pre') {
-                                return true;
-                              }
-                              // Check if it's a code element that will be rendered as a block (non-inline)
-                              // Block code has className with language- prefix or is wrapped in pre
-                              if (child.tagName === 'code') {
+                            // CRITICAL: Check if paragraph contains code elements that will render as blocks
+                            // ReactMarkdown wraps code blocks in paragraphs, but CopyableCodeBlock renders as div/pre
+                            // This creates invalid HTML: <p><div><pre>...</pre></div></p>
+                            
+                            // Check AST node children for code elements
+                            const hasBlockCode = node?.children?.some((child: any) => {
+                              if (child.type === 'element' && child.tagName === 'code') {
                                 const className = child.properties?.className || '';
-                                // Block code typically has language- class or is in a pre tag
-                                if (typeof className === 'string' && (className.includes('language-') || className.includes('hljs'))) {
+                                // Block code has language- class (from fenced code blocks)
+                                if (typeof className === 'string' && className.includes('language-')) {
                                   return true;
                                 }
-                                // Check if it's the only child and has no inline siblings (likely block code)
+                                // If code is the only child, it's likely block code (not inline)
                                 const siblings = node?.children || [];
-                                if (siblings.length === 1 && siblings[0] === child) {
-                                  return true; // Single code element in paragraph is likely block code
+                                if (siblings.length === 1) {
+                                  return true;
                                 }
+                              }
+                              // Check for other block-level elements
+                              if (child.type === 'element' && 
+                                  (child.tagName === 'div' || child.tagName === 'iframe' || child.tagName === 'img' || child.tagName === 'pre')) {
+                                return true;
                               }
                               return false;
                             });
                             
-                            // Also check React children for block-level components
+                            // Check React children for CopyableCodeBlock components
                             const childrenArray = Array.isArray(children) ? children : [children];
-                            const hasBlockReactChildren = childrenArray.some((child: any) => {
-                              if (!child || typeof child !== 'object') return false;
-                              // Check if it's CopyableCodeBlock with inline=false (renders as div/pre)
-                              if (child.type && (child.type.name === 'CopyableCodeBlock' || child.type.displayName === 'CopyableCodeBlock')) {
-                                // Check props to see if it's non-inline
-                                if (child.props && child.props.inline === false) {
-                                  return true;
-                                }
-                                // If inline is undefined, assume it's block code (default behavior)
-                                if (child.props && child.props.inline === undefined) {
+                            const hasCopyableCodeBlock = childrenArray.some((child: any) => {
+                              if (!child || typeof child !== 'object' || !child.type) return false;
+                              
+                              // Check if it's CopyableCodeBlock component
+                              const componentName = child.type.name || child.type.displayName || '';
+                              if (componentName === 'CopyableCodeBlock') {
+                                // If inline is false or undefined, it renders as div/pre (block-level)
+                                if (child.props?.inline === false || child.props?.inline === undefined) {
                                   return true;
                                 }
                               }
-                              // Check if it's a div or pre element
+                              
+                              // Check if it's already a div or pre element
                               if (child.type === 'div' || child.type === 'pre') {
                                 return true;
                               }
+                              
                               return false;
                             });
                             
-                            if (hasBlockChildren || hasBlockReactChildren) {
+                            // If paragraph contains block-level code or other block elements, render as div
+                            if (hasBlockCode || hasCopyableCodeBlock) {
                               return <div {...props}>{children}</div>;
                             }
                             
