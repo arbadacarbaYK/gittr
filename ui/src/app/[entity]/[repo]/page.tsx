@@ -8483,6 +8483,19 @@ export default function RepoCodePage({
                             links: links.length > 0 ? links : prev?.links,
                           }));
                           
+                          // CRITICAL: Also save files to separate storage key (for optimized storage)
+                          // This ensures file list is available even if repo object is large
+                          try {
+                            saveRepoFiles(resolvedParams.entity, resolvedParams.repo, newFiles as RepoFileEntry[]);
+                            console.log(`✅ [Refetch] Saved ${newFiles.length} files to separate storage key`);
+                          } catch (e: any) {
+                            if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
+                              console.error(`❌ [Refetch] Quota exceeded when saving files separately`);
+                            } else {
+                              console.error(`❌ [Refetch] Failed to save files separately:`, e);
+                            }
+                          }
+                          
                           // CRITICAL: Also save issues, pulls, and commits to separate localStorage keys
                           if (importData.issues && Array.isArray(importData.issues) && importData.issues.length > 0) {
                             try {
