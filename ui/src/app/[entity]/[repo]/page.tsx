@@ -1359,28 +1359,78 @@ export default function RepoCodePage({
   // Check Nostr event for sourceUrl if missing from local repo (for button text)
   useEffect(() => {
     console.log("🔍 [effectiveSourceUrl] useEffect triggered:", { mounted, hasRepoData: !!repoData });
-    if (!mounted || !repoData) {
-      console.log("🔍 [effectiveSourceUrl] Early return:", { mounted, hasRepoData: !!repoData });
+    if (!mounted) {
+      console.log("🔍 [effectiveSourceUrl] Early return: not mounted");
       return;
     }
     
     // CRITICAL: Check multiple sources for sourceUrl in priority order:
-    // 1. repoData.sourceUrl (direct field)
-    // 2. Clone URLs from repoData (extract GitHub/GitLab/Codeberg URLs)
-    // 3. Clone URLs from localStorage repo (fallback)
-    // 4. Nostr event "source" tag
+    // 1. repoData.sourceUrl (direct field) - if repoData is available
+    // 2. Clone URLs from repoData (extract GitHub/GitLab/Codeberg URLs) - if repoData is available
+    // 3. Clone URLs from localStorage repo (ALWAYS check this, even if repoData is null)
+    // 4. Nostr event "source" tag - if repoData is available and it's a Nostr repo
     
-    // Priority 1: Check direct sourceUrl field
+    // Priority 1: Check localStorage FIRST (works even if repoData is null)
+    try {
+      const repos = loadStoredRepos();
+      const matchingRepo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
+      if (matchingRepo) {
+        // Check sourceUrl first
+        if (matchingRepo.sourceUrl && typeof matchingRepo.sourceUrl === "string" && (
+          matchingRepo.sourceUrl.includes("github.com") || 
+          matchingRepo.sourceUrl.includes("gitlab.com") || 
+          matchingRepo.sourceUrl.includes("codeberg.org")
+        )) {
+          console.log("✅ [effectiveSourceUrl] Found sourceUrl in localStorage:", matchingRepo.sourceUrl);
+          setEffectiveSourceUrl(matchingRepo.sourceUrl);
+          return;
+        }
+        
+        // Check clone URLs
+        if (matchingRepo.clone && Array.isArray(matchingRepo.clone) && matchingRepo.clone.length > 0) {
+          const gitHubCloneUrl = matchingRepo.clone.find((url: string) => 
+            url && typeof url === "string" && (
+              url.includes("github.com") || 
+              url.includes("gitlab.com") || 
+              url.includes("codeberg.org")
+            )
+          );
+          if (gitHubCloneUrl) {
+            // Remove .git suffix and convert SSH to HTTPS if needed
+            let sourceUrl = gitHubCloneUrl.replace(/\.git$/, "");
+            const sshMatch = sourceUrl.match(/^git@([^:]+):(.+)$/);
+            if (sshMatch) {
+              const [, host, path] = sshMatch;
+              sourceUrl = `https://${host}/${path}`;
+            }
+            console.log("✅ [effectiveSourceUrl] Found clone URL in localStorage, converted to:", sourceUrl);
+            setEffectiveSourceUrl(sourceUrl);
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("⚠️ [effectiveSourceUrl] Error reading from localStorage:", e);
+    }
+    
+    // If repoData is not available yet, wait for it
+    if (!repoData) {
+      console.log("🔍 [effectiveSourceUrl] repoData not available yet, waiting...");
+      return;
+    }
+    
+    // Priority 2: Check direct sourceUrl field in repoData
     if (repoData.sourceUrl && typeof repoData.sourceUrl === "string" && (
       repoData.sourceUrl.includes("github.com") || 
       repoData.sourceUrl.includes("gitlab.com") || 
       repoData.sourceUrl.includes("codeberg.org")
     )) {
+      console.log("✅ [effectiveSourceUrl] Found sourceUrl in repoData:", repoData.sourceUrl);
       setEffectiveSourceUrl(repoData.sourceUrl);
       return;
     }
     
-    // Priority 2: Check clone URLs from repoData for GitHub/GitLab/Codeberg URLs
+    // Priority 3: Check clone URLs from repoData for GitHub/GitLab/Codeberg URLs
     const cloneUrls = (repoData as any)?.clone;
     if (Array.isArray(cloneUrls) && cloneUrls.length > 0) {
       const gitHubCloneUrl = cloneUrls.find((url: string) => 
@@ -1398,37 +1448,10 @@ export default function RepoCodePage({
           const [, host, path] = sshMatch;
           sourceUrl = `https://${host}/${path}`;
         }
+        console.log("✅ [effectiveSourceUrl] Found clone URL in repoData, converted to:", sourceUrl);
         setEffectiveSourceUrl(sourceUrl);
         return;
       }
-    }
-    
-    // Priority 3: Check clone URLs from localStorage repo (fallback if repoData doesn't have them yet)
-    try {
-      const repos = loadStoredRepos();
-      const matchingRepo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
-      if (matchingRepo?.clone && Array.isArray(matchingRepo.clone) && matchingRepo.clone.length > 0) {
-        const gitHubCloneUrl = matchingRepo.clone.find((url: string) => 
-          url && typeof url === "string" && (
-            url.includes("github.com") || 
-            url.includes("gitlab.com") || 
-            url.includes("codeberg.org")
-          )
-        );
-        if (gitHubCloneUrl) {
-          // Remove .git suffix and convert SSH to HTTPS if needed
-          let sourceUrl = gitHubCloneUrl.replace(/\.git$/, "");
-          const sshMatch = sourceUrl.match(/^git@([^:]+):(.+)$/);
-          if (sshMatch) {
-            const [, host, path] = sshMatch;
-            sourceUrl = `https://${host}/${path}`;
-          }
-          setEffectiveSourceUrl(sourceUrl);
-          return;
-        }
-      }
-    } catch (e) {
-      // Ignore errors reading from localStorage
     }
     
     // Priority 3: Query Nostr event for "source" tag (only if we have subscribe/relays)
