@@ -237,8 +237,17 @@ jobs:
         if: steps.capacitor-check.outputs.capacitor_configured == 'true'
         run: |
           echo "Searching for APK files..."
-          find . -name "*.apk" -type f 2>/dev/null | head -20
+          echo "Current directory: $(pwd)"
+          echo "Directory structure:"
+          ls -la app/build/outputs/ 2>/dev/null || echo "app/build/outputs/ does not exist"
           echo "---"
+          echo "All APK files found:"
+          find . -name "*.apk" -type f 2>/dev/null | head -20 || echo "No APK files found"
+          echo "---"
+          echo "Checking build outputs:"
+          find ./app/build -type f -name "*.apk" 2>/dev/null | head -10 || echo "No APK in app/build"
+          echo "---"
+          
           APK_PATH=$(find ./app/build/outputs/apk/release -name "*.apk" -type f 2>/dev/null | head -1)
           if [ -z "$APK_PATH" ]; then
             echo "APK not found in ./app/build/outputs/apk/release, searching elsewhere..."
@@ -250,6 +259,14 @@ jobs:
           fi
           if [ -z "$APK_PATH" ]; then
             echo "❌ ERROR: No APK file found!"
+            echo "Build outputs directory contents:"
+            ls -la app/build/outputs/ 2>/dev/null || echo "app/build/outputs/ does not exist"
+            echo "---"
+            echo "Full app/build directory structure:"
+            find app/build -type d 2>/dev/null | head -20 || echo "app/build does not exist"
+            echo "---"
+            echo "Gradle build log (last 50 lines):"
+            tail -50 /tmp/gradle-build.log 2>/dev/null || echo "No build log found"
             exit 1
           fi
           # Convert to absolute path
