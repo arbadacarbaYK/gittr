@@ -184,8 +184,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // The withdraw link is funded by the wallet associated with the admin key
     // So we pay the invoice from that wallet
     const paymentRequest: LNbitsPaymentRequest = {
-      out: true, // Outgoing payment
-      bolt11: invoice,
+        out: true, // Outgoing payment
+        bolt11: invoice,
     };
 
     let paymentData;

@@ -76,13 +76,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       };
 
       const paymentRequest: LNbitsPaymentRequest = {
-        out: false, // Create invoice for receiving
-        amount: amount * 1000, // LNbits API expects millisats
-        memo: comment || `Zap to ${recipient.slice(0, 8)}...`,
+          out: false, // Create invoice for receiving
+          amount: amount * 1000, // LNbits API expects millisats
+          memo: comment || `Zap to ${recipient.slice(0, 8)}...`,
       };
 
       console.log("NWC fallback - Creating LNbits invoice:", { url: finalUrl, amount });
-      
+
       const invoiceData = await createPayment(config, paymentRequest);
       const fullInvoice = invoiceData.payment_request || invoiceData.bolt11;
       
