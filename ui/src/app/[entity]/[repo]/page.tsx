@@ -6490,25 +6490,51 @@ export default function RepoCodePage({
   }, [pathname]);
 
   // CRITICAL: Check if repo was blocked due to corruption
-  if (mounted && !repoData) {
-    const repos = loadStoredRepos();
-    const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
-    if (repo && isRepoCorrupted(repo, repo.nostrEventId || repo.lastNostrEventId)) {
-      return (
-        <div className="mt-4 p-8 text-center">
-          <h1 className="text-2xl font-bold text-red-400 mb-4">Repository Not Found</h1>
-          <p className="text-gray-400 mb-2">
-            This repository appears to be corrupted or invalid.
-          </p>
-          <p className="text-sm text-gray-500 mb-4">
-            The repository "{decodedRepo}" for entity "{resolvedParams.entity}" could not be displayed.
-          </p>
-          <Link href="/" className="text-purple-400 hover:text-purple-300 underline">
-            Return to Homepage
-          </Link>
-        </div>
-      );
+  // Use useMemo to check corruption status without calling loadStoredRepos during render
+  const isCorruptedRepo = useMemo(() => {
+    if (!mounted || repoData) return false; // If repoData exists, it passed corruption checks
+    try {
+      const repos = loadStoredRepos();
+      const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
+      if (repo) {
+        // For tides repos, check ownership
+        const tidesRepoName = (repo.repo || repo.slug || repo.name || "").toLowerCase();
+        if (tidesRepoName === "tides" && resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
+          try {
+            const decoded = nip19.decode(resolvedParams.entity);
+            if (decoded.type === "npub") {
+              const entityPubkey = (decoded.data as string).toLowerCase();
+              if (!repo.ownerPubkey || repo.ownerPubkey.toLowerCase() !== entityPubkey) {
+                return true; // Corrupted - tides repo doesn't belong to this entity
+              }
+            }
+          } catch (e) {
+            return true; // Can't decode = corrupted
+          }
+        }
+        return isRepoCorrupted(repo, repo.nostrEventId || repo.lastNostrEventId);
+      }
+    } catch (e) {
+      return false; // If we can't check, don't block (might be a new repo)
     }
+    return false;
+  }, [mounted, repoData, resolvedParams.entity, decodedRepo]);
+
+  if (isCorruptedRepo) {
+    return (
+      <div className="mt-4 p-8 text-center">
+        <h1 className="text-2xl font-bold text-red-400 mb-4">Repository Not Found</h1>
+        <p className="text-gray-400 mb-2">
+          This repository appears to be corrupted or invalid.
+        </p>
+        <p className="text-sm text-gray-500 mb-4">
+          The repository "{decodedRepo}" for entity "{resolvedParams.entity}" could not be displayed.
+        </p>
+        <Link href="/" className="text-purple-400 hover:text-purple-300 underline">
+          Return to Homepage
+        </Link>
+      </div>
+    );
   }
 
   return (
