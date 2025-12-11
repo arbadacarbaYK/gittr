@@ -29,7 +29,7 @@ export async function findCorruptedEventPublishers(
     
     const pool = new RelayPool(defaultRelays);
     
-    const onEvent = (event: any, relayURL?: string) => {
+    const onEvent = (event: any, isAfterEose?: boolean, relayURL?: string) => {
       console.log(`🔍 Found corrupted event: ${event.id.slice(0, 8)}...`);
       console.log(`   Published by pubkey: ${event.pubkey}`);
       
