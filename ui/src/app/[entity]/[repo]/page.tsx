@@ -7918,11 +7918,14 @@ export default function RepoCodePage({
             
             // Show refetch button if repo has sourceUrl (imported from GitHub/GitLab/Codeberg) OR is synced from Nostr
             // Also show if user owns it and repo has files (even if missing sourceUrl, they might want to refetch from Nostr)
+            // Check for sourceUrl in local repo, but also note that it might be in Nostr event
             const hasSourceUrl = repo.sourceUrl && typeof repo.sourceUrl === "string" && (
               repo.sourceUrl.includes("github.com") || 
               repo.sourceUrl.includes("gitlab.com") || 
               repo.sourceUrl.includes("codeberg.org")
             );
+            // Store sourceUrl for use in refetch handler
+            const sourceUrl = repo.sourceUrl;
             const isNostrRepo = repo.syncedFromNostr || repo.lastNostrEventId || repo.nostrEventId;
             const hasLocalEdits = repo.hasUnpushedEdits || (repo.files && Array.isArray(repo.files) && repo.files.length > 0);
             // Show refetch if: (has sourceUrl OR is Nostr repo) AND user owns it AND (has local edits OR no files found)
@@ -7972,24 +7975,81 @@ export default function RepoCodePage({
                         variant="outline"
                         disabled={isRefetching || isPushing}
                         onClick={async () => {
+                        // CRITICAL: Check for sourceUrl in local repo OR in Nostr event
+                        // This ensures repos imported from GitHub but synced from Nostr can still refetch from GitHub
+                        let effectiveSourceUrl = repo?.sourceUrl;
+                        
+                        // If no sourceUrl in local repo, try to get it from Nostr event
+                        if (!effectiveSourceUrl && isNostrRepo) {
+                          try {
+                            const ownerPubkey = repo?.ownerPubkey || (resolvedParams.entity.startsWith("npub") 
+                              ? (nip19.decode(resolvedParams.entity).data as string)
+                              : resolvedParams.entity);
+                            const repoName = repo?.repo || repo?.slug || resolvedParams.repo;
+                            
+                            if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) && subscribe && defaultRelays && defaultRelays.length > 0) {
+                              await new Promise<void>((resolve, reject) => {
+                                const timeout = setTimeout(() => {
+                                  unsub();
+                                  resolve(); // Timeout - continue without sourceUrl
+                                }, 5000);
+                                
+                                const unsub = subscribe(
+                                  [{
+                                    kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
+                                    authors: [ownerPubkey],
+                                    "#d": [repoName],
+                                  }],
+                                  defaultRelays,
+                                  (event) => {
+                                    // Extract sourceUrl from "source" tag
+                                    for (const tag of event.tags) {
+                                      if (tag[0] === "source" && tag[1]) {
+                                        effectiveSourceUrl = tag[1];
+                                        console.log(`✅ [Refetch] Found sourceUrl in Nostr event: ${effectiveSourceUrl}`);
+                                        clearTimeout(timeout);
+                                        break;
+                                      }
+                                    }
+                                  },
+                                  undefined,
+                                  () => {
+                                    clearTimeout(timeout);
+                                    unsub();
+                                    resolve();
+                                  }
+                                );
+                              });
+                            }
+                          } catch (e) {
+                            console.warn("⚠️ [Refetch] Failed to get sourceUrl from Nostr event:", e);
+                          }
+                        }
+                        
+                        // Check if we have a valid sourceUrl (GitHub/GitLab/Codeberg)
+                        const hasEffectiveSourceUrl = effectiveSourceUrl && typeof effectiveSourceUrl === "string" && (
+                          effectiveSourceUrl.includes("github.com") || 
+                          effectiveSourceUrl.includes("gitlab.com") || 
+                          effectiveSourceUrl.includes("codeberg.org")
+                        );
+                        
                         // Handle refetch for GitHub/GitLab/Codeberg repos
-                        if (hasSourceUrl) {
-                        const sourceUrl = repo?.sourceUrl;
-                        if (!sourceUrl) {
+                        if (hasEffectiveSourceUrl) {
+                        if (!effectiveSourceUrl) {
                           alert("No source URL found for this repository");
                           return;
                         }
                         
                         try {
                           setIsRefetching(true);
-                            console.log(`🔄 [Refetch] Starting refetch for ${resolvedParams.repo} from source: ${sourceUrl}`);
+                            console.log(`🔄 [Refetch] Starting refetch for ${resolvedParams.repo} from source: ${effectiveSourceUrl}`);
                           
-                          // Call import API to fetch latest from GitHub
-                          console.log(`📡 [Refetch] Calling /api/import with sourceUrl: ${sourceUrl}`);
+                          // Call import API to fetch latest from GitHub/GitLab/Codeberg
+                          console.log(`📡 [Refetch] Calling /api/import with sourceUrl: ${effectiveSourceUrl}`);
                           const importResponse = await fetch("/api/import", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ sourceUrl }),
+                            body: JSON.stringify({ sourceUrl: effectiveSourceUrl }),
                           });
                           
                           console.log(`📡 [Refetch] Import API response status: ${importResponse.status}`);
