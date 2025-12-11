@@ -1095,6 +1095,49 @@ export default function RepositoriesPage() {
                 repo.entity = entity;
               }
               
+              // CRITICAL: Validate BEFORE updating existing repo
+              // Check for known corrupted tides repos by event ID
+              const corruptEventIds = [
+                "28cd39385801bb7683e06e7489f89afff8df045a4d6fe7319d75a60341165ae2",
+                "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b",
+                "1dbc5322b24b3481e5ce078349f527b04ad6251e9f0499b851d78cc9f92c4559"
+              ];
+              
+              const repoName = repoData.repositoryName?.toLowerCase() || "";
+              const isTides = repoName === "tides";
+              
+              // CRITICAL: Never update with known corrupted tides repos
+              if (isTides && corruptEventIds.includes(event.id)) {
+                console.error("❌ [Repositories] Blocking corrupted tides repo update:", {
+                  eventId: event.id,
+                  repoName: repoData.repositoryName,
+                  ownerPubkey: event.pubkey.slice(0, 8)
+                });
+                return; // Don't update with this corrupted repo
+              }
+              
+              // CRITICAL: For "tides" repos, only update if they belong to the current user
+              // This prevents corrupted tides repos from appearing for everyone
+              if (isTides && pubkey && event.pubkey.toLowerCase() !== pubkey.toLowerCase()) {
+                console.error("❌ [Repositories] Blocking tides repo update that doesn't belong to current user:", {
+                  eventId: event.id.slice(0, 8),
+                  repoName: repoData.repositoryName,
+                  eventOwner: event.pubkey.slice(0, 8),
+                  currentUser: pubkey.slice(0, 8)
+                });
+                return; // Don't update tides repos that don't belong to current user
+              }
+              
+              // CRITICAL: Final validation - entity must be valid npub format
+              if (!entity || !entity.startsWith("npub") || entity.includes("gittr.space")) {
+                console.error("❌ [Repositories] Blocking repo update with invalid entity:", {
+                  entity,
+                  repoName: repoData.repositoryName,
+                  eventId: event.id.slice(0, 8)
+                });
+                return; // Don't update repos with invalid entities
+              }
+              
               // CRITICAL: Preserve existing sourceUrl if new one is not available
               // This prevents losing GitHub/GitLab/Codeberg sourceUrl when syncing from Nostr
               const preservedSourceUrl = repo.sourceUrl || existingRepos[existingIndex].sourceUrl;
@@ -1124,8 +1167,51 @@ export default function RepositoriesPage() {
                 ...(repoData.earliestUniqueCommit || (existingRepos[existingIndex] as any)?.earliestUniqueCommit ? { earliestUniqueCommit: repoData.earliestUniqueCommit || (existingRepos[existingIndex] as any)?.earliestUniqueCommit } : {}),
               };
             } else {
-              // New repo - store with event ID and created_at
-              // CRITICAL: Store in SECONDS (Nostr format) - not milliseconds
+              // New repo - validate BEFORE storing
+              // CRITICAL: Check for known corrupted tides repos by event ID
+              const corruptEventIds = [
+                "28cd39385801bb7683e06e7489f89afff8df045a4d6fe7319d75a60341165ae2",
+                "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b",
+                "1dbc5322b24b3481e5ce078349f527b04ad6251e9f0499b851d78cc9f92c4559"
+              ];
+              
+              const repoName = repoData.repositoryName?.toLowerCase() || "";
+              const isTides = repoName === "tides";
+              
+              // CRITICAL: Never store known corrupted tides repos
+              if (isTides && corruptEventIds.includes(event.id)) {
+                console.error("❌ [Repositories] Blocking corrupted tides repo from storage:", {
+                  eventId: event.id,
+                  repoName: repoData.repositoryName,
+                  ownerPubkey: event.pubkey.slice(0, 8)
+                });
+                return; // Don't store this corrupted repo
+              }
+              
+              // CRITICAL: For "tides" repos, only store if they belong to the current user
+              // This prevents storing corrupted tides repos that appear for everyone
+              if (isTides && pubkey && event.pubkey.toLowerCase() !== pubkey.toLowerCase()) {
+                console.error("❌ [Repositories] Blocking tides repo that doesn't belong to current user:", {
+                  eventId: event.id.slice(0, 8),
+                  repoName: repoData.repositoryName,
+                  eventOwner: event.pubkey.slice(0, 8),
+                  currentUser: pubkey.slice(0, 8)
+                });
+                return; // Don't store tides repos that don't belong to current user
+              }
+              
+              // CRITICAL: Final validation - entity must be valid npub format
+              if (!entity || !entity.startsWith("npub") || entity.includes("gittr.space")) {
+                console.error("❌ [Repositories] Blocking repo with invalid entity from storage:", {
+                  entity,
+                  repoName: repoData.repositoryName,
+                  eventId: event.id.slice(0, 8)
+                });
+                return; // Don't store repos with invalid entities
+              }
+              
+              // Store with event ID and created_at
+              // CRITICAL: Store in SECONDS (NIP-34 format) - not milliseconds
               const newRepo = {
                 ...repo,
                 nostrEventId: event.id,
