@@ -6,7 +6,7 @@
  */
 
 import { getEventHash, signEvent, getPublicKey } from "nostr-tools";
-import { getNostrPrivateKey } from "./localStorage";
+import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 
 // Known corrupted tides repo event IDs
 export const CORRUPTED_TIDES_EVENT_IDS = [
