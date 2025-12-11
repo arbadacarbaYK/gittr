@@ -44,16 +44,21 @@ function parseGitUrl(sourceUrl: string): { owner: string; repo: string; host: st
     const parts = url.pathname.split("/").filter(Boolean);
     
     if (parts.length >= 2) {
+      const owner = parts[0];
+      const repo = parts[parts.length - 1];
+      if (!owner || !repo) return null;
       return {
-        owner: parts[0],
-        repo: parts[parts.length - 1].replace(/\.git$/, ""),
+        owner,
+        repo: repo.replace(/\.git$/, ""),
         host: url.hostname,
       };
     } else if (parts.length === 1) {
       // Single path segment (e.g., git://jb55.com/damus)
+      const repo = parts[0];
+      if (!repo) return null;
       return {
         owner: "",
-        repo: parts[0].replace(/\.git$/, ""),
+        repo: repo.replace(/\.git$/, ""),
         host: url.hostname,
       };
     }

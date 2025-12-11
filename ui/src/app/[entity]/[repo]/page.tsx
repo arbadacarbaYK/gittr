@@ -1362,8 +1362,9 @@ export default function RepoCodePage({
     
     // CRITICAL: Check multiple sources for sourceUrl in priority order:
     // 1. repoData.sourceUrl (direct field)
-    // 2. Clone URLs (extract GitHub/GitLab/Codeberg URLs)
-    // 3. Nostr event "source" tag
+    // 2. Clone URLs from repoData (extract GitHub/GitLab/Codeberg URLs)
+    // 3. Clone URLs from localStorage repo (fallback)
+    // 4. Nostr event "source" tag
     
     // Priority 1: Check direct sourceUrl field
     if (repoData.sourceUrl && typeof repoData.sourceUrl === "string" && (
@@ -1375,7 +1376,7 @@ export default function RepoCodePage({
       return;
     }
     
-    // Priority 2: Check clone URLs for GitHub/GitLab/Codeberg URLs
+    // Priority 2: Check clone URLs from repoData for GitHub/GitLab/Codeberg URLs
     const cloneUrls = (repoData as any)?.clone;
     if (Array.isArray(cloneUrls) && cloneUrls.length > 0) {
       const gitHubCloneUrl = cloneUrls.find((url: string) => 
@@ -1398,9 +1399,40 @@ export default function RepoCodePage({
       }
     }
     
+    // Priority 3: Check clone URLs from localStorage repo (fallback if repoData doesn't have them yet)
+    try {
+      const repos = loadStoredRepos();
+      const matchingRepo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
+      if (matchingRepo?.clone && Array.isArray(matchingRepo.clone) && matchingRepo.clone.length > 0) {
+        const gitHubCloneUrl = matchingRepo.clone.find((url: string) => 
+          url && typeof url === "string" && (
+            url.includes("github.com") || 
+            url.includes("gitlab.com") || 
+            url.includes("codeberg.org")
+          )
+        );
+        if (gitHubCloneUrl) {
+          // Remove .git suffix and convert SSH to HTTPS if needed
+          let sourceUrl = gitHubCloneUrl.replace(/\.git$/, "");
+          const sshMatch = sourceUrl.match(/^git@([^:]+):(.+)$/);
+          if (sshMatch) {
+            const [, host, path] = sshMatch;
+            sourceUrl = `https://${host}/${path}`;
+          }
+          setEffectiveSourceUrl(sourceUrl);
+          return;
+        }
+      }
+    } catch (e) {
+      // Ignore errors reading from localStorage
+    }
+    
     // Priority 3: Query Nostr event for "source" tag (only if we have subscribe/relays)
+    // CRITICAL: Don't set to null if we don't have subscribe/relays - clone URLs might be in repoData
+    // Only query Nostr if we don't have clone URLs yet
     if (!subscribe || !defaultRelays || defaultRelays.length === 0) {
-      setEffectiveSourceUrl(null);
+      // If we already checked clone URLs above and didn't find any, keep null
+      // Otherwise, don't set to null - wait for repoData to be updated with clone URLs from Nostr event
       return;
     }
     
@@ -2749,6 +2781,14 @@ export default function RepoCodePage({
                   
                   if (eventRepoData.sourceUrl || eventRepoData.forkedFrom) {
                     sourceUrlFromEvent = eventRepoData.sourceUrl || eventRepoData.forkedFrom;
+                    // CRITICAL: Update effectiveSourceUrl immediately so button text updates
+                    if (sourceUrlFromEvent && (
+                      sourceUrlFromEvent.includes("github.com") || 
+                      sourceUrlFromEvent.includes("gitlab.com") || 
+                      sourceUrlFromEvent.includes("codeberg.org")
+                    )) {
+                      setEffectiveSourceUrl(sourceUrlFromEvent);
+                    }
                     // CRITICAL: Only update state if values actually changed (prevents unnecessary re-renders)
                     setRepoData((prev: any) => {
                       if (!prev) return prev;
@@ -2793,9 +2833,16 @@ export default function RepoCodePage({
                         url.includes('codeberg.org') || url.includes('github.com') || url.includes('gitlab.com')
                       );
                       if (gitCloneUrl) {
-                        // Remove .git suffix and use as sourceUrl
-                        const sourceUrl = gitCloneUrl.replace(/\.git$/, '');
+                        // Remove .git suffix and convert SSH to HTTPS if needed
+                        let sourceUrl = gitCloneUrl.replace(/\.git$/, '');
+                        const sshMatch = sourceUrl.match(/^git@([^:]+):(.+)$/);
+                        if (sshMatch) {
+                          const [, host, path] = sshMatch;
+                          sourceUrl = `https://${host}/${path}`;
+                        }
                         sourceUrlFromEvent = sourceUrl;
+                        // CRITICAL: Update effectiveSourceUrl immediately so button text updates
+                        setEffectiveSourceUrl(sourceUrl);
                         // CRITICAL: Only update state if sourceUrl is actually different (prevents unnecessary re-renders)
                         setRepoData((prev: any) => {
                           if (!prev) return prev;
@@ -7814,7 +7861,7 @@ export default function RepoCodePage({
       <aside className="col-span-1 lg:col-span-1 xl:col-span-1 space-y-2" suppressHydrationWarning>
         <div className="flex justify-between">
           <h3 className="font-bold">About</h3>
-          {isOwner && (
+          {mounted && isOwner && (
             <a 
               href={getRepoLink("settings")}
               onClick={(e) => { e.preventDefault(); window.location.href = getRepoLink("settings"); }}
