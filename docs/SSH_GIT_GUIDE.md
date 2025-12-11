@@ -320,9 +320,20 @@ Where:
 **Critical**: Data stored in browser localStorage is **NOT encrypted**.
 
 **What's stored in localStorage**:
-- ✅ **SSH Public Keys**: Safe - public keys are meant to be public
+- ✅ **SSH Public Keys**: Safe - public keys are meant to be public (stored in `gittr_ssh_keys_${pubkey}`)
 - ✅ **Repositories, settings, UI preferences**: Low risk, but accessible to any script from same origin
-- ⚠️ **Nostr Private Keys (nsec)**: **STORED AS PLAINTEXT** - Accessible via browser dev tools
+- ⚠️ **Nostr Private Keys (nsec)**: **STORED AS PLAINTEXT** - Accessible via browser dev tools (if using nsec login instead of NIP-07)
+
+**What's NOT stored in localStorage**:
+- ❌ **SSH Private Keys**: **NEVER stored** - Only shown once when generated, you download and save to `~/.ssh/id_ed25519` on your local machine
+- ❌ **SSH Private Keys**: Used only in your local SSH client (`~/.ssh/`) for Git operations, never in the browser
+
+**How SSH Private Keys Work**:
+1. **Generation**: SSH private key is generated in browser (Web Crypto API) - stays in memory only
+2. **Download**: Private key is shown once for you to download - never saved to localStorage
+3. **Storage**: You save the downloaded private key to `~/.ssh/id_ed25519` on your local machine (standard SSH location)
+4. **Usage**: Your local Git/SSH client uses the private key from `~/.ssh/` - the browser never touches it again
+5. **localStorage**: Only the SSH **public key** is stored in localStorage (safe, meant to be public)
 
 **Security Implications**:
 1. **Browser Dev Tools**: Anyone with access to your browser can view localStorage
@@ -331,8 +342,9 @@ Where:
 4. **Shared Computers**: If multiple users use the same browser, localStorage is shared
 
 **Best Practices**:
-- ✅ **Use NIP-07 Extension** (recommended): Private keys stay in the extension, never in localStorage
-- ✅ **SSH Private Keys**: Never stored - only shown/downloaded once, you save them to `~/.ssh/`
+- ✅ **Use NIP-07 Extension** (recommended): Nostr private keys stay in the extension, never in localStorage
+- ✅ **SSH Private Keys**: Never stored in browser - only in `~/.ssh/` on your local machine (standard SSH security model)
+- ✅ **SSH Public Keys**: Safe to store in localStorage - public keys are designed to be shared
 - ⚠️ **Nostr Private Keys**: If you must use nsec login, consider:
   - Using a dedicated browser profile
   - Clearing localStorage after sessions
@@ -340,12 +352,12 @@ Where:
   - Preferring NIP-07 extensions for better security
 
 **What's Safe**:
-- SSH public keys (meant to be public)
+- SSH public keys (meant to be public, same as GitHub/GitLab)
 - Repository data (non-sensitive metadata)
 - Settings (UI preferences)
 
 **What's NOT Encrypted**:
-- Nostr private keys (if using nsec login)
+- Nostr private keys (if using nsec login instead of NIP-07)
 - All localStorage data is stored as plain JSON
 
 **Future Improvement**: We should add optional client-side encryption for sensitive localStorage data using Web Crypto API, encrypted with a user-set password.
