@@ -19,6 +19,7 @@ import { nip19 } from "nostr-tools";
 import { ZapButton } from "@/components/ui/zap-button";
 import { loadStoredRepos } from "@/lib/repos/storage";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 // Parse NIP-34 repository announcement format
 function parseNIP34Repository(event: any): any {
@@ -1459,47 +1460,69 @@ export default function HomePage() {
                       href={href} 
                       className="flex items-center gap-3 sm:gap-4 hover:bg-gray-800/50 rounded p-2 -m-2 cursor-pointer"
                     >
-                      {/* Unified repo icon (circle): repo pic -> owner profile pic -> nostr default -> logo.svg */}
-                      <div className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10">
-                        <div className="relative h-8 w-8 sm:h-10 sm:w-10 rounded-full overflow-hidden ring-1 ring-gray-700">
-                          {/* Priority 1: Repo icon */}
-                          {iconUrl && (
+                      {/* Show both repo icon and owner avatar when both exist */}
+                      <div className="flex-shrink-0 flex items-center gap-2">
+                        {/* Repo icon (square) - shown when available */}
+                        {iconUrl && (
+                          <div className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0">
                             <img 
                               src={iconUrl} 
                               alt="repo" 
-                              className="h-8 w-8 sm:h-10 sm:w-10 rounded-full object-cover absolute inset-0"
+                              className="h-8 w-8 sm:h-10 sm:h-10 rounded-sm object-contain border border-gray-700"
                               loading="lazy"
                               onError={(e) => {
                                 e.currentTarget.style.display = 'none';
                               }}
                             />
+                          </div>
+                        )}
+                        {/* Owner avatar (circle) - always shown if available, or as fallback */}
+                        <div className="flex-shrink-0">
+                          {ownerPicture ? (
+                            <Avatar className="h-8 w-8 sm:h-10 sm:h-10 ring-1 ring-gray-700">
+                              <AvatarImage 
+                                src={ownerPicture} 
+                                alt={displayName}
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                              <AvatarFallback className="bg-[#22262C]">
+                                <img 
+                                  src="/logo.svg" 
+                                  alt="repo" 
+                                  className="h-full w-full object-contain p-1"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                  }}
+                                />
+                              </AvatarFallback>
+                            </Avatar>
+                          ) : iconUrl ? (
+                            // If we have repo icon but no owner picture, show a small placeholder
+                            <div className="h-8 w-8 sm:h-10 sm:h-10 rounded-full bg-[#22262C] ring-1 ring-gray-700 flex items-center justify-center">
+                              <img 
+                                src="/logo.svg" 
+                                alt="repo" 
+                                className="h-4 w-4 sm:h-5 sm:w-5 object-contain opacity-50"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            // Fallback when neither exists
+                            <div className="h-8 w-8 sm:h-10 sm:h-10 rounded-full bg-[#22262C] ring-1 ring-gray-700 flex items-center justify-center">
+                              <img 
+                                src="/logo.svg" 
+                                alt="repo" 
+                                className="h-4 w-4 sm:h-5 sm:w-5 object-contain opacity-50"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                            </div>
                           )}
-                          {/* Priority 2: Owner profile picture */}
-                          {!iconUrl && ownerPicture && (
-                            <img 
-                              src={ownerPicture} 
-                              alt={displayName}
-                              className="h-8 w-8 sm:h-10 sm:w-10 rounded-full object-cover absolute inset-0"
-                              loading="lazy"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                              }}
-                            />
-                          )}
-                          {/* Priority 3: Nostr default / logo.svg fallback */}
-                          {!iconUrl && !ownerPicture && (
-                            <img 
-                              src="/logo.svg" 
-                              alt="repo" 
-                              className="h-8 w-8 sm:h-10 sm:w-10 rounded-full object-contain absolute inset-0 p-1"
-                              loading="lazy"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                              }}
-                            />
-                          )}
-                          {/* Final fallback: gray circle */}
-                          <span className="inline-block h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-[#22262C]" />
                         </div>
                       </div>
                       <div className="flex-1 min-w-0 min-w-[0]">
