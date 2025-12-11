@@ -8273,9 +8273,10 @@ export default function RepoCodePage({
                           // Update repo with COMPLETE REPLACEMENT from GitHub (GitHub is absolute source of truth)
                           // CRITICAL: Preserve sourceUrl from effectiveSourceUrl (from Nostr event) or existing repo
                           // This ensures bridge sync doesn't trigger for GitHub repos
+                          const updatedSourceUrl = effectiveSourceUrl || existingRepo.sourceUrl || importData.sourceUrl || "";
                           repos[repoIndex] = {
                             ...existingRepo,
-                            sourceUrl: effectiveSourceUrl || existingRepo.sourceUrl || importData.sourceUrl || "", // CRITICAL: Preserve sourceUrl to prevent bridge sync
+                            sourceUrl: updatedSourceUrl, // CRITICAL: Preserve sourceUrl to prevent bridge sync
                             files: newFiles, // COMPLETE REPLACEMENT - use GitHub files exactly as returned
                             readme: importData.readme || existingRepo.readme,
                             description: importData.description || existingRepo.description,
@@ -8294,6 +8295,34 @@ export default function RepoCodePage({
                             ...(importData.releases || (existingRepo as StoredRepo & { releases?: unknown[] }).releases ? { releases: importData.releases || (existingRepo as StoredRepo & { releases?: unknown[] }).releases || [] } : {}),
                             ...({ lastModifiedAt: Date.now() } as { lastModifiedAt: number }),
                           } as StoredRepo & { releases?: unknown[]; lastModifiedAt?: number };
+                          
+                          // CRITICAL: Update effectiveSourceUrl state immediately so button text updates
+                          if (updatedSourceUrl && (
+                            updatedSourceUrl.includes("github.com") || 
+                            updatedSourceUrl.includes("gitlab.com") || 
+                            updatedSourceUrl.includes("codeberg.org")
+                          )) {
+                            setEffectiveSourceUrl(updatedSourceUrl);
+                          }
+                          
+                          // CRITICAL: Update repoData state immediately so button text updates
+                          setRepoData((prev: any) => ({
+                            ...prev,
+                            sourceUrl: updatedSourceUrl,
+                            files: newFiles,
+                            readme: importData.readme || prev?.readme,
+                            description: importData.description || prev?.description,
+                            stars: importData.stars !== undefined ? importData.stars : prev?.stars,
+                            forks: importData.forks !== undefined ? importData.forks : prev?.forks,
+                            languages: importData.languages || prev?.languages,
+                            topics: importData.topics || prev?.topics,
+                            defaultBranch: importData.defaultBranch || prev?.defaultBranch,
+                            branches: importData.branches || prev?.branches,
+                            issues: importData.issues || prev?.issues || [],
+                            pulls: importData.pulls || prev?.pulls || [],
+                            commits: importData.commits || prev?.commits || [],
+                            links: links.length > 0 ? links : prev?.links,
+                          }));
                           
                           // CRITICAL: Also save issues, pulls, and commits to separate localStorage keys
                           if (importData.issues && Array.isArray(importData.issues) && importData.issues.length > 0) {
