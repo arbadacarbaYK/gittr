@@ -16,6 +16,7 @@ import useSession from "@/lib/nostr/useSession";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, Globe, Zap, UserPlus, UserMinus, CheckCircle2 } from "lucide-react";
+import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
 
 // Check if string is a valid Nostr pubkey (npub or hex)
 function isValidPubkey(str: string): boolean {
@@ -785,6 +786,11 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
         
         // Filter out deleted repos and local repos (if viewing someone else's profile)
         const filteredRepos = userReposList.filter((r: any) => {
+          // CRITICAL: Filter out corrupted repos FIRST (before any other checks)
+          if (isRepoCorrupted(r, r.nostrEventId || r.lastNostrEventId)) {
+            return false; // Never show corrupted repos
+          }
+          
           // Skip if locally deleted (using robust check)
           if (isRepoDeleted(r)) return false;
           
