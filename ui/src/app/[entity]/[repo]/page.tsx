@@ -5522,6 +5522,56 @@ export default function RepoCodePage({
       }
     }
 
+    // Strategy 1.5: For GitHub/GitLab/Codeberg repos, ALWAYS try source URL FIRST (before bridge)
+    // This ensures we get the latest content, not stale bridge cache
+    const sourceUrlForPriorityFetch =
+      effectiveSourceUrl ||
+      repoData?.sourceUrl ||
+      null;
+
+    if (
+      sourceUrlForPriorityFetch &&
+      (sourceUrlForPriorityFetch.includes("github.com") ||
+        sourceUrlForPriorityFetch.includes("gitlab.com") ||
+        sourceUrlForPriorityFetch.includes("codeberg.org"))
+    ) {
+      try {
+        const branchToUse =
+          selectedBranch || repoData?.defaultBranch || "main";
+        const apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+          sourceUrlForPriorityFetch
+        )}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(
+          branchToUse
+        )}`;
+        console.log(
+          `🌐 [fetchGithubRaw] Priority: Fetching from source (GitHub/GitLab/Codeberg) first: ${apiUrl}`
+        );
+        const resp = await fetch(apiUrl);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data?.content !== undefined) {
+            console.log(
+              `✅ [fetchGithubRaw] Got latest content from source for ${path}`
+            );
+            return {
+              content: data.content,
+              url: null,
+              isBinary: !!data.isBinary,
+            };
+          }
+        } else {
+          console.log(
+            `⚠️ [fetchGithubRaw] Source fetch failed ${resp.status}, will try bridge`
+          );
+        }
+      } catch (e) {
+        console.warn(
+          `⚠️ [fetchGithubRaw] Source fetch errored, will try bridge:`,
+          e
+        );
+      }
+    }
+
     // Strategy 2: Try git-nostr-bridge API
     // According to the working insights: "git-nostr-bridge is the primary method for repos that have been cloned locally"
     // Resolve ownerPubkey: check repoData, then localStorage, then decode npub, then resolveEntityToPubkey
