@@ -146,10 +146,8 @@ jobs:
         }
     }
 SIGNING_EOF
-            
             # Insert the signing config before buildTypes
             sed -i '/buildTypes {/r /tmp/signing_config.txt' app/build.gradle
-            
             # Add signingConfig to release buildType
             sed -i '/release {/,/}/ s/minifyEnabled false/signingConfig signingConfigs.release\n            minifyEnabled false/' app/build.gradle
             echo "✅ Signing config added to build.gradle"
