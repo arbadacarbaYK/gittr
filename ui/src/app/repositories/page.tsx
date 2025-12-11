@@ -1127,7 +1127,8 @@ export default function RepositoriesPage() {
             // Also remove known corrupted tides repos by event ID
             const corruptEventIds = [
               "28cd39385801bb7683e06e7489f89afff8df045a4d6fe7319d75a60341165ae2",
-              "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b"
+              "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b",
+              "1dbc5322b24b3481e5ce078349f527b04ad6251e9f0499b851d78cc9f92c4559" // Corrupted tides repo appearing for users
             ];
             const cleanedRepos = existingRepos.filter((r: any) => {
               const repoName = (r.repo || r.slug || r.name || "").toLowerCase();
@@ -2066,7 +2067,8 @@ export default function RepositoriesPage() {
             // These specific event IDs are known to be corrupted
             const corruptEventIds = [
               "28cd39385801bb7683e06e7489f89afff8df045a4d6fe7319d75a60341165ae2",
-              "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b"
+              "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b",
+              "1dbc5322b24b3481e5ce078349f527b04ad6251e9f0499b851d78cc9f92c4559" // Corrupted tides repo appearing for users
             ];
             if (isTides && ((r as any).nostrEventId && corruptEventIds.includes((r as any).nostrEventId))) {
               // Silently filter out - don't spam console for everyone
