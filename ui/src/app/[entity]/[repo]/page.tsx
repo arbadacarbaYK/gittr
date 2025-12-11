@@ -1359,10 +1359,6 @@ export default function RepoCodePage({
   // Check Nostr event for sourceUrl if missing from local repo (for button text)
   useEffect(() => {
     console.log("🔍 [effectiveSourceUrl] useEffect triggered:", { mounted, hasRepoData: !!repoData });
-    if (!mounted) {
-      console.log("🔍 [effectiveSourceUrl] Early return: not mounted");
-      return;
-    }
     
     // CRITICAL: Check multiple sources for sourceUrl in priority order:
     // 1. repoData.sourceUrl (direct field) - if repoData is available
@@ -1370,7 +1366,7 @@ export default function RepoCodePage({
     // 3. Clone URLs from localStorage repo (ALWAYS check this, even if repoData is null)
     // 4. Nostr event "source" tag - if repoData is available and it's a Nostr repo
     
-    // Priority 1: Check localStorage FIRST (works even if repoData is null)
+    // Priority 1: Check localStorage FIRST (works even if repoData is null or mounted is false)
     try {
       const repos = loadStoredRepos();
       const matchingRepo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
@@ -1413,9 +1409,10 @@ export default function RepoCodePage({
       console.warn("⚠️ [effectiveSourceUrl] Error reading from localStorage:", e);
     }
     
-    // If repoData is not available yet, wait for it
+    // If repoData is not available yet and we didn't find anything in localStorage, wait for it
+    // But if we found something in localStorage above, we already returned, so we only get here if localStorage didn't have it
     if (!repoData) {
-      console.log("🔍 [effectiveSourceUrl] repoData not available yet, waiting...");
+      console.log("🔍 [effectiveSourceUrl] repoData not available yet, and localStorage didn't have sourceUrl/clone, waiting...");
       return;
     }
     
@@ -1526,7 +1523,7 @@ export default function RepoCodePage({
       clearTimeout(timeout);
       unsub();
     };
-  }, [mounted, repoData, subscribe, defaultRelays, resolvedParams.entity, resolvedParams.repo]);
+  }, [repoData, subscribe, defaultRelays, resolvedParams.entity, resolvedParams.repo]);
   
   // Separate useEffect for file fetching - only runs when repoData is first set and files are missing
   // Use a ref to track if we've already attempted to fetch for this repo
