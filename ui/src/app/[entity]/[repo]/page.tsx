@@ -7710,12 +7710,14 @@ export default function RepoCodePage({
       <aside className="col-span-1 lg:col-span-1 xl:col-span-1 space-y-2" suppressHydrationWarning>
         <div className="flex justify-between">
           <h3 className="font-bold">About</h3>
-          <a 
-            href={getRepoLink("settings")}
-            onClick={(e) => { e.preventDefault(); window.location.href = getRepoLink("settings"); }}
-          >
-            <Settings className="text-gray-400 h-4 w-4 hover:text-purple-500 cursor-pointer" />
-          </a>
+          {isOwner && (
+            <a 
+              href={getRepoLink("settings")}
+              onClick={(e) => { e.preventDefault(); window.location.href = getRepoLink("settings"); }}
+            >
+              <Settings className="text-gray-400 h-4 w-4 hover:text-purple-500 cursor-pointer" />
+            </a>
+          )}
         </div>
         <div className="pb-2 prose prose-invert max-w-none prose-p:text-sm prose-p:text-gray-300 prose-a:text-purple-400 prose-a:no-underline hover:prose-a:underline" suppressHydrationWarning>
           {mounted && repoData?.description ? (
