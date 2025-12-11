@@ -132,20 +132,23 @@ jobs:
             # Create backup
             cp app/build.gradle app/build.gradle.bak
             
-            # Insert signingConfigs before buildTypes
-            sed -i '/buildTypes {/i\
-    signingConfigs {\
-        release {\
-            def debugKeystore = file(System.getProperty("user.home") + "/.android/debug.keystore")\
-            if (debugKeystore.exists()) {\
-                storeFile debugKeystore\
-                storePassword "android"\
-                keyAlias "androiddebugkey"\
-                keyPassword "android"\
-            }\
-        }\
-    }\
-' app/build.gradle
+            # Insert signingConfigs before buildTypes using a here-document
+            cat > /tmp/signing_config.txt << 'SIGNING_EOF'
+    signingConfigs {
+        release {
+            def debugKeystore = file(System.getProperty("user.home") + "/.android/debug.keystore")
+            if (debugKeystore.exists()) {
+                storeFile debugKeystore
+                storePassword "android"
+                keyAlias "androiddebugkey"
+                keyPassword "android"
+            }
+        }
+    }
+SIGNING_EOF
+            
+            # Insert the signing config before buildTypes
+            sed -i '/buildTypes {/r /tmp/signing_config.txt' app/build.gradle
             
             # Add signingConfig to release buildType
             sed -i '/release {/,/}/ s/minifyEnabled false/signingConfig signingConfigs.release\n            minifyEnabled false/' app/build.gradle
