@@ -126,13 +126,12 @@ jobs:
             echo "✅ Debug keystore already exists"
           fi
           
-          # Verify build.gradle has signing config (it should already be there)
-          if grep -q "signingConfigs" app/build.gradle; then
-            echo "✅ Signing config already exists in build.gradle"
-          else
-            echo "❌ ERROR: build.gradle missing signingConfigs block!"
+          # Verify app/build.gradle exists (it should after cap sync)
+          if [ ! -f app/build.gradle ]; then
+            echo "❌ ERROR: app/build.gradle not found after cap sync!"
             exit 1
           fi
+          echo "✅ app/build.gradle exists - signing will be handled by Gradle build"
 
       - name: Build APK
         working-directory: ./ui/android
