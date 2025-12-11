@@ -859,7 +859,48 @@ function ExplorePageContent() {
               repoData = parseNIP34Repository(event);
             } else {
               // gitnostr format: Parse from JSON content
-              repoData = JSON.parse(event.content);
+              // CRITICAL: Validate content is JSON before parsing
+              if (!event.content || typeof event.content !== 'string') {
+                console.warn('⚠️ [Explore] Skipping event with invalid content:', {
+                  eventId: event.id.slice(0, 8),
+                  kind: event.kind,
+                  contentLength: event.content?.length || 0
+                });
+                return;
+              }
+              
+              // Check if content looks like JSON (starts with { or [)
+              const trimmedContent = event.content.trim();
+              if (!trimmedContent.startsWith('{') && !trimmedContent.startsWith('[')) {
+                console.warn('⚠️ [Explore] Skipping event with non-JSON content:', {
+                  eventId: event.id.slice(0, 8),
+                  kind: event.kind,
+                  contentPreview: trimmedContent.slice(0, 50)
+                });
+                return;
+              }
+              
+              try {
+                repoData = JSON.parse(event.content);
+              } catch (parseError) {
+                console.warn('⚠️ [Explore] Failed to parse JSON content:', {
+                  eventId: event.id.slice(0, 8),
+                  kind: event.kind,
+                  error: parseError,
+                  contentPreview: trimmedContent.slice(0, 100)
+                });
+                return; // Skip this event
+              }
+            }
+            
+            // CRITICAL: Validate repoData has required fields
+            if (!repoData || typeof repoData !== 'object' || !repoData.repositoryName) {
+              console.warn('⚠️ [Explore] Skipping event with invalid repoData:', {
+                eventId: event.id.slice(0, 8),
+                hasRepoData: !!repoData,
+                hasRepositoryName: !!repoData?.repositoryName
+              });
+              return;
             }
             
             // GRASP-01: Parse clone, relays, topics, and contributors from event.tags
@@ -937,8 +978,26 @@ function ExplorePageContent() {
                               if (newEvent.kind === KIND_REPOSITORY_NIP34) {
                                 repoData = parseNIP34Repository(newEvent);
                               } else {
-                                repoData = JSON.parse(newEvent.content);
+                                // CRITICAL: Validate content is JSON before parsing
+                                if (!newEvent.content || typeof newEvent.content !== 'string') {
+                                  return;
+                                }
+                                const trimmedContent = newEvent.content.trim();
+                                if (!trimmedContent.startsWith('{') && !trimmedContent.startsWith('[')) {
+                                  return;
+                                }
+                                try {
+                                  repoData = JSON.parse(newEvent.content);
+                                } catch (parseError) {
+                                  return; // Skip this event
+                                }
                               }
+                              
+                              // CRITICAL: Validate repoData has required fields
+                              if (!repoData || typeof repoData !== 'object' || !repoData.repositoryName) {
+                                return;
+                              }
+                              
                               const entity = nip19.npubEncode(newEvent.pubkey);
                               const existingRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as Repo[];
                               
@@ -1027,13 +1086,14 @@ function ExplorePageContent() {
             const isDeleted = deletedRepos.some(d => {
               // Check by npub entity or by ownerPubkey (handles both formats)
               const dEntityMatch = d.entity.toLowerCase() === entity.toLowerCase();
-              if (dEntityMatch && d.repo.toLowerCase() === repoData.repositoryName.toLowerCase()) return true;
+              // CRITICAL: Check repoData.repositoryName exists before calling toLowerCase()
+              if (dEntityMatch && repoData.repositoryName && d.repo.toLowerCase() === repoData.repositoryName.toLowerCase()) return true;
               // Also check if deleted entity is npub for same pubkey
               if (d.entity.startsWith("npub")) {
                 try {
                   const dDecoded = nip19.decode(d.entity);
                   if (dDecoded.type === "npub" && (dDecoded.data as string).toLowerCase() === event.pubkey.toLowerCase()) {
-                    return d.repo.toLowerCase() === repoData.repositoryName.toLowerCase();
+                    return repoData.repositoryName && d.repo.toLowerCase() === repoData.repositoryName.toLowerCase();
                   }
                 } catch {}
               }
@@ -1186,13 +1246,26 @@ function ExplorePageContent() {
             }
             
             // CRITICAL: Final validation - entity must be valid npub format
-            if (!entity || !entity.startsWith("npub") || entity.includes("gittr.space")) {
-              console.error("❌ [Explore] Blocking repo with invalid entity from storage:", {
+            // CRITICAL: Final validation - entity must be valid npub format
+            // Also check for corrupted repos with invalid entity or missing repositoryName
+            if (!entity || !entity.startsWith("npub") || entity.includes("gittr.space") || !repoData.repositoryName) {
+              console.error("❌ [Explore] Blocking repo with invalid entity or missing repositoryName from storage:", {
+                entity,
+                repoName: repoData.repositoryName,
+                eventId: event.id.slice(0, 8),
+                hasRepositoryName: !!repoData.repositoryName
+              });
+              return; // Don't store repos with invalid entities
+            }
+            
+            // CRITICAL: Additional check - ensure entity is not a domain name
+            if (entity.includes(".") && !entity.startsWith("npub")) {
+              console.error("❌ [Explore] Blocking repo with domain name as entity:", {
                 entity,
                 repoName: repoData.repositoryName,
                 eventId: event.id.slice(0, 8)
               });
-              return; // Don't store repos with invalid entities
+              return;
             }
             
             const repo: Repo = {
