@@ -1459,70 +1459,53 @@ export default function HomePage() {
                       href={href} 
                       className="flex items-center gap-3 sm:gap-4 hover:bg-gray-800/50 rounded p-2 -m-2 cursor-pointer"
                     >
-                      {/* Show both repo icon and owner avatar when both exist */}
-                      <div className="flex-shrink-0 flex items-center gap-2">
-                        {/* Repo icon (square) - shown when available */}
-                        {iconUrl && (
-                          <div className="w-8 h-8 sm:w-10 sm:h-10 flex-shrink-0">
+                      {/* Icon priority: repo icon -> user icon -> platform default */}
+                      <div className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10">
+                        {iconUrl ? (
+                          // Priority 1: Repo icon (square)
+                          <img 
+                            src={iconUrl} 
+                            alt="repo" 
+                            className="h-8 w-8 sm:h-10 sm:h-10 rounded-sm object-contain border border-gray-700"
+                            loading="lazy"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        ) : ownerPicture ? (
+                          // Priority 2: Owner profile picture (circle)
+                          <Avatar className="h-8 w-8 sm:h-10 sm:h-10 ring-1 ring-gray-700">
+                            <AvatarImage 
+                              src={ownerPicture} 
+                              alt={displayName}
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                            <AvatarFallback className="bg-[#22262C]">
+                              <img 
+                                src="/logo.svg" 
+                                alt="platform default"
+                                className="h-full w-full object-contain p-1"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                            </AvatarFallback>
+                          </Avatar>
+                        ) : (
+                          // Priority 3: Platform default icon
+                          <div className="h-8 w-8 sm:h-10 sm:h-10 rounded-full bg-[#22262C] ring-1 ring-gray-700 flex items-center justify-center">
                             <img 
-                              src={iconUrl} 
-                              alt="repo" 
-                              className="h-8 w-8 sm:h-10 sm:h-10 rounded-sm object-contain border border-gray-700"
-                              loading="lazy"
+                              src="/logo.svg" 
+                              alt="platform default"
+                              className="h-4 w-4 sm:h-5 sm:w-5 object-contain opacity-50"
                               onError={(e) => {
                                 e.currentTarget.style.display = 'none';
                               }}
                             />
                           </div>
                         )}
-                        {/* Owner avatar (circle) - always shown if available, or as fallback */}
-                        <div className="flex-shrink-0">
-                          {ownerPicture ? (
-                            <Avatar className="h-8 w-8 sm:h-10 sm:h-10 ring-1 ring-gray-700">
-                              <AvatarImage 
-                                src={ownerPicture} 
-                                alt={displayName}
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none';
-                                }}
-                              />
-                              <AvatarFallback className="bg-[#22262C]">
-                                <img 
-                                  src="/logo.svg" 
-                                  alt="repo" 
-                                  className="h-full w-full object-contain p-1"
-                                  onError={(e) => {
-                                    e.currentTarget.style.display = 'none';
-                                  }}
-                                />
-                              </AvatarFallback>
-                            </Avatar>
-                          ) : iconUrl ? (
-                            // If we have repo icon but no owner picture, show a small placeholder
-                            <div className="h-8 w-8 sm:h-10 sm:h-10 rounded-full bg-[#22262C] ring-1 ring-gray-700 flex items-center justify-center">
-                              <img 
-                                src="/logo.svg" 
-                                alt="repo" 
-                                className="h-4 w-4 sm:h-5 sm:w-5 object-contain opacity-50"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none';
-                                }}
-                              />
-                            </div>
-                          ) : (
-                            // Fallback when neither exists
-                            <div className="h-8 w-8 sm:h-10 sm:h-10 rounded-full bg-[#22262C] ring-1 ring-gray-700 flex items-center justify-center">
-                              <img 
-                                src="/logo.svg" 
-                                alt="repo" 
-                                className="h-4 w-4 sm:h-5 sm:w-5 object-contain opacity-50"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none';
-                                }}
-                              />
-                            </div>
-                          )}
-                        </div>
                       </div>
                       <div className="flex-1 min-w-0 min-w-[0]">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
