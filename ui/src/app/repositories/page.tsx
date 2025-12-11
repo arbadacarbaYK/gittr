@@ -1010,9 +1010,17 @@ export default function RepositoriesPage() {
               return; // Skip this repo - name corruption detected
             }
             
-            // CRITICAL: Never use entity from repoData - it might be corrupted
+            // CRITICAL: Never use entity from repoData - it might be corrupted (e.g., "gittr.space")
             // Always use entity derived from event.pubkey (the actual owner)
             // Remove any entity field from repoData if it exists
+            // This prevents other Nostr clients from publishing corrupted entity values
+            if ((repoData as any).entity) {
+              console.warn("⚠️ [Repositories] Ignoring entity from repoData (using event.pubkey instead):", {
+                repoDataEntity: (repoData as any).entity,
+                correctEntity: entity,
+                eventId: event.id.slice(0, 8)
+              });
+            }
             const { entity: _, ...cleanRepoData } = repoData as any;
             
             // Merge ALL metadata from Nostr event
@@ -1090,11 +1098,18 @@ export default function RepositoriesPage() {
               // CRITICAL: Preserve existing sourceUrl if new one is not available
               // This prevents losing GitHub/GitLab/Codeberg sourceUrl when syncing from Nostr
               const preservedSourceUrl = repo.sourceUrl || existingRepos[existingIndex].sourceUrl;
+              
+              // CRITICAL: ALWAYS use entity derived from event.pubkey (never trust existing repo.entity or repoData.entity)
+              // This prevents corruption where entity might be "gittr.space" or other invalid values
+              // The entity variable is derived from event.pubkey at line 789-794, which is the authoritative source
+              const correctEntity = entity; // Always use the entity derived from event.pubkey
+              
               existingRepos[existingIndex] = { 
                 ...existingRepos[existingIndex], 
                 ...repo,
-                // CRITICAL: Ensure entity is never "gittr.space" or a domain name
-                entity: (repo.entity && repo.entity !== "gittr.space" && (repo.entity.startsWith("npub") || !repo.entity.includes("."))) ? repo.entity : entity,
+                // CRITICAL: ALWAYS overwrite entity with the one derived from event.pubkey
+                // Never preserve existing entity - it might be corrupted ("gittr.space", etc.)
+                entity: correctEntity,
                 // Preserve sourceUrl if it was set (don't overwrite with undefined)
                 sourceUrl: preservedSourceUrl,
                 // Force update ownerPubkey and contributors to fix old repos
