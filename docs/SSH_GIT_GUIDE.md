@@ -56,6 +56,27 @@ git clone nostr://alex@git.gittr.space/repo-name
 
 **Note**: Even if a repository was imported from GitHub, once it's on gittr it becomes a native gittr repository accessible via our SSH infrastructure. The `forkedFrom` metadata is just for attribution - all git operations go through gittr's servers.
 
+**⚠️ Important: Getting Files Into Your Repository**
+
+After cloning a repository, you need to **push files to it** before they appear in the web UI. The workflow is:
+
+1. **Clone the repository**: `git clone git@gittr.space:<owner-pubkey>/<repo-name>.git`
+2. **Add your files**: Copy files into the cloned directory, or create new files
+3. **Commit your changes**: `git add . && git commit -m "Initial commit"` (or your commit message)
+4. **Push to the repository**: `git push origin main` (or your branch name)
+
+**Why this is necessary**: The git-nostr-bridge stores repositories as bare Git repositories. Files only appear in the web UI after they've been committed and pushed via Git. If you create a repository through the web UI but don't push any files yet, the repository will be empty until you push your first commit.
+
+**For new repositories**:
+- Create the repository via the web UI (or import from GitHub/GitLab)
+- Clone it: `git clone git@gittr.space:<your-pubkey>/<repo-name>.git`
+- Add your files and commit: `git add . && git commit -m "Initial commit"`
+- Push: `git push origin main`
+
+**For existing repositories**:
+- Clone: `git clone git@gittr.space:<owner-pubkey>/<repo-name>.git`
+- Make changes, commit, and push as normal
+
 ### 3. Publish (Push to Nostr)
 
 1. In the repository UI click **"Push to Nostr"**.  

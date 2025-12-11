@@ -1409,77 +1409,79 @@ export default function RepoCodePage({
       console.warn("⚠️ [effectiveSourceUrl] Error reading from localStorage:", e);
     }
     
-    // If repoData is not available yet and we didn't find anything in localStorage, wait for it
-    // But if we found something in localStorage above, we already returned, so we only get here if localStorage didn't have it
-    if (!repoData) {
-      console.log("🔍 [effectiveSourceUrl] repoData not available yet, and localStorage didn't have sourceUrl/clone, waiting...");
-      return;
-    }
-    
-    // Priority 2: Check direct sourceUrl field in repoData
-    if (repoData.sourceUrl && typeof repoData.sourceUrl === "string" && (
-      repoData.sourceUrl.includes("github.com") || 
-      repoData.sourceUrl.includes("gitlab.com") || 
-      repoData.sourceUrl.includes("codeberg.org")
-    )) {
-      console.log("✅ [effectiveSourceUrl] Found sourceUrl in repoData:", repoData.sourceUrl);
-      setEffectiveSourceUrl(repoData.sourceUrl);
-      return;
-    }
-    
-    // Priority 3: Check clone URLs from repoData for GitHub/GitLab/Codeberg URLs
-    const cloneUrls = (repoData as any)?.clone;
-    if (Array.isArray(cloneUrls) && cloneUrls.length > 0) {
-      const gitHubCloneUrl = cloneUrls.find((url: string) => 
-        url && typeof url === "string" && (
-          url.includes("github.com") || 
-          url.includes("gitlab.com") || 
-          url.includes("codeberg.org")
-        )
-      );
-      if (gitHubCloneUrl) {
-        // Remove .git suffix and convert SSH to HTTPS if needed
-        let sourceUrl = gitHubCloneUrl.replace(/\.git$/, "");
-        const sshMatch = sourceUrl.match(/^git@([^:]+):(.+)$/);
-        if (sshMatch) {
-          const [, host, path] = sshMatch;
-          sourceUrl = `https://${host}/${path}`;
-        }
-        console.log("✅ [effectiveSourceUrl] Found clone URL in repoData, converted to:", sourceUrl);
-        setEffectiveSourceUrl(sourceUrl);
+    // Priority 2: Check repoData if available
+    if (repoData) {
+      // Check direct sourceUrl field in repoData
+      if (repoData.sourceUrl && typeof repoData.sourceUrl === "string" && (
+        repoData.sourceUrl.includes("github.com") || 
+        repoData.sourceUrl.includes("gitlab.com") || 
+        repoData.sourceUrl.includes("codeberg.org")
+      )) {
+        console.log("✅ [effectiveSourceUrl] Found sourceUrl in repoData:", repoData.sourceUrl);
+        setEffectiveSourceUrl(repoData.sourceUrl);
         return;
+      }
+      
+      // Check clone URLs from repoData for GitHub/GitLab/Codeberg URLs
+      const cloneUrls = (repoData as any)?.clone;
+      if (Array.isArray(cloneUrls) && cloneUrls.length > 0) {
+        const gitHubCloneUrl = cloneUrls.find((url: string) => 
+          url && typeof url === "string" && (
+            url.includes("github.com") || 
+            url.includes("gitlab.com") || 
+            url.includes("codeberg.org")
+          )
+        );
+        if (gitHubCloneUrl) {
+          // Remove .git suffix and convert SSH to HTTPS if needed
+          let sourceUrl = gitHubCloneUrl.replace(/\.git$/, "");
+          const sshMatch = sourceUrl.match(/^git@([^:]+):(.+)$/);
+          if (sshMatch) {
+            const [, host, path] = sshMatch;
+            sourceUrl = `https://${host}/${path}`;
+          }
+          console.log("✅ [effectiveSourceUrl] Found clone URL in repoData, converted to:", sourceUrl);
+          setEffectiveSourceUrl(sourceUrl);
+          return;
+        }
       }
     }
     
-    // Priority 3: Query Nostr event for "source" tag (only if we have subscribe/relays)
-    // CRITICAL: Don't set to null if we don't have subscribe/relays - clone URLs might be in repoData
-    // Only query Nostr if we don't have clone URLs yet
+    // Priority 3: Query Nostr event for "source" tag (CRITICAL: Works even if localStorage is empty!)
+    // This ensures users can refetch from source even if they lost localStorage
     if (!subscribe || !defaultRelays || defaultRelays.length === 0) {
-      // If we already checked clone URLs above and didn't find any, keep null
-      // Otherwise, don't set to null - wait for repoData to be updated with clone URLs from Nostr event
-      console.log("🔍 [effectiveSourceUrl] No subscribe/relays, skipping Nostr query");
+      console.log("🔍 [effectiveSourceUrl] No subscribe/relays, cannot query Nostr");
       return;
     }
     
-    const isNostrRepo = (repoData as any)?.syncedFromNostr || (repoData as any)?.lastNostrEventId || (repoData as any)?.nostrEventId;
-    if (!isNostrRepo) {
-      console.log("🔍 [effectiveSourceUrl] Not a Nostr repo, setting to null");
-      setEffectiveSourceUrl(null);
+    // Resolve ownerPubkey from entity (works even if repoData is not available)
+    let ownerPubkey: string | null = null;
+    if (resolvedParams.entity.startsWith("npub")) {
+      try {
+        const decoded = nip19.decode(resolvedParams.entity);
+        if (decoded.type === "npub" && /^[0-9a-f]{64}$/i.test(decoded.data as string)) {
+          ownerPubkey = decoded.data as string;
+        }
+      } catch (e) {
+        console.warn("⚠️ [effectiveSourceUrl] Failed to decode npub:", e);
+      }
+    } else if (/^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
+      ownerPubkey = resolvedParams.entity;
+    }
+    
+    // Fallback to repoData.ownerPubkey if available
+    if (!ownerPubkey && repoData?.ownerPubkey && /^[0-9a-f]{64}$/i.test(repoData.ownerPubkey)) {
+      ownerPubkey = repoData.ownerPubkey;
+    }
+    
+    if (!ownerPubkey) {
+      console.log("🔍 [effectiveSourceUrl] Cannot resolve ownerPubkey, cannot query Nostr");
       return;
     }
     
-    const ownerPubkey = repoData.ownerPubkey || (resolvedParams.entity.startsWith("npub") 
-      ? (nip19.decode(resolvedParams.entity).data as string)
-      : resolvedParams.entity);
-    const repoName = repoData.repo || repoData.slug || resolvedParams.repo;
+    const repoName = repoData?.repo || repoData?.slug || resolvedParams.repo;
     
-    if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-      console.log("🔍 [effectiveSourceUrl] Invalid ownerPubkey, setting to null");
-      setEffectiveSourceUrl(null);
-      return;
-    }
-    
-    console.log("🔍 [effectiveSourceUrl] Querying Nostr for source URL:", { ownerPubkey: ownerPubkey.slice(0, 16) + "...", repoName });
+    console.log("🔍 [effectiveSourceUrl] Querying Nostr for source URL (even if localStorage is empty):", { ownerPubkey: ownerPubkey.slice(0, 16) + "...", repoName });
     
     // Query Nostr for sourceUrl
     const timeout = setTimeout(() => {
