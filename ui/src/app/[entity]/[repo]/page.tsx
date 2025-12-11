@@ -7678,14 +7678,54 @@ export default function RepoCodePage({
                         rehypePlugins={[rehypeRaw]}
                         components={{
                           p: ({ node, children, ...props }: any) => {
-                            // Check if paragraph only contains block-level elements (like our wrapped images)
-                            // If so, render as div to avoid invalid HTML (<p><div>...</div></p>)
-                            const hasBlockChildren = node?.children?.some((child: any) => 
-                              child.type === 'element' && 
-                              (child.tagName === 'div' || child.tagName === 'iframe' || child.tagName === 'img')
-                            );
+                            // Check if paragraph contains block-level elements
+                            // ReactMarkdown sometimes wraps code blocks in paragraphs, which creates invalid HTML
+                            const hasBlockChildren = node?.children?.some((child: any) => {
+                              if (child.type !== 'element') return false;
+                              // Check for block-level tags
+                              if (child.tagName === 'div' || child.tagName === 'iframe' || child.tagName === 'img' || child.tagName === 'pre') {
+                                return true;
+                              }
+                              // Check if it's a code element that will be rendered as a block (non-inline)
+                              // Block code has className with language- prefix or is wrapped in pre
+                              if (child.tagName === 'code') {
+                                const className = child.properties?.className || '';
+                                // Block code typically has language- class or is in a pre tag
+                                if (typeof className === 'string' && (className.includes('language-') || className.includes('hljs'))) {
+                                  return true;
+                                }
+                                // Check if it's the only child and has no inline siblings (likely block code)
+                                const siblings = node?.children || [];
+                                if (siblings.length === 1 && siblings[0] === child) {
+                                  return true; // Single code element in paragraph is likely block code
+                                }
+                              }
+                              return false;
+                            });
                             
-                            if (hasBlockChildren) {
+                            // Also check React children for block-level components
+                            const childrenArray = Array.isArray(children) ? children : [children];
+                            const hasBlockReactChildren = childrenArray.some((child: any) => {
+                              if (!child || typeof child !== 'object') return false;
+                              // Check if it's CopyableCodeBlock with inline=false (renders as div/pre)
+                              if (child.type && (child.type.name === 'CopyableCodeBlock' || child.type.displayName === 'CopyableCodeBlock')) {
+                                // Check props to see if it's non-inline
+                                if (child.props && child.props.inline === false) {
+                                  return true;
+                                }
+                                // If inline is undefined, assume it's block code (default behavior)
+                                if (child.props && child.props.inline === undefined) {
+                                  return true;
+                                }
+                              }
+                              // Check if it's a div or pre element
+                              if (child.type === 'div' || child.type === 'pre') {
+                                return true;
+                              }
+                              return false;
+                            });
+                            
+                            if (hasBlockChildren || hasBlockReactChildren) {
                               return <div {...props}>{children}</div>;
                             }
                             
