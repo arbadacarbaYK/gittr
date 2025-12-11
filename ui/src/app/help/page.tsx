@@ -474,7 +474,7 @@ export default function HelpPage() {
             <div className="mt-4 pt-4 border-t border-gray-700">
               <p className="text-sm text-gray-400 mb-2">For complete documentation on SSH and Git operations:</p>
               <a 
-                href="https://github.com/arbadacarbaYK/gittr/blob/main/docs/SSH_GIT_GUIDE.md" 
+                href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FSSH_GIT_GUIDE.md" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-purple-400 hover:text-purple-300 underline text-sm"
@@ -783,9 +783,15 @@ export default function HelpPage() {
               <h3 className="text-lg font-semibold text-white mb-2">Documentation</h3>
               <ul className="space-y-2">
                 <li>
+                  <a href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 flex items-center gap-2">
+                    <Github className="h-4 w-4" />
+                    gittr.space Repository
+                  </a>
+                </li>
+                <li>
                   <a href="https://github.com/arbadacarbaYK/gittr" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 flex items-center gap-2">
                     <Github className="h-4 w-4" />
-                    GitHub Repository
+                    GitHub Mirror
                   </a>
                 </li>
                 <li>
