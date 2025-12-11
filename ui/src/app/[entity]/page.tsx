@@ -324,6 +324,11 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
         // Find ALL repos where user is involved: owner, contributor, can merge, or forked
         // CRITICAL: Must find ALL repos where this user has any role, not just owner
         const userReposList = repos.filter((r: any) => {
+          // CRITICAL: Filter out corrupted repos FIRST (before any other checks)
+          if (isRepoCorrupted(r, r.nostrEventId || r.lastNostrEventId)) {
+            return false; // Never show corrupted repos
+          }
+          
           if (!r.entity || r.entity === "user") return false;
           
           // Helper to check if pubkey matches entityParam
