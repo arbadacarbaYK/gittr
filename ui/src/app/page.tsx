@@ -18,6 +18,7 @@ import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
 import { nip19 } from "nostr-tools";
 import { ZapButton } from "@/components/ui/zap-button";
 import { loadStoredRepos } from "@/lib/repos/storage";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 // Parse NIP-34 repository announcement format
 function parseNIP34Repository(event: any): any {
