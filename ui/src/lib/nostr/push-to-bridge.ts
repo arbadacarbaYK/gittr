@@ -42,9 +42,21 @@ export async function pushFilesToBridge({
 
     clearTimeout(timeoutId);
 
+    // Check content type before parsing JSON
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      const text = await response.text();
+      console.error("❌ [Bridge Push] API returned non-JSON response:", {
+        status: response.status,
+        contentType,
+        preview: text.substring(0, 200),
+      });
+      throw new Error(`Bridge API returned HTML instead of JSON (status: ${response.status}). The endpoint may not exist or returned an error page.`);
+    }
+
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error || "Bridge push failed");
+      throw new Error(data.error || `Bridge push failed (status: ${response.status})`);
     }
 
     try {

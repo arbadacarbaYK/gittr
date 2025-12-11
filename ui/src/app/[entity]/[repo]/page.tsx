@@ -8774,9 +8774,12 @@ export default function RepoCodePage({
                                 repoOwnerPubkey ||
                                 entityPubkey ||
                                 (repo.ownerPubkey ? repo.ownerPubkey.toLowerCase() : null);
+                              // CRITICAL: Don't bridge sync if repo has sourceUrl (GitHub/GitLab/Codeberg)
+                              // Check both local repo sourceUrl AND effectiveSourceUrl (from Nostr event)
+                              const hasAnySourceUrl = repo.sourceUrl || effectiveSourceUrl;
                               const shouldAutoBridge =
                                 repoIsOwnerFlag &&
-                                !repo.sourceUrl &&
+                                !hasAnySourceUrl &&
                                 bridgeOwnerPubkey &&
                                 result.filesForBridge &&
                                 result.filesForBridge.length > 0;
