@@ -69,6 +69,7 @@ import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { fetchFilesFromMultipleSources, parseGitSource, type FetchStatus } from "@/lib/utils/git-source-fetcher";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { getActivities } from "@/lib/activity-tracking";
+import { validateRepoForForkOrSign } from "@/lib/utils/repo-corruption-check";
 import {
   loadStoredRepos,
   saveStoredRepos,
@@ -9085,6 +9086,14 @@ export default function RepoCodePage({
                               return e.returnValue;
                             };
                             window.addEventListener("beforeunload", beforeUnloadHandler);
+                            
+                            // CRITICAL: Validate repo before pushing (prevent signing corrupted repos)
+                            const validation = validateRepoForForkOrSign(repo);
+                            if (!validation.valid) {
+                              alert(`Cannot push corrupted repository: ${validation.error}`);
+                              setIsPushing(false);
+                              return;
+                            }
                             
                             // Track progress messages for user feedback
                             const progressMessages: string[] = [];

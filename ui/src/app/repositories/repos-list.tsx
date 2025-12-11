@@ -11,6 +11,7 @@ import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
 import { pushFilesToBridge } from "@/lib/nostr/push-to-bridge";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { isOwner } from "@/lib/repo-permissions";
+import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
 // resolveRepoIcon is defined locally below
 
 interface ReposListProps {
@@ -341,6 +342,11 @@ export function ReposList({
   
   // Filter, sort, and deduplicate repos (use filteredRepos from above)
   const filtered = filteredRepos.filter(r => {
+    // CRITICAL: Filter out corrupted repos FIRST (before any other checks)
+    if (isRepoCorrupted(r, (r as any).nostrEventId || (r as any).lastNostrEventId)) {
+      return false; // Never show corrupted repos
+    }
+    
     // CRITICAL: Filter out deleted repos FIRST (before ownership checks)
     if (isRepoDeleted(r)) return false;
     

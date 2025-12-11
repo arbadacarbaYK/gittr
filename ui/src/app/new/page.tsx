@@ -9,6 +9,7 @@ import { nip19 } from "nostr-tools";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { loadStoredRepos, type StoredRepo } from "@/lib/repos/storage";
 import { publishWithConfirmation, storeRepoEventId } from "@/lib/nostr/publish-with-confirmation";
+import { validateRepoForForkOrSign } from "@/lib/utils/repo-corruption-check";
 
 function slugify(text: string): string {
   // CRITICAL: Normalize repo names for NEW repos to URL-safe format
@@ -295,6 +296,16 @@ function NewRepoPageContent() {
         });
         // If forking, copy source repo files/readme/metadata
         const isFork = !!(forkEntity && forkRepo && forkSource);
+        
+        // CRITICAL: Validate source repo before forking (prevent forking corrupted repos)
+        if (isFork && forkSource) {
+          const validation = validateRepoForForkOrSign(forkSource);
+          if (!validation.valid) {
+            setStatus(`Error: Cannot fork corrupted repository. ${validation.error}`);
+            return;
+          }
+        }
+        
         // Ensure owner is ALWAYS in contributors array with pubkey for icon resolution
         let contributors: Array<{pubkey?: string; name?: string; picture?: string; weight: number; githubLogin?: string}> = [];
         
