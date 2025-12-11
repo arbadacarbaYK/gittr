@@ -1164,6 +1164,37 @@ function ExplorePageContent() {
               contributors: contributors.filter(c => c.role === "contributor" || (c.weight > 0 && c.weight < 50)).length,
             });
             
+            // CRITICAL: Validate BEFORE creating repo object
+            // Check for known corrupted tides repos by event ID
+            const corruptEventIds = [
+              "28cd39385801bb7683e06e7489f89afff8df045a4d6fe7319d75a60341165ae2",
+              "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b",
+              "1dbc5322b24b3481e5ce078349f527b04ad6251e9f0499b851d78cc9f92c4559"
+            ];
+            
+            const repoName = repoData.repositoryName?.toLowerCase() || "";
+            const isTides = repoName === "tides";
+            
+            // CRITICAL: Never store known corrupted tides repos
+            if (isTides && corruptEventIds.includes(event.id)) {
+              console.error("❌ [Explore] Blocking corrupted tides repo from storage:", {
+                eventId: event.id,
+                repoName: repoData.repositoryName,
+                ownerPubkey: event.pubkey.slice(0, 8)
+              });
+              return; // Don't store this corrupted repo
+            }
+            
+            // CRITICAL: Final validation - entity must be valid npub format
+            if (!entity || !entity.startsWith("npub") || entity.includes("gittr.space")) {
+              console.error("❌ [Explore] Blocking repo with invalid entity from storage:", {
+                entity,
+                repoName: repoData.repositoryName,
+                eventId: event.id.slice(0, 8)
+              });
+              return; // Don't store repos with invalid entities
+            }
+            
             const repo: Repo = {
               slug: repoData.repositoryName,
               entity: entity, // CRITICAL: Use npub format (GRASP protocol standard)
