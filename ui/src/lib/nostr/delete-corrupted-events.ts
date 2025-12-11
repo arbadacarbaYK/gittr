@@ -72,6 +72,11 @@ export async function createDeletionEvent(
  * 
  * WARNING: This only works if you have the private key that published the original events.
  * If the events were published by someone else, you cannot delete them.
+ * 
+ * Alternative: If you don't have the original keys, you can:
+ * 1. Contact relay operators to manually remove the events
+ * 2. Publish updated repository events with deleted: true (if you're the owner)
+ * 3. Rely on client-side filtering (which we've already implemented)
  */
 export async function deleteCorruptedTidesRepos(
   publish: (event: any, relays: string[]) => void,
@@ -83,12 +88,16 @@ export async function deleteCorruptedTidesRepos(
     errors: [] as string[]
   };
   
+  console.log("🗑️ Attempting to delete corrupted tides repos from Nostr relays...");
+  console.log("⚠️  Note: This only works if you have the private key that published the original events");
+  console.log("⚠️  If you don't have the keys, these events will remain on relays but won't be stored locally");
+  
   for (const eventId of CORRUPTED_TIDES_EVENT_IDS) {
     try {
-      console.log(`🗑️ Creating deletion event for corrupted tides repo: ${eventId.slice(0, 8)}...`);
+      console.log(`\n🗑️ Creating deletion event for corrupted tides repo: ${eventId.slice(0, 8)}...`);
       const deletionEvent = await createDeletionEvent(eventId);
       
-      console.log(`📤 Publishing deletion event to relays...`);
+      console.log(`📤 Publishing deletion event to ${defaultRelays.length} relay(s)...`);
       publish(deletionEvent, defaultRelays);
       
       results.success++;
@@ -98,21 +107,22 @@ export async function deleteCorruptedTidesRepos(
       const errorMsg = `Failed to delete ${eventId.slice(0, 8)}...: ${error.message}`;
       results.errors.push(errorMsg);
       console.error(`❌ ${errorMsg}`, error);
+      
+      if (error.message.includes("No signing method") || error.message.includes("private key")) {
+        console.error("💡 This event was likely published by someone else. You cannot delete it.");
+        console.error("💡 Options:");
+        console.error("   1. Contact relay operators to manually remove the event");
+        console.error("   2. Rely on client-side filtering (already implemented)");
+        console.error("   3. If you're the owner, publish an updated event with deleted: true");
+      }
     }
   }
   
+  console.log(`\n📊 Deletion results: ${results.success} succeeded, ${results.failed} failed`);
+  if (results.errors.length > 0) {
+    console.log("❌ Errors:", results.errors);
+  }
+  
   return results;
-}
-
-/**
- * Make this available in browser console for manual cleanup
- */
-if (typeof window !== "undefined") {
-  (window as any).deleteCorruptedTidesRepos = async () => {
-    const { useNostrContext } = await import("../lib/nostr/NostrContext");
-    // This would need to be called from a component that has access to NostrContext
-    console.log("💡 To use this, you need to call it from a component with NostrContext access");
-    console.log("💡 Or use the deleteCorruptedTidesRepos function directly with publish and defaultRelays");
-  };
 }
 
