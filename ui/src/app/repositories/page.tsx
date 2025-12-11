@@ -1197,23 +1197,25 @@ export default function RepositoriesPage() {
               
               // CRITICAL: Never store known corrupted tides repos
               if (isTides && corruptEventIds.includes(event.id)) {
-                console.error("❌ [Repositories] Blocking corrupted tides repo from storage:", {
-                  eventId: event.id,
-                  repoName: repoData.repositoryName,
-                  ownerPubkey: event.pubkey.slice(0, 8)
-                });
+                // Suppress console error - this is expected behavior for known corrupted repos
+                // console.error("❌ [Repositories] Blocking corrupted tides repo from storage:", {
+                //   eventId: event.id,
+                //   repoName: repoData.repositoryName,
+                //   ownerPubkey: event.pubkey.slice(0, 8)
+                // });
                 return; // Don't store this corrupted repo
               }
               
               // CRITICAL: For "tides" repos, only store if they belong to the current user
               // This prevents storing corrupted tides repos that appear for everyone
               if (isTides && pubkey && event.pubkey.toLowerCase() !== pubkey.toLowerCase()) {
-                console.error("❌ [Repositories] Blocking tides repo that doesn't belong to current user:", {
-                  eventId: event.id.slice(0, 8),
-                  repoName: repoData.repositoryName,
-                  eventOwner: event.pubkey.slice(0, 8),
-                  currentUser: pubkey.slice(0, 8)
-                });
+                // Suppress console error - this is expected behavior to prevent corruption
+                // console.error("❌ [Repositories] Blocking tides repo that doesn't belong to current user:", {
+                //   eventId: event.id.slice(0, 8),
+                //   repoName: repoData.repositoryName,
+                //   eventOwner: event.pubkey.slice(0, 8),
+                //   currentUser: pubkey.slice(0, 8)
+                // });
                 return; // Don't store tides repos that don't belong to current user
               }
               
@@ -1388,20 +1390,24 @@ export default function RepositoriesPage() {
           
           // Make deleteCorruptedTidesRepos and findCorruptedEventPublishers available if user has publish and defaultRelays
           if (publish && defaultRelays && defaultRelays.length > 0) {
-            import("../lib/nostr/delete-corrupted-events").then(({ deleteCorruptedTidesRepos }) => {
+            import("@/lib/nostr/delete-corrupted-events").then(({ deleteCorruptedTidesRepos }) => {
               (window as any).deleteCorruptedTidesRepos = () => {
                 return deleteCorruptedTidesRepos(publish, defaultRelays);
               };
               console.log("💡 Run deleteCorruptedTidesRepos() in console to publish NIP-09 deletion events for corrupted tides repos");
               console.log("⚠️  WARNING: This only works if you have the private key that published the original events");
               console.log("⚠️  If events were published by someone else, you cannot delete them - contact relay operators");
+            }).catch((e) => {
+              console.warn("Failed to load delete-corrupted-events utility:", e);
             });
             
-            import("../lib/nostr/find-corrupted-event-publisher").then(({ findCorruptedEventPublishers }) => {
+            import("@/lib/nostr/find-corrupted-event-publisher").then(({ findCorruptedEventPublishers }) => {
               (window as any).findCorruptedEventPublishers = () => {
                 return findCorruptedEventPublishers(defaultRelays);
               };
               console.log("💡 Run findCorruptedEventPublishers() in console to find who published the corrupted tides events");
+            }).catch((e) => {
+              console.warn("Failed to load find-corrupted-event-publisher utility:", e);
             });
           }
         } catch (e) {
