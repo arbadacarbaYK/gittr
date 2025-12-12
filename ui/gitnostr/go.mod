@@ -1,4 +1,4 @@
-module github.com/spearson78/gitnostr
+module github.com/arbadacarbaYK/gitnostr
 
 go 1.20
 

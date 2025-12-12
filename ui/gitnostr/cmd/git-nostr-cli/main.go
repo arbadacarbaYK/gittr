@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/nbd-wtf/go-nostr"
-	"github.com/spearson78/gitnostr"
+	"github.com/arbadacarbaYK/gitnostr"
 )
 
 func advertiseRelays(pool *nostr.RelayPool, relays []string) {

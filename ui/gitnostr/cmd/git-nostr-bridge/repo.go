@@ -13,9 +13,9 @@ import (
 	"strings"
 
 	"github.com/nbd-wtf/go-nostr"
-	"github.com/spearson78/gitnostr"
-	"github.com/spearson78/gitnostr/bridge"
-	"github.com/spearson78/gitnostr/protocol"
+	"github.com/arbadacarbaYK/gitnostr"
+	"github.com/arbadacarbaYK/gitnostr/bridge"
+	"github.com/arbadacarbaYK/gitnostr/protocol"
 )
 
 func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) error {
