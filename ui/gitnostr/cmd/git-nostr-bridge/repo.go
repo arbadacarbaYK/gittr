@@ -190,12 +190,31 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 		// Fallback: Create empty bare repository
 		log.Printf("📦 [Bridge] Creating empty bare repository: %s\n", repoName+".git")
 		cmd := exec.Command("git", "init", "--bare", repoName+".git")
-			cmd.Dir = repoParentPath
+		cmd.Dir = repoParentPath
 
-			err = cmd.Run()
+		err = cmd.Run()
+		if err != nil {
+			return fmt.Errorf("git init --bare failed : %w", err)
+		}
+
+		// CRITICAL: Set HEAD to "main" branch so git clone works properly
+		// This ensures empty repos can be cloned and pushed to immediately
+		// Without this, git clone may fail or create a repo with no default branch
+		headCmd := exec.Command("git", "--git-dir", repoPath, "symbolic-ref", "HEAD", "refs/heads/main")
+		err = headCmd.Run()
+		if err != nil {
+			// If main fails, try master (some systems default to master)
+			headCmd = exec.Command("git", "--git-dir", repoPath, "symbolic-ref", "HEAD", "refs/heads/master")
+			err = headCmd.Run()
 			if err != nil {
-				return fmt.Errorf("git init --bare failed : %w", err)
+				log.Printf("⚠️ [Bridge] Warning: Failed to set HEAD for empty repo %s: %v\n", repoName, err)
+				// Continue anyway - repo is created, user can set branch on first push
+			} else {
+				log.Printf("✅ [Bridge] Set HEAD to master for empty repo: %s\n", repoName)
 			}
+		} else {
+			log.Printf("✅ [Bridge] Set HEAD to main for empty repo: %s\n", repoName)
+		}
 	}
 
 	return nil

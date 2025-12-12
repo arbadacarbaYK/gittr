@@ -432,29 +432,19 @@ export default function RepositoriesPage() {
     try {
       let list = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as Repo[];
       
-      // CRITICAL: Clean up corrupted repos on page load
-      const corruptEventIds = [
-        "28cd39385801bb7683e06e7489f89afff8df045a4d6fe7319d75a60341165ae2",
-        "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b",
-        "1dbc5322b24b3481e5ce078349f527b04ad6251e9f0499b851d78cc9f92c4559"
-      ];
-      
+      // CRITICAL: Clean up corrupted repos on page load using general corruption check
       const beforeCount = list.length;
       list = list.filter((r: any) => {
-        const repoName = (r.repo || r.slug || r.name || "").toLowerCase();
-        const isTides = repoName === "tides";
+        const repoForValidation = {
+          repositoryName: r.repositoryName || r.repo || r.slug || r.name || "",
+          entity: r.entity || "",
+          ownerPubkey: (r as any).ownerPubkey || ""
+        };
         
-        // Remove known corrupted tides repos by event ID
-        if (isTides && ((r as any).nostrEventId && corruptEventIds.includes((r as any).nostrEventId))) {
-          return false;
-        }
-        if (isTides && ((r as any).lastNostrEventId && corruptEventIds.includes((r as any).lastNostrEventId))) {
-          return false;
-        }
+        const eventId = (r as any).nostrEventId || (r as any).lastNostrEventId;
         
-        // CRITICAL: For "tides" repos, only keep if they belong to the current user
-        if (isTides && pubkey && (r as any).ownerPubkey && (r as any).ownerPubkey.toLowerCase() !== pubkey.toLowerCase()) {
-          return false; // Remove tides repos that don't belong to current user
+        if (isRepoCorrupted(repoForValidation, eventId)) {
+          return false; // Remove corrupted repos
         }
         
         // Remove if entity is "gittr.space" or not npub format
@@ -1184,49 +1174,16 @@ export default function RepositoriesPage() {
                 ...(repoData.earliestUniqueCommit || (existingRepos[existingIndex] as any)?.earliestUniqueCommit ? { earliestUniqueCommit: repoData.earliestUniqueCommit || (existingRepos[existingIndex] as any)?.earliestUniqueCommit } : {}),
               };
             } else {
-              // New repo - validate BEFORE storing
-              // CRITICAL: Check for known corrupted tides repos by event ID
-              const corruptEventIds = [
-                "28cd39385801bb7683e06e7489f89afff8df045a4d6fe7319d75a60341165ae2",
-                "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b",
-                "1dbc5322b24b3481e5ce078349f527b04ad6251e9f0499b851d78cc9f92c4559"
-              ];
+              // New repo - validate BEFORE storing using general corruption check
+              const repoForValidation = {
+                repositoryName: repoData.repositoryName,
+                entity: entity,
+                ownerPubkey: event.pubkey
+              };
               
-              const repoName = repoData.repositoryName?.toLowerCase() || "";
-              const isTides = repoName === "tides";
-              
-              // CRITICAL: Never store known corrupted tides repos
-              if (isTides && corruptEventIds.includes(event.id)) {
-                // Suppress console error - this is expected behavior for known corrupted repos
-                // console.error("❌ [Repositories] Blocking corrupted tides repo from storage:", {
-                //   eventId: event.id,
-                //   repoName: repoData.repositoryName,
-                //   ownerPubkey: event.pubkey.slice(0, 8)
-                // });
-                return; // Don't store this corrupted repo
-              }
-              
-              // CRITICAL: For "tides" repos, only store if they belong to the current user
-              // This prevents storing corrupted tides repos that appear for everyone
-              if (isTides && pubkey && event.pubkey.toLowerCase() !== pubkey.toLowerCase()) {
-                // Suppress console error - this is expected behavior to prevent corruption
-                // console.error("❌ [Repositories] Blocking tides repo that doesn't belong to current user:", {
-                //   eventId: event.id.slice(0, 8),
-                //   repoName: repoData.repositoryName,
-                //   eventOwner: event.pubkey.slice(0, 8),
-                //   currentUser: pubkey.slice(0, 8)
-                // });
-                return; // Don't store tides repos that don't belong to current user
-              }
-              
-              // CRITICAL: Final validation - entity must be valid npub format
-              if (!entity || !entity.startsWith("npub") || entity.includes("gittr.space")) {
-                console.error("❌ [Repositories] Blocking repo with invalid entity from storage:", {
-                  entity,
-                  repoName: repoData.repositoryName,
-                  eventId: event.id.slice(0, 8)
-                });
-                return; // Don't store repos with invalid entities
+              if (isRepoCorrupted(repoForValidation, event.id)) {
+                // Silently reject - don't spam console for corrupted repos
+                return; // Don't store corrupted repos
               }
               
               // Store with event ID and created_at
@@ -1241,62 +1198,23 @@ export default function RepositoriesPage() {
               existingRepos.push(newRepo);
             }
             
-            // CRITICAL: Clean up repos with invalid entity formats and known corrupted repos
-            // Remove repos with "gittr.space" entity (the specific corruption bug)
-            // Also remove repos with entity that's not npub format (domain names, etc.)
-            // Also remove known corrupted tides repos by event ID
-            const corruptEventIds = [
-              "28cd39385801bb7683e06e7489f89afff8df045a4d6fe7319d75a60341165ae2",
-              "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b",
-              "1dbc5322b24b3481e5ce078349f527b04ad6251e9f0499b851d78cc9f92c4559" // Corrupted tides repo appearing for users
-            ];
+            // CRITICAL: Clean up corrupted repos using general corruption check
             const cleanedRepos = existingRepos.filter((r: any) => {
-              const repoName = (r.repo || r.slug || r.name || "").toLowerCase();
-              const isTides = repoName === "tides";
+              // Use general corruption check - no special handling for specific repo names
+              const repoForValidation = {
+                repositoryName: r.repositoryName || r.repo || r.slug || r.name || "",
+                entity: r.entity || "",
+                ownerPubkey: (r as any).ownerPubkey || ""
+              };
               
-              // Remove known corrupted tides repos by event ID (silently - no console spam)
-              if (isTides && ((r as any).nostrEventId && corruptEventIds.includes((r as any).nostrEventId))) {
-                // Silently remove - don't spam console for everyone
-                return false; // Remove known corrupted repos
-              }
-              if (isTides && ((r as any).lastNostrEventId && corruptEventIds.includes((r as any).lastNostrEventId))) {
-                // Silently remove - don't spam console for everyone
-                return false; // Remove known corrupted repos
-              }
+              const eventId = (r as any).nostrEventId || (r as any).lastNostrEventId;
               
-              // CRITICAL: For "tides" repos, only keep if they belong to the current user
-              // This prevents corrupted tides repos from appearing in "my repositories"
-              if (isTides && pubkey && (r as any).ownerPubkey && (r as any).ownerPubkey.toLowerCase() !== pubkey.toLowerCase()) {
+              if (isRepoCorrupted(repoForValidation, eventId)) {
                 // Silently remove - don't spam console
-                return false; // Remove tides repos that don't belong to current user
-              }
-              
-              // Remove if entity is exactly "gittr.space" (the known corruption)
-              if (r.entity === "gittr.space") {
-                console.error("❌ [Repositories] Removing repo with corrupted entity 'gittr.space':", {
-                  entity: r.entity,
-                  repo: repoName,
-                  ownerPubkey: (r as any).ownerPubkey?.slice(0, 16),
-                  nostrEventId: (r as any).nostrEventId?.slice(0, 16),
-                  lastNostrEventId: (r as any).lastNostrEventId?.slice(0, 16),
-                  syncedFromNostr: r.syncedFromNostr
-                });
                 return false; // Remove corrupted repos
               }
               
-              // Remove if entity is not npub format (domain names, etc. are invalid)
-              // Entity MUST be npub format (starts with "npub") - this is the GRASP protocol standard
-              if (r.entity && !r.entity.startsWith("npub")) {
-                console.error("❌ [Repositories] Removing repo with invalid entity format (not npub):", {
-                  entity: r.entity,
-                  repo: repoName,
-                  ownerPubkey: (r as any).ownerPubkey?.slice(0, 16),
-                  nostrEventId: (r as any).nostrEventId?.slice(0, 16)
-                });
-                return false; // Remove repos with invalid entity format
-              }
-              
-              return true; // Keep repos with valid npub entity
+              return true;
             });
             
             // Log how many were removed
@@ -2221,44 +2139,18 @@ export default function RepositoriesPage() {
           
           // Filter, sort, and deduplicate repos
           const filtered = repos.filter((r: Repo) => {
-            const repoName = (r.repo || r.slug || r.name || "").toLowerCase();
-            const isTides = repoName === "tides";
+            // CRITICAL: Exclude corrupted repos using general corruption check
+            const repoForValidation = {
+              repositoryName: r.repositoryName || r.repo || r.slug || r.name || "",
+              entity: r.entity || "",
+              ownerPubkey: (r as any).ownerPubkey || ""
+            };
             
-            // CRITICAL: Exclude known corrupted tides repos by event ID
-            // These specific event IDs are known to be corrupted
-            const corruptEventIds = [
-              "28cd39385801bb7683e06e7489f89afff8df045a4d6fe7319d75a60341165ae2",
-              "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b",
-              "1dbc5322b24b3481e5ce078349f527b04ad6251e9f0499b851d78cc9f92c4559" // Corrupted tides repo appearing for users
-            ];
-            if (isTides && ((r as any).nostrEventId && corruptEventIds.includes((r as any).nostrEventId))) {
-              // Silently filter out - don't spam console for everyone
-              return false; // Always exclude known corrupted repos
-            }
-            if (isTides && ((r as any).lastNostrEventId && corruptEventIds.includes((r as any).lastNostrEventId))) {
-              // Silently filter out - don't spam console for everyone
-              return false; // Always exclude known corrupted repos
-            }
+            const eventId = (r as any).nostrEventId || (r as any).lastNostrEventId;
             
-            // CRITICAL: Exclude repos with "gittr.space" entity FIRST (before any other checks)
-            // These are corrupted repos that should never exist
-            if (r.entity === "gittr.space") {
-              console.log("❌ [Repositories] Filtering out corrupted repo with entity 'gittr.space':", {
-                repo: repoName,
-                ownerPubkey: (r as any).ownerPubkey?.slice(0, 16)
-              });
-              return false; // Always exclude - these are corrupted
-            }
-            
-            // CRITICAL: Entity must be npub format (starts with "npub")
-            // Domain names are NOT valid entities
-            if (!r.entity || !r.entity.startsWith("npub")) {
-              console.log("❌ [Repositories] Filtering out repo with invalid entity format:", {
-                repo: repoName,
-                entity: r.entity,
-                ownerPubkey: (r as any).ownerPubkey?.slice(0, 16)
-              });
-              return false; // Only npub format is valid
+            if (isRepoCorrupted(repoForValidation, eventId)) {
+              // Silently filter out - don't spam console
+              return false; // Always exclude corrupted repos
             }
             
             // CRITICAL: Filter out duplicate/corrupted tides repos
