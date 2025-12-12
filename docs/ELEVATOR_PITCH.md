@@ -14,6 +14,8 @@ We're building the first truly decentralized Git hosting platform on Nostr—the
 
 - **Self-hostable**: Like Git itself, you can run gittr yourself. Deploy your own bridge, run your own relay, or use the hosted version—your choice. The code is open source, so you're never locked in.
 
+- **Feature-rich platform**: Unlike other Nostr Git clients that are CLI-focused and lack proper authentication, gittr brings a full-featured web platform. We combine all sources—GitHub, GitLab, Codeberg, and the Nostr cloud—into one unified experience with proper key management, web UI, and collaboration tools.
+
 - **GRASP network participation**: Repositories sync across multiple git servers automatically. Clone from any GRASP-compatible server—redundancy built-in.
 
 - **Future monetization**: We're planning a marketplace where developers can sell software packages and premium repositories directly, with Bitcoin Lightning payments. No middleman, no platform fees.
