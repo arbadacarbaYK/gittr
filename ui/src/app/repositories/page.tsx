@@ -2141,7 +2141,7 @@ export default function RepositoriesPage() {
           const filtered = repos.filter((r: Repo) => {
             // CRITICAL: Exclude corrupted repos using general corruption check
             const repoForValidation = {
-              repositoryName: r.repositoryName || r.repo || r.slug || r.name || "",
+              repositoryName: (r as any).repositoryName || r.repo || r.slug || r.name || "",
               entity: r.entity || "",
               ownerPubkey: (r as any).ownerPubkey || ""
             };
