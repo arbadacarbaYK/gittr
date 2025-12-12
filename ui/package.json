@@ -29,7 +29,7 @@
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.122.0",
     "mermaid": "^11.12.1",
-    "next": "^15.5.7",
+    "next": "^15.5.9",
     "node-fetch": "^3.3.1",
     "nostr-relaypool": "^0.5.5",
     "nostr-tools": "^1.7.4",
