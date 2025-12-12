@@ -9,6 +9,7 @@ import { getRepoOwnerPubkey, getEntityDisplayName } from "@/lib/utils/entity-res
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { nip19 } from "nostr-tools";
 import { loadStoredRepos } from "@/lib/repos/storage";
+import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
 
 // Parse NIP-34 repository announcement format
 // NIP-34 uses tags for metadata, content is empty
@@ -999,6 +1000,19 @@ function ExplorePageContent() {
                               }
                               
                               const entity = nip19.npubEncode(newEvent.pubkey);
+                              
+                              // CRITICAL: Validate BEFORE storing - use general corruption check
+                              const repoForValidation = {
+                                repositoryName: repoData.repositoryName,
+                                entity: entity,
+                                ownerPubkey: newEvent.pubkey
+                              };
+                              
+                              if (isRepoCorrupted(repoForValidation, newEvent.id)) {
+                                // Silently reject - don't spam console for corrupted repos
+                                return; // Don't store corrupted repos
+                              }
+                              
                               const existingRepos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as Repo[];
                               
                               // Check if deleted
@@ -1224,48 +1238,16 @@ function ExplorePageContent() {
               contributors: contributors.filter(c => c.role === "contributor" || (c.weight > 0 && c.weight < 50)).length,
             });
             
-            // CRITICAL: Validate BEFORE creating repo object
-            // Check for known corrupted tides repos by event ID
-            const corruptEventIds = [
-              "28cd39385801bb7683e06e7489f89afff8df045a4d6fe7319d75a60341165ae2",
-              "68ad8ad9152dfa6788c988c6ed2bc47b34ae30c71ad7f7c0ab7c0f46248f0e0b",
-              "1dbc5322b24b3481e5ce078349f527b04ad6251e9f0499b851d78cc9f92c4559"
-            ];
+            // CRITICAL: Validate BEFORE creating repo object - use general corruption check
+            const repoForValidation = {
+              repositoryName: repoData.repositoryName,
+              entity: entity,
+              ownerPubkey: event.pubkey
+            };
             
-            const repoName = repoData.repositoryName?.toLowerCase() || "";
-            const isTides = repoName === "tides";
-            
-            // CRITICAL: Never store known corrupted tides repos
-            if (isTides && corruptEventIds.includes(event.id)) {
-              console.error("❌ [Explore] Blocking corrupted tides repo from storage:", {
-                eventId: event.id,
-                repoName: repoData.repositoryName,
-                ownerPubkey: event.pubkey.slice(0, 8)
-              });
-              return; // Don't store this corrupted repo
-            }
-            
-            // CRITICAL: Final validation - entity must be valid npub format
-            // CRITICAL: Final validation - entity must be valid npub format
-            // Also check for corrupted repos with invalid entity or missing repositoryName
-            if (!entity || !entity.startsWith("npub") || entity.includes("gittr.space") || !repoData.repositoryName) {
-              console.error("❌ [Explore] Blocking repo with invalid entity or missing repositoryName from storage:", {
-                entity,
-                repoName: repoData.repositoryName,
-                eventId: event.id.slice(0, 8),
-                hasRepositoryName: !!repoData.repositoryName
-              });
-              return; // Don't store repos with invalid entities
-            }
-            
-            // CRITICAL: Additional check - ensure entity is not a domain name
-            if (entity.includes(".") && !entity.startsWith("npub")) {
-              console.error("❌ [Explore] Blocking repo with domain name as entity:", {
-                entity,
-                repoName: repoData.repositoryName,
-                eventId: event.id.slice(0, 8)
-              });
-              return;
+            if (isRepoCorrupted(repoForValidation, event.id)) {
+              // Silently reject - don't spam console for corrupted repos
+              return; // Don't store corrupted repos
             }
             
             const repo: Repo = {
