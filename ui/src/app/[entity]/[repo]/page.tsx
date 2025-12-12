@@ -156,17 +156,17 @@ export default function RepoCodePage({
     if ((repoData as any)?.ownerPubkey && typeof (repoData as any).ownerPubkey === "string") {
       setRepoOwnerPubkey((repoData as any).ownerPubkey.toLowerCase());
     } else if (mounted) {
-      try {
-        const repos = loadStoredRepos();
+    try {
+      const repos = loadStoredRepos();
         const match = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
-        if (match?.ownerPubkey && typeof match.ownerPubkey === "string") {
+      if (match?.ownerPubkey && typeof match.ownerPubkey === "string") {
           setRepoOwnerPubkey(match.ownerPubkey.toLowerCase());
         } else {
           setRepoOwnerPubkey(null);
-        }
-      } catch {
-        setRepoOwnerPubkey(null);
       }
+    } catch {
+        setRepoOwnerPubkey(null);
+    }
     }
   }, [repoData?.ownerPubkey, resolvedParams.entity, decodedRepo, mounted]);
 
@@ -216,9 +216,9 @@ export default function RepoCodePage({
   useEffect(() => {
     if (mounted) {
       try {
-        const repos = loadStoredRepos();
+    const repos = loadStoredRepos();
         const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
-        if (repo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)) {
+    if (repo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)) {
           ownerPubkeysStableRef.current = [repo.ownerPubkey];
         }
       } catch {
@@ -575,7 +575,7 @@ export default function RepoCodePage({
     if (!resolvedParams?.entity || !currentUserPubkey) return false;
     
     try {
-          const repos = loadStoredRepos();
+      const repos = loadStoredRepos();
           const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
           
           // CRITICAL: Check if repo is corrupted BEFORE displaying
@@ -589,8 +589,8 @@ export default function RepoCodePage({
             router.push("/404");
             return;
           }
-          
-          if (repo) {
+      
+      if (repo) {
         // Priority 1: Check resolvedOwnerPubkey (set by Nostr query if missing)
         if (resolvedOwnerPubkey && resolvedOwnerPubkey === currentUserPubkey) return true;
         
@@ -7166,10 +7166,10 @@ export default function RepoCodePage({
               <div className="flex items-center gap-4 text-gray-400 text-xs">
                 <Tooltip content={`Total number of files in this repository: ${repoData?.files ? repoData.files.filter(f => f.type === "file").length : 0}`}>
                   <span className="hover:text-purple-500 flex items-center gap-1 cursor-help">
-                    <History className="h-4 w-4" />
-                    <span className="hidden sm:inline">
-                      {repoData?.files ? repoData.files.filter(f => f.type === "file").length : 0} files
-                    </span>
+                  <History className="h-4 w-4" />
+                  <span className="hidden sm:inline">
+                    {repoData?.files ? repoData.files.filter(f => f.type === "file").length : 0} files
+                  </span>
                   </span>
                 </Tooltip>
               </div>
@@ -7561,12 +7561,12 @@ export default function RepoCodePage({
                       }
 
                       // Use CopyableCodeBlock for all code blocks
-                      return (
+                        return (
                         <CopyableCodeBlock 
                           inline={inline} 
                           className={inline ? "bg-gray-900 px-1 rounded text-green-400" : className || "bg-gray-900 rounded p-4 overflow-x-auto"}
                         >
-                          {children}
+                              {children}
                         </CopyableCodeBlock>
                       );
                     },
@@ -8241,12 +8241,12 @@ export default function RepoCodePage({
         <div className="flex justify-between">
           <h3 className="font-bold">About</h3>
           {mounted && isOwner && (
-            <a 
-              href={getRepoLink("settings")}
-              onClick={(e) => { e.preventDefault(); window.location.href = getRepoLink("settings"); }}
-            >
-              <Settings className="text-gray-400 h-4 w-4 hover:text-purple-500 cursor-pointer" />
-            </a>
+          <a 
+            href={getRepoLink("settings")}
+            onClick={(e) => { e.preventDefault(); window.location.href = getRepoLink("settings"); }}
+          >
+            <Settings className="text-gray-400 h-4 w-4 hover:text-purple-500 cursor-pointer" />
+          </a>
           )}
         </div>
         <div className="pb-2 prose prose-invert max-w-none prose-p:text-sm prose-p:text-gray-300 prose-a:text-purple-400 prose-a:no-underline hover:prose-a:underline" suppressHydrationWarning>
@@ -8483,9 +8483,9 @@ export default function RepoCodePage({
                 repoData.sourceUrl.includes("codeberg.org")
               )) ||
               (repo.sourceUrl && typeof repo.sourceUrl === "string" && (
-                repo.sourceUrl.includes("github.com") || 
-                repo.sourceUrl.includes("gitlab.com") || 
-                repo.sourceUrl.includes("codeberg.org")
+              repo.sourceUrl.includes("github.com") || 
+              repo.sourceUrl.includes("gitlab.com") || 
+              repo.sourceUrl.includes("codeberg.org")
               )) ||
               hasCloneUrl
             );
@@ -9372,7 +9372,7 @@ export default function RepoCodePage({
                                 // Only first event published (shouldn't happen with the fix, but handle gracefully)
                                 alert(`⚠️ Repository partially published.\n\nEvent ID: ${result.eventId?.slice(0, 16)}...\n\nSecond signature may not have completed. Please try pushing again.\n\nPage will reload.`);
                               }
-                              
+
                               // Reload page data after push + bridge sync
                               window.location.reload();
                             } else {
