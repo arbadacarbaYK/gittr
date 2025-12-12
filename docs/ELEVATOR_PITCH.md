@@ -4,7 +4,7 @@
 
 **"Imagine if GitHub never went down, your code lived forever, and you owned it completely. That's gittr.space."**
 
-We're building the first truly decentralized Git hosting platform on Nostr—the same protocol powering the censorship-resistant social network. When GitHub had those outages last month, thousands of developers couldn't push code. With gittr, your repositories live on a distributed network of relays. Even if one goes down, your code is still accessible.
+We're building the first truly decentralized Git hosting platform on Nostr—the same protocol powering the censorship-resistant social network. When GitHub had those outages last month, thousands of developers couldn't push and users ccode. With gittr, your repositories live on a distributed network of relays. Even if one goes down, your code is still accessible.
 
 **Here's what makes us different:**
 
@@ -47,14 +47,20 @@ We're building the first truly decentralized Git hosting platform on Nostr—the
 ### Differentiation
 - **vs GitHub**: Decentralized, never goes down, you own your data
 - **vs GitLab**: No single point of failure, censorship-resistant
-- **vs Codeberg**: Built on Nostr protocol, integrated with Lightning payments
-- **vs self-hosted**: Automatic backup across network, no server management
+- **vs Codeberg**: Built on Nostr protocol, integrated with Lightning payments, automatic network backup
+- **vs self-hosted Git server**: 
+  - No server management—your repos are automatically backed up across the Nostr network
+  - No single point of failure—if your server dies, your code lives on
+  - No maintenance burden—relays handle the infrastructure
+  - Automatic redundancy—repos sync across multiple GRASP servers
+  - Built-in discoverability—your repos are part of a global network
+  - Lightning payments built-in—no need to set up payment infrastructure
 
 ---
 
 ## 30-Second Version (Fast)
 
-**"gittr.space is decentralized Git hosting on Nostr. When GitHub goes down, your code doesn't. Your repositories live across thousands of relays—you own them, they're backed up automatically, and they can't be censored. We're building the infrastructure for self-sovereign software development, with a future marketplace for paid repos and packages. It's open source, part of the Nostr community, and ready for the next generation of developers who want true ownership of their code."**
+**"gittr.space is decentralized Git hosting on Nostr. When GitHub goes down, your code doesn't. Your repositories live across thousands of relays—you own them, they're backed up automatically, and they can't be censored. Unlike running your own Git server, there's no maintenance—the network handles redundancy. Unlike Codeberg, your repos are part of a global distributed network with built-in Lightning payments. We're building the infrastructure for self-sovereign software development, with a future marketplace for paid repos and packages. It's open source, part of the Nostr community, and ready for the next generation of developers who want true ownership without the server management headache."**
 
 ---
 
@@ -64,11 +70,15 @@ We're building the first truly decentralized Git hosting platform on Nostr—the
 
 **"When GitHub had those outages recently, thousands of developers were stuck. With gittr, even if one relay goes down, your code is still accessible from dozens of others. It's self-sovereign hosting—you own your repositories completely, and they're automatically backed up in what we call the 'Nostr cloud.'"**
 
+**"Why not just run your own Git server? Because you'd have to manage backups, deal with downtime, handle security updates, and maintain infrastructure. With gittr, the network handles all of that. Your repos are automatically replicated across multiple GRASP servers—no server management required."**
+
+**"Why not Codeberg? Codeberg is great, but it's still centralized. If Codeberg goes down or gets blocked, you're stuck. With gittr, your code exists across thousands of Nostr relays worldwide. Plus, we have built-in Lightning payments for bounties and future paid repos—no need to set up separate payment infrastructure."**
+
 **"We're not a traditional company seeking VC funding. We're part of the open source Nostr community, building infrastructure for developers who want true ownership. We participate in the GRASP network, so repositories sync across multiple git servers automatically."**
 
 **"The future is exciting: we're planning a marketplace where developers can sell software packages and premium repositories directly, with Bitcoin Lightning payments—no middleman, no platform fees. The Nostr ecosystem is growing fast, and we're bringing Git to that network."**
 
-**"It's open source, censorship-resistant, and ready for developers who want to build without depending on a single corporation. Visit gittr.space to see it in action."**
+**"It's open source, censorship-resistant, and ready for developers who want to build without depending on a single corporation or managing their own infrastructure. Visit gittr.space to see it in action."**
 
 ---
 
