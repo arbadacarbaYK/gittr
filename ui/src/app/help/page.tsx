@@ -389,15 +389,15 @@ export default function HelpPage() {
                 <div>
                   <p className="text-sm font-semibold text-blue-300 mb-1">Option B: HTTPS (GRASP git servers)</p>
                   <code className="block bg-[#0a0d11] p-2 rounded text-sm">
-                    git clone https://relay.ngit.dev/&lt;owner-pubkey&gt;/repo-name.git
+                    git clone https://git.gittr.space/&lt;owner-pubkey&gt;/repo-name.git
                   </code>
-                  <p className="mt-1 text-xs text-gray-400">Read-only clones from our public mirrors (relay.ngit.dev, gitnostr.com, ngit-relay.nostrver.se, ...). Great for CI/CD or quick testing.</p>
+                  <p className="mt-1 text-xs text-gray-400">Read-only clones from our public mirrors (git.gittr.space, gitnostr.com, relay.ngit.dev, ngit-relay.nostrver.se, ...). Great for CI/CD or quick testing.</p>
                 </div>
                 
                 <div>
                   <p className="text-sm font-semibold text-purple-400 mb-1">Option C: nostr:// Protocol (Ecosystem Standard)</p>
                   <code className="block bg-[#0a0d11] p-2 rounded text-sm">
-                    git clone nostr://yourname@relay.ngit.dev/repo-name
+                    git clone nostr://yourname@git.gittr.space/repo-name
                   </code>
                   <p className="mt-1 text-xs text-gray-400">
                     Requires <code className="bg-gray-800 px-1 rounded">git-remote-nostr</code>. This helper translates <code className="bg-gray-800 px-1 rounded">nostr://</code> URLs into standard Git fetches and is used by other NIP-34 clients.
@@ -455,7 +455,7 @@ export default function HelpPage() {
               <h3 className="text-lg font-semibold text-white mb-2">Push to Nostr</h3>
               <p>After making local changes, click "Push to Nostr" in your repository settings to publish updates.</p>
               <p className="mt-2 text-sm text-gray-400">
-                We sign the NIP‑34 event, publish it to your relays, and sync the Git repo to relay.ngit.dev/gittr.space automatically. Only small metadata files live inside the Nostr event; the real Git objects stay on the bridge.
+                We sign the NIP‑34 event, publish it to your relays, and sync the Git repo to git.gittr.space automatically. Only small metadata files live inside the Nostr event; the real Git objects stay on the bridge.
               </p>
               <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded">
                 <p className="text-sm text-blue-200 font-semibold mb-1">📦 File Content During Push</p>
