@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/spearson78/gitnostr"
+	"github.com/arbadacarbaYK/gitnostr"
 	_ "modernc.org/sqlite"
 )
 

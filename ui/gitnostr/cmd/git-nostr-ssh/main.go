@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/spearson78/gitnostr"
-	"github.com/spearson78/gitnostr/bridge"
+	"github.com/arbadacarbaYK/gitnostr"
+	"github.com/arbadacarbaYK/gitnostr/bridge"
 )
 
 func isReadAllowed(rights *string) bool {

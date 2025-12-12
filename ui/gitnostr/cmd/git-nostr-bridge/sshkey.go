@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/nbd-wtf/go-nostr"
-	"github.com/spearson78/gitnostr"
-	"github.com/spearson78/gitnostr/bridge"
+	"github.com/arbadacarbaYK/gitnostr"
+	"github.com/arbadacarbaYK/gitnostr/bridge"
 )
 
 func updateAuthorizedKeys(db *sql.DB) error {

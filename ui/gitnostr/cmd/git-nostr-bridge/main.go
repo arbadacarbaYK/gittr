@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/nbd-wtf/go-nostr"
-	"github.com/spearson78/gitnostr"
-	"github.com/spearson78/gitnostr/bridge"
-	"github.com/spearson78/gitnostr/protocol"
+	"github.com/arbadacarbaYK/gitnostr"
+	"github.com/arbadacarbaYK/gitnostr/bridge"
+	"github.com/arbadacarbaYK/gitnostr/protocol"
 )
 
 // min returns the minimum of two integers
