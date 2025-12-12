@@ -39,9 +39,11 @@ Unlike centralized platforms, there's no single point of failure. Repositories p
 - **Storage**: Bare Git repositories on GRASP servers, metadata in Nostr events
 - **Authentication**: NIP-07 browser extensions, NIP-46 remote signers, or stored keys
 - **Payments**: Bitcoin Lightning integration via LNURL (fiatjaf's protocol), LNbits (Ben Arc's infrastructure), and NWC for zaps and bounties
-  - **Zaps**: Lightning payments directly to repositories (supports open source developers)
-  - **Bounties**: Issue-based funding for features (creates a job market for developers)
-  - **Future**: Paid repositories and software packages
+  - **Zaps**: Lightning payments directly to repositories—enables direct support for open source developers
+  - **Bounties**: Issue-based funding for features via LNURL-withdraw—creates a job market for developers
+    - Developers can fund features they need or work on bounties from others
+    - Addresses a key pain point: open source developers need sustainable income
+  - **Future**: Paid repositories and software packages with Lightning payments
 
 ### Key Differentiators
 
