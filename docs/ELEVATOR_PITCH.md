@@ -101,7 +101,7 @@ Unlike centralized platforms, there's no single point of failure. Repositories p
 ### Decentralization
 - Repositories announced via Nostr events (kind 30617)
 - State tracked via replaceable events (kind 30618)
-- Files stored on GRASP-compatible git servers
+- Files stored on GRASP-compatible git servers (fiatjaf's protocol)
 - Automatic replication across relay network
 - No single point of failure
 
@@ -120,16 +120,26 @@ Unlike centralized platforms, there's no single point of failure. Repositories p
 
 ### Authentication & Security
 - NIP-07 browser extensions (Flamingo, nos2x-fox, Alby)
-- NIP-46 remote signers (LNbits, Nowser, Bunker)
+- NIP-46 remote signers (LNbits—Ben Arc's infrastructure, Nowser, Bunker)
 - Encrypted key storage (optional password protection)
 - SSH key management via Nostr events (kind 52)
+
+### Payments & Developer Economics
+- **LNURL integration** (fiatjaf's protocol): Enables seamless Lightning payments
+- **Zaps to repos**: Direct support for open source developers
+- **Bounty system**: Issue-based funding creates a job market
+  - Developers can fund features they need
+  - Developers can work on bounties from others
+  - Addresses the critical need: open source developers need sustainable income
+- **Future marketplace**: Paid repos and packages with Lightning payments
 
 ## Future Roadmap
 
 **Marketplace**: Paid repositories and software packages with Bitcoin Lightning payments
 - Direct peer-to-peer payments—no platform fees
-- LNURL-withdraw links for bounties (already implemented)
+- LNURL-withdraw links for bounties (already implemented via fiatjaf's protocol)
 - Future: Paid private repos, installable packages
+- Addresses critical need: sustainable income for open source developers
 
 **Network Growth**: Participate in GRASP network expansion
 - More GRASP servers = more redundancy
