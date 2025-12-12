@@ -131,7 +131,9 @@ export function RepoQRShare({ repoUrl, repoName, onClose }: RepoQRShareProps) {
 
   const shareToTelegram = () => {
     // Telegram automatically adds the URL as a link preview, so we only include descriptive text
+    // Don't include the URL in text - Telegram will add it automatically from the url parameter
     const text = encodeURIComponent(`📦 ${repoName}\n\nBuilt on Nostr ⚡`);
+    // Use only the url parameter - Telegram will create the link preview automatically
     window.open(`https://t.me/share/url?url=${encodeURIComponent(fullUrl)}&text=${text}`, "_blank");
   };
 
@@ -139,72 +141,22 @@ export function RepoQRShare({ repoUrl, repoName, onClose }: RepoQRShareProps) {
     setSharing(true);
 
     try {
-      // Try to use user's key first, fallback to system npub if available
-      let usePubkey = pubkey;
-      let usePrivateKey: string | null = null;
-      
-      if (pubkey) {
-        // User is logged in - use their key
-        usePrivateKey = typeof window !== "undefined" ? await getNostrPrivateKey() : null;
-        if (!usePrivateKey) {
-          // User is logged in but no private key - try system npub
-          usePubkey = null;
-        }
-      }
-      
-      // Fallback to system npub if user not logged in or no private key
-      if (!usePubkey || !usePrivateKey) {
-        const systemNpub = process.env.NEXT_PUBLIC_SYSTEM_NPUB;
-        const systemNsec = process.env.NEXT_PUBLIC_SYSTEM_NSEC;
-        
-        if (systemNsec) {
-          try {
-            // Decode nsec (handles both nsec1... and hex formats)
-            if (systemNsec.startsWith("nsec1")) {
-              const decoded = nip19.decode(systemNsec);
-              usePrivateKey = decoded.data as string;
-            } else {
-              // Assume hex format
-              usePrivateKey = systemNsec;
-            }
-            
-            // Derive pubkey from private key
-            if (usePrivateKey) {
-              usePubkey = getPublicKey(usePrivateKey);
-            }
-            
-            // If npub is also provided, use it for verification (but derive from nsec for signing)
-            if (systemNpub && systemNpub.startsWith("npub1")) {
-              const decodedNpub = nip19.decode(systemNpub);
-              const expectedPubkey = decodedNpub.data as string;
-              if (usePubkey !== expectedPubkey) {
-                console.warn("System npub doesn't match nsec-derived pubkey. Using derived pubkey.");
-              }
-            }
-          } catch (e) {
-            console.error("Failed to decode system nsec:", e);
-            usePrivateKey = null;
-            usePubkey = null;
-          }
-        } else if (systemNpub) {
-          // Only npub provided (no private key) - can't sign, but could be used for other purposes
-          alert("System npub configured but no private key. Cannot share without signing. Please log in or configure system nsec.");
-          setSharing(false);
-          return;
-        }
-        
-        if (!usePubkey || !usePrivateKey) {
-          alert("Please log in to share on Nostr, or configure NEXT_PUBLIC_SYSTEM_NSEC in environment variables.");
-          setSharing(false);
-          return;
-        }
+      // Check if user is logged in
+      if (!pubkey) {
+        alert("Please log in to share on Nostr.");
+        setSharing(false);
+        return;
       }
 
+      // Check for NIP-07 extension first (user's own key via extension)
+      const hasNip07 = typeof window !== "undefined" && window.nostr;
+      let signedEvent: any;
+      
       // Create a Kind 1 note with the repo link
       const noteContent = `📦 ${repoName}\n\n${fullUrl}\n\n#gittr #nostr`;
       
-      // Create and sign the event
-      const event = {
+      // Create the event
+      const event: any = {
         kind: 1,
         created_at: Math.floor(Date.now() / 1000),
         tags: [
@@ -213,18 +165,42 @@ export function RepoQRShare({ repoUrl, repoName, onClose }: RepoQRShareProps) {
           ["r", fullUrl],
         ],
         content: noteContent,
-        pubkey: usePubkey,
+        pubkey: pubkey,
         id: "",
         sig: "",
       };
       
       event.id = getEventHash(event);
-      event.sig = signEvent(event, usePrivateKey);
+
+      // Sign with NIP-07 (user's own key) or private key
+      if (hasNip07 && window.nostr) {
+        // Use NIP-07 extension - user signs with their own key
+        try {
+          signedEvent = await window.nostr.signEvent(event);
+        } catch (signError: any) {
+          if (signError.message?.includes("cancel") || signError.message?.includes("reject") || signError.message?.includes("User rejected")) {
+            // User canceled - don't show error
+            setSharing(false);
+            return;
+          }
+          throw signError;
+        }
+      } else {
+        // Fallback to private key if available
+        const privateKey = typeof window !== "undefined" ? await getNostrPrivateKey() : null;
+        if (!privateKey) {
+          alert("Please log in with NIP-07 extension or configure a private key to share on Nostr.");
+          setSharing(false);
+          return;
+        }
+        event.sig = signEvent(event, privateKey);
+        signedEvent = event;
+      }
 
       // Publish to relays
       if (publish && defaultRelays && defaultRelays.length > 0) {
         try {
-          publish(event, defaultRelays);
+          publish(signedEvent, defaultRelays);
           setShared(true);
           setTimeout(() => {
             setShared(false);
