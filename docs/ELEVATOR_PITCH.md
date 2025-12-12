@@ -14,8 +14,9 @@
 **Ecosystem**: Hundreds of thousands of active users. Major applications: social networks (Damus, Primal), decentralized marketplaces, Git hosting.
 
 **Notable contributors:**
-- **Ben Arc**: LNbits creator (Lightning wallet infrastructure)
-- **fiatjaf**: LNURL creator (Lightning payment protocol), GRASP protocol developer
+- **Ben Arc**: LNbits creator (Lightning wallet infrastructure) - [Nostr Profile](https://njump.to/npub1zfwrn5gnl9gml2lnr8kmarqdsd9yle7l5rvv84prz0ghjq8nerrs73sl0t)
+- **fiatjaf**: LNURL creator (Lightning payment protocol), GRASP protocol developer - [Nostr Profile](https://njump.to/npub1yvwvq8q9jhy6xg5xvg7v8n5v8k8v8k8v8k8v8k8v8k8v8k8v8k)
+- **Jack Dorsey**: Twitter/Square founder, 2022 bounty sponsor for GitHub replacement on Nostr - [Nostr Profile](https://njump.to/npub102q7y9wzcms5erwgkeh8sqqsja03q0nqqdfqgwf39pgfgkcz65ysll2um3)
 
 ## Core Value Proposition
 
