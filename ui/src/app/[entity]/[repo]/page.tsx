@@ -7385,10 +7385,10 @@ export default function RepoCodePage({
                         </>
                       )}
                 </div>
-                <div className="hidden col-span-2 sm:block pl-4">
+                <div className="hidden col-span-2 sm:block pl-4 min-w-0">
                       {it.type === "file" ? (
                         <button
-                          className="hover:text-purple-500 hover:underline cursor-pointer text-gray-400 truncate"
+                          className="hover:text-purple-500 hover:underline cursor-pointer text-gray-400 truncate block max-w-full"
                           onClick={(e) => {
                             e.preventDefault();
                             openFile(it.path);
@@ -7400,12 +7400,13 @@ export default function RepoCodePage({
                         </button>
                       ) : it.type === "dir" ? (
                         <button
-                          className="hover:text-purple-500 hover:underline cursor-pointer text-gray-400"
+                          className="hover:text-purple-500 hover:underline cursor-pointer text-gray-400 truncate block max-w-full"
                           onClick={(e) => {
                             e.preventDefault();
                             setCurrentPath(it.path);
                             updateURL({ path: it.path });
                           }}
+                          title={it.path}
                         >
                           {it.path}/
                         </button>

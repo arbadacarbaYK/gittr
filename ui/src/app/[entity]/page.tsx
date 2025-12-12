@@ -1638,35 +1638,35 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
                   href={website.startsWith('http') ? website : `https://${website}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-purple-400 hover:text-purple-300 text-sm"
+                  className="flex items-center gap-2 text-purple-400 hover:text-purple-300 text-sm min-w-0"
                 >
-                  <Globe className="w-4 h-4" />
-                  <span>{website.replace(/^https?:\/\//, '')}</span>
-                  <ExternalLink className="w-3 h-3" />
+                  <Globe className="w-4 h-4 shrink-0" />
+                  <span className="truncate max-w-[200px] sm:max-w-none">{website.replace(/^https?:\/\//, '')}</span>
+                  <ExternalLink className="w-3 h-3 shrink-0" />
                 </a>
               )}
               {(lud16 || lnurl) && (
-                <div className="flex items-center gap-2 text-yellow-400 text-sm">
-                  <Zap className="w-4 h-4" />
-                  <span>Lightning: {lud16 || lnurl}</span>
+                <div className="flex items-center gap-2 text-yellow-400 text-sm min-w-0">
+                  <Zap className="w-4 h-4 shrink-0" />
+                  <span className="truncate max-w-[200px] sm:max-w-none">Lightning: {lud16 || lnurl}</span>
                 </div>
               )}
               {displayPubkey && (
-                <div className="flex items-center gap-2 text-gray-400 text-xs font-mono">
-                  <span>npub: {displayPubkey}</span>
+                <div className="flex items-center gap-2 text-gray-400 text-xs font-mono min-w-0 max-w-full">
+                  <span className="truncate max-w-[150px] sm:max-w-[300px]">npub: {displayPubkey}</span>
                   <a 
                     href={`https://nostr.com/${displayPubkey}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-purple-400 hover:text-purple-300"
+                    className="text-purple-400 hover:text-purple-300 shrink-0"
                   >
                     <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
               )}
               {fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta) && (
-                <div className="flex items-center gap-2 text-gray-400 text-xs font-mono">
-                  <span>pubkey: {fullPubkeyForMeta}</span>
+                <div className="flex items-center gap-2 text-gray-400 text-xs font-mono min-w-0 max-w-full">
+                  <span className="truncate max-w-[150px] sm:max-w-[300px]">pubkey: {fullPubkeyForMeta}</span>
                 </div>
               )}
             </div>
