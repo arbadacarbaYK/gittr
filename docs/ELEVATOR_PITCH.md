@@ -1,10 +1,29 @@
 # gittr.space - Technical Overview & Positioning
 
+## What is Nostr?
+
+**Nostr (Notes and Other Stuff Transmitted by Relays) is a decentralized protocol for social networking and data transmission.** Unlike traditional platforms, Nostr has no central servers—data is stored across a distributed network of relays. Users control their identity through cryptographic key pairs, and content persists across multiple relays automatically.
+
+**Key characteristics:**
+- **Decentralized**: No single point of failure or control
+- **Censorship-resistant**: Content replicated across thousands of relays
+- **Open protocol**: Anyone can run a relay or build a client
+- **Cryptographic identity**: Users own their identity via key pairs (npub/nsec)
+- **Event-based**: Data transmitted as signed events (JSON objects)
+
+**Nostr ecosystem growth**: Hundreds of thousands of active users, with major applications including social networks (Damus, Primal), decentralized marketplaces, and now Git hosting.
+
+**Notable Nostr founders/contributors:**
+- **Ben Arc**: Creator of LNbits (Lightning wallet infrastructure), active in Nostr development
+- **fiatjaf**: Brazilian protocol developer, creator of LNURL (Lightning payment protocol), major contributor to Nostr protocol development and GRASP (Git Relay and Storage Protocol)
+
 ## Core Value Proposition
 
 **gittr.space is a decentralized Git hosting platform built on Nostr (NIP-34). Repositories are announced via Nostr events and stored on GRASP-compatible git servers, with automatic replication across the relay network.**
 
 Unlike centralized platforms, there's no single point of failure. Repositories persist across thousands of Nostr relays, making them resilient to outages, censorship, and takedowns.
+
+**Historical context**: In 2022, Jack Dorsey (Twitter/Square founder) announced a bounty for building a GitHub replacement on Nostr. This bounty remains active. gittr.space represents the fulfillment of that vision—a fully functional GitHub alternative built on Nostr, leveraging foundational work from DanConwayDev (ngit) and fiatjaf (GRASP protocol).
 
 ## Technical Architecture
 
@@ -19,7 +38,10 @@ Unlike centralized platforms, there's no single point of failure. Repositories p
 - **Backend**: Go-based git-nostr-bridge service (self-hostable)
 - **Storage**: Bare Git repositories on GRASP servers, metadata in Nostr events
 - **Authentication**: NIP-07 browser extensions, NIP-46 remote signers, or stored keys
-- **Payments**: Bitcoin Lightning integration (LNbits, LNURL, NWC) for zaps and bounties
+- **Payments**: Bitcoin Lightning integration via LNURL (fiatjaf's protocol), LNbits (Ben Arc's infrastructure), and NWC for zaps and bounties
+  - **Zaps**: Lightning payments directly to repositories (supports open source developers)
+  - **Bounties**: Issue-based funding for features (creates a job market for developers)
+  - **Future**: Paid repositories and software packages
 
 ### Key Differentiators
 
@@ -51,11 +73,13 @@ Unlike centralized platforms, there's no single point of failure. Repositories p
 - Repository creation, import, and management
 - Git operations (clone, push, pull) via SSH and HTTPS
 - Issue tracking and pull requests
-- Bitcoin Lightning bounties
+- Bitcoin Lightning bounties (via LNURL protocol)
 - Code snippet sharing (NIP-C0)
 - Multi-source file fetching (GitHub, GitLab, Codeberg, GRASP servers)
 
 **Open Source**: All code is open source. Not a traditional company seeking VC funding—part of the Nostr ecosystem.
+
+**Historical significance**: Fulfills the 2022 Jack Dorsey bounty for a GitHub replacement on Nostr. Derek Ross (prominent Nostr app founder) recently highlighted gittr.space as the fulfillment of this vision, built on foundational work from DanConwayDev (ngit) and fiatjaf (GRASP protocol).
 
 ## Funding Needs
 
@@ -112,15 +136,17 @@ Unlike centralized platforms, there's no single point of failure. Repositories p
 
 ## 30-Second Technical Summary
 
-**"gittr.space is decentralized Git hosting on Nostr. Repositories are announced via NIP-34 events and stored on GRASP-compatible git servers. Unlike centralized platforms, there's no single point of failure—repos persist across thousands of Nostr relays. Unlike CLI-focused Nostr Git clients, gittr provides a full-featured web platform with proper authentication, multi-source integration, and collaboration tools. The code is open source and self-hostable. Currently maintained by two developers; seeking support to grow the team, scale infrastructure, and accelerate development."**
+**"gittr.space is decentralized Git hosting on Nostr—a censorship-resistant protocol with no central servers. Repositories are announced via NIP-34 events and stored on GRASP-compatible git servers. Unlike centralized platforms, there's no single point of failure—repos persist across thousands of Nostr relays. Unlike CLI-focused Nostr Git clients, gittr provides a full-featured web platform with proper authentication, multi-source integration, and collaboration tools. Built-in Bitcoin Lightning payments via LNURL enable zaps and bounties—addressing the critical need for open source developer income. This fulfills the 2022 Jack Dorsey bounty for a GitHub replacement on Nostr. The code is open source and self-hostable. Currently maintained by two developers; seeking support to grow the team, scale infrastructure, and accelerate development."**
 
 ## 60-Second Technical Summary
 
-**"gittr.space implements decentralized Git hosting using Nostr (NIP-34). Repositories are announced via kind 30617 events and stored on GRASP-compatible git servers. The architecture ensures no single point of failure—repos are replicated across the Nostr relay network automatically."**
+**"gittr.space implements decentralized Git hosting using Nostr—a protocol for censorship-resistant social networking and data transmission. Nostr has no central servers; data is stored across a distributed network of relays. Users control their identity through cryptographic key pairs, and content persists across multiple relays automatically. The Nostr ecosystem includes hundreds of thousands of users and was developed by contributors like Ben Arc (LNbits creator) and fiatjaf (LNURL creator, GRASP protocol developer)."**
+
+**"gittr.space repositories are announced via NIP-34 events (kind 30617) and stored on GRASP-compatible git servers (fiatjaf's protocol). The architecture ensures no single point of failure—repos are replicated across the Nostr relay network automatically. This fulfills the 2022 Jack Dorsey bounty for a GitHub replacement on Nostr, as recently highlighted by Derek Ross, a prominent Nostr app founder."**
 
 **"Unlike GitHub or GitLab, there's no central server that can go down or be censored. Unlike self-hosted Git servers, you don't manage infrastructure—the network handles redundancy. Unlike other Nostr Git clients like gitworkshop.dev or ngit, which are CLI-focused with limited authentication, gittr provides a full-featured web platform with proper key management, multi-source file fetching, and collaboration tools."**
 
-**"The platform combines GitHub, GitLab, Codeberg, and the Nostr cloud into one unified experience. Standard Git operations work via SSH and HTTPS through the git-nostr-bridge service, which is self-hostable. Bitcoin Lightning is integrated for zaps and bounties."**
+**"The platform combines GitHub, GitLab, Codeberg, and the Nostr cloud into one unified experience. Standard Git operations work via SSH and HTTPS through the git-nostr-bridge service, which is self-hostable. Bitcoin Lightning is integrated via LNURL (fiatjaf's protocol) and LNbits (Ben Arc's infrastructure) for zaps and bounties. This addresses a critical need: open source developers need sustainable income. Zaps enable direct support, and bounties create a job market—developers can fund features they need or work on bounties from others."**
 
 **"Currently maintained by two core developers. The code is open source—not a traditional company seeking VC funding, but part of the Nostr ecosystem. Funding would enable team growth, infrastructure scaling, feature development (marketplace for paid repos/packages), security audits, and community support."**
 
