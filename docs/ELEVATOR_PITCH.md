@@ -70,7 +70,7 @@ We're building the first truly decentralized Git hosting platform on Nostr—the
 - **vs GitHub**: Decentralized, never goes down, you own your data
 - **vs GitLab**: No single point of failure, censorship-resistant
 - **vs Codeberg**: Built on Nostr protocol, integrated with Lightning payments, automatic network backup
-- **vs other Nostr Git clients**: 
+- **vs other Nostr Git clients** (e.g., gitworkshop.dev, ngit): 
   - Most are CLI-focused with limited or no authentication
   - gittr provides a full-featured web platform with proper key management
   - Combines all sources (GitHub, GitLab, Codeberg, Nostr cloud) into one unified experience
