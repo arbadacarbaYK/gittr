@@ -384,8 +384,8 @@ export default function SSHKeysPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
+        <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Key className="h-6 w-6" />
             SSH Keys
@@ -395,7 +395,7 @@ export default function SSHKeysPage() {
           <div className="mt-4 mb-4 p-4 bg-yellow-900/20 border border-yellow-700 rounded text-yellow-400 max-w-2xl">
             <div className="flex items-start gap-2">
               <Info className="h-5 w-5 mt-0.5 flex-shrink-0" />
-              <div className="text-sm">
+              <div className="text-sm min-w-0">
                 <p className="font-semibold mb-2">When Do You Need SSH Keys?</p>
                 <ul className="list-disc list-inside space-y-1 text-xs">
                   <li><strong>Web UI operations</strong> (Push to Nostr, PRs, Issues) publish <strong>NIP‑34 events</strong> via your Nostr key (NIP‑07 or nsec). <strong>No SSH key required.</strong></li>
@@ -407,11 +407,11 @@ export default function SSHKeysPage() {
             </div>
           </div>
           
-          <p className="text-gray-400 mt-1">
+          <p className="text-gray-400 mt-1 text-sm sm:text-base">
             Manage SSH keys for command-line Git operations over SSH. Keys are published to Nostr (Kind 52) and used by the git-nostr-bridge when you run <code className="bg-gray-800 px-1 rounded">git clone</code>, <code className="bg-gray-800 px-1 rounded">git push</code>, or <code className="bg-gray-800 px-1 rounded">git pull</code> against <code className="bg-gray-800 px-1 rounded">git.gittr.space</code> or other GRASP servers.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           <Button
             onClick={() => {
               setShowGenerateForm(true);
@@ -420,9 +420,11 @@ export default function SSHKeysPage() {
               setStatus("");
             }}
             variant="outline"
+            className="flex-1 sm:flex-none"
           >
             <Plus className="h-4 w-4 mr-2" />
-            Generate Key
+            <span className="hidden sm:inline">Generate Key</span>
+            <span className="sm:hidden">Generate</span>
           </Button>
           <Button
             onClick={() => {
@@ -431,6 +433,7 @@ export default function SSHKeysPage() {
               setError(null);
               setStatus("");
             }}
+            className="flex-1 sm:flex-none"
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Key
@@ -454,7 +457,7 @@ export default function SSHKeysPage() {
       <div className="mb-6 p-4 bg-blue-900/20 border border-blue-700 rounded text-blue-400 max-w-2xl">
         <div className="flex items-start gap-2">
           <Info className="h-5 w-5 mt-0.5 flex-shrink-0" />
-          <div className="text-sm">
+          <div className="text-sm min-w-0 flex-1">
             <p className="font-semibold mb-1">How SSH Keys Work</p>
             <ul className="list-disc list-inside space-y-1 text-xs">
               <li>SSH keys are published to Nostr (KIND_SSH_KEY = 52, from gitnostr protocol)</li>
