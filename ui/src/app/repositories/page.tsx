@@ -2153,6 +2153,10 @@ export default function RepositoriesPage() {
               return false; // Always exclude corrupted repos
             }
             
+            // Get repo name for filtering logic
+            const repoName = (r as any).repositoryName || r.repo || r.slug || r.name || "";
+            const isTides = repoName.toLowerCase() === "tides";
+            
             // CRITICAL: Filter out duplicate/corrupted tides repos
             // If there are multiple tides repos with the same entity but different ownerPubkeys, exclude all but one
             // This handles the case where corrupted repos were created with wrong ownerPubkey
