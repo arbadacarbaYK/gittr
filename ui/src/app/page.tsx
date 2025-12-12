@@ -1462,7 +1462,7 @@ export default function HomePage() {
                       {/* Icon priority: repo icon -> user icon -> platform default (all circular) */}
                       {iconUrl ? (
                         // Priority 1: Repo icon (circular like Avatar)
-                        <Avatar className="h-8 w-8 sm:h-10 sm:h-10 ring-1 ring-gray-700">
+                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-gray-700">
                           <AvatarImage 
                             src={iconUrl} 
                             alt="repo"
@@ -1484,7 +1484,7 @@ export default function HomePage() {
                         </Avatar>
                       ) : ownerPicture ? (
                         // Priority 2: Owner profile picture (circular)
-                        <Avatar className="h-8 w-8 sm:h-10 sm:h-10 ring-1 ring-gray-700">
+                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-gray-700">
                           <AvatarImage 
                             src={ownerPicture} 
                             alt={displayName}
@@ -1505,7 +1505,7 @@ export default function HomePage() {
                         </Avatar>
                       ) : (
                         // Priority 3: Platform default icon (circular)
-                        <Avatar className="h-8 w-8 sm:h-10 sm:h-10 ring-1 ring-gray-700">
+                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-gray-700">
                           <AvatarFallback className="bg-[#22262C]">
                             <img 
                               src="/logo.svg" 
