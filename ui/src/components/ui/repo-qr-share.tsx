@@ -130,7 +130,8 @@ export function RepoQRShare({ repoUrl, repoName, onClose }: RepoQRShareProps) {
   };
 
   const shareToTelegram = () => {
-    const text = encodeURIComponent(`Check out this repo: ${repoName}\n${fullUrl}`);
+    // Telegram automatically adds the URL as a link preview, so we only include descriptive text
+    const text = encodeURIComponent(`📦 ${repoName}\n\nBuilt on Nostr ⚡`);
     window.open(`https://t.me/share/url?url=${encodeURIComponent(fullUrl)}&text=${text}`, "_blank");
   };
 
@@ -200,7 +201,7 @@ export function RepoQRShare({ repoUrl, repoName, onClose }: RepoQRShareProps) {
       }
 
       // Create a Kind 1 note with the repo link
-      const noteContent = `Check out this awesome repo: ${repoName}\n\n${fullUrl}\n\n#gittr #nostr`;
+      const noteContent = `📦 ${repoName}\n\n${fullUrl}\n\n#gittr #nostr`;
       
       // Create and sign the event
       const event = {
