@@ -102,6 +102,8 @@ When you create an empty repository via the web UI:
    git clone git@gittr.space:<your-pubkey>/<repo-name>.git
    ```
    Replace `<your-pubkey>` with your Nostr pubkey (64-char hex) and `<repo-name>` with your repository name.
+   
+   **Note**: Empty repositories are now immediately ready to clone - the bridge automatically sets up the default branch (main or master) so you can clone and push right away.
 
 4. **Add your files:**
    - Copy files into the cloned directory, or create new files
@@ -281,10 +283,20 @@ Where:
 - Check that your private key is in `~/.ssh/` with correct permissions (600)
 - Verify the `git-nostr-bridge` service is running and has processed your key
 
+### "Permission denied" (for read/write operations)
+- **Read operations**: The repository may not be publicly readable and you don't have read permission
+- **Write operations**: The repository may not be publicly writable and you don't have write permission
+- Only repository owners and users with WRITE or ADMIN permissions can push
+- Contact the repository owner to request access
+- **Note**: Error messages now include helpful hints explaining the specific permission issue
+
 ### "Repository not found"
 - Check that the repository exists on gittr
 - Verify the clone URL format is correct
 - Ensure you have read permission for the repository
+- **Note**: Error messages now include helpful hints explaining what might be wrong and what to do next
+- If you just created the repository, wait a moment for the bridge to process the Nostr event
+- Try pushing the repository via the web UI first to ensure it's created on the bridge
 
 ### "Network is unreachable" (port 22)
 - **You must clone the repository first**: `git fetch --all` only works if you've already cloned the repo. You can't fetch from a remote that doesn't exist in your local repo.
