@@ -15,7 +15,7 @@
 
 **Notable contributors:**
 - **Ben Arc**: LNbits creator (Lightning wallet infrastructure) - [Nostr Profile](https://njump.to/npub1zfwrn5gnl9gml2lnr8kmarqdsd9yle7l5rvv84prz0ghjq8nerrs73sl0t)
-- **fiatjaf**: LNURL creator (Lightning payment protocol), GRASP protocol developer - [Nostr Profile](https://njump.to/npub1yvwvq8q9jhy6xg5xvg7v8n5v8k8v8k8v8k8v8k8v8k8v8k8v8k)
+- **fiatjaf**: Nostr protocol founder, LNURL creator (Lightning payment protocol), GRASP protocol developer - [Nostr Profile](https://njump.to/npub1yvwvq8q9jhy6xg5xvg7v8n5v8k8v8k8v8k8v8k8v8k8v8k8v8k)
 - **Jack Dorsey**: Twitter/Square founder, 2022 bounty sponsor for GitHub replacement on Nostr - [Nostr Profile](https://njump.to/npub102q7y9wzcms5erwgkeh8sqqsja03q0nqqdfqgwf39pgfgkcz65ysll2um3)
 
 ## Core Value Proposition
@@ -152,7 +152,7 @@ No single point of failure. Repositories persist across thousands of Nostr relay
 
 ## 60-Second Technical Summary
 
-**"gittr.space implements decentralized Git hosting using Nostr—protocol for censorship-resistant social networking and data transmission. Nostr has no central servers; data stored across distributed relay network. Users control identity via cryptographic key pairs; content persists across multiple relays automatically. Nostr ecosystem: hundreds of thousands of users, developed by contributors like Ben Arc (LNbits creator) and fiatjaf (LNURL creator, GRASP protocol developer)."**
+**"gittr.space implements decentralized Git hosting using Nostr—protocol for censorship-resistant social networking and data transmission. Nostr has no central servers; data stored across distributed relay network. Users control identity via cryptographic key pairs; content persists across multiple relays automatically. Nostr ecosystem: hundreds of thousands of users, developed by contributors like Ben Arc (LNbits creator) and fiatjaf (Nostr protocol founder, LNURL creator, GRASP protocol developer)."**
 
 **"gittr.space repositories announced via NIP-34 events (kind 30617), stored on GRASP-compatible git servers (fiatjaf's protocol). Architecture ensures no single point of failure—repos replicated across Nostr relay network automatically. Fulfills 2022 Jack Dorsey bounty for GitHub replacement on Nostr, as highlighted by Derek Ross, prominent Nostr app founder."**
 
