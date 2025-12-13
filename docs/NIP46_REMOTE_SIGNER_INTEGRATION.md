@@ -1,6 +1,6 @@
 # NIP-46 Remote Signer Integration
 
-This document explains how to implement NIP-46 (Remote Signing) in a Nostr client, using the approach we implemented in gittr.space. This enables users to pair hardware signers (like LNbits Remote Nostr Signer, Nowser bunker) without exposing private keys to the browser.
+Complete implementation guide for NIP-46 (Remote Signing) in Nostr clients, enabling hardware signers (LNbits, Nowser bunker, Amber bunker) without exposing private keys to the browser.
 
 ## Overview
 
@@ -11,23 +11,15 @@ This document explains how to implement NIP-46 (Remote Signing) in a Nostr clien
 - Works with any NIP-46 compatible signer (bunker://, nostrconnect://)
 - Exposes a NIP-07-compatible API, so existing code works without changes
 - Session persistence for automatic reconnection across page navigations
-- **Automatic login**: Users stay logged in after initial pairing—no need to sign in on each page
-
-**Critical Implementation Notes:**
-- `generatePrivateKey()` returns a hex string directly—no `bytesToHex` conversion needed
-- `nip04.encrypt()` and `nip04.decrypt()` accept hex secret keys directly (nostr-tools handles hex strings)
-- Always use `generatePrivateKey()` (not `generateSecretKey()`) from nostr-tools
-- The NIP-07 adapter includes `getRelays()` and `nip44` support for complete compatibility
+- Automatic login: Users stay logged in after initial pairing
 
 ## Dependencies
-
-Install the required packages:
 
 ```bash
 npm install html5-qrcode
 ```
 
-**Note**: We use `html5-qrcode` (version `^2.3.8`) for QR code scanning in the browser. This library provides camera access and QR code decoding capabilities needed for scanning `bunker://` or `nostrconnect://` URIs from hardware signers.
+We use `html5-qrcode` (version `^2.3.8`) for QR code scanning in the browser.
 
 ## Event Kinds Used
 
@@ -36,9 +28,9 @@ npm install html5-qrcode
   - Remote signer publishes responses tagged with client's pubkey
   - Content is encrypted using NIP-04 or NIP-44
 
-## Implementation Structure
+## Implementation
 
-### 1. Remote Signer Manager Class
+### 1. Remote Signer Manager
 
 ```typescript
 // ui/src/lib/nostr/remoteSigner.ts
@@ -75,32 +67,52 @@ Parse `bunker://` or `nostrconnect://` URIs:
 
 ```typescript
 export function parseRemoteSignerUri(input: string): RemoteSignerConfig {
-  if (input.startsWith("bunker://")) {
-    // bunker://<remote-pubkey>?relay=wss://...&secret=...&name=...
-    const withoutScheme = input.replace(/^bunker:\/\//i, "");
+  if (!input || typeof input !== "string") {
+    throw new Error("Remote signer token required");
+  }
+  const trimmed = input.trim();
+  
+  if (trimmed.startsWith("bunker://")) {
+    const withoutScheme = trimmed.replace(/^bunker:\/\//i, "");
     const [pubkeyPart, query = ""] = withoutScheme.split("?");
+    if (!pubkeyPart || pubkeyPart.length !== 64) {
+      throw new Error("Invalid bunker token: missing remote signer pubkey");
+    }
     const params = new URLSearchParams(query);
     const relays = params.getAll("relay").map((relay) => relay.trim()).filter(Boolean);
+    if (relays.length === 0) {
+      throw new Error("Remote signer token missing relay query param");
+    }
+    const secret = params.get("secret") || undefined;
+    const label = params.get("name") || params.get("label") || undefined;
     return {
       remotePubkey: pubkeyPart.toLowerCase(),
       relays,
-      secret: params.get("secret") || undefined,
-      label: params.get("name") || params.get("label") || undefined,
+      secret,
+      label,
     };
   }
 
-  if (input.startsWith("nostrconnect://")) {
-    // nostrconnect://<client-pubkey>?relay=wss://...&secret=...&name=...&perms=sign_event:1,nip44_encrypt
-    const withoutScheme = input.replace(/^nostrconnect:\/\//i, "");
+  if (trimmed.startsWith("nostrconnect://")) {
+    const withoutScheme = trimmed.replace(/^nostrconnect:\/\//i, "");
     const [clientPubkey, query = ""] = withoutScheme.split("?");
+    if (!clientPubkey || clientPubkey.length !== 64) {
+      throw new Error("Invalid nostrconnect URI: missing client pubkey");
+    }
     const params = new URLSearchParams(query);
     const relays = params.getAll("relay").map((relay) => relay.trim()).filter(Boolean);
+    if (relays.length === 0) {
+      throw new Error("nostrconnect URI missing relay");
+    }
+    const secret = params.get("secret") || undefined;
+    const permissions = params.get("perms")?.split(",").map((p) => p.trim()).filter(Boolean);
+    const label = params.get("name") || params.get("label") || undefined;
     return {
       remotePubkey: clientPubkey.toLowerCase(),
       relays,
-      secret: params.get("secret") || undefined,
-      permissions: params.get("perms")?.split(",").map((p) => p.trim()).filter(Boolean),
-      label: params.get("name") || undefined,
+      secret,
+      permissions,
+      label,
     };
   }
 
@@ -113,11 +125,10 @@ export function parseRemoteSignerUri(input: string): RemoteSignerConfig {
 ```typescript
 class RemoteSignerManager {
   async connect(uri: string): Promise<{ session: RemoteSignerSession; npub: string }> {
-    // 1. Parse URI
     const config = parseRemoteSignerUri(uri);
     this.notifyState("connecting");
 
-    // 2. Generate ephemeral client keypair
+    // Generate ephemeral client keypair
     // CRITICAL: generatePrivateKey() returns a hex string directly, no conversion needed
     const generatedClientSecret = generatePrivateKey();
     const session: RemoteSignerSession = {
@@ -132,7 +143,7 @@ class RemoteSignerManager {
       lastConnected: Date.now(),
     };
     session.clientPubkey = getPublicKey(session.clientSecretKey);
-    
+
     try {
       await this.ensureRelays(session.relays);
       await this.startSubscription(session);
@@ -172,11 +183,16 @@ class RemoteSignerManager {
 
 ### 4. NIP-07 Compatible Adapter
 
-Override `window.nostr` to route signing through the remote signer. The adapter includes complete NIP-07 support with `getRelays` and `nip44` methods:
+Override `window.nostr` to route signing through the remote signer. The adapter includes complete NIP-07 support:
 
 ```typescript
 private applyNip07Adapter() {
   if (typeof window === "undefined") return;
+  // Always capture the current window.nostr before applying the adapter
+  // This ensures that if a NIP-07 extension loads asynchronously, its reference is preserved.
+  if (!this.originalNostr) {
+    this.originalNostr = window.nostr;
+  }
   const adapter = createRemoteNip07Adapter(this);
   this.adapter = adapter;
   window.nostr = adapter;
@@ -296,75 +312,48 @@ export function loadStoredRemoteSignerSession(): RemoteSignerSession | null {
 }
 ```
 
-### 7. Bootstrap from Storage
+### 7. Bootstrap from Storage (Automatic Login)
 
-On app load, attempt to reconnect. **Important**: For seamless UX, you should also check for stored sessions during auth initialization to immediately set the user as logged in, rather than waiting for async bootstrap.
+On app load, restore session synchronously to prevent UI flickering:
 
 ```typescript
-// In your NostrContext or auth provider:
+// In NostrContext.tsx
 
-// 1. Check for stored remote signer session during auth initialization
-const [authInitialized, setAuthInitialized] = useState(() => {
-  if (typeof window === "undefined") return false;
+const getInitialPubkey = (): string | null => {
+  if (typeof window === "undefined") return null;
   try {
-    // Check for stored pubkey
-    const storedPubkey = localStorage.getItem("nostr:npub");
-    if (storedPubkey) return true;
-    
-    // Check for stored remote signer session with userPubkey
-    const storedSession = localStorage.getItem("nostr:remote-signer-session");
-    if (storedSession) {
+    // Check regular localStorage pubkey first
+    const storedPubkey = window.localStorage.getItem(WEB_STORAGE_KEYS.NPUB);
+    if (storedPubkey) {
       try {
-        const parsed = JSON.parse(storedSession);
-        if (parsed?.userPubkey) return true; // Session exists, user is logged in
+        return JSON.parse(storedPubkey) as string;
       } catch {
-        // Invalid JSON, ignore
+        // Invalid JSON, continue to check remote signer
       }
     }
-    
-    return false;
-  } catch {
-    return false;
-  }
-});
-
-// 2. Set pubkey immediately from stored session (before async bootstrap)
-useEffect(() => {
-  if (typeof window === "undefined") return;
-  
-  // Check for stored remote signer session and set pubkey immediately
-  try {
-    const storedSession = localStorage.getItem("nostr:remote-signer-session");
-    if (storedSession) {
-      const parsed = JSON.parse(storedSession);
-      if (parsed?.userPubkey && !pubkey) {
-        // Set pubkey immediately from stored session
-        setPubKey(parsed.userPubkey);
-      }
+    // Check remote signer session
+    const storedSession = loadStoredRemoteSignerSession();
+    if (storedSession?.userPubkey) {
+      return storedSession.userPubkey;
     }
   } catch (error) {
-    // Ignore errors, will be handled by bootstrap
+    // Ignore errors during initialization
   }
-  
-  // Then bootstrap async connection
-  remoteSignerRef.current.bootstrapFromStorage();
-}, []);
+  return null;
+};
 
-// 3. Remote signer bootstrap (async, restores connection)
-bootstrapFromStorage() {
-  const stored = loadStoredRemoteSignerSession();
-  if (!stored) return;
-  
-  try {
-    console.log("[RemoteSigner] Restoring session from storage");
-    await this.activateSession(stored);
-    this.notifyState("ready");
-  } catch (error: any) {
-    console.error("[RemoteSigner] Failed to resume session:", error);
-    this.clearSession();
-    this.notifyState("error", error?.message || "Failed to resume remote signer session");
-  }
-}
+const [pubkey, setPubKey, removePubKey] = useLocalStorage<string | null>(
+  WEB_STORAGE_KEYS.NPUB,
+  getInitialPubkey()
+);
+
+// Bootstrap async connection (restores window.nostr adapter)
+useEffect(() => {
+  if (!remoteSignerInitialized || !remoteSignerRef.current) return;
+  remoteSignerRef.current.bootstrapFromStorage().catch((error) => {
+    console.error("[NostrContext] Failed to bootstrap remote signer:", error);
+  });
+}, [remoteSignerInitialized]);
 ```
 
 **Why this matters:**
@@ -377,9 +366,7 @@ bootstrapFromStorage() {
 
 ### Login Page
 
-**Important**: After successful pairing, you must call `setAuthor` with the user's `npub` to actually log them in. The pairing alone doesn't log the user in—you need to extract the pubkey from the session and set it as the author.
-
-**Session Persistence**: Once paired, the remote signer session is stored in localStorage. On subsequent page loads, the session is automatically restored and the user remains logged in—no need to pair again or see "Sign in" buttons. The pubkey is set immediately from the stored session, and the connection is restored asynchronously in the background.
+After successful pairing, call `setAuthor` with the user's `npub` to log them in:
 
 ```typescript
 // ui/src/app/login/page.tsx
@@ -387,20 +374,46 @@ bootstrapFromStorage() {
 import { Html5Qrcode } from "html5-qrcode";
 import { nip19 } from "nostr-tools";
 
-const [remoteModalOpen, setRemoteModalOpen] = useState(false);
-const [remoteToken, setRemoteToken] = useState("");
-const [showQRScanner, setShowQRScanner] = useState(false);
-const qrScannerRef = useRef<Html5Qrcode | null>(null);
-const qrScanAreaRef = useRef<HTMLDivElement>(null);
 const { remoteSigner, setAuthor } = useNostrContext();
 
-// QR Scanner for bunker:// or nostrconnect:// URIs
+const handleRemoteConnect = useCallback(async () => {
+  if (!remoteSigner) {
+    setRemoteError("Remote signer manager not ready yet. Please try again in a moment.");
+    return;
+  }
+  if (!remoteToken.trim()) {
+    setRemoteError("Paste a bunker:// or nostrconnect:// token.");
+    return;
+  }
+  setRemoteBusy(true);
+  setRemoteError(null);
+  try {
+    const result = await remoteSigner.connect(remoteToken.trim());
+    if (result?.npub && setAuthor) {
+      setAuthor(result.npub);
+    } else if (remoteSigner?.getSession()?.userPubkey && setAuthor) {
+      const npub = nip19.npubEncode(remoteSigner.getSession().userPubkey);
+      setAuthor(npub);
+    }
+    setRemoteBusy(false);
+    setRemoteModalOpen(false);
+    setRemoteToken("");
+    router.push("/");
+  } catch (error: any) {
+    console.error("[Login] Remote signer pairing failed:", error);
+    setRemoteBusy(false);
+    setRemoteError(error?.message || "Unable to pair with remote signer");
+  }
+}, [remoteSigner, remoteToken, router, setAuthor]);
+```
+
+### QR Scanner
+
+```typescript
 const startQRScanner = useCallback(async () => {
-  if (qrScannerRef.current) return; // Already initialized
+  if (qrScannerRef.current) return;
   
   setShowQRScanner(true);
-  
-  // Wait for DOM element to render
   await new Promise(resolve => setTimeout(resolve, 100));
   
   const scanner = new Html5Qrcode("qr-scanner-container");
@@ -413,50 +426,14 @@ const startQRScanner = useCallback(async () => {
       if (decodedText.startsWith("bunker://") || decodedText.startsWith("nostrconnect://")) {
         setRemoteToken(decodedText);
         setRemoteError(null);
-        stopQRScanner(); // Stop scanner after successful scan
+        stopQRScanner();
       }
     },
     (errorMessage) => {
-      // Ignore scanning errors (user might be adjusting camera)
+      // Ignore scanning errors
     }
   );
 }, []);
-
-const stopQRScanner = useCallback(async () => {
-  if (qrScannerRef.current) {
-    try {
-      await qrScannerRef.current.stop();
-      await qrScannerRef.current.clear();
-    } catch (error) {
-      // Ignore errors when stopping
-    }
-    qrScannerRef.current = null;
-  }
-  setShowQRScanner(false);
-}, []);
-
-const handleRemoteConnect = useCallback(async () => {
-  if (!remoteSigner || !remoteToken.trim()) return;
-  
-  setRemoteBusy(true);
-  try {
-    const result = await remoteSigner.connect(remoteToken.trim());
-    // After successful pairing, log the user in with their pubkey
-    if (result?.npub && setAuthor) {
-      setAuthor(result.npub);
-    } else if (remoteSigner?.session?.userPubkey && setAuthor) {
-      // Fallback: get pubkey from session and convert to npub
-      const npub = nip19.npubEncode(remoteSigner.session.userPubkey);
-      setAuthor(npub);
-    }
-    setRemoteModalOpen(false);
-    router.push("/");
-  } catch (error: any) {
-    setRemoteError(error?.message || "Unable to pair with remote signer");
-  } finally {
-    setRemoteBusy(false);
-  }
-}, [remoteSigner, remoteToken, router, setAuthor]);
 ```
 
 ## Usage in Existing Code
@@ -472,36 +449,26 @@ if (hasNip07 && window.nostr) {
 }
 ```
 
-## User Experience: Seamless Login
-
-With the improved session persistence implementation:
-
-1. **Initial Pairing**: User scans QR code and pairs with remote signer once
-2. **Automatic Login**: Session is stored in localStorage with `userPubkey`
-3. **Page Navigation**: On each page load:
-   - `authInitialized` is set to `true` immediately if a stored session exists
-   - `pubkey` is set synchronously from the stored session
-   - User sees logged-in state immediately (no "Sign in" button flash)
-   - Connection is restored asynchronously in the background
-4. **No Re-pairing Needed**: Users stay logged in across page navigations, browser refreshes, and even browser restarts (as long as localStorage persists)
-
-**Key Implementation Details:**
-- Check for stored remote signer session during `authInitialized` state initialization (synchronous)
-- Set `pubkey` immediately from stored session before async bootstrap
-- Wait for `authInitialized` in UI components before showing login state
-- This prevents the "Sign in" button flash that occurs when waiting for async operations
-
 ## Supported Operations
 
 All signing operations automatically use the remote signer:
 - Repository pushes (Kind 30617)
-- Issue creation (Kind 9803)
-- Pull request creation (Kind 9804)
+- Issue creation (Kind 1621)
+- Pull request creation (Kind 1618)
 - Profile updates (Kind 0)
 - Account settings (Kind 0 with NIP-39)
 - SSH key management (Kind 52)
 - File/repo deletions (Kind 5, Kind 30617)
 - Follows/unfollows (Kind 3)
+
+## Critical Implementation Notes
+
+1. **`generatePrivateKey()` returns hex string directly** - no `bytesToHex` conversion needed
+2. **`nip04.encrypt()` and `nip04.decrypt()` accept hex secret keys directly** - nostr-tools handles hex strings
+3. **Always use `generatePrivateKey()`** (not `generateSecretKey()`) from nostr-tools
+4. **The NIP-07 adapter includes `getRelays()` and `nip44` support** for complete compatibility
+5. **Preserve original `window.nostr`** - capture it before applying adapter, restore on disconnect
+6. **Synchronous pubkey restoration** - check localStorage during initialization to prevent UI flickering
 
 ## References
 
@@ -514,42 +481,14 @@ All signing operations automatically use the remote signer:
 ## Example Remote Signers
 
 - **LNbits Remote Nostr Signer**: https://shop.lnbits.com/lnbits-remote-nostr-signer
-- **Nowser**: https://github.com/haorendashu/nowser (Mobile bunker)
+- **Nowser Bunker**: https://github.com/haorendashu/nowser (Mobile bunker)
+- **Amber Bunker**: Compatible with NIP-46 standard
 - **Bunker**: https://github.com/soapbox-pub/bunker (Self-hosted)
 
-## QR Scanning Implementation
+## Compatibility
 
-We use the **`html5-qrcode`** library (version `^2.3.8`) for QR code scanning. This library:
-- Provides browser-based camera access
-- Supports both front and back cameras
-- Handles QR code decoding automatically
-- Works on desktop and mobile browsers (with camera permissions)
-
-**Important Implementation Notes:**
-- Always wait for the DOM element to render before initializing `Html5Qrcode`
-- Store the scanner instance in a ref to prevent multiple initializations
-- Clean up the scanner properly when closing the modal or after a successful scan
-- Handle camera permission errors gracefully
-
-**Installation:**
-```bash
-npm install html5-qrcode
-```
-
-**Usage Example:**
-```typescript
-import { Html5Qrcode } from "html5-qrcode";
-
-const scanner = new Html5Qrcode("qr-scanner-container");
-await scanner.start(
-  { facingMode: "environment" },
-  { fps: 10, qrbox: { width: 250, height: 250 } },
-  (decodedText) => {
-    // Handle scanned QR code
-    if (decodedText.startsWith("bunker://") || decodedText.startsWith("nostrconnect://")) {
-      // Process remote signer URI
-    }
-  }
-);
-```
-
+This implementation is compatible with all NIP-46 compliant remote signers, including:
+- Hardware signers (LNbits, BoltCard)
+- Mobile apps (Nowser Bunker)
+- Self-hosted servers (Bunker)
+- Any signer using `bunker://` or `nostrconnect://` URI format

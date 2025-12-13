@@ -1,4 +1,4 @@
-import { type ReactNode, createContext, useCallback, useContext } from "react";
+import { type ReactNode, createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import {
   type OnEose,
@@ -12,6 +12,7 @@ import { nip19 } from "nostr-tools";
 import useLocalStorage from "../hooks/useLocalStorage";
 
 import { WEB_STORAGE_KEYS } from "./localStorage";
+import { RemoteSignerManager, loadStoredRemoteSignerSession } from "./remoteSigner";
 
 declare global {
   interface Window {
@@ -20,6 +21,10 @@ declare global {
       signEvent(event: NostrEvent | UnsignedEvent): Promise<NostrEvent>;
       getRelays(): Promise<{ [url: string]: { read: boolean; write: boolean } }>;
       nip04: {
+        encrypt(pubkey: string, plaintext: string): Promise<string>;
+        decrypt(pubkey: string, ciphertext: string): Promise<string>;
+      };
+      nip44?: {
         encrypt(pubkey: string, plaintext: string): Promise<string>;
         decrypt(pubkey: string, ciphertext: string): Promise<string>;
       };
@@ -75,6 +80,7 @@ const NostrContext = createContext<{
   pubkey: string | null;
   signOut?: () => void;
   getRelayStatuses?: () => [url: string, status: number][];
+  remoteSigner?: RemoteSignerManager;
 }>({ defaultRelays, pubkey: null });
 
 export const useNostrContext = () => {
@@ -129,10 +135,100 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     []
   );
 
+  // Initialize pubkey - check both regular storage and remote signer session
+  // First try regular localStorage, then check remote signer session
+  const getInitialPubkey = (): string | null => {
+    if (typeof window === "undefined") return null;
+    try {
+      // First check regular pubkey storage
+      const storedPubkey = window.localStorage.getItem(WEB_STORAGE_KEYS.NPUB);
+      if (storedPubkey) {
+        try {
+          return JSON.parse(storedPubkey) as string;
+        } catch {
+          // Invalid JSON, continue to check remote signer
+        }
+      }
+      // If no regular pubkey, check remote signer session
+      const storedSession = loadStoredRemoteSignerSession();
+      if (storedSession?.userPubkey) {
+        return storedSession.userPubkey;
+      }
+    } catch (error) {
+      // Ignore errors during initialization
+    }
+    return null;
+  };
+
   const [pubkey, setPubKey, removePubKey] = useLocalStorage<string | null>(
     WEB_STORAGE_KEYS.NPUB,
-    null
+    getInitialPubkey()
   );
+
+  // Initialize remote signer manager
+  const remoteSignerRef = useRef<RemoteSignerManager | null>(null);
+  const [remoteSignerInitialized, setRemoteSignerInitialized] = useState(false);
+
+  // Initialize remote signer manager with dependencies
+  useEffect(() => {
+    if (remoteSignerRef.current) return; // Already initialized
+
+    const publishFn = (event: any, relays: string[]) => {
+      relayPool.publish(event, relays);
+    };
+
+    const subscribeFn = (
+      filters: any[],
+      relays: string[],
+      onEvent: (event: any, isAfterEose: boolean, relayURL?: string) => void,
+      maxDelayms?: number,
+      onEose?: (relayUrl: string, minCreatedAt: number) => void,
+      options?: any
+    ) => {
+      return relayPool.subscribe(
+        filters,
+        relays,
+        onEvent,
+        maxDelayms,
+        onEose,
+        options
+      );
+    };
+
+    remoteSignerRef.current = new RemoteSignerManager({
+      publish: publishFn,
+      subscribe: subscribeFn,
+      addRelay,
+      removeRelay,
+    });
+
+    setRemoteSignerInitialized(true);
+  }, [addRelay, removeRelay]);
+
+  // Bootstrap remote signer from storage and restore pubkey if session exists
+  useEffect(() => {
+    if (!remoteSignerInitialized || !remoteSignerRef.current) return;
+
+    // Check for stored remote signer session and set pubkey immediately (synchronous)
+    if (typeof window !== "undefined") {
+      try {
+        const storedSession = loadStoredRemoteSignerSession();
+        if (storedSession?.userPubkey && !pubkey) {
+          // Set pubkey immediately from stored session (before async bootstrap)
+          const npub = nip19.npubEncode(storedSession.userPubkey);
+          setPubKey(storedSession.userPubkey);
+          console.log("[NostrContext] Restored pubkey from remote signer session");
+        }
+      } catch (error) {
+        console.warn("[NostrContext] Failed to restore pubkey from remote signer session:", error);
+      }
+    }
+
+    // Bootstrap async connection (restores window.nostr adapter)
+    remoteSignerRef.current.bootstrapFromStorage().catch((error) => {
+      console.error("[NostrContext] Failed to bootstrap remote signer:", error);
+    });
+  }, [remoteSignerInitialized, pubkey, setPubKey]);
 
   const setAuthor = useCallback(
     (author: string) => {
@@ -151,6 +247,10 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
 
   const signOut = useCallback(() => {
+    // Disconnect remote signer if connected
+    if (remoteSignerRef.current) {
+      remoteSignerRef.current.disconnect();
+    }
     removePubKey();
   }, [removePubKey]);
 
@@ -192,6 +292,7 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         pubkey,
         signOut,
         getRelayStatuses,
+        remoteSigner: remoteSignerRef.current || undefined,
       }}
     >
       {children}
