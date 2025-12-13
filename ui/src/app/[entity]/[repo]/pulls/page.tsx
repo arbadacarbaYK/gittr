@@ -12,7 +12,7 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_PULL_REQUEST } from "@/lib/nostr/events";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { getRepoOwnerPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
+import { getRepoOwnerPubkey, getEntityDisplayName, resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
 
 import { clsx } from "clsx";
 import {
@@ -135,16 +135,21 @@ export default function RepoPullsPage({ params }: { params: Promise<{ entity: st
   useEffect(() => {
     if (!subscribe || !defaultRelays || defaultRelays.length === 0 || !resolvedParams?.entity || !resolvedParams?.repo) return;
 
-    // Resolve full pubkey from entity (could be prefix or full pubkey)
+    // Resolve full pubkey from entity (could be npub, prefix, or full pubkey)
     const resolveEntityPubkey = async () => {
-      // If entity is already a full 64-char pubkey, use it
-      if (resolvedParams.entity && /^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
-        return resolvedParams.entity;
+      // First try to resolve entity to pubkey (handles npub decoding)
+      const resolved = resolveEntityToPubkey(resolvedParams.entity);
+      if (resolved) {
+        return resolved;
       }
       // Otherwise, try to find the repo and get ownerPubkey
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
       const repo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
-      return repo?.ownerPubkey || resolvedParams.entity;
+      if (repo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)) {
+        return repo.ownerPubkey;
+      }
+      // Last resort: return null if we can't resolve
+      return null;
     };
 
     let cancelled = false;

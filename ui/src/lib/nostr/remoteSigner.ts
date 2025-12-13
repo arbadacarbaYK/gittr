@@ -310,6 +310,15 @@ export class RemoteSignerManager {
     persistRemoteSignerSession(session);
     await this.ensureRelays(session.relays);
     await this.startSubscription(session);
+    // Always capture current window.nostr before applying adapter
+    // This ensures we preserve NIP-07 extension even if it loads after constructor
+    if (typeof window !== "undefined" && window.nostr) {
+      // Only update if we don't already have an original (first time activating)
+      // or if current window.nostr is not our adapter (NIP-07 extension loaded)
+      if (!this.originalNostr || window.nostr !== this.adapter) {
+        this.originalNostr = window.nostr;
+      }
+    }
     this.applyNip07Adapter();
   }
 

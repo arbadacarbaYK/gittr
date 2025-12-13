@@ -14,9 +14,7 @@ import { nip05, nip19 } from "nostr-tools";
 import { Html5Qrcode } from "html5-qrcode";
 
 export default function Login() {
-  const { setAuthor } = useNostrContext();
-  // TODO: Add remoteSigner back to NostrContext if remote signer feature is needed
-  const remoteSigner: any = undefined; // Temporarily disabled - not in NostrContext
+  const { setAuthor, remoteSigner } = useNostrContext();
   const router = useRouter();
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -77,7 +75,7 @@ export default function Login() {
     router.push("/");
   }, [setAuthor, router]);
 
-  const remoteSession = remoteSigner?.session;
+  const remoteSession = remoteSigner?.getSession();
 
   const handleRemoteConnect = useCallback(async () => {
     if (!remoteSigner) {
@@ -95,10 +93,13 @@ export default function Login() {
       // After successful pairing, log the user in with their pubkey
       if (result?.npub && setAuthor) {
         setAuthor(result.npub);
-      } else if (remoteSigner?.session?.userPubkey && setAuthor) {
+      } else {
         // Fallback: get pubkey from session and convert to npub
-        const npub = nip19.npubEncode(remoteSigner.session.userPubkey);
-        setAuthor(npub);
+        const session = remoteSigner?.getSession();
+        if (session?.userPubkey && setAuthor) {
+          const npub = nip19.npubEncode(session.userPubkey);
+          setAuthor(npub);
+        }
       }
       setRemoteBusy(false);
       setRemoteModalOpen(false);
