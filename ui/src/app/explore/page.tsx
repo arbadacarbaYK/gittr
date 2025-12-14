@@ -214,9 +214,18 @@ function ExplorePageContent() {
         const entity = r.entity || "";
         const repo = r.repo || r.slug || "";
         const name = r.name || repo;
+        const description = (r.description || "").toLowerCase();
+        const topics = (r.topics || []).map((t: string) => t.toLowerCase()).join(" ");
+        const entityDisplayName = (r.entityDisplayName || "").toLowerCase();
+        
+        // Search in: repo name, description, topics, entity/repo path, and owner display name
+        // Note: ownerMetadata not available here yet, but entityDisplayName should work for most cases
         const matches = (
           `${entity}/${repo}`.toLowerCase().includes(q) ||
-          name.toLowerCase().includes(q)
+          name.toLowerCase().includes(q) ||
+          description.includes(q) ||
+          topics.includes(q) ||
+          entityDisplayName.includes(q)
         );
         if (!matches) return false;
       }
@@ -1620,14 +1629,36 @@ function ExplorePageContent() {
           return matches;
         }
         
-        // Filter by search query
+        // Filter by search query - search in multiple fields
         if (q) {
           const entity = r.entity || "";
           const repo = r.repo || r.slug || "";
           const name = r.name || repo;
+          const description = (r.description || "").toLowerCase();
+          const topics = (r.topics || []).map((t: string) => t.toLowerCase()).join(" ");
+          
+          // Get owner name from metadata if available
+          const ownerPubkey = getRepoOwnerPubkey(r as any, entity);
+          let ownerName = "";
+          if (ownerPubkey) {
+            const normalizedPubkey = ownerPubkey.toLowerCase();
+            const meta = ownerMetadata[normalizedPubkey] || ownerMetadata[ownerPubkey];
+            if (meta) {
+              ownerName = (meta.name || meta.display_name || "").toLowerCase();
+            }
+          }
+          // Fallback to entityDisplayName if metadata not available
+          if (!ownerName && r.entityDisplayName) {
+            ownerName = r.entityDisplayName.toLowerCase();
+          }
+          
+          // Search in: repo name, description, topics, entity/repo path, and owner name
           const matches = (
             `${entity}/${repo}`.toLowerCase().includes(q) ||
-            name.toLowerCase().includes(q)
+            name.toLowerCase().includes(q) ||
+            description.includes(q) ||
+            topics.includes(q) ||
+            ownerName.includes(q)
           );
           if (!matches) {
             console.log('🔍 [Explore] Filtered out repo (search filter):', r.slug || r.repo || r.name);

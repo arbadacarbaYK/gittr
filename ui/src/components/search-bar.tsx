@@ -73,50 +73,10 @@ export default function SearchBar({ className }: { className?: string }) {
         }
       }
       
-      // Find best match by entity/repo or name (exact match first, then partial)
-      // Try exact match first (entity/repo or name)
-      let match = repos.find((r: any) => {
-        const entity = r.entity || "";
-        const repo = r.repo || r.slug || "";
-        const name = r.name || repo;
-        return (
-          `${entity}/${repo}`.toLowerCase() === normalized ||
-          name.toLowerCase() === normalized
-        );
-      });
-      
-      // If no exact match, try partial match
-      if (!match) {
-        match = repos.find((r: any) => {
-          const entity = r.entity || "";
-          const repo = r.repo || r.slug || "";
-          const name = r.name || repo;
-          return (
-            `${entity}/${repo}`.toLowerCase().includes(normalized) ||
-            name.toLowerCase().includes(normalized)
-          );
-        });
-      }
-      
-      if (match && match.entity && (match.repo || match.slug)) {
-        const repoSlug = match.repo || match.slug || "";
-        // Resolve full owner pubkey and convert to npub format (not shortened pubkey)
-        const ownerPubkey = getRepoOwnerPubkey(match, match.entity);
-        let entityForUrl = match.entity;
-        
-        if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-          try {
-            entityForUrl = nip19.npubEncode(ownerPubkey);
-          } catch (error) {
-            console.error('⚠️ [Search] Failed to encode npub:', { ownerPubkey, error });
-            // Fallback to entity as-is if encoding fails
-          }
-        }
-        
-        window.location.href = `/${entityForUrl}/${repoSlug}`;
-      } else {
-        window.location.href = `/explore?q=${encodeURIComponent(q)}`;
-      }
+      // Always show results on explore page - never jump directly to a repo
+      // This ensures users see all matching results (e.g., "gittr" and "gittr-helper-tools")
+      // even if there's an exact match, so they can choose which one they want
+      window.location.href = `/explore?q=${encodeURIComponent(q)}`;
     } catch (error) {
       console.error("Search error:", error);
       window.location.href = `/explore?q=${encodeURIComponent(ref.current?.value || "")}`;
