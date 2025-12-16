@@ -15,7 +15,7 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Globe, Zap, UserPlus, UserMinus, CheckCircle2 } from "lucide-react";
+import { ExternalLink, Globe, Zap, UserPlus, UserCheck, CheckCircle2 } from "lucide-react";
 import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
 
 // Check if string is a valid Nostr pubkey (npub or hex)
@@ -1581,16 +1581,16 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
               {isLoggedIn && !isOwnProfile && (
                 <Button
                   onClick={handleFollow}
-                  disabled={followingLoading}
+                  disabled={followingLoading || isFollowing}
                   variant={isFollowing ? "outline" : "default"}
-                  className={isFollowing ? "border-purple-500 text-purple-400" : "bg-purple-600 hover:bg-purple-700"}
+                  className={isFollowing ? "border-purple-500 text-purple-400 cursor-default" : "bg-purple-600 hover:bg-purple-700"}
                 >
                   {followingLoading ? (
                     "Loading..."
                   ) : isFollowing ? (
                     <>
-                      <UserMinus className="w-4 h-4 mr-2" />
-                      Unfollow
+                      <UserCheck className="w-4 h-4 mr-2" />
+                      Following
                     </>
                   ) : (
                     <>
