@@ -6405,12 +6405,53 @@ export default function RepoCodePage({
       (url) => url.startsWith("http://") || url.startsWith("https://")
     );
     const sshCloneUrls = uniqueCloneUrls.filter((url) => url.startsWith("git@"));
-    const nostrCloneUrls = uniqueCloneUrls.filter((url) => url.startsWith("nostr://"));
+    const nostrCloneUrlsFromEvent = uniqueCloneUrls.filter((url) => url.startsWith("nostr://"));
+    
+    // Generate nostr:// URLs client-side (they're not stored in events per NIP-34 spec)
+    // Format: nostr://<author-name>@<relay-domain>/<repo-name>
+    // Only generate if repo is synced with relays (has repoData from Nostr)
+    const generatedNostrUrls: string[] = [];
+    if (repoData && ownerPubkeyForLink && decodedRepo) {
+      try {
+        // Get author name (first 12 chars of npub or entity)
+        let authorName = resolvedParams.entity;
+        if (ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink)) {
+          try {
+            const npub = nip19.npubEncode(ownerPubkeyForLink);
+            authorName = npub.substring(0, 12); // First 12 chars of npub
+          } catch {
+            authorName = ownerPubkeyForLink.substring(0, 12); // Fallback to first 12 chars of pubkey
+          }
+        } else if (resolvedParams.entity.startsWith("npub")) {
+          authorName = resolvedParams.entity.substring(0, 12);
+        }
+        
+        // Known GRASP git servers that support nostr:// protocol
+        // Import from centralized list (synchronous require for useMemo)
+        const { KNOWN_GRASP_DOMAINS } = require("@/lib/utils/grasp-servers");
+        const knownGraspServers = Array.from(KNOWN_GRASP_DOMAINS);
+        
+        // Generate nostr:// URL for each known GRASP server
+        knownGraspServers.forEach(server => {
+          generatedNostrUrls.push(`nostr://${authorName}@${server}/${decodedRepo}`);
+        });
+      } catch (error) {
+        console.warn("Failed to generate nostr:// URLs:", error);
+      }
+    }
+    
+    // Combine event URLs (if any) with generated ones
+    const nostrCloneUrls = [...nostrCloneUrlsFromEvent, ...generatedNostrUrls];
+    
     return { httpCloneUrls, sshCloneUrls, nostrCloneUrls };
   }, [
     Array.isArray((repoData as any)?.clone)
       ? (repoData as any)?.clone.join("|")
       : "",
+    repoData,
+    ownerPubkeyForLink,
+    decodedRepo,
+    resolvedParams.entity,
   ]);
 
   const { httpCloneUrls, sshCloneUrls, nostrCloneUrls } = cloneUrlGroups;
