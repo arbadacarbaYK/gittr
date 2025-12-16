@@ -98,7 +98,7 @@ export default function Login() {
         const session = remoteSigner?.getSession();
         if (session?.userPubkey && setAuthor) {
           const npub = nip19.npubEncode(session.userPubkey);
-          setAuthor(npub);
+        setAuthor(npub);
         }
       }
       setRemoteBusy(false);

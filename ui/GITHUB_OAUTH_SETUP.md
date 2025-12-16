@@ -1,6 +1,12 @@
-# GitHub OAuth Setup
+# GitHub OAuth Setup (Legacy - Not Currently Used)
 
-To enable GitHub authentication, you need to:
+> **⚠️ This setup is not currently used by the platform.** 
+>
+> Individual user authentication via OAuth has been replaced by **NIP-39 External Identities** in Settings → Profile.
+>
+> For platform API requests (5000 requests/hour), use **Personal Access Token (PAT)** instead - see `GITHUB_PLATFORM_TOKEN_SETUP.md`.
+
+This document is kept for reference only. If you need to set up OAuth App credentials for platform requests:
 
 1. **Create a GitHub OAuth App**:
    - Go to https://github.com/settings/developers

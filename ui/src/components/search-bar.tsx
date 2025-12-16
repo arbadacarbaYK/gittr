@@ -76,7 +76,7 @@ export default function SearchBar({ className }: { className?: string }) {
       // Always show results on explore page - never jump directly to a repo
       // This ensures users see all matching results (e.g., "gittr" and "gittr-helper-tools")
       // even if there's an exact match, so they can choose which one they want
-      window.location.href = `/explore?q=${encodeURIComponent(q)}`;
+        window.location.href = `/explore?q=${encodeURIComponent(q)}`;
     } catch (error) {
       console.error("Search error:", error);
       window.location.href = `/explore?q=${encodeURIComponent(ref.current?.value || "")}`;

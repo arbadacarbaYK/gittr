@@ -351,7 +351,7 @@ export default function HelpPage() {
               <h3 className="text-lg font-semibold text-white mb-2">Importing Repositories</h3>
               <p>You can import repositories from:</p>
               <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
-                <li><strong>GitHub</strong> - Single repo or bulk import via OAuth</li>
+                <li><strong>GitHub</strong> - Single repo or bulk import (link your GitHub identity via NIP-39 in Profile settings)</li>
                 <li><strong>GitLab</strong> - Import from GitLab URLs (coming soon)</li>
               </ul>
               <p className="mt-2 text-sm text-gray-400">Imported repos maintain a link to their source (sourceUrl) and fetch files from the original git server.</p>
