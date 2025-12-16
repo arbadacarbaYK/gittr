@@ -47,7 +47,10 @@ Example:
 git clone nostr://alex@git.gittr.space/repo-name
 ```
 
-**Note**: The `nostr://` format requires the `git-remote-nostr` helper tool to be installed. This is the format used by other NIP-34 clients. The helper translates `nostr://` URLs to actual git operations.
+**Note**: 
+- The `nostr://` format requires the `git-remote-nostr` helper tool to be installed. This is the format used by other NIP-34 clients. The helper translates `nostr://` URLs to actual git operations.
+- `nostr://` URLs are **client-generated** (not stored in Nostr events per NIP-34 spec). They're automatically generated from the repository owner's pubkey, repo name, and known GRASP git servers when the repo is synced with relays.
+- `nostr://` URLs are shown in the clone URL section **only when the repository has been published to Nostr** (synced with relays).
 
 **Which format to use?**
 - **SSH**: Preferred for contributors with keys configured (push + pull)
