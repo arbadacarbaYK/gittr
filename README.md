@@ -189,7 +189,7 @@ Handle binary vs text files
 
 #### ✅ Server-Side (Next.js API) - **ONLY for processing**
 - **Payment processing** (creates invoices, sends zaps) - **NEVER stores user creds**
-- **GitHub OAuth** (temporary token exchange)
+- **GitHub Platform Token** (optional, for higher API rate limits - see `ui/GITHUB_PLATFORM_TOKEN_SETUP.md`)
 - **No database** - no user data stored on server
 - **API routes** - can be called from local frontend or hosted frontend
 

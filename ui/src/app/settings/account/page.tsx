@@ -5,8 +5,7 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useMetadata from "@/lib/nostr/useMetadata";
 import { CheckCircle2, XCircle, AlertCircle, Lock, Shield } from "lucide-react";
 import { normalizeUrlOnBlur } from "@/lib/utils/url-normalize";
-import { getNostrPrivateKey, getSecureItem, setSecureItem, isEncryptionUnlocked, isEncryptionEnabled } from "@/lib/security/encryptedStorage";
-import { getEventHash, signEvent } from "nostr-tools";
+import { getSecureItem, setSecureItem, isEncryptionUnlocked, isEncryptionEnabled } from "@/lib/security/encryptedStorage";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
@@ -17,7 +16,6 @@ export default function AccountSettingsPage() {
   const [lud16, setLud16] = useState("");
   const [nwcRecv, setNwcRecv] = useState("");
   const [nwcSend, setNwcSend] = useState("");
-  const [githubProfile, setGithubProfile] = useState("");
   const [lnbitsUrl, setLnbitsUrl] = useState("");
   const [lnbitsAdminKey, setLnbitsAdminKey] = useState("");
   const [lnbitsInvoiceKey, setLnbitsInvoiceKey] = useState("");
@@ -28,7 +26,6 @@ export default function AccountSettingsPage() {
   const [lnbitsBalance, setLnbitsBalance] = useState<{ loading?: boolean; balance?: number; error?: string } | null>(null);
   const [nwcBalance, setNwcBalance] = useState<{ loading?: boolean; connected?: boolean; balance?: number; error?: string } | null>(null);
   const [nwcRecvBalance, setNwcRecvBalance] = useState<{ loading?: boolean; connected?: boolean; balance?: number; error?: string } | null>(null);
-  const [githubAuthenticating, setGithubAuthenticating] = useState(false);
   
   // Check if user has NIP-05 verification
   const hasNip05 = !!metadata.nip05;
@@ -47,14 +44,10 @@ export default function AccountSettingsPage() {
         const lnbitsAdminKey = await getSecureItem("gittr_lnbits_admin_key");
         const lnbitsInvoiceKey = await getSecureItem("gittr_lnbits_invoice_key");
         
-        // GitHub profile is not sensitive, can stay in plaintext localStorage
-        const githubProfile = localStorage.getItem("gittr_github_profile") || "";
-        
         setLnurl(lnurl || "");
         setLud16(lud16 || "");
         setNwcRecv(nwcRecv || "");
         setNwcSend(nwcSend || "");
-        setGithubProfile(githubProfile);
         setLnbitsUrl(lnbitsUrl || "");
         setLnbitsAdminKey(lnbitsAdminKey || "");
         setLnbitsInvoiceKey(lnbitsInvoiceKey || "");
@@ -72,7 +65,6 @@ export default function AccountSettingsPage() {
         setLud16(localStorage.getItem("gittr_lud16") || "");
         setNwcRecv(localStorage.getItem("gittr_nwc_recv") || "");
         setNwcSend(localStorage.getItem("gittr_nwc_send") || "");
-        setGithubProfile(localStorage.getItem("gittr_github_profile") || "");
         setLnbitsUrl(localStorage.getItem("gittr_lnbits_url") || "");
         setLnbitsAdminKey(localStorage.getItem("gittr_lnbits_admin_key") || "");
         setLnbitsInvoiceKey(localStorage.getItem("gittr_lnbits_invoice_key") || "");
@@ -135,41 +127,6 @@ export default function AccountSettingsPage() {
     return null;
   }
 
-  function validateGitHubURL(value: string): string | null {
-    if (!value) return null;
-    try {
-      const url = new URL(value);
-      if (!url.hostname.includes("github.com")) {
-        return "Must be a GitHub.com URL";
-      }
-      const pathParts = url.pathname.split("/").filter(p => p);
-      if (pathParts.length === 0) {
-        return "GitHub URL must include username";
-      }
-    } catch {
-      return "Invalid URL format";
-    }
-    return null;
-  }
-
-  function normalizeGitHubURL(value: string): string {
-    if (!value) return value;
-    try {
-      // Remove protocol if present
-      let url = value.replace(/^https?:\/\//, '');
-      // Remove www if present
-      url = url.replace(/^www\./, '');
-      // Remove trailing slash
-      url = url.replace(/\/$/, '');
-      // Ensure github.com
-      if (!url.startsWith("github.com/")) {
-        url = "github.com/" + url.replace(/^github\.com\//, '');
-      }
-      return "https://" + url;
-    } catch {
-      return value;
-    }
-  }
 
   function validateAll(): Record<string, string> {
     const newErrors: Record<string, string> = {};
@@ -190,10 +147,6 @@ export default function AccountSettingsPage() {
     const nwcSendError = validateNWC(nwcSend);
     if (nwcSendError) newErrors.nwcSend = nwcSendError;
     newValidation.nwcSend = !nwcSendError && nwcSend.length > 0;
-
-    const githubError = validateGitHubURL(githubProfile);
-    if (githubError) newErrors.github = githubError;
-    newValidation.github = !githubError && githubProfile.length > 0;
 
     // LNbits URL validation - only if field has value
     if (lnbitsUrl && !lnbitsUrl.match(/^https?:\/\/.+/)) {
@@ -233,9 +186,6 @@ export default function AccountSettingsPage() {
       setTimeout(() => setSaved(""), 3000);
       return;
     }
-
-    // Normalize GitHub URL before saving
-    const normalizedGithub = normalizeGitHubURL(githubProfile);
     
     try {
       // Save wallet data using secure storage (encrypted if encryption is enabled)
@@ -246,18 +196,6 @@ export default function AccountSettingsPage() {
       await setSecureItem("gittr_lnbits_url", lnbitsUrl);
       await setSecureItem("gittr_lnbits_admin_key", lnbitsAdminKey);
       await setSecureItem("gittr_lnbits_invoice_key", lnbitsInvoiceKey);
-      
-      // GitHub profile is not sensitive, can stay in plaintext localStorage
-      localStorage.setItem("gittr_github_profile", normalizedGithub);
-      
-      // Also store in pubkey-to-github mapping
-      if (pubkey && normalizedGithub) {
-        try {
-          const mappings = JSON.parse(localStorage.getItem("gittr_github_mappings") || "{}");
-          mappings[pubkey] = normalizedGithub;
-          localStorage.setItem("gittr_github_mappings", JSON.stringify(mappings));
-        } catch {}
-      }
       
       setSaved("Saved successfully!");
       setTimeout(() => setSaved(""), 2000);
@@ -284,223 +222,6 @@ export default function AccountSettingsPage() {
     }
   }
 
-  async function connectGitHub() {
-    setGithubAuthenticating(true);
-    try {
-      // Get OAuth URL from backend
-      const response = await fetch("/api/github/auth?action=initiate");
-      const data = await response.json();
-      
-      if (!response.ok || data.error) {
-        throw new Error(data.error || "Failed to get GitHub OAuth URL. Please check GITHUB_OAUTH_SETUP.md for configuration instructions.");
-      }
-      
-      if (!data.authUrl) {
-        throw new Error("Failed to get GitHub OAuth URL");
-      }
-      
-      // Open popup window
-      const width = 600;
-      const height = 700;
-      const left = window.screenX + (window.outerWidth - width) / 2;
-      const top = window.screenY + (window.outerHeight - height) / 2;
-      
-      const popup = window.open(
-        data.authUrl,
-        "GitHub Authentication",
-        `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
-      );
-      
-      if (!popup) {
-        setSaved("Popup blocked. Please allow popups for this site.");
-        setTimeout(() => setSaved(""), 3000);
-        setGithubAuthenticating(false);
-        return;
-      }
-      
-      // Listen for OAuth callback message from popup
-      const messageHandler = async (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
-        
-        if (event.data.type === 'GITHUB_OAUTH_CALLBACK') {
-          clearInterval(checkClosed);
-          window.removeEventListener('message', messageHandler);
-          setGithubAuthenticating(false);
-          
-          if (event.data.error) {
-            setSaved(`GitHub connection error: ${event.data.error}`);
-            setTimeout(() => setSaved(""), 3000);
-            return;
-          }
-          
-          if (!event.data.code) {
-            setSaved("GitHub connection cancelled");
-            setTimeout(() => setSaved(""), 3000);
-            return;
-          }
-          
-          try {
-            // Exchange code for GitHub user data
-            const response = await fetch(`/api/github/auth?action=callback&code=${event.data.code}&state=${event.data.state}`);
-            const data = await response.json();
-            
-            if (!response.ok || data.error) {
-              throw new Error(data.error || "Failed to complete GitHub authentication");
-            }
-            
-            if (data.githubUrl && data.githubUsername) {
-              // Save GitHub profile URL
-              const normalizedGithub = normalizeGitHubURL(data.githubUrl);
-              setGithubProfile(normalizedGithub);
-              localStorage.setItem("gittr_github_profile", normalizedGithub);
-              
-              // Store mapping: pubkey -> GitHub URL
-              if (pubkey) {
-                const mappings = JSON.parse(localStorage.getItem("gittr_github_mappings") || "{}");
-                mappings[pubkey] = normalizedGithub;
-                localStorage.setItem("gittr_github_mappings", JSON.stringify(mappings));
-                
-                // Update repo contributors
-                updateAllReposContributors(pubkey, data.githubUsername);
-              }
-              
-              // Automatically publish NIP-39 identity claim to Nostr
-              try {
-                const privateKey = await getNostrPrivateKey();
-                if (privateKey && publish && defaultRelays && pubkey) {
-                  // Get current metadata to preserve existing fields
-                  const currentMetadata = JSON.parse(localStorage.getItem(`gittr_metadata_${pubkey}`) || "{}");
-                  
-                  // Build NIP-39 i tag for GitHub identity
-                  const iTags: string[][] = [["i", `github:${data.githubUsername}`]];
-                  
-                  // If there are existing identities in metadata, preserve them
-                  // (This is a best-effort - ideally we'd fetch from Nostr, but for now we use localStorage cache)
-                  if (currentMetadata.identities && Array.isArray(currentMetadata.identities)) {
-                    currentMetadata.identities.forEach((identity: any) => {
-                      if (identity.platform && identity.identity && 
-                          !(identity.platform === "github" && identity.identity === data.githubUsername)) {
-                        const identityString = `${identity.platform}:${identity.identity}`;
-                        if (identity.proof) {
-                          iTags.push(["i", identityString, identity.proof]);
-                        } else {
-                          iTags.push(["i", identityString]);
-                        }
-                      }
-                    });
-                  }
-                  
-                  // Create Kind 0 metadata event with NIP-39 identity claim
-                  const metadata = {
-                    display_name: currentMetadata.display_name || undefined,
-                    name: currentMetadata.name || undefined,
-                    about: currentMetadata.about || undefined,
-                    nip05: currentMetadata.nip05 || undefined,
-                    picture: currentMetadata.picture || undefined,
-                  };
-                  
-                  // Remove undefined fields
-                  Object.keys(metadata).forEach(key => {
-                    if ((metadata as any)[key] === undefined) {
-                      delete (metadata as any)[key];
-                    }
-                  });
-                  
-                  const event: any = {
-                    kind: 0,
-                    created_at: Math.floor(Date.now() / 1000),
-                    tags: iTags, // Include NIP-39 identity tags
-                    content: JSON.stringify(metadata),
-                    pubkey: pubkey,
-                    id: "",
-                    sig: "",
-                  };
-                  
-                  event.id = getEventHash(event);
-                  
-                  // Sign with NIP-07 or private key
-                  const hasNip07 = typeof window !== "undefined" && window.nostr;
-                  let signedEvent = event;
-                  if (hasNip07 && window.nostr) {
-                    // Use NIP-07 extension (supports remote signer)
-                    signedEvent = await window.nostr.signEvent(event);
-                  } else if (privateKey) {
-                    // Use private key (fallback)
-                    signedEvent = { ...event };
-                    signedEvent.sig = signEvent(signedEvent, privateKey);
-                  } else {
-                    throw new Error("No signing method available");
-                  }
-                  
-                  // Publish to relays
-                  publish(signedEvent, defaultRelays);
-                  
-                  setSaved(`✅ GitHub connected and published to Nostr! Username: ${data.githubUsername}`);
-                  setTimeout(() => setSaved(""), 5000);
-                } else {
-                  setSaved(`✅ GitHub connected! Username: ${data.githubUsername}. You can now add this as a verified identity on your Profile page.`);
-                  setTimeout(() => setSaved(""), 5000);
-                }
-              } catch (publishError: any) {
-                console.error("Failed to publish GitHub identity to Nostr:", publishError);
-                setSaved(`✅ GitHub connected! Username: ${data.githubUsername}. Note: Failed to publish to Nostr (${publishError.message}). You can add this manually on your Profile page.`);
-                setTimeout(() => setSaved(""), 5000);
-              }
-              
-              // Dispatch event to notify profile page
-              window.dispatchEvent(new CustomEvent('gittr:github-connected', {
-                detail: { username: data.githubUsername, url: normalizedGithub }
-              }));
-            } else {
-              throw new Error("GitHub authentication succeeded but no user data received");
-            }
-          } catch (error: any) {
-            setSaved(`GitHub connection error: ${error.message}`);
-            setTimeout(() => setSaved(""), 3000);
-          }
-        }
-      };
-      
-      window.addEventListener('message', messageHandler);
-      
-      // Check if popup is closed (user cancelled)
-      const checkClosed = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(checkClosed);
-          window.removeEventListener('message', messageHandler);
-          setGithubAuthenticating(false);
-        }
-      }, 500);
-      
-    } catch (error: any) {
-      setSaved(`GitHub connection error: ${error.message}`);
-      setTimeout(() => setSaved(""), 3000);
-      setGithubAuthenticating(false);
-    }
-  }
-
-  function updateAllReposContributors(pubkey: string, githubUsername: string) {
-    try {
-      const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
-      
-      repos.forEach((repo: any) => {
-        if (repo.contributors && Array.isArray(repo.contributors)) {
-          // Update contributors that match this GitHub username
-          repo.contributors = repo.contributors.map((contrib: any) => {
-            if (contrib.githubLogin && contrib.githubLogin.toLowerCase() === githubUsername.toLowerCase()) {
-              // This contributor matches - add their pubkey
-              return { ...contrib, pubkey };
-            }
-            return contrib;
-          });
-        }
-      });
-      
-      localStorage.setItem("gittr_repos", JSON.stringify(repos));
-    } catch (error) {
-      console.error("Failed to update repo contributors:", error);
-    }
-  }
   
   async function testLnbitsBalance() {
     if (!lnbitsUrl || !lnbitsAdminKey) return;
@@ -958,61 +679,6 @@ export default function AccountSettingsPage() {
                   <span>✓ Balance: {lnbitsBalance.balance} sats</span>
                 )}
               </div>
-            )}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="text-xl font-bold mb-4">GitHub Profile</h2>
-          <p className="text-sm text-gray-400 mb-4">
-            Link your GitHub profile to show your avatar and automatically match contributors when importing repositories.
-          </p>
-          <div className="space-y-4">
-            {githubProfile ? (
-              <div className="space-y-3">
-                <div className="p-3 bg-gray-800 border border-gray-700 rounded">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-300">Connected GitHub Profile</p>
-                      <a
-                        href={githubProfile}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-purple-400 hover:text-purple-300 mt-1 inline-block"
-                      >
-                        {githubProfile}
-                      </a>
-                    </div>
-                    <CheckCircle2 className="h-5 w-5 text-green-400" />
-                  </div>
-                </div>
-                <button
-                  onClick={connectGitHub}
-                  disabled={githubAuthenticating}
-                  className="px-4 py-2 border border-gray-600 bg-gray-700 hover:bg-gray-600 rounded disabled:opacity-50 text-sm"
-                >
-                  {githubAuthenticating ? "Connecting..." : "Reconnect GitHub"}
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={connectGitHub}
-                disabled={githubAuthenticating}
-                className="px-6 py-3 border border-purple-500 bg-purple-600 hover:bg-purple-700 rounded disabled:opacity-50 flex items-center gap-2"
-              >
-                {githubAuthenticating ? (
-                  <>
-                    <span>Connecting...</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                    </svg>
-                    <span>Connect with GitHub</span>
-                  </>
-                )}
-              </button>
             )}
           </div>
         </section>

@@ -143,7 +143,7 @@ class RemoteSignerManager {
       lastConnected: Date.now(),
     };
     session.clientPubkey = getPublicKey(session.clientSecretKey);
-
+    
     try {
       await this.ensureRelays(session.relays);
       await this.startSubscription(session);

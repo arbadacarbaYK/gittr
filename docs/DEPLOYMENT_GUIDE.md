@@ -181,7 +181,7 @@ cp .env.example .env.local
 ```
 
 **Important Notes:**
-- For GitHub OAuth setup, see `ui/GITHUB_OAUTH_SETUP.md`
+- For GitHub Platform Token setup (for API rate limits), see `ui/GITHUB_PLATFORM_TOKEN_SETUP.md`
 - For GitHub Platform Token setup, see `ui/GITHUB_PLATFORM_TOKEN_SETUP.md`
 
 ---

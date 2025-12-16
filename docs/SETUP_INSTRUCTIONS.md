@@ -71,7 +71,7 @@ cd ui
 cp .env.example .env.local
 ```
 
-Edit `ui/.env.local` with your values. All configuration is in this file - domain, relays, Blossom URL, GitHub OAuth, etc. are already set with working defaults.
+Edit `ui/.env.local` with your values. All configuration is in this file - domain, relays, Blossom URL, GitHub Platform Token (optional), etc. are already set with working defaults.
 
 ### Step 4: Build Frontend
 
