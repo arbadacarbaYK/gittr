@@ -1905,13 +1905,19 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
               <div className="flex items-center gap-2">
                 <span className="text-gray-400">Pushes</span>
                 <span className="text-green-400 font-semibold">
-                  {loadingNostrCounts ? "..." : (nostrActivityCounts?.pushes ?? (activityCounts.commit_created || 0))}
+                  {/* Show localStorage immediately, update if Nostr has higher value */}
+                  {nostrActivityCounts && nostrActivityCounts.pushes > (activityCounts.commit_created || 0)
+                    ? nostrActivityCounts.pushes
+                    : (activityCounts.commit_created || 0)}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-gray-400">PRs Merged</span>
                 <span className="text-cyan-400 font-semibold">
-                  {loadingNostrCounts ? "..." : (nostrActivityCounts?.prsMerged ?? (activityCounts.pr_merged || 0))}
+                  {/* Show localStorage immediately, update if Nostr has higher value */}
+                  {nostrActivityCounts && nostrActivityCounts.prsMerged > (activityCounts.pr_merged || 0)
+                    ? nostrActivityCounts.prsMerged
+                    : (activityCounts.pr_merged || 0)}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -2097,7 +2103,7 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
           <div className="border border-[#383B42] rounded p-4">
             <h3 className="font-semibold mb-2">Statistics</h3>
             <p className="text-xs text-gray-500 mb-3">
-              {loadingNostrCounts ? "Loading from Nostr..." : nostrActivityCounts ? "Activity from Nostr network" : "Local activity data"}
+              {nostrActivityCounts ? "Activity from Nostr network" : "Local activity data"}
             </p>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">

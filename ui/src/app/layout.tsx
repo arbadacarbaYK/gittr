@@ -68,8 +68,9 @@ export default function RootLayout({
               (function() {
                 try {
                   // CRITICAL: Always default to arcade80s, migrate classic if present
+                  // This MUST run before any React rendering to prevent flash
                   let theme = localStorage.getItem('gittr_theme');
-                  if (!theme || theme === 'classic') {
+                  if (!theme || theme === 'classic' || theme === 'null' || theme === 'undefined') {
                     theme = 'arcade80s';
                     try {
                       localStorage.setItem('gittr_theme', theme);
@@ -77,9 +78,20 @@ export default function RootLayout({
                       // Ignore localStorage write errors (private browsing, etc.)
                     }
                   }
+                  // CRITICAL: Set theme attribute immediately, before React hydration
                   document.documentElement.setAttribute('data-theme', theme);
                   document.documentElement.classList.add('dark');
-                } catch (e) {}
+                  // Also set it on document.body as fallback
+                  if (document.body) {
+                    document.body.setAttribute('data-theme', theme);
+                  }
+                } catch (e) {
+                  // If anything fails, force arcade80s
+                  try {
+                    document.documentElement.setAttribute('data-theme', 'arcade80s');
+                    document.documentElement.classList.add('dark');
+                  } catch (e2) {}
+                }
                 
                 // Suppress console errors early (before Next.js dev tools interceptor)
                 if (typeof console !== 'undefined' && console.error) {
