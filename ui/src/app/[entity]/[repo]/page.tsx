@@ -5572,13 +5572,14 @@ export default function RepoCodePage({
           if (isBinary) {
             // CRITICAL: HTML files should NEVER be stored as binary, but if they are, decode them
             if (isHtmlFile) {
-              // HTML file incorrectly marked as binary - decode it
+              // HTML file incorrectly marked as binary - treat as data URL instead of using deprecated atob()
               try {
-                const decoded = atob((foundContent as string) || "");
-                return { content: decoded, url: null, isBinary: false };
+                const safeContent = (foundContent as string) || "";
+                const htmlDataUrl = `data:text/html;base64,${safeContent}`;
+                return { content: null, url: htmlDataUrl, isBinary: true };
               } catch (e) {
-                console.error(`❌ [fetchGithubRaw] Failed to decode HTML file stored as binary: ${path}`, e);
-                // Fall through to treat as binary (will show download link)
+                console.error(`❌ [fetchGithubRaw] Failed to construct HTML data URL from binary content: ${path}`, e);
+                // Fall through to treat as generic binary (will show download link)
               }
             }
             
