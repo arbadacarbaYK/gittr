@@ -328,10 +328,10 @@ export async function generateMetadata(
         ],
       },
       twitter: {
-        card: 'summary',
+        card: 'summary_large_image', // X/Twitter requires summary_large_image for better image display
         title,
         description,
-        images: [iconUrl],
+        images: [iconUrl], // Must be absolute URL, publicly accessible
       },
       alternates: {
         canonical: url,
