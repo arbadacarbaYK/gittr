@@ -5552,37 +5552,54 @@ export default function RepoCodePage({
           let isBinary = (fileEntry as any).isBinary || (fileEntry as any).binary || false;
           
           // Helper: detect byte-array style content (e.g. [137,80,78,...] or { type:"Buffer", data:[...] })
+          // First, check if content is a JSON stringified array (e.g., "[137,80,78,...]")
+          let parsedContent: any = foundContent;
+          let isJsonArray = false;
+          
+          if (typeof foundContent === "string" && foundContent.trim().startsWith("[") && foundContent.trim().endsWith("]")) {
+            try {
+              const parsed = JSON.parse(foundContent);
+              if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((n: any) => typeof n === "number")) {
+                parsedContent = parsed as number[];
+                isJsonArray = true;
+                console.log(`🔍 [fetchGithubRaw] Detected JSON stringified array for ${path}, parsed to array`);
+              }
+            } catch (e) {
+              // Not valid JSON, continue with original content
+            }
+          }
+          
           const isNumericArray =
-            Array.isArray(foundContent) &&
-            foundContent.length > 0 &&
-            foundContent.every((n: any) => typeof n === "number");
+            Array.isArray(parsedContent) &&
+            parsedContent.length > 0 &&
+            parsedContent.every((n: any) => typeof n === "number");
           const isBufferObject =
-            foundContent &&
-            typeof foundContent === "object" &&
-            !Array.isArray(foundContent) &&
-            "type" in (foundContent as any) &&
-            (foundContent as any).type === "Buffer" &&
-            Array.isArray((foundContent as any).data);
+            parsedContent &&
+            typeof parsedContent === "object" &&
+            !Array.isArray(parsedContent) &&
+            "type" in (parsedContent as any) &&
+            (parsedContent as any).type === "Buffer" &&
+            Array.isArray((parsedContent as any).data);
           
           // Also check if content is a string representation of comma-separated numbers (e.g., "137,80,78,...")
           // OR a string of just numbers (e.g., "1378078...") - this can happen when byte arrays are JSON stringified
           // We check for strings that are mostly digits (at least 80% digits) and longer than 10 chars
           const isNumericString = 
-            typeof foundContent === "string" &&
-            foundContent.length > 10 &&
+            typeof parsedContent === "string" &&
+            parsedContent.length > 10 &&
             (
               // Comma-separated numbers
-              (/^[\d\s,]+$/.test(foundContent.trim()) && foundContent.includes(",")) ||
+              (/^[\d\s,]+$/.test(parsedContent.trim()) && parsedContent.includes(",")) ||
               // Or just a long string of digits (common when arrays are stringified without commas)
-              (/^\d+$/.test(foundContent.trim()) && foundContent.length > 50)
+              (/^\d+$/.test(parsedContent.trim()) && parsedContent.length > 50)
             );
           
           // If file extension suggests binary but isBinary flag is not set, check if content looks like binary data
-          // OR if we detected numeric content (array, buffer, or numeric string)
-          if (!isBinary && (isBinaryByExtension || isNumericArray || isBufferObject || isNumericString) && typeof foundContent === "string") {
+          // OR if we detected numeric content (array, buffer, numeric string, or JSON array)
+          if (!isBinary && (isBinaryByExtension || isNumericArray || isBufferObject || isNumericString || isJsonArray) && (typeof parsedContent === "string" || Array.isArray(parsedContent))) {
             // Check if content is NOT base64 (base64 strings are longer and contain A-Z, a-z, 0-9, +, /, =)
-            const looksLikeBase64 = /^[A-Za-z0-9+/=]+$/.test(foundContent) && foundContent.length > 20;
-            if (!looksLikeBase64 || isNumericString || isNumericArray || isBufferObject) {
+            const looksLikeBase64 = typeof parsedContent === "string" && /^[A-Za-z0-9+/=]+$/.test(parsedContent) && parsedContent.length > 20;
+            if (!looksLikeBase64 || isNumericString || isNumericArray || isBufferObject || isJsonArray) {
               // Content doesn't look like base64, might be raw bytes or numeric string
               isBinary = true;
             }
@@ -5590,13 +5607,16 @@ export default function RepoCodePage({
           
           // If backend accidentally sent raw bytes instead of base64, normalise to base64 + mark binary
           // This applies whether or not the isBinary flag was set
-          if (isNumericArray || isBufferObject || isNumericString) {
+          if (isNumericArray || isBufferObject || isNumericString || isJsonArray) {
             try {
               // Use intermediate unknown casts to satisfy TypeScript when converting from union types
               let bytes: number[] = [];
-              if (isNumericString) {
+              if (isJsonArray) {
+                // Already parsed JSON array
+                bytes = parsedContent as unknown as number[];
+              } else if (isNumericString) {
                 // Parse comma-separated string of numbers OR a string of just digits
-                const contentStr = (foundContent as string).trim();
+                const contentStr = (parsedContent as string).trim();
                 if (contentStr.includes(',')) {
                   // Comma-separated: "137,80,78,..."
                   bytes = contentStr.split(',').map(s => {
