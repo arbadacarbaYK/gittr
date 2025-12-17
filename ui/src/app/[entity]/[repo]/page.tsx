@@ -5545,9 +5545,10 @@ export default function RepoCodePage({
           // If backend accidentally sent raw bytes instead of base64, normalise to base64 + mark binary
           if (!isBinary && (isNumericArray || isBufferObject)) {
             try {
+              // Use intermediate unknown casts to satisfy TypeScript when converting from union types
               const bytes: number[] = isNumericArray
-                ? (foundContent as number[])
-                : ((foundContent as any).data as number[]);
+                ? (foundContent as unknown as number[])
+                : ((foundContent as unknown as { data: number[] }).data);
               
               let binaryStr = "";
               for (let i = 0; i < bytes.length; i++) {
