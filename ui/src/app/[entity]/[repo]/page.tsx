@@ -5527,7 +5527,19 @@ export default function RepoCodePage({
           const ext = path.split('.').pop()?.toLowerCase() || '';
           const htmlExts = ['html', 'htm', 'xhtml'];
           const isHtmlFile = htmlExts.includes(ext);
+          const binaryExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'pdf', 'woff', 'woff2', 'ttf', 'otf', 'mp4', 'mp3', 'wav', 'zip', 'tar', 'gz'];
+          const isBinaryByExtension = binaryExts.includes(ext);
           let isBinary = (fileEntry as any).isBinary || (fileEntry as any).binary || false;
+          
+          // If file extension suggests binary but isBinary flag is not set, check if content looks like binary data
+          if (!isBinary && isBinaryByExtension && typeof foundContent === "string") {
+            // Check if content is NOT base64 (base64 strings are longer and contain A-Z, a-z, 0-9, +, /, =)
+            const looksLikeBase64 = /^[A-Za-z0-9+/=]+$/.test(foundContent) && foundContent.length > 20;
+            if (!looksLikeBase64) {
+              // Content doesn't look like base64, might be raw bytes or numeric string
+              isBinary = true;
+            }
+          }
           
           // Helper: detect byte-array style content (e.g. [137,80,78,...] or { type:"Buffer", data:[...] })
           const isNumericArray =
@@ -5542,14 +5554,31 @@ export default function RepoCodePage({
             (foundContent as any).type === "Buffer" &&
             Array.isArray((foundContent as any).data);
           
+          // Also check if content is a string representation of comma-separated numbers (e.g., "137,80,78,...")
+          // This can happen when byte arrays are JSON stringified and then stored
+          const isNumericString = 
+            typeof foundContent === "string" &&
+            foundContent.length > 0 &&
+            /^[\d\s,]+$/.test(foundContent.trim()) &&
+            foundContent.includes(",");
+          
           // If backend accidentally sent raw bytes instead of base64, normalise to base64 + mark binary
           // This applies whether or not the isBinary flag was set
-          if (isNumericArray || isBufferObject) {
+          if (isNumericArray || isBufferObject || isNumericString) {
             try {
               // Use intermediate unknown casts to satisfy TypeScript when converting from union types
-              const bytes: number[] = isNumericArray
-                ? (foundContent as unknown as number[])
-                : ((foundContent as unknown as { data: number[] }).data);
+              let bytes: number[] = [];
+              if (isNumericString) {
+                // Parse comma-separated string of numbers
+                bytes = (foundContent as string).split(',').map(s => {
+                  const num = parseInt(s.trim(), 10);
+                  return isNaN(num) ? 0 : num;
+                }).filter(n => n >= 0 && n <= 255);
+              } else if (isNumericArray) {
+                bytes = foundContent as unknown as number[];
+              } else {
+                bytes = ((foundContent as unknown as { data: number[] }).data);
+              }
               
               // Helper: encode binary string to base64 without relying directly on deprecated btoa typings
               const toBase64 = (input: string): string => {
@@ -5577,6 +5606,7 @@ export default function RepoCodePage({
               // Treat as binary from here on
               isBinary = true;
               foundContent = base64 as any;
+              console.log(`✅ [fetchGithubRaw] Converted ${isNumericString ? 'numeric string' : isNumericArray ? 'numeric array' : 'buffer object'} to base64 for ${path}`);
             } catch (e) {
               console.error("❌ [fetchGithubRaw] Failed to convert byte-array content to base64", {
                 path,
