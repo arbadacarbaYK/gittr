@@ -90,7 +90,21 @@ export default function RootLayout({
                   try {
                     document.documentElement.setAttribute('data-theme', 'arcade80s');
                     document.documentElement.classList.add('dark');
+                    if (document.body) {
+                      document.body.setAttribute('data-theme', 'arcade80s');
+                    }
                   } catch (e2) {}
+                }
+                
+                // CRITICAL: Double-check theme is set correctly (in case localStorage was empty/null)
+                // This ensures arcade80s is always the default, even for first-time visitors
+                if (!document.documentElement.getAttribute('data-theme') || 
+                    document.documentElement.getAttribute('data-theme') === 'classic') {
+                  document.documentElement.setAttribute('data-theme', 'arcade80s');
+                  document.documentElement.classList.add('dark');
+                  if (document.body) {
+                    document.body.setAttribute('data-theme', 'arcade80s');
+                  }
                 }
                 
                 // Suppress console errors early (before Next.js dev tools interceptor)
