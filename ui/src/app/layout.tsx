@@ -67,7 +67,16 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
-                  const theme = localStorage.getItem('gittr_theme') || 'arcade80s';
+                  // CRITICAL: Always default to arcade80s, migrate classic if present
+                  let theme = localStorage.getItem('gittr_theme');
+                  if (!theme || theme === 'classic') {
+                    theme = 'arcade80s';
+                    try {
+                      localStorage.setItem('gittr_theme', theme);
+                    } catch (e) {
+                      // Ignore localStorage write errors (private browsing, etc.)
+                    }
+                  }
                   document.documentElement.setAttribute('data-theme', theme);
                   document.documentElement.classList.add('dark');
                 } catch (e) {}
