@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useContributorMetadata, ClaimedIdentity } from "@/lib/nostr/useContributorMetadata";
 import { resolveEntityToPubkey, getEntityDisplayName, getRepoOwnerPubkey, getEntityPicture, getUserMetadata } from "@/lib/utils/entity-resolver";
-import { getUserActivities, getUserActivityCounts, getContributionGraph } from "@/lib/activity-tracking";
+import { getUserActivities, getUserActivityCounts, getContributionGraph, syncUserCommitsFromBridge } from "@/lib/activity-tracking";
 import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
 import { UserStats } from "@/lib/stats";
 import { nip19, getEventHash, signEvent } from "nostr-tools";
@@ -937,9 +937,45 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
         
         // Get user stats using full pubkey
         // CRITICAL: getUserActivities now filters out activities from deleted repos
-        const activities = getUserActivities(fullPubkey);
-        const counts = getUserActivityCounts(fullPubkey);
-        const graph = getContributionGraph(fullPubkey);
+        let activities = getUserActivities(fullPubkey);
+        let counts = getUserActivityCounts(fullPubkey);
+        let graph = getContributionGraph(fullPubkey);
+        
+        // CRITICAL: Sync commits from bridge to get real git commits (not just UI actions)
+        // This ensures activity bar shows commits made via `git push`, not just activities from gittr UI
+        // Only sync once per profile load to avoid excessive API calls
+        const syncKey = `gittr_commits_synced_${fullPubkey}`;
+        const lastSync = localStorage.getItem(syncKey);
+        const now = Date.now();
+        const SYNC_INTERVAL = 5 * 60 * 1000; // Sync every 5 minutes
+        
+        if (!lastSync || (now - parseInt(lastSync, 10)) > SYNC_INTERVAL) {
+          // Sync commits from bridge in background (don't block UI)
+          syncUserCommitsFromBridge(fullPubkey).then((syncedCount) => {
+            if (syncedCount > 0) {
+              // Update activities after sync
+              const updatedActivities = getUserActivities(fullPubkey);
+              const updatedCounts = getUserActivityCounts(fullPubkey);
+              const updatedGraph = getContributionGraph(fullPubkey);
+              
+              setActivityCounts(updatedCounts);
+              setContributionGraph(updatedGraph);
+              
+              // Update user stats with new activity count
+              setUserStats(prev => prev ? {
+                ...prev,
+                activityCount: updatedActivities.length,
+                commitCount: updatedActivities.filter((a: any) => a.type === "commit_created").length,
+                lastActivity: updatedActivities.length > 0 ? Math.max(...updatedActivities.map((a: any) => a.timestamp)) : (prev.lastActivity || 0),
+              } : null);
+            }
+            
+            // Mark as synced
+            localStorage.setItem(syncKey, now.toString());
+          }).catch((error) => {
+            console.error("Failed to sync commits from bridge:", error);
+          });
+        }
         
         // Debug: log what we found
         console.log("Profile stats for", fullPubkey, {

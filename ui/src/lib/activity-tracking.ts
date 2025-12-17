@@ -392,3 +392,159 @@ export function backfillActivities(): void {
   }
 }
 
+/**
+ * Sync commits from bridge API to activities
+ * Fetches real git commits from the bridge and converts them to activities
+ * This ensures activity bar shows commits made via `git push`, not just UI actions
+ */
+export async function syncCommitsFromBridge(
+  ownerPubkey: string,
+  repoEntity: string,
+  repoName: string,
+  branch: string = "main"
+): Promise<number> {
+  try {
+    // Fetch commits from bridge API
+    const response = await fetch(
+      `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(branch)}&limit=100`
+    );
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        // Repo not cloned yet - this is normal, not an error
+        return 0;
+      }
+      console.warn(`⚠️ [Activity Sync] Failed to fetch commits: ${response.status} ${response.statusText}`);
+      return 0;
+    }
+
+    const data = await response.json();
+    if (!data.commits || !Array.isArray(data.commits)) {
+      return 0;
+    }
+
+    const commits = data.commits;
+    const existingActivities = getActivities();
+    const repoId = `${repoEntity}/${repoName}`;
+    let syncedCount = 0;
+
+    // Get existing commit IDs to avoid duplicates
+    const existingCommitIds = new Set(
+      existingActivities
+        .filter(a => a.repo === repoId && a.type === "commit_created")
+        .map(a => a.metadata?.commitId)
+        .filter((id): id is string => !!id)
+    );
+
+    for (const commit of commits) {
+      // Skip if we already have this commit
+      if (existingCommitIds.has(commit.id)) {
+        continue;
+      }
+
+      // Try to extract pubkey from author email or name
+      // Git commits might have email like "user@example.com" or "npub1xxx@example.com"
+      // Or author name might be a pubkey
+      let commitUser = ownerPubkey; // Default to repo owner
+      
+      if (commit.authorEmail) {
+        // Check if email contains npub
+        const npubMatch = commit.authorEmail.match(/npub1[a-z0-9]{58}/i);
+        if (npubMatch) {
+          try {
+            const { nip19 } = require("nostr-tools");
+            const decoded = nip19.decode(npubMatch[0]);
+            if (decoded.type === "npub" && /^[0-9a-f]{64}$/i.test(decoded.data as string)) {
+              commitUser = decoded.data as string;
+            }
+          } catch {
+            // Invalid npub, use owner
+          }
+        }
+        // Check if email is a pubkey (64-char hex)
+        else if (/^[0-9a-f]{64}@/i.test(commit.authorEmail)) {
+          const pubkeyMatch = commit.authorEmail.match(/^([0-9a-f]{64})@/i);
+          if (pubkeyMatch && pubkeyMatch[1]) {
+            commitUser = pubkeyMatch[1];
+          }
+        }
+      }
+
+      // Check if author name is a pubkey
+      if (commit.author && /^[0-9a-f]{64}$/i.test(commit.author)) {
+        commitUser = commit.author;
+      }
+
+      // Record commit as activity
+      recordActivity({
+        type: "commit_created",
+        user: commitUser,
+        repo: repoId,
+        entity: repoEntity,
+        repoName: repoName,
+        metadata: {
+          commitId: commit.id,
+          // Use timestamp from git commit (already in milliseconds)
+          timestamp: commit.timestamp,
+        },
+      });
+
+      syncedCount++;
+    }
+
+    if (syncedCount > 0) {
+      console.log(`✅ [Activity Sync] Synced ${syncedCount} commits from bridge for ${repoId}`);
+    }
+
+    return syncedCount;
+  } catch (error) {
+    console.error("❌ [Activity Sync] Failed to sync commits from bridge:", error);
+    return 0;
+  }
+}
+
+/**
+ * Sync commits from bridge for all repos owned by a user
+ * This is called when viewing a profile to ensure activity bar is up-to-date
+ */
+export async function syncUserCommitsFromBridge(userPubkey: string): Promise<number> {
+  try {
+    const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
+    const userRepos = repos.filter((repo: any) => {
+      if (!repo.entity || repo.entity === "user") return false;
+      const ownerPubkey = getRepoOwnerPubkey(repo, repo.entity);
+      return ownerPubkey && ownerPubkey.toLowerCase() === userPubkey.toLowerCase();
+    });
+
+    let totalSynced = 0;
+
+    // Sync commits for each repo (limit to 10 repos to avoid overwhelming)
+    for (const repo of userRepos.slice(0, 10)) {
+      const ownerPubkey = getRepoOwnerPubkey(repo, repo.entity);
+      if (!ownerPubkey) continue;
+
+      const repoName = repo.repo || repo.slug;
+      const branch = repo.defaultBranch || "main";
+
+      try {
+        const synced = await syncCommitsFromBridge(ownerPubkey, repo.entity, repoName, branch);
+        totalSynced += synced;
+        
+        // Small delay between repos to avoid overwhelming the bridge
+        await new Promise(resolve => setTimeout(resolve, 200));
+      } catch (error) {
+        console.error(`❌ [Activity Sync] Failed to sync commits for ${repo.entity}/${repoName}:`, error);
+      }
+    }
+
+    if (totalSynced > 0) {
+      console.log(`✅ [Activity Sync] Synced ${totalSynced} total commits from bridge for user ${userPubkey.slice(0, 8)}...`);
+    }
+
+    return totalSynced;
+  } catch (error) {
+    console.error("❌ [Activity Sync] Failed to sync user commits:", error);
+    return 0;
+  }
+}
+
