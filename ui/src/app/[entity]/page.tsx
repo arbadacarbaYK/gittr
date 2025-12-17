@@ -2109,33 +2109,28 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
               <div className="flex justify-between">
                 <span className="text-gray-400">Total Activity</span>
                 <span className="text-purple-400">
-                  {loadingNostrCounts ? "..." : (
-                    // CRITICAL: Only use Nostr counts if they're meaningful (non-zero or higher than localStorage)
-                    // If Nostr returns 0 but localStorage has data, use localStorage
-                    nostrActivityCounts && nostrActivityCounts.total > 0 
-                      ? nostrActivityCounts.total 
-                      : (userStats?.activityCount || 0)
-                  )}
+                  {/* Show localStorage immediately, update if Nostr has higher value */}
+                  {nostrActivityCounts && nostrActivityCounts.total > (userStats?.activityCount || 0)
+                    ? nostrActivityCounts.total
+                    : (userStats?.activityCount || 0)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Pushes</span>
                 <span className="text-green-400">
-                  {loadingNostrCounts ? "..." : (
-                    nostrActivityCounts && nostrActivityCounts.pushes > 0
-                      ? nostrActivityCounts.pushes
-                      : (activityCounts.commit_created || 0)
-                  )}
+                  {/* Show localStorage immediately, update if Nostr has higher value */}
+                  {nostrActivityCounts && nostrActivityCounts.pushes > (activityCounts.commit_created || 0)
+                    ? nostrActivityCounts.pushes
+                    : (activityCounts.commit_created || 0)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">PRs Merged</span>
                 <span className="text-cyan-400">
-                  {loadingNostrCounts ? "..." : (
-                    nostrActivityCounts && nostrActivityCounts.prsMerged > 0
-                      ? nostrActivityCounts.prsMerged
-                      : (activityCounts.pr_merged || 0)
-                  )}
+                  {/* Show localStorage immediately, update if Nostr has higher value */}
+                  {nostrActivityCounts && nostrActivityCounts.prsMerged > (activityCounts.pr_merged || 0)
+                    ? nostrActivityCounts.prsMerged
+                    : (activityCounts.pr_merged || 0)}
                 </span>
               </div>
               <div className="flex justify-between">
