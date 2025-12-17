@@ -1737,15 +1737,17 @@ export default function RepoCodePage({
     const hasSourceUrl = !!currentRepoData?.sourceUrl;
     
     // This prevents clicking a file from triggering file list fetching
+    // BUT: Only skip if we actually have files - if files aren't loaded yet, we need to fetch them
     const isFileOpening = openingFromURLRef.current || selectedFile !== null;
     
     // CRITICAL: Log only primitives to avoid React re-render loops
     // Logging objects can trigger serialization that causes re-renders
     // console.log("🔍 [File Fetch] Checking repo:", `repo=${repoKeyWithBranch}, branch=${currentBranch}, hasFiles=${hasFiles}, hasSourceUrl=${hasSourceUrl}, hasRepoData=${!!currentRepoData}, filesLength=${currentRepoData?.files?.length || 0}, isFileOpening=${isFileOpening}`);
     
-    // If file opening is in progress, skip file fetching to prevent re-render loops
+    // If file opening is in progress AND we already have files, skip file fetching to prevent re-render loops
+    // BUT: If we don't have files yet, we MUST fetch them even if a file is being opened
     if (isFileOpening && hasFiles) {
-      console.log("⏭️ [File Fetch] File opening in progress, skipping file list fetch to prevent loop");
+      console.log("⏭️ [File Fetch] File opening in progress and files exist, skipping file list fetch to prevent loop");
       return;
     }
     
@@ -4933,9 +4935,27 @@ export default function RepoCodePage({
   // Open file when selectedFile is set from URL (skip URL update since URL already has it)
   // Use ref to track if we're opening from URL to prevent loops
   useEffect(() => {
-    if (selectedFile && !loadingFile && repoData && urlFile === selectedFile && !openingFromURLRef.current) {
-      // Only open if URL matches and we don't have content yet
-      // CRITICAL: Don't retry if we've already failed to load this file (prevents infinite loop)
+    if (!selectedFile || !repoData || urlFile !== selectedFile || openingFromURLRef.current) {
+      return; // Not ready to open file
+    }
+    
+    // Check if files are loaded - if not, wait for them
+    const hasFiles = repoData?.files && Array.isArray(repoData.files) && repoData.files.length > 0;
+    const repoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
+    const currentBranch = selectedBranch || repoData?.defaultBranch || "main";
+    const repoKeyWithBranch = `${repoKey}:${currentBranch}`;
+    const filesAreLoading = fileFetchInProgressRef.current;
+    const filesHaveBeenAttempted = fileFetchAttemptedRef.current === repoKeyWithBranch || fileFetchAttemptedRef.current.startsWith(`${repoKey}:`);
+    
+    // If files aren't loaded yet and we're still trying to fetch them, wait
+    if (!hasFiles && (filesAreLoading || !filesHaveBeenAttempted)) {
+      console.log("⏳ [File Open] Waiting for files to load before opening:", selectedFile);
+      return; // Wait for files to be fetched first
+    }
+    
+    // Now try to open the file
+    if (!loadingFile) {
+      // Only open if we don't have content yet and haven't failed before
       if (!fileContent && !failedFilesRef.current.has(selectedFile)) {
         openingFromURLRef.current = true;
         // openFile is async, wait for it
@@ -4954,7 +4974,7 @@ export default function RepoCodePage({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFile, urlFile, repoData?.files?.length, loadingFile, fileContent]); // Use specific properties instead of full repoData
+  }, [selectedFile, urlFile, repoData?.files?.length, loadingFile, fileContent, resolvedParams.entity, resolvedParams.repo, selectedBranch, repoData?.defaultBranch]); // Use specific properties instead of full repoData
 
   // Resolve repo logo URL: prefer stored logoUrl, then logo files, then owner Nostr profile picture
   useEffect(() => {
