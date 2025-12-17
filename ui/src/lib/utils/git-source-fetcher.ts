@@ -595,31 +595,60 @@ async function fetchFromGitLab(
     
     for (const branchToTry of branchesToTry) {
       try {
-        const treeUrl = `https://gitlab.com/api/v4/projects/${projectPath}/repository/tree?ref=${encodeURIComponent(branchToTry)}&recursive=true&per_page=100`;
+        // CRITICAL: GitLab API pagination - fetch ALL pages, not just first 100 items
+        // GitLab returns max 100 items per page, need to follow pagination
+        let allItems: any[] = [];
+        let page = 1;
+        const perPage = 100; // GitLab max per page
+        let hasMore = true;
         
-        const response = await fetch(treeUrl, {
-          headers: {
-            "User-Agent": "gittr-space",
-            "Accept": "application/json"
-          } as any
-        });
-        
-        if (response.ok) {
-          const data: any = await response.json();
-          if (Array.isArray(data) && data.length > 0) {
-            console.log(`✅ [Git Source] Got GitLab files for branch ${branchToTry}: ${data.length} items`);
-            const files = data
-              .filter((n: any) => n.type === "blob")
-              .map((n: any) => ({ type: "file", path: n.path, size: n.size }));
-            const dirs = data
-              .filter((n: any) => n.type === "tree")
-              .map((n: any) => ({ type: "dir", path: n.path }));
-            
-            return [...dirs, ...files];
+        while (hasMore) {
+          const treeUrl = `https://gitlab.com/api/v4/projects/${projectPath}/repository/tree?ref=${encodeURIComponent(branchToTry)}&recursive=true&per_page=${perPage}&page=${page}`;
+          
+          const response = await fetch(treeUrl, {
+            headers: {
+              "User-Agent": "gittr-space",
+              "Accept": "application/json"
+            } as any
+          });
+          
+          if (response.ok) {
+            const data: any = await response.json();
+            if (Array.isArray(data)) {
+              if (data.length > 0) {
+                allItems = [...allItems, ...data];
+                console.log(`✅ [Git Source] Got GitLab page ${page} for branch ${branchToTry}: ${data.length} items (total: ${allItems.length})`);
+                
+                // Check if there are more pages
+                const totalPages = parseInt(response.headers.get("X-Total-Pages") || "1", 10);
+                const currentPage = parseInt(response.headers.get("X-Page") || "1", 10);
+                hasMore = currentPage < totalPages;
+                page++;
+              } else {
+                hasMore = false; // No more items
+              }
+            } else {
+              hasMore = false; // Invalid response
+            }
+          } else if (response.status === 404) {
+            console.warn(`⚠️ [Git Source] GitLab branch ${branchToTry} not found (${response.status}), trying next...`);
+            break; // Try next branch
+          } else {
+            console.warn(`⚠️ [Git Source] GitLab API error for branch ${branchToTry} (${response.status}), trying next...`);
+            break; // Try next branch
           }
-        } else {
-          console.warn(`⚠️ [Git Source] GitLab branch ${branchToTry} not found (${response.status}), trying next...`);
-          continue; // Try next branch
+        }
+        
+        if (allItems.length > 0) {
+          console.log(`✅ [Git Source] Got GitLab files for branch ${branchToTry}: ${allItems.length} total items`);
+          const files = allItems
+            .filter((n: any) => n.type === "blob")
+            .map((n: any) => ({ type: "file", path: n.path, size: n.size }));
+          const dirs = allItems
+            .filter((n: any) => n.type === "tree")
+            .map((n: any) => ({ type: "dir", path: n.path }));
+          
+          return [...dirs, ...files];
         }
       } catch (branchError) {
         console.warn(`⚠️ [Git Source] Error fetching GitLab branch ${branchToTry}:`, branchError);
