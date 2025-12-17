@@ -570,37 +570,37 @@ export function ReposList({
                       <span className="truncate">{displayName}</span>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      {/* CRITICAL: Status badge - suppressHydrationWarning because status calculation depends on client-side state */}
-                      {(() => {
-                        const style = getStatusBadgeStyle(status);
-                        return (
-                          <span 
+                    {/* CRITICAL: Status badge - suppressHydrationWarning because status calculation depends on client-side state */}
+                    {(() => {
+                      const style = getStatusBadgeStyle(status);
+                      return (
+                        <span 
                             className={`text-xs px-2 py-0.5 rounded ${style.bg} ${style.text} flex-shrink-0`}
-                            suppressHydrationWarning
-                          >
-                            {style.label}
-                          </span>
-                        );
-                      })()}
-                      {/* CRITICAL: Always render badge to prevent hydration mismatches */}
-                      {/* suppressHydrationWarning because publicRead might differ between server and client */}
-                      <div suppressHydrationWarning>
-                        <Badge 
-                          variant="outline" 
-                          className="text-xs flex items-center gap-1 flex-shrink-0"
+                          suppressHydrationWarning
                         >
-                          {r.publicRead !== false ? (
-                            <>
-                              <Globe className="h-3 w-3" />
-                              Public
-                            </>
-                          ) : (
-                            <>
-                              <Lock className="h-3 w-3" />
-                              Private
-                            </>
-                          )}
-                        </Badge>
+                          {style.label}
+                        </span>
+                      );
+                    })()}
+                    {/* CRITICAL: Always render badge to prevent hydration mismatches */}
+                    {/* suppressHydrationWarning because publicRead might differ between server and client */}
+                    <div suppressHydrationWarning>
+                      <Badge 
+                        variant="outline" 
+                          className="text-xs flex items-center gap-1 flex-shrink-0"
+                      >
+                        {r.publicRead !== false ? (
+                          <>
+                            <Globe className="h-3 w-3" />
+                            Public
+                          </>
+                        ) : (
+                          <>
+                            <Lock className="h-3 w-3" />
+                            Private
+                          </>
+                        )}
+                      </Badge>
                       </div>
                     </div>
                   </div>
