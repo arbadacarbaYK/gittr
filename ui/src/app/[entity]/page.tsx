@@ -1756,15 +1756,24 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
   const weeks = contributionGraph.slice(-52);
   const maxCount = Math.max(...weeks.map(w => w.count), 1);
   
-  // CRITICAL: Scale intensity levels based on maxCount to properly differentiate contributions
-  // For maxCount=238, we want levels that scale: 0, ~5, ~15, ~50, ~120, ~238
-  // Use logarithmic scaling: base levels are [0, 1, 3, 10, 30, 100], but scale them to maxCount
+  // CRITICAL: Use logarithmic scaling to create more distinct visual levels
+  // This ensures that 28 vs 96 contributions look very different
+  // Formula: level = maxCount * (baseLevel / 100) ^ (1 / scaleFactor)
+  // Lower scaleFactor = more aggressive scaling (more differentiation)
   const baseLevels = [0, 1, 3, 10, 30, 100];
+  const scaleFactor = 1.5; // Logarithmic scaling factor (lower = more aggressive)
+  
   const intensityLevels = baseLevels.map(level => {
     if (level === 0) return 0;
-    if (maxCount <= 100) return level; // Use base levels for low activity
-    // Scale proportionally: level 100 maps to maxCount, others scale proportionally
-    return Math.round((level / 100) * maxCount);
+    if (maxCount <= 10) {
+      // For very low activity, use simple linear scaling
+      return Math.round((level / 100) * maxCount);
+    }
+    // Use logarithmic scaling for better differentiation
+    // This creates more distinct levels even for similar maxCounts
+    const ratio = level / 100;
+    const logScaled = Math.pow(ratio, 1 / scaleFactor) * maxCount;
+    return Math.round(logScaled);
   });
 
   const getIntensity = (count: number) => {
