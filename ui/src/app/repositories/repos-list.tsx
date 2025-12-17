@@ -561,44 +561,47 @@ export function ReposList({
                   )}
                 </div>
                 <div className="flex flex-col gap-1 min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  {/* Header row: repo name on its own line on mobile so it never gets squeezed out by badges */}
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2 sm:flex-wrap">
                     <div className="font-semibold text-cyan-400 min-w-0 flex-1 flex items-center gap-2">
                       {isNavigating && (
                         <Loader2 className="h-4 w-4 animate-spin text-purple-400 flex-shrink-0" />
                       )}
                       <span className="truncate">{displayName}</span>
                     </div>
-                    {/* CRITICAL: Status badge - suppressHydrationWarning because status calculation depends on client-side state */}
-                    {(() => {
-                      const style = getStatusBadgeStyle(status);
-                      return (
-                        <span 
-                          className={`text-xs px-2 py-0.5 rounded ${style.bg} ${style.text} flex-shrink-0 whitespace-nowrap`}
-                          suppressHydrationWarning
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* CRITICAL: Status badge - suppressHydrationWarning because status calculation depends on client-side state */}
+                      {(() => {
+                        const style = getStatusBadgeStyle(status);
+                        return (
+                          <span 
+                            className={`text-xs px-2 py-0.5 rounded ${style.bg} ${style.text} flex-shrink-0`}
+                            suppressHydrationWarning
+                          >
+                            {style.label}
+                          </span>
+                        );
+                      })()}
+                      {/* CRITICAL: Always render badge to prevent hydration mismatches */}
+                      {/* suppressHydrationWarning because publicRead might differ between server and client */}
+                      <div suppressHydrationWarning>
+                        <Badge 
+                          variant="outline" 
+                          className="text-xs flex items-center gap-1 flex-shrink-0"
                         >
-                          {style.label}
-                        </span>
-                      );
-                    })()}
-                    {/* CRITICAL: Always render badge to prevent hydration mismatches */}
-                    {/* suppressHydrationWarning because publicRead might differ between server and client */}
-                    <div suppressHydrationWarning>
-                      <Badge 
-                        variant="outline" 
-                        className="text-xs flex items-center gap-1 flex-shrink-0 whitespace-nowrap"
-                      >
-                        {r.publicRead !== false ? (
-                          <>
-                            <Globe className="h-3 w-3" />
-                            Public
-                          </>
-                        ) : (
-                          <>
-                            <Lock className="h-3 w-3" />
-                            Private
-                          </>
-                        )}
-                      </Badge>
+                          {r.publicRead !== false ? (
+                            <>
+                              <Globe className="h-3 w-3" />
+                              Public
+                            </>
+                          ) : (
+                            <>
+                              <Lock className="h-3 w-3" />
+                              Private
+                            </>
+                          )}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
                   {r.description && r.description.trim() ? (
