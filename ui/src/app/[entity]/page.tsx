@@ -17,7 +17,8 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Globe, Zap, UserPlus, UserCheck, CheckCircle2 } from "lucide-react";
+import { ExternalLink, Globe, Zap, UserPlus, UserCheck, CheckCircle2, HelpCircle } from "lucide-react";
+import { Tooltip } from "@/components/ui/tooltip";
 import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
 
 // Check if string is a valid Nostr pubkey (npub or hex)
@@ -2046,7 +2047,16 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Contribution Graph */}
         <div className="lg:col-span-2 border border-[#383B42] rounded p-4">
-          <h2 className="font-semibold mb-4">Activity Timeline</h2>
+          <div className="flex items-center gap-2 mb-4">
+            <h2 className="font-semibold">Activity Timeline</h2>
+            <Tooltip 
+              content="Shows contributions over the last 52 weeks (1 year).\n\nEach box represents one week. Darker green indicates more contributions.\n\nData comes from:\n• Git commits synced from git-nostr-bridge\n• Pull requests and issues from Nostr network\n• Repository creation events\n\nCounts are updated in real-time as you push code or create PRs/issues." 
+              mobileClickable={true}
+              className="inline-flex"
+            >
+              <HelpCircle className="w-4 h-4 text-gray-400 hover:text-gray-300 cursor-help" />
+            </Tooltip>
+          </div>
           <div className="w-full">
             <div className="w-full">
               {/* Calculate box size to fit all weeks in container (52 weeks = 364 days) */}
@@ -2101,7 +2111,16 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
         {/* Stats Sidebar - Shows local activity data (from localStorage) */}
         <div className="space-y-4">
           <div className="border border-[#383B42] rounded p-4">
-            <h3 className="font-semibold mb-2">Statistics</h3>
+            <div className="flex items-center gap-2 mb-2">
+              <h3 className="font-semibold">Statistics</h3>
+              <Tooltip 
+                content="Activity counts from the Nostr network and local storage.\n\n• Total Activity: All contributions (pushes, PRs, issues, bounties)\n• Pushes: Git commits pushed to repositories\n• PRs Merged: Pull requests that were merged\n• Bounties Claimed: Bounties completed\n• Repositories: Total number of repos\n\nData is shown immediately from local storage, then updated from Nostr network if higher values are found.\n\nThese are all-time counts (not limited to the last year)." 
+                mobileClickable={true}
+                className="inline-flex"
+              >
+                <HelpCircle className="w-4 h-4 text-gray-400 hover:text-gray-300 cursor-help" />
+              </Tooltip>
+            </div>
             <p className="text-xs text-gray-500 mb-3">
               {nostrActivityCounts ? "Activity from Nostr network" : "Local activity data"}
             </p>
