@@ -146,10 +146,11 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       const { isGraspServer } = await import("../utils/grasp-servers");
       if (isGraspServer(cleanUrl)) {
         // Extract domain from URL (remove protocol)
-        const serverDomain = cleanUrl.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '').split('/')[0];
+        const urlWithoutProtocol = cleanUrl.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '');
+        const serverDomain = urlWithoutProtocol.split('/')[0];
         
         // Only proceed if we have a valid server domain
-        if (serverDomain && serverDomain.length > 0) {
+        if (serverDomain && typeof serverDomain === 'string' && serverDomain.length > 0) {
           // Add HTTPS URL
           const httpsCloneUrl = `https://${serverDomain}/${pubkey}/${actualRepositoryName}.git`;
           addCloneUrl(httpsCloneUrl);
