@@ -5574,7 +5574,7 @@ export default function RepoCodePage({
             if (isHtmlFile) {
               // HTML file incorrectly marked as binary - decode it
               try {
-                const decoded = atob(foundContent);
+                const decoded = atob((foundContent as string) || "");
                 return { content: decoded, url: null, isBinary: false };
               } catch (e) {
                 console.error(`❌ [fetchGithubRaw] Failed to decode HTML file stored as binary: ${path}`, e);
