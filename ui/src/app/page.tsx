@@ -938,11 +938,22 @@ export default function HomePage() {
               <div className="space-y-2 flex-1">
                 {topUsers.length > 0 ? (
                   topUsers.slice(0, 5).map((user, idx) => {
-                    // Use full pubkey for profile link (more reliable than 8-char prefix)
+                    // Convert hex pubkey to npub format for profile link
+                    let href = `/${user.pubkey}`;
+                    if (user.pubkey && /^[0-9a-f]{64}$/i.test(user.pubkey)) {
+                      try {
+                        const npub = nip19.npubEncode(user.pubkey);
+                        href = `/${npub}`;
+                      } catch (error) {
+                        console.error('⚠️ [Home] Failed to encode npub for user:', { pubkey: user.pubkey, error });
+                        // Fallback to hex pubkey if encoding fails
+                        href = `/${user.pubkey}`;
+                      }
+                    }
                     return (
                       <Link
                         key={user.pubkey}
-                        href={`/${user.pubkey}`}
+                        href={href}
                         className="block hover:bg-gray-800/50 rounded p-2 -m-2"
                       >
                         <div className="flex items-center justify-between">

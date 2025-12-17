@@ -762,7 +762,11 @@ export function countActivitiesFromNostr(
   const graspRelays = getGraspServers(relays);
   const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
   
-  console.log(`🔍 [Nostr Activity Count] Starting query for ${userPubkey.slice(0, 8)}... using ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`, activeRelays);
+  // CRITICAL: Normalize pubkey to lowercase for consistent querying
+  // Nostr pubkeys are case-insensitive, but some relays might be strict
+  const normalizedPubkey = userPubkey.toLowerCase();
+  
+  console.log(`🔍 [Nostr Activity Count] Starting query for ${normalizedPubkey.slice(0, 8)}... using ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`, activeRelays);
   
   return new Promise((resolve) => {
     const counts: NostrActivityCounts = {
@@ -784,42 +788,43 @@ export function countActivitiesFromNostr(
 
     // Find ALL repos and ALL activities (no time limit)
     // If we find repos, we should find their associated activities
+    // CRITICAL: Use normalized pubkey (lowercase) for all queries
     const filters = [
       // Repo announcements (kind 30617) - find ALL repos
       {
         kinds: [KIND_REPOSITORY_NIP34],
-        authors: [userPubkey],
+        authors: [normalizedPubkey],
         limit: 1000,
       },
       // Repo state events (kind 30618) - indicate pushes/new commits (ALL time)
       {
         kinds: [KIND_REPOSITORY_STATE],
-        authors: [userPubkey],
+        authors: [normalizedPubkey],
         limit: 1000,
       },
       // PR events (kind 1618) - ALL time
       {
         kinds: [KIND_PULL_REQUEST],
-        authors: [userPubkey],
+        authors: [normalizedPubkey],
         limit: 1000,
       },
       // PR merged status (kind 1631) - ALL time
       {
         kinds: [KIND_STATUS_APPLIED],
-        authors: [userPubkey],
+        authors: [normalizedPubkey],
         "#k": ["1618"], // Only PR status events
         limit: 1000,
       },
       // Issue events (kind 1621) - ALL time
       {
         kinds: [KIND_ISSUE],
-        authors: [userPubkey],
+        authors: [normalizedPubkey],
         limit: 1000,
       },
       // Issue closed status (kind 1632) - ALL time
       {
         kinds: [KIND_STATUS_CLOSED],
-        authors: [userPubkey],
+        authors: [normalizedPubkey],
         "#k": ["1621"], // Only issue status events
         limit: 1000,
       },
@@ -844,42 +849,58 @@ export function countActivitiesFromNostr(
           }
         }
         // Count repo state events (kind 30618) - these indicate pushes
+        // CRITICAL: Normalize event pubkey to lowercase for comparison
         else if (event.kind === KIND_REPOSITORY_STATE) {
-          counts.pushes++;
-          counts.total++;
+          const eventPubkey = (event.pubkey || "").toLowerCase();
+          if (eventPubkey === normalizedPubkey) {
+            counts.pushes++;
+            counts.total++;
+          }
         }
         // Count PR events (kind 1618)
+        // CRITICAL: Normalize event pubkey to lowercase for comparison
         else if (event.kind === KIND_PULL_REQUEST) {
-          if (!seenPRs.has(event.id)) {
+          const eventPubkey = (event.pubkey || "").toLowerCase();
+          if (eventPubkey === normalizedPubkey && !seenPRs.has(event.id)) {
             seenPRs.add(event.id);
             counts.prsCreated++;
             counts.total++;
           }
         }
         // Count PR merged status (kind 1631)
+        // CRITICAL: Normalize event pubkey to lowercase for comparison
         else if (event.kind === KIND_STATUS_APPLIED) {
-          const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
-          if (kTag && kTag[1] === "1618") {
-            // This is a PR merged status
-            counts.prsMerged++;
-            counts.total++;
+          const eventPubkey = (event.pubkey || "").toLowerCase();
+          if (eventPubkey === normalizedPubkey) {
+            const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+            if (kTag && kTag[1] === "1618") {
+              // This is a PR merged status
+              counts.prsMerged++;
+              counts.total++;
+            }
           }
         }
         // Count issue events (kind 1621)
+        // CRITICAL: Normalize event pubkey to lowercase for comparison
         else if (event.kind === KIND_ISSUE) {
-          if (!seenIssues.has(event.id)) {
+          const eventPubkey = (event.pubkey || "").toLowerCase();
+          if (eventPubkey === normalizedPubkey && !seenIssues.has(event.id)) {
             seenIssues.add(event.id);
             counts.issuesCreated++;
             counts.total++;
           }
         }
         // Count issue closed status (kind 1632)
+        // CRITICAL: Normalize event pubkey to lowercase for comparison
         else if (event.kind === KIND_STATUS_CLOSED) {
-          const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
-          if (kTag && kTag[1] === "1621") {
-            // This is an issue closed status
-            counts.issuesClosed++;
-            counts.total++;
+          const eventPubkey = (event.pubkey || "").toLowerCase();
+          if (eventPubkey === normalizedPubkey) {
+            const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+            if (kTag && kTag[1] === "1621") {
+              // This is an issue closed status
+              counts.issuesClosed++;
+              counts.total++;
+            }
           }
         }
       },
