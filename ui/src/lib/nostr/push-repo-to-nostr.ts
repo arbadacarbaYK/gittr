@@ -142,11 +142,23 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       
       // CRITICAL: For GRASP servers, construct the full clone URL with ownerPubkey and repo name
       // NIP-34 clone URLs should be the full URL that can be used directly with `git clone`
+      // Add BOTH HTTPS and SSH URLs per NIP-34 spec
       const { isGraspServer } = await import("../utils/grasp-servers");
       if (isGraspServer(cleanUrl)) {
-        const fullCloneUrl = `${cleanUrl}/${pubkey}/${actualRepositoryName}.git`;
-        addCloneUrl(fullCloneUrl);
-        console.log(`🔗 [Push Repo] Added primary GRASP server clone URL: ${fullCloneUrl}`);
+        // Extract domain from URL (remove protocol)
+        const serverDomain = cleanUrl.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '').split('/')[0];
+        
+        // Add HTTPS URL
+        const httpsCloneUrl = `https://${serverDomain}/${pubkey}/${actualRepositoryName}.git`;
+        addCloneUrl(httpsCloneUrl);
+        console.log(`🔗 [Push Repo] Added primary GRASP server HTTPS clone URL: ${httpsCloneUrl}`);
+        
+        // Add SSH URL (for users with SSH keys)
+        const gitSshBase = repo.gitSshBase || (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_GIT_SSH_BASE) || "gittr.space";
+        const sshHost = (serverDomain === "git.gittr.space" || serverDomain.includes("gittr.space")) ? gitSshBase : serverDomain;
+        const sshCloneUrl = `git@${sshHost}:${pubkey}/${actualRepositoryName}.git`;
+        addCloneUrl(sshCloneUrl);
+        console.log(`🔗 [Push Repo] Added primary GRASP server SSH clone URL: ${sshCloneUrl}`);
       } else {
         addCloneUrl(cleanUrl);
         console.log(`🔗 [Push Repo] Added configured git server URL: ${cleanUrl}`);
@@ -181,14 +193,25 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         .filter(server => server !== primaryServerDomain);
       
       // Generate clone URLs for all known servers
+      // CRITICAL: Add BOTH HTTPS and SSH URLs per NIP-34 spec (supports https://, git://, ssh://)
+      // This allows clients to choose the appropriate format (SSH for push/pull with keys, HTTPS for read-only)
+      const gitSshBase = repo.gitSshBase || (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_GIT_SSH_BASE) || "gittr.space";
+      
       uniqueServers.forEach(server => {
-        // Use HTTPS for git clone (GRASP servers support HTTPS)
-        const fullCloneUrl = `https://${server}/${pubkey}/${actualRepositoryName}.git`;
-        addCloneUrl(fullCloneUrl);
-        console.log(`🔗 [Push Repo] Added known GRASP server clone URL: ${fullCloneUrl}`);
+        // Add HTTPS URL (works for everyone, read-only or with credentials)
+        const httpsCloneUrl = `https://${server}/${pubkey}/${actualRepositoryName}.git`;
+        addCloneUrl(httpsCloneUrl);
+        console.log(`🔗 [Push Repo] Added HTTPS clone URL: ${httpsCloneUrl}`);
+        
+        // Add SSH URL (for users with SSH keys - allows push/pull)
+        // Use gitSshBase if server matches, otherwise use server domain directly
+        const sshHost = (server === "git.gittr.space" || server.includes("gittr.space")) ? gitSshBase : server;
+        const sshCloneUrl = `git@${sshHost}:${pubkey}/${actualRepositoryName}.git`;
+        addCloneUrl(sshCloneUrl);
+        console.log(`🔗 [Push Repo] Added SSH clone URL: ${sshCloneUrl}`);
       });
       
-      console.log(`✅ [Push Repo] Added ${uniqueServers.length} additional GRASP server clone URLs (total: ${cloneUrls.length})`);
+      console.log(`✅ [Push Repo] Added ${uniqueServers.length * 2} clone URLs (HTTPS + SSH) for ${uniqueServers.length} GRASP servers (total: ${cloneUrls.length})`);
     } else {
       console.warn(`⚠️ [Push Repo] Cannot add GRASP server clone URLs - invalid pubkey format`);
     }
