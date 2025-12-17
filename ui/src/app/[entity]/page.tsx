@@ -957,6 +957,8 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
         // Then add Nostr PRs/issues per repo in background
         // localStorage is already showing correct counts from bridge + synced data
         // We just add any additional PRs/issues from Nostr that might not be in localStorage yet
+        // CRITICAL: subscribe and defaultRelays should always be available from NostrContext
+        // Even when not logged in, we can still query Nostr (read-only)
         if (subscribe && defaultRelays && defaultRelays.length > 0) {
           setLoadingNostrCounts(true);
           
@@ -974,6 +976,7 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
           // Use the proper function to count activities from Nostr
           // CRITICAL: Normalize pubkey to lowercase for consistent querying
           const normalizedFullPubkey = fullPubkey.toLowerCase();
+          console.log(`🔍 [Profile] Starting Nostr activity count query for ${normalizedFullPubkey.slice(0, 8)}... (logged in: ${isLoggedIn})`);
           countActivitiesFromNostr(subscribe, activeRelays, normalizedFullPubkey)
             .then((nostrCounts) => {
               console.log(`✅ [Profile] Got Nostr activity counts:`, nostrCounts);
@@ -1089,7 +1092,13 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
                       setTimeout(() => {
                         prsIssuesUnsub();
                         console.log(`✅ [Profile] Final Nostr activity counts (including PRs/issues by others):`, nostrCounts);
-                        setNostrActivityCounts(nostrCounts);
+                        // CRITICAL: Only set nostrActivityCounts if counts are meaningful (non-zero)
+                        // If all counts are 0, don't override localStorage counts
+                        if (nostrCounts.total > 0 || nostrCounts.repos > 0) {
+                          setNostrActivityCounts(nostrCounts);
+                        } else {
+                          console.log(`⚠️ [Profile] Nostr query returned all zeros, keeping localStorage counts`);
+                        }
                         setLoadingNostrCounts(false);
                       }, 1000);
                     }
@@ -1103,13 +1112,24 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
                     prsIssuesResolved = true;
                     prsIssuesUnsub();
                     console.log(`⏱️ [Profile] PRs/issues query timeout after 15s (EOSE: ${prsIssuesEoseCount}/${expectedPrsIssuesEose}), final counts:`, nostrCounts);
-                    setNostrActivityCounts(nostrCounts);
+                    // CRITICAL: Only set nostrActivityCounts if counts are meaningful (non-zero)
+                    if (nostrCounts.total > 0 || nostrCounts.repos > 0) {
+                      setNostrActivityCounts(nostrCounts);
+                    } else {
+                      console.log(`⚠️ [Profile] Nostr query timeout returned all zeros, keeping localStorage counts`);
+                    }
                     setLoadingNostrCounts(false);
                   }
                 }, 15000);
               } else {
                 // No repos to query, just use the counts from countActivitiesFromNostr
-                setNostrActivityCounts(nostrCounts);
+                // CRITICAL: Only set nostrActivityCounts if counts are meaningful (non-zero)
+                // If all counts are 0, don't override localStorage counts
+                if (nostrCounts.total > 0 || nostrCounts.repos > 0) {
+                  setNostrActivityCounts(nostrCounts);
+                } else {
+                  console.log(`⚠️ [Profile] Nostr query returned all zeros, keeping localStorage counts`);
+                }
                 setLoadingNostrCounts(false);
               }
             })
@@ -1735,23 +1755,31 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
   // Calculate contribution graph for display (last 52 weeks)
   const weeks = contributionGraph.slice(-52);
   const maxCount = Math.max(...weeks.map(w => w.count), 1);
-  // Improved intensity levels: logarithmic scale to better differentiate between 10 and 100+ contributions
-  // Levels: 0, 1, 3, 10, 30, 100+
-  const intensityLevels = [0, 1, 3, 10, 30, 100];
+  
+  // CRITICAL: Scale intensity levels based on maxCount to properly differentiate contributions
+  // For maxCount=238, we want levels that scale: 0, ~5, ~15, ~50, ~120, ~238
+  // Use logarithmic scaling: base levels are [0, 1, 3, 10, 30, 100], but scale them to maxCount
+  const baseLevels = [0, 1, 3, 10, 30, 100];
+  const intensityLevels = baseLevels.map(level => {
+    if (level === 0) return 0;
+    if (maxCount <= 100) return level; // Use base levels for low activity
+    // Scale proportionally: level 100 maps to maxCount, others scale proportionally
+    return Math.round((level / 100) * maxCount);
+  });
 
   const getIntensity = (count: number) => {
     if (count === 0) return "bg-gray-800 border border-gray-700";
-    const level1 = intensityLevels[1] ?? 1;   // 1
-    const level2 = intensityLevels[2] ?? 3;   // 3
-    const level3 = intensityLevels[3] ?? 10;  // 10
-    const level4 = intensityLevels[4] ?? 30;  // 30
-    const level5 = intensityLevels[5] ?? 100;  // 100+
+    const level1 = intensityLevels[1] ?? 1;
+    const level2 = intensityLevels[2] ?? 3;
+    const level3 = intensityLevels[3] ?? 10;
+    const level4 = intensityLevels[4] ?? 30;
+    const level5 = intensityLevels[5] ?? 100;
     if (count <= level1) return "bg-green-900 border border-green-800";
     if (count <= level2) return "bg-green-800 border border-green-700";
     if (count <= level3) return "bg-green-700 border border-green-600";
     if (count <= level4) return "bg-green-600 border border-green-500";
     if (count <= level5) return "bg-green-500 border border-green-400";
-    return "bg-green-400 border border-green-300"; // 100+ contributions - brightest
+    return "bg-green-400 border border-green-300"; // Highest contributions - brightest
   };
 
   return (
@@ -2073,19 +2101,33 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
               <div className="flex justify-between">
                 <span className="text-gray-400">Total Activity</span>
                 <span className="text-purple-400">
-                  {loadingNostrCounts ? "..." : (nostrActivityCounts?.total ?? (userStats?.activityCount || 0))}
+                  {loadingNostrCounts ? "..." : (
+                    // CRITICAL: Only use Nostr counts if they're meaningful (non-zero or higher than localStorage)
+                    // If Nostr returns 0 but localStorage has data, use localStorage
+                    nostrActivityCounts && nostrActivityCounts.total > 0 
+                      ? nostrActivityCounts.total 
+                      : (userStats?.activityCount || 0)
+                  )}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Pushes</span>
                 <span className="text-green-400">
-                  {loadingNostrCounts ? "..." : (nostrActivityCounts?.pushes ?? (activityCounts.commit_created || 0))}
+                  {loadingNostrCounts ? "..." : (
+                    nostrActivityCounts && nostrActivityCounts.pushes > 0
+                      ? nostrActivityCounts.pushes
+                      : (activityCounts.commit_created || 0)
+                  )}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">PRs Merged</span>
                 <span className="text-cyan-400">
-                  {loadingNostrCounts ? "..." : (nostrActivityCounts?.prsMerged ?? (activityCounts.pr_merged || 0))}
+                  {loadingNostrCounts ? "..." : (
+                    nostrActivityCounts && nostrActivityCounts.prsMerged > 0
+                      ? nostrActivityCounts.prsMerged
+                      : (activityCounts.pr_merged || 0)
+                  )}
                 </span>
               </div>
               <div className="flex justify-between">
