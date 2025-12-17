@@ -5556,17 +5556,32 @@ export default function RepoCodePage({
           let parsedContent: any = foundContent;
           let isJsonArray = false;
           
-          if (typeof foundContent === "string" && foundContent.trim().startsWith("[") && foundContent.trim().endsWith("]")) {
-            try {
-              const parsed = JSON.parse(foundContent);
-              if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((n: any) => typeof n === "number")) {
-                parsedContent = parsed as number[];
-                isJsonArray = true;
-                console.log(`🔍 [fetchGithubRaw] Detected JSON stringified array for ${path}, parsed to array`);
+          // For binary files (especially images), be more aggressive in detecting numeric content
+          // This handles cases where content might be stored in various formats
+          if (typeof foundContent === "string") {
+            const trimmed = foundContent.trim();
+            
+            // Check for JSON stringified array
+            if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+              try {
+                const parsed = JSON.parse(foundContent);
+                if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((n: any) => typeof n === "number")) {
+                  parsedContent = parsed as number[];
+                  isJsonArray = true;
+                  console.log(`🔍 [fetchGithubRaw] Detected JSON stringified array for ${path}, parsed to array`);
+                }
+              } catch (e) {
+                // Not valid JSON, continue with original content
               }
-            } catch (e) {
-              // Not valid JSON, continue with original content
             }
+            
+            // Also check if content is already an array (shouldn't happen but handle it)
+            if (Array.isArray(foundContent)) {
+              parsedContent = foundContent;
+            }
+          } else if (Array.isArray(foundContent)) {
+            // Content is already an array
+            parsedContent = foundContent;
           }
           
           const isNumericArray =
@@ -5731,7 +5746,17 @@ export default function RepoCodePage({
               'wav': 'audio/wav',
             };
             const mimeType = mimeTypes[ext] || 'application/octet-stream';
-            const dataUrl = `data:${mimeType};base64,${foundContent}`;
+            
+            // Ensure foundContent is a string (should be base64 at this point)
+            const base64Content = typeof foundContent === 'string' ? foundContent : String(foundContent);
+            
+            // Final safety check: if content doesn't look like base64, log a warning
+            const looksLikeBase64 = /^[A-Za-z0-9+/=]+$/.test(base64Content) && base64Content.length > 20;
+            if (!looksLikeBase64 && isBinaryByExtension) {
+              console.warn(`⚠️ [fetchGithubRaw] Binary file ${path} has content that doesn't look like base64. Length: ${base64Content.length}, Preview: ${base64Content.substring(0, 100)}`);
+            }
+            
+            const dataUrl = `data:${mimeType};base64,${base64Content}`;
             return { content: null, url: dataUrl, isBinary: true };
           } else {
             // Text file - content is already decoded
