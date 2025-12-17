@@ -78,7 +78,7 @@ export function CopyableCodeBlock({ children, className = "", inline = false }: 
         className={className}
         onClick={handleCopy}
         title="Click to copy"
-        style={{ cursor: 'pointer' }}
+        style={{ cursor: 'pointer', display: 'inline' }}
       >
         {children}
       </code>
