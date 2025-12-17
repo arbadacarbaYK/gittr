@@ -435,11 +435,43 @@ export default function HomePage() {
     // Listen for new activities
     const handleActivity = () => {
       try {
-      // First, show localStorage data immediately (fast)
-      const localTopRepos = getTopRepos(10);
-      const localTopUsers = getTopUsers(10);
-      setTopRepos(localTopRepos);
-      setTopUsers(localTopUsers);
+      // CRITICAL: First, try to load from sessionStorage (persists across navigation in same session)
+      const cachedTopRepos = sessionStorage.getItem('gittr_cached_topRepos');
+      const cachedTopUsers = sessionStorage.getItem('gittr_cached_topUsers');
+      
+      if (cachedTopRepos) {
+        try {
+          const parsed = JSON.parse(cachedTopRepos);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            console.log(`📦 [Home] Loading ${parsed.length} top repos from sessionStorage cache`);
+            setTopRepos(parsed);
+          }
+        } catch (e) {
+          console.warn('⚠️ [Home] Failed to parse cached top repos:', e);
+        }
+      }
+      
+      if (cachedTopUsers) {
+        try {
+          const parsed = JSON.parse(cachedTopUsers);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            console.log(`📦 [Home] Loading ${parsed.length} top users from sessionStorage cache`);
+            setTopUsers(parsed);
+          }
+        } catch (e) {
+          console.warn('⚠️ [Home] Failed to parse cached top users:', e);
+        }
+      }
+      
+      // Then, show localStorage data immediately (fast) if no cache
+      if (!cachedTopRepos) {
+        const localTopRepos = getTopRepos(10);
+        setTopRepos(localTopRepos);
+      }
+      if (!cachedTopUsers) {
+        const localTopUsers = getTopUsers(10);
+        setTopUsers(localTopUsers);
+      }
       
       // Then, try to fetch from Nostr for more accurate data (if subscribe is available)
       if (subscribe && typeof subscribe === 'function' && defaultRelays && Array.isArray(defaultRelays) && defaultRelays.length > 0) {
@@ -455,8 +487,14 @@ export default function HomePage() {
               console.log(`✅ [Home] Updating top repos from Nostr: ${nostrRepos.length} repos, max activity: ${maxNostrActivity}`);
               console.log(`📋 [Home] Top repos:`, nostrRepos.map(r => `${r.repoName}(${r.activityCount})`).join(', '));
               setTopRepos(nostrRepos);
+              // Cache in sessionStorage for same-session persistence
+              try {
+                sessionStorage.setItem('gittr_cached_topRepos', JSON.stringify(nostrRepos));
+              } catch (e) {
+                console.warn('⚠️ [Home] Failed to cache top repos:', e);
+              }
             } else {
-              console.warn(`⚠️ [Home] Nostr returned 0 repos, keeping localStorage data`);
+              console.warn(`⚠️ [Home] Nostr returned 0 repos, keeping cached/localStorage data`);
             }
           })
           .catch((error) => {
@@ -470,6 +508,12 @@ export default function HomePage() {
             if (nostrUsers.length > 0) {
               console.log(`✅ [Home] Updating top users from Nostr: ${nostrUsers.length} users`);
               setTopUsers(nostrUsers);
+              // Cache in sessionStorage for same-session persistence
+              try {
+                sessionStorage.setItem('gittr_cached_topUsers', JSON.stringify(nostrUsers));
+              } catch (e) {
+                console.warn('⚠️ [Home] Failed to cache top users:', e);
+              }
             }
           })
           .catch((error) => {
@@ -1423,7 +1467,9 @@ export default function HomePage() {
             })}
             </div>
           ) : (
-            <div className="text-gray-400">No recent activity yet.</div>
+            <div className="text-gray-400">
+              {statsLoaded ? "No recent activity yet." : "Loading recent activity..."}
+            </div>
           )}
         </div>
       )}
@@ -1435,7 +1481,9 @@ export default function HomePage() {
             <Link href="/explore" className="text-sm text-purple-500 hover:underline">Explore all</Link>
           </div>
           {recent.length === 0 ? (
-            <div className="text-gray-400">No repositories yet. Create or import one to get started.</div>
+            <div className="text-gray-400">
+              {statsLoaded ? "No repositories yet. Create or import one to get started." : "Loading repositories..."}
+            </div>
           ) : (
             <ul className="divide-y divide-[#383B42]">
               {recent.filter((r: any) => {
