@@ -5526,14 +5526,17 @@ export default function RepoCodePage({
         
         // CRITICAL: Check for content in standard field first, then try alternative field names
         // Try common variations: content, data, body, text, fileContent
+        // NOTE: Content can be string, array, or Buffer object - handle all types
         const contentFields = ['content', 'data', 'body', 'text', 'fileContent', 'file_content'];
-        let foundContent: string | null = null;
+        let foundContent: any = null; // Can be string, array, or object
         let foundField: string | null = null;
         
         for (const field of contentFields) {
-          if ((fileEntry as any)?.[field]) {
-            foundContent = (fileEntry as any)[field];
+          const fieldValue = (fileEntry as any)?.[field];
+          if (fieldValue !== null && fieldValue !== undefined) {
+            foundContent = fieldValue;
             foundField = field;
+            console.log(`🔍 [fetchGithubRaw] Found content in field '${field}' for ${path}, type: ${typeof fieldValue}, isArray: ${Array.isArray(fieldValue)}`);
             break;
           }
         }
@@ -5673,7 +5676,8 @@ export default function RepoCodePage({
                   }
                 }
               } else if (isNumericArray) {
-                bytes = foundContent as unknown as number[];
+                // Use parsedContent which is already the array (handles both direct arrays and parsed JSON arrays)
+                bytes = parsedContent as unknown as number[];
               } else {
                 bytes = ((foundContent as unknown as { data: number[] }).data);
               }
