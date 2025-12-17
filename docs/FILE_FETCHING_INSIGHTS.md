@@ -137,7 +137,8 @@ User opens repo page
    │   └─ GRASP servers second (git.gittr.space, gitnostr.com, relay.ngit.dev, etc.)
    ├─ For each URL:
    │   ├─ GitHub → API: /repos/{owner}/{repo}/git/trees/{sha}?recursive=1
-   │   ├─ GitLab → API: /api/v4/projects/{path}/repository/tree?recursive=true
+   │   ├─ GitLab → API: /api/v4/projects/{path}/repository/tree?recursive=true&per_page=100&page={page}
+   │   │   └─ **CRITICAL**: GitLab API pagination - fetches ALL pages using X-Total-Pages header (max 100 items per page)
    │   ├─ Codeberg → API: /api/v1/repos/{owner}/{repo}/git/trees/{branch}?recursive=true
    │   └─ GRASP → Try HTTP API patterns (Gitea-style, GitLab-style, etc.)
    └─ First success → Use files ✅
@@ -580,12 +581,45 @@ if (entityMatches && repoMatches && (repo.readme !== undefined || repo.files !==
 ### GitLab
 
 ```typescript
-// File list
-`https://gitlab.com/api/v4/projects/${encodeURIComponent(`${owner}/${repo}`)}/repository/tree?recursive=true&ref=${branch}`
+// File list (with pagination - CRITICAL for repos with >100 files)
+// GitLab API returns max 100 items per page, must paginate to get all files
+let allItems: any[] = [];
+let page = 1;
+const perPage = 100;
+let hasMore = true;
+
+while (hasMore) {
+  const treeUrl = `https://gitlab.com/api/v4/projects/${encodeURIComponent(`${owner}/${repo}`)}/repository/tree?recursive=true&ref=${branch}&per_page=${perPage}&page=${page}`;
+  const response = await fetch(treeUrl, {
+    headers: { "User-Agent": "gittr-space", "Accept": "application/json" }
+  });
+  
+  if (response.ok) {
+    const data = await response.json();
+    if (Array.isArray(data) && data.length > 0) {
+      allItems = [...allItems, ...data];
+      // Check pagination headers
+      const totalPages = parseInt(response.headers.get("X-Total-Pages") || "1", 10);
+      const currentPage = parseInt(response.headers.get("X-Page") || "1", 10);
+      hasMore = currentPage < totalPages;
+      page++;
+    } else {
+      hasMore = false;
+    }
+  } else {
+    hasMore = false;
+  }
+}
+
+// Process allItems: filter blobs (files) and trees (dirs)
+const files = allItems.filter(n => n.type === "blob").map(n => ({ type: "file", path: n.path, size: n.size }));
+const dirs = allItems.filter(n => n.type === "tree").map(n => ({ type: "dir", path: n.path }));
 
 // File content
 `https://gitlab.com/api/v4/projects/${encodeURIComponent(`${owner}/${repo}`)}/repository/files/${encodeURIComponent(filePath)}/raw?ref=${branch}`
 ```
+
+**Important**: GitLab API pagination is **critical** - without it, repos with more than 100 files will have missing files (js, yaml, json, nix, etc.). Always check `X-Total-Pages` and `X-Page` headers to fetch all pages.
 
 ### Codeberg (Gitea)
 
