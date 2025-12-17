@@ -321,8 +321,8 @@ export async function generateMetadata(
         images: [
           {
             url: iconUrl,
-            width: 600,
-            height: 600,
+            width: 1200, // X/Twitter requires at least 300x157, but 1200x630 is recommended for summary_large_image
+            height: 630,
             alt: `${decodedRepo} repository on gittr`,
           },
         ],
