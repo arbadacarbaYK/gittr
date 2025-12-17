@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import useSession from "@/lib/nostr/useSession";
 import { Button } from "@/components/ui/button";
-import { getTopRepos, getTopDevsByPRs, getTopBountyTakers, getTopUsers, getLatestBounties, getOpenBounties, getOwnBountyStats, getRecentActivity, getOpenPRsAndIssues, getRecentBountyActivities, getUserBountyActivityStats, getPlatformBountyStats, RepoStats, UserStats } from "@/lib/stats";
+import { getTopRepos, getTopDevsByPRs, getTopBountyTakers, getTopUsers, getLatestBounties, getOpenBounties, getOwnBountyStats, getRecentActivity, getOpenPRsAndIssues, getRecentBountyActivities, getUserBountyActivityStats, getPlatformBountyStats, getTopReposFromNostr, getTopUsersFromNostr, RepoStats, UserStats } from "@/lib/stats";
 import { backfillActivities, Activity } from "@/lib/activity-tracking";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
@@ -406,6 +406,7 @@ export default function HomePage() {
 
   // Backfill activities on first load (if not already done)
   useEffect(() => {
+    try {
     // Check if activities exist - if not, force backfill even if flag is set
     const activities = JSON.parse(localStorage.getItem("gittr_activities") || "[]");
     const backfilled = localStorage.getItem("ngit_activities_backfilled");
@@ -413,21 +414,71 @@ export default function HomePage() {
     // If no activities exist, force a backfill (even if flag was set before)
     if (activities.length === 0 || !backfilled) {
       console.log("Backfilling activities...");
+        try {
       backfillActivities();
       localStorage.setItem("ngit_activities_backfilled", "true");
       // Trigger stats refresh after backfill completes
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent("gittr:activity-recorded"));
       }, 1000);
+        } catch (backfillError) {
+          console.error("Error during backfill:", backfillError);
+          // Don't crash - just mark as attempted
+          localStorage.setItem("ngit_activities_backfilled", "true");
+        }
+      }
+    } catch (error) {
+      console.error("Error checking/backfilling activities:", error);
+      // Don't crash the page
     }
     
     // Listen for new activities
     const handleActivity = () => {
       try {
-      // CRITICAL: Show platform-wide stats (all repos/users) for Most Active cards
-      // These should show ALL repos like the explore page
-      setTopRepos(getTopRepos(10)); // Always show all repos (no pubkey filter)
-      setTopUsers(getTopUsers(10)); // Always show all users (no pubkey filter)
+      // First, show localStorage data immediately (fast)
+      const localTopRepos = getTopRepos(10);
+      const localTopUsers = getTopUsers(10);
+      setTopRepos(localTopRepos);
+      setTopUsers(localTopUsers);
+      
+      // Then, try to fetch from Nostr for more accurate data (if subscribe is available)
+      if (subscribe && typeof subscribe === 'function' && defaultRelays && Array.isArray(defaultRelays) && defaultRelays.length > 0) {
+        console.log(`📡 [Home] Fetching top repos/users from Nostr using ${defaultRelays.length} relays...`);
+        
+        // Fetch top repos from Nostr (network source of truth)
+        getTopReposFromNostr(subscribe, defaultRelays, 10)
+          .then((nostrRepos) => {
+            console.log(`📊 [Home] Nostr returned ${nostrRepos.length} repos`);
+            if (nostrRepos.length > 0) {
+              // ALWAYS update with Nostr data if we got any repos (Nostr is source of truth)
+              const maxNostrActivity = nostrRepos[0]?.activityCount || 0;
+              console.log(`✅ [Home] Updating top repos from Nostr: ${nostrRepos.length} repos, max activity: ${maxNostrActivity}`);
+              console.log(`📋 [Home] Top repos:`, nostrRepos.map(r => `${r.repoName}(${r.activityCount})`).join(', '));
+              setTopRepos(nostrRepos);
+            } else {
+              console.warn(`⚠️ [Home] Nostr returned 0 repos, keeping localStorage data`);
+            }
+          })
+          .catch((error) => {
+            console.error("❌ [Home] Error fetching top repos from Nostr:", error);
+            // Keep localStorage data on error
+          });
+        
+        // Fetch top users from Nostr
+        getTopUsersFromNostr(subscribe, defaultRelays, 10)
+          .then((nostrUsers) => {
+            if (nostrUsers.length > 0) {
+              console.log(`✅ [Home] Updating top users from Nostr: ${nostrUsers.length} users`);
+              setTopUsers(nostrUsers);
+            }
+          })
+          .catch((error) => {
+            console.error("❌ [Home] Error fetching top users from Nostr:", error);
+            // Keep localStorage data on error
+          });
+      } else {
+        console.warn(`⚠️ [Home] Cannot fetch from Nostr: subscribe=${typeof subscribe}, relays=${defaultRelays?.length || 0}`);
+      }
       
       // These are always platform-wide (not filtered by user access)
       setTopDevs(getTopDevsByPRs(10));

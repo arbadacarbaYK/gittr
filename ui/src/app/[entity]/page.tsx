@@ -7,7 +7,9 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useContributorMetadata, ClaimedIdentity } from "@/lib/nostr/useContributorMetadata";
 import { resolveEntityToPubkey, getEntityDisplayName, getRepoOwnerPubkey, getEntityPicture, getUserMetadata } from "@/lib/utils/entity-resolver";
-import { getUserActivities, getUserActivityCounts, getContributionGraph, syncUserCommitsFromBridge } from "@/lib/activity-tracking";
+import { getGraspServers } from "@/lib/utils/grasp-servers";
+import { getUserActivities, getUserActivityCounts, getContributionGraph, syncUserCommitsFromBridge, syncIssuesAndPRsFromNostr, backfillActivities, countActivitiesFromNostr, type NostrActivityCounts } from "@/lib/activity-tracking";
+import { KIND_PULL_REQUEST, KIND_ISSUE, KIND_STATUS_APPLIED, KIND_STATUS_CLOSED } from "@/lib/nostr/events";
 import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
 import { UserStats } from "@/lib/stats";
 import { nip19, getEventHash, signEvent } from "nostr-tools";
@@ -35,6 +37,8 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [contributionGraph, setContributionGraph] = useState<Array<{date: string; count: number}>>([]);
   const [activityCounts, setActivityCounts] = useState<Record<string, number>>({});
+  const [nostrActivityCounts, setNostrActivityCounts] = useState<NostrActivityCounts | null>(null);
+  const [loadingNostrCounts, setLoadingNostrCounts] = useState(false);
   
   // Get current user's pubkey for follow functionality - MUST be called before any early returns
   const { pubkey: currentUserPubkey, publish, defaultRelays, subscribe } = useNostrContext();
@@ -814,28 +818,32 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
           // Skip if marked as deleted/archived on Nostr
           if (r.deleted === true || r.archived === true) return false;
           
-          // CRITICAL: On public profile (not own), only show repos that are "live" on Nostr
+          // CRITICAL: On public profile (not own), only show repos that are published to Nostr
           // Local repos should be private and not visible to others
-          // BUT: Also check if repo exists in Nostr repos list (might be from another source)
+          // Check if repo has ANY Nostr event ID - if it does, it's on Nostr and should be shown
           if (!viewingOwnProfile) {
-            const status = getRepoStatus(r);
-            // Only show "live" or "live_with_edits" repos on public profiles
-            // "local" repos are private and should not be visible
-            // EXCEPTION: If repo has ownerPubkey matching the profile, it might be from Nostr
-            // Check if repo exists in the main repos list (from Nostr)
-            const existsInNostr = repos.some((nr: any) => {
-              const nrEntity = nr.entity || "";
-              const nrRepo = nr.repo || nr.slug || "";
-              const rEntity = r.entity || "";
-              const rRepo = r.repo || r.slug || "";
-              return nrEntity.toLowerCase() === rEntity.toLowerCase() && 
-                     nrRepo.toLowerCase() === rRepo.toLowerCase() &&
-                     (nr.ownerPubkey?.toLowerCase() === fullPubkeyForMeta?.toLowerCase());
-            });
+            // Check if repo has any Nostr event ID (announcement, state, or synced from Nostr)
+            const hasNostrEventId = !!(r.nostrEventId || r.lastNostrEventId || r.stateEventId || r.lastStateEventId || r.syncedFromNostr || r.fromNostr);
             
-            // If status is local but repo exists in Nostr repos, show it (might be syncing)
-            if (status === "local" && !existsInNostr) return false;
-            if (status === "pushing") return false; // Don't show repos that are currently pushing
+            // If repo has NO Nostr event IDs at all, it's truly local and should be hidden
+            if (!hasNostrEventId) {
+              // Double-check: maybe it exists in the main repos list from Nostr (synced but missing event ID)
+              const existsInNostr = repos.some((nr: any) => {
+                const nrEntity = nr.entity || "";
+                const nrRepo = nr.repo || nr.slug || "";
+                const rEntity = r.entity || "";
+                const rRepo = r.repo || r.slug || "";
+                return nrEntity.toLowerCase() === rEntity.toLowerCase() && 
+                       nrRepo.toLowerCase() === rRepo.toLowerCase() &&
+                       (nr.ownerPubkey?.toLowerCase() === fullPubkeyForMeta?.toLowerCase());
+              });
+              
+              // If it doesn't exist in Nostr repos list either, it's truly local - hide it
+              if (!existsInNostr) return false;
+            }
+            
+            // Don't show repos that are currently pushing
+            if (r.status === "pushing") return false;
           }
           
           return true;
@@ -935,24 +943,208 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
           }
         }
         
-        // Get user stats using full pubkey
+        // Get user stats using full pubkey (show immediately from localStorage)
         // CRITICAL: getUserActivities now filters out activities from deleted repos
         let activities = getUserActivities(fullPubkey);
         let counts = getUserActivityCounts(fullPubkey);
         let graph = getContributionGraph(fullPubkey);
         
-        // CRITICAL: Sync commits from bridge to get real git commits (not just UI actions)
-        // This ensures activity bar shows commits made via `git push`, not just activities from gittr UI
-        // Only sync once per profile load to avoid excessive API calls
+        // CRITICAL: Set localStorage counts IMMEDIATELY so UI shows data right away
+        setActivityCounts(counts);
+        setContributionGraph(graph);
+        
+        // CRITICAL: Use localStorage counts as base (includes bridge commits + synced PRs/issues)
+        // Then add Nostr PRs/issues per repo in background
+        // localStorage is already showing correct counts from bridge + synced data
+        // We just add any additional PRs/issues from Nostr that might not be in localStorage yet
+        if (subscribe && defaultRelays && defaultRelays.length > 0) {
+          setLoadingNostrCounts(true);
+          
+          // Use countActivitiesFromNostr to get accurate counts from the network
+          const graspRelays = getGraspServers(defaultRelays);
+          const activeRelays = graspRelays.length > 0 ? graspRelays : defaultRelays;
+          
+          // Skip if no relays available
+          if (activeRelays.length === 0) {
+            console.warn("⚠️ [Profile] No GRASP/git relays available for activity counting");
+            setLoadingNostrCounts(false);
+            return;
+          }
+          
+          // Use the proper function to count activities from Nostr
+          countActivitiesFromNostr(subscribe, activeRelays, fullPubkey)
+            .then((nostrCounts) => {
+              console.log(`✅ [Profile] Got Nostr activity counts:`, nostrCounts);
+              
+              // CRITICAL: Also query for PRs/issues created by OTHER users for this user's repos
+              // PRs/issues can be created by anyone, not just the repo owner
+              // Query by #a tag (repo identifier: "30617:<owner-pubkey>:<repo-name>")
+              const repoIdentifiers = deduplicatedRepos
+                .filter((r: any) => {
+                  const ownerPubkey = r.ownerPubkey || fullPubkey;
+                  const repoName = r.repo || r.slug;
+                  return ownerPubkey && repoName && /^[0-9a-f]{64}$/i.test(ownerPubkey);
+                })
+                .map((r: any) => {
+                  const ownerPubkey = r.ownerPubkey || fullPubkey;
+                  const repoName = r.repo || r.slug;
+                  return `30617:${ownerPubkey}:${repoName}`;
+                });
+              
+              if (repoIdentifiers.length > 0) {
+                console.log(`🔍 [Profile] Querying PRs/issues for ${repoIdentifiers.length} repos by #a tag...`);
+                
+                // Query for PRs/issues that reference this user's repos
+                const seenPRs = new Set<string>();
+                const seenIssues = new Set<string>();
+                let prsIssuesEoseCount = 0;
+                const expectedPrsIssuesEose = activeRelays.length;
+                let prsIssuesResolved = false;
+                
+                const prsIssuesFilters = [
+                  // PR events (kind 1618) for this user's repos
+                  {
+                    kinds: [KIND_PULL_REQUEST],
+                    "#a": repoIdentifiers,
+                    limit: 1000,
+                  },
+                  // PR merged status (kind 1631) for this user's repos
+                  {
+                    kinds: [KIND_STATUS_APPLIED],
+                    "#a": repoIdentifiers,
+                    "#k": ["1618"], // Only PR status events
+                    limit: 1000,
+                  },
+                  // Issue events (kind 1621) for this user's repos
+                  {
+                    kinds: [KIND_ISSUE],
+                    "#a": repoIdentifiers,
+                    limit: 1000,
+                  },
+                  // Issue closed status (kind 1632) for this user's repos
+                  {
+                    kinds: [KIND_STATUS_CLOSED],
+                    "#a": repoIdentifiers,
+                    "#k": ["1621"], // Only issue status events
+                    limit: 1000,
+                  },
+                ];
+                
+                const prsIssuesUnsub = subscribe(
+                  prsIssuesFilters,
+                  activeRelays,
+                  (event, _isAfterEose, _relayURL) => {
+                    // Count PR events (kind 1618) - but only if not already counted by author
+                    if (event.kind === KIND_PULL_REQUEST) {
+                      if (!seenPRs.has(event.id)) {
+                        seenPRs.add(event.id);
+                        // Only count if NOT created by the user (already counted in nostrCounts)
+                        if (event.pubkey.toLowerCase() !== fullPubkey.toLowerCase()) {
+                          nostrCounts.prsCreated++;
+                          nostrCounts.total++;
+                        }
+                      }
+                    }
+                    // Count PR merged status (kind 1631)
+                    else if (event.kind === KIND_STATUS_APPLIED) {
+                      const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+                      if (kTag && kTag[1] === "1618") {
+                        // Only count if NOT by the user (already counted in nostrCounts)
+                        if (event.pubkey.toLowerCase() !== fullPubkey.toLowerCase()) {
+                          nostrCounts.prsMerged++;
+                          nostrCounts.total++;
+                        }
+                      }
+                    }
+                    // Count issue events (kind 1621) - but only if not already counted by author
+                    else if (event.kind === KIND_ISSUE) {
+                      if (!seenIssues.has(event.id)) {
+                        seenIssues.add(event.id);
+                        // Only count if NOT created by the user (already counted in nostrCounts)
+                        if (event.pubkey.toLowerCase() !== fullPubkey.toLowerCase()) {
+                          nostrCounts.issuesCreated++;
+                          nostrCounts.total++;
+                        }
+                      }
+                    }
+                    // Count issue closed status (kind 1632)
+                    else if (event.kind === KIND_STATUS_CLOSED) {
+                      const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+                      if (kTag && kTag[1] === "1621") {
+                        // Only count if NOT by the user (already counted in nostrCounts)
+                        if (event.pubkey.toLowerCase() !== fullPubkey.toLowerCase()) {
+                          nostrCounts.issuesClosed++;
+                          nostrCounts.total++;
+                        }
+                      }
+                    }
+                  },
+                  undefined,
+                  (relayUrl: string, minCreatedAt: number) => {
+                    prsIssuesEoseCount++;
+                    if (prsIssuesEoseCount >= expectedPrsIssuesEose && !prsIssuesResolved) {
+                      prsIssuesResolved = true;
+                      setTimeout(() => {
+                        prsIssuesUnsub();
+                        console.log(`✅ [Profile] Final Nostr activity counts (including PRs/issues by others):`, nostrCounts);
+                        setNostrActivityCounts(nostrCounts);
+                        setLoadingNostrCounts(false);
+                      }, 1000);
+                    }
+                  },
+                  {} // options parameter
+                );
+                
+                // Timeout after 15 seconds
+                setTimeout(() => {
+                  if (!prsIssuesResolved) {
+                    prsIssuesResolved = true;
+                    prsIssuesUnsub();
+                    console.log(`⏱️ [Profile] PRs/issues query timeout after 15s (EOSE: ${prsIssuesEoseCount}/${expectedPrsIssuesEose}), final counts:`, nostrCounts);
+                    setNostrActivityCounts(nostrCounts);
+                    setLoadingNostrCounts(false);
+                  }
+                }, 15000);
+              } else {
+                // No repos to query, just use the counts from countActivitiesFromNostr
+                setNostrActivityCounts(nostrCounts);
+                setLoadingNostrCounts(false);
+              }
+            })
+            .catch((error) => {
+              console.error("❌ [Profile] Error counting activities from Nostr:", error);
+              setLoadingNostrCounts(false);
+              // Keep localStorage counts on error
+            });
+        }
+        
+        // CRITICAL: Sync activities from multiple sources to get complete picture (for timeline graph)
+        // 1. Run backfill if not done (ensures all repos have creation activities)
+        // 2. Sync commits from bridge (real git commits)
+        // 3. Sync issues/PRs from Nostr (kind 1621/1618 events)
+        const backfillKey = "gittr_activities_backfilled";
+        const backfillLastRun = localStorage.getItem(backfillKey);
+        const now = Date.now();
+        const BACKFILL_INTERVAL = 24 * 60 * 60 * 1000; // Run backfill once per day
+        
+        // Run backfill if not done or if it's been more than 24 hours
+        if (!backfillLastRun || (now - parseInt(backfillLastRun, 10)) > BACKFILL_INTERVAL) {
+          console.log("🔄 [Profile] Running backfill to ensure all repos have activities...");
+          backfillActivities();
+        }
+        
+        // Sync commits from bridge (every 5 minutes)
         const syncKey = `gittr_commits_synced_${fullPubkey}`;
         const lastSync = localStorage.getItem(syncKey);
-        const now = Date.now();
         const SYNC_INTERVAL = 5 * 60 * 1000; // Sync every 5 minutes
         
         if (!lastSync || (now - parseInt(lastSync, 10)) > SYNC_INTERVAL) {
           // Sync commits from bridge in background (don't block UI)
           syncUserCommitsFromBridge(fullPubkey).then((syncedCount) => {
-            if (syncedCount > 0) {
+            // Also sync issues/PRs from Nostr
+            const issuesPRsSynced = syncIssuesAndPRsFromNostr(fullPubkey);
+            
+            if (syncedCount > 0 || issuesPRsSynced > 0) {
               // Update activities after sync
               const updatedActivities = getUserActivities(fullPubkey);
               const updatedCounts = getUserActivityCounts(fullPubkey);
@@ -973,8 +1165,25 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
             // Mark as synced
             localStorage.setItem(syncKey, now.toString());
           }).catch((error) => {
-            console.error("Failed to sync commits from bridge:", error);
+            console.error("Failed to sync activities:", error);
           });
+        } else {
+          // Even if commits are synced, check for new issues/PRs (they update more frequently)
+          const issuesPRsSynced = syncIssuesAndPRsFromNostr(fullPubkey);
+          if (issuesPRsSynced > 0) {
+            const updatedActivities = getUserActivities(fullPubkey);
+            const updatedCounts = getUserActivityCounts(fullPubkey);
+            const updatedGraph = getContributionGraph(fullPubkey);
+            
+            setActivityCounts(updatedCounts);
+            setContributionGraph(updatedGraph);
+            
+            setUserStats(prev => prev ? {
+              ...prev,
+              activityCount: updatedActivities.length,
+              lastActivity: updatedActivities.length > 0 ? Math.max(...updatedActivities.map((a: any) => a.timestamp)) : (prev.lastActivity || 0),
+            } : null);
+          }
         }
         
         // Debug: log what we found
@@ -994,6 +1203,8 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
           console.log("To backfill, run in console: localStorage.removeItem('gittr_activities_backfilled'); location.reload();");
         }
         
+        // CRITICAL: Always set localStorage counts immediately (before Nostr query)
+        // This ensures UI shows data right away, even if Nostr query fails or is slow
         setActivityCounts(counts);
         setContributionGraph(graph);
         
@@ -1654,12 +1865,16 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
                 <span className="text-purple-400 font-semibold">{userRepos.length}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-gray-400">Commits</span>
-                <span className="text-green-400 font-semibold">{activityCounts.commit_created || 0}</span>
+                <span className="text-gray-400">Pushes</span>
+                <span className="text-green-400 font-semibold">
+                  {loadingNostrCounts ? "..." : (nostrActivityCounts?.pushes ?? (activityCounts.commit_created || 0))}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-gray-400">PRs Merged</span>
-                <span className="text-cyan-400 font-semibold">{activityCounts.pr_merged || 0}</span>
+                <span className="text-cyan-400 font-semibold">
+                  {loadingNostrCounts ? "..." : (nostrActivityCounts?.prsMerged ?? (activityCounts.pr_merged || 0))}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-gray-400">Bounties</span>
@@ -1788,16 +2003,38 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
         {/* Contribution Graph */}
         <div className="lg:col-span-2 border border-[#383B42] rounded p-4">
           <h2 className="font-semibold mb-4">Activity Timeline</h2>
-          <div className="overflow-x-auto">
-            <div className="inline-block min-w-full">
-              <div className="flex gap-1 mb-2" style={{ width: `${weeks.length * 12}px` }}>
-                {weeks.map((week, idx) => (
+          <div className="w-full">
+            <div className="w-full">
+              {/* Calculate box size to fit all weeks in container (52 weeks = 364 days) */}
+              {/* Use CSS grid or flex with calculated width to fit all boxes in one row */}
+              <div className="flex gap-1 mb-2" style={{ width: '100%', overflow: 'hidden' }}>
+                {weeks.map((week, idx) => {
+                  // Calculate box width as percentage to fit all weeks: 100% / number of weeks
+                  // Use min 2px width, max 12px width for readability
+                  // Since we have 52 weeks, each box should be ~1.92% of container width
+                  const boxWidthPercent = 100 / weeks.length;
+                  const minBoxSize = 2; // Minimum 2px for visibility
+                  const maxBoxSize = 12; // Maximum 12px for readability
+                  
+                  // Use calc() to ensure boxes fit: min(max(calc(100% / weeks.length - gap), minBoxSize), maxBoxSize)
+                  // But since we can't use calc() in inline styles easily, use a fixed calculation
+                  // For 52 weeks with 1px gap, each box gets ~1.9% width
+                  return (
                   <div
                     key={idx}
-                    className={`w-2 h-2 ${getIntensity(week.count)} rounded-sm`}
+                      className={`${getIntensity(week.count)} rounded-sm flex-shrink-0`}
+                      style={{ 
+                        width: `calc(${boxWidthPercent}% - ${(weeks.length - 1) * 4 / weeks.length}px)`,
+                        minWidth: `${minBoxSize}px`,
+                        maxWidth: `${maxBoxSize}px`,
+                        height: `calc(${boxWidthPercent}% - ${(weeks.length - 1) * 4 / weeks.length}px)`,
+                        minHeight: `${minBoxSize}px`,
+                        maxHeight: `${maxBoxSize}px`,
+                      }}
                     title={`${week.date}: ${week.count} contributions`}
                   />
-                ))}
+                  );
+                })}
               </div>
               <div className="flex justify-between text-xs text-gray-500 mt-2">
                 <span>Less</span>
@@ -1821,19 +2058,27 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
         <div className="space-y-4">
           <div className="border border-[#383B42] rounded p-4">
             <h3 className="font-semibold mb-2">Statistics</h3>
-            <p className="text-xs text-gray-500 mb-3">Local activity data</p>
+            <p className="text-xs text-gray-500 mb-3">
+              {loadingNostrCounts ? "Loading from Nostr..." : nostrActivityCounts ? "Activity from Nostr network" : "Local activity data"}
+            </p>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-400">Total Activity</span>
-                <span className="text-purple-400">{userStats?.activityCount || 0}</span>
+                <span className="text-purple-400">
+                  {loadingNostrCounts ? "..." : (nostrActivityCounts?.total ?? (userStats?.activityCount || 0))}
+                </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">Commits</span>
-                <span className="text-green-400">{activityCounts.commit_created || 0}</span>
+                <span className="text-gray-400">Pushes</span>
+                <span className="text-green-400">
+                  {loadingNostrCounts ? "..." : (nostrActivityCounts?.pushes ?? (activityCounts.commit_created || 0))}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">PRs Merged</span>
-                <span className="text-cyan-400">{activityCounts.pr_merged || 0}</span>
+                <span className="text-cyan-400">
+                  {loadingNostrCounts ? "..." : (nostrActivityCounts?.prsMerged ?? (activityCounts.pr_merged || 0))}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Bounties Claimed</span>
@@ -1841,7 +2086,9 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Repositories</span>
-                <span className="text-purple-400">{userStats?.reposCreatedCount || 0}</span>
+                <span className="text-purple-400">
+                  {userRepos.length || 0}
+                </span>
               </div>
             </div>
           </div>

@@ -34,6 +34,32 @@
   }
 }
 
+/* Dark mode scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0E1116;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #383B42;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #4b5563;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #383B42 #0E1116;
+}
+
 /* CSS Custom Properties for Theming */
 :root {
   /* Default (Classic) theme colors */
