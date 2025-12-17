@@ -5527,7 +5527,45 @@ export default function RepoCodePage({
           const ext = path.split('.').pop()?.toLowerCase() || '';
           const htmlExts = ['html', 'htm', 'xhtml'];
           const isHtmlFile = htmlExts.includes(ext);
-          const isBinary = (fileEntry as any).isBinary || (fileEntry as any).binary || false;
+          let isBinary = (fileEntry as any).isBinary || (fileEntry as any).binary || false;
+          
+          // Helper: detect byte-array style content (e.g. [137,80,78,...] or { type:"Buffer", data:[...] })
+          const isNumericArray =
+            Array.isArray(foundContent) &&
+            foundContent.length > 0 &&
+            foundContent.every((n: any) => typeof n === "number");
+          const isBufferObject =
+            foundContent &&
+            typeof foundContent === "object" &&
+            !Array.isArray(foundContent) &&
+            "type" in (foundContent as any) &&
+            (foundContent as any).type === "Buffer" &&
+            Array.isArray((foundContent as any).data);
+          
+          // If backend accidentally sent raw bytes instead of base64, normalise to base64 + mark binary
+          if (!isBinary && (isNumericArray || isBufferObject)) {
+            try {
+              const bytes: number[] = isNumericArray
+                ? (foundContent as number[])
+                : ((foundContent as any).data as number[]);
+              
+              let binaryStr = "";
+              for (let i = 0; i < bytes.length; i++) {
+                const v = bytes[i] & 0xff;
+                binaryStr += String.fromCharCode(v);
+              }
+              const base64 = btoa(binaryStr);
+              
+              // Treat as binary from here on
+              isBinary = true;
+              foundContent = base64 as any;
+            } catch (e) {
+              console.error("❌ [fetchGithubRaw] Failed to convert byte-array content to base64", {
+                path,
+                error: e,
+              });
+            }
+          }
           
           if (isBinary) {
             // CRITICAL: HTML files should NEVER be stored as binary, but if they are, decode them
