@@ -5552,10 +5552,11 @@ export default function RepoCodePage({
               
               let binaryStr = "";
               for (let i = 0; i < bytes.length; i++) {
-                const v = bytes[i] & 0xff;
+                // Handle strict indexed access (bytes[i] may be undefined)
+                const v = (bytes[i] ?? 0) & 0xff;
                 binaryStr += String.fromCharCode(v);
               }
-              const base64 = btoa(binaryStr);
+              const base64 = btoa(binaryStr || "");
               
               // Treat as binary from here on
               isBinary = true;
