@@ -8141,7 +8141,7 @@ export default function RepoCodePage({
                   // Markdown files: Toggle between preview (rendered) and code view
                   markdownViewMode === 'preview' ? (
                     // Preview mode: Render as markdown
-                    <div className="prose prose-invert max-w-none p-4 prose-code:before:content-none prose-code:after:content-none prose-pre:my-2 prose-code:bg-gray-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded">
+                    <div className="prose prose-invert max-w-none p-4 prose-code:before:content-none prose-code:after:content-none prose-pre:my-2 prose-code:bg-gray-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:inline prose-code:not-prose">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         rehypePlugins={[rehypeRaw]}
@@ -8329,11 +8329,15 @@ export default function RepoCodePage({
                             const language = match?.[1]?.toLowerCase();
                             const content = String(children).replace(/\n$/, "");
 
+                            // CRITICAL: ReactMarkdown sets inline=true for single backticks, inline=false/undefined for triple backticks
+                            // Also check: if className has 'language-', it's definitely a code block (triple backticks with language)
+                            const isBlockCode = !inline || (className && /language-/.test(className));
+                            
                             // Use CopyableCodeBlock for all code blocks
                             return (
                               <CopyableCodeBlock 
-                                inline={inline} 
-                                className={inline ? "bg-gray-900 px-1 py-0.5 rounded text-green-400 before:content-none after:content-none" : className || "bg-gray-900 rounded p-2 overflow-x-auto my-2"}
+                                inline={!isBlockCode} 
+                                className={!isBlockCode ? "bg-gray-900 px-1 py-0.5 rounded text-green-400 inline before:content-none after:content-none" : className || "bg-gray-900 rounded p-2 overflow-x-auto my-2"}
                               >
                                 {children}
                               </CopyableCodeBlock>
