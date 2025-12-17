@@ -5531,16 +5531,6 @@ export default function RepoCodePage({
           const isBinaryByExtension = binaryExts.includes(ext);
           let isBinary = (fileEntry as any).isBinary || (fileEntry as any).binary || false;
           
-          // If file extension suggests binary but isBinary flag is not set, check if content looks like binary data
-          if (!isBinary && isBinaryByExtension && typeof foundContent === "string") {
-            // Check if content is NOT base64 (base64 strings are longer and contain A-Z, a-z, 0-9, +, /, =)
-            const looksLikeBase64 = /^[A-Za-z0-9+/=]+$/.test(foundContent) && foundContent.length > 20;
-            if (!looksLikeBase64) {
-              // Content doesn't look like base64, might be raw bytes or numeric string
-              isBinary = true;
-            }
-          }
-          
           // Helper: detect byte-array style content (e.g. [137,80,78,...] or { type:"Buffer", data:[...] })
           const isNumericArray =
             Array.isArray(foundContent) &&
@@ -5555,12 +5545,28 @@ export default function RepoCodePage({
             Array.isArray((foundContent as any).data);
           
           // Also check if content is a string representation of comma-separated numbers (e.g., "137,80,78,...")
-          // This can happen when byte arrays are JSON stringified and then stored
+          // OR a string of just numbers (e.g., "1378078...") - this can happen when byte arrays are JSON stringified
+          // We check for strings that are mostly digits (at least 80% digits) and longer than 10 chars
           const isNumericString = 
             typeof foundContent === "string" &&
-            foundContent.length > 0 &&
-            /^[\d\s,]+$/.test(foundContent.trim()) &&
-            foundContent.includes(",");
+            foundContent.length > 10 &&
+            (
+              // Comma-separated numbers
+              (/^[\d\s,]+$/.test(foundContent.trim()) && foundContent.includes(",")) ||
+              // Or just a long string of digits (common when arrays are stringified without commas)
+              (/^\d+$/.test(foundContent.trim()) && foundContent.length > 50)
+            );
+          
+          // If file extension suggests binary but isBinary flag is not set, check if content looks like binary data
+          // OR if we detected numeric content (array, buffer, or numeric string)
+          if (!isBinary && (isBinaryByExtension || isNumericArray || isBufferObject || isNumericString) && typeof foundContent === "string") {
+            // Check if content is NOT base64 (base64 strings are longer and contain A-Z, a-z, 0-9, +, /, =)
+            const looksLikeBase64 = /^[A-Za-z0-9+/=]+$/.test(foundContent) && foundContent.length > 20;
+            if (!looksLikeBase64 || isNumericString || isNumericArray || isBufferObject) {
+              // Content doesn't look like base64, might be raw bytes or numeric string
+              isBinary = true;
+            }
+          }
           
           // If backend accidentally sent raw bytes instead of base64, normalise to base64 + mark binary
           // This applies whether or not the isBinary flag was set
@@ -5569,11 +5575,48 @@ export default function RepoCodePage({
               // Use intermediate unknown casts to satisfy TypeScript when converting from union types
               let bytes: number[] = [];
               if (isNumericString) {
-                // Parse comma-separated string of numbers
-                bytes = (foundContent as string).split(',').map(s => {
-                  const num = parseInt(s.trim(), 10);
-                  return isNaN(num) ? 0 : num;
-                }).filter(n => n >= 0 && n <= 255);
+                // Parse comma-separated string of numbers OR a string of just digits
+                const contentStr = (foundContent as string).trim();
+                if (contentStr.includes(',')) {
+                  // Comma-separated: "137,80,78,..."
+                  bytes = contentStr.split(',').map(s => {
+                    const num = parseInt(s.trim(), 10);
+                    return isNaN(num) ? 0 : num;
+                  }).filter(n => n >= 0 && n <= 255);
+                } else {
+                  // Just digits: "1378078..." - parse as pairs or triplets
+                  // Try parsing as 3-digit numbers first (common for byte values 0-255)
+                  // If that doesn't work, try 2-digit, then single digits
+                  const digits = contentStr;
+                  if (digits.length % 3 === 0) {
+                    // Try 3-digit chunks
+                    for (let i = 0; i < digits.length; i += 3) {
+                      const num = parseInt(digits.substring(i, i + 3), 10);
+                      if (!isNaN(num) && num >= 0 && num <= 255) {
+                        bytes.push(num);
+                      }
+                    }
+                  } else if (digits.length % 2 === 0) {
+                    // Try 2-digit chunks (hex-like but decimal)
+                    for (let i = 0; i < digits.length; i += 2) {
+                      const num = parseInt(digits.substring(i, i + 2), 10);
+                      if (!isNaN(num) && num >= 0 && num <= 255) {
+                        bytes.push(num);
+                      }
+                    }
+                  } else {
+                    // Single digits - unlikely but handle it
+                    for (let i = 0; i < digits.length; i++) {
+                      const digit = digits[i];
+                      if (digit !== undefined && digit.length > 0) {
+                        const num = parseInt(digit, 10);
+                        if (!isNaN(num) && num >= 0 && num <= 9) {
+                          bytes.push(num);
+                        }
+                      }
+                    }
+                  }
+                }
               } else if (isNumericArray) {
                 bytes = foundContent as unknown as number[];
               } else {
@@ -5605,7 +5648,7 @@ export default function RepoCodePage({
               
               // Treat as binary from here on
               isBinary = true;
-              foundContent = base64 as any;
+              foundContent = base64;
               console.log(`✅ [fetchGithubRaw] Converted ${isNumericString ? 'numeric string' : isNumericArray ? 'numeric array' : 'buffer object'} to base64 for ${path}`);
             } catch (e) {
               console.error("❌ [fetchGithubRaw] Failed to convert byte-array content to base64", {
