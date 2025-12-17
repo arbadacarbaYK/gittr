@@ -5543,20 +5543,36 @@ export default function RepoCodePage({
             Array.isArray((foundContent as any).data);
           
           // If backend accidentally sent raw bytes instead of base64, normalise to base64 + mark binary
-          if (!isBinary && (isNumericArray || isBufferObject)) {
+          // This applies whether or not the isBinary flag was set
+          if (isNumericArray || isBufferObject) {
             try {
               // Use intermediate unknown casts to satisfy TypeScript when converting from union types
               const bytes: number[] = isNumericArray
                 ? (foundContent as unknown as number[])
                 : ((foundContent as unknown as { data: number[] }).data);
               
+              // Helper: encode binary string to base64 without relying directly on deprecated btoa typings
+              const toBase64 = (input: string): string => {
+                // Prefer Node/Edge runtime Buffer when available
+                if (typeof Buffer !== "undefined") {
+                  return Buffer.from(input, "binary").toString("base64");
+                }
+                // Fallback to global btoa if present (cast through any to avoid deprecation typing)
+                const btoaFn = (globalThis as any)?.btoa as ((data: string) => string) | undefined;
+                if (btoaFn) {
+                  return btoaFn(input);
+                }
+                // Last‑resort: return original string (better than throwing in very old runtimes)
+                return input;
+              };
+
               let binaryStr = "";
               for (let i = 0; i < bytes.length; i++) {
                 // Handle strict indexed access (bytes[i] may be undefined)
                 const v = (bytes[i] ?? 0) & 0xff;
                 binaryStr += String.fromCharCode(v);
               }
-              const base64 = btoa(binaryStr || "");
+              const base64 = toBase64(binaryStr || "");
               
               // Treat as binary from here on
               isBinary = true;
