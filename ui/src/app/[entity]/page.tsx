@@ -972,7 +972,9 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
           }
           
           // Use the proper function to count activities from Nostr
-          countActivitiesFromNostr(subscribe, activeRelays, fullPubkey)
+          // CRITICAL: Normalize pubkey to lowercase for consistent querying
+          const normalizedFullPubkey = fullPubkey.toLowerCase();
+          countActivitiesFromNostr(subscribe, activeRelays, normalizedFullPubkey)
             .then((nostrCounts) => {
               console.log(`✅ [Profile] Got Nostr activity counts:`, nostrCounts);
               
