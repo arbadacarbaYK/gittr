@@ -1,9 +1,13 @@
 /**
  * Activity Tracking System
  * Tracks all user activities for stats and timeline display
+ * 
+ * CRITICAL: Activity counts should come from Nostr events (network), not localStorage
+ * People use multiple clients, so we need to count what's actually on Nostr
  */
 
 import { getRepoOwnerPubkey } from "./utils/entity-resolver";
+import { KIND_REPOSITORY_NIP34, KIND_REPOSITORY_STATE, KIND_PULL_REQUEST, KIND_ISSUE, KIND_STATUS_APPLIED, KIND_STATUS_CLOSED } from "./nostr/events";
 
 export type ActivityType = 
   | "repo_created"
@@ -250,15 +254,17 @@ export function backfillActivities(): void {
       }
       
       // Repo creation/import
-      if (repo.createdAt) {
+      // CRITICAL: Always create activity for repos, even if createdAt is missing
+      // Use createdAt if available, otherwise use current time (for existing repos)
+      const repoCreatedAt = repo.createdAt || repo.updatedAt || Date.now();
         activities.push({
           type: repo.sourceUrl ? "repo_imported" : "repo_created",
           user: ownerPubkey, // Use full pubkey, not entity
           repo: repoId,
           entity: repo.entity,
           repoName: repo.name || repo.repo || repo.slug,
-        });
-      }
+        timestamp: repoCreatedAt, // Use actual timestamp if available
+      } as any);
       
       // Commits
       const commitsKey = `gittr_commits__${repo.entity}__${repo.repo || repo.slug}`;
@@ -378,14 +384,41 @@ export function backfillActivities(): void {
     });
     
     // Record all backfilled activities
+    // CRITICAL: Use original timestamp from activity if available, otherwise use current time
+    // CRITICAL: Check for duplicates before recording to prevent counting same activity multiple times
+    const existingActivities = getActivities();
+    const existingActivityIds = new Set(
+      existingActivities.map(a => {
+        // Create unique ID from activity type, repo, user, and timestamp (rounded to nearest second to handle minor differences)
+        const ts = Math.floor(a.timestamp / 1000) * 1000;
+        return `${a.type}:${a.repo}:${a.user}:${ts}`;
+      })
+    );
+    
+    let newCount = 0;
     activities.forEach(activity => {
-      // Use original timestamp if available
       const timestamp = (activity as any).timestamp || Date.now();
+      const roundedTs = Math.floor(timestamp / 1000) * 1000;
+      const activityId = `${activity.type}:${activity.repo}:${activity.user}:${roundedTs}`;
+      
+      // Skip if this activity already exists
+      if (existingActivityIds.has(activityId)) {
+        return;
+      }
+      
       recordActivity({
         ...activity,
         timestamp: timestamp,
       } as any);
+      newCount++;
     });
+    
+    if (newCount > 0) {
+      console.log(`✅ [Backfill] Recorded ${newCount} new activities (skipped ${activities.length - newCount} duplicates)`);
+    }
+    
+    // Mark as backfilled to prevent duplicate runs
+    localStorage.setItem("gittr_activities_backfilled", Date.now().toString());
     
   } catch (error) {
     console.error("Failed to backfill activities:", error);
@@ -504,6 +537,150 @@ export async function syncCommitsFromBridge(
 }
 
 /**
+ * Sync issues and PRs from Nostr into activities
+ * Fetches issues (kind 1621) and PRs (kind 1618) from localStorage and converts them to activities
+ * This ensures activity bar shows issues/PRs created via Nostr, not just UI actions
+ */
+export function syncIssuesAndPRsFromNostr(userPubkey: string): number {
+  try {
+    const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
+    const userRepos = repos.filter((repo: any) => {
+      if (!repo.entity || repo.entity === "user") return false;
+      const ownerPubkey = getRepoOwnerPubkey(repo, repo.entity);
+      return ownerPubkey && ownerPubkey.toLowerCase() === userPubkey.toLowerCase();
+    });
+
+    let syncedCount = 0;
+    const existingActivities = getActivities();
+
+    for (const repo of userRepos) {
+      const ownerPubkey = getRepoOwnerPubkey(repo, repo.entity);
+      if (!ownerPubkey) continue;
+
+      const repoId = `${repo.entity}/${repo.repo || repo.slug}`;
+      const repoName = repo.repo || repo.slug;
+
+      // Get existing issue/PR IDs to avoid duplicates
+      const existingIssueIds = new Set(
+        existingActivities
+          .filter(a => a.repo === repoId && (a.type === "issue_created" || a.type === "issue_closed"))
+          .map(a => a.metadata?.issueId)
+          .filter((id): id is string => !!id)
+      );
+      
+      const existingPRIds = new Set(
+        existingActivities
+          .filter(a => a.repo === repoId && (a.type === "pr_created" || a.type === "pr_merged"))
+          .map(a => a.metadata?.prId)
+          .filter((id): id is string => !!id)
+      );
+
+      // Sync issues from localStorage
+      const issuesKey = `gittr_issues__${repo.entity}__${repoName}`;
+      const issues = JSON.parse(localStorage.getItem(issuesKey) || "[]") as any[];
+      
+      for (const issue of issues) {
+        if (existingIssueIds.has(issue.id)) continue;
+        
+        if (issue.createdAt) {
+          const issueUser = (issue.author && /^[0-9a-f]{64}$/i.test(issue.author))
+            ? issue.author
+            : ownerPubkey;
+          
+          recordActivity({
+            type: "issue_created",
+            user: issueUser,
+            repo: repoId,
+            entity: repo.entity,
+            repoName: repoName,
+            metadata: {
+              issueId: issue.id,
+            },
+            timestamp: issue.createdAt,
+          } as any);
+          syncedCount++;
+        }
+        
+        if (issue.status === "closed" && issue.closedAt) {
+          const closedBy = (issue.closedBy && /^[0-9a-f]{64}$/i.test(issue.closedBy))
+            ? issue.closedBy
+            : ownerPubkey;
+          
+          recordActivity({
+            type: "issue_closed",
+            user: closedBy,
+            repo: repoId,
+            entity: repo.entity,
+            repoName: repoName,
+            metadata: {
+              issueId: issue.id,
+            },
+            timestamp: issue.closedAt,
+          } as any);
+          syncedCount++;
+        }
+      }
+
+      // Sync PRs from localStorage
+      const prsKey = `gittr_prs__${repo.entity}__${repoName}`;
+      const prs = JSON.parse(localStorage.getItem(prsKey) || "[]") as any[];
+      
+      for (const pr of prs) {
+        if (existingPRIds.has(pr.id)) continue;
+        
+        if (pr.createdAt) {
+          const prUser = (pr.author && /^[0-9a-f]{64}$/i.test(pr.author))
+            ? pr.author
+            : ownerPubkey;
+          
+          recordActivity({
+            type: "pr_created",
+            user: prUser,
+            repo: repoId,
+            entity: repo.entity,
+            repoName: repoName,
+            metadata: {
+              prId: pr.id,
+            },
+            timestamp: pr.createdAt,
+          } as any);
+          syncedCount++;
+        }
+        
+        if (pr.mergedAt && pr.status === "merged") {
+          const mergedBy = (pr.mergedBy && /^[0-9a-f]{64}$/i.test(pr.mergedBy))
+            ? pr.mergedBy
+            : ((pr.author && /^[0-9a-f]{64}$/i.test(pr.author)) ? pr.author : ownerPubkey);
+          
+          recordActivity({
+            type: "pr_merged",
+            user: mergedBy,
+            repo: repoId,
+            entity: repo.entity,
+            repoName: repoName,
+            metadata: {
+              prId: pr.id,
+              commitId: pr.mergeCommit,
+            },
+            timestamp: pr.mergedAt,
+          } as any);
+          syncedCount++;
+        }
+      }
+    }
+
+    if (syncedCount > 0) {
+      console.log(`✅ [Activity Sync] Synced ${syncedCount} issues/PRs from Nostr for user ${userPubkey.slice(0, 8)}...`);
+    }
+
+    return syncedCount;
+  } catch (error) {
+    console.error("❌ [Activity Sync] Failed to sync issues/PRs from Nostr:", error);
+    return 0;
+  }
+}
+
+/**
  * Sync commits from bridge for all repos owned by a user
  * This is called when viewing a profile to ensure activity bar is up-to-date
  */
@@ -546,5 +723,207 @@ export async function syncUserCommitsFromBridge(userPubkey: string): Promise<num
     console.error("❌ [Activity Sync] Failed to sync user commits:", error);
     return 0;
   }
+}
+
+/**
+ * Count activities directly from Nostr events (network source of truth)
+ * This is the PRIMARY way to count activities - people use multiple clients!
+ * 
+ * Counts:
+ * - Repos: kind 30617 (repo announcements)
+ * - Pushes: kind 30618 (repo state events - indicate new commits/pushes)
+ * - PRs: kind 1618 (PR events) + kind 1631 (PR merged status)
+ * - Issues: kind 1621 (issue events) + kind 1632 (issue closed status)
+ */
+export interface NostrActivityCounts {
+  repos: number; // Unique repos (kind 30617)
+  pushes: number; // Repo state updates (kind 30618) - indicates pushes
+  prsCreated: number; // PR events (kind 1618)
+  prsMerged: number; // PR merged status (kind 1631)
+  issuesCreated: number; // Issue events (kind 1621)
+  issuesClosed: number; // Issue closed status (kind 1632)
+  total: number; // Total activity count
+}
+
+export function countActivitiesFromNostr(
+  subscribe: (
+    filters: any[],
+    relays: string[],
+    onEvent: (event: any, isAfterEose: boolean, relayURL?: string) => void,
+    maxDelayms?: number,
+    onEose?: (relayUrl: string, minCreatedAt: number) => void,
+    options?: any
+  ) => () => void,
+  relays: string[],
+  userPubkey: string
+): Promise<NostrActivityCounts> {
+  // CRITICAL: Only use GRASP/git relays - regular relays don't have git events!
+  const { getGraspServers } = require("@/lib/utils/grasp-servers");
+  const graspRelays = getGraspServers(relays);
+  const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
+  
+  console.log(`🔍 [Nostr Activity Count] Starting query for ${userPubkey.slice(0, 8)}... using ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`, activeRelays);
+  
+  return new Promise((resolve) => {
+    const counts: NostrActivityCounts = {
+      repos: 0,
+      pushes: 0,
+      prsCreated: 0,
+      prsMerged: 0,
+      issuesCreated: 0,
+      issuesClosed: 0,
+      total: 0,
+    };
+
+    const seenRepos = new Set<string>(); // Track unique repos (pubkey/repoName)
+    const seenPRs = new Set<string>(); // Track unique PRs (event ID)
+    const seenIssues = new Set<string>(); // Track unique issues (event ID)
+    let eoseCount = 0;
+    const expectedEose = activeRelays.length;
+    let resolved = false;
+
+    // Find ALL repos and ALL activities (no time limit)
+    // If we find repos, we should find their associated activities
+    const filters = [
+      // Repo announcements (kind 30617) - find ALL repos
+      {
+        kinds: [KIND_REPOSITORY_NIP34],
+        authors: [userPubkey],
+        limit: 1000,
+      },
+      // Repo state events (kind 30618) - indicate pushes/new commits (ALL time)
+      {
+        kinds: [KIND_REPOSITORY_STATE],
+        authors: [userPubkey],
+        limit: 1000,
+      },
+      // PR events (kind 1618) - ALL time
+      {
+        kinds: [KIND_PULL_REQUEST],
+        authors: [userPubkey],
+        limit: 1000,
+      },
+      // PR merged status (kind 1631) - ALL time
+      {
+        kinds: [KIND_STATUS_APPLIED],
+        authors: [userPubkey],
+        "#k": ["1618"], // Only PR status events
+        limit: 1000,
+      },
+      // Issue events (kind 1621) - ALL time
+      {
+        kinds: [KIND_ISSUE],
+        authors: [userPubkey],
+        limit: 1000,
+      },
+      // Issue closed status (kind 1632) - ALL time
+      {
+        kinds: [KIND_STATUS_CLOSED],
+        authors: [userPubkey],
+        "#k": ["1621"], // Only issue status events
+        limit: 1000,
+      },
+    ];
+
+    const unsub = subscribe(
+      filters,
+      activeRelays,
+      (event, _isAfterEose, _relayURL) => {
+        // Count repo announcements (kind 30617) - but DON'T count as activity
+        // Repos are metadata, not user actions. We track them separately.
+        if (event.kind === KIND_REPOSITORY_NIP34) {
+          const dTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "d");
+          const repoName = dTag?.[1];
+          if (repoName) {
+            const repoKey = `${event.pubkey}/${repoName}`;
+            if (!seenRepos.has(repoKey)) {
+              seenRepos.add(repoKey);
+              counts.repos++;
+              // DON'T increment total - repos are metadata, not activities
+            }
+          }
+        }
+        // Count repo state events (kind 30618) - these indicate pushes
+        else if (event.kind === KIND_REPOSITORY_STATE) {
+          counts.pushes++;
+          counts.total++;
+        }
+        // Count PR events (kind 1618)
+        else if (event.kind === KIND_PULL_REQUEST) {
+          if (!seenPRs.has(event.id)) {
+            seenPRs.add(event.id);
+            counts.prsCreated++;
+            counts.total++;
+          }
+        }
+        // Count PR merged status (kind 1631)
+        else if (event.kind === KIND_STATUS_APPLIED) {
+          const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+          if (kTag && kTag[1] === "1618") {
+            // This is a PR merged status
+            counts.prsMerged++;
+            counts.total++;
+          }
+        }
+        // Count issue events (kind 1621)
+        else if (event.kind === KIND_ISSUE) {
+          if (!seenIssues.has(event.id)) {
+            seenIssues.add(event.id);
+            counts.issuesCreated++;
+            counts.total++;
+          }
+        }
+        // Count issue closed status (kind 1632)
+        else if (event.kind === KIND_STATUS_CLOSED) {
+          const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+          if (kTag && kTag[1] === "1621") {
+            // This is an issue closed status
+            counts.issuesClosed++;
+            counts.total++;
+          }
+        }
+      },
+      undefined,
+      (relayUrl: string, minCreatedAt: number) => {
+        // EOSE from this relay
+        eoseCount++;
+        if (eoseCount >= expectedEose && !resolved) {
+          resolved = true;
+          setTimeout(() => {
+            unsub();
+            console.log(`✅ [Nostr Activity Count] Final counts from Nostr for ${userPubkey.slice(0, 8)}:`, {
+              repos: counts.repos,
+              pushes: counts.pushes,
+              prsCreated: counts.prsCreated,
+              prsMerged: counts.prsMerged,
+              issuesCreated: counts.issuesCreated,
+              issuesClosed: counts.issuesClosed,
+              total: counts.total,
+            });
+            resolve(counts);
+          }, 1000); // Wait 1s after EOSE for any delayed events
+        }
+      },
+      {} // options parameter
+    );
+
+    // Timeout after 15 seconds (need more time to get all activity from all time)
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        unsub();
+        console.log(`⏱️ [Nostr Activity Count] Timeout after 15s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`, {
+          repos: counts.repos,
+          pushes: counts.pushes,
+          prsCreated: counts.prsCreated,
+          prsMerged: counts.prsMerged,
+          issuesCreated: counts.issuesCreated,
+          issuesClosed: counts.issuesClosed,
+          total: counts.total,
+        });
+        resolve(counts);
+      }
+    }, 15000);
+  });
 }
 

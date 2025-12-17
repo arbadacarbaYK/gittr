@@ -1,10 +1,14 @@
 /**
  * Statistics Calculation Functions
  * Calculate top repos, users, etc. from activity data
+ * 
+ * CRITICAL: New functions count from Nostr events (network source of truth)
+ * Old functions use localStorage (kept for fallback)
  */
 
 import { getActivities, Activity, ActivityType } from "./activity-tracking";
 import { resolveEntityToPubkey, getRepoOwnerPubkey } from "./utils/entity-resolver";
+import { KIND_REPOSITORY_NIP34, KIND_REPOSITORY_STATE, KIND_PULL_REQUEST, KIND_ISSUE, KIND_STATUS_APPLIED, KIND_STATUS_CLOSED } from "./nostr/events";
 
 export interface RepoStats {
   repoId: string;
@@ -75,8 +79,17 @@ export function getTopRepos(count: number = 10, userPubkey?: string | null): Rep
   const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
   const repoMap = new Map<string, RepoStats>();
   
+  let skippedRepoCreated = 0;
+  let processedActivities = 0;
+  
   activities.forEach(activity => {
     if (!activity.repo || !activity.entity) return;
+    
+    // CRITICAL: Don't count repo_created or repo_imported as activity - repos are metadata, not activities
+    if (activity.type === "repo_created" || activity.type === "repo_imported") {
+      skippedRepoCreated++;
+      return;
+    }
     
     // Extract entity and repo name from activity.repo (format: "entity/repo")
     const [activityEntity, activityRepo] = activity.repo.split('/');
@@ -96,6 +109,8 @@ export function getTopRepos(count: number = 10, userPubkey?: string | null): Rep
       
       if (!repo || !userHasAccessToRepo(userPubkey, repo)) return;
     }
+    
+    processedActivities++;
     
     const existing = repoMap.get(activity.repo) || {
       repoId: activity.repo,
@@ -128,9 +143,29 @@ export function getTopRepos(count: number = 10, userPubkey?: string | null): Rep
     repoMap.set(activity.repo, existing);
   });
   
-  return Array.from(repoMap.values())
-    .sort((a, b) => b.activityCount - a.activityCount)
+  // Sort by activity count DESCENDING (highest first) - show repos with most activity at top
+  const result = Array.from(repoMap.values())
+    .filter(repo => repo.activityCount > 0) // Only repos with at least 1 activity (not just repo_created)
+    .sort((a, b) => {
+      // Sort by activity count DESCENDING (highest first)
+      if (b.activityCount !== a.activityCount) {
+        return b.activityCount - a.activityCount;
+      }
+      // If same activity count, sort by last activity (most recent first)
+      return b.lastActivity - a.lastActivity;
+    })
     .slice(0, count);
+  
+  // Debug logging
+  if (result.length === 0 && repoMap.size > 0) {
+    const allCounts = Array.from(repoMap.values()).map(r => r.activityCount);
+    const maxCount = Math.max(...allCounts, 0);
+    console.warn(`⚠️ [getTopRepos] No repos with activities found. Max activity: ${maxCount}, Skipped ${skippedRepoCreated} repo_created, processed ${processedActivities} activities, ${repoMap.size} repos in map`);
+  } else if (result.length > 0) {
+    console.log(`✅ [getTopRepos] Found ${result.length} repos. Top activity: ${result[0]?.activityCount || 0}, Repos: ${result.map(r => `${r.repoName}(${r.activityCount})`).join(', ')}`);
+  }
+  
+  return result;
 }
 
 /**
@@ -811,5 +846,516 @@ export function getPlatformBountyStats(): {
     releasedCount,
     offlineCount,
   };
+}
+
+/**
+ * Count activities from Nostr for ALL repos (platform-wide)
+ * Returns map of repoId -> activity counts
+ */
+export function countRepoActivitiesFromNostr(
+  subscribe: (
+    filters: any[],
+    relays: string[],
+    onEvent: (event: any, isAfterEose: boolean, relayURL?: string) => void,
+    maxDelayms?: number,
+    onEose?: (relayUrl: string, minCreatedAt: number) => void,
+    options?: any
+  ) => () => void,
+  relays: string[],
+  sinceDays: number = 90 // Count activity from last 90 days (increased from 30 for better coverage)
+): Promise<Map<string, RepoStats>> {
+  // CRITICAL: Only use GRASP/git relays - regular relays don't have git events!
+  const { getGraspServers } = require("@/lib/utils/grasp-servers");
+  const graspRelays = getGraspServers(relays);
+  const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
+  
+  console.log(`🔍 [Nostr Repo Stats] Starting query for all repos using ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`, activeRelays);
+  
+  return new Promise((resolve) => {
+    const repoMap = new Map<string, RepoStats>();
+    // REMOVED since filter - count ALL activities from all time, not just last 90 days
+    // This ensures we capture all historical activity, not just recent
+    
+    let eoseCount = 0;
+    const expectedEose = activeRelays.length;
+    let resolved = false;
+
+    const filters = [
+      // Repo announcements (kind 30617) - count unique repos (NO since - get all)
+      {
+        kinds: [KIND_REPOSITORY_NIP34],
+        limit: 5000, // Increased limit to get more repos
+      },
+      // Repo state events (kind 30618) - indicate pushes (NO since - get all)
+      {
+        kinds: [KIND_REPOSITORY_STATE],
+        limit: 5000, // Increased limit to get all pushes
+      },
+      // PR events (kind 1618) (NO since - get all)
+      {
+        kinds: [KIND_PULL_REQUEST],
+        limit: 2000,
+      },
+      // PR merged status (kind 1631) (NO since - get all)
+      {
+        kinds: [KIND_STATUS_APPLIED],
+        "#k": ["1618"], // Only PR status events
+        limit: 1000,
+      },
+      // Issue events (kind 1621) (NO since - get all)
+      {
+        kinds: [KIND_ISSUE],
+        limit: 2000,
+      },
+      // Issue closed status (kind 1632) (NO since - get all)
+      {
+        kinds: [KIND_STATUS_CLOSED],
+        "#k": ["1621"], // Only issue status events
+        limit: 1000,
+      },
+    ];
+
+    const unsub = subscribe(
+      filters,
+      activeRelays,
+      (event, _isAfterEose, _relayURL) => {
+        // Count repo announcements (kind 30617) - DON'T count as activity, just ensure repo exists
+        // Repo announcements are metadata, not activities. Activities are pushes, PRs, issues.
+        if (event.kind === KIND_REPOSITORY_NIP34) {
+          const dTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "d");
+          const repoName = dTag?.[1];
+          if (repoName && event.pubkey && typeof repoName === "string") {
+            const repoId = `${event.pubkey}/${repoName}`;
+            // Only create repo entry if it doesn't exist, don't count announcement as activity
+            if (!repoMap.has(repoId)) {
+              repoMap.set(repoId, {
+                repoId,
+                repoName: repoName as string,
+                entity: event.pubkey,
+                activityCount: 0,
+                prCount: 0,
+                commitCount: 0,
+                issueCount: 0,
+                zapCount: 0,
+                lastActivity: event.created_at * 1000, // Convert to milliseconds
+              });
+            }
+          }
+        }
+        // Count repo state events (kind 30618) - indicate pushes
+        else if (event.kind === KIND_REPOSITORY_STATE) {
+          const dTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "d");
+          const repoName = dTag?.[1];
+          if (repoName && event.pubkey && typeof repoName === "string") {
+            const repoId = `${event.pubkey}/${repoName}`;
+            const existing = repoMap.get(repoId) || {
+              repoId,
+              repoName: repoName as string,
+              entity: event.pubkey,
+              activityCount: 0,
+              prCount: 0,
+              commitCount: 0,
+              issueCount: 0,
+              zapCount: 0,
+              lastActivity: event.created_at * 1000,
+            };
+            existing.commitCount++;
+            existing.activityCount++;
+            existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+            repoMap.set(repoId, existing);
+          }
+        }
+        // Count PR events (kind 1618)
+        else if (event.kind === KIND_PULL_REQUEST) {
+          const aTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "a");
+          if (aTag && aTag[1]) {
+            // Extract repo from "a" tag: "30617:<owner-pubkey>:<repo-name>"
+            const aValue = aTag[1] as string;
+            const match = aValue.match(/^30617:([0-9a-f]{64}):(.+)$/i);
+            if (match && match[1] && match[2]) {
+              const [, ownerPubkey, repoName] = match;
+              const repoId = `${ownerPubkey}/${repoName}`;
+              const existing = repoMap.get(repoId) || {
+                repoId,
+                repoName: repoName as string,
+                entity: ownerPubkey,
+                activityCount: 0,
+                prCount: 0,
+                commitCount: 0,
+                issueCount: 0,
+                zapCount: 0,
+                lastActivity: event.created_at * 1000,
+              };
+              existing.prCount++;
+              existing.activityCount++;
+              existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+              repoMap.set(repoId, existing);
+            }
+          }
+        }
+        // Count PR merged status (kind 1631)
+        else if (event.kind === KIND_STATUS_APPLIED) {
+          const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+          if (kTag && kTag[1] === "1618") {
+            const aTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "a");
+            if (aTag && aTag[1]) {
+              const aValue = aTag[1] as string;
+              const match = aValue.match(/^30617:([0-9a-f]{64}):(.+)$/i);
+              if (match && match[1] && match[2]) {
+                const [, ownerPubkey, repoName] = match;
+                const repoId = `${ownerPubkey}/${repoName}`;
+                const existing = repoMap.get(repoId) || {
+                  repoId,
+                  repoName: repoName as string,
+                  entity: ownerPubkey,
+                  activityCount: 0,
+                  prCount: 0,
+                  commitCount: 0,
+                  issueCount: 0,
+                  zapCount: 0,
+                  lastActivity: event.created_at * 1000,
+                };
+                existing.prCount++;
+                existing.activityCount++;
+                existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+                repoMap.set(repoId, existing);
+              }
+            }
+          }
+        }
+        // Count issue events (kind 1621)
+        else if (event.kind === KIND_ISSUE) {
+          const aTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "a");
+          if (aTag && aTag[1]) {
+            const aValue = aTag[1] as string;
+            const match = aValue.match(/^30617:([0-9a-f]{64}):(.+)$/i);
+            if (match && match[1] && match[2]) {
+              const [, ownerPubkey, repoName] = match;
+              const repoId = `${ownerPubkey}/${repoName}`;
+              const existing = repoMap.get(repoId) || {
+                repoId,
+                repoName: repoName as string,
+                entity: ownerPubkey,
+                activityCount: 0,
+                prCount: 0,
+                commitCount: 0,
+                issueCount: 0,
+                zapCount: 0,
+                lastActivity: event.created_at * 1000,
+              };
+              existing.issueCount++;
+              existing.activityCount++;
+              existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+              repoMap.set(repoId, existing);
+            }
+          }
+        }
+        // Count issue closed status (kind 1632)
+        else if (event.kind === KIND_STATUS_CLOSED) {
+          const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+          if (kTag && kTag[1] === "1621") {
+            const aTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "a");
+            if (aTag && aTag[1]) {
+              const aValue = aTag[1] as string;
+              const match = aValue.match(/^30617:([0-9a-f]{64}):(.+)$/i);
+              if (match && match[1] && match[2]) {
+                const [, ownerPubkey, repoName] = match;
+                const repoId = `${ownerPubkey}/${repoName}`;
+                const existing = repoMap.get(repoId) || {
+                  repoId,
+                  repoName: repoName as string,
+                  entity: ownerPubkey,
+                  activityCount: 0,
+                  prCount: 0,
+                  commitCount: 0,
+                  issueCount: 0,
+                  zapCount: 0,
+                  lastActivity: event.created_at * 1000,
+                };
+                existing.issueCount++;
+                existing.activityCount++;
+                existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+                repoMap.set(repoId, existing);
+              }
+            }
+          }
+        }
+      },
+      undefined, // maxDelayms: cannot use with onEose, so leave undefined
+      (relayUrl: string, minCreatedAt: number) => {
+        eoseCount++;
+        if (eoseCount >= expectedEose && !resolved) {
+          resolved = true;
+          setTimeout(() => {
+            unsub();
+            console.log(`✅ [Nostr Repo Stats] Counted activities for ${repoMap.size} repos from Nostr`);
+            resolve(repoMap);
+          }, 1000);
+        }
+      },
+      {} // options parameter
+    );
+
+    // Timeout after 20 seconds - need more time to get all activity from all time
+    // Increased from 15s to 20s to ensure we get more repos before timing out
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        unsub();
+        const totalActivities = Array.from(repoMap.values()).reduce((sum, r) => sum + r.activityCount, 0);
+        const reposWithActivity = Array.from(repoMap.values()).filter(r => r.activityCount > 0).length;
+        console.log(`⏱️ [Nostr Repo Stats] Timeout after 20s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`, repoMap.size, 'repos,', reposWithActivity, 'with activity,', totalActivities, 'total activities');
+        resolve(repoMap);
+      }
+    }, 20000);
+  });
+}
+
+/**
+ * Count activities from Nostr for ALL users (platform-wide)
+ * Returns map of pubkey -> activity counts
+ */
+export function countUserActivitiesFromNostr(
+  subscribe: (
+    filters: any[],
+    relays: string[],
+    onEvent: (event: any, isAfterEose: boolean, relayURL?: string) => void,
+    maxDelayms?: number,
+    onEose?: (relayUrl: string, minCreatedAt: number) => void,
+    options?: any
+  ) => () => void,
+  relays: string[],
+  sinceDays: number = 90 // Count activity from last 90 days (increased from 30 for better coverage)
+): Promise<Map<string, UserStats>> {
+  // CRITICAL: Only use GRASP/git relays - regular relays don't have git events!
+  const { getGraspServers } = require("@/lib/utils/grasp-servers");
+  const graspRelays = getGraspServers(relays);
+  const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
+  
+  console.log(`🔍 [Nostr User Stats] Starting query for all users using ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`, activeRelays);
+  
+  return new Promise((resolve) => {
+    const userMap = new Map<string, UserStats>();
+    const seenRepos = new Map<string, Set<string>>(); // Track unique repos per user (pubkey -> Set<repoId>)
+    const since = Math.floor((Date.now() - sinceDays * 24 * 60 * 60 * 1000) / 1000);
+    
+    let eoseCount = 0;
+    const expectedEose = activeRelays.length;
+    let resolved = false;
+
+    const filters = [
+      // Repo announcements (kind 30617) - count unique repos per user
+      {
+        kinds: [KIND_REPOSITORY_NIP34],
+        since,
+        limit: 1000,
+      },
+      // Repo state events (kind 30618) - indicate pushes
+      {
+        kinds: [KIND_REPOSITORY_STATE],
+        since,
+        limit: 2000,
+      },
+      // PR events (kind 1618)
+      {
+        kinds: [KIND_PULL_REQUEST],
+        since,
+        limit: 1000,
+      },
+      // PR merged status (kind 1631)
+      {
+        kinds: [KIND_STATUS_APPLIED],
+        "#k": ["1618"],
+        since,
+        limit: 500,
+      },
+      // Issue events (kind 1621)
+      {
+        kinds: [KIND_ISSUE],
+        since,
+        limit: 1000,
+      },
+      // Issue closed status (kind 1632)
+      {
+        kinds: [KIND_STATUS_CLOSED],
+        "#k": ["1621"],
+        since,
+        limit: 500,
+      },
+    ];
+
+    const unsub = subscribe(
+      filters,
+      activeRelays,
+      (event, _isAfterEose, _relayURL) => {
+        const userPubkey = event.pubkey;
+        if (!userPubkey || !/^[0-9a-f]{64}$/i.test(userPubkey)) return;
+
+        const existing = userMap.get(userPubkey) || {
+          pubkey: userPubkey,
+          activityCount: 0,
+          prMergedCount: 0,
+          commitCount: 0,
+          bountyClaimedCount: 0,
+          reposCreatedCount: 0,
+          lastActivity: event.created_at * 1000,
+        };
+
+        // Count repo announcements (kind 30617)
+        if (event.kind === KIND_REPOSITORY_NIP34) {
+          const dTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "d");
+          const repoName = dTag?.[1];
+          if (repoName) {
+            const repoId = `${userPubkey}/${repoName}`;
+            if (!seenRepos.has(userPubkey)) {
+              seenRepos.set(userPubkey, new Set());
+            }
+            if (!seenRepos.get(userPubkey)!.has(repoId)) {
+              seenRepos.get(userPubkey)!.add(repoId);
+              existing.reposCreatedCount++;
+            }
+            existing.activityCount++;
+            existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+          }
+        }
+        // Count repo state events (kind 30618) - indicate pushes
+        else if (event.kind === KIND_REPOSITORY_STATE) {
+          existing.commitCount++;
+          existing.activityCount++;
+          existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+        }
+        // Count PR events (kind 1618)
+        else if (event.kind === KIND_PULL_REQUEST) {
+          existing.activityCount++;
+          existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+        }
+        // Count PR merged status (kind 1631)
+        else if (event.kind === KIND_STATUS_APPLIED) {
+          const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+          if (kTag && kTag[1] === "1618") {
+            existing.prMergedCount++;
+            existing.activityCount++;
+            existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+          }
+        }
+        // Count issue events (kind 1621)
+        else if (event.kind === KIND_ISSUE) {
+          existing.activityCount++;
+          existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+        }
+        // Count issue closed status (kind 1632)
+        else if (event.kind === KIND_STATUS_CLOSED) {
+          const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+          if (kTag && kTag[1] === "1621") {
+            existing.activityCount++;
+            existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+          }
+        }
+
+        userMap.set(userPubkey, existing);
+      },
+      undefined, // maxDelayms: cannot use with onEose, so leave undefined
+      (relayUrl: string, minCreatedAt: number) => {
+        eoseCount++;
+        if (eoseCount >= expectedEose && !resolved) {
+          resolved = true;
+          setTimeout(() => {
+            unsub();
+            console.log(`✅ [Nostr User Stats] Counted activities for ${userMap.size} users from Nostr`);
+            resolve(userMap);
+          }, 1000);
+        }
+      },
+      {} // options parameter
+    );
+
+    // Timeout after 5 seconds (balance between speed and getting data)
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        unsub();
+        console.log(`⏱️ [Nostr User Stats] Timeout after 5s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`, userMap.size, 'users');
+        resolve(userMap);
+      }
+    }, 5000);
+  });
+}
+
+/**
+ * Get top repos from Nostr (network source of truth)
+ * Counts directly from Nostr events, not localStorage
+ */
+export async function getTopReposFromNostr(
+  subscribe: (
+    filters: any[],
+    relays: string[],
+    onEvent: (event: any, isAfterEose: boolean, relayURL?: string) => void,
+    maxDelayms?: number,
+    onEose?: (relayUrl: string, minCreatedAt: number) => void,
+    options?: any
+  ) => () => void,
+  relays: string[],
+  count: number = 10
+): Promise<RepoStats[]> {
+  try {
+    if (!subscribe || typeof subscribe !== 'function') {
+      console.error(`❌ [getTopReposFromNostr] subscribe is not a function:`, typeof subscribe);
+      return [];
+    }
+    
+    console.log(`🔍 [getTopReposFromNostr] Starting query with ${relays.length} relays...`);
+    const repoMap = await countRepoActivitiesFromNostr(subscribe, relays, 999999); // All time (sinceDays param ignored now, but kept for API compatibility)
+    
+    // Debug: Log all repos with activity
+    const allReposWithActivity = Array.from(repoMap.values()).filter(repo => repo.activityCount > 0);
+    console.log(`📊 [getTopReposFromNostr] Total repos in map: ${repoMap.size}, repos with activity: ${allReposWithActivity.length}`);
+    if (allReposWithActivity.length > 0) {
+      console.log(`📋 [getTopReposFromNostr] All repos with activity:`, allReposWithActivity.slice(0, 20).map(r => `${r.repoName}(${r.activityCount})`).join(', '));
+    }
+    
+    const repos = allReposWithActivity
+      .sort((a, b) => {
+        // Sort by activity count DESCENDING (highest first)
+        if (b.activityCount !== a.activityCount) {
+          return b.activityCount - a.activityCount;
+        }
+        // If same activity count, sort by last activity (most recent first)
+        return b.lastActivity - a.lastActivity;
+      })
+      .slice(0, count);
+    
+    console.log(`✅ [getTopReposFromNostr] Found ${repos.length} repos from Nostr (${repoMap.size} total in map), top activity: ${repos[0]?.activityCount || 0}`);
+    if (repos.length > 0) {
+      console.log(`📋 [getTopReposFromNostr] Top repos:`, repos.map(r => `${r.repoName}(${r.activityCount})`).join(', '));
+    } else if (allReposWithActivity.length > 0) {
+      console.warn(`⚠️ [getTopReposFromNostr] No repos returned after sorting/slicing, but ${allReposWithActivity.length} repos have activity!`);
+    }
+    return repos;
+  } catch (error) {
+    console.error(`❌ [getTopReposFromNostr] Error:`, error);
+    return []; // Return empty on error, let localStorage handle it
+  }
+}
+
+/**
+ * Get top users from Nostr (network source of truth)
+ * Counts directly from Nostr events, not localStorage
+ */
+export async function getTopUsersFromNostr(
+  subscribe: (
+    filters: any[],
+    relays: string[],
+    onEvent: (event: any, isAfterEose: boolean, relayURL?: string) => void,
+    maxDelayms?: number,
+    onEose?: (relayUrl: string, minCreatedAt: number) => void,
+    options?: any
+  ) => () => void,
+  relays: string[],
+  count: number = 10
+): Promise<UserStats[]> {
+  const userMap = await countUserActivitiesFromNostr(subscribe, relays, 90); // Last 90 days
+  return Array.from(userMap.values())
+    .sort((a, b) => b.activityCount - a.activityCount)
+    .slice(0, count);
 }
 

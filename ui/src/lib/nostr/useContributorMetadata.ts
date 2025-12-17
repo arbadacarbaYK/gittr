@@ -338,14 +338,14 @@ export function useContributorMetadata(pubkeys: string[]) {
       const batchTimeout = setTimeout(() => {
         try {
           const batchUnsub = subscribe(
-            [
-              {
-                kinds: [0],
+        [
+          {
+            kinds: [0],
                 authors: batch, // Subscribe to this batch of pubkeys
-              },
-            ],
-            defaultRelays,
-            (event, isAfterEose, relayURL) => {
+          },
+        ],
+        defaultRelays,
+        (event, isAfterEose, relayURL) => {
           // Process ALL metadata events (even after EOSE - some relays send delayed events)
           if (event.kind === 0) {
             const normalizedPubkey = event.pubkey.toLowerCase();
@@ -353,12 +353,12 @@ export function useContributorMetadata(pubkeys: string[]) {
             // Reduced logging to prevent console spam when processing many events
             if (batchIndex === 0 || isTargetPubkey) {
               console.log(`🔵 [useContributorMetadata] Processing kind 0 event from ${relayURL} for pubkey ${normalizedPubkey.slice(0, 8)} (batch ${batchIndex + 1}/${batches.length})`, {
-                isTargetPubkey,
-                isAfterEose,
-                created_at: event.created_at,
-                tagsCount: event.tags?.length || 0,
-                iTags: event.tags?.filter((t: any) => Array.isArray(t) && t[0] === 'i') || []
-              });
+              isTargetPubkey,
+              isAfterEose,
+              created_at: event.created_at,
+              tagsCount: event.tags?.length || 0,
+              iTags: event.tags?.filter((t: any) => Array.isArray(t) && t[0] === 'i') || []
+            });
             }
             try {
               const data = JSON.parse(event.content) as Metadata;
@@ -401,7 +401,7 @@ export function useContributorMetadata(pubkeys: string[]) {
                 data.identities = identities;
                 // Only log identities for first batch to reduce console spam
                 if (batchIndex === 0) {
-                  console.log(`✅ [useContributorMetadata] Found ${identities.length} identities in event:`, identities.map(i => `${i.platform}:${i.identity}`));
+                console.log(`✅ [useContributorMetadata] Found ${identities.length} identities in event:`, identities.map(i => `${i.platform}:${i.identity}`));
                 }
               }
               
@@ -477,7 +477,7 @@ export function useContributorMetadata(pubkeys: string[]) {
               });
               // Only log for first batch to reduce console spam
               if (batchIndex === 0) {
-                console.log(`✅ [useContributorMetadata] Received metadata for ${event.pubkey.toLowerCase().slice(0, 8)} (stored as lowercase)${identities.length > 0 ? ` with ${identities.length} claimed identities` : ""}`);
+              console.log(`✅ [useContributorMetadata] Received metadata for ${event.pubkey.toLowerCase().slice(0, 8)} (stored as lowercase)${identities.length > 0 ? ` with ${identities.length} claimed identities` : ""}`);
               }
             } catch (e) {
               console.error("Failed to parse metadata:", e, "Content:", event.content?.slice(0, 100));
@@ -485,23 +485,23 @@ export function useContributorMetadata(pubkeys: string[]) {
           } else {
             // Only log non-kind-0 events for first batch
             if (batchIndex === 0) {
-              console.log(`⚠️ [useContributorMetadata] Received non-kind-0 event: kind=${event.kind}, pubkey=${event.pubkey.slice(0, 8)}`);
+            console.log(`⚠️ [useContributorMetadata] Received non-kind-0 event: kind=${event.kind}, pubkey=${event.pubkey.slice(0, 8)}`);
             }
           }
         },
-            undefined,
-            (events, relayURL) => {
-              // EOSE from this relay - but don't clear timeout yet, wait for all relays
-              // CRITICAL: Only log first EOSE to reduce console spam (multiple relays = multiple EOSE messages)
-              // Metadata fetching is less critical than file fetching, so we can be quieter
-            }
-          );
+        undefined,
+        (events, relayURL) => {
+          // EOSE from this relay - but don't clear timeout yet, wait for all relays
+          // CRITICAL: Only log first EOSE to reduce console spam (multiple relays = multiple EOSE messages)
+          // Metadata fetching is less critical than file fetching, so we can be quieter
+        }
+      );
           unsubs.push(batchUnsub);
           // Log batch subscription progress
           if (batchIndex === 0 || (batchIndex + 1) % 2 === 0 || batchIndex === batches.length - 1) {
             console.log(`✅ [useContributorMetadata] Subscribed to batch ${batchIndex + 1}/${batches.length} (${batch.length} pubkeys)`);
           }
-        } catch (error) {
+    } catch (error) {
           console.error(`❌ [useContributorMetadata] Failed to subscribe for batch ${batchIndex + 1}:`, error);
         }
       }, batchIndex * BATCH_DELAY_MS); // Progressive delay: 0ms, 500ms, 1000ms, etc.
@@ -525,10 +525,10 @@ export function useContributorMetadata(pubkeys: string[]) {
       }
       unsubs.forEach(unsub => {
         try {
-          unsub();
+        unsub();
         } catch (error) {
           console.error("Error unsubscribing batch:", error);
-        }
+      }
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
