@@ -43,6 +43,17 @@ export default function ClientLayout({
   // Rename legacy ngit_* storage keys to gittr_* on first load
   useEffect(() => {
     migrateLegacyLocalStorage();
+    
+    // Migrate classic theme to arcade80s (new default)
+    try {
+      const currentTheme = localStorage.getItem("gittr_theme");
+      if (currentTheme === "classic" || !currentTheme) {
+        localStorage.setItem("gittr_theme", "arcade80s");
+        document.documentElement.setAttribute("data-theme", "arcade80s");
+      }
+    } catch (e) {
+      // Ignore localStorage errors
+    }
   }, []);
 
   // Suppress annoying relay connection errors from nostr-relaypool and React 19 ref warnings from Radix UI
