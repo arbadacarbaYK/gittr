@@ -1756,25 +1756,18 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
   const weeks = contributionGraph.slice(-52);
   const maxCount = Math.max(...weeks.map(w => w.count), 1);
   
-  // CRITICAL: Use logarithmic scaling to create more distinct visual levels
-  // This ensures that 28 vs 96 contributions look very different
-  // Formula: level = maxCount * (baseLevel / 100) ^ (1 / scaleFactor)
-  // Lower scaleFactor = more aggressive scaling (more differentiation)
-  const baseLevels = [0, 1, 3, 10, 30, 100];
-  const scaleFactor = 1.5; // Logarithmic scaling factor (lower = more aggressive)
-  
-  const intensityLevels = baseLevels.map(level => {
-    if (level === 0) return 0;
-    if (maxCount <= 10) {
-      // For very low activity, use simple linear scaling
-      return Math.round((level / 100) * maxCount);
-    }
-    // Use logarithmic scaling for better differentiation
-    // This creates more distinct levels even for similar maxCounts
-    const ratio = level / 100;
-    const logScaled = Math.pow(ratio, 1 / scaleFactor) * maxCount;
-    return Math.round(logScaled);
-  });
+  // CRITICAL: Use aggressive percentile-based scaling to create very distinct visual levels
+  // This ensures that 28 vs 96 contributions look VERY different
+  // Use percentiles: 0%, 10%, 25%, 50%, 75%, 100% of maxCount
+  // This creates more distinct levels even for similar maxCounts
+  const intensityLevels = [
+    0,                                    // Level 0: No activity
+    Math.max(1, Math.round(maxCount * 0.10)),   // Level 1: Bottom 10% (very light)
+    Math.max(2, Math.round(maxCount * 0.25)),   // Level 2: Bottom 25% (light)
+    Math.max(3, Math.round(maxCount * 0.50)),   // Level 3: Bottom 50% (medium)
+    Math.max(5, Math.round(maxCount * 0.75)),   // Level 4: Bottom 75% (high)
+    maxCount,                              // Level 5: Maximum (brightest)
+  ];
 
   const getIntensity = (count: number) => {
     if (count === 0) return "bg-gray-800 border border-gray-700";
