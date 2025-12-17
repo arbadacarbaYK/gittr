@@ -8335,7 +8335,7 @@ export default function RepoCodePage({
                             // Otherwise, treat as inline code (single backticks)
                             const hasLanguageClass = className && /language-/.test(className);
                             const isBlockCode = hasLanguageClass || (inline === false && hasLanguageClass);
-                            
+
                             // Use CopyableCodeBlock for all code blocks
                             return (
                               <CopyableCodeBlock 
