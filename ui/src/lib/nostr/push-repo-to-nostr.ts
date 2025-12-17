@@ -148,17 +148,22 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         // Extract domain from URL (remove protocol)
         const serverDomain = cleanUrl.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '').split('/')[0];
         
-        // Add HTTPS URL
-        const httpsCloneUrl = `https://${serverDomain}/${pubkey}/${actualRepositoryName}.git`;
-        addCloneUrl(httpsCloneUrl);
-        console.log(`🔗 [Push Repo] Added primary GRASP server HTTPS clone URL: ${httpsCloneUrl}`);
-        
-        // Add SSH URL (for users with SSH keys)
-        const gitSshBase = repo.gitSshBase || (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_GIT_SSH_BASE) || "gittr.space";
-        const sshHost = (serverDomain === "git.gittr.space" || serverDomain.includes("gittr.space")) ? gitSshBase : serverDomain;
-        const sshCloneUrl = `git@${sshHost}:${pubkey}/${actualRepositoryName}.git`;
-        addCloneUrl(sshCloneUrl);
-        console.log(`🔗 [Push Repo] Added primary GRASP server SSH clone URL: ${sshCloneUrl}`);
+        // Only proceed if we have a valid server domain
+        if (serverDomain && serverDomain.length > 0) {
+          // Add HTTPS URL
+          const httpsCloneUrl = `https://${serverDomain}/${pubkey}/${actualRepositoryName}.git`;
+          addCloneUrl(httpsCloneUrl);
+          console.log(`🔗 [Push Repo] Added primary GRASP server HTTPS clone URL: ${httpsCloneUrl}`);
+          
+          // Add SSH URL (for users with SSH keys)
+          const gitSshBase = repo.gitSshBase || (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_GIT_SSH_BASE) || "gittr.space";
+          const sshHost = (serverDomain === "git.gittr.space" || serverDomain.includes("gittr.space")) ? gitSshBase : serverDomain;
+          const sshCloneUrl = `git@${sshHost}:${pubkey}/${actualRepositoryName}.git`;
+          addCloneUrl(sshCloneUrl);
+          console.log(`🔗 [Push Repo] Added primary GRASP server SSH clone URL: ${sshCloneUrl}`);
+        } else {
+          console.warn(`⚠️ [Push Repo] Could not extract server domain from URL: ${cleanUrl}`);
+        }
       } else {
         addCloneUrl(cleanUrl);
         console.log(`🔗 [Push Repo] Added configured git server URL: ${cleanUrl}`);
