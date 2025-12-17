@@ -193,9 +193,16 @@ git push origin main
 - `git-remote-nostr` is a helper tool that translates `nostr://` URLs into standard git operations
 - When you run `git clone nostr://...`, it:
   1. Queries Nostr relays for NIP-34 repository events
-  2. Extracts clone URLs (SSH or HTTPS) from the event
+  2. Extracts clone URLs (SSH and HTTPS) from the event's `clone` tags
   3. Uses standard git operations to clone from those URLs
 - The actual git operations (clone/push/pull) still go through SSH or HTTPS to the bridge, just like regular git operations
+
+**SSH Keys with nostr:// URLs:**
+- NIP-34 events include **both SSH and HTTPS clone URLs** in the `clone` tags
+- `git-remote-nostr` extracts all clone URLs from the event and can use SSH URLs if available
+- If you have SSH keys set up, `git-remote-nostr` will prefer SSH URLs for push/pull operations (allowing authenticated git operations)
+- If no SSH keys are configured, it will fall back to HTTPS URLs (read-only or with credentials)
+- This means cloning via `nostr://` and then using `git push` will automatically use your SSH keys if they're set up!
 
 Only repository owners can push. Collaborators should use pull requests from their own forks or local copies.
 
