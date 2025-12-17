@@ -316,42 +316,56 @@ export function useContributorMetadata(pubkeys: string[]) {
       return;
     }
 
-    // Set timeout to stop waiting for relays after 15 seconds (increased for more relays)
-    const timeout = setTimeout(() => {
-      console.log("Metadata fetch timeout after 15s");
-    }, 15000);
-
-    let unsub: (() => void) | undefined;
+    // CRITICAL: Batch subscriptions to prevent overwhelming relays (especially when not logged in)
+    // Large batches can cause rate limiting, connection drops, or browser-specific issues
+    // Firefox seems more sensitive to this than Brave, especially for unauthenticated requests
+    const BATCH_SIZE = 25; // Subscribe to 25 pubkeys at a time
+    const BATCH_DELAY_MS = 500; // 500ms delay between batches to avoid overwhelming relays
     
-    try {
-      unsub = subscribe(
-        [
-          {
-            kinds: [0],
-            authors: pubkeysToSubscribe, // CRITICAL: Only subscribe for pubkeys that need metadata
-          },
-        ],
-        defaultRelays,
-        (event, isAfterEose, relayURL) => {
+    // Split pubkeys into batches
+    const batches: string[][] = [];
+    for (let i = 0; i < pubkeysToSubscribe.length; i += BATCH_SIZE) {
+      batches.push(pubkeysToSubscribe.slice(i, i + BATCH_SIZE));
+    }
+    
+    console.log(`📦 [useContributorMetadata] Batching ${pubkeysToSubscribe.length} pubkeys into ${batches.length} batches of ${BATCH_SIZE}`);
+    
+    const unsubs: (() => void)[] = [];
+    const timeouts: NodeJS.Timeout[] = [];
+    
+    // Subscribe to each batch with progressive delays
+    batches.forEach((batch, batchIndex) => {
+      const batchTimeout = setTimeout(() => {
+        try {
+          const batchUnsub = subscribe(
+            [
+              {
+                kinds: [0],
+                authors: batch, // Subscribe to this batch of pubkeys
+              },
+            ],
+            defaultRelays,
+            (event, isAfterEose, relayURL) => {
           // Process ALL metadata events (even after EOSE - some relays send delayed events)
           if (event.kind === 0) {
             const normalizedPubkey = event.pubkey.toLowerCase();
-            const isTargetPubkey = pubkeysToSubscribe.some(p => p.toLowerCase() === normalizedPubkey);
-            console.log(`🔵 [useContributorMetadata] Processing kind 0 event from ${relayURL} for pubkey ${normalizedPubkey.slice(0, 8)}`, {
-              isTargetPubkey,
-              isAfterEose,
-              created_at: event.created_at,
-              tagsCount: event.tags?.length || 0,
-              iTags: event.tags?.filter((t: any) => Array.isArray(t) && t[0] === 'i') || []
-            });
+            const isTargetPubkey = batch.some(p => p.toLowerCase() === normalizedPubkey);
+            // Reduced logging to prevent console spam when processing many events
+            if (batchIndex === 0 || isTargetPubkey) {
+              console.log(`🔵 [useContributorMetadata] Processing kind 0 event from ${relayURL} for pubkey ${normalizedPubkey.slice(0, 8)} (batch ${batchIndex + 1}/${batches.length})`, {
+                isTargetPubkey,
+                isAfterEose,
+                created_at: event.created_at,
+                tagsCount: event.tags?.length || 0,
+                iTags: event.tags?.filter((t: any) => Array.isArray(t) && t[0] === 'i') || []
+              });
+            }
             try {
               const data = JSON.parse(event.content) as Metadata;
               
-              // Debug: Log banner field if present
-              if (data.banner) {
+              // Debug: Log banner field if present (only for first batch to reduce spam)
+              if (batchIndex === 0 && data.banner) {
                 console.log(`🖼️ [useContributorMetadata] Banner found for ${normalizedPubkey.slice(0, 8)}: ${data.banner.substring(0, 50)}...`);
-              } else {
-                console.log(`⚠️ [useContributorMetadata] No banner field in metadata for ${normalizedPubkey.slice(0, 8)}. Keys: ${Object.keys(data).join(', ')}`);
               }
               
               // Parse NIP-39 identity claims from i tags
@@ -385,9 +399,10 @@ export function useContributorMetadata(pubkeys: string[]) {
               // Add identities to metadata if any were found
               if (identities.length > 0) {
                 data.identities = identities;
-                console.log(`✅ [useContributorMetadata] Found ${identities.length} identities in event:`, identities.map(i => `${i.platform}:${i.identity}`));
-              } else {
-                console.log(`⚠️ [useContributorMetadata] No identities found in event tags (${event.tags?.length || 0} total tags)`);
+                // Only log identities for first batch to reduce console spam
+                if (batchIndex === 0) {
+                  console.log(`✅ [useContributorMetadata] Found ${identities.length} identities in event:`, identities.map(i => `${i.platform}:${i.identity}`));
+                }
               }
               
               // CRITICAL: Normalize pubkey to lowercase for consistent lookup (already defined above)
@@ -460,37 +475,61 @@ export function useContributorMetadata(pubkeys: string[]) {
                   [normalizedPubkey]: { ...data, created_at: event.created_at },
                 };
               });
-              console.log(`✅ [useContributorMetadata] Received metadata for ${event.pubkey.toLowerCase().slice(0, 8)} (stored as lowercase)${identities.length > 0 ? ` with ${identities.length} claimed identities` : ""}`);
+              // Only log for first batch to reduce console spam
+              if (batchIndex === 0) {
+                console.log(`✅ [useContributorMetadata] Received metadata for ${event.pubkey.toLowerCase().slice(0, 8)} (stored as lowercase)${identities.length > 0 ? ` with ${identities.length} claimed identities` : ""}`);
+              }
             } catch (e) {
               console.error("Failed to parse metadata:", e, "Content:", event.content?.slice(0, 100));
             }
           } else {
-            console.log(`⚠️ [useContributorMetadata] Received non-kind-0 event: kind=${event.kind}, pubkey=${event.pubkey.slice(0, 8)}`);
+            // Only log non-kind-0 events for first batch
+            if (batchIndex === 0) {
+              console.log(`⚠️ [useContributorMetadata] Received non-kind-0 event: kind=${event.kind}, pubkey=${event.pubkey.slice(0, 8)}`);
+            }
           }
         },
-        undefined,
-        (events, relayURL) => {
-          // EOSE from this relay - but don't clear timeout yet, wait for all relays
-          // CRITICAL: Only log first EOSE to reduce console spam (multiple relays = multiple EOSE messages)
-          // Metadata fetching is less critical than file fetching, so we can be quieter
+            undefined,
+            (events, relayURL) => {
+              // EOSE from this relay - but don't clear timeout yet, wait for all relays
+              // CRITICAL: Only log first EOSE to reduce console spam (multiple relays = multiple EOSE messages)
+              // Metadata fetching is less critical than file fetching, so we can be quieter
+            }
+          );
+          unsubs.push(batchUnsub);
+          // Log batch subscription progress
+          if (batchIndex === 0 || (batchIndex + 1) % 2 === 0 || batchIndex === batches.length - 1) {
+            console.log(`✅ [useContributorMetadata] Subscribed to batch ${batchIndex + 1}/${batches.length} (${batch.length} pubkeys)`);
+          }
+        } catch (error) {
+          console.error(`❌ [useContributorMetadata] Failed to subscribe for batch ${batchIndex + 1}:`, error);
         }
-      );
-    } catch (error) {
-      console.error("Failed to subscribe for metadata:", error);
-      clearTimeout(timeout);
-    }
+      }, batchIndex * BATCH_DELAY_MS); // Progressive delay: 0ms, 500ms, 1000ms, etc.
+      
+      timeouts.push(batchTimeout);
+    });
+    
+    // Set overall timeout to stop waiting after 30 seconds (increased for batched subscriptions)
+    const overallTimeout = setTimeout(() => {
+      console.log(`⏱️ [useContributorMetadata] Overall metadata fetch timeout after 30s (${batches.length} batches)`);
+    }, 30000);
+    timeouts.push(overallTimeout);
 
     return () => {
-      // console.log(`🔄 [useContributorMetadata] Cleaning up subscription for ${validPubkeys.length} pubkeys`);
-      clearTimeout(timeout);
+      // Clean up all batch subscriptions and timeouts
+      console.log(`🔄 [useContributorMetadata] Cleaning up ${unsubs.length} batch subscriptions`);
+      timeouts.forEach(timeout => clearTimeout(timeout));
       if (subscriptionTimeoutRef.current) {
         clearTimeout(subscriptionTimeoutRef.current);
         subscriptionTimeoutRef.current = null;
       }
-      if (unsub) {
-        console.log(`🔄 [useContributorMetadata] Unsubscribing...`);
-        unsub();
-      }
+      unsubs.forEach(unsub => {
+        try {
+          unsub();
+        } catch (error) {
+          console.error("Error unsubscribing batch:", error);
+        }
+      });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subscribe, pubkeysKey, allRelays.join(',')]); // Use allRelays instead of defaultRelays
