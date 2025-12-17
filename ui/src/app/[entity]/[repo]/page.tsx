@@ -8330,8 +8330,11 @@ export default function RepoCodePage({
                             const content = String(children).replace(/\n$/, "");
 
                             // CRITICAL: ReactMarkdown sets inline=true for single backticks, inline=false/undefined for triple backticks
-                            // Also check: if className has 'language-', it's definitely a code block (triple backticks with language)
-                            const isBlockCode = !inline || (className && /language-/.test(className));
+                            // If className has 'language-', it's definitely a code block (triple backticks with language)
+                            // Only treat as block if: (1) inline is explicitly false AND has language class, OR (2) has language class
+                            // Otherwise, treat as inline code (single backticks)
+                            const hasLanguageClass = className && /language-/.test(className);
+                            const isBlockCode = hasLanguageClass || (inline === false && hasLanguageClass);
                             
                             // Use CopyableCodeBlock for all code blocks
                             return (
