@@ -2108,6 +2108,9 @@ export default function RepoCodePage({
                       repoDataRef.current = updated;
                       console.log(`✅ [File Fetch] repoDataRef updated with ${updated.files?.length || 0} files - files should now be visible in UI`);
                     }
+                    // CRITICAL: Force a re-render by updating state - ensure files are visible immediately
+                    // The useMemo for items depends on repoData, so updating repoData should trigger re-render
+                    console.log(`🔄 [File Fetch] Triggering state update with ${updated.files?.length || 0} files`);
                     return updated;
                   });
                 } else {
@@ -3316,6 +3319,9 @@ export default function RepoCodePage({
                                 repoDataRef.current = updated;
                                 console.log(`✅ [File Fetch] repoDataRef updated with ${updated.files?.length || 0} files - files should now be visible in UI`);
                               }
+                              // CRITICAL: Force a re-render by updating state - ensure files are visible immediately
+                              // The useMemo for items depends on repoData, so updating repoData should trigger re-render
+                              console.log(`🔄 [File Fetch] Triggering state update with ${updated.files?.length || 0} files`);
                               return updated;
                             });
                           } else {

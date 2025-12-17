@@ -1735,17 +1735,23 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
   // Calculate contribution graph for display (last 52 weeks)
   const weeks = contributionGraph.slice(-52);
   const maxCount = Math.max(...weeks.map(w => w.count), 1);
-  const intensityLevels = [0, 1, 3, 6, 10]; // GitHub-like intensity levels
+  // Improved intensity levels: logarithmic scale to better differentiate between 10 and 100+ contributions
+  // Levels: 0, 1, 3, 10, 30, 100+
+  const intensityLevels = [0, 1, 3, 10, 30, 100];
 
   const getIntensity = (count: number) => {
     if (count === 0) return "bg-gray-800 border border-gray-700";
-    const level1 = intensityLevels[1] ?? 1;
-    const level2 = intensityLevels[2] ?? 3;
-    const level3 = intensityLevels[3] ?? 6;
+    const level1 = intensityLevels[1] ?? 1;   // 1
+    const level2 = intensityLevels[2] ?? 3;   // 3
+    const level3 = intensityLevels[3] ?? 10;  // 10
+    const level4 = intensityLevels[4] ?? 30;  // 30
+    const level5 = intensityLevels[5] ?? 100;  // 100+
     if (count <= level1) return "bg-green-900 border border-green-800";
-    if (count <= level2) return "bg-green-700 border border-green-600";
-    if (count <= level3) return "bg-green-600 border border-green-500";
-    return "bg-green-500 border border-green-400";
+    if (count <= level2) return "bg-green-800 border border-green-700";
+    if (count <= level3) return "bg-green-700 border border-green-600";
+    if (count <= level4) return "bg-green-600 border border-green-500";
+    if (count <= level5) return "bg-green-500 border border-green-400";
+    return "bg-green-400 border border-green-300"; // 100+ contributions - brightest
   };
 
   return (
