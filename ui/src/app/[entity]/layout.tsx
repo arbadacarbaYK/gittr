@@ -130,17 +130,17 @@ export async function generateMetadata(
       images: [
         {
           url: iconUrl,
-          width: 400,
-          height: 400,
+          width: 1200, // X/Twitter requires at least 300x157, but 1200x630 is recommended for summary_large_image
+          height: 630,
           alt: `${actualName} profile on gittr`,
         },
       ],
     },
     twitter: {
-      card: 'summary',
+      card: 'summary_large_image', // X/Twitter requires summary_large_image for better image display
       title: actualName,
       description,
-      images: [iconUrl],
+      images: [iconUrl], // Must be absolute URL, publicly accessible
     },
     alternates: {
       canonical: url,
