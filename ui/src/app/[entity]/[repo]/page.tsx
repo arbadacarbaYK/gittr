@@ -5802,10 +5802,29 @@ export default function RepoCodePage({
                   console.log(
                     `✅ [fetchGithubRaw] Fetched latest content from source for ${path}`
                   );
+                  
+                  // If binary, convert base64 to data URL
+                  if (data.isBinary) {
+                    const ext = path.split('.').pop()?.toLowerCase() || '';
+                    const mimeTypes: Record<string, string> = {
+                      'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif',
+                      'webp': 'image/webp', 'svg': 'image/svg+xml', 'ico': 'image/x-icon',
+                      'pdf': 'application/pdf', 'woff': 'font/woff', 'woff2': 'font/woff2',
+                      'ttf': 'font/ttf', 'otf': 'font/otf', 'mp4': 'video/mp4', 'mp3': 'audio/mpeg', 'wav': 'audio/wav',
+                    };
+                    const mimeType = mimeTypes[ext] || 'application/octet-stream';
+                    const dataUrl = `data:${mimeType};base64,${data.content}`;
+                    return {
+                      content: null,
+                      url: dataUrl,
+                      isBinary: true,
+                    };
+                  }
+                  
                   return {
                     content: data.content,
                     url: null,
-                    isBinary: !!data.isBinary,
+                    isBinary: false,
                   };
                 }
               } else {
@@ -5862,10 +5881,29 @@ export default function RepoCodePage({
             console.log(
               `✅ [fetchGithubRaw] Got latest content from source for ${path}`
             );
+            
+            // If binary, convert base64 to data URL
+            if (data.isBinary) {
+              const ext = path.split('.').pop()?.toLowerCase() || '';
+              const mimeTypes: Record<string, string> = {
+                'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'gif': 'image/gif',
+                'webp': 'image/webp', 'svg': 'image/svg+xml', 'ico': 'image/x-icon',
+                'pdf': 'application/pdf', 'woff': 'font/woff', 'woff2': 'font/woff2',
+                'ttf': 'font/ttf', 'otf': 'font/otf', 'mp4': 'video/mp4', 'mp3': 'audio/mpeg', 'wav': 'audio/wav',
+              };
+              const mimeType = mimeTypes[ext] || 'application/octet-stream';
+              const dataUrl = `data:${mimeType};base64,${data.content}`;
+              return {
+                content: null,
+                url: dataUrl,
+                isBinary: true,
+              };
+            }
+            
             return {
               content: data.content,
               url: null,
-              isBinary: !!data.isBinary,
+              isBinary: false,
             };
           }
         } else {
