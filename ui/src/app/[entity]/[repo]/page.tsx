@@ -8141,7 +8141,7 @@ export default function RepoCodePage({
                   // Markdown files: Toggle between preview (rendered) and code view
                   markdownViewMode === 'preview' ? (
                     // Preview mode: Render as markdown
-                    <div className="prose prose-invert max-w-none p-4">
+                    <div className="prose prose-invert max-w-none p-4 prose-code:before:content-none prose-code:after:content-none prose-pre:my-2 prose-code:bg-gray-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         rehypePlugins={[rehypeRaw]}
@@ -8333,7 +8333,7 @@ export default function RepoCodePage({
                             return (
                               <CopyableCodeBlock 
                                 inline={inline} 
-                                className={inline ? "bg-gray-900 px-1 rounded text-green-400" : className || "bg-gray-900 rounded p-4 overflow-x-auto"}
+                                className={inline ? "bg-gray-900 px-1 py-0.5 rounded text-green-400 before:content-none after:content-none" : className || "bg-gray-900 rounded p-2 overflow-x-auto my-2"}
                               >
                                 {children}
                               </CopyableCodeBlock>
