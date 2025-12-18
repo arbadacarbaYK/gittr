@@ -174,9 +174,12 @@ export default function HomePage() {
   }, []);
 
   const storageUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const bridgeCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Check bridge status for repos that have event IDs but bridgeProcessed is not set
-  useEffect(() => {
+  // CRITICAL: Must respond to localStorage changes and repo creation/import events
+  // so newly created/imported repos get their bridge status checked immediately
+  const checkBridgeStatuses = useCallback(() => {
     if (!pubkey || !mounted) return;
     
     const repos = loadStoredRepos();
@@ -198,6 +201,35 @@ export default function HomePage() {
       }
     });
   }, [pubkey, mounted]);
+  
+  useEffect(() => {
+    // Initial check on mount
+    checkBridgeStatuses();
+    
+    // Listen for repo updates from localStorage and repo creation/import events
+    // Debounce to prevent excessive updates during sync
+    const handleRepoUpdate = () => {
+      if (bridgeCheckTimeoutRef.current) {
+        clearTimeout(bridgeCheckTimeoutRef.current);
+      }
+      bridgeCheckTimeoutRef.current = setTimeout(() => {
+        checkBridgeStatuses();
+      }, 500); // Debounce by 500ms
+    };
+    
+    window.addEventListener("storage", handleRepoUpdate);
+    window.addEventListener("ngit:repo-created", handleRepoUpdate);
+    window.addEventListener("ngit:repo-imported", handleRepoUpdate);
+    
+    return () => {
+      if (bridgeCheckTimeoutRef.current) {
+        clearTimeout(bridgeCheckTimeoutRef.current);
+      }
+      window.removeEventListener("storage", handleRepoUpdate);
+      window.removeEventListener("ngit:repo-created", handleRepoUpdate);
+      window.removeEventListener("ngit:repo-imported", handleRepoUpdate);
+    };
+  }, [checkBridgeStatuses]);
   
   useEffect(() => {
     loadRepos();
