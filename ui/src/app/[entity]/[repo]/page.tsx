@@ -7888,10 +7888,19 @@ export default function RepoCodePage({
                         return <MermaidRenderer code={content} className="my-4" />;
                       }
 
+                      // Inline code (single backticks) - just styled text
+                      if (inline) {
+                        return (
+                          <code className="bg-gray-900 px-1 py-0.5 rounded text-green-400">
+                            {children}
+                          </code>
+                        );
+                      }
+                      // Code blocks (triple backticks) - copyable box
                       return (
                         <CopyableCodeBlock 
-                          inline={inline} 
-                          className={inline ? "bg-gray-900 px-1 py-0.5 rounded text-green-400" : className || "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"}
+                          inline={false}
+                          className={className || "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"}
                         >
                           {children}
                         </CopyableCodeBlock>
@@ -8376,10 +8385,20 @@ export default function RepoCodePage({
                             const hasLanguageClass = className && /language-/.test(className);
                             const isBlockCode = hasLanguageClass || inline === false;
 
+                            // Inline code (single backticks) - just styled text, not copyable
+                            if (!isBlockCode) {
+                              return (
+                                <code className="bg-gray-900 px-1 py-0.5 rounded text-green-400">
+                                  {children}
+                                </code>
+                              );
+                            }
+
+                            // Code blocks (triple backticks) - copyable box
                             return (
                               <CopyableCodeBlock 
-                                inline={!isBlockCode} 
-                                className={!isBlockCode ? "bg-gray-900 px-1 py-0.5 rounded text-green-400" : className || "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"}
+                                inline={false}
+                                className={className || "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"}
                               >
                                 {children}
                               </CopyableCodeBlock>

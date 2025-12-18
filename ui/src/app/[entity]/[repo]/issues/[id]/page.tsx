@@ -1106,10 +1106,17 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                                   rehypePlugins={[rehypeRaw]}
                                   components={{
                                     code: ({ node, inline, className, children, ...props }: any) => {
+                                      if (inline) {
+                                        return (
+                                          <code className="bg-gray-900 px-1 py-0.5 rounded text-green-400">
+                                            {children}
+                                          </code>
+                                        );
+                                      }
                                       return (
                                         <CopyableCodeBlock 
-                                          inline={inline} 
-                                          className={inline ? "bg-gray-900 px-1 py-0.5 rounded text-green-400" : className || "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"}
+                                          inline={false}
+                                          className={className || "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"}
                                         >
                                           {children}
                                         </CopyableCodeBlock>
