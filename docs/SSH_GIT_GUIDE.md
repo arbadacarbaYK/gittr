@@ -20,22 +20,31 @@ gittr.space repositories support multiple clone URL formats for maximum compatib
 
 #### Option A: SSH (Standard Git - Recommended)
 ```bash
-git clone git@gittr.space:<owner-pubkey>/<repo-name>.git
+git clone git@gittr.space:<owner-npub>/<repo-name>.git
 ```
 
 Example:
 ```bash
-git clone git@gittr.space:9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c/repo-name.git
+git clone git@gittr.space:npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/repo-name.git
 ```
 
-**Note**: SSH cloning requires SSH keys to be set up (see Step 1 above). This is the standard Git approach, familiar to developers who use GitHub/GitLab.
+**Note**: 
+- SSH cloning requires SSH keys to be set up (see Step 1 above). This is the standard Git approach, familiar to developers who use GitHub/GitLab.
+- **NIP-34 Format**: Clone URLs use `npub` format (not hex pubkey) per NIP-34 specification. The `npub` format is more user-friendly and matches the NIP-34 standard.
 
 #### Option B: HTTPS (GRASP Git Servers)
 ```bash
-git clone https://git.gittr.space/<owner-pubkey>/<repo-name>.git
+git clone https://git.gittr.space/<owner-npub>/<repo-name>.git
+```
+
+Example:
+```bash
+git clone https://git.gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/repo-name.git
 ```
 
 HTTPS clones work exactly like GitHub/GitLab. Every push publishes fresh NIP-34 events plus uploads the bare repo to our bridge at `git.gittr.space` and other GRASP servers (gitnostr.com, ngit-relay.nostrver.se, relay.ngit.dev, etc.). Use HTTPS when you want a dead-simple `git clone` that requires no SSH keys.
+
+**Note**: **NIP-34 Format**: Clone URLs use `npub` format (not hex pubkey) per NIP-34 specification. This matches the standard used by other NIP-34 clients.
 
 #### Option C: nostr:// Protocol (Ecosystem Standard)
 ```bash
@@ -102,9 +111,11 @@ When you create an empty repository via the web UI:
 
 3. **Clone the repository:**
    ```bash
-   git clone git@gittr.space:<your-pubkey>/<repo-name>.git
+   git clone git@gittr.space:<your-npub>/<repo-name>.git
    ```
-   Replace `<your-pubkey>` with your Nostr pubkey (64-char hex) and `<repo-name>` with your repository name.
+   Replace `<your-npub>` with your Nostr npub (starts with `npub1...`) and `<repo-name>` with your repository name.
+   
+   **Note**: Clone URLs use `npub` format (not hex pubkey) per NIP-34 specification. You can find your npub in your profile URL on gittr.space.
    
    **Note**: Empty repositories are now immediately ready to clone - the bridge automatically sets up the default branch (main or master) so you can clone and push right away.
 
@@ -141,8 +152,10 @@ If you want to make changes to an existing repository (whether imported or creat
 
 1. **Clone the repository:**
    ```bash
-   git clone git@gittr.space:<owner-pubkey>/<repo-name>.git
+   git clone git@gittr.space:<owner-npub>/<repo-name>.git
    ```
+   
+   **Note**: Replace `<owner-npub>` with the repository owner's npub (starts with `npub1...`). You can find this in the repository's URL on gittr.space.
 
 2. **Make your changes:**
    - Edit files, add new files, delete files, etc.
@@ -190,11 +203,13 @@ git push origin main
 - **Web UI push**: Uses files from `localStorage` or bridge API to create/update the repository on the bridge. This is only for the initial push or when pushing from the web UI.
 
 **How git-remote-nostr works:**
-- `git-remote-nostr` is a helper tool that translates `nostr://` URLs into standard git operations
+- `git-remote-nostr` is a **Git helper/extension** (not a special terminal client) that translates `nostr://` URLs into standard git operations
+- It's installed as a regular command-line tool (via `pip install git-remote-nostr` or from source)
 - When you run `git clone nostr://...`, it:
   1. Queries Nostr relays for NIP-34 repository events
   2. Extracts clone URLs (SSH and HTTPS) from the event's `clone` tags
   3. Uses standard git operations to clone from those URLs
+- **After cloning**: You have a normal git repository and can use ALL standard git commands (`git push`, `git pull`, `git add`, `git commit`, etc.) - no special terminal needed!
 - The actual git operations (clone/push/pull) still go through SSH or HTTPS to the bridge, just like regular git operations
 
 **SSH Keys with nostr:// URLs:**
@@ -278,13 +293,15 @@ If relay compatibility becomes an issue, we may need to migrate to a different k
 
 #### SSH Clone URL Format
 ```
-git@<gitSshBase>:<ownerPubkey>/<repoName>.git
+git@<gitSshBase>:<ownerNpub>/<repoName>.git
 ```
 
 Where:
 - `<gitSshBase>`: Configured in repository event or defaults to `gittr.space`
-- `<ownerPubkey>`: Repository owner's Nostr pubkey (full 64-char hex)
+- `<ownerNpub>`: Repository owner's Nostr npub (starts with `npub1...`, per NIP-34 specification)
 - `<repoName>`: Repository name/slug
+
+**Note**: **NIP-34 Format**: Clone URLs use `npub` format (not hex pubkey) per NIP-34 specification. This matches the standard used by other NIP-34 clients like gitworkshop.dev.
 
 ## Troubleshooting
 
@@ -313,10 +330,10 @@ Where:
 - Verify SSH port 22 is accessible: `ssh -v git-nostr@gittr.space` (should connect, not ask for password)
 - Check if your network/firewall blocks port 22
 - Ensure `git-nostr-bridge` service is running on the server
-- Try HTTPS clone instead: `git clone https://git.gittr.space/<owner-pubkey>/<repo-name>.git`
+- Try HTTPS clone instead: `git clone https://git.gittr.space/<owner-npub>/<repo-name>.git` (replace `<owner-npub>` with the npub from the repository URL)
 
 **Note**: `git fetch --all` fetches from **all remotes configured in your current repository**, not "all repositories". You must first:
-1. Clone the repo: `git clone git@gittr.space:<owner-pubkey>/<repo-name>.git`
+1. Clone the repo: `git clone git@gittr.space:<owner-npub>/<repo-name>.git` (replace `<owner-npub>` with the npub from the repository URL)
 2. Then you can fetch: `git fetch --all` (fetches from all remotes in that repo)
 
 ### "Push rejected"
