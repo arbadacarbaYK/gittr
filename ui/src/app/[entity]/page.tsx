@@ -1757,32 +1757,43 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
   const weeks = contributionGraph.slice(-52);
   const maxCount = Math.max(...weeks.map(w => w.count), 1);
   
-  // CRITICAL: Use logarithmic-like scaling to create distinct visual levels
-  // For low maxCounts (< 20): use linear scaling with more granular levels
-  // For high maxCounts (>= 20): use power-based scaling
-  // This ensures both 14 and 245 contributions show meaningful differentiation
+  // CRITICAL: Use more granular intensity levels to create visually distinct legend dots
+  // Always use at least 6 distinct levels (excluding 0) for better visual differentiation
+  // For low maxCounts: use evenly spaced linear levels
+  // For high maxCounts: use logarithmic-like scaling
   let intensityLevels: number[];
-  if (maxCount < 20) {
-    // For low counts, use more granular linear scaling
-    // Example: maxCount=14 -> [0, 2, 4, 7, 10, 14]
+  if (maxCount < 10) {
+    // For very low counts, use evenly spaced levels
+    // Example: maxCount=5 -> [0, 1, 2, 3, 4, 5]
     intensityLevels = [
       0,
-      Math.max(1, Math.ceil(maxCount * 0.15)),   // ~15% of max
-      Math.max(2, Math.ceil(maxCount * 0.30)),     // ~30% of max
-      Math.max(3, Math.ceil(maxCount * 0.50)),     // ~50% of max
-      Math.max(5, Math.ceil(maxCount * 0.70)),     // ~70% of max
-      maxCount,                                    // 100% of max
+      Math.max(1, Math.ceil(maxCount * 0.2)),    // 20%
+      Math.max(2, Math.ceil(maxCount * 0.4)),    // 40%
+      Math.max(3, Math.ceil(maxCount * 0.6)),    // 60%
+      Math.max(4, Math.ceil(maxCount * 0.8)),    // 80%
+      maxCount,                                   // 100%
+    ];
+  } else if (maxCount < 30) {
+    // For low counts, use more granular levels
+    // Example: maxCount=14 -> [0, 2, 5, 8, 11, 14]
+    intensityLevels = [
+      0,
+      Math.max(1, Math.ceil(maxCount * 0.15)),   // ~15%
+      Math.max(2, Math.ceil(maxCount * 0.35)),   // ~35%
+      Math.max(3, Math.ceil(maxCount * 0.55)),   // ~55%
+      Math.max(5, Math.ceil(maxCount * 0.75)),   // ~75%
+      maxCount,                                   // 100%
     ];
   } else {
-    // For high counts, use power-based scaling for better distribution
-    // Example: maxCount=245 -> [0, 3, 14, 51, 128, 245]
+    // For high counts, use logarithmic-like scaling
+    // Example: maxCount=245 -> [0, 5, 20, 60, 150, 245]
     intensityLevels = [
       0,
-      Math.max(1, Math.round(maxCount * Math.pow(0.05, 1.5))),   // ~5% of max
-      Math.max(2, Math.round(maxCount * Math.pow(0.15, 1.5))),   // ~15% of max
-      Math.max(3, Math.round(maxCount * Math.pow(0.35, 1.5))),   // ~35% of max
-      Math.max(5, Math.round(maxCount * Math.pow(0.65, 1.5))),   // ~65% of max
-      maxCount,                                    // 100% of max
+      Math.max(1, Math.round(maxCount * 0.02)),              // ~2% (very light)
+      Math.max(2, Math.round(maxCount * 0.08)),              // ~8% (light)
+      Math.max(3, Math.round(maxCount * 0.25)),              // ~25% (medium)
+      Math.max(5, Math.round(maxCount * 0.60)),              // ~60% (high)
+      maxCount,                                               // 100% (maximum)
     ];
   }
 
