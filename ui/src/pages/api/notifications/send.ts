@@ -29,10 +29,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // Get platform's Nostr private key from env
+  // If not set, return response indicating client should use user's own key
   const nostrNsec = process.env.NOSTR_NSEC;
   if (!nostrNsec) {
-    console.error("NOSTR_NSEC not configured in environment variables");
-    return res.status(500).json({ error: "not_configured", message: "Platform notification key not configured" });
+    console.log("NOSTR_NSEC not configured - notifications will use user's own key");
+    return res.status(200).json({ 
+      status: "use_user_key",
+      message: "Platform key not configured, use user's own key for notifications"
+    });
   }
 
   try {

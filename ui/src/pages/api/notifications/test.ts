@@ -64,8 +64,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         const nostrNsec = process.env.NOSTR_NSEC;
         if (!nostrNsec) {
           results.tests.nostr = {
-            success: false,
-            error: "NOSTR_NSEC not configured"
+            success: true,
+            message: "NOSTR_NSEC not configured - notifications will use user's own key (DM to themselves)",
+            constructed: {
+              fullMessage: `${title}\n\n${message}${url ? `\n\n${url}` : ""}`,
+              mode: "user_key"
+            }
           };
         } else {
           // Import and call the send logic directly

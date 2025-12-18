@@ -33,6 +33,9 @@ jobs:
         working-directory: ./ui
         env:
           NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL || 'https://gittr.space' }}
+          NEXT_PUBLIC_GIT_SERVER_URL: ${{ secrets.NEXT_PUBLIC_GIT_SERVER_URL || 'https://git.gittr.space' }}
+          NEXT_PUBLIC_GIT_SSH_BASE: ${{ secrets.NEXT_PUBLIC_GIT_SSH_BASE || 'git.gittr.space' }}
+          NEXT_PUBLIC_NOSTR_RELAYS: ${{ secrets.NEXT_PUBLIC_NOSTR_RELAYS || 'wss://gitnostr.com,wss://relay.ngit.dev,wss://ngit.danconwaydev.com,wss://relay.damus.io,wss://nostr.fmt.wiz.biz,wss://nos.lol,wss://relay.azzamo.net' }}
         run: |
           # Build Next.js app
           npm run build
