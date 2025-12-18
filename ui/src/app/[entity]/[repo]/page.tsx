@@ -5421,10 +5421,27 @@ export default function RepoCodePage({
       const { files, ownerPubkey: clonedOwnerPubkey, repo: clonedRepo } = event.detail;
       
       // Only update if this matches the current repo
+      // CRITICAL: Try multiple pubkey sources for matching (entity, resolvedOwnerPubkey, ownerPubkeyForLink)
       const currentOwnerPubkey = resolvedOwnerPubkey || ownerPubkeyForLink;
-      const matchesOwner = currentOwnerPubkey && clonedOwnerPubkey && 
-        (currentOwnerPubkey.toLowerCase() === clonedOwnerPubkey.toLowerCase());
-      const matchesRepo = clonedRepo === resolvedParams.repo;
+      // Also try to decode entity if it's an npub
+      let entityPubkey: string | null = null;
+      if (resolvedParams.entity && resolvedParams.entity.startsWith("npub")) {
+        try {
+          const { nip19 } = require("nostr-tools");
+          const decoded = nip19.decode(resolvedParams.entity);
+          if (decoded.type === "npub") {
+            entityPubkey = (decoded.data as string).toLowerCase();
+          }
+        } catch (e) {
+          // Ignore decode errors
+        }
+      }
+      
+      const matchesOwner = (currentOwnerPubkey && clonedOwnerPubkey && 
+        (currentOwnerPubkey.toLowerCase() === clonedOwnerPubkey.toLowerCase())) ||
+        (entityPubkey && clonedOwnerPubkey && entityPubkey === clonedOwnerPubkey.toLowerCase());
+      const matchesRepo = clonedRepo === resolvedParams.repo || 
+        clonedRepo === decodeURIComponent(resolvedParams.repo);
       
       if (matchesOwner && matchesRepo && files && Array.isArray(files) && files.length > 0) {
         console.log(`✅ [File Fetch] Received files from GRASP clone completion event: ${files.length} files`);
