@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -13,6 +14,11 @@ import (
 	"github.com/arbadacarbaYK/gitnostr"
 	"github.com/arbadacarbaYK/gitnostr/bridge"
 )
+
+// ErrRepositoryNotExists is returned when a state event arrives before the repository is created.
+// This error indicates that the event should not be marked as processed (updateSince should be skipped)
+// so it can be reprocessed when the repository is eventually created.
+var ErrRepositoryNotExists = errors.New("repository does not exist yet")
 
 // handleRepositoryStateEvent processes NIP-34 state events (kind 30618)
 // These events contain refs and commits that need to be updated in the git repository
@@ -41,7 +47,8 @@ func handleRepositoryStateEvent(event nostr.Event, db *sql.DB, cfg bridge.Config
 	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 		log.Printf("⚠️ [Bridge] State event received but repository does not exist: pubkey=%s repo=%s\n", event.PubKey, repoName)
 		log.Printf("💡 [Bridge] Repository will be created when announcement event (30617) is received\n")
-		return nil // Not an error - repo will be created by announcement event
+		log.Printf("💡 [Bridge] State event will be reprocessed after repository creation (not marking as processed)\n")
+		return ErrRepositoryNotExists // Return special error to prevent updateSince
 	}
 
 	// Extract refs from tags
