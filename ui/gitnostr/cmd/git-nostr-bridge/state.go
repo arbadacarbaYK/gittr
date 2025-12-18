@@ -12,7 +12,6 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/arbadacarbaYK/gitnostr"
 	"github.com/arbadacarbaYK/gitnostr/bridge"
-	"github.com/arbadacarbaYK/gitnostr/protocol"
 )
 
 // handleRepositoryStateEvent processes NIP-34 state events (kind 30618)
