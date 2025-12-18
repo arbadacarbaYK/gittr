@@ -485,15 +485,21 @@ export default function HomePage() {
               // CRITICAL: Sort by activityCount descending to ensure correct order
               const sorted = [...nostrRepos].sort((a, b) => (b.activityCount || 0) - (a.activityCount || 0));
               
-              // CRITICAL: Only update if Nostr repos have higher or equal max activity than current
-              // This prevents replacing good data with lower values
+              // CRITICAL: Only update if Nostr returns a reasonable number of repos (at least 3)
+              // AND the max activity is meaningful (at least 5)
+              // This prevents replacing good localStorage data with incomplete Nostr results
               setTopRepos((currentRepos) => {
                 const currentMax = currentRepos.length > 0 ? Math.max(...currentRepos.map(r => r.activityCount || 0)) : 0;
                 const nostrMax = Math.max(...sorted.map(r => r.activityCount || 0));
+                const nostrCount = sorted.length;
                 
-                if (nostrMax >= currentMax || currentRepos.length === 0) {
+                // Only update if:
+                // 1. Nostr has at least 3 repos (reasonable sample)
+                // 2. AND max activity is at least 5 (meaningful activity)
+                // 3. AND (nostrMax >= currentMax OR we have no current data)
+                if (nostrCount >= 3 && nostrMax >= 5 && (nostrMax >= currentMax || currentRepos.length === 0)) {
                   const maxNostrActivity = sorted[0]?.activityCount || 0;
-                  console.log(`✅ [Home] Updating top repos from Nostr: ${sorted.length} repos, max activity: ${maxNostrActivity} (vs current: ${currentMax})`);
+                  console.log(`✅ [Home] Updating top repos from Nostr: ${nostrCount} repos, max activity: ${maxNostrActivity} (vs current: ${currentMax})`);
                   console.log(`📋 [Home] Top repos:`, sorted.map(r => `${r.repoName}(${r.activityCount})`).join(', '));
                   // Cache in sessionStorage for same-session persistence
                   try {
@@ -503,7 +509,7 @@ export default function HomePage() {
                   }
                   return sorted;
                 } else {
-                  console.log(`ℹ️ [Home] Keeping current top repos (${currentMax} > ${nostrMax})`);
+                  console.log(`ℹ️ [Home] Keeping current top repos (Nostr: ${nostrCount} repos, max: ${nostrMax}, Current: ${currentRepos.length} repos, max: ${currentMax})`);
                   return currentRepos;
                 }
               });
