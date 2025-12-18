@@ -2051,7 +2051,7 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
           <div className="flex items-center gap-2 mb-4">
             <h2 className="font-semibold">Activity Timeline</h2>
             <Tooltip 
-              content="Shows contributions over the last 52 weeks (1 year).\n\nEach box represents one week. Darker green indicates more contributions.\n\nData comes from:\n• Git commits synced from git-nostr-bridge\n• Pull requests and issues from Nostr network\n• Repository creation events\n\nCounts are updated in real-time as you push code or create PRs/issues." 
+              content="Shows contributions over the last 52 weeks (1 year). Each box represents one week. Darker green indicates more contributions. Data comes from: Git commits synced from git-nostr-bridge, Pull requests and issues from Nostr network, Repository creation events. Counts are updated in real-time as you push code or create PRs/issues." 
               mobileClickable={true}
               className="inline-flex"
             >
@@ -2115,7 +2115,7 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
             <div className="flex items-center gap-2 mb-2">
               <h3 className="font-semibold">Statistics</h3>
               <Tooltip 
-                content="Activity counts from the Nostr network and local storage.\n\n• Total Activity: All contributions (pushes, PRs, issues, bounties)\n• Pushes: Git commits pushed to repositories\n• PRs Merged: Pull requests that were merged\n• Bounties Claimed: Bounties completed\n• Repositories: Total number of repos\n\nData is shown immediately from local storage, then updated from Nostr network if higher values are found.\n\nThese are all-time counts (not limited to the last year)." 
+                content="Activity counts from the Nostr network and local storage. Total Activity: All contributions (pushes, PRs, issues, bounties). Pushes: Git commits pushed to repositories. PRs Merged: Pull requests that were merged. Bounties Claimed: Bounties completed. Repositories: Total number of repos. Data is shown immediately from local storage, then updated from Nostr network if higher values are found. These are all-time counts (not limited to the last year)." 
                 mobileClickable={true}
                 className="inline-flex"
               >
