@@ -2,12 +2,16 @@
 
 # Comprehensive test script for Telegram webhook and notifications
 # This tests both the webhook endpoint and the notification system
+#
+# See docs/TEST_FILES_REFERENCE.md for full documentation
 
 echo "🧪 Testing Telegram Webhook & Notification System"
 echo "=================================================="
 echo ""
 
-cd "$(dirname "$0")"
+# Get script directory (works from any location)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
 
 # Load environment variables
 if [ -f .env.local ]; then
