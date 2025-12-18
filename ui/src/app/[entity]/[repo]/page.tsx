@@ -7889,8 +7889,16 @@ export default function RepoCodePage({
                           }
                         }
                       }
+                      // CRITICAL: Final check - convert any remaining gittr.space path links
+                      let finalHref = href;
+                      if (finalHref && typeof finalHref === 'string' && finalHref.includes('gittr.space') && finalHref.includes('/') && !finalHref.includes('?path=') && !finalHref.includes('?file=') && !finalHref.includes('?branch=') && !finalHref.includes('api/')) {
+                        const match = finalHref.match(/^(https?:\/\/gittr\.space\/[^\/]+\/[^\/]+)\/([^?#]+)$/);
+                        if (match && match[1] && match[2]) {
+                          finalHref = `${match[1]}?path=${encodeURIComponent(match[2])}`;
+                        }
+                      }
                       // Regular link
-                      return <a href={href} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300" {...props}>{children}</a>;
+                      return <a href={finalHref} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300" {...props}>{children}</a>;
                     },
                     code: ({ node, inline, className, children, ...props }: any) => {
                       const match = /language-([\w-]+)/.exec(className || "");
