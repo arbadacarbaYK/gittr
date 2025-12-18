@@ -49,11 +49,17 @@ export function Tooltip({ content, children, className = "", mobileClickable = f
       {children}
       <div 
         ref={tooltipRef}
-        className={`absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 text-xs text-white bg-[#22262C] border border-[#383B42] rounded shadow-lg transition-opacity duration-200 pointer-events-none z-50 whitespace-pre-line max-w-md ${
+        className={`absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 text-xs text-white bg-[#22262C] border border-[#383B42] rounded shadow-lg transition-opacity duration-200 pointer-events-none z-50 whitespace-pre-line max-w-[90vw] sm:max-w-md ${
           mobileClickable 
             ? (isVisible ? "opacity-100 pointer-events-auto" : "opacity-0")
             : "opacity-0 group-hover:opacity-100"
         }`}
+        style={{
+          // Prevent tooltip from extending beyond viewport on mobile
+          maxWidth: 'min(90vw, 24rem)',
+          wordWrap: 'break-word',
+          overflowWrap: 'break-word',
+        }}
       >
         {content}
         <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-[#22262C]"></div>
