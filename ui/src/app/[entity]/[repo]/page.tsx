@@ -7875,6 +7875,19 @@ export default function RepoCodePage({
                             </div>
                           );
                         }
+                        // CRITICAL: Fix links that have path segments instead of query parameters
+                        // This handles old links from GitHub repos or other sources that use path segments
+                        // Match: https://gittr.space/npub.../repo-name/path/to/file
+                        // Convert to: https://gittr.space/npub.../repo-name?path=path%2Fto%2Ffile
+                        if (href.includes('gittr.space') && href.includes('/') && !href.includes('?path=') && !href.includes('?file=') && !href.includes('?branch=') && !href.includes('api/')) {
+                          const gittrPathMatch = href.match(/^(https?:\/\/gittr\.space\/[^\/]+\/[^\/]+)\/([^?#]+)$/);
+                          if (gittrPathMatch && gittrPathMatch[1] && gittrPathMatch[2]) {
+                            const baseUrl = gittrPathMatch[1];
+                            const pathSegment = gittrPathMatch[2];
+                            // Convert path segment to query parameter format
+                            href = `${baseUrl}?path=${encodeURIComponent(pathSegment)}`;
+                          }
+                        }
                       }
                       // Regular link
                       return <a href={href} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300" {...props}>{children}</a>;
