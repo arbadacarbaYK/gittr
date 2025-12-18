@@ -252,7 +252,7 @@ export function createRepositoryEvent(
     } catch (e) {
       // Fallback to hex if encoding fails (shouldn't happen with valid pubkeys)
       console.warn(`⚠️ [createRepositoryEvent] Failed to encode pubkey to npub, using hex:`, e);
-      tags.push(["maintainers", maintainerPubkey]);
+    tags.push(["maintainers", maintainerPubkey]);
     }
   });
   

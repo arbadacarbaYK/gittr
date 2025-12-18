@@ -758,7 +758,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         } catch (e) {
           // Fallback to hex if encoding fails (shouldn't happen with valid pubkeys)
           console.warn(`⚠️ [Push Repo] Failed to encode pubkey to npub, using hex:`, e);
-          nip34Tags.push(["maintainers", pubkey]);
+        nip34Tags.push(["maintainers", pubkey]);
         }
       });
       

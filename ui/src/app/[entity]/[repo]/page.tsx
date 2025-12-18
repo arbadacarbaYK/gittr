@@ -1274,8 +1274,8 @@ export default function RepoCodePage({
                             contributors.unshift({ 
                               pubkey: resolvedOwnerPubkey, 
                               name: repo.entityDisplayName || resolvedParams.entity, 
-                              weight: 100,
-                              role: "owner"
+                  weight: 100,
+                  role: "owner"
                             });
                           } else if (!repo.sourceUrl && resolvedOwnerPubkey) {
                             // For newly created repos, ensure owner is first and has correct weight/role
@@ -1287,7 +1287,7 @@ export default function RepoCodePage({
                             }
                           } else if (!contributors.length && repo.entityDisplayName) {
                             // Fallback: if no pubkey but we have entityDisplayName, create contributor entry
-                            contributors = [{ name: repo.entityDisplayName, weight: 100, role: "owner" }];
+                contributors = [{ name: repo.entityDisplayName, weight: 100, role: "owner" }];
                           }
               
                           contributors = normalizeContributors(contributors);
