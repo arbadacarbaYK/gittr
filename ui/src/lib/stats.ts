@@ -1303,8 +1303,13 @@ export async function getTopReposFromNostr(
       return [];
     }
     
-    console.log(`🔍 [getTopReposFromNostr] Starting query with ${relays.length} relays...`);
-    const repoMap = await countRepoActivitiesFromNostr(subscribe, relays, 999999); // All time (sinceDays param ignored now, but kept for API compatibility)
+    // CRITICAL: Filter to only GRASP servers for performance (countRepoActivitiesFromNostr also filters, but do it here too for clarity)
+    const { getGraspServers } = require("@/lib/utils/grasp-servers");
+    const graspRelays = getGraspServers(relays);
+    const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
+    
+    console.log(`🔍 [getTopReposFromNostr] Starting query with ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`, activeRelays);
+    const repoMap = await countRepoActivitiesFromNostr(subscribe, activeRelays, 999999); // All time (sinceDays param ignored now, but kept for API compatibility)
     
     // Debug: Log all repos with activity
     const allReposWithActivity = Array.from(repoMap.values()).filter(repo => repo.activityCount > 0);
@@ -1353,7 +1358,13 @@ export async function getTopUsersFromNostr(
   relays: string[],
   count: number = 10
 ): Promise<UserStats[]> {
-  const userMap = await countUserActivitiesFromNostr(subscribe, relays, 90); // Last 90 days
+  // CRITICAL: Filter to only GRASP servers for performance
+  const { getGraspServers } = require("@/lib/utils/grasp-servers");
+  const graspRelays = getGraspServers(relays);
+  const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
+  
+  console.log(`🔍 [getTopUsersFromNostr] Starting query with ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`, activeRelays);
+  const userMap = await countUserActivitiesFromNostr(subscribe, activeRelays, 90); // Last 90 days
   return Array.from(userMap.values())
     .sort((a, b) => b.activityCount - a.activityCount)
     .slice(0, count);
