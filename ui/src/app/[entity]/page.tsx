@@ -1757,17 +1757,17 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
   const weeks = contributionGraph.slice(-52);
   const maxCount = Math.max(...weeks.map(w => w.count), 1);
   
-  // CRITICAL: Use square root scaling to create very distinct visual levels
+  // CRITICAL: Use power-based scaling (ratio^1.5) to create very distinct visual levels
   // This ensures that 11 vs 48 contributions look VERY different
-  // Formula: level = sqrt(maxCount * ratio) ^ 2, but more aggressive
-  // For maxCount=48: levels should be ~0, 2, 6, 12, 24, 48
-  // This creates much more distinct levels even for similar maxCounts
+  // Formula: level = maxCount * (ratio^1.5)
+  // For maxCount=48: levels are ~0, 1, 3, 10, 25, 48
+  // This creates much more distinct levels - 11 falls in level 3, 48 is level 5
   const intensityLevels = [
     0,                                    // Level 0: No activity
-    Math.max(1, Math.round(Math.sqrt(maxCount * 0.05) * Math.sqrt(maxCount * 0.05))),   // Level 1: ~5% (very light)
-    Math.max(2, Math.round(Math.sqrt(maxCount * 0.15) * Math.sqrt(maxCount * 0.15))),   // Level 2: ~15% (light)
-    Math.max(3, Math.round(Math.sqrt(maxCount * 0.35) * Math.sqrt(maxCount * 0.35))),   // Level 3: ~35% (medium)
-    Math.max(5, Math.round(Math.sqrt(maxCount * 0.65) * Math.sqrt(maxCount * 0.65))),   // Level 4: ~65% (high)
+    Math.max(1, Math.round(maxCount * Math.pow(0.05, 1.5))),   // Level 1: ~1 (very light)
+    Math.max(2, Math.round(maxCount * Math.pow(0.15, 1.5))),   // Level 2: ~3 (light)
+    Math.max(3, Math.round(maxCount * Math.pow(0.35, 1.5))),   // Level 3: ~10 (medium)
+    Math.max(5, Math.round(maxCount * Math.pow(0.65, 1.5))),   // Level 4: ~25 (high)
     maxCount,                              // Level 5: Maximum (brightest)
   ];
 
