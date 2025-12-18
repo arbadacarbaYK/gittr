@@ -1096,18 +1096,18 @@ export function countRepoActivitiesFromNostr(
       {} // options parameter
     );
 
-    // Timeout after 8 seconds - GRASP servers should respond quickly
-    // Reduced from 20s to 8s to improve UX (user sees results faster)
+    // Timeout after 12 seconds - balance between speed and getting enough data
+    // Increased from 8s to 12s to ensure we get enough repos before timing out
     setTimeout(() => {
       if (!resolved) {
         resolved = true;
         unsub();
         const totalActivities = Array.from(repoMap.values()).reduce((sum, r) => sum + r.activityCount, 0);
         const reposWithActivity = Array.from(repoMap.values()).filter(r => r.activityCount > 0).length;
-        console.log(`⏱️ [Nostr Repo Stats] Timeout after 8s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`, repoMap.size, 'repos,', reposWithActivity, 'with activity,', totalActivities, 'total activities');
+        console.log(`⏱️ [Nostr Repo Stats] Timeout after 12s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`, repoMap.size, 'repos,', reposWithActivity, 'with activity,', totalActivities, 'total activities');
         resolve(repoMap);
       }
-    }, 8000);
+    }, 12000);
   });
 }
 
@@ -1303,13 +1303,11 @@ export async function getTopReposFromNostr(
       return [];
     }
     
-    // CRITICAL: Filter to only GRASP servers for performance (countRepoActivitiesFromNostr also filters, but do it here too for clarity)
-    const { getGraspServers } = require("@/lib/utils/grasp-servers");
-    const graspRelays = getGraspServers(relays);
-    const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
-    
-    console.log(`🔍 [getTopReposFromNostr] Starting query with ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`, activeRelays);
-    const repoMap = await countRepoActivitiesFromNostr(subscribe, activeRelays, 999999); // All time (sinceDays param ignored now, but kept for API compatibility)
+    // CRITICAL: countRepoActivitiesFromNostr already filters to GRASP servers internally
+    // Don't filter here again - pass all relays and let countRepoActivitiesFromNostr handle filtering
+    // This ensures we don't accidentally filter out relays that might be needed
+    console.log(`🔍 [getTopReposFromNostr] Starting query with ${relays.length} relays (will be filtered to GRASP servers internally)`);
+    const repoMap = await countRepoActivitiesFromNostr(subscribe, relays, 999999); // All time (sinceDays param ignored now, but kept for API compatibility)
     
     // Debug: Log all repos with activity
     const allReposWithActivity = Array.from(repoMap.values()).filter(repo => repo.activityCount > 0);
@@ -1358,7 +1356,8 @@ export async function getTopUsersFromNostr(
   relays: string[],
   count: number = 10
 ): Promise<UserStats[]> {
-  // CRITICAL: Filter to only GRASP servers for performance
+  // CRITICAL: countUserActivitiesFromNostr doesn't filter to GRASP servers (users can be on any relay)
+  // But for consistency and performance, filter to GRASP servers here
   const { getGraspServers } = require("@/lib/utils/grasp-servers");
   const graspRelays = getGraspServers(relays);
   const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
