@@ -1082,7 +1082,7 @@ export function countRepoActivitiesFromNostr(
         }
       },
       undefined, // maxDelayms: cannot use with onEose, so leave undefined
-      (relayUrl: string, minCreatedAt: number) => {
+      (_relayUrl: string, _minCreatedAt: number) => {
         eoseCount++;
         if (eoseCount >= expectedEose && !resolved) {
           resolved = true;
