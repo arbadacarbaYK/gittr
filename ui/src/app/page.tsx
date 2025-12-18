@@ -482,17 +482,31 @@ export default function HomePage() {
           .then((nostrRepos) => {
             console.log(`📊 [Home] Nostr returned ${nostrRepos.length} repos`);
             if (nostrRepos.length > 0) {
-              // ALWAYS update with Nostr data if we got any repos (Nostr is source of truth)
-              const maxNostrActivity = nostrRepos[0]?.activityCount || 0;
-              console.log(`✅ [Home] Updating top repos from Nostr: ${nostrRepos.length} repos, max activity: ${maxNostrActivity}`);
-              console.log(`📋 [Home] Top repos:`, nostrRepos.map(r => `${r.repoName}(${r.activityCount})`).join(', '));
-              setTopRepos(nostrRepos);
-              // Cache in sessionStorage for same-session persistence
-              try {
-                sessionStorage.setItem('gittr_cached_topRepos', JSON.stringify(nostrRepos));
-              } catch (e) {
-                console.warn('⚠️ [Home] Failed to cache top repos:', e);
-              }
+              // CRITICAL: Sort by activityCount descending to ensure correct order
+              const sorted = [...nostrRepos].sort((a, b) => (b.activityCount || 0) - (a.activityCount || 0));
+              
+              // CRITICAL: Only update if Nostr repos have higher or equal max activity than current
+              // This prevents replacing good data with lower values
+              setTopRepos((currentRepos) => {
+                const currentMax = currentRepos.length > 0 ? Math.max(...currentRepos.map(r => r.activityCount || 0)) : 0;
+                const nostrMax = Math.max(...sorted.map(r => r.activityCount || 0));
+                
+                if (nostrMax >= currentMax || currentRepos.length === 0) {
+                  const maxNostrActivity = sorted[0]?.activityCount || 0;
+                  console.log(`✅ [Home] Updating top repos from Nostr: ${sorted.length} repos, max activity: ${maxNostrActivity} (vs current: ${currentMax})`);
+                  console.log(`📋 [Home] Top repos:`, sorted.map(r => `${r.repoName}(${r.activityCount})`).join(', '));
+                  // Cache in sessionStorage for same-session persistence
+                  try {
+                    sessionStorage.setItem('gittr_cached_topRepos', JSON.stringify(sorted));
+                  } catch (e) {
+                    console.warn('⚠️ [Home] Failed to cache top repos:', e);
+                  }
+                  return sorted;
+                } else {
+                  console.log(`ℹ️ [Home] Keeping current top repos (${currentMax} > ${nostrMax})`);
+                  return currentRepos;
+                }
+              });
             } else {
               console.warn(`⚠️ [Home] Nostr returned 0 repos, keeping cached/localStorage data`);
             }
