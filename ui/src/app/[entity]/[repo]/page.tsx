@@ -1260,8 +1260,9 @@ export default function RepoCodePage({
                           contributors = normalizeContributors(contributors);
                           
                           // Ensure owner is always present
-                          // Use ownerPubkey if available, otherwise try to resolve from entity
-                          const ownerPubkey = repo.ownerPubkey || effectiveUserPubkey || 
+                          // Use repo.ownerPubkey (already resolved from npub/contributor/activity matching above)
+                          // Fallback to effectiveUserPubkey if repo.ownerPubkey not set
+                          const resolvedOwnerPubkey = repo.ownerPubkey || effectiveUserPubkey || 
                             (resolvedParams.entity && resolvedParams.entity.length === 8 && /^[0-9a-f]{8}$/i.test(resolvedParams.entity) 
                               ? undefined // If entity is a pubkey prefix, we need full pubkey - try to resolve
                               : undefined);
@@ -1269,16 +1270,16 @@ export default function RepoCodePage({
                           // CRITICAL: For newly created repos (no sourceUrl), don't add owner again
                           // The owner is already in contributors from repo creation
                           // Only add owner if repo was imported (has sourceUrl) and owner is missing
-                          if (repo.sourceUrl && ownerPubkey && !contributors.some((c) => c.pubkey && c.pubkey.toLowerCase() === ownerPubkey.toLowerCase())) {
+                          if (repo.sourceUrl && resolvedOwnerPubkey && !contributors.some((c) => c.pubkey && c.pubkey.toLowerCase() === resolvedOwnerPubkey.toLowerCase())) {
                             contributors.unshift({ 
-                              pubkey: ownerPubkey, 
+                              pubkey: resolvedOwnerPubkey, 
                               name: repo.entityDisplayName || resolvedParams.entity, 
                               weight: 100,
                               role: "owner"
                             });
-                          } else if (!repo.sourceUrl && ownerPubkey) {
+                          } else if (!repo.sourceUrl && resolvedOwnerPubkey) {
                             // For newly created repos, ensure owner is first and has correct weight/role
-                            const ownerIndex = contributors.findIndex((c) => c.pubkey && c.pubkey.toLowerCase() === ownerPubkey.toLowerCase());
+                            const ownerIndex = contributors.findIndex((c) => c.pubkey && c.pubkey.toLowerCase() === resolvedOwnerPubkey.toLowerCase());
                             if (ownerIndex >= 0) {
                               // Move owner to first position and ensure correct weight/role
                               const owner = { ...contributors[ownerIndex], weight: 100, role: "owner" as const };
