@@ -12,13 +12,20 @@ We use the bridge's **HTTP API endpoint** (`/api/event`) which accepts events di
 
 ## Prerequisites
 
-1. **Bridge must be running** with HTTP API enabled:
+1. **Rebuild the bridge binary** (required - binary may be outdated):
+   ```bash
+   cd ui/gitnostr
+   make git-nostr-bridge
+   ```
+   This ensures the binary includes all recent fixes (state event handling, HEAD-only fix, etc.)
+
+2. **Bridge must be running** with HTTP API enabled:
    ```bash
    cd ui/gitnostr
    BRIDGE_HTTP_PORT=8080 ./bin/git-nostr-bridge
    ```
 
-2. **Test script** is ready:
+3. **Test script** is ready:
    ```bash
    ./test-state-event-head-only.sh
    ```
