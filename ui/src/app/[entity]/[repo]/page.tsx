@@ -1266,16 +1266,27 @@ export default function RepoCodePage({
                               ? undefined // If entity is a pubkey prefix, we need full pubkey - try to resolve
                               : undefined);
                           
-                          if (ownerPubkey && !contributors.some((c) => c.pubkey === ownerPubkey)) {
+                          // CRITICAL: For newly created repos (no sourceUrl), don't add owner again
+                          // The owner is already in contributors from repo creation
+                          // Only add owner if repo was imported (has sourceUrl) and owner is missing
+                          if (repo.sourceUrl && ownerPubkey && !contributors.some((c) => c.pubkey && c.pubkey.toLowerCase() === ownerPubkey.toLowerCase())) {
                             contributors.unshift({ 
                               pubkey: ownerPubkey, 
                               name: repo.entityDisplayName || resolvedParams.entity, 
-                  weight: 100,
-                  role: "owner"
+                              weight: 100,
+                              role: "owner"
                             });
+                          } else if (!repo.sourceUrl && ownerPubkey) {
+                            // For newly created repos, ensure owner is first and has correct weight/role
+                            const ownerIndex = contributors.findIndex((c) => c.pubkey && c.pubkey.toLowerCase() === ownerPubkey.toLowerCase());
+                            if (ownerIndex >= 0) {
+                              // Move owner to first position and ensure correct weight/role
+                              const owner = { ...contributors[ownerIndex], weight: 100, role: "owner" as const };
+                              contributors = [owner, ...contributors.filter((_, i) => i !== ownerIndex)];
+                            }
                           } else if (!contributors.length && repo.entityDisplayName) {
                             // Fallback: if no pubkey but we have entityDisplayName, create contributor entry
-                contributors = [{ name: repo.entityDisplayName, weight: 100, role: "owner" }];
+                            contributors = [{ name: repo.entityDisplayName, weight: 100, role: "owner" }];
                           }
               
                           contributors = normalizeContributors(contributors);
