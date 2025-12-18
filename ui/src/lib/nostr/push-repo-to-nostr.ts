@@ -723,11 +723,18 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       }
       
       // Add all maintainers to tags
-      // NOTE: NIP-34 doesn't specify hex vs npub format for maintainers
-      // We use hex pubkeys (64 chars) which is standard for Nostr tags
-      // Some clients may prefer npub format for human readability, but hex is more standard
+      // CRITICAL: Use npub format per NIP-34 best practices (Dan Conway feedback)
+      // Convert hex pubkeys to npub format for maintainers tags
+      const { nip19 } = await import("nostr-tools");
       maintainerPubkeys.forEach(pubkey => {
-        nip34Tags.push(["maintainers", pubkey]);
+        try {
+          const npub = nip19.npubEncode(pubkey);
+          nip34Tags.push(["maintainers", npub]);
+        } catch (e) {
+          // Fallback to hex if encoding fails (shouldn't happen with valid pubkeys)
+          console.warn(`⚠️ [Push Repo] Failed to encode pubkey to npub, using hex:`, e);
+          nip34Tags.push(["maintainers", pubkey]);
+        }
       });
       
       // NIP-34: Add "r" tag with "euc" marker for earliest unique commit (optional but recommended)
@@ -916,12 +923,6 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       
       if (eventSizeKB > MAX_EVENT_SIZE_KB) {
         // This shouldn't happen if binary files are excluded, but handle it anyway
-        const filesWithContent = filesWithOverrides.filter((f: any) => f.content);
-        const totalContentSizeKB = filesWithContent.reduce((sum: number, f: any) => {
-          const base64Size = f.content ? (f.content.length * 3) / 4 : 0;
-          return sum + (base64Size / 1024);
-        }, 0);
-        
         throw new Error(
           `Event size (${eventSizeKB.toFixed(1)}KB) exceeds Nostr limit (~100KB). ` +
           `Please remove large files from the repository or push files to git-nostr-bridge via git push first. ` +
