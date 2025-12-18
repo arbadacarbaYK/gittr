@@ -108,7 +108,7 @@ export default function RootLayout({
                   // Also update localStorage to persist
                   try {
                     localStorage.setItem('gittr_theme', 'arcade80s');
-                  } catch (e) {}
+                } catch (e) {}
                 }
                 
                 // Suppress console errors early (before Next.js dev tools interceptor)
