@@ -141,7 +141,8 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       const cleanUrl = trimmedUrl.replace(/^["']|["']$/g, '');
       
       // CRITICAL: For GRASP servers, construct the full clone URL with ownerPubkey and repo name
-      // NIP-34 clone URLs should be the full URL that can be used directly with `git clone`
+      // NIP-34 spec: clone tag includes [http|https]://<grasp-path>/<valid-npub>/<string>.git
+      // MUST use npub format in GRASP clone URLs, not hex pubkey
       // Add BOTH HTTPS and SSH URLs per NIP-34 spec
       const { isGraspServer } = await import("../utils/grasp-servers");
       if (isGraspServer(cleanUrl)) {
@@ -149,21 +150,32 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         const urlWithoutProtocol = cleanUrl.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '');
         const serverDomain = urlWithoutProtocol.split('/')[0];
         
-        // Only proceed if we have a valid server domain
-        if (serverDomain && typeof serverDomain === 'string' && serverDomain.length > 0) {
-          // Add HTTPS URL
-          const httpsCloneUrl = `https://${serverDomain}/${pubkey}/${actualRepositoryName}.git`;
+        // Only proceed if we have a valid server domain and pubkey
+        if (serverDomain && typeof serverDomain === 'string' && serverDomain.length > 0 && pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
+          // NIP-34: Convert hex pubkey to npub format for GRASP clone URLs
+          const { nip19 } = await import("nostr-tools");
+          let npub: string;
+          try {
+            npub = nip19.npubEncode(pubkey);
+          } catch (e) {
+            console.warn(`⚠️ [Push Repo] Failed to encode pubkey to npub for GRASP clone URL, using hex as fallback:`, e);
+            npub = pubkey; // Fallback to hex if encoding fails (shouldn't happen)
+          }
+          
+          // Add HTTPS URL (NIP-34 format: <grasp-path>/<valid-npub>/<string>.git)
+          const httpsCloneUrl = `https://${serverDomain}/${npub}/${actualRepositoryName}.git`;
           addCloneUrl(httpsCloneUrl);
-          console.log(`🔗 [Push Repo] Added primary GRASP server HTTPS clone URL: ${httpsCloneUrl}`);
+          console.log(`🔗 [Push Repo] Added primary GRASP server HTTPS clone URL (npub format): ${httpsCloneUrl}`);
           
           // Add SSH URL (for users with SSH keys)
+          // Note: SSH URLs may still use hex in some implementations, but we use npub for consistency
           const gitSshBase = repo.gitSshBase || (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_GIT_SSH_BASE) || "gittr.space";
           const sshHost = (serverDomain === "git.gittr.space" || serverDomain.includes("gittr.space")) ? gitSshBase : serverDomain;
-          const sshCloneUrl = `git@${sshHost}:${pubkey}/${actualRepositoryName}.git`;
+          const sshCloneUrl = `git@${sshHost}:${npub}/${actualRepositoryName}.git`;
           addCloneUrl(sshCloneUrl);
-          console.log(`🔗 [Push Repo] Added primary GRASP server SSH clone URL: ${sshCloneUrl}`);
+          console.log(`🔗 [Push Repo] Added primary GRASP server SSH clone URL (npub format): ${sshCloneUrl}`);
         } else {
-          console.warn(`⚠️ [Push Repo] Could not extract server domain from URL: ${cleanUrl}`);
+          console.warn(`⚠️ [Push Repo] Could not extract server domain from URL or invalid pubkey:`, { cleanUrl, pubkey });
         }
       } else {
         addCloneUrl(cleanUrl);
@@ -200,21 +212,34 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       
       // Generate clone URLs for all known servers
       // CRITICAL: Add BOTH HTTPS and SSH URLs per NIP-34 spec (supports https://, git://, ssh://)
+      // NIP-34 spec: clone tag includes [http|https]://<grasp-path>/<valid-npub>/<string>.git
+      // MUST use npub format in GRASP clone URLs, not hex pubkey
       // This allows clients to choose the appropriate format (SSH for push/pull with keys, HTTPS for read-only)
+      const { nip19 } = await import("nostr-tools");
+      let npub: string;
+      try {
+        npub = nip19.npubEncode(pubkey);
+      } catch (e) {
+        console.warn(`⚠️ [Push Repo] Failed to encode pubkey to npub for GRASP clone URLs, using hex as fallback:`, e);
+        npub = pubkey; // Fallback to hex if encoding fails (shouldn't happen)
+      }
+      
       const gitSshBase = repo.gitSshBase || (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_GIT_SSH_BASE) || "gittr.space";
       
       uniqueServers.forEach(server => {
         // Add HTTPS URL (works for everyone, read-only or with credentials)
-        const httpsCloneUrl = `https://${server}/${pubkey}/${actualRepositoryName}.git`;
+        // NIP-34 format: <grasp-path>/<valid-npub>/<string>.git
+        const httpsCloneUrl = `https://${server}/${npub}/${actualRepositoryName}.git`;
         addCloneUrl(httpsCloneUrl);
-        console.log(`🔗 [Push Repo] Added HTTPS clone URL: ${httpsCloneUrl}`);
+        console.log(`🔗 [Push Repo] Added HTTPS clone URL (npub format): ${httpsCloneUrl}`);
         
         // Add SSH URL (for users with SSH keys - allows push/pull)
         // Use gitSshBase if server matches, otherwise use server domain directly
+        // Note: SSH URLs use npub format for consistency with NIP-34 spec
         const sshHost = (server === "git.gittr.space" || server.includes("gittr.space")) ? gitSshBase : server;
-        const sshCloneUrl = `git@${sshHost}:${pubkey}/${actualRepositoryName}.git`;
+        const sshCloneUrl = `git@${sshHost}:${npub}/${actualRepositoryName}.git`;
         addCloneUrl(sshCloneUrl);
-        console.log(`🔗 [Push Repo] Added SSH clone URL: ${sshCloneUrl}`);
+        console.log(`🔗 [Push Repo] Added SSH clone URL (npub format): ${sshCloneUrl}`);
       });
       
       console.log(`✅ [Push Repo] Added ${uniqueServers.length * 2} clone URLs (HTTPS + SSH) for ${uniqueServers.length} GRASP servers (total: ${cloneUrls.length})`);
@@ -1273,6 +1298,11 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         
         // Sign state event - REQUIRED, not optional
         // If user cancels, we must fail the entire push (state event is mandatory)
+        // NOTE: State event content is empty per NIP-34 spec (kind 30618)
+        // The event data is in the tags (refs, HEAD, etc.), not in content
+        // This is correct per spec: https://github.com/nostr-protocol/nips/blob/master/34.md#repository-state-announcements
+        onProgress?.("📝 Signing repository state event (kind 30618)...");
+        onProgress?.("   Note: Content is empty per NIP-34 spec - data is in tags (refs, branches, commits)");
         try {
           // NIP-07 signEvent returns the full signed event object (same as announcement event)
           const signedStateEvent = await window.nostr.signEvent(stateEvent);
@@ -1383,13 +1413,24 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           await new Promise(resolve => setTimeout(resolve, 5000));
           verifyUnsub();
           
+          // NIP-34: Use npub format for gitworkshop.dev URLs (follows clone URL pattern)
+          // Convert once and reuse for both success and fallback messages
+          const { nip19 } = await import("nostr-tools");
+          let npub: string;
+          try {
+            npub = nip19.npubEncode(pubkey);
+          } catch (e) {
+            npub = pubkey; // Fallback to hex if encoding fails
+          }
+          const gitworkshopUrl = `https://gitworkshop.dev/${npub}/${actualRepositoryName}`;
+          
           if (foundStateEvent) {
             const refsWithCommits = refs.filter(r => r.commit && r.commit.length > 0).length;
             if (refsWithCommits > 0) {
               onProgress?.("✅ State event published and verified on relay(s)!");
               onProgress?.(`   Found on ${foundOnRelays.length} relay(s): ${foundOnRelays.slice(0, 2).join(", ")}${foundOnRelays.length > 2 ? "..." : ""}`);
               onProgress?.("✅ ngit clients (like gitworkshop.dev) should now recognize Nostr state.");
-              onProgress?.(`🔗 View on gitworkshop.dev: https://gitworkshop.dev/${pubkey}/${actualRepositoryName}`);
+              onProgress?.(`🔗 View on gitworkshop.dev: ${gitworkshopUrl}`);
             } else {
               onProgress?.("⚠️ State event published but has no commit SHAs");
               onProgress?.("💡 gitworkshop.dev may not recognize it until bridge processes files");
@@ -1399,7 +1440,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             onProgress?.("⚠️ State event published but not yet queryable on checked relays");
             onProgress?.("💡 It may take a few minutes for relays to sync");
             onProgress?.("💡 gitworkshop.dev may use different relays - check manually in a few minutes");
-            onProgress?.(`🔗 Check on gitworkshop.dev: https://gitworkshop.dev/${pubkey}/${actualRepositoryName}`);
+            onProgress?.(`🔗 Check on gitworkshop.dev: ${gitworkshopUrl}`);
           }
         } catch (verifyError) {
           console.warn(`⚠️ [Push Repo] Error verifying state event:`, verifyError);
