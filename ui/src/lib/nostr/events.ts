@@ -244,8 +244,16 @@ export function createRepositoryEvent(
   }
   
   // Add all maintainers to tags
+  // NIP-34: Use npub format per best practices (consistent with push-repo-to-nostr.ts)
   maintainerPubkeys.forEach(maintainerPubkey => {
-    tags.push(["maintainers", maintainerPubkey]);
+    try {
+      const npub = nip19.npubEncode(maintainerPubkey);
+      tags.push(["maintainers", npub]);
+    } catch (e) {
+      // Fallback to hex if encoding fails (shouldn't happen with valid pubkeys)
+      console.warn(`⚠️ [createRepositoryEvent] Failed to encode pubkey to npub, using hex:`, e);
+      tags.push(["maintainers", maintainerPubkey]);
+    }
   });
   
   // NIP-34: Add "r" tag with "euc" marker for earliest unique commit (optional but recommended)

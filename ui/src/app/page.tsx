@@ -65,7 +65,31 @@ function parseNIP34Repository(event: any): any {
         if (tagValue) repoData.topics.push(tagValue);
         break;
       case "maintainers":
-        if (tagValue) repoData.maintainers.push(tagValue);
+        // NIP-34: Accept both hex and npub formats, normalize to hex for internal storage
+        if (tagValue) {
+          let normalizedPubkey = tagValue;
+          try {
+            // If it's npub format, decode to hex
+            if (tagValue.startsWith("npub")) {
+              const decoded = nip19.decode(tagValue);
+              if (decoded.type === "npub" && /^[0-9a-f]{64}$/i.test(decoded.data as string)) {
+                normalizedPubkey = decoded.data as string;
+              }
+            } else if (/^[0-9a-f]{64}$/i.test(tagValue)) {
+              // Already hex format, use as-is
+              normalizedPubkey = tagValue.toLowerCase();
+            }
+            // Only add if valid hex pubkey
+            if (/^[0-9a-f]{64}$/i.test(normalizedPubkey)) {
+              repoData.maintainers.push(normalizedPubkey);
+            }
+          } catch (e) {
+            // If decoding fails, try to use as hex if valid
+            if (/^[0-9a-f]{64}$/i.test(tagValue)) {
+              repoData.maintainers.push(tagValue.toLowerCase());
+            }
+          }
+        }
         break;
       case "r":
         if (tagValue && tag[2] === "euc") {
