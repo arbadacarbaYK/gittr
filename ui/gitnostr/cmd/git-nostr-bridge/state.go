@@ -96,11 +96,21 @@ func handleRepositoryStateEvent(event nostr.Event, db *sql.DB, cfg bridge.Config
 		cmd := exec.Command("git", "--git-dir", repoPath, "update-ref", ref.ref, ref.commit)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			log.Printf("⚠️ [Bridge] Failed to update ref %s to %s: %v\n", ref.ref, ref.commit[:8], err)
+			// Safely truncate commit SHA for logging (handle short SHAs)
+			commitDisplay := ref.commit
+			if len(ref.commit) > 8 {
+				commitDisplay = ref.commit[:8]
+			}
+			log.Printf("⚠️ [Bridge] Failed to update ref %s to %s: %v\n", ref.ref, commitDisplay, err)
 			log.Printf("🔍 [Bridge] Git output: %s\n", string(output))
 			continue // Continue with other refs even if one fails
 		}
-		log.Printf("✅ [Bridge] Updated ref %s to %s\n", ref.ref, ref.commit[:8])
+		// Safely truncate commit SHA for logging (handle short SHAs)
+		commitDisplay := ref.commit
+		if len(ref.commit) > 8 {
+			commitDisplay = ref.commit[:8]
+		}
+		log.Printf("✅ [Bridge] Updated ref %s to %s\n", ref.ref, commitDisplay)
 	}
 
 	// Update HEAD if specified
