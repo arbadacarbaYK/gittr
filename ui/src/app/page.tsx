@@ -506,14 +506,30 @@ export default function HomePage() {
         getTopUsersFromNostr(subscribe, defaultRelays, 10)
           .then((nostrUsers) => {
             if (nostrUsers.length > 0) {
-              console.log(`✅ [Home] Updating top users from Nostr: ${nostrUsers.length} users`);
-              setTopUsers(nostrUsers);
-              // Cache in sessionStorage for same-session persistence
-              try {
-                sessionStorage.setItem('gittr_cached_topUsers', JSON.stringify(nostrUsers));
-              } catch (e) {
-                console.warn('⚠️ [Home] Failed to cache top users:', e);
-              }
+              // CRITICAL: Sort by activityCount descending to ensure correct order
+              const sorted = [...nostrUsers].sort((a, b) => (b.activityCount || 0) - (a.activityCount || 0));
+              
+              // CRITICAL: Only update if Nostr users have higher or equal max activity than current
+              // This prevents replacing good data with lower values
+              // Use a ref or state check - but since we're in a callback, check current state
+              setTopUsers((currentUsers) => {
+                const currentMax = currentUsers.length > 0 ? Math.max(...currentUsers.map(u => u.activityCount || 0)) : 0;
+                const nostrMax = Math.max(...sorted.map(u => u.activityCount || 0));
+                
+                if (nostrMax >= currentMax || currentUsers.length === 0) {
+                  console.log(`✅ [Home] Updating top users from Nostr: ${sorted.length} users (max: ${nostrMax} vs current: ${currentMax})`);
+                  // Cache in sessionStorage for same-session persistence
+                  try {
+                    sessionStorage.setItem('gittr_cached_topUsers', JSON.stringify(sorted));
+                  } catch (e) {
+                    console.warn('⚠️ [Home] Failed to cache top users:', e);
+                  }
+                  return sorted;
+                } else {
+                  console.log(`ℹ️ [Home] Keeping current top users (${currentMax} > ${nostrMax})`);
+                  return currentUsers;
+                }
+              });
             }
           })
           .catch((error) => {
@@ -971,7 +987,9 @@ export default function HomePage() {
                     );
                   })
                 ) : (
-                  <div className="text-sm text-gray-500 py-2">No active repos yet</div>
+                  <div className="text-sm text-gray-500 py-2">
+                    {statsLoaded ? "No active repos yet" : "Loading..."}
+                  </div>
                 )}
               </div>
             </div>

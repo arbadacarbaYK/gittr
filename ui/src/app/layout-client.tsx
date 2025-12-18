@@ -45,14 +45,33 @@ export default function ClientLayout({
     migrateLegacyLocalStorage();
     
     // Migrate classic theme to arcade80s (new default)
+    // CRITICAL: This runs after React hydration, so we need to be aggressive
     try {
       const currentTheme = localStorage.getItem("gittr_theme");
-      if (currentTheme === "classic" || !currentTheme) {
+      // Check for classic, null, undefined, empty string, or invalid values
+      if (!currentTheme || currentTheme === "classic" || currentTheme === "null" || currentTheme === "undefined" || currentTheme.trim() === "") {
         localStorage.setItem("gittr_theme", "arcade80s");
         document.documentElement.setAttribute("data-theme", "arcade80s");
+        document.documentElement.classList.add("dark");
+        // Also set on body as fallback
+        if (document.body) {
+          document.body.setAttribute("data-theme", "arcade80s");
+        }
+        console.log("✅ [Theme] Migrated to arcade80s default");
+      } else {
+        // Ensure theme is applied even if it's already set
+        document.documentElement.setAttribute("data-theme", currentTheme);
+        document.documentElement.classList.add("dark");
       }
     } catch (e) {
-      // Ignore localStorage errors
+      // If anything fails, force arcade80s
+      try {
+        document.documentElement.setAttribute("data-theme", "arcade80s");
+        document.documentElement.classList.add("dark");
+        if (document.body) {
+          document.body.setAttribute("data-theme", "arcade80s");
+        }
+      } catch (e2) {}
     }
   }, []);
 
