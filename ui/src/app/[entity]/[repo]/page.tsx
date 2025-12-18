@@ -5428,7 +5428,21 @@ export default function RepoCodePage({
       
       if (matchesOwner && matchesRepo && files && Array.isArray(files) && files.length > 0) {
         console.log(`✅ [File Fetch] Received files from GRASP clone completion event: ${files.length} files`);
-        setRepoData((prev: any) => prev ? ({ ...prev, files }) : prev);
+        setRepoData((prev: any) => {
+          if (prev) {
+            return { ...prev, files };
+          } else {
+            // CRITICAL: Create repoData if it doesn't exist yet - files should show immediately
+            console.log(`🔄 [File Fetch] Creating repoData from GRASP clone event with ${files.length} files`);
+            return {
+              entity: resolvedParams.entity,
+              repo: resolvedParams.repo,
+              files: files,
+              readme: "",
+              defaultBranch: "main",
+            };
+          }
+        });
         
         // Update localStorage
         try {
