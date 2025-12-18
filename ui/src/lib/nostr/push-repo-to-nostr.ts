@@ -818,12 +818,6 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       
       if (eventSizeKB > MAX_EVENT_SIZE_KB) {
         // This shouldn't happen if binary files are excluded, but handle it anyway
-        const filesWithContent = filesWithOverrides.filter((f: any) => f.content);
-        const totalContentSizeKB = filesWithContent.reduce((sum: number, f: any) => {
-          const base64Size = f.content ? (f.content.length * 3) / 4 : 0;
-          return sum + (base64Size / 1024);
-        }, 0);
-        
         throw new Error(
           `Event size (${eventSizeKB.toFixed(1)}KB) exceeds Nostr limit (~100KB). ` +
           `Please remove large files from the repository or push files to git-nostr-bridge via git push first. ` +
