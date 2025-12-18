@@ -14,6 +14,15 @@ export function Tooltip({ content, children, className = "", mobileClickable = f
   const [isVisible, setIsVisible] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
 
+  // Clean content: remove extra newlines and trim whitespace
+  const cleanedContent = content
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
   // Close tooltip when clicking outside
   useEffect(() => {
     if (!mobileClickable || !isVisible) return;
@@ -49,19 +58,20 @@ export function Tooltip({ content, children, className = "", mobileClickable = f
       {children}
       <div 
         ref={tooltipRef}
-        className={`absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 text-xs text-white bg-[#22262C] border border-[#383B42] rounded shadow-lg transition-opacity duration-200 pointer-events-none z-50 whitespace-pre-line max-w-[90vw] sm:max-w-md ${
+        className={`absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 text-xs text-white bg-[#22262C] border border-[#383B42] rounded shadow-lg transition-opacity duration-200 pointer-events-none z-50 ${
           mobileClickable 
             ? (isVisible ? "opacity-100 pointer-events-auto" : "opacity-0")
             : "opacity-0 group-hover:opacity-100"
         }`}
         style={{
           // Prevent tooltip from extending beyond viewport on mobile
-          maxWidth: 'min(90vw, 24rem)',
+          maxWidth: 'min(calc(100vw - 2rem), 24rem)',
           wordWrap: 'break-word',
           overflowWrap: 'break-word',
+          whiteSpace: 'normal', // Normal wrapping, don't preserve newlines
         }}
       >
-        {content}
+        {cleanedContent}
         <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-[#22262C]"></div>
       </div>
     </div>
