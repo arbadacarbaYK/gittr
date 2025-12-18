@@ -829,16 +829,16 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
             // If repo has NO Nostr event IDs at all, it's truly local and should be hidden
             if (!hasNostrEventId) {
               // Double-check: maybe it exists in the main repos list from Nostr (synced but missing event ID)
-              const existsInNostr = repos.some((nr: any) => {
-                const nrEntity = nr.entity || "";
-                const nrRepo = nr.repo || nr.slug || "";
-                const rEntity = r.entity || "";
-                const rRepo = r.repo || r.slug || "";
-                return nrEntity.toLowerCase() === rEntity.toLowerCase() && 
-                       nrRepo.toLowerCase() === rRepo.toLowerCase() &&
-                       (nr.ownerPubkey?.toLowerCase() === fullPubkeyForMeta?.toLowerCase());
-              });
-              
+            const existsInNostr = repos.some((nr: any) => {
+              const nrEntity = nr.entity || "";
+              const nrRepo = nr.repo || nr.slug || "";
+              const rEntity = r.entity || "";
+              const rRepo = r.repo || r.slug || "";
+              return nrEntity.toLowerCase() === rEntity.toLowerCase() && 
+                     nrRepo.toLowerCase() === rRepo.toLowerCase() &&
+                     (nr.ownerPubkey?.toLowerCase() === fullPubkeyForMeta?.toLowerCase());
+            });
+            
               // If it doesn't exist in Nostr repos list either, it's truly local - hide it
               if (!existsInNostr) return false;
             }
@@ -1757,16 +1757,17 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
   const weeks = contributionGraph.slice(-52);
   const maxCount = Math.max(...weeks.map(w => w.count), 1);
   
-  // CRITICAL: Use aggressive percentile-based scaling to create very distinct visual levels
-  // This ensures that 28 vs 96 contributions look VERY different
-  // Use percentiles: 0%, 10%, 25%, 50%, 75%, 100% of maxCount
-  // This creates more distinct levels even for similar maxCounts
+  // CRITICAL: Use square root scaling to create very distinct visual levels
+  // This ensures that 11 vs 48 contributions look VERY different
+  // Formula: level = sqrt(maxCount * ratio) ^ 2, but more aggressive
+  // For maxCount=48: levels should be ~0, 2, 6, 12, 24, 48
+  // This creates much more distinct levels even for similar maxCounts
   const intensityLevels = [
     0,                                    // Level 0: No activity
-    Math.max(1, Math.round(maxCount * 0.10)),   // Level 1: Bottom 10% (very light)
-    Math.max(2, Math.round(maxCount * 0.25)),   // Level 2: Bottom 25% (light)
-    Math.max(3, Math.round(maxCount * 0.50)),   // Level 3: Bottom 50% (medium)
-    Math.max(5, Math.round(maxCount * 0.75)),   // Level 4: Bottom 75% (high)
+    Math.max(1, Math.round(Math.sqrt(maxCount * 0.05) * Math.sqrt(maxCount * 0.05))),   // Level 1: ~5% (very light)
+    Math.max(2, Math.round(Math.sqrt(maxCount * 0.15) * Math.sqrt(maxCount * 0.15))),   // Level 2: ~15% (light)
+    Math.max(3, Math.round(Math.sqrt(maxCount * 0.35) * Math.sqrt(maxCount * 0.35))),   // Level 3: ~35% (medium)
+    Math.max(5, Math.round(Math.sqrt(maxCount * 0.65) * Math.sqrt(maxCount * 0.65))),   // Level 4: ~65% (high)
     maxCount,                              // Level 5: Maximum (brightest)
   ];
 

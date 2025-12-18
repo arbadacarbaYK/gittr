@@ -98,13 +98,17 @@ export default function RootLayout({
                 
                 // CRITICAL: Double-check theme is set correctly (in case localStorage was empty/null)
                 // This ensures arcade80s is always the default, even for first-time visitors
-                if (!document.documentElement.getAttribute('data-theme') || 
-                    document.documentElement.getAttribute('data-theme') === 'classic') {
+                const currentThemeAttr = document.documentElement.getAttribute('data-theme');
+                if (!currentThemeAttr || currentThemeAttr === 'classic' || currentThemeAttr === 'null' || currentThemeAttr === 'undefined') {
                   document.documentElement.setAttribute('data-theme', 'arcade80s');
                   document.documentElement.classList.add('dark');
                   if (document.body) {
                     document.body.setAttribute('data-theme', 'arcade80s');
                   }
+                  // Also update localStorage to persist
+                  try {
+                    localStorage.setItem('gittr_theme', 'arcade80s');
+                  } catch (e) {}
                 }
                 
                 // Suppress console errors early (before Next.js dev tools interceptor)

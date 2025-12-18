@@ -604,16 +604,16 @@ async function fetchFromGitLab(
         
         while (hasMore) {
           const treeUrl = `https://gitlab.com/api/v4/projects/${projectPath}/repository/tree?ref=${encodeURIComponent(branchToTry)}&recursive=true&per_page=${perPage}&page=${page}`;
-          
-          const response = await fetch(treeUrl, {
-            headers: {
-              "User-Agent": "gittr-space",
-              "Accept": "application/json"
-            } as any
-          });
-          
-          if (response.ok) {
-            const data: any = await response.json();
+        
+        const response = await fetch(treeUrl, {
+          headers: {
+            "User-Agent": "gittr-space",
+            "Accept": "application/json"
+          } as any
+        });
+        
+        if (response.ok) {
+          const data: any = await response.json();
             if (Array.isArray(data)) {
               if (data.length > 0) {
                 allItems = [...allItems, ...data];
@@ -642,13 +642,13 @@ async function fetchFromGitLab(
         if (allItems.length > 0) {
           console.log(`✅ [Git Source] Got GitLab files for branch ${branchToTry}: ${allItems.length} total items`);
           const files = allItems
-            .filter((n: any) => n.type === "blob")
-            .map((n: any) => ({ type: "file", path: n.path, size: n.size }));
+              .filter((n: any) => n.type === "blob")
+              .map((n: any) => ({ type: "file", path: n.path, size: n.size }));
           const dirs = allItems
-            .filter((n: any) => n.type === "tree")
-            .map((n: any) => ({ type: "dir", path: n.path }));
-          
-          return [...dirs, ...files];
+              .filter((n: any) => n.type === "tree")
+              .map((n: any) => ({ type: "dir", path: n.path }));
+            
+            return [...dirs, ...files];
         }
       } catch (branchError) {
         console.warn(`⚠️ [Git Source] Error fetching GitLab branch ${branchToTry}:`, branchError);
