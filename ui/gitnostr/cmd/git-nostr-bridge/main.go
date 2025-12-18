@@ -176,6 +176,22 @@ func processEvent(event nostr.Event, db *sql.DB, cfg bridge.Config, sshKeyPubKey
 		}
 		return false
 
+	case protocol.KindRepositoryState:
+		log.Printf("📊 [Bridge] Processing repository state event: kind=%d id=%s, pubkey=%s\n", event.Kind, event.ID, event.PubKey)
+		err := handleRepositoryStateEvent(event, db, cfg)
+		if err != nil {
+			log.Printf("❌ [Bridge] Failed to handle repository state event: %v\n", err)
+			return false
+		}
+		log.Printf("✅ [Bridge] Successfully processed repository state event: id=%s\n", event.ID)
+
+		err = updateSince(protocol.KindRepositoryState, event.CreatedAt.Unix(), db)
+		if err != nil {
+			log.Printf("❌ [Bridge] Failed to update Since: %v\n", err)
+			return false
+		}
+		return false // Don't need to reconnect
+
 	case protocol.KindRepositoryPermission:
 		err := handleRepositorPermission(event, db, cfg)
 		if err != nil {
@@ -362,13 +378,14 @@ func main() {
 			log.Fatal(err)
 		}
 
-		// Build filter for repository events (legacy kind 51 + NIP-34 kind 30617) and permissions
-		repoSince := minTime(since[protocol.KindRepository], since[protocol.KindRepositoryNIP34])
+		// Build filter for repository events (legacy kind 51 + NIP-34 kind 30617 + state events 30618) and permissions
+		repoSince := minTime(since[protocol.KindRepository], since[protocol.KindRepositoryNIP34], since[protocol.KindRepositoryState])
 		repoFilter := nostr.Filter{
 			Kinds: []int{
 				protocol.KindRepository,
 				protocol.KindRepositoryPermission,
 				protocol.KindRepositoryNIP34,
+				protocol.KindRepositoryState, // NIP-34: State events with refs/commits
 			},
 			Since: repoSince,
 		}
@@ -378,9 +395,9 @@ func main() {
 		// If gitRepoOwners is empty, don't set Authors - this makes it watch ALL repos
 		
 		if repoSince != nil {
-			log.Printf("🔍 [Bridge] Subscribing to repository events since: %s (kinds 51 & 30617)\n", repoSince.Format(time.RFC3339))
+			log.Printf("🔍 [Bridge] Subscribing to repository events since: %s (kinds 51, 30617, 30618)\n", repoSince.Format(time.RFC3339))
 		} else {
-			log.Printf("🔍 [Bridge] Subscribing to ALL repository events (no Since filter, kinds 51 & 30617)\n")
+			log.Printf("🔍 [Bridge] Subscribing to ALL repository events (no Since filter, kinds 51, 30617, 30618)\n")
 		}
 		if len(cfg.GitRepoOwners) > 0 {
 			log.Printf("🔍 [Bridge] Filtering by authors: %v\n", cfg.GitRepoOwners)

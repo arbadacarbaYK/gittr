@@ -14,7 +14,7 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getRepoOwnerPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
-import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
+import { getRepoStatus, getStatusBadgeStyle, checkBridgeExists } from "@/lib/utils/repo-status";
 import { nip19 } from "nostr-tools";
 import { ZapButton } from "@/components/ui/zap-button";
 import { loadStoredRepos } from "@/lib/repos/storage";
@@ -174,6 +174,31 @@ export default function HomePage() {
   }, []);
 
   const storageUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Check bridge status for repos that have event IDs but bridgeProcessed is not set
+  useEffect(() => {
+    if (!pubkey || !mounted) return;
+    
+    const repos = loadStoredRepos();
+    const ownRepos = repos.filter((r: any) => (r as any).ownerPubkey === pubkey);
+    
+    // Check bridge for repos that have event IDs but bridgeProcessed is not set
+    ownRepos.forEach((r: any) => {
+      const hasEventId = !!(r.nostrEventId || r.lastNostrEventId || r.stateEventId || r.lastStateEventId);
+      const bridgeProcessed = r.bridgeProcessed;
+      const ownerPubkey = (r as any).ownerPubkey;
+      const repoName = r.repo || r.slug;
+      const entity = r.entity;
+      
+      // Only check if repo has event ID but bridgeProcessed is not explicitly true
+      if (hasEventId && bridgeProcessed !== true && ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) && repoName && entity) {
+        checkBridgeExists(ownerPubkey, repoName, entity).catch(err => {
+          console.warn(`[Home] Failed to check bridge for ${repoName}:`, err);
+        });
+      }
+    });
+  }, [pubkey, mounted]);
+  
   useEffect(() => {
     loadRepos();
     
