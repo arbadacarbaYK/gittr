@@ -7879,12 +7879,14 @@ export default function RepoCodePage({
                         // If href looks like a gittr.space repo link with path segments, convert to query param format
                         // Match: https://gittr.space/npub.../repo-name/path/to/file
                         // Convert to: https://gittr.space/npub.../repo-name?path=path%2Fto%2Ffile
-                        const gittrPathMatch = href.match(/^(https?:\/\/gittr\.space\/[^\/]+\/[^\/]+)\/([^?#]+)$/);
-                        if (gittrPathMatch && gittrPathMatch[1] && gittrPathMatch[2] && !href.includes('?path=') && !href.includes('?file=') && !href.includes('?branch=') && !href.includes('api/')) {
-                          const baseUrl = gittrPathMatch[1];
-                          const pathSegment = gittrPathMatch[2];
-                          // Convert path segment to query parameter format
-                          href = `${baseUrl}?path=${encodeURIComponent(pathSegment)}`;
+                        if (href.includes('gittr.space') && href.includes('/') && !href.includes('?path=') && !href.includes('?file=') && !href.includes('?branch=') && !href.includes('api/')) {
+                          const gittrPathMatch = href.match(/^(https?:\/\/gittr\.space\/[^\/]+\/[^\/]+)\/([^?#]+)$/);
+                          if (gittrPathMatch && gittrPathMatch[1] && gittrPathMatch[2]) {
+                            const baseUrl = gittrPathMatch[1];
+                            const pathSegment = gittrPathMatch[2];
+                            // Convert path segment to query parameter format
+                            href = `${baseUrl}?path=${encodeURIComponent(pathSegment)}`;
+                          }
                         }
                       }
                       // Regular link
