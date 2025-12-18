@@ -675,7 +675,12 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       }
       
       // NIP-34: Add relays tags
-      defaultRelays.forEach(relay => {
+      // CRITICAL: Only include GRASP/git relays, not regular Nostr relays
+      // Regular relays (like jb55) don't host git repos and shouldn't be listed
+      const { getGraspServers } = await import("../utils/grasp-servers");
+      const graspRelays = getGraspServers(defaultRelays);
+      console.log(`🔍 [Push Repo] Filtering relays: ${defaultRelays.length} total, ${graspRelays.length} GRASP/git relays`);
+      graspRelays.forEach(relay => {
         nip34Tags.push(["relays", relay]);
       });
       
@@ -718,6 +723,9 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       }
       
       // Add all maintainers to tags
+      // NOTE: NIP-34 doesn't specify hex vs npub format for maintainers
+      // We use hex pubkeys (64 chars) which is standard for Nostr tags
+      // Some clients may prefer npub format for human readability, but hex is more standard
       maintainerPubkeys.forEach(pubkey => {
         nip34Tags.push(["maintainers", pubkey]);
       });
@@ -763,34 +771,14 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         });
       }
       
+      // NIP-34: Content field MUST be empty per spec
+      // All metadata goes in tags, not in content
+      // Bridge compatibility: We still send metadata to bridge via /api/nostr/repo/event endpoint
       repoEvent = {
         kind: KIND_REPOSITORY_NIP34, // NIP-34: Use kind 30617
         created_at: Math.floor(Date.now() / 1000),
         tags: nip34Tags,
-        content: JSON.stringify({
-          repositoryName: actualRepositoryName, // Bridge expects 'repositoryName' - use exact name from repo data
-          name: repo.name || actualRepositoryName, // Keep 'name' for frontend compatibility
-          description: repo.description || "",
-          publicRead: repo.publicRead !== false,
-          publicWrite: false,
-          gitSshBase: repo.gitSshBase || (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_GIT_SSH_BASE) || "gittr.space", // Bridge expects this field - use env var or default
-          // CRITICAL: Per NIP-34, files should NOT be in Nostr events - they should be stored on git servers
-          // Files are pushed to git-nostr-bridge separately via /api/nostr/repo/push
-          // Only include metadata that helps clients discover and access the repository
-          readme: repo.readme, // README is small metadata, acceptable to include
-          stars: repo.stars,
-          forks: repo.forks,
-          languages: repo.languages,
-          topics: repo.topics || [],
-          defaultBranch: repo.defaultBranch || "main",
-          branches: repo.branches || [],
-          releases: repo.releases || [],
-          logoUrl: repo.logoUrl,
-          requiredApprovals: repo.requiredApprovals,
-          zapPolicy: repo.zapPolicy,
-          links: repo.links,
-          clone: cloneUrls, // Include both git server URL and GitHub/GitLab/Codeberg sourceUrl
-        }),
+        content: "", // NIP-34: Content MUST be empty - all metadata in tags
         pubkey: signerPubkey,
         id: "",
         sig: "",

@@ -8831,10 +8831,12 @@ export default function RepoCodePage({
             //    - No sourceUrl AND no forkedFrom = native Nostr repo
             const isNativeNostrRepo = !hasSourceUrl && !repo.forkedFrom;
             const isNostrRepo = repo.syncedFromNostr || repo.lastNostrEventId || repo.nostrEventId || isNativeNostrRepo;
+            // CRITICAL: Only show refetch if repo has actually been pushed (has event IDs)
+            // Don't show refetch for newly created repos that haven't been pushed yet
+            const hasBeenPushed = !!(repo.lastNostrEventId || repo.nostrEventId);
             const hasLocalEdits = repo.hasUnpushedEdits || (repo.files && Array.isArray(repo.files) && repo.files.length > 0);
-            // Show refetch if: (has sourceUrl OR is Nostr repo) AND user owns it AND (has local edits OR no files found)
-            // OR if user owns it but sourceUrl is missing (needs re-import)
-            const showRefetchButton = (hasSourceUrl || isNostrRepo) && repoIsOwnerFlag && (hasLocalEdits || !repo.files || repo.files.length === 0);
+            // Show refetch if: (has sourceUrl OR has been pushed to Nostr) AND user owns it AND (has local edits OR no files found)
+            const showRefetchButton = (hasSourceUrl || hasBeenPushed) && repoIsOwnerFlag && (hasLocalEdits || !repo.files || repo.files.length === 0);
             // Show re-import button ONLY if:
             // - Repo has no sourceUrl (was imported but sourceUrl lost)
             // - AND it's NOT a native Nostr repo (has forkedFrom or was synced from Nostr)
