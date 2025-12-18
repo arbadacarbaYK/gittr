@@ -969,16 +969,16 @@ export default function HomePage() {
       </header>
 
       {/* Stats Cards */}
-      {statsLoaded && (
-        <>
-          {/* Top Row: Most Active Repos, Most Active Users, Open Bounties - Equal width row matching Recent repositories width */}
-          <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Top Repos - Always show */}
-            <div className="border border-[#383B42] rounded p-4 flex flex-col">
-              <h3 className="font-semibold mb-3 text-purple-400">🔥 Most Active Repos</h3>
-              <div className="space-y-2 flex-1">
-                {topRepos.length > 0 ? (
-                  topRepos.slice(0, 5).map((repo, idx) => {
+      {/* Top Row: Most Active Repos, Most Active Users, Open Bounties - Equal width row matching Recent repositories width */}
+      <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Top Repos - Always show */}
+        <div className="border border-[#383B42] rounded p-4 flex flex-col">
+          <h3 className="font-semibold mb-3 text-purple-400">🔥 Most Active Repos</h3>
+          <div className="space-y-2 flex-1">
+            {!statsLoaded ? (
+              <div className="text-sm text-gray-500 py-2">Loading...</div>
+            ) : topRepos.length > 0 ? (
+              topRepos.slice(0, 5).map((repo, idx) => {
                     // repoId is in format "entity/repo"
                     const [entity, repoName] = (repo.repoId && typeof repo.repoId === 'string' && repo.repoId.includes("/")) 
                       ? repo.repoId.split("/") 
@@ -1012,7 +1012,9 @@ export default function HomePage() {
             <div className="border border-[#383B42] rounded p-4 flex flex-col">
               <h3 className="font-semibold mb-3 text-yellow-400">⭐ Most Active</h3>
               <div className="space-y-2 flex-1">
-                {topUsers.length > 0 ? (
+                {!statsLoaded ? (
+                  <div className="text-sm text-gray-500 py-2">Loading...</div>
+                ) : topUsers.length > 0 ? (
                   topUsers.slice(0, 5).map((user, idx) => {
                     // Convert hex pubkey to npub format for profile link
                     let href = `/${user.pubkey}`;
@@ -1042,7 +1044,9 @@ export default function HomePage() {
                     );
                   })
                 ) : (
-                  <div className="text-sm text-gray-500 py-2">No active users yet</div>
+                  <div className="text-sm text-gray-500 py-2">
+                    {statsLoaded ? "No active users yet" : "Loading..."}
+                  </div>
                 )}
               </div>
             </div>
@@ -1420,10 +1424,7 @@ export default function HomePage() {
               </div>
             </div>
           )}
-
           </div>
-        </>
-      )}
 
       {/* Recent Activity - Full Width - Hidden on mobile */}
       {statsLoaded && (

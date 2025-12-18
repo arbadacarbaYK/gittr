@@ -1096,18 +1096,18 @@ export function countRepoActivitiesFromNostr(
       {} // options parameter
     );
 
-    // Timeout after 20 seconds - need more time to get all activity from all time
-    // Increased from 15s to 20s to ensure we get more repos before timing out
+    // Timeout after 8 seconds - GRASP servers should respond quickly
+    // Reduced from 20s to 8s to improve UX (user sees results faster)
     setTimeout(() => {
       if (!resolved) {
         resolved = true;
         unsub();
         const totalActivities = Array.from(repoMap.values()).reduce((sum, r) => sum + r.activityCount, 0);
         const reposWithActivity = Array.from(repoMap.values()).filter(r => r.activityCount > 0).length;
-        console.log(`⏱️ [Nostr Repo Stats] Timeout after 20s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`, repoMap.size, 'repos,', reposWithActivity, 'with activity,', totalActivities, 'total activities');
+        console.log(`⏱️ [Nostr Repo Stats] Timeout after 8s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`, repoMap.size, 'repos,', reposWithActivity, 'with activity,', totalActivities, 'total activities');
         resolve(repoMap);
       }
-    }, 20000);
+    }, 8000);
   });
 }
 
