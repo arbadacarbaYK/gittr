@@ -1804,12 +1804,13 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
     const level3 = intensityLevels[3] ?? 10;
     const level4 = intensityLevels[4] ?? 30;
     const level5 = intensityLevels[5] ?? 100;
-    if (count <= level1) return "bg-green-900 border border-green-800";
-    if (count <= level2) return "bg-green-800 border border-green-700";
+    // Use more distinct color differences - from very dark to very bright
+    if (count <= level1) return "bg-green-950 border border-green-900"; // Darkest
+    if (count <= level2) return "bg-green-900 border border-green-800";
     if (count <= level3) return "bg-green-700 border border-green-600";
-    if (count <= level4) return "bg-green-600 border border-green-500";
-    if (count <= level5) return "bg-green-500 border border-green-400";
-    return "bg-green-400 border border-green-300"; // Highest contributions - brightest
+    if (count <= level4) return "bg-green-500 border border-green-400";
+    if (count <= level5) return "bg-green-400 border border-green-300";
+    return "bg-green-300 border border-green-200"; // Brightest
   };
 
   return (
@@ -2120,10 +2121,17 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
               <div className="flex justify-between text-xs text-gray-500 mt-2">
                 <span>Less</span>
                 <div className="flex gap-1">
-                  {/* Show all intensity levels (excluding level 0) - no duplicate maxCount */}
+                  {/* Show all intensity levels (excluding level 0) - each dot represents a distinct threshold */}
                   {intensityLevels.slice(1).map((level, idx) => {
                     const val = level ?? 0;
-                    return <div key={idx} className={`w-2 h-2 ${getIntensity(val)} rounded-sm`} />;
+                    const intensityClass = getIntensity(val);
+                    // Debug: Log to verify distinct colors
+                    if (idx === 0) {
+                      console.log(`🎨 [Activity Timeline] Legend dots for maxCount=${maxCount}:`, 
+                        intensityLevels.slice(1).map(l => ({ level: l, color: getIntensity(l) }))
+                      );
+                    }
+                    return <div key={idx} className={`w-2 h-2 ${intensityClass} rounded-sm`} title={`${val} contributions`} />;
                   })}
                 </div>
                 <span>More</span>
