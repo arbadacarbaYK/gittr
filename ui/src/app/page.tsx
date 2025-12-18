@@ -485,21 +485,26 @@ export default function HomePage() {
               // CRITICAL: Sort by activityCount descending to ensure correct order
               const sorted = [...nostrRepos].sort((a, b) => (b.activityCount || 0) - (a.activityCount || 0));
               
-              // CRITICAL: Only update if Nostr returns a reasonable number of repos (at least 3)
-              // AND the max activity is meaningful (at least 5)
-              // This prevents replacing good localStorage data with incomplete Nostr results
+              // CRITICAL: Update logic - be smart about when to replace localStorage data
+              // Check if current data looks "bad" (all same value, or all very low)
               setTopRepos((currentRepos) => {
                 const currentMax = currentRepos.length > 0 ? Math.max(...currentRepos.map(r => r.activityCount || 0)) : 0;
+                const currentMin = currentRepos.length > 0 ? Math.min(...currentRepos.map(r => r.activityCount || 0)) : 0;
                 const nostrMax = Math.max(...sorted.map(r => r.activityCount || 0));
                 const nostrCount = sorted.length;
                 
-                // Only update if:
-                // 1. Nostr has at least 3 repos (reasonable sample)
-                // 2. AND max activity is at least 5 (meaningful activity)
-                // 3. AND (nostrMax >= currentMax OR we have no current data)
-                if (nostrCount >= 3 && nostrMax >= 5 && (nostrMax >= currentMax || currentRepos.length === 0)) {
+                // Detect "bad" localStorage data: all repos have same activity count (likely stale/corrupted)
+                const allSameActivity = currentRepos.length > 0 && currentMax === currentMin && currentMax > 0;
+                const allLowActivity = currentMax <= 2; // All repos have 1-2 activities (likely incomplete)
+                const isBadData = allSameActivity || allLowActivity;
+                
+                // Update if:
+                // 1. Nostr has at least 1 repo with activity > 0
+                // 2. AND (nostrMax >= currentMax OR current data is bad OR we have no current data)
+                // 3. AND if current data is good, require at least 3 repos and min activity 5 (prevent downgrade)
+                if (nostrCount > 0 && nostrMax > 0 && (isBadData || currentRepos.length === 0 || (nostrCount >= 3 && nostrMax >= 5 && nostrMax >= currentMax))) {
                   const maxNostrActivity = sorted[0]?.activityCount || 0;
-                  console.log(`✅ [Home] Updating top repos from Nostr: ${nostrCount} repos, max activity: ${maxNostrActivity} (vs current: ${currentMax})`);
+                  console.log(`✅ [Home] Updating top repos from Nostr: ${nostrCount} repos, max activity: ${maxNostrActivity} (vs current: ${currentMax}, badData: ${isBadData})`);
                   console.log(`📋 [Home] Top repos:`, sorted.map(r => `${r.repoName}(${r.activityCount})`).join(', '));
                   // Cache in sessionStorage for same-session persistence
                   try {
@@ -509,7 +514,7 @@ export default function HomePage() {
                   }
                   return sorted;
                 } else {
-                  console.log(`ℹ️ [Home] Keeping current top repos (Nostr: ${nostrCount} repos, max: ${nostrMax}, Current: ${currentRepos.length} repos, max: ${currentMax})`);
+                  console.log(`ℹ️ [Home] Keeping current top repos (Nostr: ${nostrCount} repos, max: ${nostrMax}, Current: ${currentRepos.length} repos, max: ${currentMax}, badData: ${isBadData})`);
                   return currentRepos;
                 }
               });
