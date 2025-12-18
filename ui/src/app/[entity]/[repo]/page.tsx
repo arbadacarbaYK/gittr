@@ -7875,30 +7875,9 @@ export default function RepoCodePage({
                             </div>
                           );
                         }
-                        // CRITICAL: Fix links that have path segments instead of query parameters
-                        // If href looks like a gittr.space repo link with path segments, convert to query param format
-                        // Match: https://gittr.space/npub.../repo-name/path/to/file
-                        // Convert to: https://gittr.space/npub.../repo-name?path=path%2Fto%2Ffile
-                        if (href.includes('gittr.space') && href.includes('/') && !href.includes('?path=') && !href.includes('?file=') && !href.includes('?branch=') && !href.includes('api/')) {
-                          const gittrPathMatch = href.match(/^(https?:\/\/gittr\.space\/[^\/]+\/[^\/]+)\/([^?#]+)$/);
-                          if (gittrPathMatch && gittrPathMatch[1] && gittrPathMatch[2]) {
-                            const baseUrl = gittrPathMatch[1];
-                            const pathSegment = gittrPathMatch[2];
-                            // Convert path segment to query parameter format
-                            href = `${baseUrl}?path=${encodeURIComponent(pathSegment)}`;
-                          }
-                        }
-                      }
-                      // CRITICAL: Final check - convert any remaining gittr.space path links
-                      let finalHref = href;
-                      if (finalHref && typeof finalHref === 'string' && finalHref.includes('gittr.space') && finalHref.includes('/') && !finalHref.includes('?path=') && !finalHref.includes('?file=') && !finalHref.includes('?branch=') && !finalHref.includes('api/')) {
-                        const match = finalHref.match(/^(https?:\/\/gittr\.space\/[^\/]+\/[^\/]+)\/([^?#]+)$/);
-                        if (match && match[1] && match[2]) {
-                          finalHref = `${match[1]}?path=${encodeURIComponent(match[2])}`;
-                        }
                       }
                       // Regular link
-                      return <a href={finalHref} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300" {...props}>{children}</a>;
+                      return <a href={href} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300" {...props}>{children}</a>;
                     },
                     code: ({ node, inline, className, children, ...props }: any) => {
                       const match = /language-([\w-]+)/.exec(className || "");
