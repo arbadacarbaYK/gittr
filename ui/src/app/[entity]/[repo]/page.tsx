@@ -7878,7 +7878,7 @@ export default function RepoCodePage({
                         // CRITICAL: Fix links that have path segments instead of query parameters
                         // If href looks like a gittr.space repo link with path segments, convert to query param format
                         const gittrPathMatch = href.match(/^(https?:\/\/gittr\.space\/[^\/]+\/[^\/]+)\/(.+)$/);
-                        if (gittrPathMatch && !href.includes('?path=') && !href.includes('?file=') && !href.includes('?branch=')) {
+                        if (gittrPathMatch && gittrPathMatch[1] && gittrPathMatch[2] && !href.includes('?path=') && !href.includes('?file=') && !href.includes('?branch=')) {
                           const baseUrl = gittrPathMatch[1];
                           const pathSegment = gittrPathMatch[2];
                           // Convert path segment to query parameter format
