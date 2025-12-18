@@ -180,6 +180,12 @@ func processEvent(event nostr.Event, db *sql.DB, cfg bridge.Config, sshKeyPubKey
 		log.Printf("📊 [Bridge] Processing repository state event: kind=%d id=%s, pubkey=%s\n", event.Kind, event.ID, event.PubKey)
 		err := handleRepositoryStateEvent(event, db, cfg)
 		if err != nil {
+			// Check if repository doesn't exist yet - don't mark as processed so it can be reprocessed
+			if err == ErrRepositoryNotExists {
+				log.Printf("⏳ [Bridge] State event deferred (repository not created yet): id=%s\n", event.ID)
+				log.Printf("💡 [Bridge] Event will be reprocessed when repository is created\n")
+				return false // Don't reconnect, but don't update Since either
+			}
 			log.Printf("❌ [Bridge] Failed to handle repository state event: %v\n", err)
 			return false
 		}
