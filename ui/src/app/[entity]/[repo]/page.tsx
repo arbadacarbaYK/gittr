@@ -7888,13 +7888,12 @@ export default function RepoCodePage({
                         return <MermaidRenderer code={content} className="my-4" />;
                       }
 
-                      // Use CopyableCodeBlock for all code blocks
-                        return (
+                      return (
                         <CopyableCodeBlock 
                           inline={inline} 
-                          className={inline ? "bg-gray-900 px-1 rounded text-green-400" : className || "bg-gray-900 rounded p-4 overflow-x-auto"}
+                          className={inline ? "bg-gray-900 px-1 py-0.5 rounded text-green-400" : className || "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"}
                         >
-                              {children}
+                          {children}
                         </CopyableCodeBlock>
                       );
                     },
@@ -8374,22 +8373,13 @@ export default function RepoCodePage({
                             return <a href={href} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300" {...props}>{children}</a>;
                           },
                           code: ({ node, inline, className, children, ...props }: any) => {
-                            const match = /language-([\w-]+)/.exec(className || "");
-                            const language = match?.[1]?.toLowerCase();
-                            const content = String(children).replace(/\n$/, "");
-
-                            // CRITICAL: ReactMarkdown sets inline=true for single backticks, inline=false/undefined for triple backticks
-                            // If className has 'language-', it's definitely a code block (triple backticks with language)
-                            // Only treat as block if: (1) inline is explicitly false AND has language class, OR (2) has language class
-                            // Otherwise, treat as inline code (single backticks)
                             const hasLanguageClass = className && /language-/.test(className);
-                            const isBlockCode = hasLanguageClass || (inline === false && hasLanguageClass);
+                            const isBlockCode = hasLanguageClass || inline === false;
 
-                            // Use CopyableCodeBlock for all code blocks
                             return (
                               <CopyableCodeBlock 
                                 inline={!isBlockCode} 
-                                className={!isBlockCode ? "bg-gray-900 px-1 py-0.5 rounded text-green-400 inline before:content-none after:content-none" : className || "bg-gray-900 rounded p-2 overflow-x-auto my-2"}
+                                className={!isBlockCode ? "bg-gray-900 px-1 py-0.5 rounded text-green-400" : className || "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"}
                               >
                                 {children}
                               </CopyableCodeBlock>

@@ -89,8 +89,8 @@ export function CopyableCodeBlock({ children, className = "", inline = false }: 
   // Extract language class from className if present
   const hasLanguageClass = className && /language-/.test(className);
   const preClassName = hasLanguageClass 
-    ? className.replace(/language-[\w-]+/, '').trim() || "bg-gray-900 rounded p-2 overflow-x-auto my-2"
-    : className || "bg-gray-900 rounded p-2 overflow-x-auto my-2";
+    ? className.replace(/language-[\w-]+/, '').trim() || "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"
+    : className || "bg-gray-900 rounded p-2 overflow-x-auto my-0.5";
   const codeClassName = hasLanguageClass ? className : "";
 
   return (
