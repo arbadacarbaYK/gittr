@@ -1212,7 +1212,7 @@ export default function PRDetailPage({ params }: { params: Promise<{ entity: str
                     return (
                       <CopyableCodeBlock 
                         inline={inline} 
-                        className={inline ? "bg-gray-900 px-1 rounded text-green-400" : className || "bg-gray-900 rounded p-4 overflow-x-auto"}
+                        className={inline ? "bg-gray-900 px-1 py-0.5 rounded text-green-400" : className || "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"}
                       >
                         {children}
                       </CopyableCodeBlock>
