@@ -77,8 +77,10 @@ func handleRepositoryStateEvent(event nostr.Event, db *sql.DB, cfg bridge.Config
 		}
 	}
 
-	if len(refsToUpdate) == 0 {
-		log.Printf("⚠️ [Bridge] State event has no refs to update: pubkey=%s repo=%s\n", event.PubKey, repoName)
+	// Only return early if there are no refs AND no HEAD to update
+	// A state event might contain only a HEAD tag without refs
+	if len(refsToUpdate) == 0 && headRef == "" {
+		log.Printf("⚠️ [Bridge] State event has no refs or HEAD to update: pubkey=%s repo=%s\n", event.PubKey, repoName)
 		return nil // Not an error - state event might have empty refs initially
 	}
 
