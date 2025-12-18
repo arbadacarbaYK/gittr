@@ -8824,13 +8824,23 @@ export default function RepoCodePage({
                 repoClone: repo.clone,
               });
             }
-            const isNostrRepo = repo.syncedFromNostr || repo.lastNostrEventId || repo.nostrEventId;
+            // CRITICAL: A repo is a "Nostr repo" if:
+            // 1. It was synced from Nostr (syncedFromNostr)
+            // 2. It has been pushed to Nostr (has event IDs)
+            // 3. It was created locally without sourceUrl (native Nostr repo, even if not pushed yet)
+            //    - No sourceUrl AND no forkedFrom = native Nostr repo
+            const isNativeNostrRepo = !hasSourceUrl && !repo.forkedFrom;
+            const isNostrRepo = repo.syncedFromNostr || repo.lastNostrEventId || repo.nostrEventId || isNativeNostrRepo;
             const hasLocalEdits = repo.hasUnpushedEdits || (repo.files && Array.isArray(repo.files) && repo.files.length > 0);
             // Show refetch if: (has sourceUrl OR is Nostr repo) AND user owns it AND (has local edits OR no files found)
             // OR if user owns it but sourceUrl is missing (needs re-import)
             const showRefetchButton = (hasSourceUrl || isNostrRepo) && repoIsOwnerFlag && (hasLocalEdits || !repo.files || repo.files.length === 0);
-            // Show re-import button if repo exists but has no sourceUrl and user owns it
-            const showReimportButton = !hasSourceUrl && !isNostrRepo && repoIsOwnerFlag && currentUserPubkey;
+            // Show re-import button ONLY if:
+            // - Repo has no sourceUrl (was imported but sourceUrl lost)
+            // - AND it's NOT a native Nostr repo (has forkedFrom or was synced from Nostr)
+            // - AND user owns it
+            // This prevents showing re-import for newly created native Nostr repos
+            const showReimportButton = !hasSourceUrl && !isNativeNostrRepo && repoIsOwnerFlag && currentUserPubkey;
             
             // Debug log removed - too verbose on every render
             // if (!repoIsOwnerFlag || !currentUserPubkey || !publish || !subscribe || !defaultRelays || defaultRelays.length === 0) {
