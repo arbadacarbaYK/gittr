@@ -63,8 +63,15 @@ export async function sendNostrDM(
         });
 
         if (response.ok) {
-          console.log("Platform notification sent via API");
-          return;
+          const result = await response.json();
+          // Check if API says to use user's key (NOSTR_NSEC not configured)
+          if (result.status === "use_user_key") {
+            console.log("Platform key not configured, using user's own key for notification");
+            // Fall through to use user's key
+          } else {
+            console.log("Platform notification sent via API");
+            return;
+          }
         } else {
           const error = await response.json();
           console.warn("API notification failed, falling back to user key:", error);
