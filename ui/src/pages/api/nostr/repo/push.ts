@@ -332,16 +332,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    await execAsync(`git -C "${tempDir}" add -A`);
-    
-    // CRITICAL: For chunked pushes, commit each chunk so next chunk can see previous files
-    // - Chunk 1: Starts fresh with new files only, commits and pushes
-    // - Chunks 2+: Clone repo (has files from previous chunks in THIS push), add new files, commit and push
-    // This way each chunk builds on the previous one, and the last chunk has all files
-    // For non-chunked pushes, always commit
+    // CRITICAL: For chunked pushes, only add/commit on the final chunk
+    // Intermediate chunks just write files - git add/commit happens once at the end
+    // This avoids slow git add operations on progressively larger directories
     const shouldCommit = createCommit !== false; // Default to true, only skip if explicitly false
     
     if (shouldCommit) {
+      // CRITICAL: Only run git add on the final chunk (or non-chunked pushes)
+      // git add -A on a directory with hundreds of files (from previous chunks) is VERY slow
+      // By deferring git add until the final chunk, we only do it once with all files
+      await execAsync(`git -C "${tempDir}" add -A`);
       // CRITICAL: Use --allow-empty to always create a new commit, even if files are unchanged
       // This ensures each push to Nostr creates a new commit with the correct date, which gitworkshop.dev will show
       // Without this, if files are identical, git won't create a commit and state event will point to old commit
