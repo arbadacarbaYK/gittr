@@ -23,6 +23,7 @@ The gittr bridge API allows you to:
 The bridge API accepts a POST request with repository files:
 
 ```bash
+# Using hex pubkey (64-char format)
 curl -X POST https://git.gittr.space/api/nostr/repo/push \
   -H "Content-Type: application/json" \
   -d '{
@@ -43,11 +44,30 @@ curl -X POST https://git.gittr.space/api/nostr/repo/push \
     ],
     "commitDate": 1734614400
   }'
+
+# OR using npub format (NIP-19) - will be automatically decoded
+curl -X POST https://git.gittr.space/api/nostr/repo/push \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ownerPubkey": "npub1abc123...",
+    "repo": "my-repo",
+    "branch": "main",
+    "files": [
+      {
+        "path": "README.md",
+        "content": "# My Repository\n\nThis is my repo.",
+        "isBinary": false
+      }
+    ]
+  }'
 ```
 
 ### Parameters
 
-- **ownerPubkey** (required): Your Nostr public key as 64-char hex string (not npub)
+- **ownerPubkey** (required): Your Nostr public key as **64-char hex string** OR **npub format** (NIP-19)
+  - Hex format: `9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c` (64 characters)
+  - npub format: `npub1...` (will be automatically decoded to hex internally)
+  - **Note**: The bridge stores repos by hex pubkey in the filesystem, but the API accepts both formats for convenience
 - **repo** (required): Repository name/slug
 - **branch** (optional): Branch name, defaults to "main"
 - **files** (required): Array of file objects:
@@ -152,6 +172,7 @@ done < <(git ls-files)
 files_json+="]"
 
 # Push to bridge
+# Note: OWNER_PUBKEY can be either hex (64-char) or npub format
 curl -X POST "$BRIDGE_URL" \
   -H "Content-Type: application/json" \
   -d "{
