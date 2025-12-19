@@ -1,0 +1,187 @@
+# CLI Push to gittr.space Bridge
+
+Developers working locally can use gittr's bridge API to push their repositories to Nostr without using the web UI.
+
+## Overview
+
+The gittr bridge API allows you to:
+1. **Push files to the bridge** (`/api/nostr/repo/push`) - Creates/updates the git repository on the bridge (Nostr git server)
+2. **Publish Nostr events** (`/api/nostr/repo/event`) - Publishes announcement/state events to Nostr
+
+**Note**: This API pushes to the **Nostr bridge** (git.gittr.space), not to GitHub. To push to GitHub, use standard `git push` commands. You can push to both:
+- **GitHub**: `git push origin main` (standard git workflow)
+- **Nostr**: Use the API below or `git push nostr main` (if configured)
+
+## Prerequisites
+
+- Your Nostr public key (64-char hex) or npub
+- Repository name
+- Files from your local git repository
+
+## Step 1: Push Files to Bridge
+
+The bridge API accepts a POST request with repository files:
+
+```bash
+curl -X POST https://git.gittr.space/api/nostr/repo/push \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ownerPubkey": "9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c",
+    "repo": "my-repo",
+    "branch": "main",
+    "files": [
+      {
+        "path": "README.md",
+        "content": "# My Repository\n\nThis is my repo.",
+        "isBinary": false
+      },
+      {
+        "path": "src/main.js",
+        "content": "console.log(\"Hello, world!\");",
+        "isBinary": false
+      }
+    ],
+    "commitDate": 1734614400
+  }'
+```
+
+### Parameters
+
+- **ownerPubkey** (required): Your Nostr public key as 64-char hex string (not npub)
+- **repo** (required): Repository name/slug
+- **branch** (optional): Branch name, defaults to "main"
+- **files** (required): Array of file objects:
+  - `path`: File path relative to repo root
+  - `content`: File content as string (UTF-8 for text, base64 for binary)
+  - `isBinary` (optional): `true` for binary files, `false` for text (default)
+- **commitDate** (optional): Unix timestamp in seconds for commit date (defaults to current time)
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "Bridge push completed",
+  "missingFiles": [],
+  "pushedFiles": 2,
+  "refs": [
+    {
+      "ref": "refs/heads/main",
+      "commit": "abc123def456..."
+    }
+  ]
+}
+```
+
+## Step 2: Publish Nostr Events
+
+After pushing files, you need to publish Nostr events (announcement and state) so other clients can discover your repository.
+
+### Option A: Use gittr Web UI
+
+The easiest way is to use the gittr.space web UI to publish the Nostr events after pushing files via CLI.
+
+### Option B: Publish Events Directly
+
+You can publish events directly to the bridge's HTTP API:
+
+```bash
+curl -X POST https://git.gittr.space/api/nostr/repo/event \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "event_id_here",
+    "kind": 30617,
+    "pubkey": "9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c",
+    "created_at": 1734614400,
+    "tags": [
+      ["d", "my-repo"],
+      ["name", "My Repository"],
+      ["description", "My awesome repository"],
+      ["clone", "https://git.gittr.space/npub1.../my-repo.git"]
+    ],
+    "content": "",
+    "sig": "signature_here"
+  }'
+```
+
+**Note**: Events must be properly signed with your Nostr private key. The bridge validates signatures.
+
+## Complete Example Script
+
+Here's a bash script that reads files from a local git repo and pushes to gittr:
+
+```bash
+#!/bin/bash
+
+# Configuration
+OWNER_PUBKEY="9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c"
+REPO_NAME="my-repo"
+BRANCH="main"
+BRIDGE_URL="https://git.gittr.space/api/nostr/repo/push"
+
+# Get all files from current directory (excluding .git)
+files_json="["
+first=true
+
+while IFS= read -r file; do
+  if [[ "$file" == .git/* ]] || [[ "$file" == .git ]]; then
+    continue
+  fi
+  
+  if [ -f "$file" ]; then
+    if [ "$first" = true ]; then
+      first=false
+    else
+      files_json+=","
+    fi
+    
+    # Check if binary
+    if file "$file" | grep -q "text"; then
+      content=$(cat "$file" | jq -Rs .)
+      is_binary=false
+    else
+      content=$(base64 -w 0 < "$file" | jq -Rs .)
+      is_binary=true
+    fi
+    
+    path=$(echo "$file" | jq -Rs .)
+    files_json+="{\"path\":$path,\"content\":$content,\"isBinary\":$is_binary}"
+  fi
+done < <(git ls-files)
+
+files_json+="]"
+
+# Push to bridge
+curl -X POST "$BRIDGE_URL" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"ownerPubkey\": \"$OWNER_PUBKEY\",
+    \"repo\": \"$REPO_NAME\",
+    \"branch\": \"$BRANCH\",
+    \"files\": $files_json
+  }"
+```
+
+## Limitations
+
+1. **File Size**: The API has a 25MB body size limit. For very large repos, consider using `git push` directly to the bridge via SSH.
+2. **Binary Files**: Binary files must be base64-encoded. Large binaries may exceed size limits.
+3. **Nostr Events**: You still need to publish Nostr events separately (announcement kind 30617 and state kind 30618) for full discovery by other clients.
+
+## Alternative: Direct Git Push
+
+For developers already using git, you can push directly to the bridge via SSH:
+
+```bash
+git remote add nostr git@git.gittr.space:npub1.../repo.git
+git push nostr main
+```
+
+This bypasses the API and works with standard git commands. The bridge will automatically create the repository if it doesn't exist.
+
+## See Also
+
+- [FILE_FETCHING_INSIGHTS.md](./FILE_FETCHING_INSIGHTS.md) - Complete file fetching flow
+- [SSH_GIT_GUIDE.md](./SSH_GIT_GUIDE.md) - SSH git operations guide
+- [GIT_NOSTR_BRIDGE_SETUP.md](./GIT_NOSTR_BRIDGE_SETUP.md) - Bridge setup documentation
+
