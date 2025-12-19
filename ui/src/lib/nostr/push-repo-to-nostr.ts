@@ -754,8 +754,8 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
               const fileEntries = treeData.tree.filter((entry: any) => entry.type === "blob" && entry.path);
               console.log(`✅ [Push Repo] Emergency: Fetched ${fileEntries.length} file paths from GitHub`);
               
-              // Add files to bridgeFilesMap (without content yet)
-              fileEntries.slice(0, 100).forEach((entry: any) => {
+              // Add ALL files to bridgeFilesMap (without content yet) - NO LIMIT
+              fileEntries.forEach((entry: any) => {
                 const normalizedPath = normalizeFilePath(entry.path);
                 if (normalizedPath) {
                   const isBinary = isBinaryFile(normalizedPath);
@@ -763,9 +763,9 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
                 }
               });
               
-              // Now fetch content for these files
-              const filesToFetch = Array.from(bridgeFilesMap.keys()).slice(0, 50);
-              console.log(`🚨 [Push Repo] Emergency: Now fetching content for ${filesToFetch.length} files...`);
+              // Now fetch content for ALL files - NO LIMIT
+              const filesToFetch = Array.from(bridgeFilesMap.keys());
+              console.log(`🚨 [Push Repo] Emergency: Now fetching content for ALL ${filesToFetch.length} files...`);
               
               const BATCH_SIZE = 5;
               for (let i = 0; i < filesToFetch.length; i += BATCH_SIZE) {
@@ -825,15 +825,15 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         allFilePaths: Array.from(bridgeFilesMap.keys()).slice(0, 10),
       });
       
-      // EMERGENCY: Fetch ALL files from GitHub right now
+      // EMERGENCY: Fetch ALL files from GitHub right now - NO LIMIT
       onProgress?.("🚨 Emergency: Fetching ALL files from GitHub (this may take a moment)...");
       const githubMatch = repo.sourceUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
       if (githubMatch) {
         const [, owner, repoName] = githubMatch;
         const branch = repo.defaultBranch || "main";
-        const allFilesToFetch = Array.from(bridgeFilesMap.keys()).slice(0, 50); // Limit to 50 files
+        const allFilesToFetch = Array.from(bridgeFilesMap.keys()); // NO LIMIT - fetch ALL files
         
-        console.log(`🚨 [Push Repo] Emergency fetch: ${allFilesToFetch.length} files from GitHub...`);
+        console.log(`🚨 [Push Repo] Emergency fetch: Fetching ALL ${allFilesToFetch.length} files from GitHub...`);
         
         const BATCH_SIZE = 5;
         for (let i = 0; i < allFilesToFetch.length; i += BATCH_SIZE) {
