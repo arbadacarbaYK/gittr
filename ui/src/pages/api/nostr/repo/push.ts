@@ -438,13 +438,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Non-critical - we can still return success, client can query refs later
     }
 
-    // CRITICAL: Clean up shared working directory after last chunk
-    if (isChunked && pushSessionId && (chunkIndex === totalChunks - 1 || !createCommit)) {
-      // Last chunk or intermediate chunk that won't commit - clean up working directory
+    // CRITICAL: Clean up shared working directory ONLY after last chunk completes
+    // DO NOT clean up after intermediate chunks - they need the directory for subsequent chunks
+    if (isChunked && pushSessionId && chunkIndex === totalChunks - 1) {
+      // Only clean up after the final chunk (last chunk index = totalChunks - 1)
       try {
         if (tempDir && existsSync(tempDir)) {
           await rm(tempDir, { recursive: true, force: true });
-          console.log(`🧹 [Bridge Push] Cleaned up shared working directory after chunk ${chunkIndex + 1}/${totalChunks}`);
+          console.log(`🧹 [Bridge Push] Cleaned up shared working directory after final chunk ${chunkIndex + 1}/${totalChunks}`);
         }
       } catch (cleanupError: any) {
         console.warn(`⚠️ [Bridge Push] Failed to clean up working directory:`, cleanupError?.message);
