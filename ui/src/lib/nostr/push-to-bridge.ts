@@ -87,15 +87,22 @@ export async function pushFilesToBridge({
     // Push chunks sequentially to avoid overwhelming the server
     // CRITICAL: Each chunk must commit because each API call uses a new temp directory
     // Multiple commits are fine - they'll all be in the repo
+    // NOTE: Empty chunks are allowed - they create empty commits (--allow-empty)
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      if (!chunk || chunk.length === 0) {
-        console.warn(`⚠️ [Bridge Push] Skipping empty chunk ${i + 1}/${chunks.length}`);
+      // CRITICAL: Allow empty chunks - they're used for empty commits
+      // Don't skip them, just log that they're empty
+      if (!chunk) {
+        console.warn(`⚠️ [Bridge Push] Skipping null chunk ${i + 1}/${chunks.length}`);
         continue;
       }
       const isLastChunk = i === chunks.length - 1;
       
-      console.log(`📤 [Bridge Push] Pushing chunk ${i + 1}/${chunks.length} (${chunk.length} files)...`);
+      if (chunk.length === 0) {
+        console.log(`📤 [Bridge Push] Pushing empty chunk ${i + 1}/${chunks.length} (will create empty commit)...`);
+      } else {
+        console.log(`📤 [Bridge Push] Pushing chunk ${i + 1}/${chunks.length} (${chunk.length} files)...`);
+      }
 
       const response = await fetch("/api/nostr/repo/push", {
         method: "POST",
