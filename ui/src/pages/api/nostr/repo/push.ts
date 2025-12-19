@@ -3,8 +3,8 @@ import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { promisify } from "util";
 import { exec } from "child_process";
-import { existsSync, readFileSync } from "fs";
-import { mkdtemp, writeFile, mkdir, rm } from "fs/promises";
+import { existsSync, readFileSync, statSync } from "fs";
+import { mkdtemp, writeFile, mkdir, rm, stat } from "fs/promises";
 import { dirname, join, normalize } from "path";
 import os from "os";
 
@@ -243,6 +243,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       const targetPath = join(tempDir, safePath);
+      
+      // CRITICAL: Check if target path already exists as a directory
+      // If it does, skip writing (directories are created automatically by git)
+      // This prevents EISDIR errors when trying to write to a directory path
+      try {
+        const stats = await stat(targetPath).catch(() => null);
+        if (stats && stats.isDirectory()) {
+          console.warn(`⚠️ [Bridge Push] Skipping ${safePath} - path exists as directory (not a file)`);
+          continue;
+        }
+      } catch (statError) {
+        // Path doesn't exist yet, which is fine - we'll create it
+      }
+      
       await mkdir(dirname(targetPath), { recursive: true });
 
       const buffer = file.isBinary
