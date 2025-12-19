@@ -9010,10 +9010,10 @@ export default function RepoCodePage({
                         
                         // Handle refetch for GitHub/GitLab/Codeberg repos
                         if (hasEffectiveSourceUrl) {
-                          if (!effectiveSourceUrl) {
-                            alert("No source URL found for this repository");
-                            return;
-                          }
+                        if (!effectiveSourceUrl) {
+                          alert("No source URL found for this repository");
+                          return;
+                        }
                         
                         try {
                           setIsRefetching(true);
