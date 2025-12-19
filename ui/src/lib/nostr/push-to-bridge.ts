@@ -74,6 +74,12 @@ export async function pushFilesToBridge({
     chunks.push([]);
   }
 
+  // CRITICAL: Generate a push session ID that all chunks will share
+  // This allows the backend to reuse the same working directory for all chunks
+  // Instead of cloning the repo for each chunk, we clone once and reuse
+  const pushSessionId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  console.log(`🔑 [Bridge Push] Push session ID: ${pushSessionId} (shared across ${chunks.length} chunks)`);
+
   // CRITICAL: Each chunk gets its own timeout (5 minutes per chunk)
   // This ensures each chunk has a full 5-minute window, not a cumulative timeout
   const BRIDGE_PUSH_TIMEOUT_PER_CHUNK = 300000; // 5 minutes per chunk
@@ -99,12 +105,22 @@ export async function pushFilesToBridge({
         console.log(`📤 [Bridge Push] Pushing empty chunk ${i + 1}/${chunks.length} (will create empty commit)...`);
       } else {
         console.log(`📤 [Bridge Push] Pushing chunk ${i + 1}/${chunks.length} (${chunk.length} files)...`);
+        // Log first few file paths in this chunk for debugging
+        const filePaths = chunk.slice(0, 10).map(f => f.path).join(', ');
+        const moreFiles = chunk.length > 10 ? ` (+${chunk.length - 10} more)` : '';
+        console.log(`📋 [Bridge Push] Chunk ${i + 1} files: ${filePaths}${moreFiles}`);
       }
 
       // CRITICAL: Create a new AbortController and timeout for each chunk
       // This ensures each chunk gets its own 5-minute window, not a cumulative timeout
       const chunkController = new AbortController();
       const chunkTimeoutId = setTimeout(() => chunkController.abort(), BRIDGE_PUSH_TIMEOUT_PER_CHUNK);
+      const chunkStartTime = Date.now();
+      
+      // Add a heartbeat to show the request is still alive (log every 30 seconds)
+      const heartbeatInterval = setInterval(() => {
+        console.log(`💓 [Bridge Push] Chunk ${i + 1}/${chunks.length} still processing... (${Math.floor((Date.now() - chunkStartTime) / 1000)}s elapsed)`);
+      }, 30000);
 
       try {
         const response = await fetch("/api/nostr/repo/push", {
@@ -118,9 +134,10 @@ export async function pushFilesToBridge({
             branch,
             files: chunk,
             commitDate, // Pass commitDate to API (Unix timestamp in seconds)
-            // CRITICAL: Commit each chunk because each API call uses a new temp directory
-            // The last chunk will have the final state, previous chunks are intermediate commits
-            createCommit: true, // Always commit - each chunk is a separate API call
+            // CRITICAL: Use push session ID to share working directory across chunks
+            // Only commit on the last chunk - all previous chunks just add files
+            pushSessionId, // Shared session ID for all chunks in this push
+            createCommit: i === chunks.length - 1, // Only commit on last chunk
             chunkIndex: i,
             totalChunks: chunks.length,
           }),
@@ -172,12 +189,21 @@ export async function pushFilesToBridge({
           // The final refs logic will handle the fallback
         }
 
-        console.log(`✅ [Bridge Push] Chunk ${i + 1}/${chunks.length} pushed successfully`);
+        clearInterval(heartbeatInterval);
+        const elapsed = Math.floor((Date.now() - chunkStartTime) / 1000);
+        console.log(`✅ [Bridge Push] Chunk ${i + 1}/${chunks.length} pushed successfully (took ${elapsed}s)`);
       } catch (chunkError: any) {
         clearTimeout(chunkTimeoutId);
+        clearInterval(heartbeatInterval);
         if (chunkError.name === 'AbortError') {
-          throw new Error(`Bridge push timeout for chunk ${i + 1} after ${BRIDGE_PUSH_TIMEOUT_PER_CHUNK / 1000} seconds. The chunk may be too large.`);
+          const filePaths = chunk.slice(0, 10).map(f => f.path).join(', ');
+          const moreFiles = chunk.length > 10 ? ` (+${chunk.length - 10} more)` : '';
+          throw new Error(`Bridge push timeout for chunk ${i + 1}/${chunks.length} after ${BRIDGE_PUSH_TIMEOUT_PER_CHUNK / 1000} seconds. Files in chunk: ${filePaths}${moreFiles}. The chunk may be too large or the backend may be stuck.`);
         }
+        const filePaths = chunk.slice(0, 10).map(f => f.path).join(', ');
+        const moreFiles = chunk.length > 10 ? ` (+${chunk.length - 10} more)` : '';
+        console.error(`❌ [Bridge Push] Chunk ${i + 1}/${chunks.length} failed:`, chunkError);
+        console.error(`❌ [Bridge Push] Files in failed chunk: ${filePaths}${moreFiles}`);
         throw chunkError;
       } finally {
         // Always clear the timeout for this chunk
