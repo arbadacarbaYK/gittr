@@ -11,11 +11,11 @@ interface PushBridgeParams {
 }
 
 // CRITICAL: Chunk files to avoid 413 Request Entity Too Large errors
-// nginx has a default client_max_body_size limit (usually 1MB, but can be configured)
-// We'll chunk files into smaller batches to stay under the limit
-// Using smaller chunks to be safe - each chunk should be well under 10MB
-const CHUNK_SIZE = 30; // Number of files per chunk (conservative to avoid 413 errors)
-const MAX_CHUNK_SIZE_BYTES = 8 * 1024 * 1024; // 8MB per chunk (safety margin below typical 10MB nginx limit)
+// nginx default client_max_body_size is usually 1MB, but can be configured
+// We've seen chunks of ~2MB being rejected, so we need to be more conservative
+// Using smaller chunks to be safe - each chunk should be well under 1MB
+const CHUNK_SIZE = 15; // Number of files per chunk (reduced from 30 to avoid 413 errors)
+const MAX_CHUNK_SIZE_BYTES = 1 * 1024 * 1024; // 1MB per chunk (conservative to avoid nginx rejections)
 
 function chunkFiles(files: BridgeFilePayload[]): BridgeFilePayload[][] {
   const chunks: BridgeFilePayload[][] = [];
@@ -24,9 +24,13 @@ function chunkFiles(files: BridgeFilePayload[]): BridgeFilePayload[][] {
 
   for (const file of files) {
     // Estimate file size (content length + overhead for JSON encoding)
+    // CRITICAL: Base64 encoding increases size by ~33%, plus JSON structure overhead
+    // JSON overhead includes: keys ("path", "content", "isBinary"), quotes, commas, brackets
+    // For a typical file: {"path":"...","content":"...","isBinary":false} adds ~50-100 bytes
+    // Base64 content: original_size * 1.33 + JSON overhead (~100 bytes per file)
     const estimatedSize = file.content 
-      ? (file.content.length * 1.5) + 500 // Base64 is ~1.33x, JSON overhead ~500 bytes
-      : 1000; // Metadata only
+      ? (file.content.length * 1.4) + 200 // Base64 is ~1.33x, JSON overhead ~200 bytes per file (more conservative)
+      : 500; // Metadata only (path, isBinary) - minimal overhead
 
     // If adding this file would exceed the limit, start a new chunk
     if (currentChunk.length > 0 && 
@@ -144,6 +148,20 @@ export async function pushFilesToBridge({
           signal: chunkController.signal,
         });
 
+    // CRITICAL: Handle 413 errors FIRST - nginx rejects large bodies before they reach Next.js
+    // nginx returns HTML for 413 errors, not JSON, so we need to check status before parsing
+    if (response.status === 413) {
+      const filePaths = chunk.slice(0, 10).map(f => f.path).join(', ');
+      const moreFiles = chunk.length > 10 ? ` (+${chunk.length - 10} more)` : '';
+      const text = await response.text().catch(() => '');
+      console.error(`❌ [Bridge Push] Chunk ${i + 1}/${chunks.length} rejected by nginx (413):`, {
+        filePaths: `${filePaths}${moreFiles}`,
+        chunkSize: chunk.length,
+        nginxResponse: text.substring(0, 200),
+      });
+      throw new Error(`Chunk ${i + 1}/${chunks.length} is too large (413 Request Entity Too Large). Nginx rejected the request. Files: ${filePaths}${moreFiles}. The chunk size limit needs to be reduced further.`);
+    }
+
     // Check content type before parsing JSON
     const contentType = response.headers.get("content-type");
     if (!contentType || !contentType.includes("application/json")) {
@@ -155,7 +173,7 @@ export async function pushFilesToBridge({
       });
       throw new Error(`Bridge API returned HTML instead of JSON (status: ${response.status}). The endpoint may not exist or returned an error page.`);
     }
-
+    
     const data = await response.json();
     if (!response.ok) {
           throw new Error(data.error || `Bridge push failed for chunk ${i + 1} (status: ${response.status})`);
