@@ -18,12 +18,14 @@ export async function pushFilesToBridge({
   files,
   commitDate,
 }: PushBridgeParams) {
-  if (!ownerPubkey || !repoSlug || !files) {
+  // CRITICAL: Allow empty files array - we'll still create a commit with --allow-empty
+  // This ensures every push creates a new commit with the current timestamp
+  // Only skip if files is null/undefined (not if it's an empty array)
+  if (!ownerPubkey || !repoSlug || files === null || files === undefined) {
     return { skipped: true };
   }
   
-  // Allow empty files array - we'll still create a commit with --allow-empty
-  // This ensures every push creates a new commit with the current timestamp
+  // files can be an empty array [] - that's valid, we'll create an empty commit
 
   // CRITICAL: Add timeout for large repos (5 minutes max)
   const BRIDGE_PUSH_TIMEOUT = 300000; // 5 minutes
