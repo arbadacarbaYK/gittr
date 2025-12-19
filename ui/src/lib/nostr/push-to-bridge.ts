@@ -148,14 +148,23 @@ export async function pushFilesToBridge({
         
         // CRITICAL: Always update refs with the current chunk's refs
         // Each chunk returns the complete refs (all commits in the repo after this chunk)
-        // The last chunk will have the final refs, but we need to track it for each chunk
-        // in case a later chunk doesn't return refs (we'll use the last known good refs)
+        // Each chunk should have refs because it commits and pushes
+        // Missing refs from intermediate chunks is a problem because:
+        // - Chunk 1 returns refs with commit SHA1 (has files 1-30)
+        // - Chunk 2 should return refs with commit SHA2 (has files 1-60)
+        // - If chunk 2 doesn't return refs, we keep chunk 1's refs (SHA1), which lacks files from chunk 2
+        // - This breaks the contract that each chunk accumulates all previous files
         if (data.refs && Array.isArray(data.refs)) {
           allRefs = data.refs; // Update with current chunk's refs
-        } else if (i === chunks.length - 1) {
-          // CRITICAL: Last chunk must have refs - if it doesn't, log a warning
-          // but don't fail (we'll use the last known good refs from previous chunk)
-          console.warn(`⚠️ [Bridge Push] Last chunk (${i + 1}/${chunks.length}) did not return refs. Using refs from previous chunk.`);
+        } else {
+          // CRITICAL: Warn for ANY chunk missing refs, not just the last one
+          // Missing refs from intermediate chunks causes stale commit SHAs in state events
+          const isLastChunk = i === chunks.length - 1;
+          console.warn(`⚠️ [Bridge Push] Chunk ${i + 1}/${chunks.length} (${isLastChunk ? 'last' : 'intermediate'}) did not return refs. ${isLastChunk ? 'Using refs from previous chunk.' : 'This may cause stale commit SHAs in state events - chunk may not have committed properly.'}`);
+          
+          // For intermediate chunks, this is more critical - we need accurate refs
+          // But we don't fail here because the last chunk might still return valid refs
+          // The final refs logic will handle the fallback
         }
 
         console.log(`✅ [Bridge Push] Chunk ${i + 1}/${chunks.length} pushed successfully`);
