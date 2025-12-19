@@ -48,6 +48,9 @@ export interface RepositoryEvent {
   contributors?: Array<{pubkey?: string; name?: string; picture?: string; weight: number; githubLogin?: string}>;
   defaultBranch?: string;
   branches?: Array<{name: string; commit?: string}>;
+  // TODO: Extend releases to include asset URLs from Blossom (NIP-96) uploads
+  // Current: Only metadata (tag, name, description, createdAt)
+  // Planned: Add assets array with Blossom URLs, optional payment requirements
   releases?: Array<{tag: string; name: string; description?: string; createdAt?: number}>;
   logoUrl?: string;
   requiredApprovals?: number;

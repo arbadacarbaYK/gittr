@@ -69,8 +69,8 @@ export async function sendNostrDM(
             console.log("Platform key not configured, using user's own key for notification");
             // Fall through to use user's key
           } else {
-            console.log("Platform notification sent via API");
-            return;
+          console.log("Platform notification sent via API");
+          return;
           }
         } else {
           const error = await response.json();
