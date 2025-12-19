@@ -258,7 +258,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await execAsync(`git -C "${tempDir}" add -A`);
     
     // CRITICAL: For chunked pushes, commit each chunk so next chunk can see previous files
-    // Each chunk clones the existing repo first, adds new files, commits and pushes
+    // - Chunk 1: Starts fresh with new files only, commits and pushes
+    // - Chunks 2+: Clone repo (has files from previous chunks in THIS push), add new files, commit and push
     // This way each chunk builds on the previous one, and the last chunk has all files
     // For non-chunked pushes, always commit
     const shouldCommit = createCommit !== false; // Default to true, only skip if explicitly false
