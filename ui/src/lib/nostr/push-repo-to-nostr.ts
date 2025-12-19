@@ -703,6 +703,9 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           console.warn(`   💡 This file should have been loaded during import/create. If it's missing, re-import the repository.`);
         }));
       }
+      
+      // CRITICAL: After fetching, log results
+      console.log(`📊 [Push Repo] After fetching: ${filesForBridge.length} files with content, ${filesNeedingContent.length - filesForBridge.length} still missing content`);
     }
     
     // CRITICAL: Log detailed info about files
