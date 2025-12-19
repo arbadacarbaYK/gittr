@@ -99,6 +99,37 @@ func handleRepositoryStateEvent(event nostr.Event, db *sql.DB, cfg bridge.Config
 			continue
 		}
 
+		// CRITICAL: Validate commit exists before updating ref
+		// This handles cases where state events have invalid commit SHAs (e.g., after migration)
+		// Check if commit exists using git cat-file -e (exits with 0 if exists, 1 if not)
+		checkCmd := exec.Command("git", "--git-dir", repoPath, "cat-file", "-e", ref.commit)
+		checkErr := checkCmd.Run()
+		if checkErr != nil {
+			// Commit doesn't exist - try to fallback to current HEAD of this ref
+			commitDisplay := ref.commit
+			if len(ref.commit) > 8 {
+				commitDisplay = ref.commit[:8]
+			}
+			log.Printf("⚠️ [Bridge] Commit %s doesn't exist (possibly invalid after migration), trying HEAD fallback for ref %s\n", commitDisplay, ref.ref)
+			
+			// Try to get current HEAD commit of this ref
+			headCmd := exec.Command("git", "--git-dir", repoPath, "rev-parse", ref.ref)
+			headOutput, headErr := headCmd.Output()
+			if headErr == nil {
+				headCommit := strings.TrimSpace(string(headOutput))
+				if headCommit != "" {
+					log.Printf("💡 [Bridge] Using HEAD commit %s for ref %s (fallback from invalid commit %s)\n", headCommit[:8], ref.ref, commitDisplay)
+					ref.commit = headCommit // Update to use HEAD commit
+				} else {
+					log.Printf("⚠️ [Bridge] Ref %s has no HEAD commit, skipping update\n", ref.ref)
+					continue
+				}
+			} else {
+				log.Printf("⚠️ [Bridge] Ref %s doesn't exist yet, skipping update (commit %s invalid)\n", ref.ref, commitDisplay)
+				continue
+			}
+		}
+
 		// Update ref using git update-ref
 		// Format: git update-ref refs/heads/main commit-sha
 		cmd := exec.Command("git", "--git-dir", repoPath, "update-ref", ref.ref, ref.commit)
