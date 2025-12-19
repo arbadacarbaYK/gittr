@@ -142,6 +142,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await execAsync(`git -C "${tempDir}" config user.name "gittr push"`);
     await execAsync(`git -C "${tempDir}" config user.email "push@gittr.space"`);
 
+    // CRITICAL: If no files provided but repo exists, copy existing files from repo
+    // This ensures empty commits preserve the previous state (gitworkshop.dev needs files to display)
+    if (files.length === 0 && existsSync(repoPath)) {
+      console.log(`📋 [Bridge Push] No files provided, copying existing files from repo to preserve state...`);
+      try {
+        // Clone the bare repo to get all files into working tree
+        const cloneTempDir = await mkdtemp(join(os.tmpdir(), "gittr-clone-"));
+        await execAsync(`git clone "${repoPath}" "${cloneTempDir}"`);
+        // Copy all files (except .git) from cloned repo to temp dir
+        await execAsync(`rsync -a --exclude='.git' "${cloneTempDir}/" "${tempDir}/"`);
+        // Clean up clone temp dir
+        await execAsync(`rm -rf "${cloneTempDir}"`);
+        console.log(`✅ [Bridge Push] Copied existing files from repo`);
+      } catch (cloneError: any) {
+        console.warn(`⚠️ [Bridge Push] Failed to copy existing files, will create empty commit:`, cloneError?.message);
+      }
+    }
+
     let writtenFiles = 0;
     for (const file of files as IncomingFile[]) {
       if (!file || typeof file.path !== "string") continue;
