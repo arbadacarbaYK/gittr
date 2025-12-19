@@ -88,7 +88,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { ownerPubkey, repo: repoName, branch = "main", files } = req.body || {};
+  const { ownerPubkey, repo: repoName, branch = "main", files, commitDate } = req.body || {};
 
   if (!ownerPubkey || typeof ownerPubkey !== "string" || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
     return res.status(400).json({ error: "ownerPubkey must be a full 64-char hex string" });
@@ -101,6 +101,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!Array.isArray(files) || files.length === 0) {
     return res.status(400).json({ error: "files array is required" });
   }
+  
+  // Use provided commitDate (Unix timestamp in seconds) or current time
+  // commitDate should be from lastNostrEventCreatedAt to preserve push history
+  const commitTimestamp = commitDate && typeof commitDate === "number" && commitDate > 0
+    ? commitDate
+    : Math.floor(Date.now() / 1000);
 
   const reposDir = await resolveReposDir();
   const repoPath = join(reposDir, ownerPubkey, `${repoName}.git`);
@@ -164,10 +170,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     await execAsync(`git -C "${tempDir}" add -A`);
     // CRITICAL: Use --allow-empty to always create a new commit, even if files are unchanged
-    // This ensures each push to Nostr creates a new commit with today's date, which gitworkshop.dev will show
+    // This ensures each push to Nostr creates a new commit with the correct date, which gitworkshop.dev will show
     // Without this, if files are identical, git won't create a commit and state event will point to old commit
+    // CRITICAL: Set commit date using GIT_AUTHOR_DATE and GIT_COMMITTER_DATE environment variables
+    // This ensures the commit date matches when the repo was pushed, not when the commit is created
+    const commitDateISO = new Date(commitTimestamp * 1000).toISOString();
+    const commitDateRFC2822 = new Date(commitTimestamp * 1000).toUTCString();
     await execAsync(
-      `git -C "${tempDir}" commit --allow-empty -m "Push from gittr (${new Date().toISOString()})"`
+      `git -C "${tempDir}" commit --allow-empty -m "Push from gittr (${commitDateISO})"`,
+      {
+        env: {
+          ...process.env,
+          GIT_AUTHOR_DATE: commitDateRFC2822,
+          GIT_COMMITTER_DATE: commitDateRFC2822,
+        }
+      }
     );
     await execAsync(`git -C "${tempDir}" branch -M ${branch}`);
     await execAsync(`git -C "${tempDir}" remote add origin "${repoPath}"`);

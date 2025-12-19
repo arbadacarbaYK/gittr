@@ -7,6 +7,7 @@ interface PushBridgeParams {
   entity: string;
   branch?: string;
   files: BridgeFilePayload[];
+  commitDate?: number; // Unix timestamp in seconds (from lastNostrEventCreatedAt)
 }
 
 export async function pushFilesToBridge({
@@ -15,6 +16,7 @@ export async function pushFilesToBridge({
   entity,
   branch = "main",
   files,
+  commitDate,
 }: PushBridgeParams) {
   if (!ownerPubkey || !repoSlug || !files || files.length === 0) {
     return { skipped: true };
@@ -36,6 +38,7 @@ export async function pushFilesToBridge({
         repo: repoSlug,
         branch,
         files,
+        commitDate, // Pass commitDate to API (Unix timestamp in seconds)
       }),
       signal: controller.signal,
     });
