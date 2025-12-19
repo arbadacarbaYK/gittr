@@ -89,6 +89,10 @@ export async function pushFilesToBridge({
     // Multiple commits are fine - they'll all be in the repo
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
+      if (!chunk || chunk.length === 0) {
+        console.warn(`⚠️ [Bridge Push] Skipping empty chunk ${i + 1}/${chunks.length}`);
+        continue;
+      }
       const isLastChunk = i === chunks.length - 1;
       
       console.log(`📤 [Bridge Push] Pushing chunk ${i + 1}/${chunks.length} (${chunk.length} files)...`);
