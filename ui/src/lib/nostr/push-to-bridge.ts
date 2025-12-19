@@ -146,9 +146,16 @@ export async function pushFilesToBridge({
 
         lastResult = data;
         
-        // Accumulate refs from all chunks (last chunk will have the final refs)
+        // CRITICAL: Always update refs with the current chunk's refs
+        // Each chunk returns the complete refs (all commits in the repo after this chunk)
+        // The last chunk will have the final refs, but we need to track it for each chunk
+        // in case a later chunk doesn't return refs (we'll use the last known good refs)
         if (data.refs && Array.isArray(data.refs)) {
-          allRefs = data.refs;
+          allRefs = data.refs; // Update with current chunk's refs
+        } else if (i === chunks.length - 1) {
+          // CRITICAL: Last chunk must have refs - if it doesn't, log a warning
+          // but don't fail (we'll use the last known good refs from previous chunk)
+          console.warn(`⚠️ [Bridge Push] Last chunk (${i + 1}/${chunks.length}) did not return refs. Using refs from previous chunk.`);
         }
 
         console.log(`✅ [Bridge Push] Chunk ${i + 1}/${chunks.length} pushed successfully`);
@@ -164,10 +171,17 @@ export async function pushFilesToBridge({
       }
     }
 
-    // Return the last result with accumulated refs
+    // CRITICAL: Return the last chunk's result with the most recent refs
+    // Priority: lastResult.refs (if valid) > allRefs (last known good) > empty array
+    // The last chunk should have the final refs, but we use allRefs as fallback
+    // in case lastResult.refs is missing or invalid
+    const finalRefs = (lastResult?.refs && Array.isArray(lastResult.refs)) 
+      ? lastResult.refs 
+      : (allRefs.length > 0 ? allRefs : []);
+    
     const finalResult = {
       ...lastResult,
-      refs: allRefs,
+      refs: finalRefs,
     };
 
     try {
