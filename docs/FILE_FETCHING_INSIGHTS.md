@@ -856,9 +856,24 @@ When pushing a repository to Nostr, the system uses the following strategy for f
   2. Import repository → Files fetched and stored in `localStorage` → Push to Nostr
   3. If files are missing, re-import the repository to load all files into `localStorage`
 
+### Empty Commit File Preservation
+
+**Problem**: When pushing to update commit dates (e.g., after refetching from GitHub with no local edits), the system creates an empty commit. This results in `gitworkshop.dev` showing no files because the latest commit has no file tree.
+
+**Solution**: The push API (`/api/nostr/repo/push`) now preserves existing files when creating empty commits:
+- If `files.length === 0` and the repo exists, the system copies all files from the existing repo into the temp directory before creating the commit
+- This ensures that date-update commits preserve the previous state, allowing clients like `gitworkshop.dev` to display files correctly
+- The commit is still created with `--allow-empty` to ensure a new commit is always created with the current timestamp
+
+**Implementation**:
+- Location: `ui/src/pages/api/nostr/repo/push.ts` (lines 145-161)
+- Uses `git clone` to get files from bare repo, then `rsync` to copy to temp directory
+- Temp directories are automatically cleaned up in the `finally` block
+
 ### Implementation Details
 
-- Location: `ui/src/lib/nostr/push-repo-to-nostr.ts` (lines 462-533)
+- Location: `ui/src/lib/nostr/push-repo-to-nostr.ts` (lines 462-533) - File content fetching
+- Location: `ui/src/pages/api/nostr/repo/push.ts` (lines 145-161) - Empty commit file preservation
 - Bridge API fallback: Uses `/api/nostr/repo/file-content` endpoint
 - Batch processing: Limits concurrent fetches to 5 files at a time
 - Error handling: Gracefully excludes files that cannot be fetched, with clear warning messages
