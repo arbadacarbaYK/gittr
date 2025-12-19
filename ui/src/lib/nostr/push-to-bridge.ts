@@ -154,13 +154,18 @@ export async function pushFilesToBridge({
         // - Chunk 2 should return refs with commit SHA2 (has files 1-60)
         // - If chunk 2 doesn't return refs, we keep chunk 1's refs (SHA1), which lacks files from chunk 2
         // - This breaks the contract that each chunk accumulates all previous files
-        if (data.refs && Array.isArray(data.refs)) {
+        // CRITICAL: Check both that refs exists AND has length > 0 (empty arrays are truthy but invalid)
+        if (data.refs && Array.isArray(data.refs) && data.refs.length > 0) {
           allRefs = data.refs; // Update with current chunk's refs
         } else {
           // CRITICAL: Warn for ANY chunk missing refs, not just the last one
           // Missing refs from intermediate chunks causes stale commit SHAs in state events
           const isLastChunk = i === chunks.length - 1;
-          console.warn(`⚠️ [Bridge Push] Chunk ${i + 1}/${chunks.length} (${isLastChunk ? 'last' : 'intermediate'}) did not return refs. ${isLastChunk ? 'Using refs from previous chunk.' : 'This may cause stale commit SHAs in state events - chunk may not have committed properly.'}`);
+          if (data.refs && Array.isArray(data.refs) && data.refs.length === 0) {
+            console.warn(`⚠️ [Bridge Push] Chunk ${i + 1}/${chunks.length} (${isLastChunk ? 'last' : 'intermediate'}) returned empty refs array. ${isLastChunk ? 'Using refs from previous chunk.' : 'This may cause stale commit SHAs in state events - chunk may not have committed properly.'}`);
+          } else {
+            console.warn(`⚠️ [Bridge Push] Chunk ${i + 1}/${chunks.length} (${isLastChunk ? 'last' : 'intermediate'}) did not return refs. ${isLastChunk ? 'Using refs from previous chunk.' : 'This may cause stale commit SHAs in state events - chunk may not have committed properly.'}`);
+          }
           
           // For intermediate chunks, this is more critical - we need accurate refs
           // But we don't fail here because the last chunk might still return valid refs
@@ -181,10 +186,11 @@ export async function pushFilesToBridge({
     }
 
     // CRITICAL: Return the last chunk's result with the most recent refs
-    // Priority: lastResult.refs (if valid) > allRefs (last known good) > empty array
+    // Priority: lastResult.refs (if valid and non-empty) > allRefs (last known good) > empty array
     // The last chunk should have the final refs, but we use allRefs as fallback
-    // in case lastResult.refs is missing or invalid
-    const finalRefs = (lastResult?.refs && Array.isArray(lastResult.refs)) 
+    // in case lastResult.refs is missing, invalid, or empty
+    // CRITICAL: Check length > 0 - empty arrays are truthy but invalid
+    const finalRefs = (lastResult?.refs && Array.isArray(lastResult.refs) && lastResult.refs.length > 0)
       ? lastResult.refs 
       : (allRefs.length > 0 ? allRefs : []);
     
