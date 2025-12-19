@@ -627,39 +627,68 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
                 const branch = repo.defaultBranch || 'main';
                 
                 // Fetch file content from source
-                const sourceFileUrl = platform === 'github' 
-                  ? `/api/github/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoName}/contents/${file.path}?ref=${branch}`)}`
-                  : platform === 'gitlab'
-                  ? `/api/gitlab/proxy?endpoint=${encodeURIComponent(`/projects/${encodeURIComponent(`${owner}/${repoName}`)}/repository/files/${encodeURIComponent(file.path)}/raw?ref=${branch}`)}`
-                  : `/api/codeberg/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoName}/contents/${file.path}?ref=${branch}`)}`;
+                // CRITICAL: For GitHub, use Contents API which returns base64 for binary, text for text
+                // For text files, we can use raw.githubusercontent.com for faster fetching
+                let sourceFileUrl: string;
+                let useRaw = false;
+                
+                if (platform === 'github') {
+                  // Try raw URL first for text files (faster, no API rate limit)
+                  if (!file.isBinary) {
+                    sourceFileUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${encodeURIComponent(file.path)}`;
+                    useRaw = true;
+                  } else {
+                    // For binary, use Contents API to get base64
+                    sourceFileUrl = `/api/github/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoName}/contents/${encodeURIComponent(file.path)}?ref=${encodeURIComponent(branch)}`)}`;
+                  }
+                } else if (platform === 'gitlab') {
+                  sourceFileUrl = `/api/gitlab/proxy?endpoint=${encodeURIComponent(`/projects/${encodeURIComponent(`${owner}/${repoName}`)}/repository/files/${encodeURIComponent(file.path)}/raw?ref=${encodeURIComponent(branch)}`)}`;
+                  useRaw = true;
+                } else {
+                  sourceFileUrl = `/api/codeberg/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoName}/contents/${encodeURIComponent(file.path)}?ref=${encodeURIComponent(branch)}`)}`;
+                }
                 
                 const sourceResponse = await fetchWithTimeout(sourceFileUrl, FILE_FETCH_TIMEOUT);
                 if (sourceResponse.ok) {
-                  if (file.isBinary) {
-                    // For binary files, GitHub/GitLab return base64 in content field
+                  if (useRaw || (!file.isBinary && platform === 'github')) {
+                    // Raw content (text files from GitHub raw, or GitLab raw)
+                    if (file.isBinary) {
+                      // Binary from raw URL - convert to base64
+                      const arrayBuffer = await sourceResponse.arrayBuffer();
+                      file.content = Buffer.from(arrayBuffer).toString('base64');
+                    } else {
+                      // Text file
+                      file.content = await sourceResponse.text();
+                    }
+                    filesForBridge.push(file);
+                    console.log(`✅ [Push Repo] Fetched ${file.isBinary ? 'binary' : 'text'} content for ${file.path} from ${platform} (raw)`);
+                    return;
+                  } else {
+                    // Contents API response (GitHub for binary, Codeberg)
                     const sourceData = await sourceResponse.json();
                     if (sourceData.content) {
-                      // Decode base64 if needed (GitHub returns base64, GitLab returns raw)
-                      file.content = sourceData.encoding === 'base64' ? sourceData.content : 
-                                    Buffer.from(await sourceResponse.text()).toString('base64');
+                      if (sourceData.encoding === 'base64') {
+                        // Already base64 encoded
+                        file.content = sourceData.content;
+                      } else {
+                        // Not base64 - convert if binary
+                        if (file.isBinary) {
+                          file.content = Buffer.from(sourceData.content).toString('base64');
+                        } else {
+                          file.content = sourceData.content;
+                        }
+                      }
                       filesForBridge.push(file);
-                      console.log(`✅ [Push Repo] Fetched binary content for ${file.path} from ${platform}`);
-                      return;
-                    }
-                  } else {
-                    // For text files, get raw content
-                    const textContent = await sourceResponse.text();
-                    if (textContent && textContent.length > 0) {
-                      file.content = textContent;
-                      filesForBridge.push(file);
-                      console.log(`✅ [Push Repo] Fetched text content for ${file.path} from ${platform}`);
+                      console.log(`✅ [Push Repo] Fetched ${file.isBinary ? 'binary' : 'text'} content for ${file.path} from ${platform} (API)`);
                       return;
                     }
                   }
+                } else {
+                  console.warn(`⚠️ [Push Repo] Source fetch failed for ${file.path}: ${sourceResponse.status} ${sourceResponse.statusText}`);
                 }
               }
             } catch (sourceError: any) {
-              console.warn(`⚠️ [Push Repo] Failed to fetch ${file.path} from source:`, sourceError);
+              console.warn(`⚠️ [Push Repo] Failed to fetch ${file.path} from source:`, sourceError?.message || sourceError);
             }
           }
           
