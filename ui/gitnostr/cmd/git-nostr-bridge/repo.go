@@ -226,8 +226,9 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 		// Check if pubkey is valid hex
 		if _, err := hex.DecodeString(event.PubKey); err == nil {
 			// Encode hex pubkey to npub format
-			// go-nostr nip19 package: EncodePublicKey(hexPubkey, "npub")
-			npub, err := nip19.EncodePublicKey(event.PubKey, "npub")
+			// go-nostr nip19 package: EncodePublicKey(publicKeyHex string, masterRelay string)
+			// masterRelay can be empty string for npub encoding
+			npub, err := nip19.EncodePublicKey(event.PubKey, "")
 			if err == nil {
 				npubParentPath := filepath.Join(reposDir, npub)
 				// Create symlink from npub to hex directory
