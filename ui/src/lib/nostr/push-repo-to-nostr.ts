@@ -769,6 +769,8 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     });
     
     // CRITICAL: If we have no files at all (bridgeFilesMap is empty), try to fetch file list from GitHub first
+    // ALSO: If bridgeFilesMap has files but none have content, we need to fetch file list and content
+    // This handles the case where localStorage has file metadata but no content
     if (bridgeFilesMap.size === 0 && repo.sourceUrl && baseFiles.length === 0) {
       console.error(`❌ [Push Repo] CRITICAL: No files found in localStorage! Attempting to fetch file list from GitHub...`, {
         repoSourceUrl: repo.sourceUrl,
@@ -877,12 +879,15 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     
     // CRITICAL: If we still have no files with content, but we have files in the repo, 
     // we MUST fetch from GitHub NOW (not wait for refetch)
-    if (filesForBridge.length === 0 && bridgeFilesMap.size > 0 && repo.sourceUrl) {
+    // This handles the case where localStorage has file metadata but no content
+    if (filesForBridge.length === 0 && (bridgeFilesMap.size > 0 || baseFiles.length > 0) && repo.sourceUrl) {
       console.error(`❌ [Push Repo] CRITICAL: No files with content after fetching! Attempting emergency GitHub fetch...`, {
         bridgeFilesMapSize: bridgeFilesMap.size,
+        baseFilesLength: baseFiles.length,
         filesNeedingContent: filesNeedingContent.length,
         repoSourceUrl: repo.sourceUrl,
         allFilePaths: Array.from(bridgeFilesMap.keys()).slice(0, 10),
+        baseFilePaths: baseFiles.slice(0, 10).map((f: any) => f.path),
       });
       
       // EMERGENCY: Fetch ALL files from GitHub right now - NO LIMIT
@@ -891,6 +896,20 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       if (githubMatch) {
         const [, owner, repoName] = githubMatch;
         const branch = repo.defaultBranch || "main";
+        
+        // CRITICAL: If bridgeFilesMap is empty but baseFiles exist, populate it first
+        if (bridgeFilesMap.size === 0 && baseFiles.length > 0) {
+          console.log(`🚨 [Push Repo] Emergency: bridgeFilesMap is empty but baseFiles exist (${baseFiles.length}) - populating from baseFiles...`);
+          baseFiles.forEach((file: any) => {
+            const normalizedPath = normalizeFilePath(file.path || "");
+            if (normalizedPath) {
+              const isBinary = isBinaryFile(normalizedPath);
+              setBridgeEntry(normalizedPath, undefined, isBinary);
+            }
+          });
+          console.log(`✅ [Push Repo] Emergency: Populated bridgeFilesMap with ${bridgeFilesMap.size} files from baseFiles`);
+        }
+        
         const allFilesToFetch = Array.from(bridgeFilesMap.keys()); // NO LIMIT - fetch ALL files
         
         console.log(`🚨 [Push Repo] Emergency fetch: Fetching ALL ${allFilesToFetch.length} files from GitHub...`);
