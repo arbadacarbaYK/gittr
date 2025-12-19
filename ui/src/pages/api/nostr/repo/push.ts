@@ -88,7 +88,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { ownerPubkey: ownerPubkeyInput, repo: repoName, branch = "main", files, commitDate } = req.body || {};
+  const { ownerPubkey: ownerPubkeyInput, repo: repoName, branch = "main", files, commitDate, createCommit = true, chunkIndex, totalChunks } = req.body || {};
 
   // CRITICAL: Support both hex pubkey (64-char) and npub format (NIP-19)
   // The bridge stores repos by hex pubkey in filesystem, so we decode npub if needed
@@ -188,10 +188,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await execAsync(`git -C "${tempDir}" config user.name "gittr push"`);
     await execAsync(`git -C "${tempDir}" config user.email "push@gittr.space"`);
 
-    // CRITICAL: If no files provided but repo exists, copy existing files from repo
-    // This ensures empty commits preserve the previous state (gitworkshop.dev needs files to display)
-    if (files.length === 0 && existsSync(repoPath)) {
-      console.log(`📋 [Bridge Push] No files provided, copying existing files from repo to preserve state...`);
+    // CRITICAL: For chunked pushes, always clone existing repo first to get files from previous chunks
+    // For non-chunked pushes with no files, also clone to preserve state for empty commits
+    const isChunked = totalChunks && totalChunks > 1;
+    const shouldCloneExisting = (isChunked && existsSync(repoPath)) || (files.length === 0 && existsSync(repoPath));
+    
+    if (shouldCloneExisting) {
+      console.log(`📋 [Bridge Push] ${isChunked ? `Chunk ${(chunkIndex || 0) + 1}/${totalChunks}: Cloning existing repo to get files from previous chunks...` : 'No files provided, copying existing files from repo to preserve state...'}`);
       try {
         // Clone the bare repo to get all files into working tree
         const cloneTempDir = await mkdtemp(join(os.tmpdir(), "gittr-clone-"));
@@ -200,9 +203,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         await execAsync(`rsync -a --exclude='.git' "${cloneTempDir}/" "${tempDir}/"`);
         // Clean up clone temp dir
         await execAsync(`rm -rf "${cloneTempDir}"`);
-        console.log(`✅ [Bridge Push] Copied existing files from repo`);
+        console.log(`✅ [Bridge Push] ${isChunked ? 'Cloned existing repo' : 'Copied existing files from repo'}`);
       } catch (cloneError: any) {
-        console.warn(`⚠️ [Bridge Push] Failed to copy existing files, will create empty commit:`, cloneError?.message);
+        console.warn(`⚠️ [Bridge Push] Failed to clone existing repo:`, cloneError?.message);
+        if (!isChunked) {
+          console.warn(`⚠️ [Bridge Push] Will create empty commit`);
+        } else {
+          // For chunked pushes, this is more critical - we need previous files
+          throw new Error(`Failed to clone existing repo for chunked push: ${cloneError?.message}`);
+        }
       }
     }
 
@@ -239,67 +248,80 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     await execAsync(`git -C "${tempDir}" add -A`);
-    // CRITICAL: Use --allow-empty to always create a new commit, even if files are unchanged
-    // This ensures each push to Nostr creates a new commit with the correct date, which gitworkshop.dev will show
-    // Without this, if files are identical, git won't create a commit and state event will point to old commit
-    // CRITICAL: Set commit date using GIT_AUTHOR_DATE and GIT_COMMITTER_DATE environment variables
-    // This ensures the commit date matches when the repo was pushed, not when the commit is created
-    const commitDateISO = new Date(commitTimestamp * 1000).toISOString();
-    const commitDateRFC2822 = new Date(commitTimestamp * 1000).toUTCString();
-    await execAsync(
-      `git -C "${tempDir}" commit --allow-empty -m "Push from gittr (${commitDateISO})"`,
-      {
-        env: {
-          ...process.env,
-          GIT_AUTHOR_DATE: commitDateRFC2822,
-          GIT_COMMITTER_DATE: commitDateRFC2822,
+    
+    // CRITICAL: For chunked pushes, commit each chunk so next chunk can see previous files
+    // Each chunk clones the existing repo first, adds new files, commits and pushes
+    // This way each chunk builds on the previous one, and the last chunk has all files
+    // For non-chunked pushes, always commit
+    const shouldCommit = createCommit !== false; // Default to true, only skip if explicitly false
+    
+    if (shouldCommit) {
+      // CRITICAL: Use --allow-empty to always create a new commit, even if files are unchanged
+      // This ensures each push to Nostr creates a new commit with the correct date, which gitworkshop.dev will show
+      // Without this, if files are identical, git won't create a commit and state event will point to old commit
+      // CRITICAL: Set commit date using GIT_AUTHOR_DATE and GIT_COMMITTER_DATE environment variables
+      // This ensures the commit date matches when the repo was pushed, not when the commit is created
+      const commitDateISO = new Date(commitTimestamp * 1000).toISOString();
+      const commitDateRFC2822 = new Date(commitTimestamp * 1000).toUTCString();
+      await execAsync(
+        `git -C "${tempDir}" commit --allow-empty -m "Push from gittr (${commitDateISO})"`,
+        {
+          env: {
+            ...process.env,
+            GIT_AUTHOR_DATE: commitDateRFC2822,
+            GIT_COMMITTER_DATE: commitDateRFC2822,
+          }
+        }
+      );
+      await execAsync(`git -C "${tempDir}" branch -M ${branch}`);
+      await execAsync(`git -C "${tempDir}" remote add origin "${repoPath}"`);
+      
+      // CRITICAL: Add the bare repo to git's safe.directory before pushing
+      // This prevents "dubious ownership" errors when pushing from temp dir to www-data-owned repo
+      try {
+        await execAsync(`git config --system --add safe.directory "${repoPath}"`);
+        console.log(`✅ Added ${repoPath} to git safe.directory`);
+      } catch (safeDirError: any) {
+        // If system config fails, try global for the current user
+        console.warn(`⚠️ Failed to add to system safe.directory, trying global:`, safeDirError?.message);
+        try {
+          await execAsync(`git config --global --add safe.directory "${repoPath}"`);
+          console.log(`✅ Added ${repoPath} to git global safe.directory`);
+        } catch (globalError: any) {
+          console.warn(`⚠️ Failed to add to global safe.directory (may cause push errors):`, globalError?.message);
         }
       }
-    );
-    await execAsync(`git -C "${tempDir}" branch -M ${branch}`);
-    await execAsync(`git -C "${tempDir}" remote add origin "${repoPath}"`);
-    
-    // CRITICAL: Add the bare repo to git's safe.directory before pushing
-    // This prevents "dubious ownership" errors when pushing from temp dir to www-data-owned repo
-    try {
-      await execAsync(`git config --system --add safe.directory "${repoPath}"`);
-      console.log(`✅ Added ${repoPath} to git safe.directory`);
-    } catch (safeDirError: any) {
-      // If system config fails, try global for the current user
-      console.warn(`⚠️ Failed to add to system safe.directory, trying global:`, safeDirError?.message);
+      
+      await execAsync(`git -C "${tempDir}" push --force origin ${branch}`);
+      
+      // CRITICAL: Update HEAD in bare repo to point to the branch we just pushed
+      // This ensures git log and other commands work correctly
+      await execAsync(`git --git-dir="${repoPath}" symbolic-ref HEAD refs/heads/${branch}`);
+      
+      // CRITICAL: Ensure ownership is correct after push
+      // The bridge runs as git-nostr user and needs write access to update refs
+      // git-http-backend (fcgiwrap) runs as www-data but can read with proper permissions
+      // Solution: Set ownership to git-nostr:git-nostr, then add www-data to git-nostr group OR use 755 permissions
+      // For now, use git-nostr ownership (bridge can write, http-backend can read with 755 perms)
       try {
-        await execAsync(`git config --global --add safe.directory "${repoPath}"`);
-        console.log(`✅ Added ${repoPath} to git global safe.directory`);
-      } catch (globalError: any) {
-        console.warn(`⚠️ Failed to add to global safe.directory (may cause push errors):`, globalError?.message);
+        await execAsync(`chown -R git-nostr:git-nostr "${repoPath}"`);
+        // Set permissions so www-data (git-http-backend) can read but git-nostr can write
+        await execAsync(`chmod -R u+rwX,g+rX,o+rX "${repoPath}"`);
+        console.log(`✅ Set ownership to git-nostr:git-nostr for ${repoPath} (bridge can write, http-backend can read)`);
+      } catch (chownError: any) {
+        // Fallback: try www-data if git-nostr doesn't exist (local dev)
+        console.warn(`⚠️ Failed to set ownership to git-nostr, trying www-data:`, chownError?.message);
+        try {
+          await execAsync(`chown -R www-data:www-data "${repoPath}"`);
+          console.log(`✅ Set ownership to www-data:www-data for ${repoPath} (fallback)`);
+        } catch (fallbackError: any) {
+          console.warn(`⚠️ Failed to set ownership (this is OK for local dev):`, fallbackError?.message);
+        }
       }
-    }
-    
-    await execAsync(`git -C "${tempDir}" push --force origin ${branch}`);
-    
-    // CRITICAL: Update HEAD in bare repo to point to the branch we just pushed
-    // This ensures git log and other commands work correctly
-    await execAsync(`git --git-dir="${repoPath}" symbolic-ref HEAD refs/heads/${branch}`);
-    
-    // CRITICAL: Ensure ownership is correct after push
-    // The bridge runs as git-nostr user and needs write access to update refs
-    // git-http-backend (fcgiwrap) runs as www-data but can read with proper permissions
-    // Solution: Set ownership to git-nostr:git-nostr, then add www-data to git-nostr group OR use 755 permissions
-    // For now, use git-nostr ownership (bridge can write, http-backend can read with 755 perms)
-    try {
-      await execAsync(`chown -R git-nostr:git-nostr "${repoPath}"`);
-      // Set permissions so www-data (git-http-backend) can read but git-nostr can write
-      await execAsync(`chmod -R u+rwX,g+rX,o+rX "${repoPath}"`);
-      console.log(`✅ Set ownership to git-nostr:git-nostr for ${repoPath} (bridge can write, http-backend can read)`);
-    } catch (chownError: any) {
-      // Fallback: try www-data if git-nostr doesn't exist (local dev)
-      console.warn(`⚠️ Failed to set ownership to git-nostr, trying www-data:`, chownError?.message);
-      try {
-        await execAsync(`chown -R www-data:www-data "${repoPath}"`);
-        console.log(`✅ Set ownership to www-data:www-data for ${repoPath} (fallback)`);
-      } catch (fallbackError: any) {
-        console.warn(`⚠️ Failed to set ownership (this is OK for local dev):`, fallbackError?.message);
-      }
+    } else {
+      // For intermediate chunks, just write files but don't commit/push
+      // The files will be included when the last chunk commits
+      console.log(`📝 [Bridge Push] Chunk ${(chunkIndex || 0) + 1}/${totalChunks || 1}: Wrote ${writtenFiles} files (will commit on last chunk)`);
     }
 
     // CRITICAL: Get commit SHAs immediately after push (no need to wait for bridge)
