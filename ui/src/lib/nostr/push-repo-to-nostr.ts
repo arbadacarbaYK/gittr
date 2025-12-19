@@ -104,6 +104,17 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       actualRepositoryName = parts[parts.length - 1] || actualRepositoryName;
     }
     actualRepositoryName = actualRepositoryName.replace(/\.git$/, '');
+    
+    // CRITICAL: Log repository name resolution for debugging
+    console.log(`🔍 [Push Repo] Repository name resolution:`, {
+      repositoryName: repoDataAny?.repositoryName,
+      repo: repoDataAny?.repo,
+      slug: repoDataAny?.slug,
+      repoSlug,
+      actualRepositoryName,
+      pubkey: pubkey ? `${pubkey.substring(0, 8)}...` : 'none',
+      entity,
+    });
 
     // Step 3: Gather all related data (PRs, issues, etc.)
     onProgress?.("Loading pull requests and issues...");
@@ -309,8 +320,13 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       repoFilesLength: repo.files?.length || 0,
       allFilesLength: allFiles.length,
       hasSourceUrl: !!repo.sourceUrl,
+      sourceUrl: repo.sourceUrl,
       repoSlug,
+      actualRepositoryName,
       entity,
+      pubkey: pubkey ? `${pubkey.substring(0, 8)}...` : 'none',
+      filesWithContent: allFiles.filter((f: any) => f.content && f.content.length > 0).length,
+      filesWithoutContent: allFiles.filter((f: any) => !f.content || f.content.length === 0).length,
     });
     
     const normalizedDeletedPaths = deletedPaths.map(p => normalizeFilePath(p));
@@ -679,7 +695,16 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
                     if (file.isBinary) {
                       // Binary from raw URL - convert to base64
                       const arrayBuffer = await sourceResponse.arrayBuffer();
-                      file.content = Buffer.from(arrayBuffer).toString('base64');
+                      // Browser-compatible base64 encoding
+                      const bytes = new Uint8Array(arrayBuffer);
+                      let binary = '';
+                      for (let i = 0; i < bytes.length; i++) {
+                        const byte = bytes[i];
+                        if (byte !== undefined) {
+                          binary += String.fromCharCode(byte);
+                        }
+                      }
+                      file.content = btoa(binary);
                     } else {
                       // Text file
                       file.content = await sourceResponse.text();
@@ -695,9 +720,12 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
                         // Already base64 encoded
                         file.content = sourceData.content;
                       } else {
-                        // Not base64 - convert if binary
+                        // Not base64 - for binary files, this shouldn't happen (GitHub API always returns base64 for binary)
+                        // For text files, use content as-is
                         if (file.isBinary) {
-                          file.content = Buffer.from(sourceData.content).toString('base64');
+                          console.warn(`⚠️ [Push Repo] Binary file ${file.path} from ${platform} API has encoding "${sourceData.encoding}" (expected "base64") - may be corrupted`);
+                          // Try to use as-is (might be base64 without encoding field)
+                          file.content = sourceData.content;
                         } else {
                           file.content = sourceData.content;
                         }
@@ -734,6 +762,10 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       filesNeedingContent: filesNeedingContent.length,
       repoSourceUrl: repo.sourceUrl,
       hasFilesInLocalStorage: baseFiles.length > 0,
+      actualRepositoryName,
+      pubkey: pubkey ? `${pubkey.substring(0, 8)}...` : 'none',
+      entity,
+      filePathsSample: Array.from(bridgeFilesMap.keys()).slice(0, 10),
     });
     
     // CRITICAL: If we have no files at all (bridgeFilesMap is empty), try to fetch file list from GitHub first
@@ -795,11 +827,31 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
                       clearTimeout(timeoutId);
                       
                       if (response.ok) {
-                        const content = await response.text();
-                        if (content && content.length > 0) {
-                          file.content = content;
-                          filesForBridge.push(file);
-                          console.log(`✅ [Push Repo] Emergency fetch: Got ${filePath} (${content.length} chars)`);
+                        // CRITICAL: Handle binary files correctly - convert to base64
+                        if (file.isBinary) {
+                          const arrayBuffer = await response.arrayBuffer();
+                          // Browser-compatible base64 encoding
+                          const bytes = new Uint8Array(arrayBuffer);
+                          let binary = '';
+                          for (let i = 0; i < bytes.length; i++) {
+                            const byte = bytes[i];
+                            if (byte !== undefined) {
+                              binary += String.fromCharCode(byte);
+                            }
+                          }
+                          const base64 = btoa(binary);
+                          if (base64 && base64.length > 0) {
+                            file.content = base64;
+                            filesForBridge.push(file);
+                            console.log(`✅ [Push Repo] Emergency fetch: Got binary ${filePath} (${base64.length} chars base64)`);
+                          }
+                        } else {
+                          const content = await response.text();
+                          if (content && content.length > 0) {
+                            file.content = content;
+                            filesForBridge.push(file);
+                            console.log(`✅ [Push Repo] Emergency fetch: Got text ${filePath} (${content.length} chars)`);
+                          }
                         }
                       }
                     } catch (fetchError: any) {
@@ -863,11 +915,31 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
                 clearTimeout(timeoutId);
                 
                 if (response.ok) {
-                  const content = await response.text();
-                  if (content && content.length > 0) {
-                    file.content = content;
-                    filesForBridge.push(file);
-                    console.log(`✅ [Push Repo] Emergency fetch: Got ${filePath} (${content.length} chars)`);
+                  // CRITICAL: Handle binary files correctly - convert to base64
+                  if (file.isBinary) {
+                    const arrayBuffer = await response.arrayBuffer();
+                    // Browser-compatible base64 encoding
+                    const bytes = new Uint8Array(arrayBuffer);
+                    let binary = '';
+                    for (let i = 0; i < bytes.length; i++) {
+                      const byte = bytes[i];
+                      if (byte !== undefined) {
+                        binary += String.fromCharCode(byte);
+                      }
+                    }
+                    const base64 = btoa(binary);
+                    if (base64 && base64.length > 0) {
+                      file.content = base64;
+                      filesForBridge.push(file);
+                      console.log(`✅ [Push Repo] Emergency fetch: Got binary ${filePath} (${base64.length} chars base64)`);
+                    }
+                  } else {
+                    const content = await response.text();
+                    if (content && content.length > 0) {
+                      file.content = content;
+                      filesForBridge.push(file);
+                      console.log(`✅ [Push Repo] Emergency fetch: Got text ${filePath} (${content.length} chars)`);
+                    }
                   }
                 }
               } catch (fetchError: any) {
@@ -1420,6 +1492,17 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         // This ensures each push creates a commit with the date of when it was pushed
         // gitworkshop.dev will show this date as the "last commit" date
         const commitDate = Math.floor(Date.now() / 1000);
+        // CRITICAL: Log bridge push parameters for debugging
+        console.log(`📤 [Push Repo] Pushing to bridge:`, {
+          ownerPubkey: pubkey ? `${pubkey.substring(0, 8)}...` : 'none',
+          repoSlug: actualRepositoryName,
+          entity,
+          branch: repo.defaultBranch || "main",
+          filesCount: filesForBridge.length,
+          commitDate,
+          bridgePath: `{reposDir}/${pubkey}/${actualRepositoryName}.git`,
+        });
+        
         const bridgePushPromise = pushFilesToBridge({
           ownerPubkey: pubkey,
           repoSlug: actualRepositoryName,

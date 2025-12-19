@@ -140,6 +140,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const reposDir = await resolveReposDir();
   const repoPath = join(reposDir, ownerPubkey, `${repoName}.git`);
 
+  // CRITICAL: Log bridge push parameters for debugging
+  console.log(`📤 [Bridge Push] Starting push:`, {
+    ownerPubkey: ownerPubkey ? `${ownerPubkey.substring(0, 8)}...` : 'none',
+    repoName,
+    branch,
+    filesCount: files.length,
+    commitTimestamp,
+    reposDir,
+    repoPath,
+    filesWithContent: files.filter((f: any) => f.content && f.content.length > 0).length,
+    filesWithoutContent: files.filter((f: any) => !f.content || f.content.length === 0).length,
+  });
+
   let tempDir: string | null = null;
   const missingFiles: string[] = [];
 
