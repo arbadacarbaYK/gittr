@@ -9274,6 +9274,64 @@ export default function RepoCodePage({
                             }
                           }
                           
+                          // CRITICAL: Fetch file content for small text files and store in overrides
+                          // This ensures files have content when pushing to Nostr
+                          // Only fetch small files (< 50KB) to avoid quota issues
+                          const MAX_FILE_SIZE_FOR_CONTENT = 50 * 1024; // 50KB
+                          const textFileExtensions = ['md', 'txt', 'json', 'yml', 'yaml', 'toml', 'ini', 'conf', 'config', 'log', 'csv', 'tsv', 'html', 'htm', 'css', 'js', 'jsx', 'ts', 'tsx', 'py', 'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd'];
+                          const filesToFetch = newFiles
+                            .filter((f: any) => f.type === "file" && f.size && f.size < MAX_FILE_SIZE_FOR_CONTENT)
+                            .filter((f: any) => {
+                              const ext = f.path.split('.').pop()?.toLowerCase() || '';
+                              return textFileExtensions.includes(ext) || !f.path.includes('.');
+                            })
+                            .slice(0, 100); // Limit to 100 files to avoid timeout
+                          
+                          if (filesToFetch.length > 0 && updatedSourceUrl) {
+                            console.log(`📥 [Refetch] Fetching content for ${filesToFetch.length} small text files from GitHub...`);
+                            onProgress?.(`📥 Fetching file content from GitHub (${filesToFetch.length} files)...`);
+                            
+                            const { saveRepoOverrides } = await import("@/lib/repos/storage");
+                            const overrides: Record<string, string> = {};
+                            
+                            // Fetch files in batches to avoid rate limits
+                            const BATCH_SIZE = 10;
+                            for (let i = 0; i < filesToFetch.length; i += BATCH_SIZE) {
+                              const batch = filesToFetch.slice(i, i + BATCH_SIZE);
+                              await Promise.all(batch.map(async (file: any) => {
+                                try {
+                                  const githubMatch = updatedSourceUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+                                  if (githubMatch) {
+                                    const [, owner, repoName] = githubMatch;
+                                    const branch = importData.defaultBranch || existingRepo.defaultBranch || "main";
+                                    const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${encodeURIComponent(file.path)}`;
+                                    const response = await fetch(rawUrl, { 
+                                      headers: { "User-Agent": "gittr-space" },
+                                      signal: AbortSignal.timeout(10000) // 10 second timeout per file
+                                    });
+                                    if (response.ok) {
+                                      const content = await response.text();
+                                      if (content && content.length > 0) {
+                                        overrides[file.path] = content;
+                                        console.log(`✅ [Refetch] Fetched content for ${file.path} (${content.length} chars)`);
+                                      }
+                                    }
+                                  }
+                                } catch (e: any) {
+                                  console.warn(`⚠️ [Refetch] Failed to fetch content for ${file.path}:`, e?.message || e);
+                                }
+                              }));
+                            }
+                            
+                            // Save all overrides at once
+                            if (Object.keys(overrides).length > 0) {
+                              const existingOverrides = loadRepoOverrides(resolvedParams.entity, resolvedParams.repo);
+                              saveRepoOverrides(resolvedParams.entity, resolvedParams.repo, { ...existingOverrides, ...overrides });
+                              console.log(`✅ [Refetch] Saved ${Object.keys(overrides).length} file contents to localStorage overrides`);
+                              onProgress?.(`✅ Fetched and saved ${Object.keys(overrides).length} file contents`);
+                            }
+                          }
+                          
                           // CRITICAL: Also save issues, pulls, and commits to separate localStorage keys
                           if (importData.issues && Array.isArray(importData.issues) && importData.issues.length > 0) {
                             try {
