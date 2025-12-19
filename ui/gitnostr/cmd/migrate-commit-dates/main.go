@@ -17,7 +17,13 @@ func main() {
 	log.Println("🔄 Starting commit date migration...")
 	log.Println("📋 This script will update commit dates in bridge repos to match their UpdatedAt timestamps from the database")
 
-	cfg, err := bridge.LoadConfig("~/.config/git-nostr")
+	// Try to load config from git-nostr user's home first, then fallback to current user
+	configPath := "/home/git-nostr/.config/git-nostr"
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		// Fallback to current user's config
+		configPath = "~/.config/git-nostr"
+	}
+	cfg, err := bridge.LoadConfig(configPath)
 	if err != nil {
 		log.Fatalf("fatal: failed to load bridge configuration: %v", err)
 	}
