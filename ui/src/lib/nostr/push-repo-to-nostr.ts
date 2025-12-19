@@ -718,6 +718,69 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       hasFilesInLocalStorage: baseFiles.length > 0,
     });
     
+    // CRITICAL: If we still have no files with content, but we have files in the repo, 
+    // we MUST fetch from GitHub NOW (not wait for refetch)
+    if (filesForBridge.length === 0 && bridgeFilesMap.size > 0 && repo.sourceUrl) {
+      console.error(`❌ [Push Repo] CRITICAL: No files with content after fetching! Attempting emergency GitHub fetch...`, {
+        bridgeFilesMapSize: bridgeFilesMap.size,
+        filesNeedingContent: filesNeedingContent.length,
+        repoSourceUrl: repo.sourceUrl,
+        allFilePaths: Array.from(bridgeFilesMap.keys()).slice(0, 10),
+      });
+      
+      // EMERGENCY: Fetch ALL files from GitHub right now
+      onProgress?.("🚨 Emergency: Fetching ALL files from GitHub (this may take a moment)...");
+      const githubMatch = repo.sourceUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+      if (githubMatch) {
+        const [, owner, repoName] = githubMatch;
+        const branch = repo.defaultBranch || "main";
+        const allFilesToFetch = Array.from(bridgeFilesMap.keys()).slice(0, 50); // Limit to 50 files
+        
+        console.log(`🚨 [Push Repo] Emergency fetch: ${allFilesToFetch.length} files from GitHub...`);
+        
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < allFilesToFetch.length; i += BATCH_SIZE) {
+          const batch = allFilesToFetch.slice(i, i + BATCH_SIZE);
+          await Promise.all(batch.map(async (filePath) => {
+            try {
+              const file = bridgeFilesMap.get(filePath);
+              if (!file || (file.content && file.content.length > 0)) return; // Skip if already has content
+              
+              const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${encodeURIComponent(filePath)}`;
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 10000);
+              
+              try {
+                const response = await fetch(rawUrl, { 
+                  headers: { "User-Agent": "gittr-space" },
+                  signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                
+                if (response.ok) {
+                  const content = await response.text();
+                  if (content && content.length > 0) {
+                    file.content = content;
+                    filesForBridge.push(file);
+                    console.log(`✅ [Push Repo] Emergency fetch: Got ${filePath} (${content.length} chars)`);
+                  }
+                }
+              } catch (fetchError: any) {
+                clearTimeout(timeoutId);
+                if (fetchError.name !== 'AbortError') {
+                  console.warn(`⚠️ [Push Repo] Emergency fetch failed for ${filePath}:`, fetchError?.message);
+                }
+              }
+            } catch (e: any) {
+              console.warn(`⚠️ [Push Repo] Emergency fetch error for ${filePath}:`, e?.message);
+            }
+          }));
+        }
+        
+        console.log(`📊 [Push Repo] After emergency fetch: ${filesForBridge.length} files with content`);
+      }
+    }
+    
     if (filesForBridge.length === 0 && bridgeFilesMap.size > 0) {
       console.error(`❌ [Push Repo] CRITICAL: No files with content to push to bridge!`, {
         bridgeFilesMapSize: bridgeFilesMap.size,
