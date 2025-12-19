@@ -115,10 +115,15 @@ func main() {
 		// CRITICAL: Fix ownership before running filter-branch to avoid permission errors
 		// Ensure git-nostr user owns the repo directory and all its contents
 		// This is needed because filter-branch needs to write to .git/objects
-		chownCmd := exec.Command("chown", "-R", "git-nostr:git-nostr", repoPath)
+		// Use sudo if available, otherwise try without (might work if already owned by git-nostr)
+		chownCmd := exec.Command("sudo", "chown", "-R", "git-nostr:git-nostr", repoPath)
 		if chownOutput, chownErr := chownCmd.CombinedOutput(); chownErr != nil {
-			log.Printf("⚠️  Failed to fix ownership for %s/%s: %v\nOutput: %s", safePubkeyDisplay(ownerPubkey), repoName, chownErr, string(chownOutput))
-			// Continue anyway - might still work if permissions are already correct
+			// Try without sudo (might already be owned by git-nostr)
+			chownCmd2 := exec.Command("chown", "-R", "git-nostr:git-nostr", repoPath)
+			if chownOutput2, chownErr2 := chownCmd2.CombinedOutput(); chownErr2 != nil {
+				log.Printf("⚠️  Failed to fix ownership for %s/%s (tried sudo and direct): %v\nOutput: %s", safePubkeyDisplay(ownerPubkey), repoName, chownErr2, string(chownOutput2))
+				// Continue anyway - might still work if permissions are already correct
+			}
 		}
 
 		// Update commit date using git filter-branch
