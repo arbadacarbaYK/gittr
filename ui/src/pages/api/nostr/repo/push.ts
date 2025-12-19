@@ -163,8 +163,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     await execAsync(`git -C "${tempDir}" add -A`);
+    // CRITICAL: Use --allow-empty to always create a new commit, even if files are unchanged
+    // This ensures each push to Nostr creates a new commit with today's date, which gitworkshop.dev will show
+    // Without this, if files are identical, git won't create a commit and state event will point to old commit
     await execAsync(
-      `git -C "${tempDir}" commit -m "Push from gittr (${new Date().toISOString()})"`
+      `git -C "${tempDir}" commit --allow-empty -m "Push from gittr (${new Date().toISOString()})"`
     );
     await execAsync(`git -C "${tempDir}" branch -M ${branch}`);
     await execAsync(`git -C "${tempDir}" remote add origin "${repoPath}"`);
