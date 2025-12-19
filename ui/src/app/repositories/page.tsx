@@ -710,7 +710,16 @@ export default function RepositoriesPage() {
                   else if (tagName === "name" && !repoData.repositoryName) repoData.repositoryName = tagValue;
                   else if (tagName === "description") repoData.description = tagValue;
                   else if (tagName === "clone" && tagValue) repoData.clone.push(tagValue);
-                  else if (tagName === "relays" && tagValue) repoData.relays.push(tagValue);
+                  else if (tagName === "relays" && tagValue) {
+                    // CRITICAL: Handle comma-separated relay list per NIP-34 spec
+                    // Format: ["relays", "wss://relay1.com,wss://relay2.com"]
+                    const relayUrls = tagValue.split(",").map(r => r.trim()).filter(r => r.length > 0);
+                    relayUrls.forEach(relayUrl => {
+                      if (!repoData.relays.includes(relayUrl)) {
+                        repoData.relays.push(relayUrl);
+                      }
+                    });
+                  }
                   else if (tagName === "t" && tagValue) repoData.topics.push(tagValue);
                   else if (tagName === "r" && tagValue && tag[2] === "euc") {
                     // Extract earliest unique commit from "r" tag with "euc" marker

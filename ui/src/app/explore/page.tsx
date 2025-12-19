@@ -52,8 +52,16 @@ function parseNIP34Repository(event: any): any {
         if (tagValue) repoData.clone.push(tagValue);
         break;
       case "relays":
-        // Relay URL (can have multiple)
-        if (tagValue) repoData.relays.push(tagValue);
+        // CRITICAL: Handle comma-separated relay list per NIP-34 spec
+        // Format: ["relays", "wss://relay1.com,wss://relay2.com"]
+        if (tagValue) {
+          const relayUrls = tagValue.split(",").map((r: string) => r.trim()).filter((r: string) => r.length > 0);
+          relayUrls.forEach((relayUrl: string) => {
+            if (!repoData.relays.includes(relayUrl)) {
+              repoData.relays.push(relayUrl);
+            }
+          });
+        }
         break;
       case "web":
         // Webpage URL (can have multiple)
@@ -954,7 +962,14 @@ function ExplorePageContent() {
                   if (tagName === "clone" && tagValue) {
                     cloneTags.push(tagValue);
                   } else if (tagName === "relays" && tagValue) {
-                    relaysTags.push(tagValue);
+                    // CRITICAL: Handle comma-separated relay list per NIP-34 spec
+                    // Format: ["relays", "wss://relay1.com,wss://relay2.com"]
+                    const relayUrls = tagValue.split(",").map(r => r.trim()).filter(r => r.length > 0);
+                    relayUrls.forEach(relayUrl => {
+                      if (!relaysTags.includes(relayUrl)) {
+                        relaysTags.push(relayUrl);
+                      }
+                    });
                   } else if (tagName === "t" && tagValue) {
                     // Topic/tag tags
                     topicTags.push(tagValue);

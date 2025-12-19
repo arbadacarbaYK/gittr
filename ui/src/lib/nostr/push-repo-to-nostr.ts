@@ -699,15 +699,20 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         console.log(`✅ [Push Repo] Clone URLs configured (${cloneUrls.length}):`, cloneUrls);
       }
       
-      // NIP-34: Add relays tags
-      // CRITICAL: Only include GRASP/git relays, not regular Nostr relays
-      // Regular relays (like jb55) don't host git repos and shouldn't be listed
+      // NIP-34: Add relays tag
+      // CRITICAL: According to spec, relays should be comma-separated in a SINGLE tag, not separate tags
+      // Most GRASP servers/git clients only recognize the first tag, so all relays must be in one tag
+      // Format: ["relays", "wss://relay1.com,wss://relay2.com,wss://relay3.com"]
       const { getGraspServers } = await import("../utils/grasp-servers");
       const graspRelays = getGraspServers(defaultRelays);
       console.log(`🔍 [Push Repo] Filtering relays: ${defaultRelays.length} total, ${graspRelays.length} GRASP/git relays`);
-      graspRelays.forEach(relay => {
-        nip34Tags.push(["relays", relay]);
-      });
+      if (graspRelays.length > 0) {
+        // CRITICAL: Use comma-separated list in single tag per NIP-34 spec
+        // This ensures all relays are recognized by GRASP servers and git clients
+        const relaysList = graspRelays.join(",");
+        nip34Tags.push(["relays", relaysList]);
+        console.log(`✅ [Push Repo] Added relays tag (comma-separated): ${graspRelays.length} relay(s)`);
+      }
       
       // NIP-34: Add topics
       if (repo.topics && repo.topics.length > 0) {
