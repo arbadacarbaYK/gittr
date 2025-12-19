@@ -410,32 +410,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log(`📝 [Bridge Push] Chunk ${(chunkIndex || 0) + 1}/${totalChunks || 1}: Wrote ${writtenFiles} files (will commit on last chunk)`);
     }
 
-    // CRITICAL: Get commit SHAs immediately after push (no need to wait for bridge)
-    // This allows us to publish state event immediately with real commit SHAs
-    // Format: refs/heads/main abc123... or refs/tags/v1.0.0 def456...
+    // CRITICAL: Only retrieve refs if we actually committed and pushed
+    // Intermediate chunks don't commit, so their refs would be stale (from before this push)
+    // Only the final chunk should return refs after successfully committing all accumulated files
     let refs: Array<{ ref: string; commit: string }> = [];
-    try {
-      const { stdout: refsOutput } = await execAsync(
-        `git --git-dir="${repoPath}" for-each-ref --format="%(refname) %(objectname)" refs/heads/ refs/tags/`,
-        { timeout: 5000 }
-      );
-      
-      if (refsOutput.trim()) {
-        const lines = refsOutput.trim().split("\n");
-        for (const line of lines) {
-          const parts = line.trim().split(/\s+/);
-          if (parts.length >= 2 && parts[0] && parts[1]) {
-            refs.push({
-              ref: parts[0],
-              commit: parts[1],
-            });
+    if (shouldCommit) {
+      // CRITICAL: Get commit SHAs immediately after push (no need to wait for bridge)
+      // This allows us to publish state event immediately with real commit SHAs
+      // Format: refs/heads/main abc123... or refs/tags/v1.0.0 def456...
+      try {
+        const { stdout: refsOutput } = await execAsync(
+          `git --git-dir="${repoPath}" for-each-ref --format="%(refname) %(objectname)" refs/heads/ refs/tags/`,
+          { timeout: 5000 }
+        );
+        
+        if (refsOutput.trim()) {
+          const lines = refsOutput.trim().split("\n");
+          for (const line of lines) {
+            const parts = line.trim().split(/\s+/);
+            if (parts.length >= 2 && parts[0] && parts[1]) {
+              refs.push({
+                ref: parts[0],
+                commit: parts[1],
+              });
+            }
           }
         }
+        console.log(`✅ [Bridge Push] Got ${refs.length} refs with commit SHAs immediately after push`);
+      } catch (refsError: any) {
+        console.warn(`⚠️ [Bridge Push] Failed to get refs after push (non-critical):`, refsError?.message);
+        // Non-critical - we can still return success, client can query refs later
       }
-      console.log(`✅ [Bridge Push] Got ${refs.length} refs with commit SHAs immediately after push`);
-    } catch (refsError: any) {
-      console.warn(`⚠️ [Bridge Push] Failed to get refs after push (non-critical):`, refsError?.message);
-      // Non-critical - we can still return success, client can query refs later
+    } else {
+      // Intermediate chunk: Don't retrieve refs - they would be stale (from before this push)
+      // The final chunk will retrieve refs after committing all accumulated files
+      console.log(`📝 [Bridge Push] Chunk ${(chunkIndex || 0) + 1}/${totalChunks || 1}: Skipping refs retrieval (intermediate chunk, not committed yet)`);
     }
 
     // CRITICAL: Clean up shared working directory ONLY after last chunk completes
