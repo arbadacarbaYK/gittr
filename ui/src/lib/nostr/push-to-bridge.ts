@@ -74,11 +74,9 @@ export async function pushFilesToBridge({
     chunks.push([]);
   }
 
-  // CRITICAL: Add timeout for large repos (5 minutes max per chunk, total timeout is cumulative)
+  // CRITICAL: Each chunk gets its own timeout (5 minutes per chunk)
+  // This ensures each chunk has a full 5-minute window, not a cumulative timeout
   const BRIDGE_PUSH_TIMEOUT_PER_CHUNK = 300000; // 5 minutes per chunk
-  const totalTimeout = BRIDGE_PUSH_TIMEOUT_PER_CHUNK * chunks.length;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), totalTimeout);
 
   try {
     let allRefs: Array<{ ref: string; commit: string }> = [];
@@ -103,25 +101,31 @@ export async function pushFilesToBridge({
         console.log(`📤 [Bridge Push] Pushing chunk ${i + 1}/${chunks.length} (${chunk.length} files)...`);
       }
 
-      const response = await fetch("/api/nostr/repo/push", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ownerPubkey,
-          repo: repoSlug,
-          branch,
-          files: chunk,
-          commitDate, // Pass commitDate to API (Unix timestamp in seconds)
-          // CRITICAL: Commit each chunk because each API call uses a new temp directory
-          // The last chunk will have the final state, previous chunks are intermediate commits
-          createCommit: true, // Always commit - each chunk is a separate API call
-          chunkIndex: i,
-          totalChunks: chunks.length,
-        }),
-        signal: controller.signal,
-      });
+      // CRITICAL: Create a new AbortController and timeout for each chunk
+      // This ensures each chunk gets its own 5-minute window, not a cumulative timeout
+      const chunkController = new AbortController();
+      const chunkTimeoutId = setTimeout(() => chunkController.abort(), BRIDGE_PUSH_TIMEOUT_PER_CHUNK);
+
+      try {
+        const response = await fetch("/api/nostr/repo/push", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ownerPubkey,
+            repo: repoSlug,
+            branch,
+            files: chunk,
+            commitDate, // Pass commitDate to API (Unix timestamp in seconds)
+            // CRITICAL: Commit each chunk because each API call uses a new temp directory
+            // The last chunk will have the final state, previous chunks are intermediate commits
+            createCommit: true, // Always commit - each chunk is a separate API call
+            chunkIndex: i,
+            totalChunks: chunks.length,
+          }),
+          signal: chunkController.signal,
+        });
 
       // Check content type before parsing JSON
       const contentType = response.headers.get("content-type");
