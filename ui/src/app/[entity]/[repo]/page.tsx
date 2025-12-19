@@ -8919,11 +8919,33 @@ export default function RepoCodePage({
                         variant="outline"
                         disabled={isRefetching || isPushing}
                         onClick={async () => {
-                        // CRITICAL: Check for sourceUrl in local repo OR in Nostr event
+                        // CRITICAL: Check for sourceUrl in local repo OR in cloneUrls OR in Nostr event
                         // This ensures repos imported from GitHub but synced from Nostr can still refetch from GitHub
                         let effectiveSourceUrl = repo?.sourceUrl;
                         
-                        // If no sourceUrl in local repo, try to get it from Nostr event
+                        // If no sourceUrl, try to extract from cloneUrls (GitHub/GitLab/Codeberg)
+                        if (!effectiveSourceUrl && repo?.clone && Array.isArray(repo.clone)) {
+                          for (const cloneUrl of repo.clone) {
+                            if (typeof cloneUrl === "string") {
+                              // Check for GitHub/GitLab/Codeberg URLs
+                              if (cloneUrl.includes("github.com") || cloneUrl.includes("gitlab.com") || cloneUrl.includes("codeberg.org")) {
+                                // Convert clone URL to source URL (remove .git, convert git@ to https://)
+                                let sourceUrl = cloneUrl.replace(/\.git$/, "");
+                                if (sourceUrl.startsWith("git@")) {
+                                  // Convert git@github.com:owner/repo to https://github.com/owner/repo
+                                  sourceUrl = sourceUrl.replace(/^git@([^:]+):/, "https://$1/");
+                                } else if (sourceUrl.startsWith("http://")) {
+                                  sourceUrl = sourceUrl.replace("http://", "https://");
+                                }
+                                effectiveSourceUrl = sourceUrl;
+                                console.log(`✅ [Refetch] Found sourceUrl in cloneUrls: ${effectiveSourceUrl}`);
+                                break;
+                              }
+                            }
+                          }
+                        }
+                        
+                        // If still no sourceUrl, try to get it from Nostr event (with shorter timeout)
                         if (!effectiveSourceUrl && isNostrRepo) {
                           try {
                             const ownerPubkey = repo?.ownerPubkey || (resolvedParams.entity.startsWith("npub") 
@@ -8932,11 +8954,15 @@ export default function RepoCodePage({
                             const repoName = repo?.repo || repo?.slug || resolvedParams.repo;
                             
                             if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) && subscribe && defaultRelays && defaultRelays.length > 0) {
+                              let foundSourceUrl = false;
                               await new Promise<void>((resolve, reject) => {
                                 const timeout = setTimeout(() => {
                                   unsub();
+                                  if (!foundSourceUrl) {
+                                    console.warn("⚠️ [Refetch] Timeout waiting for Nostr event - sourceUrl not found");
+                                  }
                                   resolve(); // Timeout - continue without sourceUrl
-                                }, 5000);
+                                }, 3000); // Shorter timeout: 3 seconds instead of 5
                                 
                                 const unsub = subscribe(
                                   [{
@@ -8950,8 +8976,11 @@ export default function RepoCodePage({
                                     for (const tag of event.tags) {
                                       if (tag[0] === "source" && tag[1]) {
                                         effectiveSourceUrl = tag[1];
+                                        foundSourceUrl = true;
                                         console.log(`✅ [Refetch] Found sourceUrl in Nostr event: ${effectiveSourceUrl}`);
                                         clearTimeout(timeout);
+                                        unsub();
+                                        resolve();
                                         break;
                                       }
                                     }
@@ -8979,10 +9008,10 @@ export default function RepoCodePage({
                         
                         // Handle refetch for GitHub/GitLab/Codeberg repos
                         if (hasEffectiveSourceUrl) {
-                        if (!effectiveSourceUrl) {
-                          alert("No source URL found for this repository");
-                          return;
-                        }
+                          if (!effectiveSourceUrl) {
+                            alert("No source URL found for this repository");
+                            return;
+                          }
                         
                         try {
                           setIsRefetching(true);
@@ -9438,7 +9467,14 @@ export default function RepoCodePage({
                               setTimeout(() => {
                                 unsub();
                                 if (!latestEvent) {
-                                  reject(new Error("Timeout waiting for repository event"));
+                                  // Check if repo might have a sourceUrl that we should use instead
+                                  const hasCloneUrls = repo?.clone && Array.isArray(repo.clone) && repo.clone.length > 0;
+                                  const hasSourceUrl = repo?.sourceUrl;
+                                  if (hasCloneUrls || hasSourceUrl) {
+                                    reject(new Error("Repository not found on Nostr. This repository may be from GitHub/GitLab - try checking if it has a source URL stored."));
+                                  } else {
+                                    reject(new Error("Timeout waiting for repository event. The repository may not be available on Nostr relays."));
+                                  }
                                 } else {
                                   resolve();
                                 }
