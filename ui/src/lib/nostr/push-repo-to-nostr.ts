@@ -971,28 +971,42 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       // NIP-34: Add relays tags
       // CRITICAL: Per NIP-34 spec, each relay should be in a separate tag
       // Format: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"], etc.
-      // CRITICAL: gitworkshop.dev only recognizes clone URLs as GRASP servers if the relay URL matches the clone URL domain
-      // So we MUST add relay URLs that match each clone URL's domain
+      // CRITICAL: Only add relay URLs that actually exist in defaultRelays
+      // gitworkshop.dev only recognizes clone URLs as GRASP servers if:
+      // 1. Clone URL is https://git.example.com/...
+      // 2. Relay URL wss://git.example.com exists in relays tags
+      // BUT: We should NOT create fake relay URLs - only use relays that actually exist
+      // For git.gittr.space: it's a git server, NOT a relay, so we don't add wss://git.gittr.space
       const { getGraspServers } = await import("../utils/grasp-servers");
       const graspRelays = getGraspServers(defaultRelays);
       console.log(`🔍 [Push Repo] Filtering relays: ${defaultRelays.length} total, ${graspRelays.length} GRASP/git relays`);
       
-      // CRITICAL: Extract relay URLs from clone URLs to ensure gitworkshop.dev recognizes them as GRASP servers
-      // gitworkshop.dev checks: if clone URL is https://git.gittr.space/..., relay must be wss://git.gittr.space
+      // CRITICAL: Only add relay URLs that match clone URL domains IF they actually exist in defaultRelays
+      // This ensures gitworkshop.dev recognizes GRASP servers correctly
+      // Example: If clone URL is https://relay.ngit.dev/... and wss://relay.ngit.dev is in defaultRelays, add it
       const relayUrlsFromCloneUrls = new Set<string>();
       cloneUrls.forEach(cloneUrl => {
         if (cloneUrl && typeof cloneUrl === 'string' && (cloneUrl.startsWith('http://') || cloneUrl.startsWith('https://'))) {
           // Extract domain from clone URL and convert to wss:// format
           const domain = cloneUrl.replace(/^https?:\/\//, '').split('/')[0];
           if (domain) {
-            const relayUrl = `wss://${domain}`;
-            relayUrlsFromCloneUrls.add(relayUrl);
-            console.log(`🔗 [Push Repo] Extracted relay URL from clone URL: ${cloneUrl} -> ${relayUrl}`);
+            const potentialRelayUrl = `wss://${domain}`;
+            // CRITICAL: Only add if this relay URL actually exists in defaultRelays
+            // Don't create fake relay URLs for git servers that aren't relays
+            if (defaultRelays.some(r => {
+              const normalized = r.startsWith("wss://") || r.startsWith("ws://") ? r : `wss://${r}`;
+              return normalized === potentialRelayUrl || normalized.startsWith(potentialRelayUrl + '/');
+            })) {
+              relayUrlsFromCloneUrls.add(potentialRelayUrl);
+              console.log(`🔗 [Push Repo] Found matching relay for clone URL: ${cloneUrl} -> ${potentialRelayUrl}`);
+            } else {
+              console.log(`⚠️ [Push Repo] Clone URL domain ${domain} has no matching relay in defaultRelays - skipping (gitworkshop.dev won't recognize as GRASP server)`);
+            }
           }
         }
       });
       
-      // Combine GRASP relays from defaultRelays with relay URLs extracted from clone URLs
+      // Combine GRASP relays from defaultRelays with relay URLs that match clone URLs
       const allGraspRelays = new Set<string>();
       graspRelays.forEach(relay => {
         const normalizedRelay = relay.startsWith("wss://") || relay.startsWith("ws://") 
@@ -1010,7 +1024,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           nip34Tags.push(["relays", relay]);
           console.log(`✅ [Push Repo] Added relay tag: ${relay}`);
         });
-        console.log(`✅ [Push Repo] Added ${allGraspRelays.size} separate relay tag(s) per NIP-34 spec (${graspRelays.length} from defaultRelays, ${relayUrlsFromCloneUrls.size} from clone URLs)`);
+        console.log(`✅ [Push Repo] Added ${allGraspRelays.size} separate relay tag(s) per NIP-34 spec (${graspRelays.length} from defaultRelays, ${relayUrlsFromCloneUrls.size} matching clone URLs)`);
       }
       
       // NIP-34: Add topics
