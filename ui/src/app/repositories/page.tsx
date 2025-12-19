@@ -711,14 +711,31 @@ export default function RepositoriesPage() {
                   else if (tagName === "description") repoData.description = tagValue;
                   else if (tagName === "clone" && tagValue) repoData.clone.push(tagValue);
                   else if (tagName === "relays" && tagValue) {
-                    // CRITICAL: Handle comma-separated relay list per NIP-34 spec
-                    // Format: ["relays", "wss://relay1.com,wss://relay2.com"]
-                    const relayUrls = tagValue.split(",").map(r => r.trim()).filter(r => r.length > 0);
-                    relayUrls.forEach(relayUrl => {
-                      if (!repoData.relays.includes(relayUrl)) {
-                        repoData.relays.push(relayUrl);
+                    // CRITICAL: Handle both formats per NIP-34 spec:
+                    // 1. Separate tags: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"]
+                    // 2. Comma-separated (backward compat): ["relays", "wss://relay1.com,wss://relay2.com"]
+                    // Check if value contains commas (comma-separated format)
+                    if (tagValue.includes(",")) {
+                      // Comma-separated format - split and add each
+                      const relayUrls = tagValue.split(",").map(r => r.trim()).filter(r => r.length > 0);
+                      relayUrls.forEach(relayUrl => {
+                        // Ensure wss:// prefix
+                        const normalized = relayUrl.startsWith("wss://") || relayUrl.startsWith("ws://") 
+                          ? relayUrl 
+                          : `wss://${relayUrl}`;
+                        if (!repoData.relays.includes(normalized)) {
+                          repoData.relays.push(normalized);
+                        }
+                      });
+                    } else {
+                      // Single relay per tag - add directly
+                      const normalized = tagValue.startsWith("wss://") || tagValue.startsWith("ws://") 
+                        ? tagValue 
+                        : `wss://${tagValue}`;
+                      if (!repoData.relays.includes(normalized)) {
+                        repoData.relays.push(normalized);
                       }
-                    });
+                    }
                   }
                   else if (tagName === "t" && tagValue) repoData.topics.push(tagValue);
                   else if (tagName === "r" && tagValue && tag[2] === "euc") {

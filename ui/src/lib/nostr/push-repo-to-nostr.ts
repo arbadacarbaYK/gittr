@@ -699,19 +699,22 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         console.log(`✅ [Push Repo] Clone URLs configured (${cloneUrls.length}):`, cloneUrls);
       }
       
-      // NIP-34: Add relays tag
-      // CRITICAL: According to spec, relays should be comma-separated in a SINGLE tag, not separate tags
-      // Most GRASP servers/git clients only recognize the first tag, so all relays must be in one tag
-      // Format: ["relays", "wss://relay1.com,wss://relay2.com,wss://relay3.com"]
+      // NIP-34: Add relays tags
+      // CRITICAL: Per NIP-34 spec, each relay should be in a separate tag
+      // Format: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"], etc.
       const { getGraspServers } = await import("../utils/grasp-servers");
       const graspRelays = getGraspServers(defaultRelays);
       console.log(`🔍 [Push Repo] Filtering relays: ${defaultRelays.length} total, ${graspRelays.length} GRASP/git relays`);
       if (graspRelays.length > 0) {
-        // CRITICAL: Use comma-separated list in single tag per NIP-34 spec
-        // This ensures all relays are recognized by GRASP servers and git clients
-        const relaysList = graspRelays.join(",");
-        nip34Tags.push(["relays", relaysList]);
-        console.log(`✅ [Push Repo] Added relays tag (comma-separated): ${graspRelays.length} relay(s)`);
+        // CRITICAL: Ensure all relay URLs have wss:// prefix before adding as separate tags
+        graspRelays.forEach(relay => {
+          // Ensure relay has wss:// prefix
+          const normalizedRelay = relay.startsWith("wss://") || relay.startsWith("ws://") 
+            ? relay 
+            : `wss://${relay}`;
+          nip34Tags.push(["relays", normalizedRelay]);
+        });
+        console.log(`✅ [Push Repo] Added ${graspRelays.length} separate relay tag(s) per NIP-34 spec`);
       }
       
       // NIP-34: Add topics

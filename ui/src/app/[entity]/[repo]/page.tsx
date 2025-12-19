@@ -2521,15 +2521,32 @@ export default function RepoCodePage({
                       }
                       else if (tagName === "relay" || tagName === "relays") {
                         if (!eventRepoData.relays) eventRepoData.relays = [];
-                        // CRITICAL: Handle comma-separated relay list per NIP-34 spec
-                        // Format: ["relays", "wss://relay1.com,wss://relay2.com"]
+                        // CRITICAL: Handle both formats per NIP-34 spec:
+                        // 1. Separate tags: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"]
+                        // 2. Comma-separated (backward compat): ["relays", "wss://relay1.com,wss://relay2.com"]
                         if (tagValue) {
-                          const relayUrls = tagValue.split(",").map((r: string) => r.trim()).filter((r: string) => r.length > 0);
-                          relayUrls.forEach((relayUrl: string) => {
-                            if (!eventRepoData.relays.includes(relayUrl)) {
-                              eventRepoData.relays.push(relayUrl);
+                          // Check if value contains commas (comma-separated format)
+                          if (tagValue.includes(",")) {
+                            // Comma-separated format - split and add each
+                            const relayUrls = tagValue.split(",").map((r: string) => r.trim()).filter((r: string) => r.length > 0);
+                            relayUrls.forEach((relayUrl: string) => {
+                              // Ensure wss:// prefix
+                              const normalized = relayUrl.startsWith("wss://") || relayUrl.startsWith("ws://") 
+                                ? relayUrl 
+                                : `wss://${relayUrl}`;
+                              if (!eventRepoData.relays.includes(normalized)) {
+                                eventRepoData.relays.push(normalized);
+                              }
+                            });
+                          } else {
+                            // Single relay per tag - add directly
+                            const normalized = tagValue.startsWith("wss://") || tagValue.startsWith("ws://") 
+                              ? tagValue 
+                              : `wss://${tagValue}`;
+                            if (!eventRepoData.relays.includes(normalized)) {
+                              eventRepoData.relays.push(normalized);
                             }
-                          });
+                          }
                         }
                       }
                       // Extract sourceUrl from "source" tag (used in push-repo-to-nostr.ts)

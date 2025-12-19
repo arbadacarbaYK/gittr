@@ -52,15 +52,32 @@ function parseNIP34Repository(event: any): any {
         if (tagValue) repoData.clone.push(tagValue);
         break;
       case "relays":
-        // CRITICAL: Handle comma-separated relay list per NIP-34 spec
-        // Format: ["relays", "wss://relay1.com,wss://relay2.com"]
+        // CRITICAL: Handle both formats per NIP-34 spec:
+        // 1. Separate tags: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"]
+        // 2. Comma-separated (backward compat): ["relays", "wss://relay1.com,wss://relay2.com"]
         if (tagValue) {
-          const relayUrls = tagValue.split(",").map((r: string) => r.trim()).filter((r: string) => r.length > 0);
-          relayUrls.forEach((relayUrl: string) => {
-            if (!repoData.relays.includes(relayUrl)) {
-              repoData.relays.push(relayUrl);
+          // Check if value contains commas (comma-separated format)
+          if (tagValue.includes(",")) {
+            // Comma-separated format - split and add each
+            const relayUrls = tagValue.split(",").map((r: string) => r.trim()).filter((r: string) => r.length > 0);
+            relayUrls.forEach((relayUrl: string) => {
+              // Ensure wss:// prefix
+              const normalized = relayUrl.startsWith("wss://") || relayUrl.startsWith("ws://") 
+                ? relayUrl 
+                : `wss://${relayUrl}`;
+              if (!repoData.relays.includes(normalized)) {
+                repoData.relays.push(normalized);
+              }
+            });
+          } else {
+            // Single relay per tag - add directly
+            const normalized = tagValue.startsWith("wss://") || tagValue.startsWith("ws://") 
+              ? tagValue 
+              : `wss://${tagValue}`;
+            if (!repoData.relays.includes(normalized)) {
+              repoData.relays.push(normalized);
             }
-          });
+          }
         }
         break;
       case "web":
@@ -962,14 +979,31 @@ function ExplorePageContent() {
                   if (tagName === "clone" && tagValue) {
                     cloneTags.push(tagValue);
                   } else if (tagName === "relays" && tagValue) {
-                    // CRITICAL: Handle comma-separated relay list per NIP-34 spec
-                    // Format: ["relays", "wss://relay1.com,wss://relay2.com"]
-                    const relayUrls = tagValue.split(",").map(r => r.trim()).filter(r => r.length > 0);
-                    relayUrls.forEach(relayUrl => {
-                      if (!relaysTags.includes(relayUrl)) {
-                        relaysTags.push(relayUrl);
+                    // CRITICAL: Handle both formats per NIP-34 spec:
+                    // 1. Separate tags: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"]
+                    // 2. Comma-separated (backward compat): ["relays", "wss://relay1.com,wss://relay2.com"]
+                    // Check if value contains commas (comma-separated format)
+                    if (tagValue.includes(",")) {
+                      // Comma-separated format - split and add each
+                      const relayUrls = tagValue.split(",").map(r => r.trim()).filter(r => r.length > 0);
+                      relayUrls.forEach(relayUrl => {
+                        // Ensure wss:// prefix
+                        const normalized = relayUrl.startsWith("wss://") || relayUrl.startsWith("ws://") 
+                          ? relayUrl 
+                          : `wss://${relayUrl}`;
+                        if (!relaysTags.includes(normalized)) {
+                          relaysTags.push(normalized);
+                        }
+                      });
+                    } else {
+                      // Single relay per tag - add directly
+                      const normalized = tagValue.startsWith("wss://") || tagValue.startsWith("ws://") 
+                        ? tagValue 
+                        : `wss://${tagValue}`;
+                      if (!relaysTags.includes(normalized)) {
+                        relaysTags.push(normalized);
                       }
-                    });
+                    }
                   } else if (tagName === "t" && tagValue) {
                     // Topic/tag tags
                     topicTags.push(tagValue);
