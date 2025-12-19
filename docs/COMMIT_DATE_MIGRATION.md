@@ -1,5 +1,25 @@
 # Commit Date Migration Guide
 
+## ⚠️ CRITICAL: Only Migrate Your Own Repos!
+
+**NEVER run the migration without the `-owners` flag!** This will break foreign repos because:
+- Their commit SHAs will change
+- Their Nostr state events will point to old SHAs
+- Their owners can't fix this (they'd need to push again, but they may not know)
+- gitworkshop.dev and other clients will show wrong dates
+
+### Safe Usage
+
+```bash
+# Only migrate repos owned by specific pubkey(s)
+./migrate-commit-dates -owners=9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c
+
+# Multiple owners (comma-separated)
+./migrate-commit-dates -owners=pubkey1,pubkey2,pubkey3
+```
+
+**If you run without `-owners`, the script will warn you and wait 5 seconds before proceeding.**
+
 ## Why gitworkshop.dev Shows Old Commit Dates After Migration
 
 After running the `migrate-commit-dates` script, you may notice that gitworkshop.dev still shows the old commit date (e.g., "23 days ago"). This is expected behavior and here's why:
