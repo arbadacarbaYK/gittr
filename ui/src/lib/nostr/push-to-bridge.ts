@@ -195,6 +195,27 @@ export async function pushFilesToBridge({
       } catch (chunkError: any) {
         clearTimeout(chunkTimeoutId);
         clearInterval(heartbeatInterval);
+        
+        // CRITICAL: Clean up shared working directory on chunk failure
+        // If a chunk fails (network timeout, connection loss, etc.), the backend won't know to clean up
+        // Send a cleanup request to prevent orphaned temp directories from accumulating
+        if (chunks.length > 1 && pushSessionId) {
+          try {
+            console.log(`🧹 [Bridge Push] Attempting to clean up working directory after chunk failure...`);
+            await fetch("/api/nostr/repo/push-cleanup", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ pushSessionId }),
+            }).catch((cleanupError) => {
+              // Non-critical - cleanup failure shouldn't prevent error propagation
+              console.warn(`⚠️ [Bridge Push] Failed to send cleanup request (non-critical):`, cleanupError?.message);
+            });
+          } catch (cleanupError) {
+            // Non-critical - cleanup failure shouldn't prevent error propagation
+            console.warn(`⚠️ [Bridge Push] Cleanup request failed (non-critical):`, cleanupError);
+          }
+        }
+        
         if (chunkError.name === 'AbortError') {
           const filePaths = chunk.slice(0, 10).map(f => f.path).join(', ');
           const moreFiles = chunk.length > 10 ? ` (+${chunk.length - 10} more)` : '';
@@ -247,6 +268,23 @@ export async function pushFilesToBridge({
     return finalResult;
   } catch (error: any) {
     // Error handling is done per-chunk above, so this is just for unexpected errors
+    // CRITICAL: Clean up shared working directory on unexpected errors
+    // This ensures cleanup even if error occurs outside the chunk loop
+    if (chunks.length > 1 && pushSessionId) {
+      try {
+        console.log(`🧹 [Bridge Push] Attempting to clean up working directory after unexpected error...`);
+        await fetch("/api/nostr/repo/push-cleanup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pushSessionId }),
+        }).catch((cleanupError) => {
+          console.warn(`⚠️ [Bridge Push] Failed to send cleanup request (non-critical):`, cleanupError?.message);
+        });
+      } catch (cleanupError) {
+        console.warn(`⚠️ [Bridge Push] Cleanup request failed (non-critical):`, cleanupError);
+      }
+    }
+    
     if (error.name === 'AbortError') {
       throw new Error(`Bridge push timeout. The repository may be too large.`);
     }
