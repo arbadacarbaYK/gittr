@@ -88,10 +88,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { ownerPubkey, repo: repoName, branch = "main", files, commitDate } = req.body || {};
+  const { ownerPubkey: ownerPubkeyInput, repo: repoName, branch = "main", files, commitDate } = req.body || {};
 
-  if (!ownerPubkey || typeof ownerPubkey !== "string" || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-    return res.status(400).json({ error: "ownerPubkey must be a full 64-char hex string" });
+  // CRITICAL: Support both hex pubkey (64-char) and npub format (NIP-19)
+  // The bridge stores repos by hex pubkey in filesystem, so we decode npub if needed
+  let ownerPubkey: string;
+  if (!ownerPubkeyInput || typeof ownerPubkeyInput !== "string") {
+    return res.status(400).json({ error: "ownerPubkey is required" });
+  }
+  
+  // Check if it's already hex format (64-char)
+  if (/^[0-9a-f]{64}$/i.test(ownerPubkeyInput)) {
+    ownerPubkey = ownerPubkeyInput.toLowerCase();
+  } else if (ownerPubkeyInput.startsWith("npub")) {
+    // Decode npub to hex
+    try {
+      const { nip19 } = await import("nostr-tools");
+      const decoded = nip19.decode(ownerPubkeyInput);
+      if (decoded.type === "npub" && typeof decoded.data === "string" && decoded.data.length === 64) {
+        ownerPubkey = decoded.data.toLowerCase();
+      } else {
+        return res.status(400).json({ error: "Invalid npub format" });
+      }
+    } catch (error: any) {
+      return res.status(400).json({ error: `Failed to decode npub: ${error?.message || "invalid format"}` });
+    }
+  } else {
+    return res.status(400).json({ 
+      error: "ownerPubkey must be a 64-char hex string or npub (NIP-19 format)",
+      received: ownerPubkeyInput.length === 8 ? "8-char prefix" : ownerPubkeyInput.startsWith("npub") ? "npub (decoding failed)" : `invalid format (${ownerPubkeyInput.length} chars)`
+    });
   }
 
   if (!repoName || typeof repoName !== "string") {

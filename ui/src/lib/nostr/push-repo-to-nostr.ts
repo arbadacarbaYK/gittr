@@ -295,6 +295,16 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     // CRITICAL: Normalize paths for comparison (deletedPaths are normalized)
     const { normalizeFilePath } = await import("../repos/storage");
     const allFiles = (repo.files && Array.isArray(repo.files)) ? [...repo.files] : [];
+    
+    // CRITICAL: Log file loading status for debugging
+    console.log(`📋 [Push Repo] File loading status:`, {
+      repoFilesLength: repo.files?.length || 0,
+      allFilesLength: allFiles.length,
+      hasSourceUrl: !!repo.sourceUrl,
+      repoSlug,
+      entity,
+    });
+    
     const normalizedDeletedPaths = deletedPaths.map(p => normalizeFilePath(p));
     
     // CRITICAL: Also check if any deleted paths match files by partial match (for cases where path normalization differs)
@@ -717,6 +727,93 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       repoSourceUrl: repo.sourceUrl,
       hasFilesInLocalStorage: baseFiles.length > 0,
     });
+    
+    // CRITICAL: If we have no files at all (bridgeFilesMap is empty), try to fetch file list from GitHub first
+    if (bridgeFilesMap.size === 0 && repo.sourceUrl && baseFiles.length === 0) {
+      console.error(`❌ [Push Repo] CRITICAL: No files found in localStorage! Attempting to fetch file list from GitHub...`, {
+        repoSourceUrl: repo.sourceUrl,
+        baseFilesLength: baseFiles.length,
+        repoFilesLength: repo.files?.length || 0,
+      });
+      
+      onProgress?.("🚨 Emergency: No files in localStorage - fetching file list from GitHub...");
+      const githubMatch = repo.sourceUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+      if (githubMatch) {
+        const [, owner, repoName] = githubMatch;
+        const branch = repo.defaultBranch || "main";
+        
+        try {
+          // Fetch file tree from GitHub API
+          const treeUrl = `/api/github/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoName}/git/trees/${encodeURIComponent(branch)}?recursive=1`)}`;
+          const treeResponse = await fetch(treeUrl);
+          
+          if (treeResponse.ok) {
+            const treeData = await treeResponse.json();
+            if (treeData.tree && Array.isArray(treeData.tree)) {
+              // Filter to only files (not directories)
+              const fileEntries = treeData.tree.filter((entry: any) => entry.type === "blob" && entry.path);
+              console.log(`✅ [Push Repo] Emergency: Fetched ${fileEntries.length} file paths from GitHub`);
+              
+              // Add files to bridgeFilesMap (without content yet)
+              fileEntries.slice(0, 100).forEach((entry: any) => {
+                const normalizedPath = normalizeFilePath(entry.path);
+                if (normalizedPath) {
+                  const isBinary = isBinaryFile(normalizedPath);
+                  setBridgeEntry(normalizedPath, undefined, isBinary);
+                }
+              });
+              
+              // Now fetch content for these files
+              const filesToFetch = Array.from(bridgeFilesMap.keys()).slice(0, 50);
+              console.log(`🚨 [Push Repo] Emergency: Now fetching content for ${filesToFetch.length} files...`);
+              
+              const BATCH_SIZE = 5;
+              for (let i = 0; i < filesToFetch.length; i += BATCH_SIZE) {
+                const batch = filesToFetch.slice(i, i + BATCH_SIZE);
+                await Promise.all(batch.map(async (filePath) => {
+                  try {
+                    const file = bridgeFilesMap.get(filePath);
+                    if (!file) return;
+                    
+                    const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${encodeURIComponent(filePath)}`;
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 10000);
+                    
+                    try {
+                      const response = await fetch(rawUrl, { 
+                        headers: { "User-Agent": "gittr-space" },
+                        signal: controller.signal
+                      });
+                      clearTimeout(timeoutId);
+                      
+                      if (response.ok) {
+                        const content = await response.text();
+                        if (content && content.length > 0) {
+                          file.content = content;
+                          filesForBridge.push(file);
+                          console.log(`✅ [Push Repo] Emergency fetch: Got ${filePath} (${content.length} chars)`);
+                        }
+                      }
+                    } catch (fetchError: any) {
+                      clearTimeout(timeoutId);
+                      if (fetchError.name !== 'AbortError') {
+                        console.warn(`⚠️ [Push Repo] Emergency fetch failed for ${filePath}:`, fetchError?.message);
+                      }
+                    }
+                  } catch (e: any) {
+                    console.warn(`⚠️ [Push Repo] Emergency fetch error for ${filePath}:`, e?.message);
+                  }
+                }));
+              }
+              
+              console.log(`📊 [Push Repo] After emergency file list + content fetch: ${filesForBridge.length} files with content`);
+            }
+          }
+        } catch (treeError: any) {
+          console.error(`❌ [Push Repo] Failed to fetch file tree from GitHub:`, treeError);
+        }
+      }
+    }
     
     // CRITICAL: If we still have no files with content, but we have files in the repo, 
     // we MUST fetch from GitHub NOW (not wait for refetch)
