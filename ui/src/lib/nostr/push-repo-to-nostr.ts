@@ -660,8 +660,10 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             try {
               console.log(`🔍 [Push Repo] Trying to fetch ${file.path} from source (${repo.sourceUrl})...`);
               const sourceMatch = repo.sourceUrl.match(/(?:github|gitlab|codeberg)\.(?:com|org)\/([^\/]+)\/([^\/]+)/i);
-              if (sourceMatch) {
-                const [, owner, repoName] = sourceMatch;
+              if (sourceMatch && sourceMatch[1] && sourceMatch[2]) {
+                const [, owner, repoNameRaw] = sourceMatch;
+                // CRITICAL: Strip .git suffix from repoName for raw URLs (raw.githubusercontent.com doesn't use .git)
+                const repoName = repoNameRaw.replace(/\.git$/, '');
                 const platform = repo.sourceUrl.includes('github') ? 'github' : 
                                  repo.sourceUrl.includes('gitlab') ? 'gitlab' : 'codeberg';
                 const branch = repo.defaultBranch || 'main';
@@ -679,6 +681,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
                     useRaw = true;
                   } else {
                     // For binary, use Contents API to get base64
+                    // Note: GitHub API uses repoName with or without .git, but we'll use the normalized one
                     sourceFileUrl = `/api/github/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoName}/contents/${encodeURIComponent(file.path)}?ref=${encodeURIComponent(branch)}`)}`;
                   }
                 } else if (platform === 'gitlab') {
@@ -780,12 +783,15 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       
       onProgress?.("🚨 Emergency: No files in localStorage - fetching file list from GitHub...");
       const githubMatch = repo.sourceUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
-      if (githubMatch) {
-        const [, owner, repoName] = githubMatch;
+      if (githubMatch && githubMatch[1] && githubMatch[2]) {
+        const [, owner, repoNameRaw] = githubMatch;
+        // CRITICAL: Strip .git suffix from repoName for raw URLs (raw.githubusercontent.com doesn't use .git)
+        const repoName = repoNameRaw.replace(/\.git$/, '');
         const branch = repo.defaultBranch || "main";
         
         try {
           // Fetch file tree from GitHub API
+          // Note: GitHub API accepts repoName with or without .git, but we'll use the normalized one
           const treeUrl = `/api/github/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoName}/git/trees/${encodeURIComponent(branch)}?recursive=1`)}`;
           const treeResponse = await fetch(treeUrl);
           
@@ -893,8 +899,10 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       // EMERGENCY: Fetch ALL files from GitHub right now - NO LIMIT
       onProgress?.("🚨 Emergency: Fetching ALL files from GitHub (this may take a moment)...");
       const githubMatch = repo.sourceUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
-      if (githubMatch) {
-        const [, owner, repoName] = githubMatch;
+      if (githubMatch && githubMatch[1] && githubMatch[2]) {
+        const [, owner, repoNameRaw] = githubMatch;
+        // CRITICAL: Strip .git suffix from repoName for raw URLs (raw.githubusercontent.com doesn't use .git)
+        const repoName = repoNameRaw.replace(/\.git$/, '');
         const branch = repo.defaultBranch || "main";
         
         // CRITICAL: If bridgeFilesMap is empty but baseFiles exist, populate it first
