@@ -96,7 +96,6 @@ export async function pushFilesToBridge({
         console.warn(`⚠️ [Bridge Push] Skipping null chunk ${i + 1}/${chunks.length}`);
         continue;
       }
-      const isLastChunk = i === chunks.length - 1;
       
       if (chunk.length === 0) {
         console.log(`📤 [Bridge Push] Pushing empty chunk ${i + 1}/${chunks.length} (will create empty commit)...`);
