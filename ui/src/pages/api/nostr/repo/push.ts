@@ -274,9 +274,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               // Parent path is a file, not a directory - this is a conflict
               console.error(`❌ [Bridge Push] Cannot create ${safePath} - parent path ${part} exists as a file (not a directory)`);
               missingFiles.push(safePath);
-              continue; // Skip this file
+              break; // Exit path checking loop - we've already determined we can't create this file
             }
-            // Parent exists and is a directory - continue
+            // Parent exists and is a directory - continue checking remaining path parts
           } else {
             // Parent doesn't exist - mkdir will create it
           }
