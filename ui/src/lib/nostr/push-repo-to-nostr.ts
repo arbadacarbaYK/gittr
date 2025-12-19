@@ -1543,25 +1543,28 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           return null;
         });
         
-        // CRITICAL: Don't block second signature on bridge push
-        // The state event can be published with empty commits - bridge will update it later
-        // We'll try to get refs quickly, but proceed with second signature regardless
-        onProgress?.("⏳ Trying to get commit SHAs from bridge (non-blocking)...");
+        // CRITICAL: Wait for bridge push to complete before creating state event
+        // This ensures all chunks are processed and we get refs from the final chunk
+        // The state event must reference the latest commit that includes ALL files
+        onProgress?.("⏳ Waiting for bridge push to complete (all chunks must finish)...");
         try {
-          // Try to get refs quickly (10 seconds max) - don't block second signature
-          const QUICK_REF_TIMEOUT = 10000; // 10 seconds
-          const timeoutPromise = new Promise((resolve) => setTimeout(resolve, QUICK_REF_TIMEOUT));
-          const pushResult = await Promise.race([bridgePushPromise, timeoutPromise.then(() => null)]);
+          // CRITICAL: Wait for bridge push to complete - this ensures all chunks are processed
+          // Each chunk commits separately, but we need the final chunk's refs (which includes all files)
+          const pushResult = await bridgePushPromise;
           
           if (pushResult && pushResult.refs && Array.isArray(pushResult.refs)) {
             refs = pushResult.refs;
             const refsWithCommits = refs.filter(r => r.commit && r.commit.length > 0).length;
-            console.log(`✅ [Push Repo] Got ${refs.length} refs with ${refsWithCommits} commit SHAs from push endpoint`);
+            console.log(`✅ [Push Repo] Got ${refs.length} refs with ${refsWithCommits} commit SHAs from completed bridge push`);
             if (refsWithCommits > 0) {
-              onProgress?.(`✅ Got ${refsWithCommits} refs with commit SHAs - ready to publish state event!`);
+              onProgress?.(`✅ Got ${refsWithCommits} refs with commit SHAs from all chunks - ready to publish state event!`);
+            } else {
+              console.warn(`⚠️ [Push Repo] Bridge push completed but no commit SHAs in refs`);
+              onProgress?.("⚠️ Bridge push completed but no commit SHAs - state event will have empty commits");
             }
           } else {
-            // Push still running - try fetching from bridge API (quick check)
+            // Bridge push completed but no refs - try fetching from bridge API as fallback
+            console.warn(`⚠️ [Push Repo] Bridge push completed but no refs returned - trying bridge API...`);
             try {
               const refsResponse = await fetch(
                 `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(pubkey)}&repo=${encodeURIComponent(actualRepositoryName)}`
@@ -1573,35 +1576,19 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
                   const refsWithCommits = fetchedRefs.filter((r: any) => r.commit && r.commit.length > 0).length;
                   if (refsWithCommits > 0) {
                     refs = fetchedRefs;
-                    console.log(`✅ [Push Repo] Got ${refs.length} refs (${refsWithCommits} with commit SHAs) from bridge API`);
+                    console.log(`✅ [Push Repo] Got ${refs.length} refs (${refsWithCommits} with commit SHAs) from bridge API fallback`);
                     onProgress?.(`✅ Got ${refsWithCommits} refs with commit SHAs - proceeding with second signature!`);
                   } else {
-                    console.log(`⚠️ [Push Repo] Bridge API returned refs but no commit SHAs yet - bridge still processing`);
-                    onProgress?.("⚠️ Bridge still processing - state event will have empty commits (bridge will update later)");
+                    console.log(`⚠️ [Push Repo] Bridge API returned refs but no commit SHAs`);
+                    onProgress?.("⚠️ Bridge push completed but no commit SHAs - state event will have empty commits");
                   }
                 }
               }
             } catch (fallbackError) {
               console.warn(`⚠️ [Push Repo] Bridge API fetch failed:`, fallbackError);
-              onProgress?.("⚠️ Cannot fetch refs yet - proceeding with second signature (state event will have empty commits, bridge will update later)");
+              onProgress?.("⚠️ Cannot fetch refs - state event will have empty commits");
             }
           }
-          
-          // Continue bridge push in background (don't await)
-          bridgePushPromise.then((result) => {
-            if (result && result.refs && Array.isArray(result.refs)) {
-              const finalRefs = result.refs;
-              const refsWithCommits = finalRefs.filter((r: any) => r.commit && r.commit.length > 0).length;
-              if (refsWithCommits > 0 && refs.length === 0) {
-                console.log(`✅ [Push Repo] Bridge push completed - got ${refsWithCommits} refs with commit SHAs`);
-                // Update refs if we didn't have them before
-                refs = finalRefs;
-              }
-            }
-            onProgress?.("✅ Bridge push completed in background");
-          }).catch(() => {
-            // Already logged above
-          });
           
         } catch (bridgeError: any) {
           console.error("❌ [Push Repo] Bridge push error:", bridgeError);
