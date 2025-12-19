@@ -164,15 +164,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // This ensures git log and other commands work immediately
       await execAsync(`git --git-dir="${repoPath}" symbolic-ref HEAD refs/heads/${branch}`);
       
-      // CRITICAL: Set ownership to www-data:www-data so fcgiwrap (git-http-backend) can access it
-      // This is required for HTTPS git clones to work via git.gittr.space
-      // On local dev, this might fail if www-data doesn't exist, which is fine
+      // CRITICAL: Set ownership to git-nostr:git-nostr so bridge can write refs
+      // git-http-backend (fcgiwrap) can read with proper permissions (755)
+      // On local dev, this might fail if git-nostr doesn't exist, which is fine
       try {
-        await execAsync(`chown -R www-data:www-data "${repoPath}"`);
-        console.log(`✅ Set ownership to www-data:www-data for ${repoPath}`);
+        await execAsync(`chown -R git-nostr:git-nostr "${repoPath}"`);
+        await execAsync(`chmod -R u+rwX,g+rX,o+rX "${repoPath}"`);
+        console.log(`✅ Set ownership to git-nostr:git-nostr for ${repoPath} (bridge can write, http-backend can read)`);
       } catch (chownError: any) {
-        // On local dev, www-data might not exist - that's okay
-        console.warn(`⚠️ Failed to set ownership to www-data (this is OK for local dev):`, chownError?.message);
+        // Fallback: try www-data if git-nostr doesn't exist (local dev)
+        console.warn(`⚠️ Failed to set ownership to git-nostr, trying www-data:`, chownError?.message);
+        try {
+          await execAsync(`chown -R www-data:www-data "${repoPath}"`);
+          console.log(`✅ Set ownership to www-data:www-data for ${repoPath} (fallback)`);
+        } catch (fallbackError: any) {
+          console.warn(`⚠️ Failed to set ownership (this is OK for local dev):`, fallbackError?.message);
+        }
       }
     }
 
@@ -274,16 +281,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // This ensures git log and other commands work correctly
     await execAsync(`git --git-dir="${repoPath}" symbolic-ref HEAD refs/heads/${branch}`);
     
-    // CRITICAL: Ensure ownership is correct after push (in case repo already existed)
-    // Set ownership to www-data:www-data so fcgiwrap (git-http-backend) can access it
-    // This is required for HTTPS git clones to work via git.gittr.space
-    // On local dev, this might fail if www-data doesn't exist, which is fine
+    // CRITICAL: Ensure ownership is correct after push
+    // The bridge runs as git-nostr user and needs write access to update refs
+    // git-http-backend (fcgiwrap) runs as www-data but can read with proper permissions
+    // Solution: Set ownership to git-nostr:git-nostr, then add www-data to git-nostr group OR use 755 permissions
+    // For now, use git-nostr ownership (bridge can write, http-backend can read with 755 perms)
     try {
-      await execAsync(`chown -R www-data:www-data "${repoPath}"`);
-      console.log(`✅ Set ownership to www-data:www-data for ${repoPath} (after push)`);
+      await execAsync(`chown -R git-nostr:git-nostr "${repoPath}"`);
+      // Set permissions so www-data (git-http-backend) can read but git-nostr can write
+      await execAsync(`chmod -R u+rwX,g+rX,o+rX "${repoPath}"`);
+      console.log(`✅ Set ownership to git-nostr:git-nostr for ${repoPath} (bridge can write, http-backend can read)`);
     } catch (chownError: any) {
-      // On local dev, www-data might not exist - that's okay
-      console.warn(`⚠️ Failed to set ownership to www-data (this is OK for local dev):`, chownError?.message);
+      // Fallback: try www-data if git-nostr doesn't exist (local dev)
+      console.warn(`⚠️ Failed to set ownership to git-nostr, trying www-data:`, chownError?.message);
+      try {
+        await execAsync(`chown -R www-data:www-data "${repoPath}"`);
+        console.log(`✅ Set ownership to www-data:www-data for ${repoPath} (fallback)`);
+      } catch (fallbackError: any) {
+        console.warn(`⚠️ Failed to set ownership (this is OK for local dev):`, fallbackError?.message);
+      }
     }
 
     // CRITICAL: Get commit SHAs immediately after push (no need to wait for bridge)
