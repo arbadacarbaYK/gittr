@@ -376,8 +376,10 @@ export default function RepoReleasesPage({ params }: { params: Promise<{ entity:
               </Button>
             </div>
             <p className="text-xs text-gray-500 mt-2">
-              💡 Tip: Upload the actual files separately and link them. For now, this stores asset metadata. 
-              In production, you would upload files to a storage service (S3, IPFS, etc.) and store the URLs.
+              💡 TODO: Implement Blossom (NIP-96) upload for release assets. 
+              Currently stores asset metadata only. Plan: Upload binaries/APKs to self-hosted Blossom server, 
+              store Blossom URLs in release metadata, optionally add payment-gated downloads (secondary feature).
+              See RELEASE_ASSETS_BLOSSOM_PLAN.md in project root for implementation details.
             </p>
           </div>
           

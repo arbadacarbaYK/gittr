@@ -7910,12 +7910,12 @@ export default function RepoCodePage({
                         );
                       }
                       // Code blocks (triple backticks) - copyable box
-                      return (
+                        return (
                         <CopyableCodeBlock 
                           inline={false}
                           className={className || "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"}
                         >
-                          {children}
+                              {children}
                         </CopyableCodeBlock>
                       );
                     },
