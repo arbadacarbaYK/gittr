@@ -971,19 +971,46 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       // NIP-34: Add relays tags
       // CRITICAL: Per NIP-34 spec, each relay should be in a separate tag
       // Format: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"], etc.
+      // CRITICAL: gitworkshop.dev only recognizes clone URLs as GRASP servers if the relay URL matches the clone URL domain
+      // So we MUST add relay URLs that match each clone URL's domain
       const { getGraspServers } = await import("../utils/grasp-servers");
       const graspRelays = getGraspServers(defaultRelays);
       console.log(`🔍 [Push Repo] Filtering relays: ${defaultRelays.length} total, ${graspRelays.length} GRASP/git relays`);
-      if (graspRelays.length > 0) {
+      
+      // CRITICAL: Extract relay URLs from clone URLs to ensure gitworkshop.dev recognizes them as GRASP servers
+      // gitworkshop.dev checks: if clone URL is https://git.gittr.space/..., relay must be wss://git.gittr.space
+      const relayUrlsFromCloneUrls = new Set<string>();
+      cloneUrls.forEach(cloneUrl => {
+        if (cloneUrl && typeof cloneUrl === 'string' && (cloneUrl.startsWith('http://') || cloneUrl.startsWith('https://'))) {
+          // Extract domain from clone URL and convert to wss:// format
+          const domain = cloneUrl.replace(/^https?:\/\//, '').split('/')[0];
+          if (domain) {
+            const relayUrl = `wss://${domain}`;
+            relayUrlsFromCloneUrls.add(relayUrl);
+            console.log(`🔗 [Push Repo] Extracted relay URL from clone URL: ${cloneUrl} -> ${relayUrl}`);
+          }
+        }
+      });
+      
+      // Combine GRASP relays from defaultRelays with relay URLs extracted from clone URLs
+      const allGraspRelays = new Set<string>();
+      graspRelays.forEach(relay => {
+        const normalizedRelay = relay.startsWith("wss://") || relay.startsWith("ws://") 
+          ? relay 
+          : `wss://${relay}`;
+        allGraspRelays.add(normalizedRelay);
+      });
+      relayUrlsFromCloneUrls.forEach(relay => {
+        allGraspRelays.add(relay);
+      });
+      
+      if (allGraspRelays.size > 0) {
         // CRITICAL: Ensure all relay URLs have wss:// prefix before adding as separate tags
-        graspRelays.forEach(relay => {
-          // Ensure relay has wss:// prefix
-          const normalizedRelay = relay.startsWith("wss://") || relay.startsWith("ws://") 
-            ? relay 
-            : `wss://${relay}`;
-          nip34Tags.push(["relays", normalizedRelay]);
+        Array.from(allGraspRelays).forEach(relay => {
+          nip34Tags.push(["relays", relay]);
+          console.log(`✅ [Push Repo] Added relay tag: ${relay}`);
         });
-        console.log(`✅ [Push Repo] Added ${graspRelays.length} separate relay tag(s) per NIP-34 spec`);
+        console.log(`✅ [Push Repo] Added ${allGraspRelays.size} separate relay tag(s) per NIP-34 spec (${graspRelays.length} from defaultRelays, ${relayUrlsFromCloneUrls.size} from clone URLs)`);
       }
       
       // NIP-34: Add topics
