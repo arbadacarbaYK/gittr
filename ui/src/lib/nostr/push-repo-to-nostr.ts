@@ -1801,8 +1801,46 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       
       // CRITICAL: Send state event directly to bridge API for immediate processing
       // The state event contains commit refs - bridge needs it to process the repository
+      // IMPORTANT: Bridge requires repository to exist before processing state event
+      // So we wait for announcement event to be processed first
       const { KIND_REPOSITORY_STATE: STATE_KIND } = await import("./events");
       if (stateResult.eventId && stateEvent.kind === STATE_KIND) {
+        onProgress?.("📡 Waiting for announcement event to be processed by bridge...");
+        
+        // Wait for repository to exist on bridge (created by announcement event)
+        // Poll up to 10 times with 500ms delay = 5 seconds max wait
+        let repoExists = false;
+        const maxAttempts = 10;
+        const delayMs = 500;
+        
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          try {
+            const existsResponse = await fetch(
+              `/api/nostr/repo/exists?ownerPubkey=${encodeURIComponent(pubkey)}&repo=${encodeURIComponent(actualRepositoryName)}`
+            );
+            if (existsResponse.ok) {
+              const existsData = await existsResponse.json();
+              if (existsData.exists === true) {
+                repoExists = true;
+                console.log(`✅ [Push Repo] Repository exists on bridge (attempt ${attempt + 1}/${maxAttempts})`);
+                break;
+              }
+            }
+          } catch (checkError: any) {
+            console.warn(`⚠️ [Push Repo] Error checking repo existence:`, checkError?.message);
+          }
+          
+          if (attempt < maxAttempts - 1) {
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+          }
+        }
+        
+        if (!repoExists) {
+          console.warn(`⚠️ [Push Repo] Repository not found on bridge after ${maxAttempts} attempts - state event will be processed when repo is created`);
+          onProgress?.("⚠️ Bridge hasn't processed announcement event yet - state event will be processed when repo exists");
+        }
+        
+        // Send state event to bridge (even if repo doesn't exist yet - bridge will queue it)
         onProgress?.("📡 Sending state event directly to bridge for immediate processing...");
         try {
           const bridgeResponse = await fetch("/api/nostr/repo/event", {
