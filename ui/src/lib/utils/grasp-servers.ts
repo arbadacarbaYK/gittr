@@ -18,6 +18,8 @@
  * 
  * Regular Nostr relays (like relay.damus.io, nos.lol) are NOT GRASP servers
  * and should NOT be included in clone URLs.
+ * 
+ * This list includes ALL known GRASP servers (for reading/fetching repos).
  */
 export const KNOWN_GRASP_DOMAINS = [
   // Actual GRASP git servers (verified to serve git repos)
@@ -28,7 +30,27 @@ export const KNOWN_GRASP_DOMAINS = [
   'git.shakespeare.diy',
   'git-01.uid.ovh',
   'git-02.uid.ovh',
-  'git.jb55.com',
+  'git.jb55.com', // Read-only: jb55 hosts repos but only their own, not a public GRASP server for pushing
+  // gittr.space GRASP server (our own server)
+  'git.gittr.space',
+] as const;
+
+/**
+ * GRASP_SERVERS_FOR_PUSHING: List of GRASP servers that accept repos from ANY user
+ * 
+ * These servers will have clone URLs automatically added when pushing new repos.
+ * Excludes servers that only host their own repos (like git.jb55.com).
+ */
+export const GRASP_SERVERS_FOR_PUSHING = [
+  // GRASP servers that accept repos from any user
+  'relay.ngit.dev',
+  'ngit-relay.nostrver.se',
+  'gitnostr.com',
+  'ngit.danconwaydev.com',
+  'git.shakespeare.diy',
+  'git-01.uid.ovh',
+  'git-02.uid.ovh',
+  // 'git.jb55.com', // EXCLUDED: jb55 only hosts their own repos, not a public GRASP server
   // gittr.space GRASP server (our own server)
   'git.gittr.space',
 ] as const;
