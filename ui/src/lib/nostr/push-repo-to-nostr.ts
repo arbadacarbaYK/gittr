@@ -195,11 +195,11 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     // GRASP servers serve git repos via HTTPS/SSH and can be cloned with standard git commands
     // Regular Nostr relays (like relay.damus.io, nos.lol) are NOT git servers and should NOT be in clone URLs
     if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
-      const { KNOWN_GRASP_DOMAINS } = await import("../utils/grasp-servers");
-      // Use only the verified GRASP git servers from KNOWN_GRASP_DOMAINS
-      // This list excludes regular Nostr relays that don't serve git repos
+      const { GRASP_SERVERS_FOR_PUSHING } = await import("../utils/grasp-servers");
+      // Use only the GRASP servers that accept repos from any user (excludes read-only servers like git.jb55.com)
+      // This list excludes regular Nostr relays that don't serve git repos AND servers that only host their own repos
       const knownGitServers = [
-        ...KNOWN_GRASP_DOMAINS, // All domains in this list are verified GRASP git servers
+        ...GRASP_SERVERS_FOR_PUSHING, // Only servers that accept repos from any user
       ];
     
       // Remove duplicates and filter out the primary server (already added above)

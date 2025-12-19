@@ -1965,6 +1965,7 @@ export default function RepoCodePage({
         }
         
         // This ensures we try all sources and show status for all of them
+        // Include ALL known GRASP servers (for reading), including read-only ones like git.jb55.com
         const knownGitServers = [
           "relay.ngit.dev",
           "ngit-relay.nostrver.se",
@@ -1973,6 +1974,7 @@ export default function RepoCodePage({
           "git.shakespeare.diy",
           "git-01.uid.ovh",
           "git-02.uid.ovh",
+          "git.jb55.com", // Read-only: can read repos from here but won't push to it
         ];
         
         // Extract npub and repo from existing Nostr git URLs
