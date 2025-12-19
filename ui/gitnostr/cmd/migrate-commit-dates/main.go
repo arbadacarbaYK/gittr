@@ -112,6 +112,15 @@ func main() {
 			time.Unix(currentCommitTime, 0).Format(time.RFC3339),
 			time.Unix(updatedAt, 0).Format(time.RFC3339))
 
+		// CRITICAL: Fix ownership before running filter-branch to avoid permission errors
+		// Ensure git-nostr user owns the repo directory and all its contents
+		// This is needed because filter-branch needs to write to .git/objects
+		chownCmd := exec.Command("chown", "-R", "git-nostr:git-nostr", repoPath)
+		if chownOutput, chownErr := chownCmd.CombinedOutput(); chownErr != nil {
+			log.Printf("⚠️  Failed to fix ownership for %s/%s: %v\nOutput: %s", safePubkeyDisplay(ownerPubkey), repoName, chownErr, string(chownOutput))
+			// Continue anyway - might still work if permissions are already correct
+		}
+
 		// Update commit date using git filter-branch
 		// Format: git filter-branch -f --env-filter 'export GIT_AUTHOR_DATE="..." GIT_COMMITTER_DATE="..."' HEAD
 		commitDateRFC2822 := time.Unix(updatedAt, 0).UTC().Format(time.RFC1123Z)
