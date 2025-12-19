@@ -12,6 +12,28 @@ According to NIP-34 (Nostr Git Repositories):
 
 ## Current Implementation
 
+### localStorage (Browser/Client)
+
+**Storage**: Repositories are stored in `localStorage` with **BOTH formats**:
+```javascript
+{
+  entity: "npub1abc...",        // npub format (for display/URLs)
+  ownerPubkey: "9a83779e...",   // hex format (64-char, for API calls)
+  repo: "my-repo",
+  // ... other fields
+}
+```
+
+**Why both?**
+- `entity` (npub): Used for URLs, display, and user-facing identifiers
+- `ownerPubkey` (hex): Used for API calls to bridge, Nostr events, and internal operations
+- Both are needed: npub for user experience, hex for technical operations
+
+**Storage keys**: All repo-related localStorage keys use `entity` (npub):
+- `gittr_files__{entity}__{repo}`
+- `gittr_overrides__{entity}__{repo}`
+- `gittr_commits__{entity}__{repo}`
+
 ### Filesystem Storage (git-nostr-bridge)
 
 **Storage**: Repositories are stored by **hex pubkey** in the filesystem:
@@ -33,6 +55,8 @@ This allows both formats to work:
 - Clone URLs use npub: `https://git.gittr.space/npub1.../repo.git` ✅
 - Filesystem storage uses hex: `reposDir/{hexPubkey}/repo.git` ✅
 - Both resolve to the same repository ✅
+
+**Important**: The symlink is created by the bridge, NOT stored in localStorage. It's a filesystem-level compatibility layer.
 
 ### API Endpoints
 
@@ -57,33 +81,57 @@ This allows both formats to work:
 
 ### Push Workflow
 
-1. **User provides**: Hex pubkey (from NIP-07 extension or stored session)
-2. **Clone URLs generated**: Convert hex to npub for GRASP clone URLs:
+1. **Load from localStorage**: 
+   ```typescript
+   const repo = loadStoredRepos().find(r => r.entity === entity && r.repo === repoSlug);
+   // repo.entity = "npub1..." (npub format)
+   // repo.ownerPubkey = "9a83779e..." (hex format)
+   ```
+
+2. **Get pubkey for push**: Use `ownerPubkey` (hex) from repo, or resolve from `entity`:
+   ```typescript
+   const pubkey = repo.ownerPubkey || resolveEntityToPubkey(repo.entity);
+   // pubkey is always hex format (64-char)
+   ```
+
+3. **Clone URLs generated**: Convert hex to npub for GRASP clone URLs:
    ```typescript
    const npub = nip19.npubEncode(pubkey);
    const cloneUrl = `https://git.gittr.space/${npub}/repo.git`;
    ```
-3. **Bridge API call**: Send hex pubkey to `/api/nostr/repo/push`:
+
+4. **Bridge API call**: Send hex pubkey to `/api/nostr/repo/push`:
    ```typescript
    {
-     ownerPubkey: pubkey, // hex format
+     ownerPubkey: pubkey, // hex format (from repo.ownerPubkey)
      repo: "repo-name",
      files: [...]
    }
    ```
-4. **Bridge storage**: Stores by hex pubkey, creates npub symlink
-5. **Nostr event**: Published with hex pubkey in `event.pubkey`, npub in clone tags
+
+5. **Bridge storage**: 
+   - Stores by hex pubkey: `reposDir/{hexPubkey}/repo.git`
+   - Creates npub symlink: `reposDir/npub1... -> reposDir/{hexPubkey}`
+   - Symlink is filesystem-only, NOT stored in localStorage
+
+6. **Nostr event**: Published with hex pubkey in `event.pubkey`, npub in clone tags
+
+**Key Point**: localStorage stores BOTH formats (entity=npub, ownerPubkey=hex). The bridge only stores hex (with npub symlink for compatibility). The symlink is NOT part of localStorage - it's a filesystem feature.
 
 ## Summary Table
 
 | Context | Format | Reason |
 |---------|--------|--------|
+| **localStorage.entity** | npub | User-facing identifier, used in URLs |
+| **localStorage.ownerPubkey** | hex | Technical operations, API calls, events |
 | **Filesystem storage** | hex | Reliable paths, canonical format |
+| **Filesystem symlink** | npub→hex | Compatibility layer (created by bridge) |
 | **Clone URLs (NIP-34)** | npub | Required by NIP-34 spec |
 | **Nostr event.pubkey** | hex | Standard Nostr format |
 | **Nostr event tags (clone)** | npub | Required by NIP-34 spec |
 | **API endpoints** | both | Accepts both, converts internally |
 | **Bridge internal** | hex | Filesystem operations use hex |
+| **Database (bridge)** | hex | Stores by hex pubkey |
 
 ## Is This Correct?
 
