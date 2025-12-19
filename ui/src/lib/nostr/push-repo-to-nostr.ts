@@ -615,7 +615,55 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             }
           }
           
-          // If we couldn't fetch from bridge, exclude the file
+          // If we couldn't fetch from bridge, try fetching from source (GitHub/GitLab/Codeberg)
+          if (repo.sourceUrl) {
+            try {
+              console.log(`🔍 [Push Repo] Trying to fetch ${file.path} from source (${repo.sourceUrl})...`);
+              const sourceMatch = repo.sourceUrl.match(/(?:github|gitlab|codeberg)\.(?:com|org)\/([^\/]+)\/([^\/]+)/i);
+              if (sourceMatch) {
+                const [, owner, repoName] = sourceMatch;
+                const platform = repo.sourceUrl.includes('github') ? 'github' : 
+                                 repo.sourceUrl.includes('gitlab') ? 'gitlab' : 'codeberg';
+                const branch = repo.defaultBranch || 'main';
+                
+                // Fetch file content from source
+                const sourceFileUrl = platform === 'github' 
+                  ? `/api/github/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoName}/contents/${file.path}?ref=${branch}`)}`
+                  : platform === 'gitlab'
+                  ? `/api/gitlab/proxy?endpoint=${encodeURIComponent(`/projects/${encodeURIComponent(`${owner}/${repoName}`)}/repository/files/${encodeURIComponent(file.path)}/raw?ref=${branch}`)}`
+                  : `/api/codeberg/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoName}/contents/${file.path}?ref=${branch}`)}`;
+                
+                const sourceResponse = await fetchWithTimeout(sourceFileUrl, FILE_FETCH_TIMEOUT);
+                if (sourceResponse.ok) {
+                  if (file.isBinary) {
+                    // For binary files, GitHub/GitLab return base64 in content field
+                    const sourceData = await sourceResponse.json();
+                    if (sourceData.content) {
+                      // Decode base64 if needed (GitHub returns base64, GitLab returns raw)
+                      file.content = sourceData.encoding === 'base64' ? sourceData.content : 
+                                    Buffer.from(await sourceResponse.text()).toString('base64');
+                      filesForBridge.push(file);
+                      console.log(`✅ [Push Repo] Fetched binary content for ${file.path} from ${platform}`);
+                      return;
+                    }
+                  } else {
+                    // For text files, get raw content
+                    const textContent = await sourceResponse.text();
+                    if (textContent && textContent.length > 0) {
+                      file.content = textContent;
+                      filesForBridge.push(file);
+                      console.log(`✅ [Push Repo] Fetched text content for ${file.path} from ${platform}`);
+                      return;
+                    }
+                  }
+                }
+              }
+            } catch (sourceError: any) {
+              console.warn(`⚠️ [Push Repo] Failed to fetch ${file.path} from source:`, sourceError);
+            }
+          }
+          
+          // If we still couldn't fetch, exclude the file
           console.warn(`⚠️ [Push Repo] Excluding file from bridge push (no content available): ${file.path}`);
           console.warn(`   💡 This file should have been loaded during import/create. If it's missing, re-import the repository.`);
         }));
