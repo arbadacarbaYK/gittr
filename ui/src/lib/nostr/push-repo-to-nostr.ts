@@ -971,12 +971,15 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       // NIP-34: Add relays tags
       // CRITICAL: Per NIP-34 spec, each relay should be in a separate tag
       // Format: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"], etc.
-      // CRITICAL: Only add relay URLs that actually exist in defaultRelays
-      // gitworkshop.dev only recognizes clone URLs as GRASP servers if:
-      // 1. Clone URL is https://git.example.com/...
-      // 2. Relay URL wss://git.example.com exists in relays tags
-      // BUT: We should NOT create fake relay URLs - only use relays that actually exist
-      // For git.gittr.space: it's a git server, NOT a relay, so we don't add wss://git.gittr.space
+      // 
+      // IMPORTANT: Only add relay URLs that actually exist in defaultRelays
+      // We do NOT create fake relay URLs from clone URLs - only use real relays
+      // 
+      // Note on gitworkshop.dev GRASP server recognition:
+      // - gitworkshop.dev recognizes clone URLs as GRASP servers if the relay URL matches the clone URL domain
+      // - Example: Clone URL https://relay.ngit.dev/... + Relay wss://relay.ngit.dev = recognized as GRASP server
+      // - For git.gittr.space: It's a git server, NOT a relay, so wss://git.gittr.space won't be added
+      // - This is correct: git.gittr.space will show in "git servers" but not "grasp servers" on gitworkshop.dev
       const { getGraspServers } = await import("../utils/grasp-servers");
       const graspRelays = getGraspServers(defaultRelays);
       console.log(`🔍 [Push Repo] Filtering relays: ${defaultRelays.length} total, ${graspRelays.length} GRASP/git relays`);
