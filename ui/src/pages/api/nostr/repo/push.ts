@@ -88,7 +88,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { ownerPubkey: ownerPubkeyInput, repo: repoName, branch = "main", files, commitDate, createCommit = true, chunkIndex, totalChunks } = req.body || {};
+  const { ownerPubkey: ownerPubkeyInput, repo: repoName, branch = "main", files, commitDate, createCommit = true, chunkIndex, totalChunks, pushSessionId } = req.body || {};
 
   // CRITICAL: Support both hex pubkey (64-char) and npub format (NIP-19)
   // The bridge stores repos by hex pubkey in filesystem, so we decode npub if needed
@@ -155,6 +155,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   let tempDir: string | null = null;
   const missingFiles: string[] = [];
+  const isChunked = totalChunks && totalChunks > 1;
 
   try {
     await execAsync(`mkdir -p "${join(reposDir, ownerPubkey)}"`);
@@ -183,50 +184,71 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    tempDir = await mkdtemp(join(os.tmpdir(), "gittr-push-"));
-    await execAsync(`git init "${tempDir}"`);
-    await execAsync(`git -C "${tempDir}" config user.name "gittr push"`);
-    await execAsync(`git -C "${tempDir}" config user.email "push@gittr.space"`);
-
-    // CRITICAL: Clone logic for chunked vs non-chunked pushes:
-    // - Chunk 1 of a multi-chunk push: DON'T clone (start fresh with new files only)
-    // - Chunks 2+ of a multi-chunk push: DO clone (to get files from previous chunks in THIS push)
-    // - Non-chunked push with no files: DO clone (to preserve state for empty commits)
-    // - Non-chunked push with files: DON'T clone (replace with new files)
-    const isChunked = totalChunks && totalChunks > 1;
+    // CRITICAL: Use shared working directory for chunked pushes to avoid slow clones
+    // For chunked pushes with pushSessionId, reuse the same working directory
+    // This avoids cloning the repo for each chunk (which gets slower as repo grows)
     const isFirstChunk = !chunkIndex || chunkIndex === 0;
-    const shouldCloneExisting = (isChunked && !isFirstChunk && existsSync(repoPath)) || (!isChunked && files.length === 0 && existsSync(repoPath));
     
-    let cloneTempDir: string | null = null;
-    if (shouldCloneExisting) {
-      if (isChunked) {
-        console.log(`📋 [Bridge Push] Chunk ${chunkIndex + 1}/${totalChunks}: Cloning existing repo to get files from previous chunks in this push...`);
-      } else {
-        console.log(`📋 [Bridge Push] No files provided, copying existing files from repo to preserve state...`);
-      }
-      try {
-        // Clone the bare repo to get all files into working tree
-        cloneTempDir = await mkdtemp(join(os.tmpdir(), "gittr-clone-"));
-        await execAsync(`git clone "${repoPath}" "${cloneTempDir}"`);
-        // Copy all files (except .git) from cloned repo to temp dir
-        await execAsync(`rsync -a --exclude='.git' "${cloneTempDir}/" "${tempDir}/"`);
-        console.log(`✅ [Bridge Push] ${isChunked ? 'Cloned existing repo' : 'Copied existing files from repo'}`);
-      } catch (cloneError: any) {
-        console.warn(`⚠️ [Bridge Push] Failed to clone existing repo:`, cloneError?.message);
-        if (!isChunked) {
-          console.warn(`⚠️ [Bridge Push] Will create empty commit`);
-        } else {
-          // For chunked pushes, this is more critical - we need previous files
-          throw new Error(`Failed to clone existing repo for chunked push: ${cloneError?.message}`);
+    if (isChunked && pushSessionId) {
+      // Use a predictable path based on push session ID
+      tempDir = join(os.tmpdir(), `gittr-push-${pushSessionId}`);
+      const tempDirExists = existsSync(tempDir);
+      
+      if (isFirstChunk) {
+        // Chunk 1: Create new working directory, clone existing repo if it exists
+        if (tempDirExists) {
+          // Clean up any leftover directory from a previous failed push
+          console.log(`🧹 [Bridge Push] Cleaning up leftover working directory from previous push...`);
+          await rm(tempDir, { recursive: true, force: true });
         }
-      } finally {
-        // CRITICAL: Always clean up clone temp dir, even if rsync fails
-        if (cloneTempDir) {
+        await mkdir(tempDir, { recursive: true });
+        await execAsync(`git init "${tempDir}"`);
+        await execAsync(`git -C "${tempDir}" config user.name "gittr push"`);
+        await execAsync(`git -C "${tempDir}" config user.email "push@gittr.space"`);
+        
+        // If repo exists, clone it to get existing files
+        if (existsSync(repoPath)) {
+          console.log(`📋 [Bridge Push] Chunk 1/${totalChunks}: Cloning existing repo to get files...`);
           try {
+            const cloneTempDir = await mkdtemp(join(os.tmpdir(), "gittr-clone-"));
+            await execAsync(`git clone "${repoPath}" "${cloneTempDir}"`, { timeout: 120000 }); // 2 min timeout
+            await execAsync(`rsync -a --exclude='.git' "${cloneTempDir}/" "${tempDir}/"`);
             await rm(cloneTempDir, { recursive: true, force: true });
-          } catch (cleanupError: any) {
-            console.warn(`⚠️ [Bridge Push] Failed to clean up clone temp directory:`, cleanupError?.message);
+            console.log(`✅ [Bridge Push] Cloned existing repo`);
+          } catch (cloneError: any) {
+            console.warn(`⚠️ [Bridge Push] Failed to clone existing repo:`, cloneError?.message);
+            // Continue anyway - we'll start fresh
           }
+        }
+      } else {
+        // Chunks 2+: Reuse existing working directory
+        if (!tempDirExists) {
+          return res.status(400).json({ 
+            error: `Working directory not found for chunk ${chunkIndex + 1}. Chunk 1 must be processed first.`,
+            pushSessionId 
+          });
+        }
+        console.log(`📋 [Bridge Push] Chunk ${chunkIndex + 1}/${totalChunks}: Reusing working directory (no clone needed)`);
+        // Working directory already has files from previous chunks - just add new files
+      }
+    } else {
+      // Non-chunked push: Use temporary directory as before
+      tempDir = await mkdtemp(join(os.tmpdir(), "gittr-push-"));
+      await execAsync(`git init "${tempDir}"`);
+      await execAsync(`git -C "${tempDir}" config user.name "gittr push"`);
+      await execAsync(`git -C "${tempDir}" config user.email "push@gittr.space"`);
+      
+      // For non-chunked pushes with no files, clone existing repo to preserve state
+      if (files.length === 0 && existsSync(repoPath)) {
+        console.log(`📋 [Bridge Push] No files provided, copying existing files from repo to preserve state...`);
+        try {
+          const cloneTempDir = await mkdtemp(join(os.tmpdir(), "gittr-clone-"));
+          await execAsync(`git clone "${repoPath}" "${cloneTempDir}"`, { timeout: 120000 });
+          await execAsync(`rsync -a --exclude='.git' "${cloneTempDir}/" "${tempDir}/"`);
+          await rm(cloneTempDir, { recursive: true, force: true });
+          console.log(`✅ [Bridge Push] Copied existing files from repo`);
+        } catch (cloneError: any) {
+          console.warn(`⚠️ [Bridge Push] Failed to copy existing files, will create empty commit:`, cloneError?.message);
         }
       }
     }
@@ -356,7 +378,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
       
-      await execAsync(`git -C "${tempDir}" push --force origin ${branch}`);
+      await execAsync(`git -C "${tempDir}" push --force origin ${branch}`, { timeout: 120000 }); // 2 min timeout
       
       // CRITICAL: Update HEAD in bare repo to point to the branch we just pushed
       // This ensures git log and other commands work correctly
@@ -416,6 +438,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Non-critical - we can still return success, client can query refs later
     }
 
+    // CRITICAL: Clean up shared working directory after last chunk
+    if (isChunked && pushSessionId && (chunkIndex === totalChunks - 1 || !createCommit)) {
+      // Last chunk or intermediate chunk that won't commit - clean up working directory
+      try {
+        if (tempDir && existsSync(tempDir)) {
+          await rm(tempDir, { recursive: true, force: true });
+          console.log(`🧹 [Bridge Push] Cleaned up shared working directory after chunk ${chunkIndex + 1}/${totalChunks}`);
+        }
+      } catch (cleanupError: any) {
+        console.warn(`⚠️ [Bridge Push] Failed to clean up working directory:`, cleanupError?.message);
+        // Non-critical - temp directory will be cleaned up by OS eventually
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: "Bridge push completed",
@@ -425,12 +461,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   } catch (error: any) {
     console.error("❌ Bridge push failed:", error);
+    
+    // CRITICAL: Clean up shared working directory on error (for chunked pushes)
+    if (isChunked && pushSessionId && tempDir && existsSync(tempDir)) {
+      try {
+        await rm(tempDir, { recursive: true, force: true });
+        console.log(`🧹 [Bridge Push] Cleaned up working directory after error`);
+      } catch (cleanupError: any) {
+        console.warn(`⚠️ [Bridge Push] Failed to clean up working directory after error:`, cleanupError?.message);
+      }
+    }
+    
     return res.status(500).json({
       error: error?.message || "Bridge push failed",
       missingFiles,
     });
   } finally {
-    if (tempDir) {
+    // CRITICAL: Only clean up temp directory if it's NOT a shared working directory for chunked pushes
+    // Shared working directories are cleaned up after the last chunk or on error
+    if (tempDir && !(isChunked && pushSessionId)) {
       try {
         await rm(tempDir, { recursive: true, force: true });
       } catch (cleanupError) {
