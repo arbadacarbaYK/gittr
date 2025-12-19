@@ -197,6 +197,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const isFirstChunk = !chunkIndex || chunkIndex === 0;
     const shouldCloneExisting = (isChunked && !isFirstChunk && existsSync(repoPath)) || (!isChunked && files.length === 0 && existsSync(repoPath));
     
+    let cloneTempDir: string | null = null;
     if (shouldCloneExisting) {
       if (isChunked) {
         console.log(`📋 [Bridge Push] Chunk ${chunkIndex + 1}/${totalChunks}: Cloning existing repo to get files from previous chunks in this push...`);
@@ -205,12 +206,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       try {
         // Clone the bare repo to get all files into working tree
-        const cloneTempDir = await mkdtemp(join(os.tmpdir(), "gittr-clone-"));
+        cloneTempDir = await mkdtemp(join(os.tmpdir(), "gittr-clone-"));
         await execAsync(`git clone "${repoPath}" "${cloneTempDir}"`);
         // Copy all files (except .git) from cloned repo to temp dir
         await execAsync(`rsync -a --exclude='.git' "${cloneTempDir}/" "${tempDir}/"`);
-        // Clean up clone temp dir
-        await execAsync(`rm -rf "${cloneTempDir}"`);
         console.log(`✅ [Bridge Push] ${isChunked ? 'Cloned existing repo' : 'Copied existing files from repo'}`);
       } catch (cloneError: any) {
         console.warn(`⚠️ [Bridge Push] Failed to clone existing repo:`, cloneError?.message);
@@ -219,6 +218,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         } else {
           // For chunked pushes, this is more critical - we need previous files
           throw new Error(`Failed to clone existing repo for chunked push: ${cloneError?.message}`);
+        }
+      } finally {
+        // CRITICAL: Always clean up clone temp dir, even if rsync fails
+        if (cloneTempDir) {
+          try {
+            await rm(cloneTempDir, { recursive: true, force: true });
+          } catch (cleanupError: any) {
+            console.warn(`⚠️ [Bridge Push] Failed to clean up clone temp directory:`, cleanupError?.message);
+          }
         }
       }
     }
