@@ -451,6 +451,12 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           setBridgeEntry(normalizedPath, undefined, isBinary);
         }
       } else {
+        // CRITICAL: For text files, if we don't have content yet, still add to map
+        // It will be fetched later from bridge or GitHub
+        // But log a warning if content is missing
+        if (!bridgeContent || bridgeContent === "") {
+          console.warn(`⚠️ [Push Repo] Text file ${normalizedPath} has NO content in localStorage - will try to fetch from bridge/GitHub`);
+        }
         setBridgeEntry(normalizedPath, bridgeContent, isBinary);
       }
 
@@ -679,7 +685,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
                         }
                       }
                       filesForBridge.push(file);
-                      console.log(`✅ [Push Repo] Fetched ${file.isBinary ? 'binary' : 'text'} content for ${file.path} from ${platform} (API)`);
+                      console.log(`✅ [Push Repo] Fetched ${file.isBinary ? 'binary' : 'text'} content for ${file.path} from ${platform} (API) - ${file.content.length} chars`);
                       return;
                     }
                   }
@@ -699,12 +705,34 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       }
     }
     
+    // CRITICAL: Log detailed info about files
+    console.log(`📊 [Push Repo] File analysis:`, {
+      totalFilesInRepo: baseFiles.length,
+      bridgeFilesMapSize: bridgeFilesMap.size,
+      filesWithContent: filesForBridge.length,
+      filesNeedingContent: filesNeedingContent.length,
+      repoSourceUrl: repo.sourceUrl,
+      hasFilesInLocalStorage: baseFiles.length > 0,
+    });
+    
     if (filesForBridge.length === 0 && bridgeFilesMap.size > 0) {
-      console.warn(`⚠️ [Push Repo] No files with content to push to bridge (${bridgeFilesMap.size} files excluded due to missing content)`);
+      console.error(`❌ [Push Repo] CRITICAL: No files with content to push to bridge!`, {
+        bridgeFilesMapSize: bridgeFilesMap.size,
+        filesNeedingContent: filesNeedingContent.length,
+        repoSourceUrl: repo.sourceUrl,
+        allFilePaths: Array.from(bridgeFilesMap.keys()),
+      });
       onProgress?.("⚠️ No files with content to push to bridge - files should be in localStorage from import/create");
       onProgress?.("💡 If files are missing, re-import the repository to load all files into localStorage");
     } else if (filesForBridge.length > 0) {
       onProgress?.(`✅ ${filesForBridge.length} file(s) ready for bridge push (from localStorage)`);
+    } else if (bridgeFilesMap.size === 0) {
+      console.error(`❌ [Push Repo] CRITICAL: No files found in repo at all!`, {
+        baseFilesLength: baseFiles.length,
+        repoFilesLength: repo.files?.length || 0,
+        repoSourceUrl: repo.sourceUrl,
+      });
+      onProgress?.("❌ No files found in repository - cannot push empty repo");
     }
 
     // Step 6: Create repository event with ALL current state
