@@ -64,7 +64,7 @@ func main() {
 
 		// Check if repo exists
 		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-			log.Printf("⏭️  Skipping %s/%s (repo not found on disk)", ownerPubkey[:8], repoName)
+			log.Printf("⏭️  Skipping %s/%s (repo not found on disk)", safePubkeyDisplay(ownerPubkey), repoName)
 			skippedCount++
 			continue
 		}
@@ -73,14 +73,14 @@ func main() {
 		cmd := exec.Command("git", "--git-dir", repoPath, "rev-parse", "HEAD")
 		output, err := cmd.Output()
 		if err != nil {
-			log.Printf("⚠️  Failed to get HEAD for %s/%s: %v", ownerPubkey[:8], repoName, err)
+			log.Printf("⚠️  Failed to get HEAD for %s/%s: %v", safePubkeyDisplay(ownerPubkey), repoName, err)
 			errorCount++
 			continue
 		}
 
 		latestCommitSHA := strings.TrimSpace(string(output))
 		if len(latestCommitSHA) < 40 {
-			log.Printf("⚠️  Invalid commit SHA for %s/%s: %s", ownerPubkey[:8], repoName, latestCommitSHA)
+			log.Printf("⚠️  Invalid commit SHA for %s/%s: %s", safePubkeyDisplay(ownerPubkey), repoName, latestCommitSHA)
 			errorCount++
 			continue
 		}
@@ -89,27 +89,27 @@ func main() {
 		cmd = exec.Command("git", "--git-dir", repoPath, "log", "-1", "--format=%ct", latestCommitSHA)
 		output, err = cmd.Output()
 		if err != nil {
-			log.Printf("⚠️  Failed to get commit date for %s/%s: %v", ownerPubkey[:8], repoName, err)
+			log.Printf("⚠️  Failed to get commit date for %s/%s: %v", safePubkeyDisplay(ownerPubkey), repoName, err)
 			errorCount++
 			continue
 		}
 
 		var currentCommitTime int64
 		if _, err := fmt.Sscanf(string(output), "%d", &currentCommitTime); err != nil {
-			log.Printf("⚠️  Failed to parse commit date for %s/%s: %v", ownerPubkey[:8], repoName, err)
+			log.Printf("⚠️  Failed to parse commit date for %s/%s: %v", safePubkeyDisplay(ownerPubkey), repoName, err)
 			errorCount++
 			continue
 		}
 
 		// Check if commit date matches UpdatedAt (within 5 seconds tolerance)
 		if abs(currentCommitTime-updatedAt) <= 5 {
-			log.Printf("✅ %s/%s: Commit date already matches UpdatedAt (%s)", ownerPubkey[:8], repoName, time.Unix(updatedAt, 0).Format(time.RFC3339))
+			log.Printf("✅ %s/%s: Commit date already matches UpdatedAt (%s)", safePubkeyDisplay(ownerPubkey), repoName, time.Unix(updatedAt, 0).Format(time.RFC3339))
 			skippedCount++
 			continue
 		}
 
 		log.Printf("🔄 Migrating %s/%s: Updating commit date from %s to %s", 
-			ownerPubkey[:8], repoName,
+			safePubkeyDisplay(ownerPubkey), repoName,
 			time.Unix(currentCommitTime, 0).Format(time.RFC3339),
 			time.Unix(updatedAt, 0).Format(time.RFC3339))
 
@@ -122,7 +122,7 @@ func main() {
 		cmd.Env = append(os.Environ(), "FILTER_BRANCH_SQUELCH_WARNING=1") // Suppress warnings
 		output, err = cmd.CombinedOutput()
 		if err != nil {
-			log.Printf("❌ Failed to update commit date for %s/%s: %v\nOutput: %s", ownerPubkey[:8], repoName, err, string(output))
+			log.Printf("❌ Failed to update commit date for %s/%s: %v\nOutput: %s", safePubkeyDisplay(ownerPubkey), repoName, err, string(output))
 			errorCount++
 			continue
 		}
@@ -152,10 +152,10 @@ func main() {
 			var newCommitTime int64
 			if _, err := fmt.Sscanf(string(output), "%d", &newCommitTime); err == nil {
 				if abs(newCommitTime-updatedAt) <= 5 {
-					log.Printf("✅ %s/%s: Successfully updated commit date", ownerPubkey[:8], repoName)
+					log.Printf("✅ %s/%s: Successfully updated commit date", safePubkeyDisplay(ownerPubkey), repoName)
 					migratedCount++
 				} else {
-					log.Printf("⚠️  %s/%s: Commit date updated but doesn't match (got %d, expected %d)", ownerPubkey[:8], repoName, newCommitTime, updatedAt)
+					log.Printf("⚠️  %s/%s: Commit date updated but doesn't match (got %d, expected %d)", safePubkeyDisplay(ownerPubkey), repoName, newCommitTime, updatedAt)
 					errorCount++
 				}
 			}
@@ -190,5 +190,14 @@ func splitLines(s string) []string {
 	return strings.FieldsFunc(s, func(c rune) bool {
 		return c == '\n' || c == '\r'
 	})
+}
+
+// safePubkeyDisplay safely truncates a pubkey for display purposes
+// Returns first 8 characters if available, or the full string if shorter
+func safePubkeyDisplay(pubkey string) string {
+	if len(pubkey) >= 8 {
+		return pubkey[:8]
+	}
+	return pubkey
 }
 
