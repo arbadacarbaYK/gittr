@@ -257,7 +257,40 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // Path doesn't exist yet, which is fine - we'll create it
       }
       
-      await mkdir(dirname(targetPath), { recursive: true });
+      // CRITICAL: Validate all parent directories before creating them
+      // In chunked pushes, a parent path might be a file from a previous chunk
+      // (e.g., chunk 1 creates file "foo", chunk 2 tries to create "foo/bar")
+      // This would cause mkdir to fail with ENOTDIR
+      const parentDir = dirname(targetPath);
+      const pathParts = parentDir.replace(tempDir, "").split("/").filter(Boolean);
+      let currentPath = tempDir;
+      
+      for (const part of pathParts) {
+        currentPath = join(currentPath, part);
+        try {
+          const parentStats = await stat(currentPath).catch(() => null);
+          if (parentStats) {
+            if (parentStats.isFile()) {
+              // Parent path is a file, not a directory - this is a conflict
+              console.error(`❌ [Bridge Push] Cannot create ${safePath} - parent path ${part} exists as a file (not a directory)`);
+              missingFiles.push(safePath);
+              continue; // Skip this file
+            }
+            // Parent exists and is a directory - continue
+          } else {
+            // Parent doesn't exist - mkdir will create it
+          }
+        } catch (checkError) {
+          // Error checking - assume it's safe to create
+        }
+      }
+      
+      // Only proceed if we didn't skip due to parent path conflict
+      if (missingFiles.includes(safePath)) {
+        continue;
+      }
+      
+      await mkdir(parentDir, { recursive: true });
 
       const buffer = file.isBinary
         ? Buffer.from(file.content, "base64")
