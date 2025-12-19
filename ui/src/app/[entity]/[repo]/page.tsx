@@ -9304,7 +9304,9 @@ export default function RepoCodePage({
                                 try {
                                   const githubMatch = updatedSourceUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
                                   if (githubMatch) {
-                                    const [, owner, repoName] = githubMatch;
+                                    const [, owner, repoNameRaw] = githubMatch;
+                                    // CRITICAL: Strip .git suffix from repoName for raw URLs (raw.githubusercontent.com doesn't use .git)
+                                    const repoName = repoNameRaw.replace(/\.git$/, '');
                                     const branch = importData.defaultBranch || existingRepo.defaultBranch || "main";
                                     const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${encodeURIComponent(file.path)}`;
                                     
