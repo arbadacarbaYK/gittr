@@ -98,9 +98,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "repo is required" });
   }
 
-  if (!Array.isArray(files) || files.length === 0) {
+  if (!Array.isArray(files)) {
     return res.status(400).json({ error: "files array is required" });
   }
+  
+  // Allow empty files array - we'll still create a commit with --allow-empty
+  // This ensures every push creates a new commit with the current timestamp
   
   // Use provided commitDate (Unix timestamp in seconds) or current time
   // commitDate should be from lastNostrEventCreatedAt to preserve push history
@@ -161,7 +164,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       writtenFiles++;
     }
 
-    if (writtenFiles === 0) {
+    // Allow empty commits - we'll use --allow-empty to create a commit even if no files changed
+    // This ensures every push creates a new commit with the current timestamp
+    if (writtenFiles === 0 && files.length > 0) {
+      // Only error if files were provided but none had content
       return res.status(400).json({
         error: "No file content provided for bridge push",
         missingFiles,

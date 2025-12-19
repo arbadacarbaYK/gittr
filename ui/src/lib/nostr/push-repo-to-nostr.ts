@@ -1141,25 +1141,62 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           // Continue anyway - we'll try to get refs, but may fail
         }
       } else {
-        // No files pushed - try to get existing refs (for repos that already exist on bridge)
-        onProgress?.("⏳ No new files to push - checking for existing refs on bridge...");
+        // No files to push - but we still need to create a new commit with --allow-empty
+        // This ensures every push creates a new commit with the current timestamp
+        // Otherwise, the state event will point to an old commit
+        onProgress?.("📤 Pushing to bridge to create new commit (no file changes)...");
+        const { pushFilesToBridge } = await import("./push-to-bridge");
+        const commitDate = Math.floor(Date.now() / 1000);
+        const bridgePushPromise = pushFilesToBridge({
+          ownerPubkey: pubkey,
+          repoSlug: actualRepositoryName,
+          entity,
+          branch: repo.defaultBranch || "main",
+          files: [], // Empty array - bridge will create commit with --allow-empty
+          commitDate,
+        }).catch((error: any) => {
+          console.error("❌ [Push Repo] Bridge push failed:", error);
+          onProgress?.("⚠️ Bridge push failed - trying to get existing refs...");
+          return null;
+        });
+        
+        // Try to get refs quickly
         try {
-          const refsResponse = await fetch(
-            `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(pubkey)}&repo=${encodeURIComponent(actualRepositoryName)}`
-          );
-          if (refsResponse.ok) {
-            const refsData = await refsResponse.json();
-            if (refsData.refs && Array.isArray(refsData.refs)) {
-              refs = refsData.refs;
-              const refsWithCommits = refs.filter(r => r.commit && r.commit.length > 0).length;
-              console.log(`✅ [Push Repo] Got ${refs.length} existing refs (${refsWithCommits} with commit SHAs)`);
-              if (refsWithCommits > 0) {
-                onProgress?.(`✅ Got ${refsWithCommits} existing refs with commit SHAs`);
+          const QUICK_REF_TIMEOUT = 10000;
+          const timeoutPromise = new Promise((resolve) => setTimeout(resolve, QUICK_REF_TIMEOUT));
+          const pushResult = await Promise.race([bridgePushPromise, timeoutPromise.then(() => null)]);
+          
+          if (pushResult && pushResult.refs && Array.isArray(pushResult.refs)) {
+            refs = pushResult.refs;
+            const refsWithCommits = refs.filter(r => r.commit && r.commit.length > 0).length;
+            if (refsWithCommits > 0) {
+              console.log(`✅ [Push Repo] Got ${refs.length} refs with ${refsWithCommits} commit SHAs from empty push`);
+              onProgress?.(`✅ Got ${refsWithCommits} refs with commit SHAs - ready to publish state event!`);
+            }
+          } else {
+            // Fallback: try to get existing refs
+            try {
+              const refsResponse = await fetch(
+                `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(pubkey)}&repo=${encodeURIComponent(actualRepositoryName)}`
+              );
+              if (refsResponse.ok) {
+                const refsData = await refsResponse.json();
+                if (refsData.refs && Array.isArray(refsData.refs)) {
+                  refs = refsData.refs;
+                  const refsWithCommits = refs.filter(r => r.commit && r.commit.length > 0).length;
+                  console.log(`✅ [Push Repo] Got ${refs.length} existing refs (${refsWithCommits} with commit SHAs)`);
+                  if (refsWithCommits > 0) {
+                    onProgress?.(`✅ Got ${refsWithCommits} existing refs with commit SHAs`);
+                  }
+                }
               }
+            } catch (refsError) {
+              console.warn(`⚠️ [Push Repo] Error fetching existing refs:`, refsError);
             }
           }
-        } catch (refsError) {
-          console.warn(`⚠️ [Push Repo] Error fetching existing refs:`, refsError);
+        } catch (bridgeError: any) {
+          console.error("❌ [Push Repo] Bridge push error:", bridgeError);
+          onProgress?.("⚠️ Bridge push error - trying to get existing refs...");
         }
       }
       
