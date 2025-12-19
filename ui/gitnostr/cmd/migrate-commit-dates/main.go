@@ -115,13 +115,13 @@ func main() {
 		// CRITICAL: Fix ownership before running filter-branch to avoid permission errors
 		// Ensure git-nostr user owns the repo directory and all its contents
 		// This is needed because filter-branch needs to write to .git/objects
-		// Use sudo if available, otherwise try without (might work if already owned by git-nostr)
-		chownCmd := exec.Command("sudo", "chown", "-R", "git-nostr:git-nostr", repoPath)
-		if chownOutput, chownErr := chownCmd.CombinedOutput(); chownErr != nil {
-			// Try without sudo (might already be owned by git-nostr)
-			chownCmd2 := exec.Command("chown", "-R", "git-nostr:git-nostr", repoPath)
+		// Try chown directly first (works if running as root), then try sudo (works if git-nostr has sudo)
+		chownCmd := exec.Command("chown", "-R", "git-nostr:git-nostr", repoPath)
+		if _, chownErr := chownCmd.CombinedOutput(); chownErr != nil {
+			// Try with sudo (might work if git-nostr has sudo privileges)
+			chownCmd2 := exec.Command("sudo", "chown", "-R", "git-nostr:git-nostr", repoPath)
 			if chownOutput2, chownErr2 := chownCmd2.CombinedOutput(); chownErr2 != nil {
-				log.Printf("⚠️  Failed to fix ownership for %s/%s (tried sudo and direct): %v\nOutput: %s", safePubkeyDisplay(ownerPubkey), repoName, chownErr2, string(chownOutput2))
+				log.Printf("⚠️  Failed to fix ownership for %s/%s (tried direct and sudo): %v\nOutput: %s", safePubkeyDisplay(ownerPubkey), repoName, chownErr2, string(chownOutput2))
 				// Continue anyway - might still work if permissions are already correct
 			}
 		}
