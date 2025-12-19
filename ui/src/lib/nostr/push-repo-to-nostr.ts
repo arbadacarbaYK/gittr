@@ -772,15 +772,44 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       
       // NIP-34: Add "r" tag with "euc" marker for earliest unique commit (optional but recommended)
       // This helps identify repos among forks and group related repos
-      // For repos created on our platform, we can use the first commit if available
-      // NOTE: If no commits exist yet, we skip this tag (it's optional per NIP-34)
+      // Try to get first commit from localStorage, or fetch from bridge if not available
+      let earliestCommitId: string | undefined;
+      
+      // First, try localStorage commits
       if (repo.commits && Array.isArray(repo.commits) && repo.commits.length > 0) {
         // Use the first commit (oldest) as the earliest unique commit
-        const firstCommit = repo.commits[0] as any; // Type assertion for dynamic commit structure
+        const firstCommit = repo.commits[0] as any;
         if (firstCommit && typeof firstCommit === 'object' && firstCommit.id && typeof firstCommit.id === 'string') {
-          nip34Tags.push(["r", firstCommit.id, "euc"]);
-          console.log(`✅ [Push Repo] Added earliest unique commit tag: ${firstCommit.id}`);
+          earliestCommitId = firstCommit.id;
         }
+      }
+      
+      // If not in localStorage, try fetching from bridge API
+      if (!earliestCommitId && typeof window !== 'undefined') {
+        try {
+          const branch = repo.defaultBranch || "main";
+          const commitsUrl = `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(pubkey)}&repo=${encodeURIComponent(actualRepositoryName)}&branch=${encodeURIComponent(branch)}&limit=100`;
+          const commitsResponse = await fetch(commitsUrl);
+          if (commitsResponse.ok) {
+            const commitsData = await commitsResponse.json();
+            if (commitsData.commits && Array.isArray(commitsData.commits) && commitsData.commits.length > 0) {
+              // Git log returns commits in reverse chronological order (newest first)
+              // So the LAST commit in the array is the earliest (oldest)
+              const earliestCommit = commitsData.commits[commitsData.commits.length - 1];
+              if (earliestCommit && earliestCommit.id && typeof earliestCommit.id === 'string') {
+                earliestCommitId = earliestCommit.id;
+                console.log(`✅ [Push Repo] Fetched earliest unique commit from bridge: ${earliestCommitId}`);
+              }
+            }
+          }
+        } catch (error) {
+          console.warn(`⚠️ [Push Repo] Failed to fetch earliest commit from bridge:`, error);
+        }
+      }
+      
+      if (earliestCommitId) {
+        nip34Tags.push(["r", earliestCommitId, "euc"]);
+        console.log(`✅ [Push Repo] Added earliest unique commit tag: ${earliestCommitId}`);
       } else {
         console.log(`ℹ️ [Push Repo] No commits found - skipping "r" tag with "euc" marker (optional per NIP-34)`);
       }
