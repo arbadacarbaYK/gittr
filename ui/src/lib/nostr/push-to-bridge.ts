@@ -127,34 +127,42 @@ export async function pushFilesToBridge({
           signal: chunkController.signal,
         });
 
-      // Check content type before parsing JSON
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        const text = await response.text();
-        console.error(`❌ [Bridge Push] Chunk ${i + 1} returned non-JSON response:`, {
-          status: response.status,
-          contentType,
-          preview: text.substring(0, 200),
-        });
-        throw new Error(`Bridge API returned HTML instead of JSON (status: ${response.status}). The endpoint may not exist or returned an error page.`);
-      }
+        // Check content type before parsing JSON
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          const text = await response.text();
+          console.error(`❌ [Bridge Push] Chunk ${i + 1} returned non-JSON response:`, {
+            status: response.status,
+            contentType,
+            preview: text.substring(0, 200),
+          });
+          throw new Error(`Bridge API returned HTML instead of JSON (status: ${response.status}). The endpoint may not exist or returned an error page.`);
+        }
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || `Bridge push failed for chunk ${i + 1} (status: ${response.status})`);
-      }
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || `Bridge push failed for chunk ${i + 1} (status: ${response.status})`);
+        }
 
-      lastResult = data;
-      
-      // Accumulate refs from all chunks (last chunk will have the final refs)
-      if (data.refs && Array.isArray(data.refs)) {
-        allRefs = data.refs;
-      }
+        lastResult = data;
+        
+        // Accumulate refs from all chunks (last chunk will have the final refs)
+        if (data.refs && Array.isArray(data.refs)) {
+          allRefs = data.refs;
+        }
 
-      console.log(`✅ [Bridge Push] Chunk ${i + 1}/${chunks.length} pushed successfully`);
+        console.log(`✅ [Bridge Push] Chunk ${i + 1}/${chunks.length} pushed successfully`);
+      } catch (chunkError: any) {
+        clearTimeout(chunkTimeoutId);
+        if (chunkError.name === 'AbortError') {
+          throw new Error(`Bridge push timeout for chunk ${i + 1} after ${BRIDGE_PUSH_TIMEOUT_PER_CHUNK / 1000} seconds. The chunk may be too large.`);
+        }
+        throw chunkError;
+      } finally {
+        // Always clear the timeout for this chunk
+        clearTimeout(chunkTimeoutId);
+      }
     }
-
-    clearTimeout(timeoutId);
 
     // Return the last result with accumulated refs
     const finalResult = {
@@ -170,9 +178,9 @@ export async function pushFilesToBridge({
 
     return finalResult;
   } catch (error: any) {
-    clearTimeout(timeoutId);
+    // Error handling is done per-chunk above, so this is just for unexpected errors
     if (error.name === 'AbortError') {
-      throw new Error(`Bridge push timeout after ${totalTimeout / 1000} seconds. The repository may be too large.`);
+      throw new Error(`Bridge push timeout. The repository may be too large.`);
     }
     throw error;
   }
