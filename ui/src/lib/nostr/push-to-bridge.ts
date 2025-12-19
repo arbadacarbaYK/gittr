@@ -186,13 +186,26 @@ export async function pushFilesToBridge({
     }
 
     // CRITICAL: Return the last chunk's result with the most recent refs
-    // Priority: lastResult.refs (if valid and non-empty) > allRefs (last known good) > empty array
-    // The last chunk should have the final refs, but we use allRefs as fallback
-    // in case lastResult.refs is missing, invalid, or empty
-    // CRITICAL: Check length > 0 - empty arrays are truthy but invalid
-    const finalRefs = (lastResult?.refs && Array.isArray(lastResult.refs) && lastResult.refs.length > 0)
-      ? lastResult.refs 
-      : (allRefs.length > 0 ? allRefs : []);
+    // Priority: lastResult.refs (if valid and non-empty) > allRefs (only if last chunk failed) > empty array
+    // CRITICAL: Only fall back to allRefs if lastResult is null/undefined (chunk failed completely)
+    // If lastResult exists but refs is empty, the push succeeded but refs couldn't be retrieved
+    // Using stale refs from an earlier chunk would reference a commit missing files from the last chunk
+    // This is a critical error - we should use empty refs rather than stale refs
+    let finalRefs: Array<{ ref: string; commit: string }> = [];
+    if (lastResult?.refs && Array.isArray(lastResult.refs) && lastResult.refs.length > 0) {
+      // Last chunk returned valid refs - use them
+      finalRefs = lastResult.refs;
+    } else if (!lastResult) {
+      // Last chunk failed completely - fall back to allRefs from earlier chunks
+      finalRefs = allRefs.length > 0 ? allRefs : [];
+      console.warn(`⚠️ [Bridge Push] Last chunk failed completely - using refs from earlier chunks (may be incomplete)`);
+    } else {
+      // Last chunk succeeded but returned empty refs - this is a critical error
+      // The push succeeded, so files from the last chunk ARE in the repo
+      // But we can't get the commit SHA - using stale refs would reference the wrong commit
+      console.error(`❌ [Bridge Push] CRITICAL: Last chunk push succeeded but returned empty refs! Files from last chunk are in repo but state event will have empty commits. This should not happen.`);
+      finalRefs = []; // Use empty refs rather than stale refs
+    }
     
     const finalResult = {
       ...lastResult,
