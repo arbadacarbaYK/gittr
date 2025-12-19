@@ -62,19 +62,19 @@
 
 /* CSS Custom Properties for Theming */
 :root {
-  /* Default (Classic) theme colors */
-  --color-bg-primary: #0E1116;
-  --color-bg-secondary: #22262C;
-  --color-bg-dark: #0F1217;
-  --color-text-primary: #ffffff;
-  --color-text-secondary: #9ca3af;
-  --color-accent-primary: #9333ea; /* purple-600 */
-  --color-accent-hover: #a855f7; /* purple-500 */
-  --color-accent-secondary: #22c55e; /* green-600 */
-  --color-border: #383B42;
-  --color-link: #a855f7;
-  --color-link-hover: #c084fc;
-  --font-family: system-ui, -apple-system, sans-serif;
+  /* Default (Arcade80s) theme colors - changed from classic to arcade80s */
+  --color-bg-primary: #000011; /* Deep blue-black */
+  --color-bg-secondary: #0a0a1a;
+  --color-bg-dark: #000008;
+  --color-text-primary: #00ffff; /* Neon cyan */
+  --color-text-secondary: #ff00ff; /* Neon magenta */
+  --color-accent-primary: #ff00ff; /* Neon magenta */
+  --color-accent-hover: #00ffff; /* Neon cyan */
+  --color-accent-secondary: #ffff00; /* Neon yellow */
+  --color-border: #ff00ff40; /* Magenta with transparency */
+  --color-link: #ff00ff;
+  --color-link-hover: #00ffff;
+  --font-family: 'Impact', 'Arial Black', sans-serif;
 }
 
 /* Cypherpunk - Monospace font, neon green text on black, terminal aesthetic */
@@ -109,6 +109,22 @@
   --font-family: 'Georgia', 'Times New Roman', serif;
 }
 
+/* Classic theme colors (explicitly defined for data-theme="classic") */
+:root[data-theme="classic"] {
+  --color-bg-primary: #0E1116;
+  --color-bg-secondary: #22262C;
+  --color-bg-dark: #0F1217;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #9ca3af;
+  --color-accent-primary: #9333ea; /* purple-600 */
+  --color-accent-hover: #a855f7; /* purple-500 */
+  --color-accent-secondary: #22c55e; /* green-600 */
+  --color-border: #383B42;
+  --color-link: #a855f7;
+  --color-link-hover: #c084fc;
+  --font-family: system-ui, -apple-system, sans-serif;
+}
+
 /* 80s Arcade - Neon cyan/magenta, retro gaming */
 :root[data-theme="arcade80s"] {
   --color-bg-primary: #000011; /* Deep blue-black */
@@ -133,6 +149,10 @@ body {
 }
 
 /* Theme-specific font family application */
+:root[data-theme="classic"] * {
+  font-family: var(--font-family);
+}
+
 :root[data-theme="cypherpunk"] * {
   font-family: var(--font-family);
 }
