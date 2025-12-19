@@ -188,13 +188,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await execAsync(`git -C "${tempDir}" config user.name "gittr push"`);
     await execAsync(`git -C "${tempDir}" config user.email "push@gittr.space"`);
 
-    // CRITICAL: For chunked pushes, always clone existing repo first to get files from previous chunks
-    // For non-chunked pushes with no files, also clone to preserve state for empty commits
+    // CRITICAL: Clone logic for chunked vs non-chunked pushes:
+    // - Chunk 1 of a multi-chunk push: DON'T clone (start fresh with new files only)
+    // - Chunks 2+ of a multi-chunk push: DO clone (to get files from previous chunks in THIS push)
+    // - Non-chunked push with no files: DO clone (to preserve state for empty commits)
+    // - Non-chunked push with files: DON'T clone (replace with new files)
     const isChunked = totalChunks && totalChunks > 1;
-    const shouldCloneExisting = (isChunked && existsSync(repoPath)) || (files.length === 0 && existsSync(repoPath));
+    const isFirstChunk = !chunkIndex || chunkIndex === 0;
+    const shouldCloneExisting = (isChunked && !isFirstChunk && existsSync(repoPath)) || (!isChunked && files.length === 0 && existsSync(repoPath));
     
     if (shouldCloneExisting) {
-      console.log(`📋 [Bridge Push] ${isChunked ? `Chunk ${(chunkIndex || 0) + 1}/${totalChunks}: Cloning existing repo to get files from previous chunks...` : 'No files provided, copying existing files from repo to preserve state...'}`);
+      if (isChunked) {
+        console.log(`📋 [Bridge Push] Chunk ${chunkIndex + 1}/${totalChunks}: Cloning existing repo to get files from previous chunks in this push...`);
+      } else {
+        console.log(`📋 [Bridge Push] No files provided, copying existing files from repo to preserve state...`);
+      }
       try {
         // Clone the bare repo to get all files into working tree
         const cloneTempDir = await mkdtemp(join(os.tmpdir(), "gittr-clone-"));
