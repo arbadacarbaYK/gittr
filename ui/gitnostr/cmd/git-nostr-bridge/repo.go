@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/arbadacarbaYK/gitnostr"
 	"github.com/arbadacarbaYK/gitnostr/bridge"
 	"github.com/arbadacarbaYK/gitnostr/protocol"
@@ -214,6 +216,42 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 			}
 		} else {
 			log.Printf("✅ [Bridge] Set HEAD to main for empty repo: %s\n", repoName)
+		}
+	}
+
+	// CRITICAL: Create symlink from npub to hex pubkey for NIP-34 compatibility
+	// Clone URLs use npub format (per NIP-34 spec), but we store repos by hex pubkey
+	// This symlink allows both formats to work: hex (storage) and npub (URLs)
+	if event.PubKey != "" && len(event.PubKey) == 64 {
+		// Check if pubkey is valid hex
+		if _, err := hex.DecodeString(event.PubKey); err == nil {
+			// Encode hex pubkey to npub format
+			// go-nostr nip19 package uses EncodePublicKey function
+			npub, err := nip19.EncodePublicKey(event.PubKey)
+			if err == nil {
+				npubParentPath := filepath.Join(reposDir, npub)
+				// Create symlink from npub to hex directory
+				// Only create if it doesn't exist or is broken
+				if _, err := os.Lstat(npubParentPath); os.IsNotExist(err) {
+					err = os.Symlink(event.PubKey, npubParentPath)
+					if err == nil {
+						log.Printf("🔗 [Bridge] Created npub symlink: %s -> %s\n", npub, event.PubKey)
+					} else {
+						log.Printf("⚠️ [Bridge] Failed to create npub symlink: %v\n", err)
+					}
+				} else {
+					// Check if existing symlink points to correct target
+					target, err := os.Readlink(npubParentPath)
+					if err == nil && target != event.PubKey {
+						// Symlink exists but points to wrong target, update it
+						os.Remove(npubParentPath)
+						err = os.Symlink(event.PubKey, npubParentPath)
+						if err == nil {
+							log.Printf("🔗 [Bridge] Updated npub symlink: %s -> %s\n", npub, event.PubKey)
+						}
+					}
+				}
+			}
 		}
 	}
 
