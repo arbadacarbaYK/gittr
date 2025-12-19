@@ -46,6 +46,14 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
 }> {
   const { repoSlug, entity, publish, subscribe, defaultRelays, privateKey, pubkey, onProgress } = options;
   
+  // CRITICAL: Validate pubkey format - must be 64-char hex
+  if (!pubkey || !/^[0-9a-f]{64}$/i.test(pubkey)) {
+    const errorMsg = `❌ [Push Repo] CRITICAL: Invalid pubkey format! Expected 64-char hex, got: ${pubkey ? `${pubkey.substring(0, 20)}... (${pubkey.length} chars)` : 'null/undefined'}`;
+    console.error(errorMsg);
+    throw new Error(errorMsg);
+  }
+  console.log(`✅ [Push Repo] Using pubkey: ${pubkey.substring(0, 8)}...${pubkey.substring(56)} (64-char hex, verified)`);
+  
   // Check for NIP-07 first
   const hasNip07 = typeof window !== "undefined" && window.nostr;
 
@@ -979,7 +987,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       // - gitworkshop.dev recognizes clone URLs as GRASP servers if the relay URL matches the clone URL domain
       // - Example: Clone URL https://relay.ngit.dev/... + Relay wss://relay.ngit.dev = recognized as GRASP server
       // - For git.gittr.space: It's a git server, NOT a relay, so wss://git.gittr.space won't be added
-      // - This is correct: git.gittr.space will show in "git servers" but not "grasp servers" on gitworkshop.dev
+      // - This is correct: git.gittr.space will show in "git servers" but not "grasp servers" on other clients
       const { getGraspServers } = await import("../utils/grasp-servers");
       const graspRelays = getGraspServers(defaultRelays);
       console.log(`🔍 [Push Repo] Filtering relays: ${defaultRelays.length} total, ${graspRelays.length} GRASP/git relays`);
