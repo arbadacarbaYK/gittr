@@ -1799,6 +1799,30 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         onProgress?.("💡 It may take a few minutes for gitworkshop.dev to sync");
       }
       
+      // CRITICAL: Send state event directly to bridge API for immediate processing
+      // The state event contains commit refs - bridge needs it to process the repository
+      const { KIND_REPOSITORY_STATE: STATE_KIND } = await import("./events");
+      if (stateResult.eventId && stateEvent.kind === STATE_KIND) {
+        onProgress?.("📡 Sending state event directly to bridge for immediate processing...");
+        try {
+          const bridgeResponse = await fetch("/api/nostr/repo/event", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(stateEvent),
+          });
+          if (bridgeResponse.ok) {
+            const bridgeResult = await bridgeResponse.json();
+            console.log(`✅ [Push Repo] State event sent directly to bridge:`, bridgeResult);
+            onProgress?.("✅ Bridge received state event - processing commits immediately!");
+          } else {
+            console.warn(`⚠️ [Push Repo] Bridge API returned ${bridgeResponse.status} for state event - bridge will receive via relay subscription`);
+          }
+        } catch (bridgeError: any) {
+          // Don't fail - bridge will receive via relay subscription
+          console.warn(`⚠️ [Push Repo] Failed to send state event to bridge API (will receive via relay):`, bridgeError?.message);
+        }
+      }
+      
       // CRITICAL: Store state event ID in localStorage (both events are required for "live" status)
       if (stateResult.eventId) {
         storeRepoEventId(repoSlug, entity, result.eventId, result.confirmed, stateResult.eventId);
