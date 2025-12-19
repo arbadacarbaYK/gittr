@@ -62,7 +62,7 @@ export async function pushFilesToBridge({
   if (!ownerPubkey || !repoSlug || files === null || files === undefined) {
     return { skipped: true };
   }
-  
+
   // files can be an empty array [] - that's valid, we'll create an empty commit
 
   // CRITICAL: Chunk files to avoid 413 Request Entity Too Large errors
@@ -122,16 +122,16 @@ export async function pushFilesToBridge({
         console.log(`💓 [Bridge Push] Chunk ${i + 1}/${chunks.length} still processing... (${Math.floor((Date.now() - chunkStartTime) / 1000)}s elapsed)`);
       }, 30000);
 
-      try {
-        const response = await fetch("/api/nostr/repo/push", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            ownerPubkey,
-            repo: repoSlug,
-            branch,
+  try {
+    const response = await fetch("/api/nostr/repo/push", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPubkey,
+        repo: repoSlug,
+        branch,
             files: chunk,
             commitDate, // Pass commitDate to API (Unix timestamp in seconds)
             // CRITICAL: Use push session ID to share working directory across chunks
@@ -144,22 +144,22 @@ export async function pushFilesToBridge({
           signal: chunkController.signal,
         });
 
-        // Check content type before parsing JSON
-        const contentType = response.headers.get("content-type");
-        if (!contentType || !contentType.includes("application/json")) {
-          const text = await response.text();
+    // Check content type before parsing JSON
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      const text = await response.text();
           console.error(`❌ [Bridge Push] Chunk ${i + 1} returned non-JSON response:`, {
-            status: response.status,
-            contentType,
-            preview: text.substring(0, 200),
-          });
-          throw new Error(`Bridge API returned HTML instead of JSON (status: ${response.status}). The endpoint may not exist or returned an error page.`);
-        }
+        status: response.status,
+        contentType,
+        preview: text.substring(0, 200),
+      });
+      throw new Error(`Bridge API returned HTML instead of JSON (status: ${response.status}). The endpoint may not exist or returned an error page.`);
+    }
 
-        const data = await response.json();
-        if (!response.ok) {
+    const data = await response.json();
+    if (!response.ok) {
           throw new Error(data.error || `Bridge push failed for chunk ${i + 1} (status: ${response.status})`);
-        }
+    }
 
         lastResult = data;
         

@@ -1131,9 +1131,9 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       if (allGraspRelays.size > 0) {
         // CRITICAL: Ensure all relay URLs have wss:// prefix before adding as separate tags
         Array.from(allGraspRelays).forEach(relay => {
-          nip34Tags.push(["relays", relay]);
+        nip34Tags.push(["relays", relay]);
           console.log(`✅ [Push Repo] Added relay tag: ${relay}`);
-        });
+      });
         console.log(`✅ [Push Repo] Added ${allGraspRelays.size} separate relay tag(s) per NIP-34 spec (${graspRelays.length} from defaultRelays, ${relayUrlsFromCloneUrls.size} matching clone URLs)`);
       }
       
@@ -1630,23 +1630,23 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             }
           } else {
             // Fallback: try to get existing refs
-            try {
-              const refsResponse = await fetch(
-                `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(pubkey)}&repo=${encodeURIComponent(actualRepositoryName)}`
-              );
-              if (refsResponse.ok) {
-                const refsData = await refsResponse.json();
-                if (refsData.refs && Array.isArray(refsData.refs)) {
-                  refs = refsData.refs;
-                  const refsWithCommits = refs.filter(r => r.commit && r.commit.length > 0).length;
-                  console.log(`✅ [Push Repo] Got ${refs.length} existing refs (${refsWithCommits} with commit SHAs)`);
-                  if (refsWithCommits > 0) {
-                    onProgress?.(`✅ Got ${refsWithCommits} existing refs with commit SHAs`);
-                  }
-                }
+        try {
+          const refsResponse = await fetch(
+            `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(pubkey)}&repo=${encodeURIComponent(actualRepositoryName)}`
+          );
+          if (refsResponse.ok) {
+            const refsData = await refsResponse.json();
+            if (refsData.refs && Array.isArray(refsData.refs)) {
+              refs = refsData.refs;
+              const refsWithCommits = refs.filter(r => r.commit && r.commit.length > 0).length;
+              console.log(`✅ [Push Repo] Got ${refs.length} existing refs (${refsWithCommits} with commit SHAs)`);
+              if (refsWithCommits > 0) {
+                onProgress?.(`✅ Got ${refsWithCommits} existing refs with commit SHAs`);
               }
-            } catch (refsError) {
-              console.warn(`⚠️ [Push Repo] Error fetching existing refs:`, refsError);
+            }
+          }
+        } catch (refsError) {
+          console.warn(`⚠️ [Push Repo] Error fetching existing refs:`, refsError);
             }
           }
         } catch (bridgeError: any) {
