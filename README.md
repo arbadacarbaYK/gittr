@@ -175,7 +175,7 @@ Handle binary vs text files
 - The push process does NOT fetch files from external sources (GitHub, GitLab, etc.)
 - Files must already be available in `localStorage` from create/import workflow
 - If files are missing, re-import the repository to load all files into `localStorage`
-- **Empty commit preservation**: When pushing with no file changes (e.g., to update commit date after refetch), existing files are automatically preserved from the repo to ensure clients like `gitworkshop.dev` can display files correctly
+- **Empty commit preservation**: When pushing with no file changes (e.g., to update commit date after refetch), existing files are automatically preserved from the repo to ensure other clients can display files correctly
 
 ## What's Stored WHERE
 

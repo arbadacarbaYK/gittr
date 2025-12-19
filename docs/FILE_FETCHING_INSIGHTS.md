@@ -858,11 +858,11 @@ When pushing a repository to Nostr, the system uses the following strategy for f
 
 ### Empty Commit File Preservation
 
-**Problem**: When pushing to update commit dates (e.g., after refetching from GitHub with no local edits), the system creates an empty commit. This results in `gitworkshop.dev` showing no files because the latest commit has no file tree.
+**Problem**: When pushing to update commit dates (e.g., after refetching from GitHub with no local edits), the system creates an empty commit. This results in other clients showing no files because the latest commit has no file tree.
 
 **Solution**: The push API (`/api/nostr/repo/push`) now preserves existing files when creating empty commits:
 - If `files.length === 0` and the repo exists, the system copies all files from the existing repo into the temp directory before creating the commit
-- This ensures that date-update commits preserve the previous state, allowing clients like `gitworkshop.dev` to display files correctly
+- This ensures that date-update commits preserve the previous state, allowing other clients to display files correctly
 - The commit is still created with `--allow-empty` to ensure a new commit is always created with the current timestamp
 
 **Implementation**:
