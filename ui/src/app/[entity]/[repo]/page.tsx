@@ -2405,7 +2405,16 @@ export default function RepoCodePage({
                       }
                       else if (tagName === "relay" || tagName === "relays") {
                         if (!eventRepoData.relays) eventRepoData.relays = [];
-                        eventRepoData.relays.push(tagValue);
+                        // CRITICAL: Handle comma-separated relay list per NIP-34 spec
+                        // Format: ["relays", "wss://relay1.com,wss://relay2.com"]
+                        if (tagValue) {
+                          const relayUrls = tagValue.split(",").map((r: string) => r.trim()).filter((r: string) => r.length > 0);
+                          relayUrls.forEach((relayUrl: string) => {
+                            if (!eventRepoData.relays.includes(relayUrl)) {
+                              eventRepoData.relays.push(relayUrl);
+                            }
+                          });
+                        }
                       }
                       // Extract sourceUrl from "source" tag (used in push-repo-to-nostr.ts)
                       else if (tagName === "source") {
@@ -2512,7 +2521,16 @@ export default function RepoCodePage({
                       }
                       else if (tagName === "relay" || tagName === "relays") {
                         if (!eventRepoData.relays) eventRepoData.relays = [];
-                        eventRepoData.relays.push(tagValue);
+                        // CRITICAL: Handle comma-separated relay list per NIP-34 spec
+                        // Format: ["relays", "wss://relay1.com,wss://relay2.com"]
+                        if (tagValue) {
+                          const relayUrls = tagValue.split(",").map((r: string) => r.trim()).filter((r: string) => r.length > 0);
+                          relayUrls.forEach((relayUrl: string) => {
+                            if (!eventRepoData.relays.includes(relayUrl)) {
+                              eventRepoData.relays.push(relayUrl);
+                            }
+                          });
+                        }
                       }
                       // Extract sourceUrl from "source" tag (used in push-repo-to-nostr.ts)
                       else if (tagName === "source") {

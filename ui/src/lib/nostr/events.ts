@@ -200,11 +200,13 @@ export function createRepositoryEvent(
   // If no clone URLs provided, this is a warning but we'll still create the event
   // (Some clients might handle repos without clone URLs differently)
   
-  // GRASP-01 / NIP-34: Add relays tags (Nostr relay URLs)
+  // GRASP-01 / NIP-34: Add relays tag (Nostr relay URLs)
+  // CRITICAL: According to spec, relays should be comma-separated in a SINGLE tag, not separate tags
+  // Most GRASP servers/git clients only recognize the first tag, so all relays must be in one tag
+  // Format: ["relays", "wss://relay1.com,wss://relay2.com,wss://relay3.com"]
   if (repo.relays && repo.relays.length > 0) {
-    repo.relays.forEach(url => {
-      tags.push(["relays", url]);
-    });
+    const relaysList = repo.relays.join(",");
+    tags.push(["relays", relaysList]);
   }
   
   // NIP-34: Add topics/tags
