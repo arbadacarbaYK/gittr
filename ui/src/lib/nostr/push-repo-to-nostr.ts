@@ -1058,12 +1058,17 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         // We'll try to get refs after a short wait, then proceed with second signature
         // The bridge push will continue in background
         const { pushFilesToBridge } = await import("./push-to-bridge");
+        // CRITICAL: Use current time as commit date (when this push happens)
+        // This ensures each push creates a commit with the date of when it was pushed
+        // gitworkshop.dev will show this date as the "last commit" date
+        const commitDate = Math.floor(Date.now() / 1000);
         const bridgePushPromise = pushFilesToBridge({
           ownerPubkey: pubkey,
           repoSlug: actualRepositoryName,
           entity,
           branch: repo.defaultBranch || "main",
           files: filesForBridge,
+          commitDate, // Pass commit date (current time - when this push happens)
         }).catch((error: any) => {
           console.error("❌ [Push Repo] Bridge push failed:", error);
           onProgress?.("⚠️ Bridge push failed - state event may have empty commits");
