@@ -126,6 +126,8 @@ export default function RepoCodePage({
   const [proposeEdit, setProposeEdit] = useState<boolean>(false);
   const [proposedContent, setProposedContent] = useState<string>("");
   const [mounted, setMounted] = useState(false);
+  const [currentFolderReadme, setCurrentFolderReadme] = useState<string | null>(null);
+  const [loadingFolderReadme, setLoadingFolderReadme] = useState<boolean>(false);
   const fileViewerRef = useRef<HTMLDivElement | null>(null);
   const repoProcessedRef = useRef<string>(""); // Track which repo we've already processed
   const fileFetchInProgressRef = useRef<boolean>(false); // Prevent multiple simultaneous file fetches
@@ -5129,6 +5131,82 @@ export default function RepoCodePage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlBranch, urlFile, urlPath, repoData?.files?.length, repoData?.defaultBranch]); // Use specific properties instead of full repoData
   
+  // Load README from current folder when path changes
+  useEffect(() => {
+    // Clear folder README when a file is selected (file takes priority)
+    if (selectedFile || fileContent) {
+      setCurrentFolderReadme(null);
+      return;
+    }
+    
+    // Check if there's a README in the current folder (root or subfolder)
+    if (!repoData?.files) {
+      setCurrentFolderReadme(null);
+      return;
+    }
+    
+    // Determine the folder path (empty string for root, or the current path)
+    const folderPrefix = currentPath ? (currentPath.endsWith("/") ? currentPath : `${currentPath}/`) : "";
+    const readmeVariants = [
+      `${folderPrefix}README.md`,
+      `${folderPrefix}readme.md`,
+      `${folderPrefix}README`,
+      `${folderPrefix}readme`,
+    ];
+    
+    const readmeFile = repoData.files.find((f: any) => 
+      readmeVariants.includes(f.path) && f.type === "file"
+    );
+    
+    if (!readmeFile) {
+      setCurrentFolderReadme(null);
+      return;
+    }
+    
+    // Load the README content
+    setLoadingFolderReadme(true);
+    const loadReadme = async () => {
+      try {
+        const branch = selectedBranch || repoData?.defaultBranch || "main";
+        const sourceUrl = repoData.sourceUrl;
+        
+        if (sourceUrl) {
+          // Try API first
+          const apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrl)}&path=${encodeURIComponent(readmeFile.path)}&branch=${encodeURIComponent(branch)}`;
+          const response = await fetch(apiUrl);
+          if (response.ok) {
+            const data = await response.json();
+            setCurrentFolderReadme(data.content || "");
+            setLoadingFolderReadme(false);
+            return;
+          }
+        }
+        
+        // Fallback: try to get from localStorage files
+        const repos = loadStoredRepos();
+        const repo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
+        if (repo?.files) {
+          const fileData = repo.files.find((f: any) => f.path === readmeFile.path);
+          if (fileData && (fileData as any).content) {
+            setCurrentFolderReadme((fileData as any).content);
+            setLoadingFolderReadme(false);
+            return;
+          }
+        }
+        
+        // If we can't load it, clear it
+        setCurrentFolderReadme(null);
+        setLoadingFolderReadme(false);
+      } catch (error) {
+        console.error("Error loading folder README:", error);
+        setCurrentFolderReadme(null);
+        setLoadingFolderReadme(false);
+      }
+    };
+    
+    loadReadme();
+  }, [currentPath, repoData?.files, repoData?.sourceUrl, repoData?.defaultBranch, selectedBranch, selectedFile, fileContent, resolvedParams.entity, resolvedParams.repo]);
+  
   // Open file when selectedFile is set from URL (skip URL update since URL already has it)
   // Use ref to track if we're opening from URL to prevent loops
   useEffect(() => {
@@ -7946,11 +8024,13 @@ export default function RepoCodePage({
           {items.length === 0 && repoData && (
             <div className="border p-4 text-center text-gray-400">No files found</div>
           )}
-          {!selectedFile && !fileContent && repoData?.readme && (
+          {!selectedFile && !fileContent && currentFolderReadme && (
           <div className="mt-4 rounded-md border dark:border-[#383B42]">
             <div className="flex items-center gap-2 border-b p-2 dark:border-[#383B42]">
               <List className="text-gray-400 ml-2 h-4 w-4" />{" "}
-                <span className="text-gray-400">README.md</span>
+                <span className="text-gray-400">
+                  {loadingFolderReadme ? "Loading README..." : "README.md"}
+                </span>
             </div>
             <article
               id="readme"
@@ -8117,7 +8197,7 @@ export default function RepoCodePage({
                     },
                   }}
                 >
-                  {repoData.readme}
+                  {currentFolderReadme}
                 </ReactMarkdown>
             </article>
           </div>
