@@ -185,8 +185,8 @@ curl -X POST "$BRIDGE_URL" \
 
 ## Limitations
 
-1. **File Size**: The API has a 25MB body size limit. For very large repos, consider using `git push` directly to the bridge via SSH.
-2. **Binary Files**: Binary files must be base64-encoded. Large binaries may exceed size limits.
+1. **File Size**: The API automatically chunks large pushes (30 files or 8MB per chunk) to avoid nginx limits. For very large repos, consider using `git push` directly to the bridge via SSH.
+2. **Binary Files**: Binary files must be base64-encoded. Large binaries may be split across multiple chunks.
 3. **Nostr Events**: You still need to publish Nostr events separately (announcement kind 30617 and state kind 30618) for full discovery by other clients.
 
 ## Alternative: Direct Git Push

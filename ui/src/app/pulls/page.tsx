@@ -32,6 +32,7 @@ interface IPullRequestData {
   entity: string;
   repo: string;
   title: string;
+  description?: string;
   number: string;
   date: string;
   author: string;
@@ -605,8 +606,16 @@ export default function PullsPage({}) {
           });
         });
       } else if (prType === "mentioned") {
-        // TODO: Implement mention detection from PR content/description
-        // For now, just show all if mentioned filter is selected
+        // Filter PRs where current user is mentioned in title or description
+        if (currentUserPubkey) {
+          const { extractMentionedPubkeys } = require("@/lib/utils/mention-detection");
+          filtered = filtered.filter(pr => {
+            const titleMentions = extractMentionedPubkeys(pr.title || "");
+            const descMentions = extractMentionedPubkeys(pr.description || "");
+            const allMentions = [...titleMentions, ...descMentions];
+            return allMentions.some(pubkey => pubkey.toLowerCase() === currentUserPubkey.toLowerCase());
+          });
+        }
       }
     }
     

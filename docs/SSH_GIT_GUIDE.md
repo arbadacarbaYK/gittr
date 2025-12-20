@@ -178,7 +178,7 @@ If you want to make changes to an existing repository (whether imported or creat
 
 ### 3. Publish (Push to Nostr)
 
-1. In the repository UI click **"Push to Nostr"**.  
+1. In the repository UI click **"Push to Nostr"**, OR use the [CLI push API](./CLI_PUSH_EXAMPLE.md) to push files programmatically.  
 2. Confirm the prompt in your NIP‑07 wallet (or use your stored private key).  
 3. We'll publish the NIP‑34 event **and** automatically sync the full Git repository to our bridge at `git.gittr.space` and other GRASP servers so other clients can clone it immediately.
 
@@ -188,7 +188,9 @@ If you want to make changes to an existing repository (whether imported or creat
 - **Workflow**: Files should already be in `localStorage` from the create or import workflow
 - **If Files Are Missing**: Re-import the repository to load all files into `localStorage` before pushing
 
-#### Optional: push via Git CLI
+#### Optional: Push via Git CLI or HTTP API
+
+**Option A: Traditional Git CLI (SSH)**
 If you prefer a traditional workflow you can still push directly to the bridge:
 
 ```bash
@@ -196,6 +198,9 @@ git add .
 git commit -m "Update code"
 git push origin main
 ```
+
+**Option B: HTTP API (CLI Push)**
+For programmatic pushes without SSH, see [CLI_PUSH_EXAMPLE.md](./CLI_PUSH_EXAMPLE.md) for the HTTP API approach.
 
 **Important**: SSH git operations (`git push`, `git pull`, `git clone`) work **directly with the git-nostr-bridge** via SSH. They are **completely separate** from the web UI push process:
 
@@ -431,4 +436,9 @@ gittr uses the following services:
 - **Nostr relays**: Store SSH key events (KIND_SSH_KEY = 52)
 
 For more details on the infrastructure setup, see the `gitnostr` directory in the repository.
+
+## See Also
+
+- [CLI_PUSH_EXAMPLE.md](./CLI_PUSH_EXAMPLE.md) - Push repositories to the bridge via HTTP API (alternative to SSH)
+- [GIT_NOSTR_BRIDGE_SETUP.md](./GIT_NOSTR_BRIDGE_SETUP.md) - Bridge setup documentation
 

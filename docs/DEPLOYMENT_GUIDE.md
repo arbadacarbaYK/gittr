@@ -392,8 +392,9 @@ server {
     ssl_prefer_server_ciphers on;
     
     # Git HTTP backend via FCGI (git-http-backend)
-    # URL format: https://git.gittr.space/{pubkey}/{repo}.git
-    # This allows git clone https://git.gittr.space/{pubkey}/{repo}.git
+    # URL format: https://git.gittr.space/{npub}/{repo}.git
+    # This allows git clone https://git.gittr.space/{npub}/{repo}.git
+    # Note: Uses npub format (NIP-19), not hex pubkey, per NIP-34 specification
     location ~ ^/([^/]+)/(.+\.git)(.*)$ {
         root /home/git-nostr/git-nostr-repositories;
         fastcgi_pass unix:/var/run/fcgiwrap.socket;
@@ -489,7 +490,7 @@ WantedBy=multi-user.target
 
 | Variable | Location | Required | Purpose |
 |----------|----------|----------|---------|
-| `NEXT_PUBLIC_NOSTR_RELAYS` | `ui/.env.local` | ✅ Yes | Comma-separated relay URLs |
+| `NEXT_PUBLIC_NOSTR_RELAYS` | `ui/.env.local` | ✅ Yes | Comma-separated relay URLs (environment variable format). Note: In Nostr events, relays are published as separate tags (not comma-separated) per NIP-34 spec. |
 | `NEXT_PUBLIC_BLOSSOM_URL` | `ui/.env.local` | ✅ Yes | Blossom server URL (for Git pack files) |
 | `NEXT_PUBLIC_SITE_URL` | `ui/.env.local` | ❌ No | Site URL for SEO metadata and GRASP server API calls (defaults to `https://gittr.space`) |
 | `NEXT_PUBLIC_GIT_SSH_BASE` | `ui/.env.local` | ❌ No | Git SSH base hostname for clone URLs (defaults to `gittr.space`) |
