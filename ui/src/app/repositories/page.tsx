@@ -1828,6 +1828,9 @@ export default function RepositoriesPage() {
                             if (repoOwnerPubkey.toLowerCase() === pubkey.toLowerCase()) {
                               return true;
                             }
+                            // If repoOwnerPubkey exists and is valid but doesn't match, it's foreign
+                            // Don't check entity - repoOwnerPubkey takes precedence
+                            return false;
                           }
                           
                           // Priority 3: Check contributors for owner with matching pubkey
@@ -1887,6 +1890,9 @@ export default function RepositoriesPage() {
                             if (repoOwnerPubkey.toLowerCase() === pubkey.toLowerCase()) {
                               return false; // Own repo
                             }
+                            // If repoOwnerPubkey exists and is valid but doesn't match, it's foreign
+                            // Don't check entity - repoOwnerPubkey takes precedence
+                            return true;
                           }
                           
                           // Priority 3: Check contributors
