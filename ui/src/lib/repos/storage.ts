@@ -199,11 +199,73 @@ export const loadRepoFiles = (entity: string, repo: string): RepoFileEntry[] => 
 
 export const saveRepoFiles = (entity: string, repo: string, files: RepoFileEntry[]): void => {
   if (typeof window === "undefined") return;
+  const filesKey = getRepoStorageKey("gittr_files", entity, repo);
   try {
-    const filesKey = getRepoStorageKey("gittr_files", entity, repo);
     localStorage.setItem(filesKey, JSON.stringify(files));
-  } catch (error) {
-    console.error("Failed to save repo files:", error);
+  } catch (error: any) {
+    if (error.name === 'QuotaExceededError' || error.message?.includes('quota')) {
+      console.error(`❌ [Storage] Quota exceeded when saving files for ${entity}/${repo}. Attempting cleanup...`);
+      
+      // Try to clean up old file storage keys (older than 30 days)
+      try {
+        const now = Date.now();
+        const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+        let cleanedCount = 0;
+        
+        // Find all gittr_files keys
+        const allKeys: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith("gittr_files__")) {
+            allKeys.push(key);
+          }
+        }
+        
+        // Try to get last modified time from repos (if available)
+        const repos = loadStoredRepos();
+        const repoMap = new Map<string, number>();
+        repos.forEach((r: any) => {
+          const key = getRepoStorageKey("gittr_files", r.entity, r.repo || r.slug || r.name);
+          const lastActivity = r.updatedAt || r.lastModifiedAt || r.createdAt || 0;
+          repoMap.set(key, lastActivity);
+        });
+        
+        // Remove old file storage keys
+        for (const key of allKeys) {
+          const lastActivity = repoMap.get(key) || 0;
+          if (lastActivity < thirtyDaysAgo) {
+            try {
+              localStorage.removeItem(key);
+              cleanedCount++;
+            } catch (e) {
+              // Ignore errors during cleanup
+            }
+          }
+        }
+        
+        if (cleanedCount > 0) {
+          console.log(`🧹 [Storage] Cleaned up ${cleanedCount} old file storage keys`);
+          // Retry saving
+          try {
+            localStorage.setItem(filesKey, JSON.stringify(files));
+            console.log(`✅ [Storage] Successfully saved files after cleanup`);
+            return;
+          } catch (e2: any) {
+            console.error(`❌ [Storage] Still quota exceeded after cleanup:`, e2);
+            throw e2;
+          }
+        } else {
+          console.error(`❌ [Storage] No old files to clean up - quota still exceeded`);
+          throw error;
+        }
+      } catch (cleanupError) {
+        console.error(`❌ [Storage] Cleanup failed:`, cleanupError);
+        throw error; // Re-throw original error
+      }
+    } else {
+      console.error("❌ [Storage] Failed to save repo files:", error);
+      throw error;
+    }
   }
 };
 
