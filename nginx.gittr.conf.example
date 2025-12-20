@@ -1,0 +1,122 @@
+# Nginx configuration for gittr.space
+# This is a backup/reference config - actual server config is at /etc/nginx/sites-available/gittr
+# DO NOT use this directly - it contains server-specific paths and SSL cert paths
+# Use this as a reference when setting up a new server
+
+server {
+    server_name gittr.space 91.99.86.115;
+    
+    # Increase body size limit for large repository pushes (chunked uploads)
+    # This allows chunks up to 10MB, matching the chunk size limit in push-to-bridge.ts
+    client_max_body_size 10M;
+    
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Cache headers for social media link previews (metadata)
+        # Allow social media crawlers to cache metadata, but ensure fresh content
+        # Note: Next.js uses 'force-dynamic' for metadata routes, so we don't cache those
+        # This is mainly for static assets and images used in link previews
+        add_header Cache-Control "public, max-age=3600, stale-while-revalidate=86400" always;
+    }
+    
+    # Don't cache metadata routes (user/repo pages) - they use force-dynamic
+    # Social media crawlers will get fresh metadata on each request
+    # Matches: /npub1... or /npub1.../repo-name (user profiles and repositories)
+    location ~ ^/(npub|note)[^/]*(/.*)?$ {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # No caching for dynamic metadata routes - ensures fresh Open Graph/Twitter metadata
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+    }
+
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/gittr.space/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/gittr.space/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+}
+
+server {
+    if ($host = gittr.space) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+    listen 80;
+    server_name gittr.space 91.99.86.115;
+    return 404; # managed by Certbot
+}
+
+# Git bridge subdomain (for HTTPS git clones)
+# Requires: apt-get install fcgiwrap && systemctl enable fcgiwrap && systemctl start fcgiwrap
+server {
+    listen 80;
+    server_name git.gittr.space;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name git.gittr.space;
+    
+    # SSL certificates (obtain with: certbot certonly --nginx -d git.gittr.space)
+    ssl_certificate /etc/letsencrypt/live/git.gittr.space/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/git.gittr.space/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    
+    # Return 404 for root path (git clients use /{pubkey}/{repo}.git paths)
+    location = / {
+        return 404;
+    }
+    
+    # Git HTTP backend via FCGI (git-http-backend)
+    # URL format: https://git.gittr.space/{pubkey}/{repo}.git
+    # This allows git clone https://git.gittr.space/{pubkey}/{repo}.git
+    location ~ ^/([^/]+)/(.+\.git)(.*)$ {
+        root /home/git-nostr/git-nostr-repositories;
+        fastcgi_pass unix:/var/run/fcgiwrap.socket;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME /usr/lib/git-core/git-http-backend;
+        fastcgi_param GIT_HTTP_EXPORT_ALL "";
+        fastcgi_param GIT_PROJECT_ROOT /home/git-nostr/git-nostr-repositories;
+        fastcgi_param PATH_INFO $uri;
+        fastcgi_param REMOTE_USER $remote_user;
+        
+        # CORS headers for GRASP protocol compliance (allows gitworkshop.dev and other clients to clone)
+        add_header Access-Control-Allow-Origin * always;
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
+        
+        # Handle preflight OPTIONS requests
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin * always;
+            add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
+            add_header Access-Control-Max-Age 1728000;
+            add_header Content-Type 'text/plain charset=UTF-8';
+            add_header Content-Length 0;
+            return 204;
+        }
+    }
+}
+
