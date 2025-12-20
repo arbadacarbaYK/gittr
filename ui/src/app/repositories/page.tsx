@@ -1328,7 +1328,7 @@ export default function RepositoriesPage() {
       // Dynamic import to avoid SSR issues
       (async () => {
         try {
-          import("./find-corrupted-repos").then(({ findCorruptedRepos }) => {
+          import("./find-corrupted-repos.tsx").then(({ findCorruptedRepos }) => {
             (window as any).findCorruptedRepos = findCorruptedRepos;
             (window as any).findCorruptTidesRepos = findCorruptedRepos; // Backward compatibility
             console.log("💡 Run findCorruptedRepos() in console to find all corrupted repos (uses general corruption detection)");
