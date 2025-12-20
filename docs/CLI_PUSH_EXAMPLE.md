@@ -126,22 +126,25 @@ curl -X POST https://git.gittr.space/api/nostr/repo/event \
 
 **Note**: Events must be properly signed with your Nostr private key. The bridge validates signatures.
 
-## Complete Example Script
+## Complete Example: Push Local Repository with Files
 
-Here's a bash script that reads files from a local git repo and pushes to gittr:
+Here's a complete example that reads all files from a local git repository and pushes them to gittr:
 
 ```bash
 #!/bin/bash
 
 # Configuration
 OWNER_PUBKEY="9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c"
-REPO_NAME="my-repo"
+REPO_NAME="my-awesome-project"
 BRANCH="main"
 BRIDGE_URL="https://git.gittr.space/api/nostr/repo/push"
+
+echo "📦 Collecting files from local repository..."
 
 # Get all files from current directory (excluding .git)
 files_json="["
 first=true
+file_count=0
 
 while IFS= read -r file; do
   if [[ "$file" == .git/* ]] || [[ "$file" == .git ]]; then
@@ -154,6 +157,9 @@ while IFS= read -r file; do
     else
       files_json+=","
     fi
+    
+    file_count=$((file_count + 1))
+    echo "  📄 Adding: $file"
     
     # Check if binary
     if file "$file" | grep -q "text"; then
@@ -171,15 +177,72 @@ done < <(git ls-files)
 
 files_json+="]"
 
+echo "✅ Collected $file_count files"
+echo "📤 Pushing to bridge..."
+
 # Push to bridge
 # Note: OWNER_PUBKEY can be either hex (64-char) or npub format
-curl -X POST "$BRIDGE_URL" \
+response=$(curl -s -X POST "$BRIDGE_URL" \
   -H "Content-Type: application/json" \
   -d "{
     \"ownerPubkey\": \"$OWNER_PUBKEY\",
     \"repo\": \"$REPO_NAME\",
     \"branch\": \"$BRANCH\",
     \"files\": $files_json
+  }")
+
+echo "$response" | jq '.'
+
+# Check if successful
+if echo "$response" | jq -e '.success == true' > /dev/null; then
+  echo "✅ Successfully pushed $file_count files to bridge!"
+  echo "📝 Next step: Publish Nostr events via web UI or API"
+else
+  echo "❌ Push failed. Check the error message above."
+  exit 1
+fi
+```
+
+## Example: Push Specific Files
+
+If you want to push specific files instead of all files:
+
+```bash
+#!/bin/bash
+
+OWNER_PUBKEY="npub1abc123..."
+REPO_NAME="my-project"
+BRIDGE_URL="https://git.gittr.space/api/nostr/repo/push"
+
+# Push specific files
+curl -X POST "$BRIDGE_URL" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"ownerPubkey\": \"$OWNER_PUBKEY\",
+    \"repo\": \"$REPO_NAME\",
+    \"branch\": \"main\",
+    \"files\": [
+      {
+        \"path\": \"README.md\",
+        \"content\": \"# My Project\\n\\nThis is my awesome project!\",
+        \"isBinary\": false
+      },
+      {
+        \"path\": \"src/index.js\",
+        \"content\": \"console.log('Hello, Nostr!');\\nmodule.exports = { version: '1.0.0' };\",
+        \"isBinary\": false
+      },
+      {
+        \"path\": \"package.json\",
+        \"content\": \"{\\n  \\\"name\\\": \\\"my-project\\\",\\n  \\\"version\\\": \\\"1.0.0\\\",\\n  \\\"main\\\": \\\"src/index.js\\\"\\n}\",
+        \"isBinary\": false
+      },
+      {
+        \"path\": \"assets/logo.png\",
+        \"content\": \"$(base64 -w 0 < logo.png)\",
+        \"isBinary\": true
+      }
+    ]
   }"
 ```
 
@@ -189,16 +252,41 @@ curl -X POST "$BRIDGE_URL" \
 2. **Binary Files**: Binary files must be base64-encoded. Large binaries may be split across multiple chunks.
 3. **Nostr Events**: You still need to publish Nostr events separately (announcement kind 30617 and state kind 30618) for full discovery by other clients.
 
-## Alternative: Direct Git Push
+## Alternative: Direct Git Push (Recommended)
 
-For developers already using git, you can push directly to the bridge via SSH:
+For developers already using git, you can push directly to the bridge via SSH. This is the recommended approach as it preserves all git history and works with standard git commands:
 
 ```bash
-git remote add nostr git@git.gittr.space:npub1.../repo.git
+# 1. Set up SSH keys (if not already done)
+# Go to Settings → SSH Keys on gittr.space, add your public key
+
+# 2. Create the repository on gittr (via web UI or API)
+
+# 3. Add gittr as a remote
+cd /path/to/your/local/repo
+git remote add nostr git@gittr.space:<your-npub>/<repo-name>.git
+
+# 4. Push all your files, commits, and branches
 git push nostr main
+
+# 5. Push other branches if needed
+git push nostr feature-branch
+
+# 6. Publish Nostr events via web UI
+# Go to the repository page and click "Push to Nostr"
 ```
 
-This bypasses the API and works with standard git commands. The bridge will automatically create the repository if it doesn't exist.
+**Advantages of direct git push:**
+- ✅ Preserves full git history (commits, branches, tags)
+- ✅ Works with all standard git commands
+- ✅ Faster for large repositories
+- ✅ No file size limits (handled by git protocol)
+- ✅ Bridge automatically creates the repository if it doesn't exist
+
+**When to use HTTP API instead:**
+- You need to push files programmatically without git
+- You're building a custom tool or script
+- You want to push files from a non-git source
 
 ## See Also
 
