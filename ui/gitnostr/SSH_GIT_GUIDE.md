@@ -59,7 +59,7 @@ git clone git@gittr.space:npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4r
 
 ### Workflow A: Push Existing Local Repository to Bridge
 
-If you have a local git repository and want to push it to a bridge:
+If you have a local git repository with files and want to push it to a bridge:
 
 ```bash
 # 1. Set up SSH keys (if not already done)
@@ -72,13 +72,18 @@ If you have a local git repository and want to push it to a bridge:
 cd /path/to/your/local/repo
 git remote add bridge git@<bridge-host>:<your-npub>/<repo-name>.git
 
-# 4. Push to bridge
+# 4. Push all your files, commits, and branches to bridge
 git push bridge main
 
-# 5. (Optional) Publish Nostr events via web UI
+# 5. Push other branches if needed
+git push bridge feature-branch
+
+# 6. Publish Nostr events via web UI
 # Go to gittr.space repository page and click "Push to Nostr"
 # This publishes NIP-34 events so other clients can discover your repo
 ```
+
+**Result**: All your local files, commits, and history are now on the bridge and published to Nostr.
 
 ### Workflow B: Push to Both Bridge + GitHub
 
@@ -117,9 +122,79 @@ git remote set-url --add --push both bridge git@<bridge-host>:<your-npub>/<repo-
 git push both main
 ```
 
-### Workflow C: Making Changes to Existing Repositories
+### Workflow C: Create New Repository from Scratch
 
-For any existing repository hosted on a bridge:
+Complete workflow to create a new repository with files:
+
+```bash
+# 1. Set up SSH keys (if not already done)
+# Use git-nostr-cli or gittr.space web UI to publish your SSH key
+
+# 2. Create repository (via web UI or API)
+# Option A: Use gittr.space web UI to create empty repo
+# Option B: Use HTTP API (see link to CLI_PUSH_EXAMPLE.md below)
+
+# 3. Clone the repo
+git clone git@<bridge-host>:<your-npub>/<repo-name>.git
+cd <repo-name>
+
+# 4. Create your project files
+cat > README.md << 'EOF'
+# My Project
+
+This is my awesome project on Nostr!
+
+## Features
+- Feature 1
+- Feature 2
+
+## Installation
+\`\`\`bash
+npm install
+\`\`\`
+EOF
+
+cat > index.js << 'EOF'
+#!/usr/bin/env node
+console.log('Hello from Nostr!');
+EOF
+
+cat > package.json << 'EOF'
+{
+  "name": "my-project",
+  "version": "1.0.0",
+  "description": "My awesome project",
+  "main": "index.js"
+}
+EOF
+
+mkdir src
+cat > src/utils.js << 'EOF'
+export function greet(name) {
+  return `Hello, ${name}!`;
+}
+EOF
+
+# 5. Commit and push all files
+git add .
+git commit -m "Initial commit: Add project files
+
+- Add README with project description
+- Add main index.js entry point
+- Add package.json with project metadata
+- Add src/utils.js with utility functions"
+
+git push origin main
+
+# 6. Publish to Nostr via web UI
+# Go to gittr.space repository page and click "Push to Nostr"
+```
+
+**Result**: Complete repository with all files, properly committed and published to Nostr.
+
+### Workflow D: Making Changes to Existing Repositories
+
+Complete workflow for updating an existing repository:
 
 ```bash
 # 1. Clone the repository
@@ -127,12 +202,31 @@ git clone git@<bridge-host>:<owner-npub>/<repo-name>.git
 cd <repo-name>
 
 # 2. Make your changes
-# Edit files, add new files, delete files, etc.
+# Edit existing files
+echo "# Updated Feature" >> README.md
 
-# 3. Commit and push
+# Add new files
+cat > src/new-feature.js << 'EOF'
+export function newFeature() {
+  return 'New feature added!';
+}
+EOF
+
+# Modify existing files
+sed -i 's/version: "1.0.0"/version: "1.1.0"/' package.json
+
+# 3. Stage, commit, and push all changes
 git add .
-git commit -m "Your commit message"
+git commit -m "Add new feature and update version
+
+- Add new-feature.js with new functionality
+- Update package.json version to 1.1.0
+- Update README with new feature documentation"
+
 git push origin main
+
+# 4. Changes appear in web UI after pushing
+# Refresh the repository page to see your updates
 ```
 
 ## Git Operations Over SSH
@@ -289,6 +383,7 @@ Some relays may reject KIND_52 (SSH key events) due to NIP-52 conflict. If publi
 
 ## See Also
 
-- [Main gittr.space SSH Git Guide](../../docs/SSH_GIT_GUIDE.md) - User-facing guide for gittr.space
+- **[Main gittr.space SSH Git Guide](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FSSH_GIT_GUIDE.md)** - Complete user-facing guide for gittr.space with web UI workflows
+- **[CLI Push Example](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FCLI_PUSH_EXAMPLE.md)** - HTTP API examples for pushing repositories programmatically
 - [git-nostr-bridge README](README.md) - Setup and configuration instructions
 - [git-nostr-cli Usage](README.md#git-nostr-cli-gn) - Command-line tool documentation
