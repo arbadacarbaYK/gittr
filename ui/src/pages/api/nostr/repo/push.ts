@@ -472,14 +472,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (error: any) {
     console.error("❌ Bridge push failed:", error);
     
-    // CRITICAL: Clean up shared working directory on error (for chunked pushes)
-    if (isChunked && pushSessionId && tempDir && existsSync(tempDir)) {
+    // CRITICAL: Clean up shared working directory on error ONLY for:
+    // 1. Non-chunked pushes (single push, no retry needed)
+    // 2. Last chunk of chunked push (push is done, failed or not)
+    // DO NOT clean up for intermediate chunks - they might be retried or subsequent chunks need the directory
+    const isLastChunk = isChunked && chunkIndex !== undefined && totalChunks !== undefined && chunkIndex === totalChunks - 1;
+    const shouldCleanupOnError = !isChunked || isLastChunk;
+    
+    if (shouldCleanupOnError && pushSessionId && tempDir && existsSync(tempDir)) {
       try {
         await rm(tempDir, { recursive: true, force: true });
-        console.log(`🧹 [Bridge Push] Cleaned up working directory after error`);
+        const chunkInfo = isChunked ? ` (chunk ${(chunkIndex || 0) + 1}/${totalChunks || 1})` : '';
+        console.log(`🧹 [Bridge Push] Cleaned up working directory after error${chunkInfo}`);
       } catch (cleanupError: any) {
         console.warn(`⚠️ [Bridge Push] Failed to clean up working directory after error:`, cleanupError?.message);
       }
+    } else if (isChunked && !isLastChunk) {
+      // Intermediate chunk error - don't clean up, allow retry or subsequent chunks
+      console.log(`📝 [Bridge Push] Intermediate chunk error - keeping working directory for retry/subsequent chunks`);
     }
     
     return res.status(500).json({
