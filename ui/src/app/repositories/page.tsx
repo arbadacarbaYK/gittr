@@ -1811,37 +1811,50 @@ export default function RepositoriesPage() {
                         // Use the SAME logic as the display filter to ensure consistency
                         const userRepos = allRepos.filter((repo: any) => {
                           // Priority 1: Check direct ownerPubkey match (most reliable)
+                          // CRITICAL: Only compare if ownerPubkey is a valid 64-char hex
                           const directOwnerPubkey = repo.ownerPubkey;
-                          if (directOwnerPubkey && directOwnerPubkey.toLowerCase() === pubkey.toLowerCase()) {
-                            return true;
+                          if (directOwnerPubkey && /^[0-9a-f]{64}$/i.test(directOwnerPubkey)) {
+                            if (directOwnerPubkey.toLowerCase() === pubkey.toLowerCase()) {
+                              return true;
+                            }
+                            // If ownerPubkey exists and is valid but doesn't match, it's foreign
+                            // Don't check entity - ownerPubkey takes precedence
+                            return false;
                           }
                           
                           // Priority 2: Check via getRepoOwnerPubkey (uses ownerPubkey or contributors)
                           const repoOwnerPubkey = getRepoOwnerPubkey(repo, repo.entity);
-                          if (repoOwnerPubkey && repoOwnerPubkey.toLowerCase() === pubkey.toLowerCase()) {
-                            return true;
+                          if (repoOwnerPubkey && /^[0-9a-f]{64}$/i.test(repoOwnerPubkey)) {
+                            if (repoOwnerPubkey.toLowerCase() === pubkey.toLowerCase()) {
+                              return true;
+                            }
                           }
                           
                           // Priority 3: Check contributors for owner with matching pubkey
                           if (repo.contributors && Array.isArray(repo.contributors)) {
                             const ownerContributor = repo.contributors.find((c: any) => 
-                              c.pubkey && c.pubkey.toLowerCase() === pubkey.toLowerCase() && 
+                              c.pubkey && /^[0-9a-f]{64}$/i.test(c.pubkey) &&
+                              c.pubkey.toLowerCase() === pubkey.toLowerCase() && 
                               (c.weight === 100 || c.role === "owner")
                             );
                             if (ownerContributor) return true;
                           }
                           
                           // Priority 4: Check if entity (npub format) matches current user's pubkey
+                          // Only use this if ownerPubkey is missing or invalid (truncated/corrupted)
                           if (repo.entity && repo.entity.startsWith("npub")) {
                             try {
                               const decoded = nip19.decode(repo.entity);
                               if (decoded.type === "npub") {
                                 const entityPubkey = decoded.data as string;
                                 if (entityPubkey.toLowerCase() === pubkey.toLowerCase()) {
-                                  // Additional check: ensure ownerPubkey matches if it exists
-                                  if (directOwnerPubkey && directOwnerPubkey.toLowerCase() !== pubkey.toLowerCase()) {
-                                    return false;
+                                  // If we have a valid ownerPubkey that doesn't match, it's foreign
+                                  // But if ownerPubkey is missing or invalid (truncated), trust the entity
+                                  if (directOwnerPubkey && /^[0-9a-f]{64}$/i.test(directOwnerPubkey)) {
+                                    // Valid ownerPubkey exists - it must match
+                                    return directOwnerPubkey.toLowerCase() === pubkey.toLowerCase();
                                   }
+                                  // No valid ownerPubkey - trust entity match
                                   return true;
                                 }
                               }
@@ -1852,35 +1865,55 @@ export default function RepositoriesPage() {
                         });
 
                         // Get list of foreign repos for cleanup
+                        // Use inverse logic of userRepos filter for consistency
                         const foreignRepos = allRepos.filter((repo: any) => {
-                          // Use the same logic as userRepos filter (inverse)
+                          // Check if this repo belongs to the user (same logic as userRepos)
+                          // If it does, return false (not foreign)
+                          
+                          // Priority 1: Check direct ownerPubkey match (most reliable)
+                          // CRITICAL: Only compare if ownerPubkey is a valid 64-char hex
                           const directOwnerPubkey = repo.ownerPubkey;
-                          if (directOwnerPubkey && directOwnerPubkey.toLowerCase() === pubkey.toLowerCase()) {
-                            return false;
+                          if (directOwnerPubkey && /^[0-9a-f]{64}$/i.test(directOwnerPubkey)) {
+                            if (directOwnerPubkey.toLowerCase() === pubkey.toLowerCase()) {
+                              return false; // Own repo
+                            }
+                            // If ownerPubkey exists and is valid but doesn't match, it's foreign
+                            return true;
                           }
                           
+                          // Priority 2: Check via getRepoOwnerPubkey
                           const repoOwnerPubkey = getRepoOwnerPubkey(repo, repo.entity);
-                          if (repoOwnerPubkey && repoOwnerPubkey.toLowerCase() === pubkey.toLowerCase()) {
-                            return false;
+                          if (repoOwnerPubkey && /^[0-9a-f]{64}$/i.test(repoOwnerPubkey)) {
+                            if (repoOwnerPubkey.toLowerCase() === pubkey.toLowerCase()) {
+                              return false; // Own repo
+                            }
                           }
                           
+                          // Priority 3: Check contributors
                           if (repo.contributors && Array.isArray(repo.contributors)) {
                             const ownerContributor = repo.contributors.find((c: any) => 
-                              c.pubkey && c.pubkey.toLowerCase() === pubkey.toLowerCase() && 
+                              c.pubkey && /^[0-9a-f]{64}$/i.test(c.pubkey) &&
+                              c.pubkey.toLowerCase() === pubkey.toLowerCase() && 
                               (c.weight === 100 || c.role === "owner")
                             );
-                            if (ownerContributor) return false;
+                            if (ownerContributor) return false; // Own repo
                           }
                           
+                          // Priority 4: Check entity (npub format)
+                          // Only use this if ownerPubkey is missing or invalid (truncated/corrupted)
                           if (repo.entity && repo.entity.startsWith("npub")) {
                             try {
                               const decoded = nip19.decode(repo.entity);
                               if (decoded.type === "npub") {
                                 const entityPubkey = decoded.data as string;
                                 if (entityPubkey.toLowerCase() === pubkey.toLowerCase()) {
-                                  if (directOwnerPubkey && directOwnerPubkey.toLowerCase() !== pubkey.toLowerCase()) {
-                                    return true; // Foreign if ownerPubkey doesn't match
+                                  // If we have a valid ownerPubkey that doesn't match, it's foreign
+                                  // But if ownerPubkey is missing or invalid (truncated), trust the entity
+                                  if (directOwnerPubkey && /^[0-9a-f]{64}$/i.test(directOwnerPubkey)) {
+                                    // Valid ownerPubkey exists - it must match
+                                    return directOwnerPubkey.toLowerCase() !== pubkey.toLowerCase();
                                   }
+                                  // No valid ownerPubkey - trust entity match
                                   return false; // Own repo
                                 }
                               }
