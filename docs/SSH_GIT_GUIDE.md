@@ -61,6 +61,28 @@ git clone nostr://alex@git.gittr.space/repo-name
 - `nostr://` URLs are **client-generated** (not stored in Nostr events per NIP-34 spec). They're automatically generated from the repository owner's pubkey, repo name, and known GRASP git servers when the repo is synced with relays.
 - `nostr://` URLs are shown in the clone URL section **only when the repository has been published to Nostr** (synced with relays).
 
+**Using nostr:// with SSH keys (for push/pull):**
+```bash
+# 1. Add your SSH key in Settings → SSH Keys (if not already done)
+# 2. Clone using nostr:// URL
+git clone nostr://alex@git.gittr.space/repo-name
+
+# 3. After cloning, you can push/pull using SSH automatically
+cd repo-name
+git push origin main  # Uses SSH automatically if keys are configured
+```
+
+**Using nostr:// without SSH keys (read-only via HTTPS):**
+```bash
+# Clone using nostr:// URL (no SSH keys needed)
+git clone nostr://alex@git.gittr.space/repo-name
+
+# After cloning, you have a normal git repository
+cd repo-name
+git pull origin main  # Uses HTTPS (read-only, or with credentials if configured)
+# Note: git push will require authentication (SSH keys or HTTPS credentials)
+```
+
 **Which format to use?**
 - **SSH**: Preferred for contributors with keys configured (push + pull)
 - **HTTPS**: Good for quick read-only clones or CI systems without SSH keys
@@ -220,9 +242,28 @@ For programmatic pushes without SSH, see [CLI_PUSH_EXAMPLE.md](./CLI_PUSH_EXAMPL
 **SSH Keys with nostr:// URLs:**
 - NIP-34 events include **both SSH and HTTPS clone URLs** in the `clone` tags
 - `git-remote-nostr` extracts all clone URLs from the event and can use SSH URLs if available
-- If you have SSH keys set up, `git-remote-nostr` will prefer SSH URLs for push/pull operations (allowing authenticated git operations)
-- If no SSH keys are configured, it will fall back to HTTPS URLs (read-only or with credentials)
+- **With SSH keys**: If you have SSH keys set up (added in Settings → SSH Keys), `git-remote-nostr` will prefer SSH URLs for push/pull operations (allowing authenticated git operations)
+- **Without SSH keys**: If no SSH keys are configured, it will fall back to HTTPS URLs (read-only or with credentials)
 - This means cloning via `nostr://` and then using `git push` will automatically use your SSH keys if they're set up!
+
+**Examples:**
+
+**Example 1: Clone with SSH keys (full push/pull access)**
+```bash
+# Prerequisites: SSH key added in Settings → SSH Keys
+git clone nostr://alex@git.gittr.space/repo-name
+cd repo-name
+git push origin main  # ✅ Works! Uses SSH automatically
+```
+
+**Example 2: Clone without SSH keys (read-only, or HTTPS with credentials)**
+```bash
+# No SSH keys needed for cloning
+git clone nostr://alex@git.gittr.space/repo-name
+cd repo-name
+git pull origin main  # ✅ Works! Uses HTTPS
+git push origin main  # ⚠️ Requires authentication (SSH keys or HTTPS credentials)
+```
 
 Only repository owners can push. Collaborators should use pull requests from their own forks or local copies.
 
