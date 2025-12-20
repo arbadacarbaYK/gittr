@@ -2,23 +2,19 @@
 
 This guide explains how to access repositories hosted by `git-nostr-bridge` via SSH and Git command-line tools.
 
+**Important**: This guide is for **users** connecting to a `git-nostr-bridge` server. You don't need to install the bridge locally - you just connect to it like you would connect to GitHub or GitLab. For server operators who want to run their own bridge, see [README.md](README.md) for setup instructions.
+
 ## Overview
 
 `git-nostr-bridge` provides SSH-based Git access to repositories stored on Nostr. Users can clone, push, and pull repositories using standard Git commands over SSH, just like GitHub or GitLab.
 
-## How SSH Keys Work with git-nostr-bridge
+## Quick Start
+
+### 1. Set Up SSH Keys
 
 SSH keys are managed entirely through Nostr events:
 
-1. **Key Publishing**: SSH public keys are published as Nostr events (KIND_SSH_KEY = 52) signed with your Nostr private key
-2. **Bridge Processing**: The `git-nostr-bridge` service watches for SSH key events and updates `authorized_keys` automatically
-3. **Access Control**: When you SSH to the bridge, `git-nostr-ssh` performs access control checks based on repository permissions stored in the bridge's database
-
-**Important**: KIND_52 is used by the gitnostr protocol for SSH keys, but NIP-52 defines KIND_52 for Calendar Events. This is a known conflict. Some relays may reject KIND_52 events.
-
-## Setting Up SSH Keys
-
-### Option 1: Using git-nostr-cli (gn)
+#### Option 1: Using git-nostr-cli (gn)
 
 The easiest way to publish your SSH key:
 
@@ -39,14 +35,16 @@ This will:
 3. Publish it to the configured relays
 4. The bridge will pick it up and add it to `authorized_keys`
 
-### Option 2: Using gittr.space Web UI
+#### Option 2: Using gittr.space Web UI
 
 If you're using `gittr.space`:
 1. Go to **Settings → SSH Keys**
 2. Either generate a new key or paste your existing public key
 3. Your key will be published to Nostr and processed by the bridge automatically
 
-## Cloning Repositories
+**Important**: KIND_52 is used by the gitnostr protocol for SSH keys, but NIP-52 defines KIND_52 for Calendar Events. This is a known conflict. Some relays may reject KIND_52 events. If publishing fails, try a different relay (relay.damus.io, nos.lol typically work).
+
+### 2. Clone a Repository
 
 Once your SSH key is set up, you can clone repositories using SSH:
 
@@ -55,7 +53,87 @@ Once your SSH key is set up, you can clone repositories using SSH:
 git clone git@gittr.space:npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/repo-name.git
 ```
 
-**Note**: The bridge supports both `npub` format and hex pubkey format in clone URLs.
+**Note**: The bridge supports both `npub` format and hex pubkey format in clone URLs. Per NIP-34 specification, `npub` format is preferred.
+
+## Workflows
+
+### Workflow A: Push Existing Local Repository to Bridge
+
+If you have a local git repository and want to push it to a bridge:
+
+```bash
+# 1. Set up SSH keys (if not already done)
+# Use git-nostr-cli or gittr.space web UI to publish your SSH key
+
+# 2. Create the repository on the bridge (via web UI or API)
+# The repository must exist before you can push to it
+
+# 3. Add bridge as a remote
+cd /path/to/your/local/repo
+git remote add bridge git@<bridge-host>:<your-npub>/<repo-name>.git
+
+# 4. Push to bridge
+git push bridge main
+
+# 5. (Optional) Publish Nostr events via web UI
+# Go to gittr.space repository page and click "Push to Nostr"
+# This publishes NIP-34 events so other clients can discover your repo
+```
+
+### Workflow B: Push to Both Bridge + GitHub
+
+If you want to maintain your code on both GitHub and a bridge simultaneously:
+
+```bash
+# 1. Set up remotes for both services
+cd /path/to/your/local/repo
+
+# Add GitHub remote (if not already added)
+git remote add github git@github.com:<username>/<repo-name>.git
+
+# Add bridge remote
+git remote add bridge git@<bridge-host>:<your-npub>/<repo-name>.git
+
+# 2. Push to both services
+git push github main    # Push to GitHub
+git push bridge main    # Push to bridge
+
+# 3. (Optional) Publish Nostr events via web UI
+# Go to gittr.space repository page and click "Push to Nostr"
+```
+
+**Pro Tip**: You can push to both in one command:
+```bash
+git push github main && git push bridge main
+```
+
+Or set up a custom remote that pushes to both:
+```bash
+# Add a remote that pushes to both
+git remote set-url --add --push both github git@github.com:<username>/<repo-name>.git
+git remote set-url --add --push both bridge git@<bridge-host>:<your-npub>/<repo-name>.git
+
+# Now push to both at once
+git push both main
+```
+
+### Workflow C: Making Changes to Existing Repositories
+
+For any existing repository hosted on a bridge:
+
+```bash
+# 1. Clone the repository
+git clone git@<bridge-host>:<owner-npub>/<repo-name>.git
+cd <repo-name>
+
+# 2. Make your changes
+# Edit files, add new files, delete files, etc.
+
+# 3. Commit and push
+git add .
+git commit -m "Your commit message"
+git push origin main
+```
 
 ## Git Operations Over SSH
 
@@ -63,7 +141,7 @@ All standard Git commands work over SSH:
 
 ```bash
 # Clone a repository
-git clone git@gittr.space:npub1.../repo-name.git
+git clone git@<bridge-host>:npub1.../repo-name.git
 
 # Push changes (requires WRITE permission)
 cd repo-name
@@ -77,7 +155,21 @@ git pull origin main
 # Create and push a new branch
 git checkout -b feature-branch
 git push origin feature-branch
+
+# Fetch remote branches
+git fetch origin
+
+# Switch branches
+git checkout <branch-name>
+
+# View commit history
+git log
+
+# View changes
+git diff
 ```
+
+**All standard Git commands work as expected!**
 
 ## Repository Permissions
 
@@ -116,6 +208,20 @@ This ensures:
 - Port forwarding and X11 forwarding are disabled
 - The bridge knows which Nostr pubkey corresponds to your SSH key
 
+## How SSH Keys Work with git-nostr-bridge
+
+SSH keys are managed entirely through Nostr events:
+
+1. **Key Publishing**: SSH public keys are published as Nostr events (KIND_SSH_KEY = 52) signed with your Nostr private key
+2. **Bridge Processing**: The `git-nostr-bridge` service watches for SSH key events and updates `authorized_keys` automatically
+3. **Access Control**: When you SSH to the bridge, `git-nostr-ssh` performs access control checks based on repository permissions stored in the bridge's database
+
+**Important**: 
+- Only public keys are published to Nostr (safe to share)
+- Private keys NEVER leave your device
+- The bridge processes SSH key events via direct API and relay subscription
+- One SSH key pair works for all your repositories (GitHub model)
+
 ## Troubleshooting
 
 ### SSH Key Not Working
@@ -131,6 +237,25 @@ This ensures:
 - **Push fails**: You need WRITE permission for the repository
 - **Branch deletion fails**: You need ADMIN permission
 
+### "Repository not found"
+
+- Check that the repository exists on the bridge
+- Verify the clone URL format is correct
+- Ensure you have read permission for the repository
+- If you just created the repository, wait a moment for the bridge to process it
+
+### "Network is unreachable" (port 22)
+
+- Verify SSH port 22 is accessible: `ssh -v git-nostr@<bridge-host>`
+- Check if your network/firewall blocks port 22
+- Ensure `git-nostr-bridge` service is running on the server
+
+### "Push rejected"
+
+- Only repository owners can push directly
+- For collaborative changes, create a pull request via the web UI
+- Check repository permissions
+
 ### Relay Compatibility Issues
 
 Some relays may reject KIND_52 (SSH key events) due to NIP-52 conflict. If publishing fails:
@@ -140,14 +265,30 @@ Some relays may reject KIND_52 (SSH key events) due to NIP-52 conflict. If publi
 
 ## Security Considerations
 
+### ✅ What's Safe
+
+- **Only public keys are published**: SSH public keys are designed to be shared publicly (same as GitHub, GitLab, etc.)
+- **Private keys NEVER leave your device**: SSH private keys are only stored locally in `~/.ssh/`
+
+### ⚠️ Important Security Notes
+
 - **SSH Private Keys**: Never share your SSH private key. Only the public key is published to Nostr.
 - **Bridge User**: The bridge should run as a dedicated user (e.g., `git-nostr`), not your personal user account, because it overwrites `authorized_keys`.
 - **Repository Permissions**: Only grant WRITE/ADMIN permissions to trusted users.
 - **Nostr Private Key**: Protect your Nostr private key - if compromised, an attacker could publish malicious SSH keys.
+
+### 🔐 Best Practices
+
+- **Generate strong keys**: Use Ed25519 (recommended) or RSA with 4096-bit keys
+- **Protect your private key**: 
+  - Never share your private key
+  - Use correct permissions: `chmod 600 ~/.ssh/id_ed25519`
+  - Consider using SSH agent for key management
+- **Monitor your keys**: Regularly check that no unauthorized keys have been published
+- **Use different keys**: Consider using different SSH keys for different services/devices
 
 ## See Also
 
 - [Main gittr.space SSH Git Guide](../../docs/SSH_GIT_GUIDE.md) - User-facing guide for gittr.space
 - [git-nostr-bridge README](README.md) - Setup and configuration instructions
 - [git-nostr-cli Usage](README.md#git-nostr-cli-gn) - Command-line tool documentation
-
