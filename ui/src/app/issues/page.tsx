@@ -561,8 +561,16 @@ export default function IssuesPage({}) {
           });
         });
       } else if (issueType === "mentioned") {
-        // TODO: Implement mention detection from issue content/description
-        // For now, just show all if mentioned filter is selected
+        // Filter issues where current user is mentioned in title or description
+        if (currentUserPubkey) {
+          const { extractMentionedPubkeys } = require("@/lib/utils/mention-detection");
+          filtered = filtered.filter(issue => {
+            const titleMentions = extractMentionedPubkeys(issue.title || "");
+            const descMentions = extractMentionedPubkeys(issue.description || "");
+            const allMentions = [...titleMentions, ...descMentions];
+            return allMentions.some(pubkey => pubkey.toLowerCase() === currentUserPubkey.toLowerCase());
+          });
+        }
       }
     }
     

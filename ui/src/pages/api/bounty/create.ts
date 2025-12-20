@@ -77,7 +77,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const invoiceData = await invoiceResponse.json();
     
-    // TODO: Store bounty in database/relay with issueId, paymentHash, amount, status
+    // Note: Bounty events are published to Nostr relays from the frontend (kind 9806)
+    // See: ui/src/app/[entity]/[repo]/issues/[id]/page.tsx handleBountyCreated()
 
     return res.status(200).json({
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access

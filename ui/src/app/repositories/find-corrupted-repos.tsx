@@ -116,14 +116,14 @@ function getCorruptionReasons(repo: any): string[] {
       // Use nip19 from global scope if available (from nostr-tools)
       const nip19 = (window as any).nostr?.nip19 || (window as any).nip19;
       if (nip19) {
-        const decoded = nip19.decode(entity);
-        if (decoded.type === "npub") {
-          const entityPubkey = (decoded.data as string).toLowerCase();
-          const ownerPubkey = repo.ownerPubkey.toLowerCase();
-          if (ownerPubkey !== entityPubkey) {
-            reasons.push(`OwnerPubkey mismatch: entity pubkey doesn't match ownerPubkey`);
-          }
+      const decoded = nip19.decode(entity);
+      if (decoded.type === "npub") {
+        const entityPubkey = (decoded.data as string).toLowerCase();
+        const ownerPubkey = repo.ownerPubkey.toLowerCase();
+        if (ownerPubkey !== entityPubkey) {
+          reasons.push(`OwnerPubkey mismatch: entity pubkey doesn't match ownerPubkey`);
         }
+      }
       } else {
         // Fallback: check if ownerPubkey looks valid but doesn't match entity pattern
         if (repo.ownerPubkey.length === 64 && /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)) {

@@ -140,8 +140,101 @@ export default function NewPullRequestPage({ params }: { params: Promise<{ entit
 
         // Load from compare page params if present
         if (baseBranchParam && compareBranchParam) {
-          // TODO: Load diff files from compare
-          // For now, show message that compare integration is in progress
+          try {
+            // Load commits for both refs to compute diff
+            const commitsKey = getRepoStorageKey("gittr_commits", resolvedParams.entity, resolvedParams.repo);
+            const allCommits = JSON.parse(localStorage.getItem(commitsKey) || "[]");
+            
+            // Find commits in base branch/tag
+            const baseCommits = allCommits.filter((c: any) => 
+              !baseBranchParam.includes("commit-") ? c.branch === baseBranchParam : c.id === baseBranchParam
+            );
+            
+            // Find commits in compare branch/tag
+            const compareCommits = allCommits.filter((c: any) => 
+              !compareBranchParam.includes("commit-") ? c.branch === compareBranchParam : c.id === compareBranchParam
+            );
+            
+            // Get unique files changed in compare but not in base (simplified diff)
+            const baseFiles = new Set<string>();
+            baseCommits.forEach((c: any) => {
+              c.changedFiles?.forEach((f: any) => baseFiles.add(f.path));
+            });
+            
+            const compareFiles = new Map<string, ChangedFile>();
+            compareCommits.forEach((c: any) => {
+              c.changedFiles?.forEach((f: any) => {
+                if (!baseFiles.has(f.path)) {
+                  // File exists in compare but not in base (added or modified in compare)
+                  const existingFile = compareFiles.get(f.path);
+                  compareFiles.set(f.path, {
+                    path: f.path,
+                    status: f.status === "deleted" ? "deleted" : (existingFile ? "modified" : "added"),
+                    before: existingFile?.before || (f.status === "deleted" ? undefined : f.before),
+                    after: existingFile?.after || (f.status === "deleted" ? undefined : f.after),
+                  });
+                  
+                  // Try to get file content from PR if available
+                  if (c.prId) {
+                    try {
+                      const prsKey = getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo);
+                      const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
+                      const pr = prs.find((p: any) => p.id === c.prId);
+                      if (pr && pr.path === f.path) {
+                        compareFiles.set(f.path, {
+                          ...compareFiles.get(f.path)!,
+                          before: pr.before,
+                          after: pr.after,
+                        });
+                      }
+                    } catch {}
+                  }
+                }
+              });
+            });
+            
+            // Files in base but not in compare (deleted)
+            baseFiles.forEach((path) => {
+              if (!compareFiles.has(path)) {
+                const inCompare = compareCommits.some((c: any) =>
+                  c.changedFiles?.some((f: any) => f.path === path && f.status === "deleted")
+                );
+                if (inCompare) {
+                  compareFiles.set(path, {
+                    path,
+                    status: "deleted",
+                  });
+                }
+              }
+            });
+            
+            const diffFiles = Array.from(compareFiles.values());
+            if (diffFiles.length > 0) {
+              // Merge with existing changedFiles (pending edits/uploads take precedence)
+              const existingPaths = new Set(files.map(f => f.path));
+              diffFiles.forEach(diffFile => {
+                if (!existingPaths.has(diffFile.path)) {
+                  files.push(diffFile);
+                }
+              });
+              setChangedFiles(files);
+              
+              // Auto-generate title if not set
+              if (!title && diffFiles.length > 0) {
+                if (diffFiles.length === 1) {
+                  const fileName = diffFiles[0].path.split('/').pop() || diffFiles[0].path;
+                  setTitle(`Update ${fileName}`);
+                } else {
+                  setTitle(`Update ${diffFiles.length} files`);
+                }
+              }
+              
+              console.log(`✅ [PR Create] Loaded ${diffFiles.length} diff files from compare page`);
+            }
+          } catch (error) {
+            console.warn("Failed to load diff files from compare:", error);
+            // Continue with pending changes only
+          }
         }
 
       } catch (error) {
@@ -271,16 +364,60 @@ export default function NewPullRequestPage({ params }: { params: Promise<{ entit
         }
       }
       
-      // Generate a commit ID for the PR branch tip (required for NIP-34 "c" tag)
-      // For now, we'll use a placeholder - in a real implementation, this would be the actual commit ID
-      // from the PR branch. Since we're creating a PR from pending changes, we need to either:
-      // 1. Push the branch first and get the commit ID, or
-      // 2. Generate a temporary commit ID that will be updated when the PR is actually pushed
-      // For NIP-34 compliance, we'll generate a deterministic ID based on the PR content
-      const currentCommitId = `pr-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // Fetch actual commit ID from the PR branch if it exists (required for NIP-34 "c" tag)
+      // Try to get the latest commit from the head branch
+      let currentCommitId: string | undefined;
       
-      // If we have actual commit info from the branch, use that instead
-      // TODO: Fetch actual commit ID from the PR branch if it exists
+      // Get repository name (use repositoryName from repo data if available, otherwise use repo param)
+      const actualRepositoryName = (repoData as any)?.repositoryName || repo;
+      
+      if (headBranch && finalOwnerPubkey && actualRepositoryName) {
+        try {
+          // Fetch commits from bridge API for the head branch
+          const commitsUrl = `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(finalOwnerPubkey)}&repo=${encodeURIComponent(actualRepositoryName)}&branch=${encodeURIComponent(headBranch)}&limit=1`;
+          const commitsResponse = await fetch(commitsUrl);
+          
+          if (commitsResponse.ok) {
+            const commitsData = await commitsResponse.json();
+            if (commitsData.commits && Array.isArray(commitsData.commits) && commitsData.commits.length > 0) {
+              // Git log returns commits in reverse chronological order (newest first)
+              // So the FIRST commit is the latest (tip of the branch)
+              const latestCommit = commitsData.commits[0];
+              if (latestCommit && latestCommit.id && typeof latestCommit.id === 'string') {
+                currentCommitId = latestCommit.id;
+                console.log(`✅ [PR Create] Fetched commit ID from head branch ${headBranch}: ${currentCommitId.slice(0, 8)}...`);
+              }
+            }
+          }
+        } catch (error) {
+          console.warn(`⚠️ [PR Create] Failed to fetch commit ID from head branch:`, error);
+        }
+      }
+      
+      // Fallback: If we couldn't fetch from bridge, try localStorage commits
+      if (!currentCommitId && headBranch) {
+        try {
+          const commitsKey = getRepoStorageKey("gittr_commits", entity, repo);
+          const allCommits = JSON.parse(localStorage.getItem(commitsKey) || "[]");
+          const branchCommits = allCommits
+            .filter((c: any) => c.branch === headBranch)
+            .sort((a: any, b: any) => b.timestamp - a.timestamp); // Newest first
+          
+          if (branchCommits.length > 0 && branchCommits[0].id) {
+            currentCommitId = branchCommits[0].id;
+            console.log(`✅ [PR Create] Found commit ID in localStorage for branch ${headBranch}: ${currentCommitId.slice(0, 8)}...`);
+          }
+        } catch (error) {
+          console.warn(`⚠️ [PR Create] Failed to find commit ID in localStorage:`, error);
+        }
+      }
+      
+      // Final fallback: Generate placeholder if no commit ID found
+      // This happens when creating PR from pending changes that haven't been pushed yet
+      if (!currentCommitId) {
+        currentCommitId = `pr-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        console.log(`⚠️ [PR Create] No commit ID found for branch ${headBranch || 'unknown'} - using placeholder: ${currentCommitId}`);
+      }
 
       let prEvent: any;
       let authorPubkey: string;
