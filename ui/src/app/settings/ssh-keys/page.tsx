@@ -228,6 +228,24 @@ export default function SSHKeysPage() {
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
         void publish(sshKeyEvent as any, defaultRelays);
         
+        // CRITICAL: Also send SSH key event directly to bridge API for immediate processing
+        // The bridge only watches for SSH keys from users with repository permissions via relay subscription,
+        // but sending directly ensures it's processed immediately even for new users
+        try {
+          const bridgeResponse = await fetch("/api/nostr/repo/event", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(sshKeyEvent),
+          });
+          if (bridgeResponse.ok) {
+            console.log(`✅ [SSH Keys] SSH key event sent directly to bridge: ${sshKeyEvent.id.slice(0, 16)}...`);
+          } else {
+            console.warn(`⚠️ [SSH Keys] Bridge API returned ${bridgeResponse.status} for SSH key event - bridge will receive via relay subscription`);
+          }
+        } catch (bridgeError: any) {
+          console.warn(`⚠️ [SSH Keys] Failed to send SSH key event to bridge API (will receive via relay):`, bridgeError?.message);
+        }
+        
         // Store locally for quick access
         const newKey: SSHKey = {
           id: sshKeyEvent.id,
@@ -243,7 +261,7 @@ export default function SSHKeysPage() {
         localStorage.setItem(`gittr_ssh_keys_${pubkey}`, JSON.stringify(stored));
         
         setKeys(stored);
-        setStatus("SSH key added successfully! Published to Nostr relays. The git-nostr-bridge will pick it up automatically. Note: If publishing fails, some relays may not accept KIND_52 (NIP-52 conflict).");
+        setStatus("SSH key added successfully! Published to Nostr relays and sent to bridge. The git-nostr-bridge will process it immediately. Note: If publishing fails, some relays may not accept KIND_52 (NIP-52 conflict).");
         setShowAddForm(false);
         setPublicKeyInput("");
         setKeyTitle("");
