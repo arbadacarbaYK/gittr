@@ -1321,15 +1321,17 @@ export default function RepositoriesPage() {
     };
   }, [mounted, subscribe, pubkey, defaultRelays, userName]); // Note: pubkey optional - syncs ALL repos even when not logged in
   
-  // Make findCorruptTidesRepos and deleteCorruptedTidesRepos available in console for debugging
+  // Make findCorruptedRepos and deleteCorruptedTidesRepos available in console for debugging
+  // Note: General corruption detection is handled by isRepoCorrupted() throughout the codebase
   useEffect(() => {
     if (typeof window !== 'undefined' && mounted) {
       // Dynamic import to avoid SSR issues
       (async () => {
         try {
-          import("./find-corrupt-tides-repos").then(({ findCorruptTidesRepos }) => {
-            (window as any).findCorruptTidesRepos = findCorruptTidesRepos;
-            console.log("💡 Run findCorruptTidesRepos() in console to find corrupt tides repos with entity 'gittr.space'");
+          import("./find-corrupted-repos").then(({ findCorruptedRepos }) => {
+            (window as any).findCorruptedRepos = findCorruptedRepos;
+            (window as any).findCorruptTidesRepos = findCorruptedRepos; // Backward compatibility
+            console.log("💡 Run findCorruptedRepos() in console to find all corrupted repos (uses general corruption detection)");
           });
           
           // Make deleteCorruptedTidesRepos and findCorruptedEventPublishers available if user has publish and defaultRelays
