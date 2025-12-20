@@ -50,7 +50,8 @@ export interface StoredRepo {
   name?: string;
   ownerPubkey?: string;
   contributors?: StoredContributor[];
-  files?: RepoFileEntry[];
+  files?: RepoFileEntry[]; // Deprecated: Use fileCount + separate files storage instead
+  fileCount?: number; // Number of files (files stored separately via saveRepoFiles)
   sourceUrl?: string;
   readme?: string;
   forkedFrom?: string;
@@ -450,13 +451,18 @@ export function addFilesToRepo(
     // Convert back to array
     const updatedFiles = Array.from(existingFileMap.values());
     
-    // Update repo.files
-    repoData.files = updatedFiles;
+    // CRITICAL: Store files separately to avoid localStorage quota issues
+    // Only store fileCount in repo object, not full files array
+    saveRepoFiles(entity, repo, updatedFiles);
+    
+    // Update repo object - only store fileCount, not full files array
+    repoData.fileCount = updatedFiles.length;
+    // Remove files array if it exists (to save space)
+    if (repoData.files) {
+      delete repoData.files;
+    }
     repos[repoIndex] = repoData;
     saveStoredRepos(repos);
-    
-    // Also save to separate files storage (for optimized storage)
-    saveRepoFiles(entity, repo, updatedFiles);
     
     // Store file content in overrides (so it can be displayed)
     const overrides = loadRepoOverrides(entity, repo);

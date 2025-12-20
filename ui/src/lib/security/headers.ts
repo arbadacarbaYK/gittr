@@ -30,7 +30,7 @@ export const securityHeaders = [
   },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=()",
+    value: "camera=(), microphone=(), geolocation=(), compute-pressure=()",
   },
   {
     key: "Content-Security-Policy",

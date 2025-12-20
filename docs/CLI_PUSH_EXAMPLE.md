@@ -202,7 +202,7 @@ This bypasses the API and works with standard git commands. The bridge will auto
 
 ## See Also
 
-- [FILE_FETCHING_INSIGHTS.md](./FILE_FETCHING_INSIGHTS.md) - Complete file fetching flow
-- [SSH_GIT_GUIDE.md](./SSH_GIT_GUIDE.md) - SSH git operations guide
-- [GIT_NOSTR_BRIDGE_SETUP.md](./GIT_NOSTR_BRIDGE_SETUP.md) - Bridge setup documentation
+- [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md) - Complete file fetching flow
+- [SSH_GIT_GUIDE.md](SSH_GIT_GUIDE.md) - SSH git operations guide
+- [GIT_NOSTR_BRIDGE_SETUP.md](GIT_NOSTR_BRIDGE_SETUP.md) - Bridge setup documentation
 
