@@ -1734,7 +1734,17 @@ export default function RepoCodePage({
     if (hasCloneUrls && hasAttempted && !hasRetried) {
       console.log("🔄 [File Fetch] Repo has clone URLs, will retry multi-source fetch once");
       // Mark as retried to prevent infinite loops
-      sessionStorage.setItem(retryKey, "true");
+      // CRITICAL: Handle quota errors gracefully - sessionStorage can also hit quota limits
+      try {
+        sessionStorage.setItem(retryKey, "true");
+      } catch (e: any) {
+        if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
+          console.warn(`⚠️ [File Fetch] sessionStorage quota exceeded for retry key - continuing without retry flag`);
+          // Continue without setting retry flag - worst case we might retry unnecessarily
+        } else {
+          throw e;
+        }
+      }
       // Reset the attempted flag to allow one retry
       fileFetchAttemptedRef.current = "";
     } else if (hasCloneUrls && hasAttempted && hasRetried) {
