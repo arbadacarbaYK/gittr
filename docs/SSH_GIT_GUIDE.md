@@ -69,35 +69,43 @@ Use the web UI at gittr.space to create and manage repositories visually.
 
 **Result**: Repository is created with all files visible in web UI immediately.
 
-#### A2. Create Empty Repository (Web UI)
+#### A2. Create New Repository with Files (Web UI)
 
-**Web UI Workflow:**
+**Complete Workflow:**
 1. Go to **"Create repository"** page
 2. Enter a repository name
-3. Click **"Create Empty Repository"**
-
-**Then use CLI to add files:**
+3. Click **"Create Empty Repository"** (creates the repo structure)
+4. **Add files via CLI:**
 ```bash
-# Clone the empty repo
+# Clone the repo
 git clone git@gittr.space:<your-npub>/<repo-name>.git
-
-# Add files
 cd <repo-name>
-echo "# My Project" > README.md
+
+# Create your project files
+echo "# My Awesome Project" > README.md
+echo "console.log('Hello, Nostr!');" > index.js
+mkdir src
+echo "export function greet() { return 'Hello'; }" > src/utils.js
+echo "module.exports = { version: '1.0.0' }" > package.json
+
+# Commit and push all files
 git add .
-git commit -m "Initial commit"
+git commit -m "Initial commit: Add project files"
 git push origin main
 ```
+5. **Publish to Nostr:**
+   - Go to the repository page on gittr.space
+   - Click **"Push to Nostr"** to publish NIP-34 events
 
-**Result**: Files appear in web UI after pushing via CLI.
+**Result**: Repository is created with all your files, visible in web UI and published to Nostr.
 
 ### Workflow B: CLI-Only (For Developers)
 
 Use Git CLI commands exclusively - no web UI required.
 
-#### B1. Create Repository from Local Git Repo
+#### B1. Push Existing Local Repository to gittr
 
-If you have a local git repository and want to push it to gittr:
+If you have a local git repository with files and want to push it to gittr:
 
 ```bash
 # 1. Set up SSH keys (if not already done)
@@ -111,38 +119,84 @@ If you have a local git repository and want to push it to gittr:
 cd /path/to/your/local/repo
 git remote add gittr git@gittr.space:<your-npub>/<repo-name>.git
 
-# 4. Push to gittr
+# 4. Push all your files and commits to gittr
 git push gittr main
 
-# 5. (Optional) Publish to Nostr via web UI
+# 5. Publish to Nostr via web UI
 # Go to the repository page and click "Push to Nostr"
+# This publishes NIP-34 events so other clients can discover your repo
 ```
 
-#### B2. Create Repository from Scratch (CLI-Only)
+**Result**: All your local files, commits, and history are now on gittr and published to Nostr.
+
+#### B2. Create New Repository from Scratch (CLI-Only)
+
+Complete workflow to create a new repository with files:
 
 ```bash
 # 1. Set up SSH keys (if not already done)
 # Go to Settings → SSH Keys on gittr.space, add your public key
 
-# 2. Create empty repository via web UI
-# (Currently requires web UI for initial creation)
+# 2. Create repository via web UI
+# Go to "Create repository" page, enter name, click "Create Empty Repository"
 
-# 3. Clone the empty repo
+# 3. Clone the repo
 git clone git@gittr.space:<your-npub>/<repo-name>.git
 cd <repo-name>
 
-# 4. Add your files
-echo "# My Project" > README.md
-# ... add more files ...
+# 4. Create your project files
+cat > README.md << 'EOF'
+# My Project
 
-# 5. Commit and push
+This is my awesome project on Nostr!
+
+## Features
+- Feature 1
+- Feature 2
+
+## Installation
+\`\`\`bash
+npm install
+\`\`\`
+EOF
+
+cat > index.js << 'EOF'
+#!/usr/bin/env node
+console.log('Hello from Nostr!');
+EOF
+
+cat > package.json << 'EOF'
+{
+  "name": "my-project",
+  "version": "1.0.0",
+  "description": "My awesome project",
+  "main": "index.js"
+}
+EOF
+
+mkdir src
+cat > src/utils.js << 'EOF'
+export function greet(name) {
+  return `Hello, ${name}!`;
+}
+EOF
+
+# 5. Commit and push all files
 git add .
-git commit -m "Initial commit"
+git commit -m "Initial commit: Add project files
+
+- Add README with project description
+- Add main index.js entry point
+- Add package.json with project metadata
+- Add src/utils.js with utility functions"
+
 git push origin main
 
-# 6. (Optional) Publish to Nostr via web UI
+# 6. Publish to Nostr via web UI
 # Go to the repository page and click "Push to Nostr"
 ```
+
+**Result**: Complete repository with all files, properly committed and published to Nostr.
 
 ### Workflow C: Push to Both Nostr + GitHub
 
@@ -184,7 +238,7 @@ git push both main
 
 ### Workflow D: Making Changes to Existing Repositories
 
-For any existing repository (whether created via web UI or CLI):
+Complete workflow for updating an existing repository:
 
 ```bash
 # 1. Clone the repository
@@ -192,14 +246,31 @@ git clone git@gittr.space:<owner-npub>/<repo-name>.git
 cd <repo-name>
 
 # 2. Make your changes
-# Edit files, add new files, delete files, etc.
+# Edit existing files
+echo "# Updated Feature" >> README.md
 
-# 3. Commit and push
+# Add new files
+cat > src/new-feature.js << 'EOF'
+export function newFeature() {
+  return 'New feature added!';
+}
+EOF
+
+# Modify existing files
+sed -i 's/version: "1.0.0"/version: "1.1.0"/' package.json
+
+# 3. Stage, commit, and push all changes
 git add .
-git commit -m "Your commit message"
+git commit -m "Add new feature and update version
+
+- Add new-feature.js with new functionality
+- Update package.json version to 1.1.0
+- Update README with new feature documentation"
+
 git push origin main
 
 # 4. Changes appear in web UI after pushing
+# Refresh the repository page to see your updates
 ```
 
 ## Publishing to Nostr (NIP-34 Events)
