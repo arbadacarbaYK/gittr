@@ -232,8 +232,9 @@ Only repository owners can push. Collaborators should use pull requests from the
 
 - **Storage**: SSH public keys are published as Nostr events (KIND_SSH_KEY = 52)
 - **Security**: Only public keys are stored on Nostr (safe to share)
-- **Access**: The `git-nostr-bridge` service watches for SSH key events and updates authorized keys
+- **Access**: The `git-nostr-bridge` service receives SSH key events via direct API and relay subscription, then updates authorized keys automatically
 - **User-level keys**: One SSH key pair works for all your repositories (GitHub model)
+- **Immediate Processing**: SSH keys are sent directly to the bridge API when added in Settings, ensuring they work immediately even for new users
 
 ### Git Operations Over SSH
 
@@ -271,9 +272,11 @@ SSH keys are managed entirely client-side and published directly to Nostr:
 1. **Key Management**: Done in the browser (Settings → SSH Keys)
 2. **Publishing**: Keys are published as Nostr events (KIND_SSH_KEY = 52) signed with your Nostr private key
 3. **Storage**: Public keys are stored on Nostr relays (decentralized, auditable)
-4. **Processing**: The `git-nostr-bridge` service watches for these events and updates authorized keys automatically
+4. **Processing**: The `git-nostr-bridge` service receives SSH key events via:
+   - **Direct API**: SSH key events are sent directly to the bridge API (`/api/nostr/repo/event`) for immediate processing
+   - **Relay Subscription**: The bridge also watches for SSH key events from users with repository permissions (for redundancy)
 
-**No API endpoints required** - everything happens through Nostr's decentralized protocol.
+**Important**: SSH keys are sent directly to the bridge API to ensure immediate processing, even for new users who don't have repository permissions yet. This ensures your SSH key works right away after adding it in Settings.
 
 ### ⚠️ Relay Compatibility Note
 
