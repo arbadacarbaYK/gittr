@@ -185,6 +185,21 @@ function NewRepoPageContent() {
           return;
         }
         
+        // CRITICAL: Store files separately to avoid localStorage quota issues
+        // Only store fileCount in repo object, not full files array
+        let fileCount = 0;
+        if (d.files && Array.isArray(d.files) && d.files.length > 0) {
+          fileCount = d.files.length;
+          try {
+            const { saveRepoFiles } = await import("@/lib/repos/storage");
+            saveRepoFiles(entity, importedRepoSlug, d.files);
+            console.log(`✅ [New Repo] Saved ${fileCount} files to separate storage for ${entity}/${importedRepoSlug}`);
+          } catch (e: any) {
+            console.error(`❌ [New Repo] Failed to save files separately:`, e);
+            // Continue anyway - fileCount will be 0
+          }
+        }
+        
         const rec = { 
             slug: importedRepoSlug, // Use slugified repo name for URLs
             entity, 
@@ -197,7 +212,7 @@ function NewRepoPageContent() {
             sourceUrl: url, 
             forkedFrom: url, 
             readme: d.readme, 
-            files: d.files, 
+            fileCount: fileCount, // CRITICAL: Only store fileCount, not full files array (prevents quota exceeded)
             description: d.description,
             stars: d.stars,
             forks: d.forks,
@@ -340,6 +355,32 @@ function NewRepoPageContent() {
           return;
         }
         
+        // CRITICAL: Store files separately to avoid localStorage quota issues
+        // Only store fileCount in repo object, not full files array
+        let fileCount = 0;
+        if (isFork && forkSource) {
+          // When forking, copy files from source repo
+          const sourceFiles = forkSource.files || [];
+          if (sourceFiles.length > 0) {
+            // Try to load from separate storage if files not in repo object
+            const { loadRepoFiles, saveRepoFiles } = await import("@/lib/repos/storage");
+            const filesToCopy = Array.isArray(sourceFiles) && sourceFiles.length > 0 
+              ? sourceFiles 
+              : loadRepoFiles(forkEntity, forkRepo);
+            
+            if (filesToCopy.length > 0) {
+              fileCount = filesToCopy.length;
+              try {
+                saveRepoFiles(entity, repoSlug, filesToCopy);
+                console.log(`✅ [New Repo] Saved ${fileCount} files to separate storage for fork ${entity}/${repoSlug}`);
+              } catch (e: any) {
+                console.error(`❌ [New Repo] Failed to save files separately for fork:`, e);
+                // Continue anyway - fileCount will be 0
+              }
+            }
+          }
+        }
+        
         const rec = {
           slug: repoSlug,
           entity: entity, // CRITICAL: This is npub format (GRASP protocol standard), NOT GitHub username
@@ -351,7 +392,7 @@ function NewRepoPageContent() {
           ownerPubkey: pubkey || undefined,
           // Carry over code and readme on fork
           readme: isFork ? forkSource.readme || "" : undefined,
-          files: isFork ? forkSource.files || [] : undefined,
+          fileCount: fileCount, // CRITICAL: Only store fileCount, not full files array (prevents quota exceeded)
           // Keep attribution of source
           forkedFrom: isFork ? (forkSource.sourceUrl || `/${forkEntity}/${forkRepo}`) : undefined,
           sourceUrl: isFork ? (forkSource.sourceUrl || undefined) : undefined,
@@ -435,7 +476,7 @@ function NewRepoPageContent() {
                   forkedFrom: rec.forkedFrom,
                   sourceUrl: rec.sourceUrl,
                   readme: rec.readme,
-                  files: rec.files,
+                  files: rec.fileCount && rec.fileCount > 0 ? [] : undefined, // Files stored separately, not in event
                   topics: rec.topics,
                   languages: rec.languages,
                   // CRITICAL: Use rec.contributors which has owner properly set, not the contributors variable

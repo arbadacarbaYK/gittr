@@ -75,29 +75,20 @@ export default function ClientLayout({
     }
   }, []);
 
-  // Suppress annoying relay connection errors from nostr-relaypool and React 19 ref warnings from Radix UI
+  // Suppress annoying relay connection errors/warnings from nostr-relaypool and React 19 ref warnings from Radix UI
   useEffect(() => {
     if (typeof window === "undefined") return;
     
-    // Filter console.error - must run early to catch errors before Next.js interceptor
-    const originalError = console.error;
-    console.error = (...args: any[]) => {
-      // Check all arguments for error messages (errors can be in any position)
-      const allMessages = args.map(arg => {
-        if (typeof arg === 'string') return arg;
-        if (arg?.message) return arg.message.toString();
-        if (arg?.toString) return arg.toString();
-        return '';
-      }).join(' ');
-      
-      // Also check stack traces for error patterns
-      const stackTrace = args.find(arg => arg?.stack)?.stack?.toString() || '';
-      const fullMessage = allMessages + ' ' + stackTrace;
-      
-      if (
+    // Helper function to check if message should be suppressed
+    const shouldSuppress = (fullMessage: string): boolean => {
+      return (
         fullMessage.includes("Error connecting relay") ||
         fullMessage.includes("WebSocket connection to") ||
-        (fullMessage.includes("wss://") && (fullMessage.includes("failed") || fullMessage.includes("Error") || fullMessage.includes("502"))) ||
+        fullMessage.includes("websocket") ||
+        fullMessage.includes("WebSocket") ||
+        fullMessage.includes("reconnecting after") ||
+        fullMessage.includes("reconnecting") ||
+        (fullMessage.includes("wss://") && (fullMessage.includes("failed") || fullMessage.includes("Error") || fullMessage.includes("502") || fullMessage.includes("reconnecting"))) ||
         fullMessage.includes("Accessing element.ref was removed in React 19") ||
         fullMessage.includes("ref is now a regular prop") ||
         fullMessage.includes("element.ref was removed") ||
@@ -106,48 +97,66 @@ export default function ClientLayout({
         (fullMessage.includes("API error") && fullMessage.includes("404")) ||
         fullMessage.includes("Each child in a list should have a unique") ||
         fullMessage.includes("warning-keys")
-      ) {
+      );
+    };
+    
+    // Helper function to extract full message from args
+    const extractMessage = (args: any[]): string => {
+      const allMessages = args.map(arg => {
+        if (typeof arg === 'string') return arg;
+        if (arg?.message) return arg.message.toString();
+        if (arg?.toString) return arg.toString();
+        return '';
+      }).join(' ');
+      const stackTrace = args.find(arg => arg?.stack)?.stack?.toString() || '';
+      return allMessages + ' ' + stackTrace;
+    };
+    
+    // Filter console.error - must run early to catch errors before Next.js interceptor
+    const originalError = console.error;
+    console.error = (...args: any[]) => {
+      const fullMessage = extractMessage(args);
+      if (shouldSuppress(fullMessage)) {
         return; // Suppress relay connection errors, React 19 ref warnings from Radix UI, expected 404 API errors, and React key warnings
       }
       originalError.apply(console, args);
     };
     
+    // Filter console.warn - WebSocket reconnection warnings come through here
+    const originalWarn = console.warn;
+    console.warn = (...args: any[]) => {
+      const fullMessage = extractMessage(args);
+      if (shouldSuppress(fullMessage)) {
+        return; // Suppress relay connection warnings, WebSocket reconnection messages, etc.
+      }
+      originalWarn.apply(console, args);
+    };
+    
     // Also filter window.console.error (used by some libraries)
     const originalWindowError = window.console.error;
     window.console.error = (...args: any[]) => {
-      // Check all arguments for error messages (errors can be in any position)
-      const allMessages = args.map(arg => {
-        if (typeof arg === 'string') return arg;
-        if (arg?.message) return arg.message.toString();
-        if (arg?.toString) return arg.toString();
-        return '';
-      }).join(' ');
-      
-      // Also check stack traces for error patterns
-      const stackTrace = args.find(arg => arg?.stack)?.stack?.toString() || '';
-      const fullMessage = allMessages + ' ' + stackTrace;
-      
-      if (
-        fullMessage.includes("Error connecting relay") ||
-        fullMessage.includes("WebSocket connection to") ||
-        (fullMessage.includes("wss://") && (fullMessage.includes("failed") || fullMessage.includes("Error") || fullMessage.includes("502"))) ||
-        fullMessage.includes("Accessing element.ref was removed in React 19") ||
-        fullMessage.includes("ref is now a regular prop") ||
-        fullMessage.includes("element.ref was removed") ||
-        fullMessage.includes("will be removed from the JSX Element type") ||
-        fullMessage.includes("[File Fetch] API error: 404") ||
-        (fullMessage.includes("API error") && fullMessage.includes("404")) ||
-        fullMessage.includes("Each child in a list should have a unique") ||
-        fullMessage.includes("warning-keys")
-      ) {
+      const fullMessage = extractMessage(args);
+      if (shouldSuppress(fullMessage)) {
         return; // Suppress relay connection errors, React 19 ref warnings from Radix UI, expected 404 API errors, and React key warnings
       }
       originalWindowError.apply(window.console, args);
     };
     
+    // Also filter window.console.warn (used by some libraries)
+    const originalWindowWarn = window.console.warn;
+    window.console.warn = (...args: any[]) => {
+      const fullMessage = extractMessage(args);
+      if (shouldSuppress(fullMessage)) {
+        return; // Suppress relay connection warnings, WebSocket reconnection messages, etc.
+      }
+      originalWindowWarn.apply(window.console, args);
+    };
+    
     return () => {
       console.error = originalError;
+      console.warn = originalWarn;
       window.console.error = originalWindowError;
+      window.console.warn = originalWindowWarn;
     };
   }, []);
 
