@@ -31,6 +31,7 @@ interface IIssueData {
   entity: string;
   repo: string;
   title: string;
+  description?: string;
   number: string;
   date: string;
   author: string;
