@@ -31,12 +31,24 @@ function chunkFiles(files: BridgeFilePayload[]): BridgeFilePayload[][] {
       ? (file.content.length * 1.4) + 200 // Base64 is ~1.33x, JSON overhead ~200 bytes per file (more conservative)
       : 500; // Metadata only (path, isBinary) - minimal overhead
 
-    // If adding this file would exceed the limit, start a new chunk
-    if (currentChunk.length > 0 && 
-        (currentChunk.length >= CHUNK_SIZE || currentChunkSize + estimatedSize > MAX_CHUNK_SIZE_BYTES)) {
+    // CRITICAL: Check if adding this file would exceed limits BEFORE adding it
+    // This ensures single large files are properly handled (even in empty chunks)
+    // Check both: file count limit AND size limit
+    const wouldExceedFileLimit = currentChunk.length >= CHUNK_SIZE;
+    const wouldExceedSizeLimit = currentChunkSize + estimatedSize > MAX_CHUNK_SIZE_BYTES;
+    
+    // If current chunk is not empty AND would exceed limits, start a new chunk
+    if (currentChunk.length > 0 && (wouldExceedFileLimit || wouldExceedSizeLimit)) {
       chunks.push(currentChunk);
       currentChunk = [];
       currentChunkSize = 0;
+    }
+    
+    // CRITICAL: If a single file exceeds MAX_CHUNK_SIZE_BYTES, add it anyway
+    // This prevents infinite loops and ensures progress (even if it violates the limit)
+    // The nginx 10MB limit should catch this, but we log a warning
+    if (estimatedSize > MAX_CHUNK_SIZE_BYTES) {
+      console.warn(`⚠️ [Bridge Push] File ${file.path} estimated size (${Math.round(estimatedSize / 1024)}KB) exceeds chunk limit (${Math.round(MAX_CHUNK_SIZE_BYTES / 1024)}KB). Adding as single-file chunk.`);
     }
 
     currentChunk.push(file);
