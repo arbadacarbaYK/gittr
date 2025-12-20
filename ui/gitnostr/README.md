@@ -8,6 +8,11 @@ A proof of concept integration of git and nostr providing
 
 This will hopefully form part of a solution for creating a decentralized version of the github/gitlab experience.
 
+## Documentation
+
+- **[SSH & Git Access Guide](SSH_GIT_GUIDE.md)** - Complete guide for using SSH with git-nostr-bridge (cloning, pushing, pulling, permissions)
+- **[README](README.md)** - Setup and configuration instructions (this file)
+
 I chose to build on top of the existing git tooling to allow the client side dev tools to remain largely unchanged for daily work (standard git commands work including push and pull)
 
 By storing the config on Nostr your repository configuration can be easily regenerated a new host if your current git provider decides to censor you.
