@@ -11,11 +11,10 @@ interface PushBridgeParams {
 }
 
 // CRITICAL: Chunk files to avoid 413 Request Entity Too Large errors
-// nginx default client_max_body_size is usually 1MB, but can be configured
-// We've seen chunks of ~2MB being rejected, so we need to be more conservative
-// Using smaller chunks to be safe - each chunk should be well under 1MB
-const CHUNK_SIZE = 15; // Number of files per chunk (reduced from 30 to avoid 413 errors)
-const MAX_CHUNK_SIZE_BYTES = 1 * 1024 * 1024; // 1MB per chunk (conservative to avoid nginx rejections)
+// nginx client_max_body_size is now set to 10M on the server
+// Using chunks of 8MB max to stay safely under the limit
+const CHUNK_SIZE = 30; // Number of files per chunk
+const MAX_CHUNK_SIZE_BYTES = 8 * 1024 * 1024; // 8MB per chunk (safe margin below 10MB nginx limit)
 
 function chunkFiles(files: BridgeFilePayload[]): BridgeFilePayload[][] {
   const chunks: BridgeFilePayload[][] = [];
