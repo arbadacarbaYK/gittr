@@ -409,7 +409,12 @@ export default function HelpPage() {
                       <li>or build from source: <a className="text-purple-300 underline" target="_blank" rel="noreferrer" href="https://github.com/aljazceru/git-remote-nostr">github.com/aljazceru/git-remote-nostr</a></li>
                       <li>Add to PATH so Git can find the helper (verify with <code className="bg-gray-900 px-1 rounded">which git-remote-nostr</code>)</li>
                     </ul>
-                    <p>Once installed, <code className="bg-gray-900 px-1 rounded">git clone nostr://…</code> works exactly like GitHub URLs.</p>
+                    <p className="mt-2 font-semibold text-purple-300">How it works:</p>
+                    <ul className="list-disc list-inside space-y-1 mt-1">
+                      <li><strong>With SSH keys</strong> (added in Settings → SSH Keys): Automatically uses SSH for push/pull operations</li>
+                      <li><strong>Without SSH keys</strong>: Falls back to HTTPS (read-only or with credentials)</li>
+                    </ul>
+                    <p className="mt-2">Once installed, <code className="bg-gray-900 px-1 rounded">git clone nostr://…</code> works with or without SSH keys - git-remote-nostr automatically chooses the best option.</p>
                   </div>
                 </div>
               </div>
