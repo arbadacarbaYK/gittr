@@ -188,7 +188,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           
           // Add SSH URL (for users with SSH keys)
           // Note: SSH URLs may still use hex in some implementations, but we use npub for consistency
-          const gitSshBase = repo.gitSshBase || (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_GIT_SSH_BASE) || "gittr.space";
+          const gitSshBase = repo.gitSshBase || (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_GIT_SSH_BASE) || "git.gittr.space";
           const sshHost = (serverDomain === "git.gittr.space" || serverDomain.includes("gittr.space")) ? gitSshBase : serverDomain;
           const sshCloneUrl = `git@${sshHost}:${npub}/${actualRepositoryName}.git`;
           addCloneUrl(sshCloneUrl);

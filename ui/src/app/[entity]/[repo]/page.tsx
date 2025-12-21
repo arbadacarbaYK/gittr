@@ -7409,7 +7409,7 @@ export default function RepoCodePage({
                                 r.entity === resolvedParams.entity && (r.repo === resolvedParams.repo || r.slug === resolvedParams.repo)
                               );
                               
-                              const gitSshBase = (repo as StoredRepo & { gitSshBase?: string })?.gitSshBase || process.env.NEXT_PUBLIC_GIT_SSH_BASE || "gittr.space";
+                              const gitSshBase = (repo as StoredRepo & { gitSshBase?: string })?.gitSshBase || process.env.NEXT_PUBLIC_GIT_SSH_BASE || "git.gittr.space";
                               
                               // CRITICAL: Use ownerPubkeyForLink (full pubkey) instead of resolvedParams.entity (might be npub)
                               let ownerPubkey: string;
