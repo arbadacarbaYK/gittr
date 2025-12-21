@@ -264,7 +264,7 @@ For developers already using git, you can push directly to the bridge via SSH. T
 
 # 3. Add gittr as a remote
 cd /path/to/your/local/repo
-git remote add nostr git@gittr.space:<your-npub>/<repo-name>.git
+git remote add nostr git@git.gittr.space:<your-npub>/<repo-name>.git
 
 # 4. Push all your files, commits, and branches
 git push nostr main
