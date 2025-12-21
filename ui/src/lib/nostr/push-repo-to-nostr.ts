@@ -244,7 +244,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         npub = pubkey; // Fallback to hex if encoding fails (shouldn't happen)
       }
       
-      const gitSshBase = repo.gitSshBase || (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_GIT_SSH_BASE) || "gittr.space";
+      const gitSshBase = repo.gitSshBase || (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_GIT_SSH_BASE) || "git.gittr.space";
       
       uniqueServers.forEach(server => {
         // Add HTTPS URL (works for everyone, read-only or with credentials)
