@@ -21,12 +21,12 @@ gittr.space repositories support multiple clone URL formats:
 
 #### Option A: SSH (Standard Git - Recommended)
 ```bash
-git clone git@gittr.space:<owner-npub>/<repo-name>.git
+git clone git@git.gittr.space:<owner-npub>/<repo-name>.git
 ```
 
 Example:
 ```bash
-git clone git@gittr.space:npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/repo-name.git
+git clone git@git.gittr.space:npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/repo-name.git
 ```
 
 **Note**: 
@@ -78,7 +78,7 @@ Use the web UI at gittr.space to create and manage repositories visually.
 4. **Add files via CLI:**
 ```bash
 # Clone the repo
-git clone git@gittr.space:<your-npub>/<repo-name>.git
+git clone git@git.gittr.space:<your-npub>/<repo-name>.git
 cd <repo-name>
 
 # Create your project files
@@ -117,7 +117,7 @@ If you have a local git repository with files and want to push it to gittr:
 
 # 3. Add gittr as a remote
 cd /path/to/your/local/repo
-git remote add gittr git@gittr.space:<your-npub>/<repo-name>.git
+git remote add gittr git@git.gittr.space:<your-npub>/<repo-name>.git
 
 # 4. Push all your files and commits to gittr
 git push gittr main
@@ -141,7 +141,7 @@ Complete workflow to create a new repository with files:
 # Go to "Create repository" page, enter name, click "Create Empty Repository"
 
 # 3. Clone the repo
-git clone git@gittr.space:<your-npub>/<repo-name>.git
+git clone git@git.gittr.space:<your-npub>/<repo-name>.git
 cd <repo-name>
 
 # 4. Create your project files
@@ -210,7 +210,7 @@ cd /path/to/your/local/repo
 git remote add github git@github.com:<username>/<repo-name>.git
 
 # Add gittr remote
-git remote add gittr git@gittr.space:<your-npub>/<repo-name>.git
+git remote add gittr git@git.gittr.space:<your-npub>/<repo-name>.git
 
 # 2. Push to both services
 git push github main    # Push to GitHub
@@ -230,7 +230,7 @@ Or set up a custom remote that pushes to both:
 ```bash
 # Add a remote that pushes to both
 git remote set-url --add --push both github git@github.com:<username>/<repo-name>.git
-git remote set-url --add --push both gittr git@gittr.space:<your-npub>/<repo-name>.git
+git remote set-url --add --push both gittr git@git.gittr.space:<your-npub>/<repo-name>.git
 
 # Now push to both at once
 git push both main
@@ -242,7 +242,7 @@ Complete workflow for updating an existing repository:
 
 ```bash
 # 1. Clone the repository
-git clone git@gittr.space:<owner-npub>/<repo-name>.git
+git clone git@git.gittr.space:<owner-npub>/<repo-name>.git
 cd <repo-name>
 
 # 2. Make your changes
@@ -366,7 +366,7 @@ When you run `git clone` or `git push`:
 - If you just created the repository, wait a moment for the bridge to process it
 
 ### "Network is unreachable" (port 22)
-- Verify SSH port 22 is accessible: `ssh -v git-nostr@gittr.space`
+- Verify SSH port 22 is accessible: `ssh -v git-nostr@git.gittr.space`
 - Check if your network/firewall blocks port 22
 - Try HTTPS clone instead: `git clone https://git.gittr.space/<owner-npub>/<repo-name>.git`
 
