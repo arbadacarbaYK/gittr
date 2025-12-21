@@ -804,7 +804,7 @@ export default function RepoSettingsPage() {
             id="gitSshBase"
             value={gitSshBase}
             onChange={(e) => setGitSshBase(e.target.value)}
-            placeholder={process.env.NEXT_PUBLIC_GIT_SSH_BASE || "gittr.space"}
+            placeholder={process.env.NEXT_PUBLIC_GIT_SSH_BASE || "git.gittr.space"}
             className="mt-2"
           />
           <p className="text-xs text-gray-400 mt-1">
