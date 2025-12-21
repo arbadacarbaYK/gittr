@@ -340,9 +340,32 @@ SSH keys are managed entirely through Nostr events:
 
 ### "Network is unreachable" (port 22)
 
-- Verify SSH port 22 is accessible: `ssh -v git-nostr@<bridge-host>`
-- Check if your network/firewall blocks port 22
-- Ensure `git-nostr-bridge` service is running on the server
+**Most common cause**: Hetzner Cloud Firewall blocking port 22.
+
+**Quick fixes:**
+1. **Check Hetzner Cloud Firewall** (most important):
+   - Log into Hetzner Cloud Console: https://console.hetzner.cloud/
+   - Navigate to server → **Firewalls** tab
+   - Verify firewall allows **Inbound TCP port 22**
+   - If missing, add rule: Direction=Inbound, Protocol=TCP, Port=22, Source=0.0.0.0/0
+
+2. **Check server local firewall:**
+   ```bash
+   # On the server
+   sudo ufw status
+   sudo ufw allow 22/tcp  # If ufw is active
+   ```
+
+3. **Verify SSH service is running:**
+   ```bash
+   # On the server
+   sudo systemctl status sshd
+   ```
+
+4. **Verify SSH port 22 is accessible**: `ssh -v git-nostr@<bridge-host>`
+5. **Ensure `git-nostr-bridge` service is running**: `sudo systemctl status git-nostr-bridge`
+
+**For complete troubleshooting**, see the main gittr documentation: [SSH_PORT_22_TROUBLESHOOTING.md](https://github.com/arbadacarbaYK/gittr/blob/main/docs/SSH_PORT_22_TROUBLESHOOTING.md).
 
 ### "Push rejected"
 

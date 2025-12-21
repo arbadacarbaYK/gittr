@@ -458,11 +458,27 @@ sudo journalctl -u git-nostr-bridge -n 50
 - Verify relay URLs match those in `ui/.env.local`
 - Check logs: `sudo journalctl -u git-nostr-bridge -n 100`
 
-### Git clone fails
-- Verify SSH key published via gittr.space UI
-- Check SSH server: `sudo systemctl status sshd`
-- Test SSH: `ssh git-nostr@gittr.space`
-- Ensure port 22 is open: `sudo ufw allow 22/tcp`
+### Git clone fails / Port 22 unreachable
+
+**Most common cause**: Hetzner Cloud Firewall blocking port 22.
+
+1. **Check Hetzner Cloud Firewall** (most important):
+   - Log into Hetzner Cloud Console: https://console.hetzner.cloud/
+   - Navigate to server → **Firewalls** tab
+   - Verify firewall allows **Inbound TCP port 22**
+   - If missing, add rule: Direction=Inbound, Protocol=TCP, Port=22, Source=0.0.0.0/0
+
+2. **Check server local firewall:**
+   ```bash
+   sudo ufw status
+   sudo ufw allow 22/tcp  # If ufw is active
+   ```
+
+3. **Verify SSH key published via gittr.space UI**
+4. **Check SSH server**: `sudo systemctl status sshd`
+5. **Test SSH**: `ssh git-nostr@gittr.space`
+
+**For complete troubleshooting**, see [SSH_PORT_22_TROUBLESHOOTING.md](../docs/SSH_PORT_22_TROUBLESHOOTING.md).
 
 ### Telegram webhook not working
 - Check webhook status: `curl https://gittr.space/api/telegram/webhook-status`

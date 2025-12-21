@@ -616,27 +616,45 @@ git clone git@gittr.space:<pubkey>/<repo-name>.git
    curl -v wss://relay.noderunners.network
    ```
 
-### Git Clone Fails
+### Git Clone Fails / Port 22 Unreachable
 
-1. **Check SSH server:**
+**Most common cause**: Hetzner Cloud Firewall blocking port 22.
+
+1. **Check Hetzner Cloud Firewall** (most important):
+   - Log into Hetzner Cloud Console: https://console.hetzner.cloud/
+   - Navigate to your server → **Firewalls** tab
+   - Verify firewall is attached and allows **Inbound TCP port 22**
+   - If missing, add rule: Direction=Inbound, Protocol=TCP, Port=22, Source=0.0.0.0/0
+   - See [SSH_PORT_22_TROUBLESHOOTING.md](SSH_PORT_22_TROUBLESHOOTING.md) for detailed instructions
+
+2. **Check server local firewall:**
+   ```bash
+   sudo ufw status
+   # If active, ensure port 22 is allowed:
+   sudo ufw allow 22/tcp
+   ```
+
+3. **Check SSH server:**
    ```bash
    sudo systemctl status sshd
    ```
 
-2. **Check git-nostr user:**
+4. **Check git-nostr user:**
    ```bash
    id git-nostr
    sudo -u git-nostr ls -la ~/.ssh/
    ```
 
-3. **Verify SSH key was published:**
+5. **Verify SSH key was published:**
    - Check gittr.space UI → Settings → SSH Keys
    - Verify key appears in bridge logs
 
-4. **Test SSH connection:**
+6. **Test SSH connection:**
    ```bash
    ssh -v git-nostr@gittr.space
    ```
+
+**For complete troubleshooting steps**, see [SSH_PORT_22_TROUBLESHOOTING.md](SSH_PORT_22_TROUBLESHOOTING.md).
 
 ### SSL Certificate Issues
 
@@ -733,10 +751,13 @@ cp /path/to/gittr/ui/.env.local "$BACKUP_DIR/"
 ## Security Checklist
 
 - [ ] Running bridge as dedicated `git-nostr` user (not your own user)
-- [ ] Firewall configured (only expose ports 80, 443, 22)
+- [ ] **Hetzner Cloud Firewall configured** (allow inbound TCP ports 22, 80, 443)
+- [ ] **Server local firewall configured** (`sudo ufw allow 22/tcp` and `sudo ufw allow 80/tcp` and `sudo ufw allow 443/tcp`)
 - [ ] SSL/TLS certificates configured and auto-renewing
 - [ ] Environment variables not committed to git
 - [ ] SSH keys properly managed (published via gittr.space UI)
 - [ ] Regular backups configured
 - [ ] Log monitoring set up
 - [ ] System updates applied regularly
+
+**⚠️ Important**: Hetzner Cloud has a **cloud firewall** separate from the server's local firewall. Both must allow port 22 for SSH access. See [SSH_PORT_22_TROUBLESHOOTING.md](SSH_PORT_22_TROUBLESHOOTING.md) for detailed instructions.

@@ -366,9 +366,40 @@ When you run `git clone` or `git push`:
 - If you just created the repository, wait a moment for the bridge to process it
 
 ### "Network is unreachable" (port 22)
-- Verify SSH port 22 is accessible: `ssh -v git-nostr@gittr.space`
-- Check if your network/firewall blocks port 22
-- Try HTTPS clone instead: `git clone https://git.gittr.space/<owner-npub>/<repo-name>.git`
+
+**Most common cause**: Hetzner Cloud Firewall blocking port 22.
+
+**Quick fixes:**
+1. **Check Hetzner Cloud Firewall** (most important):
+   - Log into Hetzner Cloud Console: https://console.hetzner.cloud/
+   - Navigate to server → **Firewalls** tab
+   - Verify firewall allows **Inbound TCP port 22**
+   - If missing, add rule: Direction=Inbound, Protocol=TCP, Port=22, Source=0.0.0.0/0
+
+2. **Check server local firewall:**
+   ```bash
+   # On the server
+   sudo ufw status
+   sudo ufw allow 22/tcp  # If ufw is active
+   ```
+
+3. **Verify SSH service is running:**
+   ```bash
+   # On the server
+   sudo systemctl status sshd
+   ```
+
+4. **Test SSH connection:**
+   ```bash
+   ssh -v git-nostr@gittr.space
+   ```
+
+5. **Try HTTPS clone instead** (works for read-only):
+   ```bash
+   git clone https://git.gittr.space/<owner-npub>/<repo-name>.git
+   ```
+
+**For complete troubleshooting**, see [SSH_PORT_22_TROUBLESHOOTING.md](SSH_PORT_22_TROUBLESHOOTING.md).
 
 ### "Push rejected"
 - Only repository owners can push directly
