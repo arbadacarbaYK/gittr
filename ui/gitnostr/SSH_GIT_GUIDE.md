@@ -50,7 +50,7 @@ Once your SSH key is set up, you can clone repositories using SSH:
 
 ```bash
 # Format: git clone git@<bridge-host>:<owner-pubkey>/<repo-name>.git
-git clone git@gittr.space:npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/repo-name.git
+git clone git@git.gittr.space:npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/repo-name.git
 ```
 
 **Note**: The bridge supports both `npub` format and hex pubkey format in clone URLs. Per NIP-34 specification, `npub` format is preferred.
