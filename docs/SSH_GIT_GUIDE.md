@@ -21,24 +21,43 @@ gittr.space repositories support multiple clone URL formats:
 
 #### Option A: SSH (Standard Git - Recommended)
 ```bash
-git clone git@git.gittr.space:<owner-npub>/<repo-name>.git
+git clone git@git.gittr.space:<owner-identifier>/<repo-name>.git
 ```
 
-Example:
+Examples:
 ```bash
+# Using npub (recommended, per NIP-34 specification)
 git clone git@git.gittr.space:npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/repo-name.git
+
+# Using NIP-05 (human-readable)
+git clone git@git.gittr.space:geek@primal.net/repo-name.git
+
+# Using hex pubkey (64-char)
+git clone git@git.gittr.space:daa41bedb68591363bf4407f687cb9789cc543ed024bb77c22d2c84d88f54153/repo-name.git
 ```
 
 **Note**: 
 - SSH cloning requires SSH keys to be set up (see Step 1 above)
-- Clone URLs use `npub` format (not hex pubkey) per NIP-34 specification
+- **Owner identifier** can be: `npub` (recommended), `NIP-05` (e.g., `user@domain.com`), or `hex pubkey` (64-char)
+- All three formats are supported and resolve to the same repository
 
 #### Option B: HTTPS (GRASP Git Servers)
 ```bash
-git clone https://git.gittr.space/<owner-npub>/<repo-name>.git
+git clone https://git.gittr.space/<owner-identifier>/<repo-name>.git
+```
+
+Examples:
+```bash
+# Using npub
+git clone https://git.gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/repo-name.git
+
+# Using NIP-05 (human-readable)
+git clone https://git.gittr.space/geek@primal.net/repo-name.git
 ```
 
 HTTPS clones work exactly like GitHub/GitLab. No SSH keys needed for read-only access.
+
+**Note**: HTTPS also supports all three formats: `npub`, `NIP-05`, or `hex pubkey`.
 
 #### Option C: nostr:// Protocol (Ecosystem Standard)
 ```bash
@@ -77,8 +96,8 @@ Use the web UI at gittr.space to create and manage repositories visually.
 3. Click **"Create Empty Repository"** (creates the repo structure)
 4. **Add files via CLI:**
 ```bash
-# Clone the repo
-git clone git@git.gittr.space:<your-npub>/<repo-name>.git
+# Clone the repo (using npub, NIP-05, or hex pubkey)
+git clone git@git.gittr.space:<your-identifier>/<repo-name>.git
 cd <repo-name>
 
 # Create your project files
@@ -117,7 +136,7 @@ If you have a local git repository with files and want to push it to gittr:
 
 # 3. Add gittr as a remote
 cd /path/to/your/local/repo
-git remote add gittr git@git.gittr.space:<your-npub>/<repo-name>.git
+git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
 
 # 4. Push all your files and commits to gittr
 git push gittr main
@@ -141,7 +160,7 @@ Complete workflow to create a new repository with files:
 # Go to "Create repository" page, enter name, click "Create Empty Repository"
 
 # 3. Clone the repo
-git clone git@git.gittr.space:<your-npub>/<repo-name>.git
+git clone git@git.gittr.space:<your-identifier>/<repo-name>.git
 cd <repo-name>
 
 # 4. Create your project files
@@ -210,7 +229,7 @@ cd /path/to/your/local/repo
 git remote add github git@github.com:<username>/<repo-name>.git
 
 # Add gittr remote
-git remote add gittr git@git.gittr.space:<your-npub>/<repo-name>.git
+git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
 
 # 2. Push to both services
 git push github main    # Push to GitHub
@@ -242,7 +261,7 @@ Complete workflow for updating an existing repository:
 
 ```bash
 # 1. Clone the repository
-git clone git@git.gittr.space:<owner-npub>/<repo-name>.git
+git clone git@git.gittr.space:<owner-identifier>/<repo-name>.git
 cd <repo-name>
 
 # 2. Make your changes
