@@ -1,22 +1,14 @@
 # SSH & Git Access Guide for git-nostr-bridge
 
-This guide explains how to access repositories hosted by `git-nostr-bridge` via SSH and Git command-line tools.
+This guide explains how to use SSH to create, add, and modify files in repositories hosted by `git-nostr-bridge`.
 
 **Important**: This guide is for **users** connecting to a `git-nostr-bridge` server. You don't need to install the bridge locally - you just connect to it like you would connect to GitHub or GitLab. For server operators who want to run their own bridge, see [README.md](README.md) for setup instructions.
 
-## Overview
-
-`git-nostr-bridge` provides SSH-based Git access to repositories stored on Nostr. Users can clone, push, and pull repositories using standard Git commands over SSH, just like GitHub or GitLab.
-
-## Quick Start
-
-### 1. Set Up SSH Keys
+## Quick Start: Set Up SSH Keys
 
 SSH keys are managed entirely through Nostr events:
 
 #### Option 1: Using git-nostr-cli (gn)
-
-The easiest way to publish your SSH key:
 
 ```bash
 # Build git-nostr-cli if you haven't already
@@ -29,12 +21,6 @@ make git-nostr-cli
 ./bin/gn ssh-key add ~/.ssh/id_rsa.pub
 ```
 
-This will:
-1. Read your SSH public key file
-2. Create a Nostr event (KIND_52) with your public key
-3. Publish it to the configured relays
-4. The bridge will pick it up and add it to `authorized_keys`
-
 #### Option 2: Using gittr.space Web UI
 
 If you're using `gittr.space`:
@@ -44,14 +30,11 @@ If you're using `gittr.space`:
 
 **Important**: KIND_52 is used by the gitnostr protocol for SSH keys, but NIP-52 defines KIND_52 for Calendar Events. This is a known conflict. Some relays may reject KIND_52 events. If publishing fails, try a different relay (relay.damus.io, nos.lol typically work).
 
-### 2. Clone a Repository
+## Repository URL Formats
 
-Once your SSH key is set up, you can clone repositories using SSH:
+The bridge supports multiple formats for the owner identifier in clone URLs:
 
 ```bash
-# Format: git clone git@<bridge-host>:<owner-identifier>/<repo-name>.git
-# Owner identifier can be: npub, NIP-05, or hex pubkey
-
 # Using npub (recommended, per NIP-34 specification)
 git clone git@git.gittr.space:npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/repo-name.git
 
@@ -62,365 +45,262 @@ git clone git@git.gittr.space:geek@primal.net/repo-name.git
 git clone git@git.gittr.space:daa41bedb68591363bf4407f687cb9789cc543ed024bb77c22d2c84d88f54153/repo-name.git
 ```
 
-**Note**: The bridge supports three formats for owner identifier:
-- `npub` format (recommended, per NIP-34 specification)
-- `NIP-05` format (e.g., `user@domain.com`) - human-readable
-- `hex pubkey` format (64-char) - direct pubkey
-
 All three formats resolve to the same repository.
 
-## Workflows
+## Workflow 1: Create and Add Files via SSH
 
-### Workflow A: Push Existing Local Repository to Bridge
+### 1.1 From a Local Source
 
-If you have a local git repository with files and want to push it to a bridge:
-
-```bash
-# 1. Set up SSH keys (if not already done)
-# Use git-nostr-cli or gittr.space web UI to publish your SSH key
-
-# 2. Create the repository on the bridge (via web UI or API)
-# The repository must exist before you can push to it
-
-# 3. Add bridge as a remote
-cd /path/to/your/local/repo
-git remote add bridge git@<bridge-host>:<your-npub>/<repo-name>.git
-
-# 4. Push all your files, commits, and branches to bridge
-git push bridge main
-
-# 5. Push other branches if needed
-git push bridge feature-branch
-
-# 6. Publish Nostr events via web UI
-# Go to gittr.space repository page and click "Push to Nostr"
-# This publishes NIP-34 events so other clients can discover your repo
-```
-
-**Result**: All your local files, commits, and history are now on the bridge and published to Nostr.
-
-### Workflow B: Push to Both Bridge + GitHub
-
-If you want to maintain your code on both GitHub and a bridge simultaneously:
+Create a new repository and push your local files:
 
 ```bash
-# 1. Set up remotes for both services
-cd /path/to/your/local/repo
+# 1. Create the repository on gittr.space (via web UI)
+# Go to "Create repository" page, enter name, click "Create Empty Repository"
 
-# Add GitHub remote (if not already added)
-git remote add github git@github.com:<username>/<repo-name>.git
-
-# Add bridge remote
-git remote add bridge git@<bridge-host>:<your-npub>/<repo-name>.git
-
-# 2. Push to both services
-git push github main    # Push to GitHub
-git push bridge main    # Push to bridge
-
-# 3. (Optional) Publish Nostr events via web UI
-# Go to gittr.space repository page and click "Push to Nostr"
-```
-
-**Pro Tip**: You can push to both in one command:
-```bash
-git push github main && git push bridge main
-```
-
-Or set up a custom remote that pushes to both:
-```bash
-# Add a remote that pushes to both
-git remote set-url --add --push both github git@github.com:<username>/<repo-name>.git
-git remote set-url --add --push both bridge git@<bridge-host>:<your-npub>/<repo-name>.git
-
-# Now push to both at once
-git push both main
-```
-
-### Workflow C: Create New Repository from Scratch
-
-Complete workflow to create a new repository with files:
-
-```bash
-# 1. Set up SSH keys (if not already done)
-# Use git-nostr-cli or gittr.space web UI to publish your SSH key
-
-# 2. Create repository (via web UI or API)
-# Option A: Use gittr.space web UI to create empty repo
-# Option B: Use HTTP API (see link to CLI_PUSH_EXAMPLE.md below)
-
-# 3. Clone the repo
-git clone git@<bridge-host>:<your-npub>/<repo-name>.git
+# 2. Clone the empty repository
+git clone git@git.gittr.space:<your-identifier>/<repo-name>.git
 cd <repo-name>
 
-# 4. Create your project files
-cat > README.md << 'EOF'
-# My Project
+# 3. Copy your local files into the cloned repository
+cp -r /path/to/your/local/files/* .
 
-This is my awesome project on Nostr!
-
-## Features
-- Feature 1
-- Feature 2
-
-## Installation
-\`\`\`bash
-npm install
-\`\`\`
-EOF
-
-cat > index.js << 'EOF'
-#!/usr/bin/env node
-console.log('Hello from Nostr!');
-EOF
-
-cat > package.json << 'EOF'
-{
-  "name": "my-project",
-  "version": "1.0.0",
-  "description": "My awesome project",
-  "main": "index.js"
-}
-EOF
-
-mkdir src
-cat > src/utils.js << 'EOF'
-export function greet(name) {
-  return `Hello, ${name}!`;
-}
-EOF
-
-# 5. Commit and push all files
+# 4. Commit and push
 git add .
-git commit -m "Initial commit: Add project files
-
-- Add README with project description
-- Add main index.js entry point
-- Add package.json with project metadata
-- Add src/utils.js with utility functions"
-
+git commit -m "Initial commit: Add files from local source"
 git push origin main
 
-# 6. Publish to Nostr via web UI
-# Go to gittr.space repository page and click "Push to Nostr"
+# 5. Publish to Nostr (via web UI)
+# Go to the repository page and click "Push to Nostr"
 ```
 
-**Result**: Complete repository with all files, properly committed and published to Nostr.
+### 1.2 From GitHub to Nostr Using Gittr
 
-### Workflow D: Making Changes to Existing Repositories
-
-Complete workflow for updating an existing repository:
+Import a GitHub repository to Nostr:
 
 ```bash
-# 1. Clone the repository
-git clone git@<bridge-host>:<owner-npub>/<repo-name>.git
+# 1. Clone from GitHub
+git clone https://github.com/<username>/<repo-name>.git
+cd <repo-name>
+
+# 2. Create the repository on gittr.space (via web UI)
+# Go to "Create repository" page, enter name, click "Create Empty Repository"
+
+# 3. Add gittr as a remote
+git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
+
+# 4. Push to gittr
+git push gittr main
+
+# 5. Publish to Nostr (via web UI)
+# Go to the repository page and click "Push to Nostr"
+```
+
+### 1.3 From a Git Server
+
+Import from any Git server (GitLab, self-hosted, etc.):
+
+```bash
+# 1. Clone from the Git server
+git clone https://git.example.com/<username>/<repo-name>.git
+cd <repo-name>
+
+# 2. Create the repository on gittr.space (via web UI)
+# Go to "Create repository" page, enter name, click "Create Empty Repository"
+
+# 3. Add gittr as a remote
+git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
+
+# 4. Push to gittr
+git push gittr main
+
+# 5. Publish to Nostr (via web UI)
+# Go to the repository page and click "Push to Nostr"
+```
+
+### 1.4 From Codeberg
+
+Import from Codeberg:
+
+```bash
+# 1. Clone from Codeberg
+git clone https://codeberg.org/<username>/<repo-name>.git
+cd <repo-name>
+
+# 2. Create the repository on gittr.space (via web UI)
+# Go to "Create repository" page, enter name, click "Create Empty Repository"
+
+# 3. Add gittr as a remote
+git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
+
+# 4. Push to gittr
+git push gittr main
+
+# 5. Publish to Nostr (via web UI)
+# Go to the repository page and click "Push to Nostr"
+```
+
+## Workflow 2: Delete or Add Files in Existing Repos via SSH
+
+### 2.1 From a Local Source
+
+Update an existing repository with local changes:
+
+```bash
+# 1. Clone the existing repository
+git clone git@git.gittr.space:<owner-identifier>/<repo-name>.git
 cd <repo-name>
 
 # 2. Make your changes
-# Edit existing files
-echo "# Updated Feature" >> README.md
-
 # Add new files
-cat > src/new-feature.js << 'EOF'
-export function newFeature() {
-  return 'New feature added!';
-}
-EOF
+cp /path/to/local/file.txt .
+
+# Delete files
+rm unwanted-file.txt
 
 # Modify existing files
-sed -i 's/version: "1.0.0"/version: "1.1.0"/' package.json
+echo "# Updated content" >> README.md
 
-# 3. Stage, commit, and push all changes
+# 3. Commit and push
 git add .
-git commit -m "Add new feature and update version
-
-- Add new-feature.js with new functionality
-- Update package.json version to 1.1.0
-- Update README with new feature documentation"
-
+git commit -m "Update: add new files, remove old files, modify existing"
 git push origin main
 
 # 4. Changes appear in web UI after pushing
-# Refresh the repository page to see your updates
 ```
 
-## Git Operations Over SSH
+### 2.2 From GitHub to Nostr Using Gittr
 
-All standard Git commands work over SSH:
+Sync updates from GitHub to an existing Nostr repository:
 
 ```bash
-# Clone a repository
-git clone git@<bridge-host>:npub1.../repo-name.git
+# 1. Clone the existing Nostr repository
+git clone git@git.gittr.space:<your-identifier>/<repo-name>.git
+cd <repo-name>
 
-# Push changes (requires WRITE permission)
-cd repo-name
-git add .
-git commit -m "Update code"
+# 2. Add GitHub as a remote
+git remote add github https://github.com/<username>/<repo-name>.git
+
+# 3. Fetch and merge from GitHub
+git fetch github
+git merge github/main --allow-unrelated-histories
+
+# 4. Push to gittr
 git push origin main
 
-# Pull latest changes
-git pull origin main
-
-# Create and push a new branch
-git checkout -b feature-branch
-git push origin feature-branch
-
-# Fetch remote branches
-git fetch origin
-
-# Switch branches
-git checkout <branch-name>
-
-# View commit history
-git log
-
-# View changes
-git diff
+# 5. Publish updated state to Nostr (via web UI)
+# Go to the repository page and click "Push to Nostr"
 ```
 
-**All standard Git commands work as expected!**
+### 2.3 From a Git Server
 
-## Repository Permissions
-
-Access control is managed through Nostr events (KIND_REPOSITORY_PERMISSION = 50):
-
-- **READ**: Clone and pull (default for all repositories)
-- **WRITE**: Push to existing branches
-- **ADMIN**: Full control including branch deletion
-
-### Setting Permissions with git-nostr-cli
+Sync updates from any Git server to an existing Nostr repository:
 
 ```bash
-# Grant WRITE permission to a user
-./bin/gn repo permission <repo-name> <user-pubkey> WRITE
+# 1. Clone the existing Nostr repository
+git clone git@git.gittr.space:<your-identifier>/<repo-name>.git
+cd <repo-name>
 
-# Grant ADMIN permission
-./bin/gn repo permission <repo-name> <user-pubkey> ADMIN
+# 2. Add the Git server as a remote
+git remote add source https://git.example.com/<username>/<repo-name>.git
+
+# 3. Fetch and merge
+git fetch source
+git merge source/main --allow-unrelated-histories
+
+# 4. Push to gittr
+git push origin main
+
+# 5. Publish updated state to Nostr (via web UI)
+# Go to the repository page and click "Push to Nostr"
 ```
 
-## How git-nostr-ssh Works
+### 2.4 From Codeberg
 
-When you SSH to the bridge:
+Sync updates from Codeberg to an existing Nostr repository:
 
-1. **SSH Connection**: You connect using your SSH key (which was added to `authorized_keys` by the bridge)
-2. **Command Execution**: The `authorized_keys` file is configured to run `git-nostr-ssh <your-pubkey>` instead of a shell
-3. **Access Control**: `git-nostr-ssh` checks the database to verify you have permission for the requested operation
-4. **Git Operation**: If authorized, the git operation (clone/push/pull) is executed
+```bash
+# 1. Clone the existing Nostr repository
+git clone git@git.gittr.space:<your-identifier>/<repo-name>.git
+cd <repo-name>
 
-The `authorized_keys` entry looks like:
+# 2. Add Codeberg as a remote
+git remote add codeberg https://codeberg.org/<username>/<repo-name>.git
+
+# 3. Fetch and merge
+git fetch codeberg
+git merge codeberg/main --allow-unrelated-histories
+
+# 4. Push to gittr
+git push origin main
+
+# 5. Publish updated state to Nostr (via web UI)
+# Go to the repository page and click "Push to Nostr"
 ```
-command="/path/to/git-nostr-ssh <pubkey>",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty <ssh-public-key>
-```
 
-This ensures:
-- Only git operations are allowed (no shell access)
-- Port forwarding and X11 forwarding are disabled
-- The bridge knows which Nostr pubkey corresponds to your SSH key
+## Publishing to Nostr (NIP-34 Events)
 
-## How SSH Keys Work with git-nostr-bridge
+When you push via `git push`, your code goes to the git-nostr-bridge server. To make your repository discoverable by other Nostr clients, you need to publish NIP-34 events:
 
-SSH keys are managed entirely through Nostr events:
+1. Go to your repository page on gittr.space
+2. Click **"Push to Nostr"**
+3. Confirm the prompt in your NIP-07 wallet
 
-1. **Key Publishing**: SSH public keys are published as Nostr events (KIND_SSH_KEY = 52) signed with your Nostr private key
-2. **Bridge Processing**: The `git-nostr-bridge` service watches for SSH key events and updates `authorized_keys` automatically
-3. **Access Control**: When you SSH to the bridge, `git-nostr-ssh` performs access control checks based on repository permissions stored in the bridge's database
+This publishes:
+- **Announcement event** (kind 30617) - Announces your repository
+- **State event** (kind 30618) - Contains current repository state (branches, commits, etc.)
 
 **Important**: 
-- Only public keys are published to Nostr (safe to share)
-- Private keys NEVER leave your device
-- The bridge processes SSH key events via direct API and relay subscription
-- One SSH key pair works for all your repositories (GitHub model)
+- `git push` updates the repository on the bridge server
+- "Push to Nostr" publishes NIP-34 events to Nostr relays
+- Both are needed for full functionality: bridge for git operations, Nostr events for discovery
 
 ## Troubleshooting
 
-### SSH Key Not Working
+### "Permission denied (publickey)"
+- Ensure your SSH key is added in Settings → SSH Keys
+- Check that your private key is in `~/.ssh/` with correct permissions (600)
+- Verify the bridge service has processed your key (may take a few seconds)
 
-1. **Check if key was published**: Verify the SSH key event exists on Nostr relays
-2. **Check bridge logs**: The bridge should log "ssh-key updated" when it processes your key
-3. **Check authorized_keys**: Verify your key is in `~/.ssh/authorized_keys` on the bridge server
-4. **Check permissions**: Ensure you have the correct repository permissions (READ/WRITE/ADMIN)
-
-### Permission Denied Errors
-
-- **Clone fails**: You need at least READ permission (default for all repos)
-- **Push fails**: You need WRITE permission for the repository
-- **Branch deletion fails**: You need ADMIN permission
+### "Permission denied" (for write operations)
+- Only repository owners and users with WRITE or ADMIN permissions can push
+- Check repository permissions in Settings → Repository → Permissions
 
 ### "Repository not found"
-
-- Check that the repository exists on the bridge
+- Check that the repository exists on gittr
 - Verify the clone URL format is correct
-- Ensure you have read permission for the repository
 - If you just created the repository, wait a moment for the bridge to process it
 
 ### "Network is unreachable" (port 22)
+- Verify SSH port 22 is accessible: `ssh -v git-nostr@git.gittr.space`
+- Check if your network/firewall blocks port 22
+- Try HTTPS clone instead: `git clone https://git.gittr.space/<owner-identifier>/<repo-name>.git`
 
-**Most common cause**: Hetzner Cloud Firewall blocking port 22.
-
-**Quick fixes:**
-1. **Check Hetzner Cloud Firewall** (most important):
-   - Log into Hetzner Cloud Console: https://console.hetzner.cloud/
-   - Navigate to server → **Firewalls** tab
-   - Verify firewall allows **Inbound TCP port 22**
-   - If missing, add rule: Direction=Inbound, Protocol=TCP, Port=22, Source=0.0.0.0/0
-
-2. **Check server local firewall:**
-   ```bash
-   # On the server
-   sudo ufw status
-   sudo ufw allow 22/tcp  # If ufw is active
-   ```
-
-3. **Verify SSH service is running:**
-   ```bash
-   # On the server
-   sudo systemctl status sshd
-   ```
-
-4. **Verify SSH port 22 is accessible**: `ssh -v git-nostr@<bridge-host>`
-5. **Ensure `git-nostr-bridge` service is running**: `sudo systemctl status git-nostr-bridge`
-
-**For complete troubleshooting**, see the main gittr documentation: [SSH_PORT_22_TROUBLESHOOTING.md](https://github.com/arbadacarbaYK/gittr/blob/main/docs/SSH_PORT_22_TROUBLESHOOTING.md).
-
-### "Push rejected"
-
-- Only repository owners can push directly
-- For collaborative changes, create a pull request via the web UI
-- Check repository permissions
-
-### Relay Compatibility Issues
-
-Some relays may reject KIND_52 (SSH key events) due to NIP-52 conflict. If publishing fails:
-1. Try a different relay (relay.damus.io, nos.lol typically work)
-2. Check relay logs for rejection messages
-3. Use a relay that explicitly supports gitnostr protocol
-
-## Security Considerations
+## Security Notes
 
 ### ✅ What's Safe
 
 - **Only public keys are published**: SSH public keys are designed to be shared publicly (same as GitHub, GitLab, etc.)
 - **Private keys NEVER leave your device**: SSH private keys are only stored locally in `~/.ssh/`
 
-### ⚠️ Important Security Notes
+### ⚠️ Important: localStorage Security
 
-- **SSH Private Keys**: Never share your SSH private key. Only the public key is published to Nostr.
-- **Bridge User**: The bridge should run as a dedicated user (e.g., `git-nostr`), not your personal user account, because it overwrites `authorized_keys`.
-- **Repository Permissions**: Only grant WRITE/ADMIN permissions to trusted users.
-- **Nostr Private Key**: Protect your Nostr private key - if compromised, an attacker could publish malicious SSH keys.
+**Critical**: Data stored in browser localStorage is **NOT encrypted**.
 
-### 🔐 Best Practices
+**What's stored in localStorage**:
+- ✅ **SSH Public Keys**: Safe - public keys are meant to be public
+- ✅ **Repositories, settings, UI preferences**: Low risk
+- ⚠️ **Nostr Private Keys (nsec)**: **STORED AS PLAINTEXT** - Accessible via browser dev tools (if using nsec login instead of NIP-07)
 
-- **Generate strong keys**: Use Ed25519 (recommended) or RSA with 4096-bit keys
-- **Protect your private key**: 
-  - Never share your private key
-  - Use correct permissions: `chmod 600 ~/.ssh/id_ed25519`
-  - Consider using SSH agent for key management
-- **Monitor your keys**: Regularly check that no unauthorized keys have been published
-- **Use different keys**: Consider using different SSH keys for different services/devices
+**What's NOT stored in localStorage**:
+- ❌ **SSH Private Keys**: **NEVER stored** - Only downloaded once and saved to `~/.ssh/` on your local machine
+
+**Best Practices**:
+- ✅ **Use NIP-07 Extension** (recommended): Nostr private keys stay in the extension, never in localStorage
+- ✅ **SSH Private Keys**: Never stored in browser - only in `~/.ssh/` on your local machine
+- ⚠️ **Nostr Private Keys**: If you must use nsec login, use a dedicated browser profile
 
 ## See Also
 
 - **[Main gittr.space SSH Git Guide](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FSSH_GIT_GUIDE.md)** - Complete user-facing guide for gittr.space with web UI workflows
-- **[CLI Push Example](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FCLI_PUSH_EXAMPLE.md)** - HTTP API examples for pushing repositories programmatically
 - [git-nostr-bridge README](README.md) - Setup and configuration instructions
 - [git-nostr-cli Usage](README.md#git-nostr-cli-gn) - Command-line tool documentation
