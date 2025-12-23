@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState, useMemo, useCallback, useRef, use } from "react";
+import { useEffect, useLayoutEffect, useState, useMemo, useCallback, useRef, use, startTransition } from "react";
 import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -2104,40 +2104,50 @@ export default function RepoCodePage({
                 // First success: update files immediately
                 if (!currentFiles || !Array.isArray(currentFiles) || currentFiles.length === 0) {
                   console.log(`🚀 [File Fetch] First source succeeded! Updating files immediately: ${status.files.length} files from ${status.source.displayName}`);
-                  setRepoData((prev: any) => {
-                    // CRITICAL: Create repoData if it doesn't exist yet - files should show immediately
-                    const updated = prev ? ({ 
-                      ...prev, 
-                      files: status.files,
-                      // CRITICAL: Store successful sources as array for fallback during file opening
-                      successfulSources: [{
-                        source: status.source,
-                        sourceUrl: status.source.url || status.source.displayName,
+                  // CRITICAL: Use startTransition to defer state update and prevent hook order issues during render
+                  startTransition(() => {
+                    setRepoData((prev: any) => {
+                      // CRITICAL: Create repoData if it doesn't exist yet - files should show immediately
+                      const updated = prev ? ({ 
+                        ...prev, 
                         files: status.files,
-                      }],
-                      // Keep first source for backward compatibility
-                      successfulSource: status.source,
-                      successfulSourceUrl: status.source.url || status.source.displayName,
-                    }) : {
-                      // Create minimal repoData if it doesn't exist yet
-                      files: status.files,
-                      successfulSources: [{
-                        source: status.source,
-                        sourceUrl: status.source.url || status.source.displayName,
+                        // CRITICAL: Store successful sources as array for fallback during file opening
+                        successfulSources: [{
+                          source: status.source,
+                          sourceUrl: status.source.url || status.source.displayName,
+                          files: status.files,
+                        }],
+                        // Keep first source for backward compatibility
+                        successfulSource: status.source,
+                        successfulSourceUrl: status.source.url || status.source.displayName,
+                      }) : {
+                        // Create minimal repoData if it doesn't exist yet
                         files: status.files,
-                      }],
-                      successfulSource: status.source,
-                      successfulSourceUrl: status.source.url || status.source.displayName,
-                    };
-                    // CRITICAL: Update ref immediately so subsequent checks see the new files
-                    if (updated && repoDataRef) {
-                      repoDataRef.current = updated;
-                      console.log(`✅ [File Fetch] repoDataRef updated with ${updated.files?.length || 0} files - files should now be visible in UI`);
-                    }
-                    // CRITICAL: Force a re-render by updating state - ensure files are visible immediately
-                    // The useMemo for items depends on repoData, so updating repoData should trigger re-render
-                    console.log(`🔄 [File Fetch] Triggering state update with ${updated.files?.length || 0} files`);
-                    return updated;
+                        successfulSources: [{
+                          source: status.source,
+                          sourceUrl: status.source.url || status.source.displayName,
+                          files: status.files,
+                        }],
+                        successfulSource: status.source,
+                        successfulSourceUrl: status.source.url || status.source.displayName,
+                      };
+                      // CRITICAL: Update ref immediately so subsequent checks see the new files
+                      if (updated && repoDataRef) {
+                        repoDataRef.current = updated;
+                        console.log(`✅ [File Fetch] repoDataRef updated with ${updated.files?.length || 0} files - files should now be visible in UI`);
+                      }
+                      // CRITICAL: Force a re-render by updating state - ensure files are visible immediately
+                      // The useMemo for items depends on repoData, so updating repoData should trigger re-render
+                      console.log(`🔄 [File Fetch] Triggering state update with ${updated.files?.length || 0} files`);
+                      // CRITICAL: Ensure updated object has all required fields to prevent hook order issues
+                      // Add default values to prevent undefined access during re-render
+                      const safeUpdated = {
+                        ...updated,
+                        files: updated.files || [],
+                        successfulSources: updated.successfulSources || [],
+                      };
+                      return safeUpdated;
+                    });
                   });
                 } else {
                   // Additional success: add to successful sources array for fallback
@@ -5525,7 +5535,8 @@ export default function RepoCodePage({
 
   const pathParts = useMemo(() => currentPath.split("/").filter(Boolean), [currentPath]);
   const items = useMemo(() => {
-    if (!repoData?.files) return [];
+    // CRITICAL: Defensive check to prevent hook order issues when repoData changes
+    if (!repoData || !repoData.files || !Array.isArray(repoData.files)) return [];
     const prefix = currentPath ? currentPath + "/" : "";
     const direct = new Map<string, { type: string; path: string; size?: number }>();
     
