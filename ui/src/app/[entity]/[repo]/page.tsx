@@ -59,8 +59,7 @@ import { CodeViewer } from "@/components/ui/code-viewer";
 import { BranchTagSwitcher } from "@/components/ui/branch-tag-switcher";
 import { CopyableCodeBlock } from "@/components/ui/copyable-code-block";
 import { nip19 } from "nostr-tools";
-import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { isOwner as checkIsOwner } from "@/lib/repo-permissions";
+import { findRepoByEntityAndName, findRepoByEntityAndNameAsync } from "@/lib/utils/repo-finder";
 import { getRepoStatus, markRepoAsEdited, checkBridgeExists, setRepoStatus } from "@/lib/utils/repo-status";
 import { formatDate24h } from "@/lib/utils/date-format";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
@@ -161,17 +160,38 @@ export default function RepoCodePage() {
     if ((repoData as any)?.ownerPubkey && typeof (repoData as any).ownerPubkey === "string") {
       setRepoOwnerPubkey((repoData as any).ownerPubkey.toLowerCase());
     } else if (mounted) {
-    try {
-      const repos = loadStoredRepos();
-        const match = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
-      if (match?.ownerPubkey && typeof match.ownerPubkey === "string") {
-          setRepoOwnerPubkey(match.ownerPubkey.toLowerCase());
-        } else {
+      // CRITICAL: Support NIP-05 format (e.g., geek@primal.net) for gitworkshop.dev compatibility
+      const isNip05 = resolvedParams.entity.includes("@");
+      
+      if (isNip05) {
+        // Use async resolution for NIP-05
+        (async () => {
+          try {
+            const repos = loadStoredRepos();
+            const match = await findRepoByEntityAndNameAsync<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
+            if (match?.ownerPubkey && typeof match.ownerPubkey === "string") {
+              setRepoOwnerPubkey(match.ownerPubkey.toLowerCase());
+            } else {
+              setRepoOwnerPubkey(null);
+            }
+          } catch {
+            setRepoOwnerPubkey(null);
+          }
+        })();
+      } else {
+        // Use sync resolution for npub/hex pubkey
+        try {
+          const repos = loadStoredRepos();
+          const match = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
+          if (match?.ownerPubkey && typeof match.ownerPubkey === "string") {
+            setRepoOwnerPubkey(match.ownerPubkey.toLowerCase());
+          } else {
+            setRepoOwnerPubkey(null);
+          }
+        } catch {
           setRepoOwnerPubkey(null);
+        }
       }
-    } catch {
-        setRepoOwnerPubkey(null);
-    }
     }
   }, [repoData?.ownerPubkey, resolvedParams.entity, decodedRepo, mounted]);
 
@@ -1905,8 +1925,11 @@ export default function RepoCodePage() {
         if (!sourceUrl && typeof window !== "undefined") {
           try {
             const repos = loadStoredRepos();
-            // CRITICAL: Use findRepoByEntityAndName for consistent matching (handles npub, case-insensitive, etc.)
-            const matchingRepo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
+            // CRITICAL: Use async version if NIP-05 format (for gitworkshop.dev compatibility)
+            const isNip05 = resolvedParams.entity.includes("@");
+            const matchingRepo = isNip05 
+              ? await findRepoByEntityAndNameAsync<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo)
+              : findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
             // Priority 1: Use sourceUrl or forkedFrom if available
             sourceUrl = matchingRepo?.sourceUrl || matchingRepo?.forkedFrom;
             // Priority 2: If no sourceUrl, try to find GitHub/GitLab/Codeberg clone URL (preferred)
@@ -5537,14 +5560,23 @@ export default function RepoCodePage() {
   }, [repoData, resolvedParams.entity, resolvedParams.repo, ownerPubkeysForMetadata.length]); // Use length only to prevent loops - join creates new string each render
 
   const pathParts = useMemo(() => currentPath.split("/").filter(Boolean), [currentPath]);
+  // CRITICAL: Ensure files is always an array to prevent mobile hydration issues
+  const safeFiles = useMemo(() => {
+    if (!repoData || !repoData.files) return [];
+    if (!Array.isArray(repoData.files)) return [];
+    return repoData.files;
+  }, [repoData?.files]);
+  
   const items = useMemo(() => {
     // CRITICAL: Defensive check to prevent hook order issues when repoData changes
-    if (!repoData || !repoData.files || !Array.isArray(repoData.files)) return [];
+    // Use safeFiles which is guaranteed to be an array
+    if (!safeFiles || safeFiles.length === 0) return [];
+    
     const prefix = currentPath ? currentPath + "/" : "";
     const direct = new Map<string, { type: string; path: string; size?: number }>();
     
-    // Process all files/dirs from repoData.files
-    for (const f of repoData.files) {
+    // Process all files/dirs from safeFiles array
+    for (const f of safeFiles) {
       if (deletedPaths.includes(f.path)) continue;
       // Skip if this is not in the current directory
       if (currentPath) {
@@ -5588,7 +5620,7 @@ export default function RepoCodePage() {
       const bName = b.path.split("/").pop() || "";
       return aName.localeCompare(bName);
     });
-  }, [repoData?.files, currentPath, deletedPaths]);
+  }, [safeFiles, currentPath, deletedPaths]);
 
   // Infer languages from files for newly created repos (or when languages are missing)
   // Track if we've computed languages to prevent infinite loops

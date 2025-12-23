@@ -1,21 +1,24 @@
 /**
  * Entity Resolution Utilities
  * 
- * Handles consistent resolution of entity identifiers (npub format or full pubkeys)
+ * Handles consistent resolution of entity identifiers (npub format, NIP-05, or full pubkeys)
  * to full 64-char pubkeys for metadata fetching and profile links.
  * 
  * CRITICAL: All repos run on Nostr network - we need to support repos from ANY user,
  * not just the current logged-in user. Always resolve to the actual owner's pubkey.
  * 
- * We use npub format (GRASP protocol standard) for all entity identifiers - no 8-char prefixes.
+ * Supports:
+ * - npub format (GRASP protocol standard)
+ * - NIP-05 identifiers (e.g., geek@primal.net) - for compatibility with gitworkshop.dev
+ * - Full 64-char hex pubkeys
  */
 
-import { nip19 } from "nostr-tools";
+import { nip19, nip05 } from "nostr-tools";
 
 /**
- * Resolves an entity (npub format or full pubkey) to a full 64-char pubkey
+ * Resolves an entity (npub format, NIP-05, or full pubkey) to a full 64-char pubkey
  * 
- * @param entity - npub format or full 64-char pubkey
+ * @param entity - npub format, NIP-05 identifier, or full 64-char pubkey
  * @param repo - Optional repo object to check for ownerPubkey
  * @returns Full 64-char pubkey or null if not found
  */
@@ -39,8 +42,41 @@ export function resolveEntityToPubkey(entity: string | undefined, repo?: any): s
     }
   }
   
-  // If entity is not npub or full pubkey, it's invalid - return null
-  // We no longer support 8-char prefixes - use npub format (GRASP protocol standard)
+  // If NIP-05 format (contains @), return null for sync version (use async version)
+  // This allows callers to detect NIP-05 and use async resolution
+  if (entity.includes("@")) {
+    return null; // NIP-05 requires async resolution
+  }
+  
+  return null;
+}
+
+/**
+ * Async version that resolves NIP-05 identifiers to pubkeys
+ * 
+ * @param entity - npub format, NIP-05 identifier, or full 64-char pubkey
+ * @param repo - Optional repo object to check for ownerPubkey
+ * @returns Promise resolving to full 64-char pubkey or null if not found
+ */
+export async function resolveEntityToPubkeyAsync(entity: string | undefined, repo?: any): Promise<string | null> {
+  if (!entity) return null;
+  
+  // Try sync resolution first (npub, hex pubkey)
+  const syncResult = resolveEntityToPubkey(entity, repo);
+  if (syncResult) return syncResult;
+  
+  // If NIP-05 format (contains @), resolve it
+  if (entity.includes("@")) {
+    try {
+      const profile = await nip05.queryProfile(entity);
+      if (profile?.pubkey && /^[0-9a-f]{64}$/i.test(profile.pubkey)) {
+        console.log(`✅ [Entity Resolver] Resolved NIP-05 ${entity} to pubkey: ${profile.pubkey.slice(0, 8)}...`);
+        return profile.pubkey.toLowerCase();
+      }
+    } catch (error) {
+      console.warn(`⚠️ [Entity Resolver] Failed to resolve NIP-05 ${entity}:`, error);
+    }
+  }
   
   return null;
 }
