@@ -381,5 +381,5 @@ export default function RepoLayout({
   children: React.ReactNode;
   params: Promise<{ entity: string; repo: string; subpage?: string }>;
 }) {
-  return <RepoLayoutClient params={params}>{children}</RepoLayoutClient>;
+  return <RepoLayoutClient>{children}</RepoLayoutClient>;
 }

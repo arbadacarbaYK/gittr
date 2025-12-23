@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, use } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ import {
   GitBranch,
   Layers,
 } from "lucide-react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams, useParams } from "next/navigation";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { getZapTotal } from "@/lib/payments/zap-tracker";
 import { RepoQRShare } from "@/components/ui/repo-qr-share";
@@ -106,12 +106,10 @@ const MENU_ITEM_WIDTH = 165;
 
 export default function RepoLayoutClient({
   children,
-  params,
 }: {
   children: React.ReactNode;
-  params: Promise<{ entity: string; repo: string; subpage?: string }>;
 }) {
-  const resolvedParams = use(params);
+  const resolvedParams = useParams<{ entity?: string; repo?: string; subpage?: string }>();
   const pathname = usePathname() || "";
   const searchParams = useSearchParams();
   // Use consistent default width on server and initial client render to prevent hydration mismatch

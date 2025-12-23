@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState, useMemo, useCallback, useRef, use, startTransition } from "react";
+import { useEffect, useLayoutEffect, useState, useMemo, useCallback, useRef, startTransition } from "react";
 import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -46,7 +46,7 @@ import { FuzzyFileFinder } from "@/components/ui/fuzzy-file-finder";
 import { SSHGitHelp } from "@/components/ui/ssh-git-help";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
-import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { useSearchParams, useRouter, usePathname, useParams } from "next/navigation";
 import useSession from "@/lib/nostr/useSession";
 import { mapGithubContributors, type GitHubContributor } from "@/lib/github-mapping";
 import { useContributorMetadata, type Metadata } from "@/lib/nostr/useContributorMetadata";
@@ -87,12 +87,15 @@ import {
   isGitHostContributor,
 } from "@/lib/repos/storage";
 
-export default function RepoCodePage({
-  params,
-}: {
-  params: Promise<{ entity: string; repo: string }>;
-}) {
-  const resolvedParams = use(params);
+export default function RepoCodePage() {
+  const routeParams = useParams<{ entity?: string; repo?: string }>();
+  const resolvedParams = useMemo(
+    () => ({
+      entity: routeParams?.entity ?? "",
+      repo: routeParams?.repo ?? "",
+    }),
+    [routeParams?.entity, routeParams?.repo]
+  );
   const decodedRepo = decodeURIComponent(resolvedParams.repo);
   const { pubkey: currentUserPubkey, subscribe, publish, defaultRelays, getRelayStatuses } = useNostrContext();
   // Also get pubkey from session as fallback - use state to prevent hydration errors
