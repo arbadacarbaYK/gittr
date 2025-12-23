@@ -80,12 +80,13 @@ func main() {
 	} else if strings.HasPrefix(ownerPubKeyInput, "npub") {
 		// Decode npub to hex
 		decoded, _, err := nip19.Decode(ownerPubKeyInput)
-		if err != nil || decoded.Type != "npub" {
+		if err != nil || len(decoded) != 32 {
 			fmt.Fprintf(os.Stderr, "fatal: invalid npub format in '%s'\n", repoParam)
 			fmt.Fprintf(os.Stderr, "hint: Repository path must be in format: <hex-pubkey>/<repo-name> or <npub>/<repo-name>\n")
 			os.Exit(1)
 		}
-		ownerPubKey = strings.ToLower(decoded.Data.(string))
+		// Convert 32-byte pubkey to hex string
+		ownerPubKey = strings.ToLower(hex.EncodeToString(decoded))
 	} else if strings.Contains(ownerPubKeyInput, "@") {
 		// Resolve NIP-05 to hex pubkey
 		profile := nip05.QueryIdentifier(ownerPubKeyInput)
