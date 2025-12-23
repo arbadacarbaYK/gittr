@@ -387,7 +387,7 @@ When you run `git clone` or `git push`:
 ### "Network is unreachable" (port 22)
 - Verify SSH port 22 is accessible: `ssh -v git-nostr@git.gittr.space`
 - Check if your network/firewall blocks port 22
-- Try HTTPS clone instead: `git clone https://git.gittr.space/<owner-npub>/<repo-name>.git`
+- Try HTTPS clone instead: `git clone https://git.gittr.space/<owner-identifier>/<repo-name>.git`
 
 ### "Push rejected"
 - Only repository owners can push directly
