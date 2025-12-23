@@ -33,7 +33,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // If not in query params, try to extract from URL path
   if (!entityStr && req.url) {
     const pathMatch = req.url.match(/\/api\/git\/nip05-resolve\/([^\/]+)\/(.+)$/);
-    if (pathMatch) {
+    if (pathMatch && pathMatch[1] && pathMatch[2]) {
       entityStr = pathMatch[1];
       repoStr = pathMatch[2];
     }
