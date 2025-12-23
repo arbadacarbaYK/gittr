@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nbd-wtf/go-nostr/nip19"
+	"github.com/nbd-wtf/go-nostr/nip05"
 	"github.com/arbadacarbaYK/gitnostr"
 	"github.com/arbadacarbaYK/gitnostr/bridge"
 )
@@ -68,12 +70,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	ownerPubKey := repoSplit[0]
-	_, err = hex.DecodeString(ownerPubKey)
-	if err != nil {
+	ownerPubKeyInput := repoSplit[0]
+	var ownerPubKey string
+	
+	// Resolve ownerPubKey: supports hex, npub, or NIP-05 format
+	if _, err := hex.DecodeString(ownerPubKeyInput); err == nil && len(ownerPubKeyInput) == 64 {
+		// Already hex format
+		ownerPubKey = strings.ToLower(ownerPubKeyInput)
+	} else if strings.HasPrefix(ownerPubKeyInput, "npub") {
+		// Decode npub to hex
+		decoded, err := nip19.Decode(ownerPubKeyInput)
+		if err != nil || decoded.Type != "npub" {
+			fmt.Fprintf(os.Stderr, "fatal: invalid npub format in '%s'\n", repoParam)
+			fmt.Fprintf(os.Stderr, "hint: Repository path must be in format: <hex-pubkey>/<repo-name> or <npub>/<repo-name>\n")
+			os.Exit(1)
+		}
+		ownerPubKey = strings.ToLower(decoded.Data.(string))
+	} else if strings.Contains(ownerPubKeyInput, "@") {
+		// Resolve NIP-05 to hex pubkey
+		profile, err := nip05.QueryIdentifier(ownerPubKeyInput)
+		if err != nil || profile == "" {
+			fmt.Fprintf(os.Stderr, "fatal: failed to resolve NIP-05 '%s': %v\n", ownerPubKeyInput, err)
+			fmt.Fprintf(os.Stderr, "hint: Repository path must be in format: <hex-pubkey>/<repo-name>, <npub>/<repo-name>, or <nip05>/<repo-name>\n")
+			os.Exit(1)
+		}
+		ownerPubKey = strings.ToLower(profile)
+	} else {
 		fmt.Fprintf(os.Stderr, "fatal: invalid repository owner pubkey in '%s'\n", repoParam)
-		fmt.Fprintf(os.Stderr, "hint: Repository path must be in format: <64-char-hex-pubkey>/<repo-name>\n")
-		fmt.Fprintf(os.Stderr, "hint: Example: git@gittr.space:9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c/repo-name.git\n")
+		fmt.Fprintf(os.Stderr, "hint: Repository path must be in format: <hex-pubkey>/<repo-name>, <npub>/<repo-name>, or <nip05>/<repo-name>\n")
+		fmt.Fprintf(os.Stderr, "hint: Example: git@gittr.space:npub1.../repo-name.git or git@gittr.space:user@domain.com/repo-name.git\n")
 		os.Exit(1)
 	}
 
