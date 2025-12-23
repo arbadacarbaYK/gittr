@@ -90,8 +90,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const { ownerPubkey: ownerPubkeyInput, repo: repoName, branch = "main", files, commitDate, createCommit = true, chunkIndex, totalChunks, pushSessionId } = req.body || {};
 
-  // CRITICAL: Support both hex pubkey (64-char) and npub format (NIP-19)
-  // The bridge stores repos by hex pubkey in filesystem, so we decode npub if needed
+  // CRITICAL: Support hex pubkey (64-char), npub format (NIP-19), and NIP-05
+  // The bridge stores repos by hex pubkey in filesystem, so we resolve to hex
   let ownerPubkey: string;
   if (!ownerPubkeyInput || typeof ownerPubkeyInput !== "string") {
     return res.status(400).json({ error: "ownerPubkey is required" });
@@ -113,9 +113,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     } catch (error: any) {
       return res.status(400).json({ error: `Failed to decode npub: ${error?.message || "invalid format"}` });
     }
+  } else if (ownerPubkeyInput.includes("@")) {
+    // Resolve NIP-05 to hex pubkey
+    try {
+      const { nip05 } = await import("nostr-tools");
+      const profile = await nip05.queryProfile(ownerPubkeyInput);
+      if (profile?.pubkey && /^[0-9a-f]{64}$/i.test(profile.pubkey)) {
+        console.log(`✅ [Push API] Resolved NIP-05 ${ownerPubkeyInput} to pubkey: ${profile.pubkey.slice(0, 8)}...`);
+        ownerPubkey = profile.pubkey.toLowerCase();
+      } else {
+        return res.status(400).json({ error: `NIP-05 ${ownerPubkeyInput} did not return a valid pubkey` });
+      }
+    } catch (error: any) {
+      return res.status(400).json({ error: `Failed to resolve NIP-05 ${ownerPubkeyInput}: ${error?.message || "unknown error"}` });
+    }
   } else {
     return res.status(400).json({ 
-      error: "ownerPubkey must be a 64-char hex string or npub (NIP-19 format)",
+      error: "ownerPubkey must be a 64-char hex string, npub (NIP-19 format), or NIP-05 (e.g., user@domain.com)",
       received: ownerPubkeyInput.length === 8 ? "8-char prefix" : ownerPubkeyInput.startsWith("npub") ? "npub (decoding failed)" : `invalid format (${ownerPubkeyInput.length} chars)`
     });
   }
