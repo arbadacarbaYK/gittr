@@ -135,11 +135,9 @@ func handleRepositoryStateEvent(event nostr.Event, db *sql.DB, cfg bridge.Config
 		// This prevents state events from overwriting valid commits (e.g., from GitHub clones) with empty commits
 		lsTreeCmd := exec.Command("git", "--git-dir", repoPath, "ls-tree", "-r", "--name-only", ref.commit)
 		lsTreeOutput, lsTreeErr := lsTreeCmd.Output()
-		isEmptyCommit := false
 		if lsTreeErr == nil {
 			files := strings.TrimSpace(string(lsTreeOutput))
 			if files == "" {
-				isEmptyCommit = true
 				commitDisplay := ref.commit
 				if len(ref.commit) > 8 {
 					commitDisplay = ref.commit[:8]
