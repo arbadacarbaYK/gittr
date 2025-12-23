@@ -37,15 +37,15 @@ location ~ ^/([^/]+@[^/]+)/(.+)$ {
 }
 ```
 
-## Known Issue: Empty Repository
+## Bridge Bug Fix: Empty Commit Overwrite
 
-**Problem**: The `nostr-hypermedia` repo shows 0 files even though it was cloned from GitHub.
+**Problem**: The `nostr-hypermedia` repo showed 0 files even though it was cloned from GitHub.
 
 **Root Cause**: The bridge successfully cloned from GitHub, but the state event (kind 30618) updated the ref to point to an empty commit (`b8a40ade`) that was created during the push. This overwrote the GitHub refs, leaving only the empty commit.
 
-**Status**: This is a bridge bug, not an API bug. The resolution is working correctly - all formats resolve to the same pubkey and return the same (correct) empty result.
+**Fix Applied**: Updated `state.go` to check if a commit is empty before updating refs. If the new commit is empty and the current ref points to a commit with files, the bridge now skips the update to prevent overwriting valid commits.
 
-**Fix Needed**: The bridge should preserve valid commits when processing state events, or the state event should not point to empty commits.
+**Status**: ✅ **FIXED** - The bridge now prevents empty commits from overwriting valid commits. The `nostr-hypermedia` repo has been manually restored to point to the original GitHub commit with 22 files.
 
 ## Testing
 
