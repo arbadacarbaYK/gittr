@@ -154,9 +154,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const escapedOwnerPubkey = ownerPubkey.replace(/'/g, "''");
     const escapedRepoName = repoName.replace(/'/g, "''");
     const query = `SELECT OwnerPubKey, RepositoryName, UpdatedAt FROM Repository WHERE OwnerPubKey = '${escapedOwnerPubkey}' AND RepositoryName = '${escapedRepoName}'`;
-    // CRITICAL: Use single quotes around the SQL query to prevent shell interpretation
-    // The query itself uses single quotes for string values, so we need to escape them properly
-    const command = `sqlite3 "${dbPath}" '${query.replace(/'/g, "'\"'\"'")}'`;
+    // CRITICAL: Use echo to pipe query to sqlite3 to avoid shell quote interpretation issues
+    // This ensures the SQL query is passed exactly as-is to sqlite3
+    // Escape the query for shell: replace single quotes with '\'' (end quote, escaped quote, start quote)
+    const escapedQuery = query.replace(/'/g, "'\\''");
+    const command = `echo '${escapedQuery}' | sqlite3 "${dbPath}"`;
     
     try {
       const { stdout } = await execAsync(command, { timeout: 5000 });
