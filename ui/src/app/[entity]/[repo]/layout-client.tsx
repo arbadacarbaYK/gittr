@@ -109,7 +109,15 @@ export default function RepoLayoutClient({
 }: {
   children: React.ReactNode;
 }) {
-  const resolvedParams = useParams<{ entity?: string; repo?: string; subpage?: string }>();
+  const routeParams = useParams<{ entity?: string; repo?: string; subpage?: string }>();
+  const resolvedParams = useMemo(
+    () => ({
+      entity: routeParams?.entity ?? "",
+      repo: routeParams?.repo ?? "",
+      subpage: routeParams?.subpage,
+    }),
+    [routeParams?.entity, routeParams?.repo, routeParams?.subpage]
+  );
   const pathname = usePathname() || "";
   const searchParams = useSearchParams();
   // Use consistent default width on server and initial client render to prevent hydration mismatch
