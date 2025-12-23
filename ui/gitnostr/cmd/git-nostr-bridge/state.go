@@ -130,6 +130,49 @@ func handleRepositoryStateEvent(event nostr.Event, db *sql.DB, cfg bridge.Config
 			}
 		}
 
+		// CRITICAL: Check if the commit is empty (has no files)
+		// If the commit is empty and the current ref points to a commit with files, don't overwrite it
+		// This prevents state events from overwriting valid commits (e.g., from GitHub clones) with empty commits
+		lsTreeCmd := exec.Command("git", "--git-dir", repoPath, "ls-tree", "-r", "--name-only", ref.commit)
+		lsTreeOutput, lsTreeErr := lsTreeCmd.Output()
+		isEmptyCommit := false
+		if lsTreeErr == nil {
+			files := strings.TrimSpace(string(lsTreeOutput))
+			if files == "" {
+				isEmptyCommit = true
+				commitDisplay := ref.commit
+				if len(ref.commit) > 8 {
+					commitDisplay = ref.commit[:8]
+				}
+				log.Printf("⚠️ [Bridge] Commit %s is empty (no files), checking if current ref has files\n", commitDisplay)
+				
+				// Check if current ref exists and has files
+				currentRefCmd := exec.Command("git", "--git-dir", repoPath, "rev-parse", ref.ref)
+				currentRefOutput, currentRefErr := currentRefCmd.Output()
+				if currentRefErr == nil {
+					currentCommit := strings.TrimSpace(string(currentRefOutput))
+					if currentCommit != "" && currentCommit != ref.commit {
+						// Check if current commit has files
+						currentLsTreeCmd := exec.Command("git", "--git-dir", repoPath, "ls-tree", "-r", "--name-only", currentCommit)
+						currentLsTreeOutput, currentLsTreeErr := currentLsTreeCmd.Output()
+						if currentLsTreeErr == nil {
+							currentFiles := strings.TrimSpace(string(currentLsTreeOutput))
+							if currentFiles != "" {
+								// Current ref has files, but new commit is empty - don't overwrite
+								currentCommitDisplay := currentCommit
+								if len(currentCommit) > 8 {
+									currentCommitDisplay = currentCommit[:8]
+								}
+								log.Printf("🛡️ [Bridge] Skipping update: new commit %s is empty, but current ref %s points to commit %s with files\n", commitDisplay, ref.ref, currentCommitDisplay)
+								log.Printf("💡 [Bridge] This prevents overwriting valid commits (e.g., from GitHub clones) with empty commits from state events\n")
+								continue // Skip this ref update
+							}
+						}
+					}
+				}
+			}
+		}
+
 		// Update ref using git update-ref
 		// Format: git update-ref refs/heads/main commit-sha
 		cmd := exec.Command("git", "--git-dir", repoPath, "update-ref", ref.ref, ref.commit)
