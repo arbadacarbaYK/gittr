@@ -49,11 +49,25 @@ If you're using `gittr.space`:
 Once your SSH key is set up, you can clone repositories using SSH:
 
 ```bash
-# Format: git clone git@<bridge-host>:<owner-pubkey>/<repo-name>.git
+# Format: git clone git@<bridge-host>:<owner-identifier>/<repo-name>.git
+# Owner identifier can be: npub, NIP-05, or hex pubkey
+
+# Using npub (recommended, per NIP-34 specification)
 git clone git@git.gittr.space:npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/repo-name.git
+
+# Using NIP-05 (human-readable)
+git clone git@git.gittr.space:geek@primal.net/repo-name.git
+
+# Using hex pubkey (64-char)
+git clone git@git.gittr.space:daa41bedb68591363bf4407f687cb9789cc543ed024bb77c22d2c84d88f54153/repo-name.git
 ```
 
-**Note**: The bridge supports both `npub` format and hex pubkey format in clone URLs. Per NIP-34 specification, `npub` format is preferred.
+**Note**: The bridge supports three formats for owner identifier:
+- `npub` format (recommended, per NIP-34 specification)
+- `NIP-05` format (e.g., `user@domain.com`) - human-readable
+- `hex pubkey` format (64-char) - direct pubkey
+
+All three formats resolve to the same repository.
 
 ## Workflows
 
