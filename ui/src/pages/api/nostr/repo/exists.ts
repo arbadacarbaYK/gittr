@@ -157,6 +157,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // CRITICAL: Use echo to pipe query to sqlite3 to avoid shell quote interpretation issues
     // This ensures the SQL query is passed exactly as-is to sqlite3
     // Escape the query for shell: replace single quotes with '\'' (end quote, escaped quote, start quote)
+    // In template literal, we need to escape backslashes: '\\'' becomes '\'' in the shell
     const escapedQuery = query.replace(/'/g, "'\\''");
     const command = `echo '${escapedQuery}' | sqlite3 "${dbPath}"`;
     
