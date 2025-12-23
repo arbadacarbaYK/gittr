@@ -5561,11 +5561,12 @@ export default function RepoCodePage() {
 
   const pathParts = useMemo(() => currentPath.split("/").filter(Boolean), [currentPath]);
   // CRITICAL: Ensure files is always an array to prevent mobile hydration issues
+  // Depend on repoData itself (not just repoData?.files) to ensure re-run when repoData changes from null to object
   const safeFiles = useMemo(() => {
     if (!repoData || !repoData.files) return [];
     if (!Array.isArray(repoData.files)) return [];
     return repoData.files;
-  }, [repoData?.files]);
+  }, [repoData]);
   
   const items = useMemo(() => {
     // CRITICAL: Defensive check to prevent hook order issues when repoData changes
