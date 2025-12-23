@@ -79,7 +79,7 @@ func main() {
 		ownerPubKey = strings.ToLower(ownerPubKeyInput)
 	} else if strings.HasPrefix(ownerPubKeyInput, "npub") {
 		// Decode npub to hex
-		decoded, err := nip19.Decode(ownerPubKeyInput)
+		decoded, _, err := nip19.Decode(ownerPubKeyInput)
 		if err != nil || decoded.Type != "npub" {
 			fmt.Fprintf(os.Stderr, "fatal: invalid npub format in '%s'\n", repoParam)
 			fmt.Fprintf(os.Stderr, "hint: Repository path must be in format: <hex-pubkey>/<repo-name> or <npub>/<repo-name>\n")
@@ -88,9 +88,9 @@ func main() {
 		ownerPubKey = strings.ToLower(decoded.Data.(string))
 	} else if strings.Contains(ownerPubKeyInput, "@") {
 		// Resolve NIP-05 to hex pubkey
-		profile, err := nip05.QueryIdentifier(ownerPubKeyInput)
-		if err != nil || profile == "" {
-			fmt.Fprintf(os.Stderr, "fatal: failed to resolve NIP-05 '%s': %v\n", ownerPubKeyInput, err)
+		profile := nip05.QueryIdentifier(ownerPubKeyInput)
+		if profile == "" {
+			fmt.Fprintf(os.Stderr, "fatal: failed to resolve NIP-05 '%s'\n", ownerPubKeyInput)
 			fmt.Fprintf(os.Stderr, "hint: Repository path must be in format: <hex-pubkey>/<repo-name>, <npub>/<repo-name>, or <nip05>/<repo-name>\n")
 			os.Exit(1)
 		}
