@@ -4,8 +4,50 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { join } from "path";
 import { existsSync, readFileSync } from "fs";
+import { nip19, nip05 } from "nostr-tools";
 
 const execAsync = promisify(exec);
+
+/**
+ * Resolves an entity (npub, NIP-05, or hex pubkey) to a full 64-char hex pubkey
+ * This allows bridge API endpoints to accept NIP-05 format (e.g., geek@primal.net)
+ * for compatibility with gitworkshop.dev
+ */
+async function resolveOwnerPubkey(ownerPubkeyInput: string): Promise<{ pubkey: string; error?: string }> {
+  // If already a full hex pubkey, return it
+  if (/^[0-9a-f]{64}$/i.test(ownerPubkeyInput)) {
+    return { pubkey: ownerPubkeyInput.toLowerCase() };
+  }
+  
+  // If npub, decode it
+  if (ownerPubkeyInput.startsWith("npub")) {
+    try {
+      const decoded = nip19.decode(ownerPubkeyInput);
+      if (decoded.type === "npub" && typeof decoded.data === "string" && decoded.data.length === 64) {
+        return { pubkey: decoded.data.toLowerCase() };
+      }
+      return { pubkey: "", error: "Invalid npub format" };
+    } catch (error: any) {
+      return { pubkey: "", error: `Failed to decode npub: ${error?.message || "invalid format"}` };
+    }
+  }
+  
+  // If NIP-05 format (contains @), resolve it
+  if (ownerPubkeyInput.includes("@")) {
+    try {
+      const profile = await nip05.queryProfile(ownerPubkeyInput);
+      if (profile?.pubkey && /^[0-9a-f]{64}$/i.test(profile.pubkey)) {
+        console.log(`✅ [Bridge API] Resolved NIP-05 ${ownerPubkeyInput} to pubkey: ${profile.pubkey.slice(0, 8)}...`);
+        return { pubkey: profile.pubkey.toLowerCase() };
+      }
+      return { pubkey: "", error: `NIP-05 ${ownerPubkeyInput} did not return a valid pubkey` };
+    } catch (error: any) {
+      return { pubkey: "", error: `Failed to resolve NIP-05 ${ownerPubkeyInput}: ${error?.message || "unknown error"}` };
+    }
+  }
+  
+  return { pubkey: "", error: `Invalid ownerPubkey format: must be 64-char hex, npub, or NIP-05 (received: ${ownerPubkeyInput.length} chars)` };
+}
 
 async function resolveReposDir(): Promise<string> {
   let reposDir =
@@ -52,11 +94,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { ownerPubkey, repo: repoName } = req.query;
+  const { ownerPubkey: ownerPubkeyInput, repo: repoName } = req.query;
 
-  if (!ownerPubkey || typeof ownerPubkey !== "string" || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-    return res.status(400).json({ error: "Invalid ownerPubkey (must be 64-char hex)" });
+  if (!ownerPubkeyInput || typeof ownerPubkeyInput !== "string") {
+    return res.status(400).json({ error: "ownerPubkey is required" });
   }
+
+  // CRITICAL: Resolve ownerPubkey (supports hex, npub, or NIP-05 format)
+  // This allows gitworkshop.dev to use NIP-05 format (e.g., geek@primal.net)
+  const resolved = await resolveOwnerPubkey(ownerPubkeyInput);
+  if (resolved.error || !resolved.pubkey) {
+    return res.status(400).json({ 
+      error: resolved.error || "Failed to resolve ownerPubkey",
+    });
+  }
+  
+  const ownerPubkey = resolved.pubkey;
 
   if (!repoName || typeof repoName !== "string") {
     return res.status(400).json({ error: "Invalid repo name" });
