@@ -74,7 +74,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (profile?.pubkey && /^[0-9a-f]{64}$/i.test(profile.pubkey)) {
         // Encode to npub format
         const npub = nip19.npubEncode(profile.pubkey);
-        const redirectUrl = `https://git.gittr.space/${npub}/${repoStr}`;
+        // Ensure repo name ends with .git for git URLs
+        const repoWithGit = repoStr.endsWith('.git') ? repoStr : `${repoStr}.git`;
+        const redirectUrl = `https://git.gittr.space/${npub}/${repoWithGit}`;
         console.log(`✅ [NIP-05 Resolve] Resolved ${entityStr} to npub ${npub.slice(0, 16)}..., redirecting to: ${redirectUrl}`);
         return res.redirect(301, redirectUrl);
       }
