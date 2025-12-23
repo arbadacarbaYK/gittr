@@ -2051,9 +2051,16 @@ export default function RepoCodePage() {
         const currentBranch = String(initialRepoData?.defaultBranch || "main");
         const repoKeyWithBranch = `${repoKey}:${currentBranch}`;
         
-        // Check if already attempted or in progress
-        if (fileFetchAttemptedRef.current === repoKeyWithBranch || fileFetchInProgressRef.current) {
-          console.log("⏭️ [File Fetch] Already attempted or in progress, skipping initial clone URLs fetch:", repoKeyWithBranch);
+        // Check if already attempted AND we have files, OR if truly in progress
+        // CRITICAL: Don't skip if we've attempted but don't have files yet (need to retry)
+        const hasFiles = initialRepoData?.files && Array.isArray(initialRepoData.files) && initialRepoData.files.length > 0;
+        const hasAttempted = fileFetchAttemptedRef.current === repoKeyWithBranch;
+        const isInProgress = fileFetchInProgressRef.current;
+        
+        // Only skip if: (attempted AND has files) OR (truly in progress)
+        // This allows retry if attempted but no files yet
+        if ((hasAttempted && hasFiles) || isInProgress) {
+          console.log("⏭️ [File Fetch] Already attempted or in progress, skipping initial clone URLs fetch:", repoKeyWithBranch, { hasAttempted, hasFiles, isInProgress });
           return;
         }
         
@@ -3324,9 +3331,16 @@ export default function RepoCodePage() {
                   const currentBranch = String(currentData?.defaultBranch || "main");
                   const repoKeyWithBranch = `${repoKey}:${currentBranch}`;
                   
-                  // Check if already attempted or in progress
-                  if (fileFetchAttemptedRef.current === repoKeyWithBranch || fileFetchInProgressRef.current) {
-                    console.log("⏭️ [File Fetch] Already attempted or in progress, skipping EOSE clone URLs fetch:", repoKeyWithBranch);
+                  // Check if already attempted AND we have files, OR if truly in progress
+                  // CRITICAL: Don't skip if we've attempted but don't have files yet (need to retry)
+                  const hasFiles = currentData?.files && Array.isArray(currentData.files) && currentData.files.length > 0;
+                  const hasAttempted = fileFetchAttemptedRef.current === repoKeyWithBranch;
+                  const isInProgress = fileFetchInProgressRef.current;
+                  
+                  // Only skip if: (attempted AND has files) OR (truly in progress)
+                  // This allows retry if attempted but no files yet
+                  if ((hasAttempted && hasFiles) || isInProgress) {
+                    console.log("⏭️ [File Fetch] Already attempted or in progress, skipping EOSE clone URLs fetch:", repoKeyWithBranch, { hasAttempted, hasFiles, isInProgress });
                     // CRITICAL: Still try git-nostr-bridge as fallback even if multi-source fetch was skipped
                     console.log("⏭️ [File Fetch] Falling back to git-nostr-bridge (multi-source fetch was skipped)");
                     fetchFromGitNostrBridge();
