@@ -89,6 +89,22 @@ server {
         return 404;
     }
     
+    # CRITICAL: Intercept NIP-05 format URLs (containing @) and proxy to Next.js resolver
+    # Format: /geek@primal.net/nostr-hypermedia.git
+    # This must come BEFORE the general git location block
+    location ~ ^/([^/]+@[^/]+)/(.+)$ {
+        # Proxy to Next.js resolver endpoint on main domain
+        proxy_pass http://127.0.0.1:3000/api/git/nip05-resolve?entity=$1&repo=$2;
+        proxy_set_header Host gittr.space;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_redirect off;
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+    
     # Git HTTP backend via FCGI (git-http-backend)
     # URL format: https://git.gittr.space/{pubkey}/{repo}.git
     # This allows git clone https://git.gittr.space/{pubkey}/{repo}.git
