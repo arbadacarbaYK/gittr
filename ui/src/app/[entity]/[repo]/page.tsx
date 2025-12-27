@@ -180,18 +180,18 @@ export default function RepoCodePage() {
         })();
       } else {
         // Use sync resolution for npub/hex pubkey
-        try {
-          const repos = loadStoredRepos();
-          const match = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
-          if (match?.ownerPubkey && typeof match.ownerPubkey === "string") {
-            setRepoOwnerPubkey(match.ownerPubkey.toLowerCase());
-          } else {
-            setRepoOwnerPubkey(null);
-          }
-        } catch {
+    try {
+      const repos = loadStoredRepos();
+        const match = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, decodedRepo);
+      if (match?.ownerPubkey && typeof match.ownerPubkey === "string") {
+          setRepoOwnerPubkey(match.ownerPubkey.toLowerCase());
+        } else {
           setRepoOwnerPubkey(null);
-        }
       }
+    } catch {
+        setRepoOwnerPubkey(null);
+        }
+    }
     }
   }, [repoData?.ownerPubkey, resolvedParams.entity, decodedRepo, mounted]);
 
@@ -2148,39 +2148,39 @@ export default function RepoCodePage() {
                   console.log(`🚀 [File Fetch] First source succeeded! Updating files immediately: ${status.files.length} files from ${status.source.displayName}`);
                   // CRITICAL: Use startTransition to defer state update and prevent hook order issues during render
                   startTransition(() => {
-                    setRepoData((prev: any) => {
-                      // CRITICAL: Create repoData if it doesn't exist yet - files should show immediately
-                      const updated = prev ? ({ 
-                        ...prev, 
+                  setRepoData((prev: any) => {
+                    // CRITICAL: Create repoData if it doesn't exist yet - files should show immediately
+                    const updated = prev ? ({ 
+                      ...prev, 
+                      files: status.files,
+                      // CRITICAL: Store successful sources as array for fallback during file opening
+                      successfulSources: [{
+                        source: status.source,
+                        sourceUrl: status.source.url || status.source.displayName,
                         files: status.files,
-                        // CRITICAL: Store successful sources as array for fallback during file opening
-                        successfulSources: [{
-                          source: status.source,
-                          sourceUrl: status.source.url || status.source.displayName,
-                          files: status.files,
-                        }],
-                        // Keep first source for backward compatibility
-                        successfulSource: status.source,
-                        successfulSourceUrl: status.source.url || status.source.displayName,
-                      }) : {
-                        // Create minimal repoData if it doesn't exist yet
+                      }],
+                      // Keep first source for backward compatibility
+                      successfulSource: status.source,
+                      successfulSourceUrl: status.source.url || status.source.displayName,
+                    }) : {
+                      // Create minimal repoData if it doesn't exist yet
+                      files: status.files,
+                      successfulSources: [{
+                        source: status.source,
+                        sourceUrl: status.source.url || status.source.displayName,
                         files: status.files,
-                        successfulSources: [{
-                          source: status.source,
-                          sourceUrl: status.source.url || status.source.displayName,
-                          files: status.files,
-                        }],
-                        successfulSource: status.source,
-                        successfulSourceUrl: status.source.url || status.source.displayName,
-                      };
-                      // CRITICAL: Update ref immediately so subsequent checks see the new files
-                      if (updated && repoDataRef) {
-                        repoDataRef.current = updated;
-                        console.log(`✅ [File Fetch] repoDataRef updated with ${updated.files?.length || 0} files - files should now be visible in UI`);
-                      }
-                      // CRITICAL: Force a re-render by updating state - ensure files are visible immediately
-                      // The useMemo for items depends on repoData, so updating repoData should trigger re-render
-                      console.log(`🔄 [File Fetch] Triggering state update with ${updated.files?.length || 0} files`);
+                      }],
+                      successfulSource: status.source,
+                      successfulSourceUrl: status.source.url || status.source.displayName,
+                    };
+                    // CRITICAL: Update ref immediately so subsequent checks see the new files
+                    if (updated && repoDataRef) {
+                      repoDataRef.current = updated;
+                      console.log(`✅ [File Fetch] repoDataRef updated with ${updated.files?.length || 0} files - files should now be visible in UI`);
+                    }
+                    // CRITICAL: Force a re-render by updating state - ensure files are visible immediately
+                    // The useMemo for items depends on repoData, so updating repoData should trigger re-render
+                    console.log(`🔄 [File Fetch] Triggering state update with ${updated.files?.length || 0} files`);
                       // CRITICAL: Ensure updated object has all required fields to prevent hook order issues
                       // Add default values to prevent undefined access during re-render
                       const safeUpdated = {
@@ -2321,7 +2321,7 @@ export default function RepoCodePage() {
               if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
                 console.error(`❌ [File Fetch] Quota exceeded when updating repo list`);
               } else {
-                console.error("❌ [File Fetch] Failed to update localStorage:", e);
+              console.error("❌ [File Fetch] Failed to update localStorage:", e);
               }
             }
             
@@ -3625,7 +3625,7 @@ export default function RepoCodePage() {
                         if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
                           console.error(`❌ [File Fetch] Quota exceeded when updating repo list`);
                         } else {
-                          console.error("❌ [File Fetch] Failed to update localStorage:", e);
+                        console.error("❌ [File Fetch] Failed to update localStorage:", e);
                         }
                       }
                       
@@ -4545,7 +4545,7 @@ export default function RepoCodePage() {
                             alert(`⚠️ localStorage is full. Please clear browser data or remove some repos manually.`);
                           }
                         } else {
-                          console.error("❌ [File Fetch] Failed to update localStorage:", e);
+                        console.error("❌ [File Fetch] Failed to update localStorage:", e);
                         }
                       }
                       
@@ -4818,7 +4818,7 @@ export default function RepoCodePage() {
                                     if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
                                       console.error(`❌ [File Fetch] Quota exceeded when updating repo list`);
                                     } else {
-                                      console.error("❌ [File Fetch] Failed to update localStorage:", e);
+                                    console.error("❌ [File Fetch] Failed to update localStorage:", e);
                                     }
                                   }
                                   
@@ -5036,7 +5036,7 @@ export default function RepoCodePage() {
                               if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
                                 console.error(`❌ [File Fetch] Quota exceeded when updating repo list`);
                               } else {
-                                console.error("❌ [File Fetch] Failed to update localStorage:", e);
+                              console.error("❌ [File Fetch] Failed to update localStorage:", e);
                               }
                             }
                             
@@ -5227,7 +5227,7 @@ export default function RepoCodePage() {
                               if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
                                 console.error(`❌ [File Fetch] Quota exceeded when updating repo list`);
                               } else {
-                                console.error("❌ [File Fetch] Failed to update localStorage:", e);
+                              console.error("❌ [File Fetch] Failed to update localStorage:", e);
                               }
                             }
                             
@@ -6038,7 +6038,7 @@ export default function RepoCodePage() {
           if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
             console.error(`❌ [File Fetch] Quota exceeded when updating repo list`);
           } else {
-            console.error("❌ [File Fetch] Failed to update localStorage:", e);
+          console.error("❌ [File Fetch] Failed to update localStorage:", e);
           }
         }
       }
