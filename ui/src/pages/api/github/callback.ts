@@ -180,25 +180,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Post message to parent window with auth result
     // Parent window will verify state against sessionStorage
     if (window.opener) {
-      window.opener.postMessage({
-        type: 'GITHUB_OAUTH_CALLBACK',
-        success: true,
-        state: ${JSON.stringify(state)},
-        accessToken: ${JSON.stringify(accessToken)},
-        githubUsername: ${JSON.stringify(userData.login)},
-        githubUrl: ${JSON.stringify(`https://github.com/${userData.login}`)},
-        githubId: ${JSON.stringify(userData.id)},
-        avatarUrl: ${JSON.stringify(userData.avatar_url)},
-        state: ${JSON.stringify(stateStr)}
-      }, window.location.origin);
-      
-      // Close popup after a short delay
-      setTimeout(() => {
-        window.close();
-      }, 500);
+      try {
+        const message = {
+          type: 'GITHUB_OAUTH_CALLBACK',
+          success: true,
+          state: ${JSON.stringify(stateStr)},
+          accessToken: ${JSON.stringify(accessToken)},
+          githubUsername: ${JSON.stringify(userData.login)},
+          githubUrl: ${JSON.stringify(`https://github.com/${userData.login}`)},
+          githubId: ${JSON.stringify(userData.id)},
+          avatarUrl: ${JSON.stringify(userData.avatar_url)}
+        };
+        
+        console.log('[OAuth Callback] Posting message to parent:', { type: message.type, hasToken: !!message.accessToken, username: message.githubUsername });
+        window.opener.postMessage(message, window.location.origin);
+        
+        // Close popup after ensuring message is sent
+        setTimeout(() => {
+          console.log('[OAuth Callback] Closing popup');
+          window.close();
+        }, 1000);
+      } catch (error) {
+        console.error('[OAuth Callback] Error posting message:', error);
+        // Fallback: redirect if postMessage fails
+        window.location.href = '/settings/ssh-keys?success=true';
+      }
     } else {
       // If no opener, redirect to SSH keys page
-      window.location.href = '/settings/ssh-keys';
+      window.location.href = '/settings/ssh-keys?success=true';
     }
   </script>
   <p>Completing authentication...</p>
