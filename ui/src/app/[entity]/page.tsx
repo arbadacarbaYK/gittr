@@ -69,8 +69,10 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
       console.log(`✅ [Profile] Entity is full pubkey: ${resolvedParams.entity.slice(0, 8)}`);
       return resolvedParams.entity;
     }
-    // Return entity as-is initially, will resolve from localStorage in useEffect (existing one below)
-    return resolvedParams.entity;
+    // CRITICAL: Don't return 8-char prefix as fullPubkeyForMeta - return empty string
+    // This prevents getUserMetadata from being called with invalid shortened pubkeys
+    // The useEffect will resolve the full pubkey from localStorage
+    return "";
   });
   
   // Check if current user is following this profile
@@ -81,6 +83,7 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
   // CRITICAL: Only fetch metadata if we have a valid 64-char pubkey
   // Don't wait for isPubkey - if we have a full pubkey, fetch metadata immediately
   // CRITICAL: When viewing own profile, also include currentUserPubkey to ensure metadata is loaded
+  // NOTE: fullPubkeyForMeta is now initialized to empty string (not 8-char prefix) if not a full pubkey, so validation checks work correctly
   const pubkeysForMetadata = useMemo(() => {
     const pubkeys = new Set<string>();
     
@@ -107,31 +110,27 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
       }
     }
     
-    // Priority 2: Use fullPubkeyForMeta if it's a full 64-char pubkey
+    // Priority 2: Use fullPubkeyForMeta if it's a full 64-char pubkey (now initialized to empty string if not valid)
     if (fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)) {
       const normalized = fullPubkeyForMeta.toLowerCase();
-      console.log(`📡 [Profile] Fetching metadata for fullPubkeyForMeta: ${normalized.slice(0, 8)} (normalized to lowercase)`);
+      console.log(`📡 [Profile] Fetching metadata for fullPubkeyForMeta: ${normalized.slice(0, 8)}... (full length: ${normalized.length}, normalized to lowercase)`);
       pubkeys.add(normalized);
     }
     
     // Priority 3: If entity is already a full pubkey, use it
     if (resolvedParams.entity && /^[0-9a-f]{64}$/i.test(resolvedParams.entity)) {
       const normalized = resolvedParams.entity.toLowerCase();
-      console.log(`📡 [Profile] Fetching metadata for entity (full pubkey): ${normalized.slice(0, 8)} (normalized to lowercase)`);
+      console.log(`📡 [Profile] Fetching metadata for entity (full pubkey): ${normalized.slice(0, 8)}... (full length: ${normalized.length}, normalized to lowercase)`);
       pubkeys.add(normalized);
     }
     
-    // Priority 4: Use fullPubkeyForMeta if it was resolved from localStorage (via useEffect)
-    // Don't access localStorage here to prevent hydration errors - useEffect will set fullPubkeyForMeta
-    
     // CRITICAL: When viewing own profile, ensure currentUserPubkey is included for metadata fetch
     // This ensures banner and other metadata are loaded even if URL format differs
-    // ALWAYS add currentUserPubkey if we have a resolved pubkey and they match (or if we don't have a resolved pubkey yet, add it anyway as it might be our own profile)
     if (currentUserPubkey && /^[0-9a-f]{64}$/i.test(currentUserPubkey)) {
       const normalizedCurrentPubkey = currentUserPubkey.toLowerCase();
       
       // Strategy 1: Check if we're viewing own profile by comparing pubkeys
-      const resolvedPubkey = Array.from(pubkeys)[0] || fullPubkeyForMeta;
+      const resolvedPubkey = Array.from(pubkeys)[0] || (fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta) ? fullPubkeyForMeta : null);
       if (resolvedPubkey && /^[0-9a-f]{64}$/i.test(resolvedPubkey)) {
         const isOwnProfile = normalizedCurrentPubkey === resolvedPubkey.toLowerCase();
         if (isOwnProfile) {
@@ -161,7 +160,7 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
     
     const pubkeysArray = Array.from(pubkeys);
     if (pubkeysArray.length === 0) {
-      console.log(`⏭️ [Profile] Skipping metadata fetch - no valid pubkey. Entity: ${resolvedParams.entity} (${resolvedParams.entity.length} chars), fullPubkeyForMeta: ${fullPubkeyForMeta} (${fullPubkeyForMeta?.length || 0} chars)`);
+      console.log(`⏭️ [Profile] Skipping metadata fetch - no valid pubkey. Entity: ${resolvedParams.entity} (${resolvedParams.entity.length} chars), fullPubkeyForMeta: ${fullPubkeyForMeta ? (fullPubkeyForMeta.length === 64 ? fullPubkeyForMeta.slice(0, 8) + '...' : fullPubkeyForMeta) : 'empty'}`);
     }
     return pubkeysArray;
   }, [fullPubkeyForMeta, resolvedParams.entity, currentUserPubkey]);
@@ -1391,8 +1390,8 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
     }
     
     // Priority 2: Try direct lookup using getUserMetadata (same as settings/profile page)
-    if (fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)) {
-      const fallbackMeta = getUserMetadata(fullPubkeyForMeta.toLowerCase(), metadataMap);
+    if (pubkeyForMetadata) {
+      const fallbackMeta = getUserMetadata(pubkeyForMetadata.toLowerCase(), metadataMap);
       if (fallbackMeta?.name && fallbackMeta.name.trim().length > 0 && fallbackMeta.name !== "Anonymous Nostrich" && 
           !fallbackMeta.name.startsWith("npub") && !/^[0-9a-f]{8,64}$/i.test(fallbackMeta.name)) {
         return fallbackMeta.name;
@@ -1416,11 +1415,11 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
   // CRITICAL: Get all metadata fields from userMeta (which uses centralized getUserMetadata function)
   // If userMeta is empty, try direct lookup as fallback (same logic as settings/profile page)
   // CRITICAL: When viewing own profile, also try currentUserPubkey as fallback to ensure metadata is found
-  const isOwnProfileCheck = currentUserPubkey && fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta) && 
-    currentUserPubkey.toLowerCase() === fullPubkeyForMeta.toLowerCase();
+  const isOwnProfileCheck = currentUserPubkey && pubkeyForMetadata && /^[0-9a-f]{64}$/i.test(pubkeyForMetadata) && 
+    currentUserPubkey.toLowerCase() === pubkeyForMetadata.toLowerCase();
   
   const picture = userMeta?.picture || 
-    (fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta) ? getUserMetadata(fullPubkeyForMeta.toLowerCase(), metadataMap)?.picture : null) ||
+    (pubkeyForMetadata ? getUserMetadata(pubkeyForMetadata.toLowerCase(), metadataMap)?.picture : null) ||
     (isOwnProfileCheck && currentUserPubkey ? getUserMetadata(currentUserPubkey.toLowerCase(), metadataMap)?.picture : null) ||
     null;
   
@@ -1428,9 +1427,9 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
   // userMeta already uses getUserMetadata which handles all lookup strategies
   // So we just need to check userMeta first, then try direct lookup as fallback
   const banner = userMeta?.banner || (() => {
-    // Fallback: Try direct lookup from metadataMap using fullPubkeyForMeta
-    if (fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)) {
-      const meta = getUserMetadata(fullPubkeyForMeta.toLowerCase(), metadataMap);
+    // Fallback: Try direct lookup from metadataMap using pubkeyForMetadata (validated 64-char pubkey)
+    if (pubkeyForMetadata) {
+      const meta = getUserMetadata(pubkeyForMetadata.toLowerCase(), metadataMap);
       if (meta?.banner) {
         console.log(`✅ [Banner] Found via direct lookup: ${meta.banner.substring(0, 50)}...`);
         return meta.banner;
@@ -1446,7 +1445,7 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
       }
     }
     
-    console.log(`⚠️ [Banner] NOT FOUND - userMeta.banner: ${userMeta?.banner || 'undefined'}, fullPubkeyForMeta: ${fullPubkeyForMeta?.slice(0, 8)}`);
+    console.log(`⚠️ [Banner] NOT FOUND - userMeta.banner: ${userMeta?.banner || 'undefined'}, pubkeyForMetadata: ${pubkeyForMetadata ? pubkeyForMetadata.slice(0, 8) + '...' : 'null'}`);
     return undefined;
   })();
   // CRITICAL: Get all metadata fields with unified fallback for own and foreign profiles
@@ -1459,9 +1458,9 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
         return userMeta[field];
       }
       
-      // Fallback 1: Try fullPubkeyForMeta lookup
-      if (fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)) {
-        const meta = getUserMetadata(fullPubkeyForMeta.toLowerCase(), metadataMap);
+      // Fallback 1: Try pubkeyForMetadata lookup (validated 64-char pubkey)
+      if (pubkeyForMetadata) {
+        const meta = getUserMetadata(pubkeyForMetadata.toLowerCase(), metadataMap);
         if (meta && meta[field]) {
           return meta[field];
         }
@@ -1477,7 +1476,7 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
       
       return undefined;
     };
-  }, [userMeta, fullPubkeyForMeta, metadataMap, isOwnProfileCheck, currentUserPubkey]);
+  }, [userMeta, pubkeyForMetadata, metadataMap, isOwnProfileCheck, currentUserPubkey]);
   
   const about = getMetaField('about');
   const nip05 = getMetaField('nip05');
