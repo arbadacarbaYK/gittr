@@ -19,6 +19,7 @@ import { nip19 } from "nostr-tools";
 import { ZapButton } from "@/components/ui/zap-button";
 import { loadStoredRepos } from "@/lib/repos/storage";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { BoltSnow } from "@/components/ui/bolt-snow";
 
 // Parse NIP-34 repository announcement format
 function parseNIP34Repository(event: any): any {
@@ -1055,7 +1056,8 @@ export default function HomePage() {
   };
 
   return (
-    <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
+    <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6 relative">
+      <BoltSnow />
       <header className="mb-6">
         <h1 className="text-2xl font-bold">Home</h1>
         <p className="text-gray-400 mt-1" suppressHydrationWarning>
