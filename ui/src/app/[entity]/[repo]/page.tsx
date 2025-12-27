@@ -4066,14 +4066,163 @@ export default function RepoCodePage() {
                   }
                 } else {
                   console.warn("⚠️ [File Fetch] API returned empty files array or no files:", data);
-                  // If git-nostr-bridge says repo doesn't exist, it might need to be cloned first
-                  // For foreign repos, git-nostr-bridge clones them when it sees the repo event
-                  // So we should check if the repo event exists and trigger a clone
-                  if (response.status === 404 || response.status === 500) {
-                    const errorType = response.status === 404 ? "not found" : "empty or corrupted";
-                    console.log(`ℹ️ [File Fetch] Repository ${errorType} in git-nostr-bridge (${response.status}). It may need to be cloned first.`);
-                    console.log("ℹ️ [File Fetch] git-nostr-bridge clones repos automatically when it sees repository events on Nostr.");
-                    console.log("ℹ️ [File Fetch] If this is a foreign repo, ensure the repository event has been published to Nostr.");
+                  // CRITICAL: When bridge returns 200 with empty files, try ALL clone URLs (multi-source fetch)
+                  // This handles the case where the bridge has the repo but it's empty (no commits, wrong branch, etc.)
+                  // Per NIP-34 architecture: Files are stored on git servers, not in Nostr events
+                  // So we should fetch from ALL clone URLs (GitHub, GitLab, Codeberg, GRASP servers) as fallback
+                  console.log("ℹ️ [File Fetch] Bridge returned empty files. Trying multi-source fetch from all clone URLs...");
+                  
+                  // Use the same multi-source fetch logic as the 404/500 case below
+                  // This will try GitHub, GitLab, Codeberg, and all GRASP servers in parallel
+                  const currentData = repoDataRef.current;
+                  
+                  // NIP-34: Try fetching from all clone URLs (multi-source fetching)
+                  // Get clone URLs from event, localStorage, or repoData
+                  const cloneUrls: string[] = [];
+                  
+                  // PRIORITY 1: Clone URLs from event (most reliable, from NIP-34)
+                  if (eventRepoData?.clone && Array.isArray(eventRepoData.clone) && eventRepoData.clone.length > 0) {
+                    console.log(`📋 [File Fetch] NIP-34: Found ${eventRepoData.clone.length} clone URLs in event`);
+                    eventRepoData.clone.forEach((url: string) => {
+                      if (url && !url.includes('localhost') && !url.includes('127.0.0.1') && !cloneUrls.includes(url)) {
+                        cloneUrls.push(url);
+                      }
+                    });
+                  }
+                  
+                  // PRIORITY 2: Clone URLs from repoData
+                  if (currentData?.clone && Array.isArray(currentData.clone) && currentData.clone.length > 0) {
+                    console.log(`📋 [File Fetch] NIP-34: Found ${currentData.clone.length} clone URLs in repoData`);
+                    currentData.clone.forEach((url: string) => {
+                      if (url && !url.includes('localhost') && !url.includes('127.0.0.1') && !cloneUrls.includes(url)) {
+                        cloneUrls.push(url);
+                      }
+                    });
+                  }
+                  
+                  // PRIORITY 3: Clone URLs from localStorage
+                  try {
+                    const repos = loadStoredRepos();
+                    const matchingRepo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
+                    if (matchingRepo?.clone && Array.isArray(matchingRepo.clone) && matchingRepo.clone.length > 0) {
+                      console.log(`📋 [File Fetch] NIP-34: Found ${matchingRepo.clone.length} clone URLs in localStorage`);
+                      matchingRepo.clone.forEach((url: string) => {
+                        if (url && !url.includes('localhost') && !url.includes('127.0.0.1') && !cloneUrls.includes(url)) {
+                          cloneUrls.push(url);
+                        }
+                      });
+                    }
+                  } catch (e) {
+                    console.error("❌ [File Fetch] Error reading clone URLs from localStorage:", e);
+                  }
+                  
+                  console.log(`📋 [File Fetch] NIP-34: Total ${cloneUrls.length} unique clone URLs collected for multi-source fetch`);
+                  
+                  // If we have clone URLs, try multi-source fetching (NIP-34)
+                  if (cloneUrls.length > 0) {
+                    console.log(`🔍 [File Fetch] NIP-34: Found ${cloneUrls.length} clone URLs, attempting multi-source fetch (bridge returned empty files)`);
+                    const branch = String(currentData?.defaultBranch || selectedBranch || "main");
+                    
+                    // Update fetch statuses
+                    const initialStatuses = cloneUrls.map(url => {
+                      const source = parseGitSource(url);
+                      return {
+                        source: source.displayName,
+                        status: 'pending' as const,
+                      };
+                    });
+                    setFetchStatuses(prev => {
+                      const merged = [...prev];
+                      initialStatuses.forEach((newStatus: { source: string; status: 'pending' | 'fetching' | 'success' | 'failed'; error?: string }) => {
+                        const existingIndex = merged.findIndex(s => s.source === newStatus.source);
+                        if (existingIndex >= 0) {
+                          if (merged[existingIndex] && (merged[existingIndex].status === 'pending' || merged[existingIndex].status === 'failed')) {
+                            merged[existingIndex] = newStatus;
+                          }
+                        } else {
+                          merged.push(newStatus);
+                        }
+                      });
+                      return merged;
+                    });
+                    
+                    // Fetch from all sources in parallel
+                    const eventPublisherPubkey = resolvedOwnerPubkey && /^[0-9a-f]{64}$/i.test(resolvedOwnerPubkey) 
+                      ? resolvedOwnerPubkey 
+                      : (ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? ownerPubkeyForLink : undefined);
+                    
+                    fetchFilesFromMultipleSources(
+                      cloneUrls,
+                      branch,
+                      (status: FetchStatus) => {
+                        setFetchStatuses(prev => {
+                          const updated = [...prev];
+                          const index = updated.findIndex(s => s.source === status.source.displayName);
+                          if (index >= 0) {
+                            const existingStatus = updated[index];
+                            if (existingStatus && existingStatus.status === 'success' && status.status !== 'success') {
+                              return updated; // Don't overwrite success
+                            }
+                            updated[index] = {
+                              source: status.source.displayName,
+                              status: status.status,
+                              error: status.error,
+                            };
+                          } else {
+                            updated.push({
+                              source: status.source.displayName,
+                              status: status.status,
+                              error: status.error,
+                            });
+                          }
+                          return updated;
+                        });
+                      },
+                      eventPublisherPubkey
+                    ).then(({ files, statuses }) => {
+                      if (files && files.length > 0) {
+                        console.log(`✅ [File Fetch] NIP-34: Successfully fetched ${files.length} files from clone URLs (bridge had empty files)`);
+                        setRepoData((prev: any) => prev ? ({ ...prev, files }) : prev);
+                        
+                        // Save files separately
+                        try {
+                          saveRepoFiles(resolvedParams.entity, resolvedParams.repo, files);
+                          console.log(`✅ [File Fetch] Saved ${files.length} files to separate storage key`);
+                        } catch (e: any) {
+                          if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
+                            console.error(`❌ [File Fetch] Quota exceeded when saving files separately`);
+                          } else {
+                            console.error(`❌ [File Fetch] Failed to save files separately:`, e);
+                          }
+                        }
+                        
+                        // Update localStorage
+                        try {
+                          const repos = loadStoredRepos();
+                          const updated = repos.map((r) => {
+                            const matchesOwner = r.ownerPubkey && ownerPubkey && 
+                              (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
+                            const matchesRepo = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
+                            const matchesEntity = r.entity === resolvedParams.entity || 
+                              (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
+                            
+                            if ((matchesOwner || matchesEntity) && matchesRepo) {
+                              return { ...r, fileCount: files.length };
+                            }
+                            return r;
+                          });
+                          localStorage.setItem("gittr_repos", JSON.stringify(updated));
+                        } catch (e) {
+                          console.error("❌ [File Fetch] Failed to update localStorage:", e);
+                        }
+                      } else {
+                        console.warn(`⚠️ [File Fetch] Multi-source fetch completed but no files found from any source`);
+                      }
+                    }).catch((error) => {
+                      console.error("❌ [File Fetch] Error in multi-source fetch:", error);
+                    });
+                  } else {
+                    console.warn("⚠️ [File Fetch] No clone URLs found for multi-source fetch. Bridge has empty repo and no source URLs available.");
                   }
                 }
               } else {
