@@ -51,31 +51,58 @@ export function BoltSnow() {
 
     initBolts();
 
-    // Draw a simple lightning bolt shape
+    // Draw a proper lightning bolt shape (not symmetric - jagged and irregular)
     const drawBolt = (x: number, y: number, size: number, rotation: number, opacity: number) => {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate((rotation * Math.PI) / 180);
       ctx.globalAlpha = opacity;
 
-      // Simple zigzag bolt shape
+      // Create a proper lightning bolt - jagged, irregular, with branches
+      // Main path goes down with sharp angles, branches go out to sides
       ctx.beginPath();
-      ctx.moveTo(0, -size);
-      ctx.lineTo(-size * 0.3, -size * 0.5);
-      ctx.lineTo(size * 0.2, -size * 0.3);
-      ctx.lineTo(-size * 0.2, 0);
-      ctx.lineTo(size * 0.3, size * 0.3);
-      ctx.lineTo(-size * 0.2, size * 0.5);
-      ctx.lineTo(0, size);
+      const mainPath: [number, number][] = [
+        [0, -size],                    // Top point
+        [size * 0.15, -size * 0.7],   // Right
+        [-size * 0.1, -size * 0.5],   // Left
+        [size * 0.2, -size * 0.3],    // Right
+        [-size * 0.15, -size * 0.1],  // Left
+        [size * 0.1, size * 0.1],     // Right
+        [-size * 0.25, size * 0.3],   // Left (branch)
+        [size * 0.05, size * 0.5],    // Right
+        [-size * 0.1, size * 0.7],    // Left
+        [0, size],                     // Bottom point
+      ];
+      
+      // Draw main path
+      mainPath.forEach((point, i) => {
+        if (i === 0) {
+          ctx.moveTo(point[0], point[1]);
+        } else {
+          ctx.lineTo(point[0], point[1]);
+        }
+      });
+      
       ctx.strokeStyle = `hsl(${280 + Math.random() * 40}, 70%, 70%)`; // Purple/cyan range
       ctx.lineWidth = 1.5;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
       ctx.stroke();
+      
+      // Add a subtle glow effect
+      ctx.shadowBlur = 3;
+      ctx.shadowColor = `hsl(${280 + Math.random() * 40}, 70%, 70%)`;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      
       ctx.restore();
     };
 
     // Animation loop
     const animate = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const width = canvas.width || window.innerWidth;
+      const height = canvas.height || window.innerHeight;
+      ctx.clearRect(0, 0, width, height);
 
       boltsRef.current.forEach((bolt) => {
         // Update position
@@ -83,9 +110,9 @@ export function BoltSnow() {
         bolt.rotation += 0.5; // Slow rotation
 
         // Reset if off screen
-        if (bolt.y > canvas.height) {
+        if (bolt.y > height) {
           bolt.y = -20;
-          bolt.x = Math.random() * canvas.width;
+          bolt.x = Math.random() * width;
         }
 
         // Draw bolt
@@ -108,7 +135,7 @@ export function BoltSnow() {
   return (
     <canvas
       ref={canvasRef}
-      className="fixed inset-0 pointer-events-none z-[-1]"
+      className="fixed inset-0 pointer-events-none z-10"
       style={{ mixBlendMode: "screen" }}
     />
   );
