@@ -237,18 +237,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.log('[OAuth Callback] window.opener:', !!window.opener);
         console.log('[OAuth Callback] window.opener.closed:', window.opener?.closed);
         
-        if (window.opener && !window.opener.closed) {
-          const message = {
-            type: 'GITHUB_OAUTH_CALLBACK',
-            success: true,
-            state: ${JSON.stringify(stateStr)},
-            accessToken: ${JSON.stringify(accessToken)},
+        // CRITICAL: Always store token in localStorage first (fallback if parent window is unavailable)
+        // Since popup and parent share the same origin, localStorage is accessible to both
+        try {
+          localStorage.setItem("gittr_github_token", ${JSON.stringify(accessToken)});
+          localStorage.setItem("gittr_github_profile", JSON.stringify({
             githubUsername: ${JSON.stringify(userData.login)},
             githubUrl: ${JSON.stringify(`https://github.com/${userData.login}`)},
             githubId: ${JSON.stringify(userData.id)},
             avatarUrl: ${JSON.stringify(userData.avatar_url)}
-          };
-          
+          }));
+          console.log('[OAuth Callback] Token stored in localStorage as fallback');
+        } catch (storageError) {
+          console.error('[OAuth Callback] Failed to store token in localStorage:', storageError);
+        }
+        
+        const message = {
+          type: 'GITHUB_OAUTH_CALLBACK',
+          success: true,
+          state: ${JSON.stringify(stateStr)},
+          accessToken: ${JSON.stringify(accessToken)},
+          githubUsername: ${JSON.stringify(userData.login)},
+          githubUrl: ${JSON.stringify(`https://github.com/${userData.login}`)},
+          githubId: ${JSON.stringify(userData.id)},
+          avatarUrl: ${JSON.stringify(userData.avatar_url)}
+        };
+        
+        if (window.opener && !window.opener.closed) {
           try {
             console.log('[OAuth Callback] Posting message to origin:', window.location.origin);
             console.log('[OAuth Callback] Message type:', message.type);
@@ -280,22 +295,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }, 3000); // Increased to 3 seconds
           } catch (e) {
             console.error('[OAuth Callback] Error posting message:', e);
+            // Token is already stored in localStorage, so redirect with success
             const container = document.querySelector('.container');
             if (container) {
-              container.innerHTML = '<p style="color: #f87171;">Error: ' + e.message + '</p><p style="color: #9ca3af;">Redirecting...</p>';
+              container.innerHTML = '<p style="color: #4ade80;">Authentication successful!</p><p style="color: #9ca3af;">Redirecting...</p>';
             }
             setTimeout(() => {
-              window.location.href = '/settings/ssh-keys?error=' + encodeURIComponent(e.message);
+              window.location.href = '/settings/ssh-keys?success=true&fallback=localStorage';
             }, 2000);
           }
         } else {
-          console.warn('[OAuth Callback] No opener or opener is closed. Redirecting.');
+          console.warn('[OAuth Callback] No opener or opener is closed. Token stored in localStorage, redirecting.');
+          // Token is already stored in localStorage, so redirect with success
           const container = document.querySelector('.container');
           if (container) {
-            container.innerHTML = '<p>No parent window found.</p><p style="color: #9ca3af;">Redirecting...</p>';
+            container.innerHTML = '<p style="color: #4ade80;">Authentication successful!</p><p style="color: #9ca3af;">Redirecting...</p>';
           }
           setTimeout(() => {
-            window.location.href = '/settings/ssh-keys?success=true';
+            window.location.href = '/settings/ssh-keys?success=true&fallback=localStorage';
           }, 2000);
         }
       }, 500);

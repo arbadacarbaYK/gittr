@@ -91,6 +91,15 @@ export default function SSHKeysPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     
+    // Check for success parameter from OAuth callback (fallback when parent window was unavailable)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("success") === "true" && urlParams.get("fallback") === "localStorage") {
+      // OAuth completed but parent window was unavailable - token should be in localStorage
+      console.log('[SSH Keys] OAuth completed via localStorage fallback');
+      // Remove the query params to clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    
     const githubToken = localStorage.getItem("gittr_github_token");
     const githubProfile = localStorage.getItem("gittr_github_profile");
     
@@ -99,6 +108,11 @@ export default function SSHKeysPage() {
       try {
         const profile = JSON.parse(githubProfile);
         setGithubUsername(profile.githubUsername || null);
+        // Show success message if we just completed OAuth via fallback
+        if (urlParams.get("success") === "true" && urlParams.get("fallback") === "localStorage") {
+          setStatus("GitHub connected successfully!");
+          setTimeout(() => setStatus(""), 3000);
+        }
       } catch {
         // Try to extract username from URL
         try {
