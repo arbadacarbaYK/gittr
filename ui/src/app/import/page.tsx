@@ -834,10 +834,15 @@ export default function ImportPage() {
         try {
           // Import the repository via our API
           console.log(`📥 [Import] Fetching ${fullName} from ${repo.html_url}`);
+          // Include GitHub token if available (for private repos)
+          const githubToken = localStorage.getItem("gittr_github_token");
           const importResponse = await fetch("/api/import", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sourceUrl: repo.html_url }),
+            body: JSON.stringify({ 
+              sourceUrl: repo.html_url,
+              ...(githubToken ? { githubToken } : {})
+            }),
           });
 
           if (!importResponse.ok) {

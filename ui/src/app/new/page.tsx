@@ -131,7 +131,16 @@ function NewRepoPageContent() {
       
       if (isGitHub || isGitLab || isCodeberg) {
         // Use existing import API for GitHub/GitLab/Codeberg
-        r = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceUrl: normalizedUrl }) });
+        // Include GitHub token if available (for private repos)
+        const githubToken = typeof window !== "undefined" ? localStorage.getItem("gittr_github_token") : null;
+        r = await fetch("/api/import", { 
+          method: "POST", 
+          headers: { "Content-Type": "application/json" }, 
+          body: JSON.stringify({ 
+            sourceUrl: normalizedUrl,
+            ...(githubToken ? { githubToken } : {})
+          })
+        });
         d = await r.json();
       } else {
         // Custom git server - use new import endpoint

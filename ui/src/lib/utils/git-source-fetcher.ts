@@ -254,6 +254,17 @@ async function fetchFromGitHub(
         } catch {
           // Not JSON
         }
+        
+        // SECURITY: If 404 or 403, this could be a private repo
+        // We should NOT use a platform token with 'repo' scope as it can access ANY user's private repos
+        // Instead, gracefully fail and let the bridge be the source of truth
+        if (repoInfoResponse.status === 404 || repoInfoResponse.status === 403) {
+          console.warn(`⚠️ [Git Source] Repository ${owner}/${repo} is private or not found. Skipping GitHub fallback for security reasons.`);
+          console.warn(`⚠️ [Git Source] Private repos should be accessed via the bridge (files should be pushed during import).`);
+          console.warn(`⚠️ [Git Source] If bridge is empty, check bridge logs or re-push the repo to Nostr.`);
+          return null; // Gracefully fail - don't try to access private repos with platform token
+        }
+        
         console.error(`❌ [Git Source] GitHub repo info failed (${repoInfoResponse.status}):`, {
           owner,
           repo,
@@ -261,15 +272,6 @@ async function fetchFromGitHub(
           error: errorData.message || errorText.substring(0, 200),
           fullError: errorData
         });
-        
-        // If 404, the repo doesn't exist or path is wrong
-        if (repoInfoResponse.status === 404) {
-          console.error(`❌ [Git Source] Repository ${owner}/${repo} not found on GitHub. Check if repo exists, is public, or if owner/repo name is correct.`);
-        }
-        // If 403, might be private or rate limited
-        if (repoInfoResponse.status === 403) {
-          console.error(`❌ [Git Source] Access forbidden to ${owner}/${repo}. Repo might be private or rate limited.`);
-        }
       }
     } catch (repoInfoError) {
       console.warn(`⚠️ [Git Source] Failed to get repo info, will try provided branch:`, repoInfoError);
