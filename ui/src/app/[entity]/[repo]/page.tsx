@@ -1744,43 +1744,24 @@ export default function RepoCodePage() {
     // Check if repo has clone URLs - if so, always try multi-source fetch (even if attempted before)
     const hasCloneUrls = currentRepoData?.clone && Array.isArray(currentRepoData.clone) && currentRepoData.clone.length > 0;
     
-    // Skip if already attempted for this branch (prevents infinite loops)
-    // But allow refetch if branch changed OR if repo has clone URLs (always try multi-source)
-    if (hasAttempted && !fileFetchInProgressRef.current && !hasCloneUrls) {
-      console.log("⏭️ [File Fetch] Already attempted for this repo+branch, skipping:", repoKeyWithBranch);
-      return;
-    }
-    
-    // For repos with clone URLs, allow one retry per page load (but not infinite loops)
-    // Use a separate flag to track if we've already done the retry
-    const retryKey = `retry_${repoKeyWithBranch}`;
-    const hasRetried = sessionStorage.getItem(retryKey) === "true";
-    
-    if (hasCloneUrls && hasAttempted && !hasRetried) {
-      console.log("🔄 [File Fetch] Repo has clone URLs, will retry multi-source fetch once");
-      // Mark as retried to prevent infinite loops
-      // CRITICAL: Handle quota errors gracefully - sessionStorage can also hit quota limits
-      try {
-        sessionStorage.setItem(retryKey, "true");
-      } catch (e: any) {
-        if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
-          console.warn(`⚠️ [File Fetch] sessionStorage quota exceeded for retry key - continuing without retry flag`);
-          // Continue without setting retry flag - worst case we might retry unnecessarily
-        } else {
-          throw e;
-        }
-      }
-      // Reset the attempted flag to allow one retry
-      fileFetchAttemptedRef.current = "";
-    } else if (hasCloneUrls && hasAttempted && hasRetried) {
-      // Already retried once - don't retry again (prevents infinite loops)
-      console.log("⏭️ [File Fetch] Already retried once for this repo, skipping to prevent loop");
-      return;
-    }
-    
     // Check if repo already has files (only if repoData exists)
     // NOTE: For branch switching, we want to refetch even if files exist (different branch = different files)
     const hasFiles = currentRepoData?.files && Array.isArray(currentRepoData.files) && currentRepoData.files.length > 0;
+    
+    // Skip if already attempted for this branch AND we have files (prevents infinite loops)
+    // BUT: If cloneUrls exist and we don't have files, we MUST try to fetch (don't skip!)
+    // This is critical - cloneUrls are the source of truth for foreign repos
+    if (hasAttempted && hasFiles && !fileFetchInProgressRef.current) {
+      console.log("⏭️ [File Fetch] Already attempted for this repo+branch and files exist, skipping:", repoKeyWithBranch);
+      return;
+    }
+    
+    // CRITICAL: If we have cloneUrls but no files, clear attempted flag to allow fetch
+    // cloneUrls mean files should be fetchable - if previous attempt failed, we need to retry
+    if (hasCloneUrls && hasAttempted && !hasFiles) {
+      console.log("🔄 [File Fetch] Repo has clone URLs but no files - clearing attempted flag to allow fetch:", repoKeyWithBranch);
+      fileFetchAttemptedRef.current = "";
+    }
     const hasSourceUrl = !!currentRepoData?.sourceUrl;
     
     // This prevents clicking a file from triggering file list fetching
@@ -1889,7 +1870,8 @@ export default function RepoCodePage() {
       // Use ownerPubkeyForFetch for the rest of the function
       const ownerPubkey: string = ownerPubkeyForFetch;
       
-      fileFetchInProgressRef.current = true;
+      // CRITICAL: Don't set isInProgress here - set it only when we actually start a fetch
+      // This prevents the flag from being stuck if the initial clone URLs check skips
       
       // Check if repo has clone URLs in localStorage - if so, try multi-source fetch immediately
       (async () => {
@@ -2053,22 +2035,46 @@ export default function RepoCodePage() {
         
         // Check if already attempted AND we have files, OR if truly in progress
         // CRITICAL: Don't skip if we've attempted but don't have files yet (need to retry)
-        const hasFiles = initialRepoData?.files && Array.isArray(initialRepoData.files) && initialRepoData.files.length > 0;
+        // Also handle undefined files explicitly (undefined means not loaded yet, should retry)
+        // MOST IMPORTANT: If we have cloneUrls but no files, we MUST try to fetch (don't skip!)
+        const filesArray = initialRepoData?.files;
+        const hasFiles = filesArray !== undefined && Array.isArray(filesArray) && filesArray.length > 0;
         const hasAttempted = fileFetchAttemptedRef.current === repoKeyWithBranch;
         const isInProgress = fileFetchInProgressRef.current;
+        const hasCloneUrls = initialCloneUrls.length > 0;
         
-        // Only skip if: (attempted AND has files) OR (truly in progress)
-        // This allows retry if attempted but no files yet
-        if ((hasAttempted && hasFiles) || isInProgress) {
-          console.log("⏭️ [File Fetch] Already attempted or in progress, skipping initial clone URLs fetch:", repoKeyWithBranch, { hasAttempted, hasFiles, isInProgress });
+        // CRITICAL: If we have cloneUrls but no files, we MUST fetch (don't skip even if attempted before)
+        // Only skip if: (attempted AND has files) OR (in progress AND has files)
+        // This allows retry if attempted but no files yet (files undefined or empty array)
+        // AND especially allows fetch if cloneUrls exist (they're the source of truth for foreign repos)
+        // CRITICAL: If isInProgress is true but we have no files, we should still try (previous attempt might have failed)
+        if ((hasAttempted && hasFiles) || (isInProgress && hasFiles)) {
+          console.log("⏭️ [File Fetch] Already attempted or in progress, skipping initial clone URLs fetch:", repoKeyWithBranch, { hasAttempted, hasFiles, isInProgress, filesDefined: filesArray !== undefined, filesLength: filesArray?.length || 0, hasCloneUrls });
           return;
         }
         
+        // CRITICAL: If isInProgress is true but we have no files, clear it to allow retry
+        // This handles the case where a previous fetch attempt failed but left the flag stuck
+        if (isInProgress && !hasFiles && hasCloneUrls) {
+          console.log("🔄 [File Fetch] Clearing stuck isInProgress flag (no files but cloneUrls exist) to allow retry:", repoKeyWithBranch);
+          fileFetchInProgressRef.current = false;
+        }
+        
+        // CRITICAL: If we attempted before but have no files (failed fetch), clear the attempted flag to allow retry
+        // This is especially important when cloneUrls exist - we need to keep trying until files are loaded
+        if (hasAttempted && !hasFiles) {
+          console.log("🔄 [File Fetch] Previous attempt failed (no files), clearing attempted flag to allow retry:", repoKeyWithBranch, { hasCloneUrls, willRetry: hasCloneUrls });
+          fileFetchAttemptedRef.current = "";
+        }
+        
+        // CRITICAL: If we have cloneUrls, we MUST try to fetch (even if attempted before with no files)
+        // cloneUrls are the source of truth for foreign repos - if they exist, files should be fetchable
         if (initialCloneUrls.length > 0) {
           console.log(`🔍 [File Fetch] NIP-34: Found ${initialCloneUrls.length} clone URLs (including expanded), attempting multi-source fetch immediately`);
           const branch = String(initialRepoData?.defaultBranch || "main");
           
           // Mark as attempted BEFORE starting to prevent other triggers
+          // CRITICAL: Set isInProgress here (when we actually start fetching), not earlier
           fileFetchAttemptedRef.current = repoKeyWithBranch;
           fileFetchInProgressRef.current = true;
           
@@ -2335,7 +2341,16 @@ export default function RepoCodePage() {
               error: s.error,
             })));
             // CRITICAL: Reset in-progress flag even when no files found
+            // Also clear attempted flag if no files found (allows retry on next trigger)
             fileFetchInProgressRef.current = false;
+            // Check if files were actually loaded - if not, clear attempted flag to allow retry
+            const currentDataAfterFetch = repoDataRef.current;
+            const filesAfterFetch = currentDataAfterFetch?.files;
+            const hasFilesAfterFetch = filesAfterFetch !== undefined && Array.isArray(filesAfterFetch) && filesAfterFetch.length > 0;
+            if (!hasFilesAfterFetch) {
+              console.log("🔄 [File Fetch] No files found in immediate fetch, clearing attempted flag to allow retry");
+              fileFetchAttemptedRef.current = "";
+            }
           }
         }
       })();
@@ -3333,18 +3348,26 @@ export default function RepoCodePage() {
                   
                   // Check if already attempted AND we have files, OR if truly in progress
                   // CRITICAL: Don't skip if we've attempted but don't have files yet (need to retry)
-                  const hasFiles = currentData?.files && Array.isArray(currentData.files) && currentData.files.length > 0;
+                  // Also handle undefined files explicitly (undefined means not loaded yet, should retry)
+                  const filesArray = currentData?.files;
+                  const hasFiles = filesArray !== undefined && Array.isArray(filesArray) && filesArray.length > 0;
                   const hasAttempted = fileFetchAttemptedRef.current === repoKeyWithBranch;
                   const isInProgress = fileFetchInProgressRef.current;
                   
                   // Only skip if: (attempted AND has files) OR (truly in progress)
-                  // This allows retry if attempted but no files yet
+                  // This allows retry if attempted but no files yet (files undefined or empty array)
                   if ((hasAttempted && hasFiles) || isInProgress) {
-                    console.log("⏭️ [File Fetch] Already attempted or in progress, skipping EOSE clone URLs fetch:", repoKeyWithBranch, { hasAttempted, hasFiles, isInProgress });
+                    console.log("⏭️ [File Fetch] Already attempted or in progress, skipping EOSE clone URLs fetch:", repoKeyWithBranch, { hasAttempted, hasFiles, isInProgress, filesDefined: filesArray !== undefined, filesLength: filesArray?.length || 0 });
                     // CRITICAL: Still try git-nostr-bridge as fallback even if multi-source fetch was skipped
                     console.log("⏭️ [File Fetch] Falling back to git-nostr-bridge (multi-source fetch was skipped)");
                     fetchFromGitNostrBridge();
                     return;
+                  }
+                  
+                  // CRITICAL: If we attempted before but have no files (failed fetch), clear the attempted flag to allow retry
+                  if (hasAttempted && !hasFiles) {
+                    console.log("🔄 [File Fetch] Previous attempt failed (no files), clearing attempted flag to allow retry:", repoKeyWithBranch);
+                    fileFetchAttemptedRef.current = "";
                   }
                   
                   if (cloneUrls.length > 0) {
@@ -3882,6 +3905,8 @@ export default function RepoCodePage() {
                     status: s.status,
                     error: s.error,
                   })));
+                  // CRITICAL: Clear attempted flag if multi-source fetch failed (allows retry)
+                  fileFetchAttemptedRef.current = "";
                 }
               }
               
@@ -5058,6 +5083,14 @@ export default function RepoCodePage() {
               }
             } catch (error: any) {
               console.error("❌ [File Fetch] Error fetching files from git-nostr-bridge:", error.message, error);
+              // CRITICAL: Clear attempted flag on error to allow retry
+              const currentRepoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
+              const currentBranch = String(repoDataRef.current?.defaultBranch || "main");
+              const currentRepoKeyWithBranch = `${currentRepoKey}:${currentBranch}`;
+              if (fileFetchAttemptedRef.current === currentRepoKeyWithBranch) {
+                console.log("🔄 [File Fetch] Error occurred, clearing attempted flag to allow retry");
+                fileFetchAttemptedRef.current = "";
+              }
             } finally {
               fileFetchInProgressRef.current = false;
             }
