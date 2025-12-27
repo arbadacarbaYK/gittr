@@ -3949,10 +3949,12 @@ export default function RepoCodePage() {
               
               // Fallback to main if still no branch
               branch = branch || "main";
-              // CRITICAL: Use repo name from repoData (from Nostr event) if available, otherwise fall back to decodedRepo from URL
-              // This ensures we use the exact repo name as stored in git-nostr-bridge (from the Nostr event)
+              // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
+              // Priority: repositoryName > repo > slug > name > decodedRepo
+              // The bridge uses repositoryName from the "d" tag, not the human-readable name
               // The URL might have URL-encoded spaces or different normalization
-              const actualRepoName = currentData?.name || currentData?.repo || currentData?.slug || String(decodedRepo || "");
+              const currentDataAny = currentData as any;
+              const actualRepoName = currentDataAny?.repositoryName || currentData?.repo || currentData?.slug || currentData?.name || String(decodedRepo || "");
               const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(actualRepoName)}&branch=${encodeURIComponent(branch)}`;
               
               console.log("📁 [File Fetch] Fetching files from git-nostr-bridge (foreign repo):", { 
