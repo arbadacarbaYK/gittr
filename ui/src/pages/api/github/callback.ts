@@ -2,19 +2,20 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Handle OPTIONS request for CORS (GRASP requirement)
-  if (req.method === "OPTIONS") {
-    handleOptionsRequest(res);
-    return;
-  }
+  try {
+    // Handle OPTIONS request for CORS (GRASP requirement)
+    if (req.method === "OPTIONS") {
+      handleOptionsRequest(res);
+      return;
+    }
 
-  // Set CORS headers (GRASP requirement)
-  setCorsHeaders(res);
+    // Set CORS headers (GRASP requirement)
+    setCorsHeaders(res);
 
-  // This is called by GitHub OAuth redirect
-  // Exchange code for token server-side and post result to parent window
-  const { code, state, error } = req.query;
-  const cookieState = req.cookies.github_oauth_state;
+    // This is called by GitHub OAuth redirect
+    // Exchange code for token server-side and post result to parent window
+    const { code, state, error } = req.query;
+    const cookieState = req.cookies.github_oauth_state;
 
   // CRITICAL: State verification - check both cookie (server-side) and allow state from query (fallback)
   // The cookie might not be available in popup context, so we'll verify state in the callback HTML
@@ -331,6 +332,59 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   <script>
     (function() {
       console.error('[OAuth Callback] Error:', ${errorStr});
+      setTimeout(() => {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage({
+            type: 'GITHUB_OAUTH_CALLBACK',
+            error: ${errorStr}
+          }, window.location.origin);
+          setTimeout(() => window.close(), 1000);
+        } else {
+          window.location.href = '/settings/ssh-keys?error=' + encodeURIComponent(${errorStr});
+        }
+      }, 100);
+    })();
+  </script>
+</body>
+</html>
+    `;
+    res.setHeader("Content-Type", "text/html");
+    return res.status(200).send(html);
+  }
+  } catch (outerError: any) {
+    // Catch any errors that happen outside the inner try block (e.g., in query parsing, etc.)
+    console.error("[GitHub OAuth] Outer error handler:", outerError);
+    const errorMessage = outerError?.message || outerError?.toString() || "Internal server error";
+    const errorStr = JSON.stringify(errorMessage);
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>GitHub Authentication</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      background: #0f0f0f;
+      color: #e0e0e0;
+    }
+    .container {
+      text-align: center;
+      padding: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <p style="color: #f87171;">Internal error: ${errorMessage}</p>
+  </div>
+  <script>
+    (function() {
+      console.error('[OAuth Callback] Outer error:', ${errorStr});
       setTimeout(() => {
         if (window.opener && !window.opener.closed) {
           window.opener.postMessage({
