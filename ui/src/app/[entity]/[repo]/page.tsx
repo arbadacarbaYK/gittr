@@ -2570,12 +2570,16 @@ export default function RepoCodePage() {
                   if (event.content) {
                     try {
                       const contentData = JSON.parse(event.content);
+                      // CRITICAL: Preserve clone URLs collected from tags before merging contentData
+                      // contentData might not have clone property, which would overwrite eventRepoData.clone
+                      const existingCloneUrls = eventRepoData.clone || [];
                       // CRITICAL: Extract ALL fields from content, not just files
                       // This includes sourceUrl, forkedFrom, clone, relays, etc.
                       eventRepoData = { ...eventRepoData, ...contentData };
+                      // CRITICAL: Restore clone URLs from tags and merge with content clone URLs
+                      eventRepoData.clone = existingCloneUrls;
                       // Also merge clone URLs from content if present
                       if (contentData.clone && Array.isArray(contentData.clone)) {
-                        if (!eventRepoData.clone) eventRepoData.clone = [];
                         contentData.clone.forEach((url: string) => {
                           // CRITICAL: Filter out localhost URLs - they're not real git servers
                           if (url && !url.includes('localhost') && !url.includes('127.0.0.1') && !eventRepoData.clone.includes(url)) {
@@ -2702,7 +2706,20 @@ export default function RepoCodePage() {
                   }
                   try {
                     const contentData = JSON.parse(event.content);
+                    // CRITICAL: Preserve clone URLs collected from tags before merging contentData
+                    // contentData might not have clone property, which would overwrite eventRepoData.clone
+                    const existingCloneUrls = eventRepoData.clone || [];
                     eventRepoData = { ...eventRepoData, ...contentData };
+                    // CRITICAL: Restore clone URLs from tags and merge with content clone URLs
+                    eventRepoData.clone = existingCloneUrls;
+                    // Merge clone URLs from content if present
+                    if (contentData.clone && Array.isArray(contentData.clone)) {
+                      contentData.clone.forEach((url: string) => {
+                        if (url && !url.includes('localhost') && !url.includes('127.0.0.1') && !eventRepoData.clone.includes(url)) {
+                          eventRepoData.clone.push(url);
+                        }
+                      });
+                    }
                     
                     // CRITICAL: Check if repo is marked as deleted/archived
                     // On direct repo access, show deleted message (unlike explore page which hides them completely)
