@@ -19,7 +19,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // These should be set as environment variables
   const CLIENT_ID = process.env.GITHUB_CLIENT_ID || "";
   const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || "";
-  const REDIRECT_URI = process.env.GITHUB_REDIRECT_URI || `${req.headers.origin || "http://localhost:3000"}/api/github/callback`;
+  
+  // Determine redirect URI - prioritize env var, then use request origin
+  // Use origin header if available, otherwise construct from host header
+  const requestOrigin = req.headers.origin || (req.headers.host ? `https://${req.headers.host}` : null);
+  const REDIRECT_URI = process.env.GITHUB_REDIRECT_URI || (requestOrigin ? `${requestOrigin}/api/github/callback` : null);
+  
+  console.log('[GitHub Auth] Redirect URI:', { 
+    fromEnv: !!process.env.GITHUB_REDIRECT_URI,
+    requestOrigin,
+    finalRedirectUri: REDIRECT_URI?.substring(0, 50) + '...'
+  });
+  
+  if (!REDIRECT_URI) {
+    return res.status(500).json({ 
+      error: "GitHub OAuth redirect URI not configured. Please set GITHUB_REDIRECT_URI environment variable."
+    });
+  }
+  
   const STATE_SECRET = process.env.GITHUB_STATE_SECRET || "change-me-in-production";
 
   if (req.query.action === "initiate") {
