@@ -42,7 +42,7 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
   const [loadingNostrCounts, setLoadingNostrCounts] = useState(false);
   
   // Get current user's pubkey for follow functionality - MUST be called before any early returns
-  const { pubkey: currentUserPubkey, publish, defaultRelays, subscribe } = useNostrContext();
+  const { pubkey: currentUserPubkey, publish, defaultRelays, subscribe, remoteSigner } = useNostrContext();
   const { isLoggedIn } = useSession();
   
   // For metadata lookup, use full pubkey if we resolved one, otherwise use entity
@@ -1575,20 +1575,41 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
       let privateKey: string | undefined;
       let signerPubkey: string = currentUserPubkey;
       
+      // Check if remote signer is ready (for nowser/bunker)
+      const isRemoteSignerReady = remoteSigner?.getSession()?.userPubkey && remoteSigner?.getState() === "ready";
+      
       if (hasNip07 && window.nostr) {
-        // Use NIP-07 extension - this will trigger a popup for the user to sign
+        // Use NIP-07 extension or remote signer adapter - this will trigger a popup for the user to sign
         try {
-          signerPubkey = await window.nostr.getPublicKey();
+          // For remote signer (nowser), check if it's ready before calling
+          if (isRemoteSignerReady || !remoteSigner) {
+            // Either remote signer is ready, or it's a regular NIP-07 extension
+            signerPubkey = await window.nostr.getPublicKey();
+          } else {
+            // Remote signer exists but not ready - fall through to private key
+            console.warn("⚠️ [Follow] Remote signer not ready, falling back to private key");
+            throw new Error("Remote signer not ready");
+          }
         } catch (error: any) {
-          console.warn("Failed to get pubkey from NIP-07, using current user pubkey:", error);
+          const errorMsg = error?.message || String(error);
+          // If it's a "not paired" error from remote signer, fall back gracefully
+          if (errorMsg.includes("not paired") || errorMsg.includes("not ready")) {
+            console.warn("⚠️ [Follow] Remote signer not paired/ready, falling back to private key:", errorMsg);
+            // Fall through to private key
+          } else {
+            console.warn("⚠️ [Follow] Failed to get pubkey from NIP-07, using current user pubkey:", error);
+            // For other errors, just use current user pubkey and continue
+          }
         }
-      } else {
-        // Fallback to stored private key only if NIP-07 not available
+      }
+      
+      // If we didn't get a signer pubkey from NIP-07/remote signer, try private key
+      if (!signerPubkey || signerPubkey === currentUserPubkey) {
         privateKey = await getNostrPrivateKey() || undefined;
-      if (!privateKey) {
-          alert("No signing method available.\n\nPlease use a NIP-07 extension (like Alby or nos2x) or configure a private key in Settings.");
-        setFollowingLoading(false);
-        return;
+        if (!privateKey) {
+          alert("No signing method available.\n\nPlease use a NIP-07 extension (like Alby or nos2x), pair with a remote signer (nowser/bunker), or configure a private key in Settings.");
+          setFollowingLoading(false);
+          return;
         }
       }
       
@@ -1709,14 +1730,41 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
       
       event.id = getEventHash(event);
       
-      // Sign with NIP-07 or private key
+      // Sign with NIP-07/remote signer or private key
       if (hasNip07 && window.nostr) {
-        // Use NIP-07 extension - this will open the signing modal
-        const signedEvent = await window.nostr.signEvent(event);
-        event.sig = signedEvent.sig;
+        // Use NIP-07 extension or remote signer adapter - this will open the signing modal
+        try {
+          // For remote signer (nowser), check if it's ready before calling
+          if (isRemoteSignerReady || !remoteSigner) {
+            // Either remote signer is ready, or it's a regular NIP-07 extension
+            const signedEvent = await window.nostr.signEvent(event);
+            event.sig = signedEvent.sig;
+          } else {
+            // Remote signer exists but not ready - fall back to private key
+            if (privateKey) {
+              event.sig = signEvent(event, privateKey);
+            } else {
+              throw new Error("Remote signer not ready and no private key available");
+            }
+          }
+        } catch (error: any) {
+          const errorMsg = error?.message || String(error);
+          // If it's a "not paired" error from remote signer, fall back to private key
+          if (errorMsg.includes("not paired") || errorMsg.includes("not ready")) {
+            console.warn("⚠️ [Follow] Remote signer not paired/ready, falling back to private key for signing");
+            if (privateKey) {
+              event.sig = signEvent(event, privateKey);
+            } else {
+              throw new Error("Remote signer not ready and no private key available");
+            }
+          } else {
+            // Re-throw other errors (user cancellation, etc.)
+            throw error;
+          }
+        }
       } else if (privateKey) {
         // Use private key (fallback)
-      event.sig = signEvent(event, privateKey);
+        event.sig = signEvent(event, privateKey);
       } else {
         throw new Error("No signing method available");
       }
