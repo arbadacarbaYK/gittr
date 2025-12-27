@@ -255,8 +255,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             console.log('[OAuth Callback] Has token:', !!message.accessToken);
             console.log('[OAuth Callback] Username:', message.githubUsername);
             
+            // Send message multiple times to ensure it's received (in case of timing issues)
             window.opener.postMessage(message, window.location.origin);
-            console.log('[OAuth Callback] Message sent successfully');
+            console.log('[OAuth Callback] Message sent successfully (attempt 1)');
+            
+            // Retry sending the message after a short delay
+            setTimeout(() => {
+              if (window.opener && !window.opener.closed) {
+                window.opener.postMessage(message, window.location.origin);
+                console.log('[OAuth Callback] Message sent successfully (attempt 2)');
+              }
+            }, 500);
             
             // Show success message
             const container = document.querySelector('.container');
@@ -266,9 +275,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             
             // Wait longer before closing to ensure message is received
             setTimeout(() => {
-              console.log('[OAuth Callback] Closing popup after 2 seconds');
+              console.log('[OAuth Callback] Closing popup after 3 seconds');
               window.close();
-            }, 2000);
+            }, 3000); // Increased to 3 seconds
           } catch (e) {
             console.error('[OAuth Callback] Error posting message:', e);
             const container = document.querySelector('.container');

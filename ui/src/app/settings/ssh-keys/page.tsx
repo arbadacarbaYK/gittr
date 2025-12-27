@@ -45,6 +45,8 @@ export default function SSHKeysPage() {
   const [githubConnecting, setGithubConnecting] = useState(false);
   // Use ref to track connecting state for closure access
   const githubConnectingRef = useRef(false);
+  // Store popup check interval ID to clear it when message is received
+  const popupCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load SSH keys from Nostr events
   const loadKeys = useCallback(async () => {
@@ -128,6 +130,11 @@ export default function SSHKeysPage() {
       const { success, accessToken, githubUsername, githubUrl, error, errorDescription, state } = event.data;
       
       if (error) {
+        // Clear popup check interval on error
+        if (popupCheckIntervalRef.current) {
+          clearInterval(popupCheckIntervalRef.current);
+          popupCheckIntervalRef.current = null;
+        }
         setStatus(`GitHub OAuth error: ${errorDescription || error}`);
         setGithubConnecting(false);
         githubConnectingRef.current = false;
@@ -139,6 +146,11 @@ export default function SSHKeysPage() {
       if (state) {
         const storedState = sessionStorage.getItem("github_oauth_state");
         if (storedState && storedState !== state) {
+          // Clear popup check interval on state mismatch
+          if (popupCheckIntervalRef.current) {
+            clearInterval(popupCheckIntervalRef.current);
+            popupCheckIntervalRef.current = null;
+          }
           setStatus("GitHub OAuth error: State token mismatch");
           setGithubConnecting(false);
           githubConnectingRef.current = false;
@@ -147,6 +159,12 @@ export default function SSHKeysPage() {
           return;
         }
         sessionStorage.removeItem("github_oauth_state");
+      }
+      
+      // Clear popup check interval since we received the message
+      if (popupCheckIntervalRef.current) {
+        clearInterval(popupCheckIntervalRef.current);
+        popupCheckIntervalRef.current = null;
       }
       
       if (success && accessToken && githubUsername) {
@@ -652,27 +670,40 @@ export default function SSHKeysPage() {
                 
                 console.log('[SSH Keys] Popup opened, waiting for message...');
                 
+                // Clear any existing interval
+                if (popupCheckIntervalRef.current) {
+                  clearInterval(popupCheckIntervalRef.current);
+                }
+                
                 // Fallback: reset connecting state if popup is closed without message
-                const checkPopup = setInterval(() => {
+                popupCheckIntervalRef.current = setInterval(() => {
                   if (popup?.closed) {
-                    clearInterval(checkPopup);
+                    if (popupCheckIntervalRef.current) {
+                      clearInterval(popupCheckIntervalRef.current);
+                      popupCheckIntervalRef.current = null;
+                    }
                     console.log('[SSH Keys] Popup closed, waiting for message...');
-                    // Give it a moment for message to arrive
+                    // Give it more time for message to arrive (popup might close before message is processed)
                     setTimeout(() => {
                       // Use ref to check current state (avoids closure issue)
                       if (githubConnectingRef.current) {
-                        console.log('[SSH Keys] No message received, resetting connecting state');
+                        console.log('[SSH Keys] No message received after popup closed, resetting connecting state');
                         setGithubConnecting(false);
                         githubConnectingRef.current = false;
                         setStatus("GitHub connection timed out or cancelled.");
                         setTimeout(() => setStatus(""), 5000);
                       }
-                    }, 2000);
+                    }, 3000); // Increased to 3 seconds to give message more time
                   }
                 }, 500);
                 
-                // Clean up interval after 5 minutes
-                setTimeout(() => clearInterval(checkPopup), 300000);
+                // Clean up interval after 5 minutes as safety
+                setTimeout(() => {
+                  if (popupCheckIntervalRef.current) {
+                    clearInterval(popupCheckIntervalRef.current);
+                    popupCheckIntervalRef.current = null;
+                  }
+                }, 300000);
               } catch (error: any) {
                 setError(`Failed to connect GitHub: ${error.message}`);
                 setGithubConnecting(false);
