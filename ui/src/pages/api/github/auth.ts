@@ -36,8 +36,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       error: "GitHub OAuth redirect URI not configured. Please set GITHUB_REDIRECT_URI environment variable."
     });
   }
-  
-  const STATE_SECRET = process.env.GITHUB_STATE_SECRET || "change-me-in-production";
 
   if (req.query.action === "initiate") {
     // Check if credentials are configured
