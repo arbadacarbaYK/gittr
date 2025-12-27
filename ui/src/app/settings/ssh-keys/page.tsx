@@ -156,10 +156,30 @@ export default function SSHKeysPage() {
         return;
       }
       
-      // Verify state token against sessionStorage
+      // Verify state token against sessionStorage (CRITICAL for CSRF protection)
+      // If state is provided, storedState MUST exist and match - reject if missing or mismatched
       if (state) {
         const storedState = sessionStorage.getItem("github_oauth_state");
-        if (storedState && storedState !== state) {
+        
+        // SECURITY: Reject if storedState is missing (sessionStorage unavailable/cleared/private browsing)
+        // This prevents CSRF attacks where attacker sends postMessage without valid state
+        if (!storedState) {
+          console.error('[SSH Keys] State token missing from sessionStorage - possible CSRF attack or session cleared');
+          // Clear popup check interval on state verification failure
+          if (popupCheckIntervalRef.current) {
+            clearInterval(popupCheckIntervalRef.current);
+            popupCheckIntervalRef.current = null;
+          }
+          setStatus("GitHub OAuth error: State token verification failed (session may have expired)");
+          setGithubConnecting(false);
+          githubConnectingRef.current = false;
+          setTimeout(() => setStatus(""), 5000);
+          return;
+        }
+        
+        // SECURITY: Reject if state doesn't match stored state
+        if (storedState !== state) {
+          console.error('[SSH Keys] State token mismatch - possible CSRF attack');
           // Clear popup check interval on state mismatch
           if (popupCheckIntervalRef.current) {
             clearInterval(popupCheckIntervalRef.current);
@@ -172,7 +192,27 @@ export default function SSHKeysPage() {
           sessionStorage.removeItem("github_oauth_state");
           return;
         }
+        
+        // State verified successfully - remove it (one-time use)
         sessionStorage.removeItem("github_oauth_state");
+      } else {
+        // SECURITY: If no state provided but we're expecting one, reject
+        // This handles cases where state should exist but wasn't sent
+        const storedState = sessionStorage.getItem("github_oauth_state");
+        if (storedState) {
+          console.error('[SSH Keys] State token expected but not provided in message');
+          // Clear popup check interval on state verification failure
+          if (popupCheckIntervalRef.current) {
+            clearInterval(popupCheckIntervalRef.current);
+            popupCheckIntervalRef.current = null;
+          }
+          setStatus("GitHub OAuth error: State token missing from callback");
+          setGithubConnecting(false);
+          githubConnectingRef.current = false;
+          setTimeout(() => setStatus(""), 5000);
+          sessionStorage.removeItem("github_oauth_state");
+          return;
+        }
       }
       
       // Clear popup check interval since we received the message
