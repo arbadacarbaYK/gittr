@@ -69,6 +69,25 @@ export function parseGitSource(cloneUrl: string): GitSource {
     normalizedUrl = cloneUrl.replace(/^git:\/\//, "https://");
     originalProtocol = "git";
     console.log(`🔄 [Git Source] Converting git:// to https:// for processing: ${normalizedUrl}`);
+  } else if (cloneUrl.startsWith("nostr://")) {
+    // CRITICAL: Convert nostr:// URLs to https:// for GRASP servers
+    // Format: nostr://npub@domain/repo or nostr://npub/repo (without domain)
+    // These are GRASP server URLs that need to be converted to HTTPS
+    // Import GRASP server detection first (needed for domain resolution)
+    const { KNOWN_GRASP_DOMAINS } = require("@/lib/utils/grasp-servers");
+    
+    // Parse nostr:// URL: nostr://npub@domain/repo or nostr://npub/repo
+    const nostrMatch = cloneUrl.match(/^nostr:\/\/([^\/@]+)(?:@([^\/]+))?\/(.+)$/);
+    if (nostrMatch) {
+      const [, npub, domain, repo] = nostrMatch;
+      if (npub && repo) {
+        // If domain is provided, use it; otherwise use first known GRASP server
+        const targetDomain = domain || (KNOWN_GRASP_DOMAINS.length > 0 ? KNOWN_GRASP_DOMAINS[0] : "git.gittr.space");
+        normalizedUrl = `https://${targetDomain}/${npub}/${repo}`;
+        originalProtocol = "nostr";
+        console.log(`🔄 [Git Source] Converting nostr:// URL to HTTPS for GRASP server: ${normalizedUrl}`);
+      }
+    }
   }
   
   // Remove .git suffix if present
