@@ -4748,7 +4748,12 @@ export default function RepoCodePage() {
                                       if (effectiveSourceUrl) {
                                         // Use the same API endpoint that fetchGithubRaw uses
                                         // Use finalBranch (the branch we actually fetched from) instead of the original branch
-                                        const readmeApiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(effectiveSourceUrl)}&path=${encodeURIComponent(readmeFile.path)}&branch=${encodeURIComponent(finalBranch || branch)}`;
+                                        // Get user's GitHub token for private repos
+                                        const githubToken = typeof window !== "undefined" ? localStorage.getItem("gittr_github_token") : null;
+                                        let readmeApiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(effectiveSourceUrl)}&path=${encodeURIComponent(readmeFile.path)}&branch=${encodeURIComponent(finalBranch || branch)}`;
+                                        if (githubToken) {
+                                          readmeApiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
+                                        }
                                         const readmeResponse = await fetch(readmeApiUrl);
                                         if (readmeResponse.ok) {
                                           const readmeData = await readmeResponse.json();
@@ -5169,7 +5174,12 @@ export default function RepoCodePage() {
                             if (readmeFile && sourceUrlToPreserve) {
                               try {
                                 console.log("📖 [File Fetch] Auto-loading README:", readmeFile.path);
-                                const readmeApiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrlToPreserve)}&path=${encodeURIComponent(readmeFile.path)}&branch=${encodeURIComponent(branch)}`;
+                                // Get user's GitHub token for private repos
+                                const githubToken = typeof window !== "undefined" ? localStorage.getItem("gittr_github_token") : null;
+                                let readmeApiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrlToPreserve)}&path=${encodeURIComponent(readmeFile.path)}&branch=${encodeURIComponent(branch)}`;
+                                if (githubToken) {
+                                  readmeApiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
+                                }
                                 const readmeResponse = await fetch(readmeApiUrl);
                                 if (readmeResponse.ok) {
                                   const readmeData = await readmeResponse.json();
@@ -5435,7 +5445,12 @@ export default function RepoCodePage() {
         
         if (sourceUrl) {
           // Try API first
-          const apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrl)}&path=${encodeURIComponent(readmeFile.path)}&branch=${encodeURIComponent(branch)}`;
+          // Get user's GitHub token for private repos
+          const githubToken = typeof window !== "undefined" ? localStorage.getItem("gittr_github_token") : null;
+          let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrl)}&path=${encodeURIComponent(readmeFile.path)}&branch=${encodeURIComponent(branch)}`;
+          if (githubToken) {
+            apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
+          }
           const response = await fetch(apiUrl);
           if (response.ok) {
             const data = await response.json();
@@ -6384,13 +6399,18 @@ export default function RepoCodePage() {
             try {
               const branchToUse =
                 selectedBranch || repoData?.defaultBranch || "main";
-              const apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+              // Get user's GitHub token for private repos
+              const githubToken = typeof window !== "undefined" ? localStorage.getItem("gittr_github_token") : null;
+              let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
                 sourceUrlForFetch
               )}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(
                 branchToUse
               )}`;
+              if (githubToken) {
+                apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
+              }
               console.log(
-                `🌐 [fetchGithubRaw] Fetching missing content from source: ${apiUrl}`
+                `🌐 [fetchGithubRaw] Fetching missing content from source: ${apiUrl.substring(0, 100)}...`
               );
               const resp = await fetch(apiUrl);
               if (resp.ok) {
@@ -6463,13 +6483,18 @@ export default function RepoCodePage() {
       try {
         const branchToUse =
           selectedBranch || repoData?.defaultBranch || "main";
-        const apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+        // Get user's GitHub token for private repos
+        const githubToken = typeof window !== "undefined" ? localStorage.getItem("gittr_github_token") : null;
+        let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
           sourceUrlForPriorityFetch
         )}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(
           branchToUse
         )}`;
+        if (githubToken) {
+          apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
+        }
         console.log(
-          `🌐 [fetchGithubRaw] Priority: Fetching from source (GitHub/GitLab/Codeberg) first: ${apiUrl}`
+          `🌐 [fetchGithubRaw] Priority: Fetching from source (GitHub/GitLab/Codeberg) first: ${apiUrl.substring(0, 100)}...`
         );
         const resp = await fetch(apiUrl);
         if (resp.ok) {
@@ -6827,7 +6852,12 @@ export default function RepoCodePage() {
           console.log(`🔍 [fetchGithubRaw] Trying GitHub via API proxy for: ${owner}/${repo}`, { branchesToTry });
       for (const tryBranch of branchesToTry) {
             // Use backend API proxy to avoid CORS issues (consistent with GitLab)
-            const apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrl)}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(tryBranch)}`;
+            // Get user's GitHub token for private repos
+            const githubToken = typeof window !== "undefined" ? localStorage.getItem("gittr_github_token") : null;
+            let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrl)}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(tryBranch)}`;
+            if (githubToken) {
+              apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
+            }
             const r = await fetch(apiUrl);
         if (r.ok) {
               const data = await r.json();
@@ -6879,7 +6909,12 @@ export default function RepoCodePage() {
           console.log(`🔍 [fetchGithubRaw] Trying GitLab via API proxy for: ${owner}/${repo}`, { branchesToTry });
           for (const tryBranch of branchesToTry) {
             // Use backend API proxy to avoid CORS issues
-            const apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrl)}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(tryBranch)}`;
+            // Get user's GitHub token for private repos (also works for GitLab if needed)
+            const githubToken = typeof window !== "undefined" ? localStorage.getItem("gittr_github_token") : null;
+            let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrl)}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(tryBranch)}`;
+            if (githubToken) {
+              apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
+            }
             const r = await fetch(apiUrl);
             if (r.ok) {
               const data = await r.json();
@@ -6907,7 +6942,12 @@ export default function RepoCodePage() {
           console.log(`🔍 [fetchGithubRaw] Trying Codeberg via API proxy for: ${owner}/${repo}`, { branchesToTry });
           for (const tryBranch of branchesToTry) {
             // Use backend API proxy to avoid CORS issues
-            const apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrl)}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(tryBranch)}`;
+            // Get user's GitHub token for private repos (Codeberg doesn't need it but keep consistent)
+            const githubToken = typeof window !== "undefined" ? localStorage.getItem("gittr_github_token") : null;
+            let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrl)}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(tryBranch)}`;
+            if (githubToken) {
+              apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
+            }
             const r = await fetch(apiUrl);
             if (r.ok) {
               const data = await r.json();

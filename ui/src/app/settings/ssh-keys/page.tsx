@@ -91,43 +91,81 @@ export default function SSHKeysPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     
-    // Check for success parameter from OAuth callback (fallback when parent window was unavailable)
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get("success") === "true" && urlParams.get("fallback") === "localStorage") {
-      // OAuth completed but parent window was unavailable - token should be in localStorage
-      console.log('[SSH Keys] OAuth completed via localStorage fallback');
-      // Remove the query params to clean up URL
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-    
-    const githubToken = localStorage.getItem("gittr_github_token");
-    const githubProfile = localStorage.getItem("gittr_github_profile");
-    
-    if (githubToken && githubProfile) {
-      setGithubConnected(true);
-      try {
-        const profile = JSON.parse(githubProfile);
-        setGithubUsername(profile.githubUsername || null);
-        // Show success message if we just completed OAuth via fallback
-        if (urlParams.get("success") === "true" && urlParams.get("fallback") === "localStorage") {
-          setStatus("GitHub connected successfully!");
-          setTimeout(() => setStatus(""), 3000);
-        }
-      } catch {
-        // Try to extract username from URL
-        try {
-          const url = new URL(githubProfile);
-          const pathParts = url.pathname.split("/").filter(p => p);
-          setGithubUsername(pathParts[0] || null);
-        } catch {
-          setGithubUsername(null);
-        }
+    const checkGitHubStatus = () => {
+      // Check for success parameter from OAuth callback (fallback when parent window was unavailable)
+      const urlParams = new URLSearchParams(window.location.search);
+      const isFallbackSuccess = urlParams.get("success") === "true" && urlParams.get("fallback") === "localStorage";
+      
+      if (isFallbackSuccess) {
+        // OAuth completed but parent window was unavailable - token should be in localStorage
+        console.log('[SSH Keys] OAuth completed via localStorage fallback');
+        // Remove the query params to clean up URL
+        window.history.replaceState({}, '', window.location.pathname);
       }
-    } else {
-      setGithubConnected(false);
-      setGithubUsername(null);
+      
+      const githubToken = localStorage.getItem("gittr_github_token");
+      const githubProfile = localStorage.getItem("gittr_github_profile");
+      
+      if (githubToken && githubProfile) {
+        setGithubConnected(true);
+        try {
+          const profile = JSON.parse(githubProfile);
+          setGithubUsername(profile.githubUsername || null);
+          // Show success message if we just completed OAuth via fallback
+          if (isFallbackSuccess) {
+            setStatus("GitHub connected successfully!");
+            setTimeout(() => setStatus(""), 3000);
+          }
+        } catch {
+          // Try to extract username from URL
+          try {
+            const url = new URL(githubProfile);
+            const pathParts = url.pathname.split("/").filter(p => p);
+            setGithubUsername(pathParts[0] || null);
+          } catch {
+            setGithubUsername(null);
+          }
+        }
+      } else {
+        setGithubConnected(false);
+        setGithubUsername(null);
+      }
+    };
+    
+    // Check immediately
+    checkGitHubStatus();
+    
+    // Listen for storage events (when localStorage changes in another tab/window)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "gittr_github_token" || e.key === "gittr_github_profile") {
+        console.log('[SSH Keys] GitHub token storage changed, re-checking status');
+        checkGitHubStatus();
+      }
+    };
+    
+    window.addEventListener("storage", handleStorageChange);
+    
+    // Also listen for custom event from same-window localStorage changes (popup -> parent)
+    const handleLocalStorageChange = () => {
+      console.log('[SSH Keys] LocalStorage change detected, re-checking GitHub status');
+      checkGitHubStatus();
+    };
+    
+    // Poll localStorage periodically when connecting (in case postMessage fails)
+    let pollInterval: NodeJS.Timeout | null = null;
+    if (githubConnectingRef.current) {
+      pollInterval = setInterval(() => {
+        const token = localStorage.getItem("gittr_github_token");
+        if (token && githubConnectingRef.current) {
+          console.log('[SSH Keys] Token found in localStorage during connection, updating status');
+          checkGitHubStatus();
+          setGithubConnecting(false);
+          githubConnectingRef.current = false;
+          if (pollInterval) clearInterval(pollInterval);
+        }
+      }, 500);
     }
-
+    
     // Listen for OAuth callback messages
     const handleOAuthMessage = (event: MessageEvent) => {
       console.log('[SSH Keys] Message received:', { origin: event.origin, expectedOrigin: window.location.origin, type: event.data?.type });
@@ -242,10 +280,13 @@ export default function SSHKeysPage() {
     };
     
     window.addEventListener("message", handleOAuthMessage);
+    
     return () => {
+      window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener("message", handleOAuthMessage);
+      if (pollInterval) clearInterval(pollInterval);
     };
-  }, []);
+  }, []); // Empty deps - we check localStorage and listen for messages
 
   // Calculate fingerprint from public key
   const calculateFingerprint = (publicKey: string): string => {
