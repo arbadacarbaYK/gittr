@@ -2,18 +2,18 @@
 
 import { useEffect, useRef } from "react";
 
-interface Bolt {
+interface Digit {
   x: number;
   y: number;
+  value: string; // "0" or "1"
   size: number;
   speed: number;
   opacity: number;
-  rotation: number;
 }
 
 export function BoltSnow() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const boltsRef = useRef<Bolt[]>([]);
+  const digitsRef = useRef<Digit[]>([]);
   const animationFrameRef = useRef<number>();
 
   useEffect(() => {
@@ -31,95 +31,43 @@ export function BoltSnow() {
     resizeCanvas();
     window.addEventListener("resize", resizeCanvas);
 
-    // Initialize bolts
-    const initBolts = () => {
-      const bolts: Bolt[] = [];
-      const boltCount = 20; // Very subtle - only 20 bolts
+    // Initialize digits
+    const initDigits = () => {
+      const digits: Digit[] = [];
+      const digitCount = 50; // More digits for snow effect
       
-      for (let i = 0; i < boltCount; i++) {
-        bolts.push({
+      for (let i = 0; i < digitCount; i++) {
+        digits.push({
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
-          size: 4 + Math.random() * 6, // Small bolts: 4-10px
-          speed: 0.3 + Math.random() * 0.4, // Slow fall: 0.3-0.7
-          opacity: 0.15 + Math.random() * 0.15, // Very subtle: 0.15-0.3
-          rotation: Math.random() * 360,
+          value: Math.random() > 0.5 ? "0" : "1",
+          size: 10 + Math.random() * 8, // Font size: 10-18px
+          speed: 0.5 + Math.random() * 0.8, // Slow gentle fall: 0.5-1.3
+          opacity: 0.1 + Math.random() * 0.2, // Very subtle: 0.1-0.3
         });
       }
-      boltsRef.current = bolts;
+      digitsRef.current = digits;
     };
 
-    initBolts();
+    initDigits();
 
-    // Draw a proper lightning bolt shape - main trunk with branches (not zigzag!)
-    const drawBolt = (x: number, y: number, size: number, rotation: number, opacity: number) => {
+    // Draw a digit (0 or 1)
+    const drawDigit = (x: number, y: number, value: string, size: number, opacity: number) => {
       ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate((rotation * Math.PI) / 180);
       ctx.globalAlpha = opacity;
-
-      const color = `hsl(${280 + Math.random() * 40}, 70%, 70%)`;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1.5;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "miter";
       
-      // Main trunk - goes mostly straight down with slight jagged angles
-      // NOT alternating left-right, but following a main path with occasional sharp turns
-      ctx.beginPath();
-      const trunkPoints: [number, number][] = [
-        [0, -size],                      // Top
-        [size * 0.08, -size * 0.75],    // Slight right
-        [size * 0.12, -size * 0.5],     // Continue right
-        [-size * 0.05, -size * 0.35],   // Sharp left turn
-        [size * 0.1, -size * 0.2],     // Back right
-        [0, 0],                          // Center
-        [-size * 0.08, size * 0.2],    // Left
-        [size * 0.06, size * 0.4],     // Right
-        [-size * 0.1, size * 0.6],     // Left
-        [0, size],                       // Bottom
-      ];
-      
-      trunkPoints.forEach((point, i) => {
-        if (i === 0) {
-          ctx.moveTo(point[0], point[1]);
-        } else {
-          ctx.lineTo(point[0], point[1]);
-        }
-      });
-      
-      ctx.stroke();
-      
-      // Add branches - these go off to the sides from the main trunk
-      // Branch 1 (upper left)
-      if (trunkPoints[2]) {
-        ctx.beginPath();
-        ctx.moveTo(trunkPoints[2][0], trunkPoints[2][1]);
-        ctx.lineTo(trunkPoints[2][0] - size * 0.25, trunkPoints[2][1] - size * 0.1);
-        ctx.stroke();
-      }
-      
-      // Branch 2 (middle right)
-      if (trunkPoints[4]) {
-        ctx.beginPath();
-        ctx.moveTo(trunkPoints[4][0], trunkPoints[4][1]);
-        ctx.lineTo(trunkPoints[4][0] + size * 0.2, trunkPoints[4][1] + size * 0.15);
-        ctx.stroke();
-      }
-      
-      // Branch 3 (lower left)
-      if (trunkPoints[7]) {
-        ctx.beginPath();
-        ctx.moveTo(trunkPoints[7][0], trunkPoints[7][1]);
-        ctx.lineTo(trunkPoints[7][0] - size * 0.18, trunkPoints[7][1] + size * 0.1);
-        ctx.stroke();
-      }
+      // Use theme colors (purple/cyan range)
+      const hue = 280 + Math.random() * 40;
+      ctx.fillStyle = `hsl(${hue}, 70%, 70%)`;
+      ctx.font = `${size}px monospace`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
       
       // Subtle glow
-      ctx.shadowBlur = 2;
-      ctx.shadowColor = color;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
+      ctx.shadowBlur = 3;
+      ctx.shadowColor = `hsl(${hue}, 70%, 70%)`;
+      
+      ctx.fillText(value, x, y);
       
       ctx.restore();
     };
@@ -130,19 +78,24 @@ export function BoltSnow() {
       const height = canvas.height || window.innerHeight;
       ctx.clearRect(0, 0, width, height);
 
-      boltsRef.current.forEach((bolt) => {
-        // Update position
-        bolt.y += bolt.speed;
-        bolt.rotation += 0.5; // Slow rotation
+      digitsRef.current.forEach((digit) => {
+        // Update position - gentle fall like snow
+        digit.y += digit.speed;
 
-        // Reset if off screen
-        if (bolt.y > height) {
-          bolt.y = -20;
-          bolt.x = Math.random() * width;
+        // Occasionally change digit (subtle flicker, not annoying)
+        if (Math.random() < 0.01) {
+          digit.value = digit.value === "0" ? "1" : "0";
         }
 
-        // Draw bolt
-        drawBolt(bolt.x, bolt.y, bolt.size, bolt.rotation, bolt.opacity);
+        // Reset if off screen
+        if (digit.y > height + 20) {
+          digit.y = -20;
+          digit.x = Math.random() * width;
+          digit.value = Math.random() > 0.5 ? "0" : "1";
+        }
+
+        // Draw digit
+        drawDigit(digit.x, digit.y, digit.value, digit.size, digit.opacity);
       });
 
       animationFrameRef.current = requestAnimationFrame(animate);
