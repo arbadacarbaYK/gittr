@@ -218,8 +218,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('[OAuth Callback] window.opener.closed:', window.opener?.closed);
       console.log('[OAuth Callback] window.location.origin:', window.location.origin);
       
-      // Wait a moment for page to fully render
+      // Wait for page to fully render and ensure opener is still available
       setTimeout(() => {
+        console.log('[OAuth Callback] Checking opener after delay...');
+        console.log('[OAuth Callback] window.opener:', !!window.opener);
+        console.log('[OAuth Callback] window.opener.closed:', window.opener?.closed);
+        
         if (window.opener && !window.opener.closed) {
           const message = {
             type: 'GITHUB_OAUTH_CALLBACK',
@@ -234,32 +238,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           
           try {
             console.log('[OAuth Callback] Posting message to origin:', window.location.origin);
-            console.log('[OAuth Callback] Message:', { type: message.type, hasToken: !!message.accessToken, username: message.githubUsername });
+            console.log('[OAuth Callback] Message type:', message.type);
+            console.log('[OAuth Callback] Has token:', !!message.accessToken);
+            console.log('[OAuth Callback] Username:', message.githubUsername);
+            
             window.opener.postMessage(message, window.location.origin);
             console.log('[OAuth Callback] Message sent successfully');
             
-            // Show success message briefly before closing
-            document.querySelector('.container').innerHTML = '<p style="color: #4ade80;">✓ Authentication successful!</p>';
+            // Show success message
+            const container = document.querySelector('.container');
+            if (container) {
+              container.innerHTML = '<p style="color: #4ade80; font-size: 1.2rem;">✓ Authentication successful!</p><p style="color: #9ca3af; margin-top: 1rem;">Closing window...</p>';
+            }
             
+            // Wait longer before closing to ensure message is received
             setTimeout(() => {
-              console.log('[OAuth Callback] Closing popup');
+              console.log('[OAuth Callback] Closing popup after 2 seconds');
               window.close();
-            }, 1000);
+            }, 2000);
           } catch (e) {
             console.error('[OAuth Callback] Error posting message:', e);
-            document.querySelector('.container').innerHTML = '<p style="color: #f87171;">Error: ' + e.message + '</p><p>Redirecting...</p>';
+            const container = document.querySelector('.container');
+            if (container) {
+              container.innerHTML = '<p style="color: #f87171;">Error: ' + e.message + '</p><p style="color: #9ca3af;">Redirecting...</p>';
+            }
             setTimeout(() => {
-              window.location.href = '/settings/ssh-keys';
+              window.location.href = '/settings/ssh-keys?error=' + encodeURIComponent(e.message);
             }, 2000);
           }
         } else {
           console.warn('[OAuth Callback] No opener or opener is closed. Redirecting.');
-          document.querySelector('.container').innerHTML = '<p>Redirecting...</p>';
+          const container = document.querySelector('.container');
+          if (container) {
+            container.innerHTML = '<p>No parent window found.</p><p style="color: #9ca3af;">Redirecting...</p>';
+          }
           setTimeout(() => {
             window.location.href = '/settings/ssh-keys?success=true';
-          }, 1000);
+          }, 2000);
         }
-      }, 100);
+      }, 500);
     })();
   </script>
 </body>
