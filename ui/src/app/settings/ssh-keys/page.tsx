@@ -83,67 +83,9 @@ export default function SSHKeysPage() {
     };
   }, [loadKeys]);
 
-  // Check GitHub connection status and handle OAuth callbacks
+  // Check GitHub connection status
   useEffect(() => {
     if (typeof window === "undefined") return;
-    
-    // Check for OAuth callback in URL params (fallback if postMessage fails)
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get("success") === "true") {
-      const token = urlParams.get("token");
-      const username = urlParams.get("username");
-      if (token && username) {
-        console.log('[SSH Keys] OAuth success from URL params');
-        localStorage.setItem("gittr_github_token", token);
-        localStorage.setItem("gittr_github_profile", JSON.stringify({
-          githubUsername: username,
-          githubUrl: `https://github.com/${username}`,
-        }));
-        setGithubConnected(true);
-        setGithubUsername(username);
-        setStatus("GitHub connected successfully!");
-        setTimeout(() => setStatus(""), 3000);
-        // Clean up URL
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-    }
-    
-    // Check localStorage for OAuth callback (fallback if popup closed before postMessage)
-    try {
-      const storedCallback = localStorage.getItem('gittr_oauth_callback');
-      if (storedCallback) {
-        const callback = JSON.parse(storedCallback);
-        // Only process if it's recent (within 10 seconds)
-        if (callback.timestamp && Date.now() - callback.timestamp < 10000) {
-          console.log('[SSH Keys] Found OAuth callback in localStorage');
-          if (callback.success && callback.accessToken && callback.githubUsername) {
-            // Verify state
-            if (callback.state) {
-              const storedState = sessionStorage.getItem("github_oauth_state");
-              if (storedState && storedState === callback.state) {
-                localStorage.setItem("gittr_github_token", callback.accessToken);
-                localStorage.setItem("gittr_github_profile", JSON.stringify({
-                  githubUsername: callback.githubUsername,
-                  githubUrl: callback.githubUrl,
-                }));
-                setGithubConnected(true);
-                setGithubUsername(callback.githubUsername);
-                setStatus("GitHub connected successfully!");
-                setTimeout(() => setStatus(""), 3000);
-                sessionStorage.removeItem("github_oauth_state");
-              }
-            }
-          }
-          // Clean up
-          localStorage.removeItem('gittr_oauth_callback');
-        } else {
-          // Stale callback, remove it
-          localStorage.removeItem('gittr_oauth_callback');
-        }
-      }
-    } catch (e) {
-      console.error('[SSH Keys] Error checking localStorage callback:', e);
-    }
     
     const githubToken = localStorage.getItem("gittr_github_token");
     const githubProfile = localStorage.getItem("gittr_github_profile");
@@ -170,24 +112,12 @@ export default function SSHKeysPage() {
 
     // Listen for OAuth callback messages
     const handleOAuthMessage = (event: MessageEvent) => {
-      console.log('[SSH Keys] Received message:', { origin: event.origin, type: event.data?.type, hasData: !!event.data });
-      
-      if (event.origin !== window.location.origin) {
-        console.warn('[SSH Keys] Ignoring message from different origin:', event.origin);
-        return;
-      }
-      
-      if (event.data?.type !== "GITHUB_OAUTH_CALLBACK") {
-        console.log('[SSH Keys] Ignoring non-OAuth message:', event.data?.type);
-        return;
-      }
-      
-      console.log('[SSH Keys] Processing OAuth callback:', { success: event.data.success, hasToken: !!event.data.accessToken, hasUsername: !!event.data.githubUsername });
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== "GITHUB_OAUTH_CALLBACK") return;
       
       const { success, accessToken, githubUsername, githubUrl, error, errorDescription, state } = event.data;
       
       if (error) {
-        console.error('[SSH Keys] OAuth error:', error);
         setStatus(`GitHub OAuth error: ${errorDescription || error}`);
         setGithubConnecting(false);
         setTimeout(() => setStatus(""), 5000);
@@ -197,22 +127,17 @@ export default function SSHKeysPage() {
       // Verify state token against sessionStorage
       if (state) {
         const storedState = sessionStorage.getItem("github_oauth_state");
-        console.log('[SSH Keys] Verifying state:', { received: state?.substring(0, 8), stored: storedState?.substring(0, 8) });
         if (storedState && storedState !== state) {
-          console.error('[SSH Keys] State mismatch!');
-          setStatus("GitHub OAuth error: State token mismatch (possible CSRF attack)");
+          setStatus("GitHub OAuth error: State token mismatch");
           setGithubConnecting(false);
           setTimeout(() => setStatus(""), 5000);
           sessionStorage.removeItem("github_oauth_state");
           return;
         }
-        // Clear state after successful verification
         sessionStorage.removeItem("github_oauth_state");
       }
       
       if (success && accessToken && githubUsername) {
-        console.log('[SSH Keys] OAuth successful, storing credentials');
-        // Store token and profile
         localStorage.setItem("gittr_github_token", accessToken);
         localStorage.setItem("gittr_github_profile", JSON.stringify({
           githubUsername,
@@ -224,7 +149,6 @@ export default function SSHKeysPage() {
         setStatus("GitHub connected successfully!");
         setTimeout(() => setStatus(""), 3000);
       } else {
-        console.error('[SSH Keys] OAuth failed - missing data:', { success, hasToken: !!accessToken, hasUsername: !!githubUsername });
         setStatus("GitHub OAuth failed: Missing data");
         setTimeout(() => setStatus(""), 5000);
       }
