@@ -51,31 +51,36 @@ export function BoltSnow() {
 
     initBolts();
 
-    // Draw a proper lightning bolt shape (not symmetric - jagged and irregular)
+    // Draw a proper lightning bolt shape - main trunk with branches (not zigzag!)
     const drawBolt = (x: number, y: number, size: number, rotation: number, opacity: number) => {
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate((rotation * Math.PI) / 180);
       ctx.globalAlpha = opacity;
 
-      // Create a proper lightning bolt - jagged, irregular, with branches
-      // Main path goes down with sharp angles, branches go out to sides
+      const color = `hsl(${280 + Math.random() * 40}, 70%, 70%)`;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "miter";
+      
+      // Main trunk - goes mostly straight down with slight jagged angles
+      // NOT alternating left-right, but following a main path with occasional sharp turns
       ctx.beginPath();
-      const mainPath: [number, number][] = [
-        [0, -size],                    // Top point
-        [size * 0.15, -size * 0.7],   // Right
-        [-size * 0.1, -size * 0.5],   // Left
-        [size * 0.2, -size * 0.3],    // Right
-        [-size * 0.15, -size * 0.1],  // Left
-        [size * 0.1, size * 0.1],     // Right
-        [-size * 0.25, size * 0.3],   // Left (branch)
-        [size * 0.05, size * 0.5],    // Right
-        [-size * 0.1, size * 0.7],    // Left
-        [0, size],                     // Bottom point
+      const trunkPoints: [number, number][] = [
+        [0, -size],                      // Top
+        [size * 0.08, -size * 0.75],    // Slight right
+        [size * 0.12, -size * 0.5],     // Continue right
+        [-size * 0.05, -size * 0.35],   // Sharp left turn
+        [size * 0.1, -size * 0.2],     // Back right
+        [0, 0],                          // Center
+        [-size * 0.08, size * 0.2],    // Left
+        [size * 0.06, size * 0.4],     // Right
+        [-size * 0.1, size * 0.6],     // Left
+        [0, size],                       // Bottom
       ];
       
-      // Draw main path
-      mainPath.forEach((point, i) => {
+      trunkPoints.forEach((point, i) => {
         if (i === 0) {
           ctx.moveTo(point[0], point[1]);
         } else {
@@ -83,15 +88,36 @@ export function BoltSnow() {
         }
       });
       
-      ctx.strokeStyle = `hsl(${280 + Math.random() * 40}, 70%, 70%)`; // Purple/cyan range
-      ctx.lineWidth = 1.5;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
       ctx.stroke();
       
-      // Add a subtle glow effect
-      ctx.shadowBlur = 3;
-      ctx.shadowColor = `hsl(${280 + Math.random() * 40}, 70%, 70%)`;
+      // Add branches - these go off to the sides from the main trunk
+      // Branch 1 (upper left)
+      if (trunkPoints[2]) {
+        ctx.beginPath();
+        ctx.moveTo(trunkPoints[2][0], trunkPoints[2][1]);
+        ctx.lineTo(trunkPoints[2][0] - size * 0.25, trunkPoints[2][1] - size * 0.1);
+        ctx.stroke();
+      }
+      
+      // Branch 2 (middle right)
+      if (trunkPoints[4]) {
+        ctx.beginPath();
+        ctx.moveTo(trunkPoints[4][0], trunkPoints[4][1]);
+        ctx.lineTo(trunkPoints[4][0] + size * 0.2, trunkPoints[4][1] + size * 0.15);
+        ctx.stroke();
+      }
+      
+      // Branch 3 (lower left)
+      if (trunkPoints[7]) {
+        ctx.beginPath();
+        ctx.moveTo(trunkPoints[7][0], trunkPoints[7][1]);
+        ctx.lineTo(trunkPoints[7][0] - size * 0.18, trunkPoints[7][1] + size * 0.1);
+        ctx.stroke();
+      }
+      
+      // Subtle glow
+      ctx.shadowBlur = 2;
+      ctx.shadowColor = color;
       ctx.stroke();
       ctx.shadowBlur = 0;
       
