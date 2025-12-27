@@ -130,8 +130,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const REDIRECT_URI = process.env.GITHUB_REDIRECT_URI || `${req.headers.origin || "http://localhost:3000"}/api/github/callback`;
 
     if (!CLIENT_ID || !CLIENT_SECRET) {
-      throw new Error("GitHub OAuth not configured");
+      console.error("[GitHub OAuth] Missing credentials:", { hasClientId: !!CLIENT_ID, hasClientSecret: !!CLIENT_SECRET });
+      throw new Error("GitHub OAuth not configured. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET environment variables.");
     }
+
+    console.log("[GitHub OAuth] Exchanging code for token...", { hasCode: !!codeStr, redirectUri: REDIRECT_URI });
 
     // Exchange code for access token
     const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
@@ -151,10 +154,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const tokenData = await tokenResponse.json();
 
     if (tokenData.error) {
-      throw new Error(tokenData.error_description || tokenData.error);
+      console.error("[GitHub OAuth] Token exchange error:", tokenData);
+      throw new Error(tokenData.error_description || tokenData.error || "Failed to exchange code for token");
+    }
+
+    if (!tokenData.access_token) {
+      console.error("[GitHub OAuth] No access token in response:", tokenData);
+      throw new Error("No access token received from GitHub");
     }
 
     const accessToken = tokenData.access_token;
+    console.log("[GitHub OAuth] Token exchange successful, fetching user profile...");
 
     // Get user profile from GitHub
     const userResponse = await fetch("https://api.github.com/user", {
@@ -165,10 +175,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
 
     if (!userResponse.ok) {
-      throw new Error("Failed to fetch GitHub profile");
+      const errorText = await userResponse.text();
+      console.error("[GitHub OAuth] Failed to fetch user profile:", { status: userResponse.status, error: errorText });
+      throw new Error(`Failed to fetch GitHub profile: ${userResponse.status} ${errorText}`);
     }
 
     const userData = await userResponse.json();
+    console.log("[GitHub OAuth] User profile fetched successfully:", { username: userData.login });
 
     // Return HTML that posts success message to parent window
     const html = `
@@ -287,25 +300,50 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).send(html);
   } catch (error: any) {
     console.error("GitHub OAuth error:", error);
+    const errorMessage = error?.message || error?.toString() || "OAuth flow failed";
+    const errorStr = JSON.stringify(errorMessage);
     const html = `
 <!DOCTYPE html>
 <html>
 <head>
   <title>GitHub Authentication</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      background: #0f0f0f;
+      color: #e0e0e0;
+    }
+    .container {
+      text-align: center;
+      padding: 2rem;
+    }
+  </style>
 </head>
 <body>
+  <div class="container">
+    <p style="color: #f87171;">Authentication failed: ${errorMessage}</p>
+  </div>
   <script>
-    if (window.opener) {
-      window.opener.postMessage({
-        type: 'GITHUB_OAUTH_CALLBACK',
-        error: ${JSON.stringify(error.message || "OAuth flow failed")}
-      }, window.location.origin);
-      setTimeout(() => window.close(), 500);
-    } else {
-      window.location.href = '/settings/ssh-keys?error=' + encodeURIComponent(${JSON.stringify(error.message || "oauth_failed")});
-    }
+    (function() {
+      console.error('[OAuth Callback] Error:', ${errorStr});
+      setTimeout(() => {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage({
+            type: 'GITHUB_OAUTH_CALLBACK',
+            error: ${errorStr}
+          }, window.location.origin);
+          setTimeout(() => window.close(), 1000);
+        } else {
+          window.location.href = '/settings/ssh-keys?error=' + encodeURIComponent(${errorStr});
+        }
+      }, 100);
+    })();
   </script>
-  <p>Authentication failed: ${error.message || "Unknown error"}</p>
 </body>
 </html>
     `;
