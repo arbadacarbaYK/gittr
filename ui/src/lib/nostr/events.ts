@@ -270,38 +270,36 @@ export function createRepositoryEvent(
   // Note: We don't have commit history in RepositoryEvent interface, so this is skipped
   // It can be added in push-repo-to-nostr.ts where we have access to commits
   
+  // NIP-34: Add source and forkedFrom tags if present
+  if (repo.sourceUrl) {
+    tags.push(["source", repo.sourceUrl]);
+  }
+  if (repo.forkedFrom) {
+    tags.push(["forkedFrom", repo.forkedFrom]);
+  }
+  
+  // NIP-34: Add link tags if present
+  if (repo.links && Array.isArray(repo.links)) {
+    repo.links.forEach(link => {
+      if (link.url && typeof link.url === "string" && link.url.trim().length > 0) {
+        const linkType = (link.type || "other").toString();
+        const linkTag: string[] = ["link", linkType, link.url.trim()];
+        if (link.label && typeof link.label === "string" && link.label.trim().length > 0) {
+          linkTag.push(link.label.trim());
+        }
+        tags.push(linkTag);
+      }
+    });
+  }
+  
+  // NIP-34: Content field MUST be empty per spec
+  // All metadata goes in tags, not in content
+  // Bridge compatibility: Metadata is sent to bridge via /api/nostr/repo/event endpoint separately
   const event = {
     kind: KIND_REPOSITORY_NIP34, // NIP-34: Use kind 30617 instead of 51
     created_at: Math.floor(Date.now() / 1000),
     tags,
-    content: JSON.stringify({
-      repositoryName: repo.repositoryName,
-      publicRead: repo.publicRead,
-      publicWrite: repo.publicWrite,
-      gitSshBase: repo.gitSshBase || "",
-      description: repo.description,
-      zapPolicy: repo.zapPolicy,
-      // Extended metadata
-      sourceUrl: repo.sourceUrl,
-      forkedFrom: repo.forkedFrom,
-      readme: repo.readme,
-      files: repo.files,
-      stars: repo.stars,
-      forks: repo.forks,
-      languages: repo.languages,
-      topics: repo.topics,
-      contributors: repo.contributors,
-      defaultBranch: repo.defaultBranch,
-      branches: repo.branches,
-      releases: repo.releases,
-      logoUrl: repo.logoUrl,
-      requiredApprovals: repo.requiredApprovals,
-      // Deletion markers - if set, owner has marked this repo as deleted/archived
-      deleted: repo.deleted,
-      archived: repo.archived,
-      // Repository links
-      links: repo.links,
-    }),
+    content: "", // NIP-34: Content MUST be empty - all metadata in tags
     pubkey,
     id: "",
     sig: "",

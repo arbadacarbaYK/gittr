@@ -323,6 +323,10 @@ export default function RepoSettingsPage() {
 
       // Publish updated repository event to Nostr (optional)
       if (publish && pubkey && privateKey) {
+        // Load repo data to preserve clone/relays tags from original push
+        const repos = loadStoredRepos();
+        const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+        
         const repoEvent = createRepositoryEvent(
           {
             repositoryName: repo,
@@ -333,6 +337,10 @@ export default function RepoSettingsPage() {
             zapPolicy: zapSplits.length > 0 ? { splits: zapSplits } : undefined,
             requiredApprovals: requiredApprovals,
             links: repoLinks.length > 0 ? repoLinks : undefined,
+            // CRITICAL: Preserve clone and relays tags from original push
+            // This ensures the replaceable event maintains discoverability
+            clone: repoData?.clone || [],
+            relays: repoData?.relays || defaultRelays || [],
           },
           privateKey
         );
