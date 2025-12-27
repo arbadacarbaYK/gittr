@@ -26,7 +26,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { sourceUrl, path: filePath, branch = "main" } = req.query;
+  const { sourceUrl, path: filePath, branch = "main", githubToken } = req.query;
 
   // Validate inputs
   if (!sourceUrl || typeof sourceUrl !== "string") {
@@ -36,6 +36,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!filePath || typeof filePath !== "string") {
     return res.status(400).json({ error: "path is required" });
   }
+  
+  // Get user's GitHub token if provided (for private repos)
+  // SECURITY: Only accept token from query param (sent by frontend from localStorage)
+  // Never trust tokens from cookies or headers to avoid CSRF
+  const userToken = typeof githubToken === "string" ? githubToken : null;
+  console.log(`🔍 [Git API] Request received:`, { 
+    sourceUrl: typeof sourceUrl === "string" ? sourceUrl.substring(0, 50) + "..." : sourceUrl,
+    path: filePath,
+    branch,
+    hasUserToken: !!userToken,
+    hasPlatformToken: !!process.env.GITHUB_PLATFORM_TOKEN,
+  });
 
   try {
     // Parse sourceUrl to determine if it's GitHub, GitLab, or Codeberg
@@ -60,10 +72,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         // CRITICAL: raw.githubusercontent.com doesn't support Authorization headers
         // For authenticated requests, we need to use the GitHub API instead
-        const platformToken = process.env.GITHUB_PLATFORM_TOKEN || null;
+        // Priority: user token (for private repos) > platform token (for public repos)
+        const tokenToUse = userToken || process.env.GITHUB_PLATFORM_TOKEN || null;
         
-        // If we have a token, use GitHub API instead of raw URL for better rate limits
-        if (platformToken) {
+        // If we have a token, use GitHub API instead of raw URL for better rate limits and private repo access
+        if (tokenToUse) {
           // CRITICAL: Use JSON API endpoint first to detect binary files properly
           // The JSON endpoint returns base64-encoded content which we can use for both text and binary
           const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(filePathStr)}?ref=${encodeURIComponent(branchStr)}`;
@@ -73,7 +86,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             // First, try JSON API to get file metadata and base64 content
             const jsonResponse = await fetch(apiUrl, {
               headers: {
-                "Authorization": `token ${platformToken}`,
+                "Authorization": `Bearer ${tokenToUse}`,
                 "Accept": "application/vnd.github.v3+json",
                 "User-Agent": "Mozilla/5.0 (compatible; gittr-space/1.0)",
               },
