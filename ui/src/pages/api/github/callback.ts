@@ -127,7 +127,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const CLIENT_ID = process.env.GITHUB_CLIENT_ID || "";
     const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || "";
-    const REDIRECT_URI = process.env.GITHUB_REDIRECT_URI || `${req.headers.origin || "http://localhost:3000"}/api/github/callback`;
+    
+    // Determine redirect URI - must match what was used in auth.ts
+    // Use origin header if available, otherwise construct from host header
+    const requestOrigin = req.headers.origin || (req.headers.host ? `https://${req.headers.host}` : null);
+    const REDIRECT_URI = process.env.GITHUB_REDIRECT_URI || (requestOrigin ? `${requestOrigin}/api/github/callback` : null);
+    
+    console.log('[GitHub Callback] Redirect URI:', { 
+      fromEnv: !!process.env.GITHUB_REDIRECT_URI,
+      requestOrigin,
+      finalRedirectUri: REDIRECT_URI?.substring(0, 50) + '...',
+      actualUrl: req.url
+    });
+    
+    if (!REDIRECT_URI) {
+      throw new Error("GitHub OAuth redirect URI not configured");
+    }
 
     if (!CLIENT_ID || !CLIENT_SECRET) {
       console.error("[GitHub OAuth] Missing credentials:", { hasClientId: !!CLIENT_ID, hasClientSecret: !!CLIENT_SECRET });
