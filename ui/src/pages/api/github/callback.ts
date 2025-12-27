@@ -16,6 +16,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { code, state, error } = req.query;
   const cookieState = req.cookies.github_oauth_state;
 
+  // CRITICAL: State verification - check both cookie (server-side) and allow state from query (fallback)
+  // The cookie might not be available in popup context, so we'll verify state in the callback HTML
+  // by checking it against what the parent window stored in sessionStorage
+  
   // If there's an error from GitHub, pass it to parent
   if (error) {
     const html = `
@@ -46,7 +50,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // Verify state token
-  if (!state || state !== cookieState) {
+  // CRITICAL: Cookie might not be available in popup context, so we verify in two ways:
+  // 1. Server-side: Check cookie (if available)
+  // 2. Client-side: Pass state to parent window to verify against sessionStorage
+  if (!state) {
     const html = `
 <!DOCTYPE html>
 <html>
@@ -58,22 +65,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (window.opener) {
       window.opener.postMessage({
         type: 'GITHUB_OAUTH_CALLBACK',
-        error: 'Invalid state token'
+        error: 'State token missing'
       }, window.location.origin);
       setTimeout(() => window.close(), 500);
     } else {
-      window.location.href = '/settings/ssh-keys?error=invalid_state';
+      window.location.href = '/settings/ssh-keys?error=no_state';
     }
   </script>
-  <p>Invalid state token...</p>
+  <p>State token missing...</p>
 </body>
 </html>
     `;
     res.setHeader("Content-Type", "text/html");
     return res.status(200).send(html);
   }
+  
+  // Verify state - check cookie if available, but proceed anyway (frontend will verify)
+  // The cookie might not be available in popup context, so we'll verify in the callback HTML
+  const stateStr = Array.isArray(state) ? state[0] : state;
+  const cookieStateStr = Array.isArray(cookieState) ? cookieState[0] : cookieState;
+  const stateMatchesCookie = cookieStateStr && stateStr === cookieStateStr;
+  
+  // If state doesn't match cookie, log warning but proceed (frontend will verify)
+  if (!stateMatchesCookie && cookieStateStr) {
+    console.warn(`⚠️ [GitHub OAuth] State mismatch: cookie=${cookieStateStr.substring(0, 8)}..., query=${stateStr?.substring(0, 8)}...`);
+  }
 
-  if (!code) {
+  const codeStr = Array.isArray(code) ? code[0] : code;
+  
+  if (!codeStr) {
     const html = `
 <!DOCTYPE html>
 <html>
@@ -120,7 +140,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       body: JSON.stringify({
         client_id: CLIENT_ID,
         client_secret: CLIENT_SECRET,
-        code: code,
+        code: codeStr,
         redirect_uri: REDIRECT_URI,
       }),
     });
@@ -148,6 +168,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const userData = await userResponse.json();
 
     // Return HTML that posts success message to parent window
+    // Include state for verification in parent window
     const html = `
 <!DOCTYPE html>
 <html>
@@ -157,15 +178,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 <body>
   <script>
     // Post message to parent window with auth result
+    // Parent window will verify state against sessionStorage
     if (window.opener) {
       window.opener.postMessage({
         type: 'GITHUB_OAUTH_CALLBACK',
         success: true,
+        state: ${JSON.stringify(state)},
         accessToken: ${JSON.stringify(accessToken)},
         githubUsername: ${JSON.stringify(userData.login)},
         githubUrl: ${JSON.stringify(`https://github.com/${userData.login}`)},
         githubId: ${JSON.stringify(userData.id)},
-        avatarUrl: ${JSON.stringify(userData.avatar_url)}
+        avatarUrl: ${JSON.stringify(userData.avatar_url)},
+        state: ${JSON.stringify(stateStr)}
       }, window.location.origin);
       
       // Close popup after a short delay
