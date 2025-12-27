@@ -30,18 +30,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 </head>
 <body>
   <script>
-    if (window.opener) {
-      window.opener.postMessage({
-        type: 'GITHUB_OAUTH_CALLBACK',
-        error: ${JSON.stringify(error)},
-        errorDescription: ${JSON.stringify(req.query.error_description || null)}
-      }, window.location.origin);
-      setTimeout(() => window.close(), 500);
-    } else {
-      window.location.href = '/settings/ssh-keys?error=' + encodeURIComponent(${JSON.stringify(error)});
-    }
+    console.log('[OAuth Callback] Error from GitHub:', ${JSON.stringify(error)});
+    setTimeout(() => {
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({
+          type: 'GITHUB_OAUTH_CALLBACK',
+          error: ${JSON.stringify(error)},
+          errorDescription: ${JSON.stringify(req.query.error_description || null)}
+        }, window.location.origin);
+        setTimeout(() => window.close(), 1000);
+      } else {
+        window.location.href = '/settings/ssh-keys?error=' + encodeURIComponent(${JSON.stringify(error)});
+      }
+    }, 100);
   </script>
-  <p>Authentication failed...</p>
+  <p>Authentication failed: ${error}</p>
 </body>
 </html>
     `;
@@ -173,41 +176,92 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 <html>
 <head>
   <title>GitHub Authentication</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      background: #0f0f0f;
+      color: #e0e0e0;
+    }
+    .container {
+      text-align: center;
+      padding: 2rem;
+    }
+    .spinner {
+      border: 3px solid #333;
+      border-top: 3px solid #9333ea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1rem;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
+  <div class="container">
+    <div class="spinner"></div>
+    <p>Completing authentication...</p>
+  </div>
   <script>
     (function() {
-      if (window.opener && !window.opener.closed) {
-        const message = {
-          type: 'GITHUB_OAUTH_CALLBACK',
-          success: true,
-          state: ${JSON.stringify(stateStr)},
-          accessToken: ${JSON.stringify(accessToken)},
-          githubUsername: ${JSON.stringify(userData.login)},
-          githubUrl: ${JSON.stringify(`https://github.com/${userData.login}`)},
-          githubId: ${JSON.stringify(userData.id)},
-          avatarUrl: ${JSON.stringify(userData.avatar_url)}
-        };
-        
-        try {
-          console.log('[OAuth Callback] Posting message to origin:', window.location.origin);
-          console.log('[OAuth Callback] Message:', { type: message.type, hasToken: !!message.accessToken, username: message.githubUsername });
-          window.opener.postMessage(message, window.location.origin);
-          console.log('[OAuth Callback] Message sent, closing in 500ms');
+      console.log('[OAuth Callback] Page loaded');
+      console.log('[OAuth Callback] window.opener:', !!window.opener);
+      console.log('[OAuth Callback] window.opener.closed:', window.opener?.closed);
+      console.log('[OAuth Callback] window.location.origin:', window.location.origin);
+      
+      // Wait a moment for page to fully render
+      setTimeout(() => {
+        if (window.opener && !window.opener.closed) {
+          const message = {
+            type: 'GITHUB_OAUTH_CALLBACK',
+            success: true,
+            state: ${JSON.stringify(stateStr)},
+            accessToken: ${JSON.stringify(accessToken)},
+            githubUsername: ${JSON.stringify(userData.login)},
+            githubUrl: ${JSON.stringify(`https://github.com/${userData.login}`)},
+            githubId: ${JSON.stringify(userData.id)},
+            avatarUrl: ${JSON.stringify(userData.avatar_url)}
+          };
+          
+          try {
+            console.log('[OAuth Callback] Posting message to origin:', window.location.origin);
+            console.log('[OAuth Callback] Message:', { type: message.type, hasToken: !!message.accessToken, username: message.githubUsername });
+            window.opener.postMessage(message, window.location.origin);
+            console.log('[OAuth Callback] Message sent successfully');
+            
+            // Show success message briefly before closing
+            document.querySelector('.container').innerHTML = '<p style="color: #4ade80;">✓ Authentication successful!</p>';
+            
+            setTimeout(() => {
+              console.log('[OAuth Callback] Closing popup');
+              window.close();
+            }, 1000);
+          } catch (e) {
+            console.error('[OAuth Callback] Error posting message:', e);
+            document.querySelector('.container').innerHTML = '<p style="color: #f87171;">Error: ' + e.message + '</p><p>Redirecting...</p>';
+            setTimeout(() => {
+              window.location.href = '/settings/ssh-keys';
+            }, 2000);
+          }
+        } else {
+          console.warn('[OAuth Callback] No opener or opener is closed. Redirecting.');
+          document.querySelector('.container').innerHTML = '<p>Redirecting...</p>';
           setTimeout(() => {
-            console.log('[OAuth Callback] Closing popup');
-            window.close();
-          }, 500);
-        } catch (e) {
-          console.error('[OAuth Callback] Error posting message:', e);
-          window.location.href = '/settings/ssh-keys';
+            window.location.href = '/settings/ssh-keys?success=true';
+          }, 1000);
         }
-      } else {
-        window.location.href = '/settings/ssh-keys';
-      }
+      }, 100);
     })();
   </script>
-  <p>Completing authentication...</p>
 </body>
 </html>
     `;
