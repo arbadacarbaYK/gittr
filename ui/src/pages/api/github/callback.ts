@@ -177,38 +177,88 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 </head>
 <body>
   <script>
-    // Post message to parent window with auth result
-    // Parent window will verify state against sessionStorage
-    if (window.opener) {
+    (function() {
+      const message = {
+        type: 'GITHUB_OAUTH_CALLBACK',
+        success: true,
+        state: ${JSON.stringify(stateStr)},
+        accessToken: ${JSON.stringify(accessToken)},
+        githubUsername: ${JSON.stringify(userData.login)},
+        githubUrl: ${JSON.stringify(`https://github.com/${userData.login}`)},
+        githubId: ${JSON.stringify(userData.id)},
+        avatarUrl: ${JSON.stringify(userData.avatar_url)}
+      };
+      
+      console.log('[OAuth Callback] Attempting to post message to parent:', { 
+        hasOpener: !!window.opener, 
+        origin: window.location.origin,
+        type: message.type,
+        hasToken: !!message.accessToken 
+      });
+      
+      // Try multiple times to ensure message is received
+      let attempts = 0;
+      const maxAttempts = 10;
+      const attemptInterval = 200; // 200ms between attempts
+      
+      // Store in localStorage as fallback
       try {
-        const message = {
-          type: 'GITHUB_OAUTH_CALLBACK',
-          success: true,
-          state: ${JSON.stringify(stateStr)},
-          accessToken: ${JSON.stringify(accessToken)},
-          githubUsername: ${JSON.stringify(userData.login)},
-          githubUrl: ${JSON.stringify(`https://github.com/${userData.login}`)},
-          githubId: ${JSON.stringify(userData.id)},
-          avatarUrl: ${JSON.stringify(userData.avatar_url)}
-        };
-        
-        console.log('[OAuth Callback] Posting message to parent:', { type: message.type, hasToken: !!message.accessToken, username: message.githubUsername });
-        window.opener.postMessage(message, window.location.origin);
-        
-        // Close popup after ensuring message is sent
-        setTimeout(() => {
-          console.log('[OAuth Callback] Closing popup');
-          window.close();
-        }, 1000);
-      } catch (error) {
-        console.error('[OAuth Callback] Error posting message:', error);
-        // Fallback: redirect if postMessage fails
-        window.location.href = '/settings/ssh-keys?success=true';
+        localStorage.setItem('gittr_oauth_callback', JSON.stringify({
+          ...message,
+          timestamp: Date.now()
+        }));
+        console.log('[OAuth Callback] Stored message in localStorage as fallback');
+      } catch (e) {
+        console.error('[OAuth Callback] Failed to store in localStorage:', e);
       }
-    } else {
-      // If no opener, redirect to SSH keys page
-      window.location.href = '/settings/ssh-keys?success=true';
-    }
+      
+      function sendMessage() {
+        attempts++;
+        console.log('[OAuth Callback] Attempt', attempts, 'of', maxAttempts);
+        
+        if (window.opener && !window.opener.closed) {
+          try {
+            window.opener.postMessage(message, window.location.origin);
+            console.log('[OAuth Callback] Message sent successfully');
+            
+            // Wait a bit more to ensure message is processed, then close
+            if (attempts >= 3) {
+              setTimeout(() => {
+                console.log('[OAuth Callback] Closing popup after', attempts, 'attempts');
+                window.close();
+              }, 500);
+              return; // Stop retrying after successful send
+            }
+          } catch (error) {
+            console.error('[OAuth Callback] Error posting message:', error);
+          }
+        } else {
+          console.warn('[OAuth Callback] No opener or opener is closed');
+          // If no opener after several attempts, redirect with token in URL
+          if (attempts >= maxAttempts) {
+            window.location.href = '/settings/ssh-keys?success=true&token=' + encodeURIComponent(message.accessToken) + '&username=' + encodeURIComponent(message.githubUsername);
+            return;
+          }
+        }
+        
+        // Continue trying if we haven't reached max attempts
+        if (attempts < maxAttempts) {
+          setTimeout(sendMessage, attemptInterval);
+        } else {
+          // Final attempt - close after a delay
+          setTimeout(() => {
+            if (window.opener && !window.opener.closed) {
+              window.close();
+            } else {
+              window.location.href = '/settings/ssh-keys?success=true';
+            }
+          }, 1000);
+        }
+      }
+      
+      // Start sending messages
+      sendMessage();
+    })();
   </script>
   <p>Completing authentication...</p>
 </body>

@@ -83,9 +83,67 @@ export default function SSHKeysPage() {
     };
   }, [loadKeys]);
 
-  // Check GitHub connection status
+  // Check GitHub connection status and handle OAuth callbacks
   useEffect(() => {
     if (typeof window === "undefined") return;
+    
+    // Check for OAuth callback in URL params (fallback if postMessage fails)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("success") === "true") {
+      const token = urlParams.get("token");
+      const username = urlParams.get("username");
+      if (token && username) {
+        console.log('[SSH Keys] OAuth success from URL params');
+        localStorage.setItem("gittr_github_token", token);
+        localStorage.setItem("gittr_github_profile", JSON.stringify({
+          githubUsername: username,
+          githubUrl: `https://github.com/${username}`,
+        }));
+        setGithubConnected(true);
+        setGithubUsername(username);
+        setStatus("GitHub connected successfully!");
+        setTimeout(() => setStatus(""), 3000);
+        // Clean up URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+    
+    // Check localStorage for OAuth callback (fallback if popup closed before postMessage)
+    try {
+      const storedCallback = localStorage.getItem('gittr_oauth_callback');
+      if (storedCallback) {
+        const callback = JSON.parse(storedCallback);
+        // Only process if it's recent (within 10 seconds)
+        if (callback.timestamp && Date.now() - callback.timestamp < 10000) {
+          console.log('[SSH Keys] Found OAuth callback in localStorage');
+          if (callback.success && callback.accessToken && callback.githubUsername) {
+            // Verify state
+            if (callback.state) {
+              const storedState = sessionStorage.getItem("github_oauth_state");
+              if (storedState && storedState === callback.state) {
+                localStorage.setItem("gittr_github_token", callback.accessToken);
+                localStorage.setItem("gittr_github_profile", JSON.stringify({
+                  githubUsername: callback.githubUsername,
+                  githubUrl: callback.githubUrl,
+                }));
+                setGithubConnected(true);
+                setGithubUsername(callback.githubUsername);
+                setStatus("GitHub connected successfully!");
+                setTimeout(() => setStatus(""), 3000);
+                sessionStorage.removeItem("github_oauth_state");
+              }
+            }
+          }
+          // Clean up
+          localStorage.removeItem('gittr_oauth_callback');
+        } else {
+          // Stale callback, remove it
+          localStorage.removeItem('gittr_oauth_callback');
+        }
+      }
+    } catch (e) {
+      console.error('[SSH Keys] Error checking localStorage callback:', e);
+    }
     
     const githubToken = localStorage.getItem("gittr_github_token");
     const githubProfile = localStorage.getItem("gittr_github_profile");
