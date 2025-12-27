@@ -115,13 +115,27 @@ export default function SSHKeysPage() {
       if (event.origin !== window.location.origin) return;
       if (event.data.type !== "GITHUB_OAUTH_CALLBACK") return;
       
-      const { success, accessToken, githubUsername, githubUrl, error, errorDescription } = event.data;
+      const { success, accessToken, githubUsername, githubUrl, error, errorDescription, state } = event.data;
       
       if (error) {
         setStatus(`GitHub OAuth error: ${errorDescription || error}`);
         setGithubConnecting(false);
         setTimeout(() => setStatus(""), 5000);
         return;
+      }
+      
+      // Verify state token against sessionStorage
+      if (state) {
+        const storedState = sessionStorage.getItem("github_oauth_state");
+        if (storedState && storedState !== state) {
+          setStatus("GitHub OAuth error: State token mismatch (possible CSRF attack)");
+          setGithubConnecting(false);
+          setTimeout(() => setStatus(""), 5000);
+          sessionStorage.removeItem("github_oauth_state");
+          return;
+        }
+        // Clear state after successful verification
+        sessionStorage.removeItem("github_oauth_state");
       }
       
       if (success && accessToken && githubUsername) {
@@ -598,6 +612,11 @@ export default function SSHKeysPage() {
                 }
                 
                 const data = await response.json();
+                
+                // Store state in sessionStorage for verification (cookie might not be available in popup)
+                if (data.state) {
+                  sessionStorage.setItem("github_oauth_state", data.state);
+                }
                 
                 // Open OAuth popup
                 const width = 600;
