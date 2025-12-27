@@ -176,24 +176,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 </head>
 <body>
   <script>
-    if (window.opener) {
-      window.opener.postMessage({
-        type: 'GITHUB_OAUTH_CALLBACK',
-        success: true,
-        state: ${JSON.stringify(stateStr)},
-        accessToken: ${JSON.stringify(accessToken)},
-        githubUsername: ${JSON.stringify(userData.login)},
-        githubUrl: ${JSON.stringify(`https://github.com/${userData.login}`)},
-        githubId: ${JSON.stringify(userData.id)},
-        avatarUrl: ${JSON.stringify(userData.avatar_url)}
-      }, window.location.origin);
-      
-      setTimeout(() => {
-        window.close();
-      }, 500);
-    } else {
-      window.location.href = '/settings/ssh-keys';
-    }
+    (function() {
+      if (window.opener && !window.opener.closed) {
+        const message = {
+          type: 'GITHUB_OAUTH_CALLBACK',
+          success: true,
+          state: ${JSON.stringify(stateStr)},
+          accessToken: ${JSON.stringify(accessToken)},
+          githubUsername: ${JSON.stringify(userData.login)},
+          githubUrl: ${JSON.stringify(`https://github.com/${userData.login}`)},
+          githubId: ${JSON.stringify(userData.id)},
+          avatarUrl: ${JSON.stringify(userData.avatar_url)}
+        };
+        
+        try {
+          window.opener.postMessage(message, window.location.origin);
+          setTimeout(() => {
+            window.close();
+          }, 500);
+        } catch (e) {
+          console.error('Error posting message:', e);
+          window.location.href = '/settings/ssh-keys';
+        }
+      } else {
+        window.location.href = '/settings/ssh-keys';
+      }
+    })();
   </script>
   <p>Completing authentication...</p>
 </body>
