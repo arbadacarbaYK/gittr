@@ -1485,7 +1485,10 @@ export default function RepoCodePage() {
       // CRITICAL: Check bridge if repo has event ID (was pushed to Nostr)
       // This ensures "live" status only shows if bridge has actually processed the event
       if (eventId && repo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)) {
-        const repoName = repo.repo || repo.slug || resolvedParams.repo;
+        // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
+        // Priority: repositoryName > repo > slug > resolvedParams.repo
+        const repoAny = repo as any;
+        const repoName = repoAny?.repositoryName || repo.repo || repo.slug || resolvedParams.repo;
         checkBridgeExists(repo.ownerPubkey, repoName, resolvedParams.entity).catch(err => {
           console.warn("Failed to check bridge:", err);
         });
@@ -10193,9 +10196,13 @@ export default function RepoCodePage() {
 
                               if (shouldAutoBridge) {
                                 try {
+                                  // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
+                                  // Priority: repositoryName > repo > slug > decodedRepo
+                                  const repoAny = repo as any;
+                                  const actualRepoName = repoAny?.repositoryName || repo.repo || repo.slug || decodedRepo;
                                   await pushFilesToBridge({
                                     ownerPubkey: bridgeOwnerPubkey!,
-                                    repoSlug: decodedRepo,
+                                    repoSlug: actualRepoName,
                                     entity: resolvedParams.entity,
                                     branch: repo.defaultBranch || repoData?.defaultBranch || "main",
                                     files: result.filesForBridge!,

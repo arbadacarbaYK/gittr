@@ -2433,9 +2433,11 @@ export default function RepositoriesPage() {
           return deduplicatedRepos.map((r: any, index: number) => {
             // Entity is guaranteed to be valid here
             const entity = r.entity!;
-            // CRITICAL: For URLs, use slugified version (repo/slug/repositoryName)
+            // CRITICAL: For URLs and bridge operations, use repositoryName from Nostr event (exact name used by git-nostr-bridge)
+            // Priority: repositoryName > repo > slug
             // For display, use original name (r.name)
-            const repoForUrl = r.repo || r.slug || "unnamed-repo";
+            const rAny = r as any;
+            const repoForUrl = rAny?.repositoryName || r.repo || r.slug || "unnamed-repo";
             const displayName = r.name || repoForUrl; // CRITICAL: Use original name for display
             
             // CRITICAL: Resolve full owner pubkey for proper metadata fetching

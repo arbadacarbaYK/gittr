@@ -493,7 +493,9 @@ export function ReposList({
     <div className="space-y-2">
       {deduplicatedRepos.map((r: any, index: number) => {
         const entity = r.entity!;
-        const repoForUrl = r.repo || r.slug || "unnamed-repo";
+        // CRITICAL: For URLs and bridge operations, use repositoryName from Nostr event (exact name used by git-nostr-bridge)
+        // Priority: repositoryName > repo > slug
+        const repoForUrl = r.repositoryName || r.repo || r.slug || "unnamed-repo";
         const displayName = r.name || repoForUrl;
         
         const ownerPubkey = getRepoOwnerPubkey(r, entity);
