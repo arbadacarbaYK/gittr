@@ -190,7 +190,10 @@ export default function HomePage() {
       const hasEventId = !!(r.nostrEventId || r.lastNostrEventId || r.stateEventId || r.lastStateEventId);
       const bridgeProcessed = r.bridgeProcessed;
       const ownerPubkey = (r as any).ownerPubkey;
-      const repoName = r.repo || r.slug;
+      // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
+      // Priority: repositoryName > repo > slug
+      const rAny = r as any;
+      const repoName = rAny?.repositoryName || r.repo || r.slug;
       const entity = r.entity;
       
       // Only check if repo has event ID but bridgeProcessed is not explicitly true
