@@ -622,11 +622,27 @@ export default function SSHKeysPage() {
                 const left = window.screen.width / 2 - width / 2;
                 const top = window.screen.height / 2 - height / 2;
                 
-                window.open(
+                const popup = window.open(
                   data.authUrl,
                   "GitHub OAuth",
                   `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
                 );
+                
+                // Fallback: reset connecting state if popup is closed without message
+                const checkPopup = setInterval(() => {
+                  if (popup?.closed) {
+                    clearInterval(checkPopup);
+                    // Give it a moment for message to arrive
+                    setTimeout(() => {
+                      if (githubConnecting) {
+                        setGithubConnecting(false);
+                      }
+                    }, 1000);
+                  }
+                }, 500);
+                
+                // Clean up interval after 5 minutes
+                setTimeout(() => clearInterval(checkPopup), 300000);
               } catch (error: any) {
                 setError(`Failed to connect GitHub: ${error.message}`);
                 setGithubConnecting(false);
