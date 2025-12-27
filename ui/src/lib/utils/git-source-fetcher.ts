@@ -751,6 +751,11 @@ async function fetchFromNostrGit(
           return data.files;
         } else {
           console.log(`⚠️ [Git Source] git-nostr-bridge API returned OK but no files:`, data);
+          // CRITICAL: When bridge returns 200 with empty files, treat it as a failure
+          // This allows the multi-source fetch to try other sources (GitHub, etc.)
+          // The repo might be empty, on wrong branch, or needs to be re-cloned
+          // Return null so other sources can be tried
+          return null;
         }
       } else {
         const errorText = await response.text().catch(() => "");
