@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import SettingsHero from "@/components/settings-hero";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +43,8 @@ export default function SSHKeysPage() {
   const [githubConnected, setGithubConnected] = useState(false);
   const [githubUsername, setGithubUsername] = useState<string | null>(null);
   const [githubConnecting, setGithubConnecting] = useState(false);
+  // Use ref to track connecting state for closure access
+  const githubConnectingRef = useRef(false);
 
   // Load SSH keys from Nostr events
   const loadKeys = useCallback(async () => {
@@ -128,6 +130,7 @@ export default function SSHKeysPage() {
       if (error) {
         setStatus(`GitHub OAuth error: ${errorDescription || error}`);
         setGithubConnecting(false);
+        githubConnectingRef.current = false;
         setTimeout(() => setStatus(""), 5000);
         return;
       }
@@ -138,6 +141,7 @@ export default function SSHKeysPage() {
         if (storedState && storedState !== state) {
           setStatus("GitHub OAuth error: State token mismatch");
           setGithubConnecting(false);
+          githubConnectingRef.current = false;
           setTimeout(() => setStatus(""), 5000);
           sessionStorage.removeItem("github_oauth_state");
           return;
@@ -162,6 +166,7 @@ export default function SSHKeysPage() {
       }
       
       setGithubConnecting(false);
+      githubConnectingRef.current = false;
     };
     
     window.addEventListener("message", handleOAuthMessage);
@@ -606,6 +611,7 @@ export default function SSHKeysPage() {
           <Button
             onClick={async () => {
               setGithubConnecting(true);
+              githubConnectingRef.current = true;
               setError(null);
               try {
                 const response = await fetch("/api/github/auth?action=initiate", {
@@ -640,6 +646,7 @@ export default function SSHKeysPage() {
                 if (!popup) {
                   setError("Popup was blocked. Please allow popups for this site and try again.");
                   setGithubConnecting(false);
+                  githubConnectingRef.current = false;
                   return;
                 }
                 
@@ -652,9 +659,11 @@ export default function SSHKeysPage() {
                     console.log('[SSH Keys] Popup closed, waiting for message...');
                     // Give it a moment for message to arrive
                     setTimeout(() => {
-                      if (githubConnecting) {
+                      // Use ref to check current state (avoids closure issue)
+                      if (githubConnectingRef.current) {
                         console.log('[SSH Keys] No message received, resetting connecting state');
                         setGithubConnecting(false);
+                        githubConnectingRef.current = false;
                         setStatus("GitHub connection timed out or cancelled.");
                         setTimeout(() => setStatus(""), 5000);
                       }
@@ -667,6 +676,7 @@ export default function SSHKeysPage() {
               } catch (error: any) {
                 setError(`Failed to connect GitHub: ${error.message}`);
                 setGithubConnecting(false);
+                githubConnectingRef.current = false;
               }
             }}
             disabled={githubConnecting}
