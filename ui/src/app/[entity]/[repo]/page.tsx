@@ -9568,11 +9568,16 @@ export default function RepoCodePage() {
                             console.log(`🔄 [Refetch] Starting refetch for ${resolvedParams.repo} from source: ${effectiveSourceUrl}`);
                           
                           // Call import API to fetch latest from GitHub/GitLab/Codeberg
-                          console.log(`📡 [Refetch] Calling /api/import with sourceUrl: ${effectiveSourceUrl}`);
+                          // Include GitHub token if available (for private repos)
+                          const githubToken = localStorage.getItem("gittr_github_token");
+                          console.log(`📡 [Refetch] Calling /api/import with sourceUrl: ${effectiveSourceUrl}${githubToken ? ' (with GitHub token)' : ''}`);
                           const importResponse = await fetch("/api/import", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ sourceUrl: effectiveSourceUrl }),
+                            body: JSON.stringify({ 
+                              sourceUrl: effectiveSourceUrl,
+                              ...(githubToken ? { githubToken } : {})
+                            }),
                           });
                           
                           console.log(`📡 [Refetch] Import API response status: ${importResponse.status}`);

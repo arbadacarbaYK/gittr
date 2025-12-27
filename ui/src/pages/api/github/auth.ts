@@ -36,7 +36,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader("Set-Cookie", `github_oauth_state=${state}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`);
     
     // Redirect to GitHub OAuth
-    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=read:user&state=${state}`;
+    // Request 'repo' scope for private repo access, 'read:user' for basic profile
+    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=read:user%20repo&state=${state}`;
     
     return res.status(200).json({ 
       authUrl: githubAuthUrl,
@@ -102,13 +103,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       const userData = await userResponse.json();
 
-      // Return user data to be saved by frontend
+      // Return user data and access token to be saved by frontend
+      // Token is needed for private repo access
       return res.status(200).json({
         success: true,
         githubUrl: `https://github.com/${userData.login}`,
         githubUsername: userData.login,
         githubId: userData.id,
         avatarUrl: userData.avatar_url,
+        accessToken: accessToken, // Include token for private repo access
       });
     } catch (error: any) {
       console.error("GitHub OAuth error:", error);

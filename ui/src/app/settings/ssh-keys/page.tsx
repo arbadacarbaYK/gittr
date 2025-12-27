@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { createSSHKeyEvent, KIND_SSH_KEY } from "@/lib/nostr/events";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
-import { Key, Plus, Trash2, Copy, Download, AlertCircle, Info } from "lucide-react";
+import { Key, Plus, Trash2, Copy, Download, AlertCircle, Info, Github, CheckCircle2, XCircle } from "lucide-react";
 import useSession from "@/lib/nostr/useSession";
 import { getEventHash, signEvent, type Event as NostrEvent } from "nostr-tools";
 import { formatDateTime24h, formatDate24h, formatTime24h } from "@/lib/utils/date-format";
@@ -40,6 +40,9 @@ export default function SSHKeysPage() {
   const [generatedPrivateKey, setGeneratedPrivateKey] = useState<string | null>(null);
   const [generatedPublicKey, setGeneratedPublicKey] = useState<string | null>(null);
   const [generatedTitle, setGeneratedTitle] = useState("");
+  const [githubConnected, setGithubConnected] = useState(false);
+  const [githubUsername, setGithubUsername] = useState<string | null>(null);
+  const [githubConnecting, setGithubConnecting] = useState(false);
 
   // Load SSH keys from Nostr events
   const loadKeys = useCallback(async () => {
@@ -79,6 +82,84 @@ export default function SSHKeysPage() {
       window.removeEventListener("gittr:ssh-key-added", handleKeyAdded);
     };
   }, [loadKeys]);
+
+  // Check GitHub connection status
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    
+    const githubToken = localStorage.getItem("gittr_github_token");
+    const githubProfile = localStorage.getItem("gittr_github_profile");
+    
+    if (githubToken && githubProfile) {
+      setGithubConnected(true);
+      try {
+        const profile = JSON.parse(githubProfile);
+        setGithubUsername(profile.githubUsername || null);
+      } catch {
+        // Try to extract username from URL
+        try {
+          const url = new URL(githubProfile);
+          const pathParts = url.pathname.split("/").filter(p => p);
+          setGithubUsername(pathParts[0] || null);
+        } catch {
+          setGithubUsername(null);
+        }
+      }
+    } else {
+      setGithubConnected(false);
+      setGithubUsername(null);
+    }
+
+    // Listen for OAuth callback messages
+    const handleOAuthMessage = async (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data.type !== "GITHUB_OAUTH_CALLBACK") return;
+      
+      const { code, state, error } = event.data;
+      if (error) {
+        setStatus(`GitHub OAuth error: ${error}`);
+        setGithubConnecting(false);
+        return;
+      }
+      
+      if (!code || !state) return;
+      
+      try {
+        // Exchange code for token
+        const response = await fetch(`/api/github/auth?action=callback&code=${code}&state=${state}`, {
+          method: "GET",
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "OAuth failed");
+        }
+        
+        const data = await response.json();
+        
+        if (data.success && data.accessToken) {
+          // Store token and profile
+          localStorage.setItem("gittr_github_token", data.accessToken);
+          localStorage.setItem("gittr_github_profile", data.githubUrl);
+          
+          setGithubConnected(true);
+          setGithubUsername(data.githubUsername || null);
+          setStatus("GitHub connected successfully!");
+          setTimeout(() => setStatus(""), 3000);
+        }
+      } catch (error: any) {
+        setStatus(`Failed to connect GitHub: ${error.message}`);
+        setTimeout(() => setStatus(""), 5000);
+      } finally {
+        setGithubConnecting(false);
+      }
+    };
+    
+    window.addEventListener("message", handleOAuthMessage);
+    return () => {
+      window.removeEventListener("message", handleOAuthMessage);
+    };
+  }, []);
 
   // Calculate fingerprint from public key
   const calculateFingerprint = (publicKey: string): string => {
@@ -470,6 +551,100 @@ export default function SSHKeysPage() {
           {status}
         </div>
       )}
+
+      {/* GitHub OAuth Section */}
+      <div className="mb-6 p-4 bg-[#171B21] border border-[#383B42] rounded-lg">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Github className="h-5 w-5" />
+            <h2 className="text-lg font-semibold">GitHub Authentication</h2>
+          </div>
+          {githubConnected ? (
+            <Badge className="bg-green-900/30 text-green-400 border-green-700">
+              <CheckCircle2 className="h-3 w-3 mr-1" />
+              Connected
+            </Badge>
+          ) : (
+            <Badge className="bg-gray-900/30 text-gray-400 border-gray-700">
+              <XCircle className="h-3 w-3 mr-1" />
+              Not Connected
+            </Badge>
+          )}
+        </div>
+        
+        <p className="text-sm text-gray-400 mb-4">
+          Connect your GitHub account to import and access private repositories. The OAuth token is stored locally in your browser and used for GitHub API requests.
+        </p>
+        
+        {githubConnected && githubUsername ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-gray-300">Connected as:</span>
+              <a 
+                href={`https://github.com/${githubUsername}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300 flex items-center gap-1"
+              >
+                <Github className="h-4 w-4" />
+                {githubUsername}
+              </a>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => {
+                localStorage.removeItem("gittr_github_token");
+                localStorage.removeItem("gittr_github_profile");
+                setGithubConnected(false);
+                setGithubUsername(null);
+                setStatus("GitHub disconnected");
+                setTimeout(() => setStatus(""), 3000);
+              }}
+              className="text-red-400 border-red-700 hover:bg-red-900/20"
+            >
+              Disconnect GitHub
+            </Button>
+          </div>
+        ) : (
+          <Button
+            onClick={async () => {
+              setGithubConnecting(true);
+              setError(null);
+              try {
+                const response = await fetch("/api/github/auth?action=initiate", {
+                  method: "GET",
+                });
+                
+                if (!response.ok) {
+                  const errorData = await response.json();
+                  throw new Error(errorData.error || "Failed to initiate OAuth");
+                }
+                
+                const data = await response.json();
+                
+                // Open OAuth popup
+                const width = 600;
+                const height = 700;
+                const left = window.screen.width / 2 - width / 2;
+                const top = window.screen.height / 2 - height / 2;
+                
+                window.open(
+                  data.authUrl,
+                  "GitHub OAuth",
+                  `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+                );
+              } catch (error: any) {
+                setError(`Failed to connect GitHub: ${error.message}`);
+                setGithubConnecting(false);
+              }
+            }}
+            disabled={githubConnecting}
+            className="bg-purple-600 hover:bg-purple-700"
+          >
+            {githubConnecting ? "Connecting..." : "Connect GitHub"}
+          </Button>
+        )}
+      </div>
 
       {/* Info box */}
       <div className="mb-6 p-4 bg-blue-900/20 border border-blue-700 rounded text-blue-400 max-w-2xl">

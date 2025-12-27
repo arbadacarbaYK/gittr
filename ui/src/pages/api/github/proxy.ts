@@ -28,9 +28,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "endpoint parameter is required" });
   }
 
-  // Get platform GitHub token from environment (if configured)
-  // This is a platform-level token, not user-specific
-  // With token: 5000 requests/hour, without: 60 requests/hour (per IP)
+  // SECURITY: Platform token should ONLY have 'public_repo' scope, NOT 'repo' scope
+  // Using 'repo' scope would allow the server to access ANY user's private repos - major security issue!
+  // This token is only used for:
+  // 1. Public repos (rate limit increase: 60/hour → 5000/hour)
+  // 2. User profile lookups (public data)
+  // For private repos, users should use their own tokens or rely on the bridge (files pushed during import)
   const platformToken = process.env.GITHUB_PLATFORM_TOKEN || null;
 
   try {

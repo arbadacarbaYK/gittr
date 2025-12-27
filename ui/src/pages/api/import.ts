@@ -29,11 +29,17 @@ type Data = {
   approximateSizeBytes?: number;
 };
 
-async function fetchGithubTree(owner: string, repo: string, branch: string) {
+async function fetchGithubTree(owner: string, repo: string, branch: string, token?: string | null) {
   try {
+    // Use token if provided (for private repos)
+    const headers: Record<string, string> = { "User-Agent": "gittr" };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    
     // First, get the SHA of the branch
     const branchUrl = `https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(branch)}`;
-    const branchResponse = await fetch(branchUrl, { headers: { "User-Agent": "gittr" } as any });
+    const branchResponse = await fetch(branchUrl, { headers: headers as any });
     
     let sha = branch;
     if (branchResponse.ok) {
@@ -44,7 +50,7 @@ async function fetchGithubTree(owner: string, repo: string, branch: string) {
     }
     
     const url = `https://api.github.com/repos/${owner}/${repo}/git/trees/${sha}?recursive=1`;
-  const r = await fetch(url, { headers: { "User-Agent": "gittr" } as any });
+  const r = await fetch(url, { headers: headers as any });
     
     if (!r.ok) {
       const errorText = await r.text();
@@ -93,17 +99,16 @@ async function fetchGithubTree(owner: string, repo: string, branch: string) {
  * Fetch file content from GitHub
  * Returns object with content (string for text, base64 for binary) and isBinary flag
  */
-async function fetchFileContent(owner: string, repo: string, branch: string, path: string): Promise<{ content: string; isBinary: boolean } | null> {
+async function fetchFileContent(owner: string, repo: string, branch: string, path: string, userToken?: string | null): Promise<{ content: string; isBinary: boolean } | null> {
   try {
-    // Use platform GitHub token if available (from env)
-    // This increases rate limit from 60/hour to 5000/hour
-    const platformToken = process.env.GITHUB_PLATFORM_TOKEN || null;
+    // Use user token if provided (for private repos), otherwise fallback to platform token
+    const tokenToUse = userToken || process.env.GITHUB_PLATFORM_TOKEN || null;
     const headers: Record<string, string> = {
       "User-Agent": "gittr-space",
       "Accept": "application/vnd.github.v3+json"
     };
-    if (platformToken) {
-      headers["Authorization"] = `Bearer ${platformToken}`;
+    if (tokenToUse) {
+      headers["Authorization"] = `Bearer ${tokenToUse}`;
     }
     
     // Use GitHub Contents API which returns base64 encoded content
@@ -205,7 +210,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   }
 
   if (req.method !== "POST") return res.status(405).json({ status: "method_not_allowed" });
-  let { sourceUrl } = req.body || {};
+  let { sourceUrl, githubToken } = req.body || {};
   
   // CRITICAL: Normalize SSH URLs (git@host:path) to HTTPS format before validation
   if (sourceUrl && typeof sourceUrl === "string") {
@@ -242,14 +247,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     const slug = repo;
     const entity = owner;
     
-    // Use platform GitHub token if available (from env)
+    // Use user-provided GitHub token if available (for private repos), otherwise fallback to platform token
+    // User tokens are passed from frontend (from localStorage after OAuth)
+    const userToken = (githubToken && typeof githubToken === "string") ? githubToken : null;
     const platformToken = process.env.GITHUB_PLATFORM_TOKEN || null;
+    const tokenToUse = userToken || platformToken;
+    
     const headers: Record<string, string> = {
       "User-Agent": "gittr-space",
       "Accept": "application/vnd.github.v3+json"
     };
-    if (platformToken) {
-      headers["Authorization"] = `Bearer ${platformToken}`;
+    if (tokenToUse) {
+      headers["Authorization"] = `Bearer ${tokenToUse}`;
+      console.log(`🔑 [Import API] Using ${userToken ? 'user' : 'platform'} GitHub token for ${owner}/${repo}`);
     }
     
     // Fetch repo metadata
@@ -383,9 +393,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
 
     // try defaultBranch then main/master
     const branchToUse = defaultBranch || "main";
-    let tree = await fetchGithubTree(owner, repo, branchToUse);
-    if (!tree) tree = await fetchGithubTree(owner, repo, "main");
-    if (!tree) tree = await fetchGithubTree(owner, repo, "master");
+    let tree = await fetchGithubTree(owner, repo, branchToUse, tokenToUse);
+    if (!tree) tree = await fetchGithubTree(owner, repo, "main", tokenToUse);
+    if (!tree) tree = await fetchGithubTree(owner, repo, "master", tokenToUse);
     
     // Log if tree fetch failed
     if (!tree || !tree.files || tree.files.length === 0) {

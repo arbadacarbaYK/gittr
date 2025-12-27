@@ -38,8 +38,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         window.close();
       }, 500);
     } else {
-      // If no opener, redirect to settings page
-      window.location.href = '/settings/account';
+      // If no opener, redirect to SSH keys page (where OAuth is handled)
+      window.location.href = '/settings/ssh-keys';
     }
   </script>
   <p>Completing authentication...</p>
