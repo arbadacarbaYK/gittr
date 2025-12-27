@@ -630,22 +630,35 @@ export default function SSHKeysPage() {
                 const left = window.screen.width / 2 - width / 2;
                 const top = window.screen.height / 2 - height / 2;
                 
+                console.log('[SSH Keys] Opening OAuth popup:', data.authUrl);
                 const popup = window.open(
                   data.authUrl,
                   "GitHub OAuth",
                   `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
                 );
                 
+                if (!popup) {
+                  setError("Popup was blocked. Please allow popups for this site and try again.");
+                  setGithubConnecting(false);
+                  return;
+                }
+                
+                console.log('[SSH Keys] Popup opened, waiting for message...');
+                
                 // Fallback: reset connecting state if popup is closed without message
                 const checkPopup = setInterval(() => {
                   if (popup?.closed) {
                     clearInterval(checkPopup);
+                    console.log('[SSH Keys] Popup closed, waiting for message...');
                     // Give it a moment for message to arrive
                     setTimeout(() => {
                       if (githubConnecting) {
+                        console.log('[SSH Keys] No message received, resetting connecting state');
                         setGithubConnecting(false);
+                        setStatus("GitHub connection timed out or cancelled.");
+                        setTimeout(() => setStatus(""), 5000);
                       }
-                    }, 1000);
+                    }, 2000);
                   }
                 }, 500);
                 
