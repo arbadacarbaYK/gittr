@@ -190,12 +190,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         };
         
         try {
+          console.log('[OAuth Callback] Posting message to origin:', window.location.origin);
+          console.log('[OAuth Callback] Message:', { type: message.type, hasToken: !!message.accessToken, username: message.githubUsername });
           window.opener.postMessage(message, window.location.origin);
+          console.log('[OAuth Callback] Message sent, closing in 500ms');
           setTimeout(() => {
+            console.log('[OAuth Callback] Closing popup');
             window.close();
           }, 500);
         } catch (e) {
-          console.error('Error posting message:', e);
+          console.error('[OAuth Callback] Error posting message:', e);
           window.location.href = '/settings/ssh-keys';
         }
       } else {

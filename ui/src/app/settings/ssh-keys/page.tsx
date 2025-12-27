@@ -112,8 +112,16 @@ export default function SSHKeysPage() {
 
     // Listen for OAuth callback messages
     const handleOAuthMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== "GITHUB_OAUTH_CALLBACK") return;
+      console.log('[SSH Keys] Message received:', { origin: event.origin, expectedOrigin: window.location.origin, type: event.data?.type });
+      if (event.origin !== window.location.origin) {
+        console.warn('[SSH Keys] Origin mismatch:', event.origin, '!==', window.location.origin);
+        return;
+      }
+      if (event.data?.type !== "GITHUB_OAUTH_CALLBACK") {
+        console.log('[SSH Keys] Not OAuth message, ignoring');
+        return;
+      }
+      console.log('[SSH Keys] Processing OAuth callback message');
       
       const { success, accessToken, githubUsername, githubUrl, error, errorDescription, state } = event.data;
       
