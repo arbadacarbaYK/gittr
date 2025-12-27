@@ -168,7 +168,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const userData = await userResponse.json();
 
     // Return HTML that posts success message to parent window
-    // Include state for verification in parent window
     const html = `
 <!DOCTYPE html>
 <html>
@@ -177,8 +176,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 </head>
 <body>
   <script>
-    (function() {
-      const message = {
+    if (window.opener) {
+      window.opener.postMessage({
         type: 'GITHUB_OAUTH_CALLBACK',
         success: true,
         state: ${JSON.stringify(stateStr)},
@@ -187,78 +186,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         githubUrl: ${JSON.stringify(`https://github.com/${userData.login}`)},
         githubId: ${JSON.stringify(userData.id)},
         avatarUrl: ${JSON.stringify(userData.avatar_url)}
-      };
+      }, window.location.origin);
       
-      console.log('[OAuth Callback] Attempting to post message to parent:', { 
-        hasOpener: !!window.opener, 
-        origin: window.location.origin,
-        type: message.type,
-        hasToken: !!message.accessToken 
-      });
-      
-      // Try multiple times to ensure message is received
-      let attempts = 0;
-      const maxAttempts = 10;
-      const attemptInterval = 200; // 200ms between attempts
-      
-      // Store in localStorage as fallback
-      try {
-        localStorage.setItem('gittr_oauth_callback', JSON.stringify({
-          ...message,
-          timestamp: Date.now()
-        }));
-        console.log('[OAuth Callback] Stored message in localStorage as fallback');
-      } catch (e) {
-        console.error('[OAuth Callback] Failed to store in localStorage:', e);
-      }
-      
-      function sendMessage() {
-        attempts++;
-        console.log('[OAuth Callback] Attempt', attempts, 'of', maxAttempts);
-        
-        if (window.opener && !window.opener.closed) {
-          try {
-            window.opener.postMessage(message, window.location.origin);
-            console.log('[OAuth Callback] Message sent successfully');
-            
-            // Wait a bit more to ensure message is processed, then close
-            if (attempts >= 3) {
-              setTimeout(() => {
-                console.log('[OAuth Callback] Closing popup after', attempts, 'attempts');
-                window.close();
-              }, 500);
-              return; // Stop retrying after successful send
-            }
-          } catch (error) {
-            console.error('[OAuth Callback] Error posting message:', error);
-          }
-        } else {
-          console.warn('[OAuth Callback] No opener or opener is closed');
-          // If no opener after several attempts, redirect with token in URL
-          if (attempts >= maxAttempts) {
-            window.location.href = '/settings/ssh-keys?success=true&token=' + encodeURIComponent(message.accessToken) + '&username=' + encodeURIComponent(message.githubUsername);
-            return;
-          }
-        }
-        
-        // Continue trying if we haven't reached max attempts
-        if (attempts < maxAttempts) {
-          setTimeout(sendMessage, attemptInterval);
-        } else {
-          // Final attempt - close after a delay
-          setTimeout(() => {
-            if (window.opener && !window.opener.closed) {
-              window.close();
-            } else {
-              window.location.href = '/settings/ssh-keys?success=true';
-            }
-          }, 1000);
-        }
-      }
-      
-      // Start sending messages
-      sendMessage();
-    })();
+      setTimeout(() => {
+        window.close();
+      }, 500);
+    } else {
+      window.location.href = '/settings/ssh-keys';
+    }
   </script>
   <p>Completing authentication...</p>
 </body>
