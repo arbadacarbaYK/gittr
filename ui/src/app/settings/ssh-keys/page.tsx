@@ -111,48 +111,37 @@ export default function SSHKeysPage() {
     }
 
     // Listen for OAuth callback messages
-    const handleOAuthMessage = async (event: MessageEvent) => {
+    const handleOAuthMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.data.type !== "GITHUB_OAUTH_CALLBACK") return;
       
-      const { code, state, error } = event.data;
+      const { success, accessToken, githubUsername, githubUrl, error, errorDescription } = event.data;
+      
       if (error) {
-        setStatus(`GitHub OAuth error: ${error}`);
+        setStatus(`GitHub OAuth error: ${errorDescription || error}`);
         setGithubConnecting(false);
+        setTimeout(() => setStatus(""), 5000);
         return;
       }
       
-      if (!code || !state) return;
-      
-      try {
-        // Exchange code for token
-        const response = await fetch(`/api/github/auth?action=callback&code=${code}&state=${state}`, {
-          method: "GET",
-        });
+      if (success && accessToken && githubUsername) {
+        // Store token and profile
+        localStorage.setItem("gittr_github_token", accessToken);
+        localStorage.setItem("gittr_github_profile", JSON.stringify({
+          githubUsername,
+          githubUrl,
+        }));
         
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "OAuth failed");
-        }
-        
-        const data = await response.json();
-        
-        if (data.success && data.accessToken) {
-          // Store token and profile
-          localStorage.setItem("gittr_github_token", data.accessToken);
-          localStorage.setItem("gittr_github_profile", data.githubUrl);
-          
-          setGithubConnected(true);
-          setGithubUsername(data.githubUsername || null);
-          setStatus("GitHub connected successfully!");
-          setTimeout(() => setStatus(""), 3000);
-        }
-      } catch (error: any) {
-        setStatus(`Failed to connect GitHub: ${error.message}`);
+        setGithubConnected(true);
+        setGithubUsername(githubUsername);
+        setStatus("GitHub connected successfully!");
+        setTimeout(() => setStatus(""), 3000);
+      } else {
+        setStatus("GitHub OAuth failed: Missing data");
         setTimeout(() => setStatus(""), 5000);
-      } finally {
-        setGithubConnecting(false);
       }
+      
+      setGithubConnecting(false);
     };
     
     window.addEventListener("message", handleOAuthMessage);
@@ -540,19 +529,7 @@ export default function SSHKeysPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-900/20 border border-red-700 rounded text-red-400">
-          {error}
-        </div>
-      )}
-
-      {status && (
-        <div className="mb-4 p-4 bg-purple-900/20 border border-purple-700 rounded text-purple-400">
-          {status}
-        </div>
-      )}
-
-      {/* GitHub OAuth Section */}
+      {/* GitHub OAuth Section - Moved above SSH Keys */}
       <div className="mb-6 p-4 bg-[#171B21] border border-[#383B42] rounded-lg">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -645,6 +622,18 @@ export default function SSHKeysPage() {
           </Button>
         )}
       </div>
+
+      {error && (
+        <div className="mb-4 p-4 bg-red-900/20 border border-red-700 rounded text-red-400">
+          {error}
+        </div>
+      )}
+
+      {status && (
+        <div className="mb-4 p-4 bg-purple-900/20 border border-purple-700 rounded text-purple-400">
+          {status}
+        </div>
+      )}
 
       {/* Info box */}
       <div className="mb-6 p-4 bg-blue-900/20 border border-blue-700 rounded text-blue-400 max-w-2xl">
