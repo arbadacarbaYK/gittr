@@ -391,7 +391,57 @@ export default function RepoPullsPage({ params }: { params: Promise<{ entity: st
                   lastStatusEventId: event.id,
                 };
                 localStorage.setItem(prsKey, JSON.stringify(prs));
-                loadIssues(); // Reload to update UI
+                
+                // Reload PRs to update UI
+                const reloadedPRs = JSON.parse(localStorage.getItem(prsKey) || "[]");
+                const filtered = reloadedPRs.filter((pr: any) => {
+                  const prStatus = pr.status || "open";
+                  if (issueStatus === "open") {
+                    return prStatus === "open";
+                  } else {
+                    return prStatus === "closed" || prStatus === "merged";
+                  }
+                });
+                
+                const mapped: IPullsData[] = filtered.map((pr: any, idx: number) => ({
+                  id: pr.id || String(idx),
+                  entity: resolvedParams.entity,
+                  repo: resolvedParams.repo,
+                  title: pr.title || `PR ${idx+1}`,
+                  number: pr.number || String(idx + 1),
+                  date: pr.createdAt ? formatDateTime24h(pr.createdAt) : "",
+                  author: pr.author || "you",
+                  tags: [],
+                  taskTotal: null,
+                  taskCompleted: null,
+                  linkedPR: 0,
+                  assignees: [],
+                  comments: 0,
+                  status: pr.status || "open",
+                  createdAt: pr.createdAt || Date.now(),
+                }));
+                mapped.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+                
+                const allMapped: IPullsData[] = reloadedPRs.map((pr: any, idx: number) => ({
+                  id: pr.id || String(idx),
+                  entity: resolvedParams.entity,
+                  repo: resolvedParams.repo,
+                  title: pr.title || `PR ${idx+1}`,
+                  number: pr.number || String(idx + 1),
+                  date: pr.createdAt ? formatDateTime24h(pr.createdAt) : "",
+                  author: pr.author || "you",
+                  tags: [],
+                  taskTotal: null,
+                  taskCompleted: null,
+                  linkedPR: 0,
+                  assignees: [],
+                  comments: 0,
+                  status: pr.status || "open",
+                  createdAt: pr.createdAt || Date.now(),
+                }));
+                
+                setAllPRs(allMapped);
+                setIssues(mapped);
               }
             }
           }
