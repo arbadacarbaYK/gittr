@@ -613,7 +613,7 @@ export default function PRDetailPage({ params }: { params: Promise<{ entity: str
                       ["merge-commit", commitId],
                       ["r", commitId],
                     ],
-                    content: `Merged PR #${pr.number || pr.id}`,
+                    content: `Merged PR #${pr.id}`,
                     pubkey: authorPubkey,
                     id: "",
                     sig: "",
