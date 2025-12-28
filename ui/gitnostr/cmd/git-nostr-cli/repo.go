@@ -19,17 +19,16 @@ import (
 func repoCreate(cfg Config, pool *nostr.RelayPool) {
 	flags := flag.NewFlagSet("repo create", flag.ContinueOnError)
 
-	publicRead := flags.Bool("public-read", true, "repository will be readable by all users")
-	publicWrite := flags.Bool("public-write", false, "repository will be writeable by all users")
-
 	flags.Parse(os.Args[3:])
 
 	repoName := flags.Args()[0]
 
-	log.Println("repo create --public-read=", *publicRead, " --public-write=", *publicWrite, " ", repoName)
+	log.Println("repo create ", repoName)
 
 	// NIP-34: Build tags array with required metadata
 	// Content MUST be empty per NIP-34 spec - all metadata goes in tags
+	// NOTE: Privacy is NOT encoded in NIP-34 events (per spec)
+	// Privacy is enforced via the "maintainers" tag (NIP-34 spec) and bridge access control
 	tags := nostr.Tags{
 		{"d", repoName}, // Replaceable event identifier (NIP-34 required)
 		{"name", repoName}, // Human-readable project name

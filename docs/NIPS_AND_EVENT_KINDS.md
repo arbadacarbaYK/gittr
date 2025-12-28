@@ -100,7 +100,7 @@ This document lists all Nostr Improvement Proposals (NIPs) and event kinds used 
   - `relay[]`: Nostr relay URLs
   - `t[]`: Topics/tags
   - `p[]`: Contributors (with weights)
-  - `maintainers[]`: Maintainer pubkeys
+  - `maintainers[]`: Maintainer pubkeys (used for access control)
   - `r`: Source URL (e.g., GitHub)
   - `image`: Logo URL
   - `web[]`: Web links
@@ -108,6 +108,7 @@ This document lists all Nostr Improvement Proposals (NIPs) and event kinds used 
   - `branch[]`: Branch names and commits
   - `release[]`: Release tags and metadata
   - `link[]`: Repository links (docs, social media, etc.)
+- **Privacy**: Privacy is NOT encoded in NIP-34 event tags (per spec). The NIP-34 spec does not include `public-read` or `public-write` tags. Privacy is determined by the `maintainers[]` tag (which IS in the spec) and bridge-level access control. Repository events are public on relays (for discoverability), but file access is restricted to maintainers via the bridge.
 
 ### Kind 30618: Repository State (NIP-34)
 - **Purpose**: Repository state announcements (required for ngit clients)
