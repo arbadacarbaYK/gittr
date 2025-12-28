@@ -628,7 +628,7 @@ export default function PRDetailPage({ params }: { params: Promise<{ entity: str
                     rootEventAuthor: pr.author,
                     repoName: resolvedParams.repo,
                     mergeCommitId: commitId,
-                    content: `Merged PR #${pr.number || pr.id}`,
+                    content: `Merged PR #${pr.id}`,
                   }, privateKey);
                 }
                 
