@@ -406,8 +406,9 @@ export default function IssuesPage({}) {
           
           const labels = event.tags.filter((t: string[]) => t[0] === "label" || t[0] === "t").map((t: string[]) => t[1]);
           const assignees = event.tags.filter((t: string[]) => t[0] === "p" && (t[2] === "assignee" || !t[2])).map((t: string[]) => t[1]);
-          const statusTag = event.tags.find((t: string[]) => t[0] === "status");
-          const status = statusTag ? statusTag[1] : "open";
+          // Status: Default to "open" - will be updated by status events (kinds 1630-1632)
+          // NIP-34: Status comes from separate status events, not tags
+          const status = "open"; // Default, will be updated by status event subscription
           
           const maxNumber = existingIssues.reduce((max: number, i: any) => {
             const num = parseInt(i.number || "0", 10);

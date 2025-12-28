@@ -454,8 +454,9 @@ export default function PullsPage({}) {
           const headBranch = branchTag ? branchTag[2] : undefined;
           
           const linkedIssueTag = event.tags.find((t: string[]) => t[0] === "e" && (t[3] === "linked" || t[3] === "root"));
-          const statusTag = event.tags.find((t: string[]) => t[0] === "status");
-          const status = statusTag ? statusTag[1] : "open";
+          // Status: Default to "open" - will be updated by status events (kinds 1630-1633)
+          // NIP-34: Status comes from separate status events, not tags
+          const status = "open"; // Default, will be updated by status event subscription
           
           const pr = {
             id: event.id,

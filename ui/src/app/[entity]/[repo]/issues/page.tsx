@@ -13,7 +13,7 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { nip19 } from "nostr-tools";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { KIND_ISSUE } from "@/lib/nostr/events";
+import { KIND_ISSUE, KIND_STATUS_OPEN, KIND_STATUS_CLOSED } from "@/lib/nostr/events";
 
 import { clsx } from "clsx";
 import {
@@ -240,10 +240,9 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
                 .map((t: string[]) => t[1])
                 .filter((p: string | undefined): p is string => !!p && p !== pTag?.[1]); // Exclude repo owner
               
-              // Status: Check for status events (NIP-34) or status tag (old format)
-              // For now, default to "open" - status events will update this
-              const statusTag = event.tags.find((t: string[]) => t[0] === "status");
-              const status = statusTag ? statusTag[1] : (bountyData.bountyStatus ? "open" : "open");
+              // Status: Default to "open" - will be updated by status events (kinds 1630-1632)
+              // NIP-34: Status comes from separate status events, not tags
+              const status = "open"; // Default, will be updated by status event subscription
 
               const issue = {
                 id: event.id,
@@ -266,6 +265,11 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
                 existingIssues.push(issue);
               }
 
+              // Store issue event ID for status event subscription
+              const issueToUpdate = existingIndex >= 0 ? existingIssues[existingIndex] : existingIssues[existingIssues.length - 1];
+              if (!issueToUpdate.nostrEventId) {
+                issueToUpdate.nostrEventId = event.id;
+              }
               localStorage.setItem(key, JSON.stringify(existingIssues));
               loadIssues(); // Reload to update UI
             } catch (error: any) {
@@ -275,10 +279,71 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
         }
       );
 
-      return () => {
-        cancelled = true;
-        if (unsub) unsub();
-      };
+      // Subscribe to status events (NIP-34 kinds 1630-1632) for all issues in this repo
+      const issuesKey = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
+      const allIssues = JSON.parse(localStorage.getItem(issuesKey) || "[]");
+      const issueEventIds = allIssues.map((issue: any) => issue.nostrEventId || issue.id).filter(Boolean);
+      
+      if (issueEventIds.length > 0) {
+        const statusFilters: any[] = [
+          {
+            kinds: [KIND_STATUS_OPEN, KIND_STATUS_CLOSED],
+            "#e": issueEventIds,
+            "#k": ["1621"], // Only issue status events (not PR status events)
+          },
+        ];
+        
+        const statusUnsub = subscribe(
+          statusFilters,
+          defaultRelays,
+          (event, isAfterEose, relayURL) => {
+            if (cancelled) return;
+            
+            // Find the root issue event ID from the "e" tag with "root" marker
+            const rootTag = event.tags.find((t: string[]) => t[0] === "e" && t[3] === "root");
+            if (!rootTag || !rootTag[1]) return;
+            
+            const issueEventId = rootTag[1];
+            const issues = JSON.parse(localStorage.getItem(issuesKey) || "[]");
+            const issueIndex = issues.findIndex((i: any) => (i.nostrEventId || i.id) === issueEventId);
+            
+            if (issueIndex >= 0) {
+              // Update issue status based on status event kind
+              let newStatus: "open" | "closed" = "open";
+              if (event.kind === KIND_STATUS_CLOSED) {
+                newStatus = "closed";
+              } else if (event.kind === KIND_STATUS_OPEN) {
+                newStatus = "open";
+              }
+              
+              // Only update if this status event is newer than the current one
+              const currentIssue = issues[issueIndex];
+              const currentStatusEventTime = currentIssue.lastStatusEventTime || 0;
+              if (event.created_at * 1000 > currentStatusEventTime) {
+                issues[issueIndex] = {
+                  ...currentIssue,
+                  status: newStatus,
+                  lastStatusEventTime: event.created_at * 1000,
+                  lastStatusEventId: event.id,
+                };
+                localStorage.setItem(issuesKey, JSON.stringify(issues));
+                loadIssues(); // Reload to update UI
+              }
+            }
+          }
+        );
+        
+        return () => {
+          cancelled = true;
+          if (unsub) unsub();
+          if (statusUnsub) statusUnsub();
+        };
+      } else {
+        return () => {
+          cancelled = true;
+          if (unsub) unsub();
+        };
+      }
     })();
   }, [subscribe, defaultRelays, resolvedParams.entity, resolvedParams.repo, loadIssues]);
 

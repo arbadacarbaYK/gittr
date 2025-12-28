@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { NostrUserSearch } from "@/components/ui/nostr-user-search";
 import useSession from "@/lib/nostr/useSession";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { createIssueEvent, KIND_ISSUE } from "@/lib/nostr/events";
+import { createIssueEvent, KIND_ISSUE, createStatusEvent, KIND_STATUS_OPEN } from "@/lib/nostr/events";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { useParams } from "next/navigation";
 
@@ -450,8 +450,56 @@ export default function RepoIssueNewPage() {
         }
 
         // Publish to Nostr relays (optional - issue is already saved locally)
-        if (publish) {
+        if (publish && defaultRelays && defaultRelays.length > 0) {
           publish(issueEvent, defaultRelays);
+          console.log("Published issue to Nostr:", issueEvent.id);
+          
+          // Create and publish NIP-34 status event (kind 1630: Open)
+          try {
+            const privateKey = await getNostrPrivateKey();
+            const hasNip07 = typeof window !== "undefined" && window.nostr;
+            
+            if (privateKey || hasNip07) {
+              let statusEvent: any;
+              
+              if (hasNip07 && window.nostr) {
+                const authorPubkey = await window.nostr.getPublicKey();
+                statusEvent = {
+                  kind: KIND_STATUS_OPEN,
+                  created_at: Math.floor(Date.now() / 1000),
+                  tags: [
+                    ["e", issueEvent.id, "", "root"],
+                    ["p", finalOwnerPubkey],
+                    ["p", authorPubkey],
+                    ["a", `30617:${finalOwnerPubkey}:${repo}`],
+                  ],
+                  content: `Opened issue`,
+                  pubkey: authorPubkey,
+                  id: "",
+                  sig: "",
+                };
+                statusEvent.id = getEventHash(statusEvent);
+                statusEvent = await window.nostr.signEvent(statusEvent);
+              } else if (privateKey) {
+                statusEvent = createStatusEvent({
+                  statusKind: KIND_STATUS_OPEN,
+                  rootEventId: issueEvent.id,
+                  ownerPubkey: finalOwnerPubkey,
+                  rootEventAuthor: authorPubkey,
+                  repoName: repo,
+                  content: `Opened issue`,
+                }, privateKey);
+              }
+              
+              if (statusEvent) {
+                publish(statusEvent, defaultRelays);
+                console.log("✅ Published NIP-34 status event (open):", statusEvent.id);
+              }
+            }
+          } catch (statusError) {
+            console.error("Failed to publish status event:", statusError);
+            // Don't block issue creation if status event publishing fails
+          }
         } else {
           console.warn("Publish function not available - issue saved locally only");
         }

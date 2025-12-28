@@ -73,6 +73,31 @@ cp .env.example .env.local
 
 Edit `ui/.env.local` with your values. All configuration is in this file - domain, relays, Blossom URL, GitHub Platform Token (optional), etc. are already set with working defaults.
 
+**GitHub OAuth Setup (Optional, for private repository access):**
+
+If you want users to be able to import and view files from private GitHub repositories, you need to set up GitHub OAuth:
+
+1. Create a GitHub OAuth App at https://github.com/settings/developers
+   - **Application name**: Your app name (e.g., "gittr.space")
+   - **Homepage URL**: Your domain (e.g., `https://gittr.space`)
+   - **Authorization callback URL**: `https://yourdomain.com/api/github/callback` (or `http://localhost:3000/api/github/callback` for local dev)
+
+2. Copy the **Client ID** and **Client Secret** from the OAuth app settings
+
+3. Add to `ui/.env.local`:
+   ```
+   GITHUB_CLIENT_ID=your_client_id_here
+   GITHUB_CLIENT_SECRET=your_client_secret_here
+   GITHUB_REDIRECT_URI=https://yourdomain.com/api/github/callback
+   ```
+
+4. Users can then connect their GitHub account via Settings → SSH Keys → Connect GitHub, which enables:
+   - Importing private repositories
+   - Viewing file content from private repositories
+   - The OAuth token is stored securely in browser localStorage (never sent to server except for API calls)
+
+See [`ui/GITHUB_OAUTH_SETUP.md`](../ui/GITHUB_OAUTH_SETUP.md) for detailed instructions.
+
 ### Step 4: Build Frontend
 
 ```bash
