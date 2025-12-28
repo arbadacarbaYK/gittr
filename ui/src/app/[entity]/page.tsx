@@ -844,6 +844,23 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
             
             // Don't show repos that are currently pushing
             if (r.status === "pushing") return false;
+            
+            // Filter out private repos (unless user is the owner)
+            if (r.publicRead === false) {
+              // Check if current user is the owner
+              const repoOwnerPubkey = r.ownerPubkey || (r.entity && r.entity.startsWith("npub") ? (() => {
+                try {
+                  const decoded = nip19.decode(r.entity);
+                  return decoded.type === "npub" ? decoded.data as string : null;
+                } catch {
+                  return null;
+                }
+              })() : null);
+              const isOwner = currentUserPubkey && repoOwnerPubkey && currentUserPubkey.toLowerCase() === repoOwnerPubkey.toLowerCase();
+              if (!isOwner) {
+                return false; // Hide private repos from non-owners
+              }
+            }
           }
           
           return true;

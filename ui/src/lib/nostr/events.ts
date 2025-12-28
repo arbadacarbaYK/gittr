@@ -292,6 +292,11 @@ export function createRepositoryEvent(
     });
   }
   
+  // Add privacy tags (not in NIP-34 spec, but needed for bridge compatibility and other clients)
+  // Bridge uses these to determine access control
+  tags.push(["public-read", repo.publicRead !== false ? "true" : "false"]);
+  tags.push(["public-write", repo.publicWrite === true ? "true" : "false"]);
+  
   // NIP-34: Content field MUST be empty per spec
   // All metadata goes in tags, not in content
   // Bridge compatibility: Metadata is sent to bridge via /api/nostr/repo/event endpoint separately

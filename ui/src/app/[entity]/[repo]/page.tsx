@@ -32,6 +32,7 @@ import {
   HelpCircle,
   History,
   List,
+  Lock,
   MoreHorizontal,
   RefreshCw,
   Search,
@@ -85,6 +86,7 @@ import {
   type RepoLink,
   isGitHostContributor,
 } from "@/lib/repos/storage";
+import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 
 export default function RepoCodePage() {
   const routeParams = useParams<{ entity?: string; repo?: string }>();
@@ -2523,6 +2525,38 @@ export default function RepoCodePage() {
                       else if (tagName === "forkedFrom") {
                         eventRepoData.forkedFrom = tagValue;
                       }
+                      // Extract maintainers from "maintainers" tags (NIP-34)
+                      else if (tagName === "maintainers" && tagValue) {
+                        if (!eventRepoData.maintainers) eventRepoData.maintainers = [];
+                        // Handle both hex and npub formats
+                        let normalizedPubkey = tagValue;
+                        try {
+                          if (tagValue.startsWith("npub")) {
+                            const decoded = nip19.decode(tagValue);
+                            if (decoded.type === "npub" && /^[0-9a-f]{64}$/i.test(decoded.data as string)) {
+                              normalizedPubkey = decoded.data as string;
+                            }
+                          } else if (/^[0-9a-f]{64}$/i.test(tagValue)) {
+                            normalizedPubkey = tagValue.toLowerCase();
+                          }
+                          // Only add if valid hex pubkey
+                          if (/^[0-9a-f]{64}$/i.test(normalizedPubkey) && !eventRepoData.maintainers.includes(normalizedPubkey)) {
+                            eventRepoData.maintainers.push(normalizedPubkey);
+                          }
+                        } catch (e) {
+                          // If decoding fails, try to use as hex if valid
+                          if (/^[0-9a-f]{64}$/i.test(tagValue) && !eventRepoData.maintainers.includes(tagValue.toLowerCase())) {
+                            eventRepoData.maintainers.push(tagValue.toLowerCase());
+                          }
+                        }
+                      }
+                      // Extract privacy tags
+                      else if (tagName === "public-read" && tagValue) {
+                        eventRepoData.publicRead = tagValue === "true";
+                      }
+                      else if (tagName === "public-write" && tagValue) {
+                        eventRepoData.publicWrite = tagValue === "true";
+                      }
                       // CRITICAL: Extract contributors from "p" tags: ["p", pubkey, weight, role]
                       else if (tagName === "p") {
                         const pubkey = tagValue;
@@ -2659,6 +2693,38 @@ export default function RepoCodePage() {
                       // Extract forkedFrom from "forkedFrom" tag
                       else if (tagName === "forkedFrom") {
                         eventRepoData.forkedFrom = tagValue;
+                      }
+                      // Extract maintainers from "maintainers" tags (NIP-34)
+                      else if (tagName === "maintainers" && tagValue) {
+                        if (!eventRepoData.maintainers) eventRepoData.maintainers = [];
+                        // Handle both hex and npub formats
+                        let normalizedPubkey = tagValue;
+                        try {
+                          if (tagValue.startsWith("npub")) {
+                            const decoded = nip19.decode(tagValue);
+                            if (decoded.type === "npub" && /^[0-9a-f]{64}$/i.test(decoded.data as string)) {
+                              normalizedPubkey = decoded.data as string;
+                            }
+                          } else if (/^[0-9a-f]{64}$/i.test(tagValue)) {
+                            normalizedPubkey = tagValue.toLowerCase();
+                          }
+                          // Only add if valid hex pubkey
+                          if (/^[0-9a-f]{64}$/i.test(normalizedPubkey) && !eventRepoData.maintainers.includes(normalizedPubkey)) {
+                            eventRepoData.maintainers.push(normalizedPubkey);
+                          }
+                        } catch (e) {
+                          // If decoding fails, try to use as hex if valid
+                          if (/^[0-9a-f]{64}$/i.test(tagValue) && !eventRepoData.maintainers.includes(tagValue.toLowerCase())) {
+                            eventRepoData.maintainers.push(tagValue.toLowerCase());
+                          }
+                        }
+                      }
+                      // Extract privacy tags
+                      else if (tagName === "public-read" && tagValue) {
+                        eventRepoData.publicRead = tagValue === "true";
+                      }
+                      else if (tagName === "public-write" && tagValue) {
+                        eventRepoData.publicWrite = tagValue === "true";
                       }
                       // CRITICAL: Extract contributors from "p" tags: ["p", pubkey, weight, role]
                       else if (tagName === "p") {
@@ -3002,6 +3068,10 @@ export default function RepoCodePage() {
                       sourceUrl: eventRepoData.sourceUrl || prev.sourceUrl,
                       forkedFrom: eventRepoData.forkedFrom || prev.forkedFrom,
                       contributors: contributors.length > 0 ? contributors : prev.contributors, // Update contributors from event
+                      // Store maintainers and privacy from NIP-34 tags
+                      ...(eventRepoData.maintainers ? { maintainers: eventRepoData.maintainers } : {}),
+                      ...(eventRepoData.publicRead !== undefined ? { publicRead: eventRepoData.publicRead } : {}),
+                      ...(eventRepoData.publicWrite !== undefined ? { publicWrite: eventRepoData.publicWrite } : {}),
                     }) : prev);
                     
                     // Update localStorage - use case-insensitive matching and also match by entity
@@ -7485,6 +7555,100 @@ export default function RepoCodePage() {
     );
   }
 
+  // Check access for private repositories
+  const hasAccess = useMemo(() => {
+    if (!mounted || !repoData) return true; // Allow during loading
+    
+    const repoDataAny = repoData as any;
+    const isPrivate = repoDataAny?.publicRead === false;
+    
+    // Public repos are accessible to everyone
+    if (!isPrivate) return true;
+    
+    // Private repos: check if user is owner or maintainer
+    if (!currentUserPubkey) return false;
+    
+    // Get maintainers from NIP-34 tags if available (from Nostr event)
+    const maintainers: string[] = repoDataAny?.maintainers || [];
+    
+    return hasPrivateRepoAccess(
+      currentUserPubkey,
+      repoData.contributors,
+      repoOwnerPubkey || (repoDataAny?.ownerPubkey),
+      maintainers
+    );
+  }, [mounted, repoData, currentUserPubkey, repoOwnerPubkey]);
+
+  // Show access denied for private repos if user doesn't have access
+  if (mounted && repoData && (repoData as any).publicRead === false && !hasAccess) {
+    // Check if user has GitHub OAuth but isn't recognized as maintainer
+    const hasGithubAuth = typeof window !== "undefined" && localStorage.getItem("gittr_github_token");
+    const repoDataAny = repoData as any;
+    const hasContributors = repoData.contributors && repoData.contributors.length > 0;
+    
+    return (
+      <div className="mt-4 p-8 max-w-2xl mx-auto">
+        <div className="flex items-center justify-center gap-2 mb-6">
+          <Lock className="h-6 w-6 text-gray-400" />
+          <h1 className="text-2xl font-bold text-gray-300">This repository is private</h1>
+        </div>
+        <p className="text-gray-400 text-center mb-6">
+          Only the owner and maintainers can access this repository.
+        </p>
+        
+        <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-6 mb-4">
+          {hasGithubAuth && hasContributors ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-yellow-900/20 border border-yellow-700/50 rounded">
+                <p className="text-yellow-200 text-sm font-semibold mb-2">🔗 Identity Mapping</p>
+                <p className="text-gray-300 text-sm mb-2">
+                  You've connected your GitHub account, but your Nostr identity isn't recognized as a maintainer for this repository.
+                </p>
+                <p className="text-gray-400 text-sm mb-2">
+                  This can happen if:
+                </p>
+                <ul className="text-gray-400 text-sm list-disc list-inside space-y-1 ml-2 mb-3">
+                  <li>The repository owner hasn't added your Nostr pubkey (npub) as a maintainer</li>
+                  <li>Your GitHub identity isn't linked to your Nostr identity</li>
+                  <li>The repository was imported before you linked your accounts</li>
+                </ul>
+                <p className="text-gray-300 text-sm">
+                  <strong>Solution:</strong> Contact the repository owner and ask them to add your Nostr pubkey (npub) as a maintainer in the repository settings.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 bg-blue-900/20 border border-blue-700/50 rounded">
+              <p className="text-blue-200 text-sm font-semibold mb-2">💡 How to Get Access</p>
+              <p className="text-gray-300 text-sm mb-2">
+                To access this private repository, you need to be added as a maintainer by the owner.
+              </p>
+              <p className="text-gray-400 text-sm">
+                The owner can add you in <strong>Repository Settings → Contributors</strong> by entering your Nostr pubkey (npub).
+              </p>
+            </div>
+          )}
+          
+          <div className="mt-4 pt-4 border-t border-gray-700">
+            <p className="text-gray-500 text-xs">
+              <strong>Note:</strong> Access is determined by your Nostr pubkey. If you're a maintainer on GitHub but haven't linked your Nostr identity, 
+              the owner needs to explicitly add your npub as a maintainer.
+            </p>
+          </div>
+        </div>
+        
+        <div className="text-center space-y-2">
+          <Link href="/" className="text-purple-400 hover:text-purple-300 underline block">
+            Return to Homepage
+          </Link>
+          <p className="text-gray-500 text-xs">
+            Via CLI/API: Private repos require authentication. Use <code className="bg-gray-800 px-1 rounded">git clone</code> with SSH keys or contact the owner for access.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-4">
       {/* Navigation Tabs */}
@@ -7935,6 +8099,29 @@ export default function RepoCodePage() {
                   return repoDataAny?.name || repoDataAny?.repo || decodedRepo;
                 })()}
               </a>
+              {/* Privacy badge */}
+              {(() => {
+                const repoDataAny = repoData as any;
+                const isPrivate = repoDataAny?.publicRead === false;
+                if (isPrivate !== undefined) {
+                  return (
+                    <Badge className="border border-gray-600 text-gray-300 bg-transparent text-xs flex items-center gap-1 ml-2">
+                      {isPrivate ? (
+                        <>
+                          <Lock className="h-3 w-3" />
+                          Private
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="h-3 w-3" />
+                          Public
+                        </>
+                      )}
+                    </Badge>
+                  );
+                }
+                return null;
+              })()}
               {pathParts.map((part, i) => (
                 <span key={i} className="flex items-center gap-1">
                   <span className="text-gray-500">/</span>
