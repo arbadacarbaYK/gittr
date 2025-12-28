@@ -1,12 +1,15 @@
-# GitHub OAuth Setup (Legacy - Not Currently Used)
+# GitHub OAuth Setup
 
-> **⚠️ This setup is not currently used by the platform.** 
+> **✅ This setup is now actively used for private repository access.**
 >
-> Individual user authentication via OAuth has been replaced by **NIP-39 External Identities** in Settings → Profile.
+> Users can connect their GitHub account via **Settings → SSH Keys → Connect GitHub** to:
+> - Import private repositories
+> - View file content from private repositories
+> - The OAuth token is stored securely in browser localStorage and passed to the API for authenticated requests
 >
-> For platform API requests (5000 requests/hour), use **Personal Access Token (PAT)** instead - see `GITHUB_PLATFORM_TOKEN_SETUP.md`.
+> For platform API requests (5000 requests/hour for public repos), use **Personal Access Token (PAT)** - see `GITHUB_PLATFORM_TOKEN_SETUP.md`.
 
-This document is kept for reference only. If you need to set up OAuth App credentials for platform requests:
+This document explains how to set up GitHub OAuth App credentials for user authentication:
 
 1. **Create a GitHub OAuth App**:
    - Go to https://github.com/settings/developers
@@ -27,7 +30,9 @@ This document is kept for reference only. If you need to set up OAuth App creden
      ```
      GITHUB_CLIENT_ID=your_client_id_here
      GITHUB_CLIENT_SECRET=your_client_secret_here
+     GITHUB_REDIRECT_URI=https://yourdomain.com/api/github/callback
      ```
+   - **Note**: `GITHUB_REDIRECT_URI` is optional - if not set, it will be automatically determined from the request origin. For production, it's recommended to set it explicitly.
 
 3. **Restart the dev server**:
    - Stop the current server (Ctrl+C)
@@ -36,4 +41,20 @@ This document is kept for reference only. If you need to set up OAuth App creden
 **Note**: `.env.local` is git-ignored and should NOT be committed. These are secret credentials.
 
 For production, set these same environment variables in your hosting platform (Vercel, Railway, etc.).
+
+## How It Works
+
+1. **User initiates OAuth**: User clicks "Connect GitHub" in Settings → SSH Keys
+2. **OAuth popup opens**: User authorizes the app on GitHub
+3. **Token storage**: Access token is stored in browser `localStorage` (key: `gittr_github_token`)
+4. **API calls**: When fetching files from private repos, the frontend passes the token as `githubToken` query parameter to `/api/git/file-content`
+5. **Token priority**: The API prioritizes user tokens (for private repos) over platform tokens (for public repos)
+
+## Security Notes
+
+- Tokens are stored in browser localStorage (same-origin only)
+- Tokens are never exposed in URLs or logs
+- Tokens are only sent to your own API endpoint (same origin)
+- CSRF protection via state tokens stored in `sessionStorage`
+- One-time use state tokens prevent replay attacks
 

@@ -40,7 +40,7 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { formatDateTime24h, formatDate24h, formatTime24h } from "@/lib/utils/date-format";
 import { sendNotification, formatNotificationMessage } from "@/lib/notifications";
 import { getRepoOwnerPubkey, resolveEntityToPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
-import { createBountyEvent, KIND_BOUNTY, createCommentEvent, KIND_COMMENT, KIND_CODE_SNIPPET } from "@/lib/nostr/events";
+import { createBountyEvent, KIND_BOUNTY, createCommentEvent, KIND_COMMENT, KIND_CODE_SNIPPET, createStatusEvent, KIND_STATUS_OPEN, KIND_STATUS_CLOSED } from "@/lib/nostr/events";
 import { CodeSnippetRenderer } from "@/components/ui/code-snippet-renderer";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { getEventHash, getPublicKey, signEvent } from "nostr-tools";

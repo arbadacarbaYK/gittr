@@ -9,7 +9,7 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { nip19 } from "nostr-tools";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { KIND_PULL_REQUEST } from "@/lib/nostr/events";
+import { KIND_PULL_REQUEST, KIND_STATUS_OPEN, KIND_STATUS_APPLIED, KIND_STATUS_CLOSED, KIND_STATUS_DRAFT } from "@/lib/nostr/events";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { getRepoOwnerPubkey, getEntityDisplayName, resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
@@ -247,9 +247,9 @@ export default function RepoPullsPage({ params }: { params: Promise<{ entity: st
               // Extract linked issue
               const linkedIssueTag = event.tags.find((t: string[]) => t[0] === "e" && (t[3] === "linked" || t[3] === "root"));
               
-              // Status: Check for status events (NIP-34) or status tag (old format)
-              const statusTag = event.tags.find((t: string[]) => t[0] === "status");
-              const status = statusTag ? statusTag[1] : "open";
+              // Status: Default to "open" - will be updated by status events (kinds 1630-1633)
+              // NIP-34: Status comes from separate status events, not tags
+              const status = "open"; // Default, will be updated by status event subscription
 
               const pr = {
                 id: event.id,
@@ -276,6 +276,11 @@ export default function RepoPullsPage({ params }: { params: Promise<{ entity: st
                 existingPRs.push(pr);
               }
 
+              // Store PR event ID for status event subscription
+              const prToUpdate = existingIndex >= 0 ? existingPRs[existingIndex] : existingPRs[existingPRs.length - 1];
+              if (!prToUpdate.nostrEventId) {
+                prToUpdate.nostrEventId = event.id;
+              }
               localStorage.setItem(key, JSON.stringify(existingPRs));
               
               // Trigger reload by updating state
@@ -334,10 +339,75 @@ export default function RepoPullsPage({ params }: { params: Promise<{ entity: st
         }
       );
 
-      return () => {
-        cancelled = true;
-        if (unsub) unsub();
-      };
+      // Subscribe to status events (NIP-34 kinds 1630-1633) for all PRs in this repo
+      const prsKey = getRepoStorageKey("gittr_prs", resolvedParams.entity, resolvedParams.repo);
+      const allPRs = JSON.parse(localStorage.getItem(prsKey) || "[]");
+      const prEventIds = allPRs.map((pr: any) => pr.nostrEventId || pr.id).filter(Boolean);
+      
+      if (prEventIds.length > 0) {
+        const statusFilters: any[] = [
+          {
+            kinds: [KIND_STATUS_OPEN, KIND_STATUS_APPLIED, KIND_STATUS_CLOSED, KIND_STATUS_DRAFT],
+            "#e": prEventIds,
+            "#k": ["1618"], // Only PR status events (not issue status events)
+          },
+        ];
+        
+        const statusUnsub = subscribe(
+          statusFilters,
+          defaultRelays,
+          (event, isAfterEose, relayURL) => {
+            if (cancelled) return;
+            
+            // Find the root PR event ID from the "e" tag with "root" marker
+            const rootTag = event.tags.find((t: string[]) => t[0] === "e" && t[3] === "root");
+            if (!rootTag || !rootTag[1]) return;
+            
+            const prEventId = rootTag[1];
+            const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
+            const prIndex = prs.findIndex((p: any) => (p.nostrEventId || p.id) === prEventId);
+            
+            if (prIndex >= 0) {
+              // Update PR status based on status event kind
+              let newStatus: "open" | "merged" | "closed" = "open";
+              if (event.kind === KIND_STATUS_APPLIED) {
+                newStatus = "merged";
+              } else if (event.kind === KIND_STATUS_CLOSED) {
+                newStatus = "closed";
+              } else if (event.kind === KIND_STATUS_OPEN) {
+                newStatus = "open";
+              } else if (event.kind === KIND_STATUS_DRAFT) {
+                newStatus = "open"; // Draft is still open
+              }
+              
+              // Only update if this status event is newer than the current one
+              const currentPR = prs[prIndex];
+              const currentStatusEventTime = currentPR.lastStatusEventTime || 0;
+              if (event.created_at * 1000 > currentStatusEventTime) {
+                prs[prIndex] = {
+                  ...currentPR,
+                  status: newStatus,
+                  lastStatusEventTime: event.created_at * 1000,
+                  lastStatusEventId: event.id,
+                };
+                localStorage.setItem(prsKey, JSON.stringify(prs));
+                loadIssues(); // Reload to update UI
+              }
+            }
+          }
+        );
+        
+        return () => {
+          cancelled = true;
+          if (unsub) unsub();
+          if (statusUnsub) statusUnsub();
+        };
+      } else {
+        return () => {
+          cancelled = true;
+          if (unsub) unsub();
+        };
+      }
     })();
   }, [subscribe, defaultRelays, resolvedParams?.entity, resolvedParams?.repo, issueStatus]);
 

@@ -21,7 +21,7 @@ import {
   getAllPendingChanges,
 } from "@/lib/pending-changes";
 import { showToast } from "@/components/ui/toast";
-import { createPullRequestEvent, KIND_PULL_REQUEST } from "@/lib/nostr/events";
+import { createPullRequestEvent, KIND_PULL_REQUEST, createStatusEvent, KIND_STATUS_OPEN } from "@/lib/nostr/events";
 import { getRepoOwnerPubkey, resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { getEventHash, getPublicKey } from "nostr-tools";
@@ -221,8 +221,8 @@ export default function NewPullRequestPage({ params }: { params: Promise<{ entit
               
               // Auto-generate title if not set
               if (!title && diffFiles.length > 0) {
-                if (diffFiles.length === 1) {
-                  const fileName = diffFiles[0].path.split('/').pop() || diffFiles[0].path;
+                if (diffFiles.length === 1 && diffFiles[0]) {
+                  const fileName = diffFiles[0].path?.split('/').pop() || diffFiles[0].path || 'file';
                   setTitle(`Update ${fileName}`);
                 } else {
                   setTitle(`Update ${diffFiles.length} files`);
@@ -385,7 +385,7 @@ export default function NewPullRequestPage({ params }: { params: Promise<{ entit
               const latestCommit = commitsData.commits[0];
               if (latestCommit && latestCommit.id && typeof latestCommit.id === 'string') {
                 currentCommitId = latestCommit.id;
-                console.log(`✅ [PR Create] Fetched commit ID from head branch ${headBranch}: ${currentCommitId.slice(0, 8)}...`);
+                console.log(`✅ [PR Create] Fetched commit ID from head branch ${headBranch}: ${currentCommitId?.slice(0, 8)}...`);
               }
             }
           }
@@ -403,9 +403,9 @@ export default function NewPullRequestPage({ params }: { params: Promise<{ entit
             .filter((c: any) => c.branch === headBranch)
             .sort((a: any, b: any) => b.timestamp - a.timestamp); // Newest first
           
-          if (branchCommits.length > 0 && branchCommits[0].id) {
+          if (branchCommits.length > 0 && branchCommits[0]?.id) {
             currentCommitId = branchCommits[0].id;
-            console.log(`✅ [PR Create] Found commit ID in localStorage for branch ${headBranch}: ${currentCommitId.slice(0, 8)}...`);
+            console.log(`✅ [PR Create] Found commit ID in localStorage for branch ${headBranch}: ${currentCommitId?.slice(0, 8)}...`);
           }
         } catch (error) {
           console.warn(`⚠️ [PR Create] Failed to find commit ID in localStorage:`, error);
@@ -601,6 +601,53 @@ export default function NewPullRequestPage({ params }: { params: Promise<{ entit
         try {
           publish(prEvent, defaultRelays);
           console.log("Published PR to Nostr:", prEvent.id);
+          
+          // Create and publish NIP-34 status event (kind 1630: Open)
+          try {
+            const privateKey = await getNostrPrivateKey();
+            const hasNip07 = typeof window !== "undefined" && window.nostr;
+            
+            if (privateKey || hasNip07) {
+              let statusEvent: any;
+              
+              if (hasNip07 && window.nostr) {
+                const authorPubkey = await window.nostr.getPublicKey();
+                statusEvent = {
+                  kind: KIND_STATUS_OPEN,
+                  created_at: Math.floor(Date.now() / 1000),
+                  tags: [
+                    ["e", prEvent.id, "", "root"],
+                    ["p", finalOwnerPubkey],
+                    ["p", authorPubkey],
+                    ["a", `30617:${finalOwnerPubkey}:${repo}`],
+                  ],
+                  content: `Opened PR #${prId}`,
+                  pubkey: authorPubkey,
+                  id: "",
+                  sig: "",
+                };
+                statusEvent.id = getEventHash(statusEvent);
+                statusEvent = await window.nostr.signEvent(statusEvent);
+              } else if (privateKey && prEvent.id && finalOwnerPubkey) {
+                statusEvent = createStatusEvent({
+                  statusKind: KIND_STATUS_OPEN,
+                  rootEventId: prEvent.id,
+                  ownerPubkey: finalOwnerPubkey,
+                  rootEventAuthor: authorPubkey,
+                  repoName: repo || "",
+                  content: `Opened PR #${prId}`,
+                }, privateKey);
+              }
+              
+              if (statusEvent) {
+                publish(statusEvent, defaultRelays);
+                console.log("✅ Published NIP-34 status event (open):", statusEvent.id);
+              }
+            }
+          } catch (statusError) {
+            console.error("Failed to publish status event:", statusError);
+            // Don't block PR creation if status event publishing fails
+          }
         } catch (error: any) {
           console.error("Failed to publish PR to Nostr:", error);
           // Don't fail the PR creation if publishing fails - it's already saved locally

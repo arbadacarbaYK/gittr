@@ -37,7 +37,7 @@ import { hasWriteAccess, isOwner as checkIsOwner } from "@/lib/repo-permissions"
 import { getRepoOwnerPubkey, resolveEntityToPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
 import { getNostrPrivateKey, getSecureItem } from "@/lib/security/encryptedStorage";
 import { sendNotification, formatNotificationMessage } from "@/lib/notifications";
-import { createBountyEvent, KIND_BOUNTY, KIND_CODE_SNIPPET } from "@/lib/nostr/events";
+import { createBountyEvent, KIND_BOUNTY, KIND_CODE_SNIPPET, createStatusEvent, KIND_STATUS_APPLIED, KIND_STATUS_CLOSED, KIND_STATUS_OPEN, createPullRequestUpdateEvent, KIND_PR_UPDATE } from "@/lib/nostr/events";
 import { CodeSnippetRenderer } from "@/components/ui/code-snippet-renderer";
 import { getEventHash } from "nostr-tools";
 
@@ -582,6 +582,68 @@ export default function PRDetailPage({ params }: { params: Promise<{ entity: str
       );
       localStorage.setItem(prsKey, JSON.stringify(updatedPRs));
       setPR({ ...pr, status: "merged", mergedAt: Date.now(), mergedBy: currentUserPubkey || "", mergeCommit: commitId });
+
+      // 3a. Create and publish NIP-34 status event (kind 1631: Applied/Merged)
+      if (prEventId && currentUserPubkey) {
+        try {
+          const repos = loadStoredRepos();
+          const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
+          const repoOwnerPubkey = repo ? getRepoOwnerPubkey(repo, resolvedParams.entity) : resolveEntityToPubkey(resolvedParams.entity);
+          
+          if (repoOwnerPubkey) {
+            const privateKey = await getNostrPrivateKey();
+            const hasNip07 = typeof window !== "undefined" && window.nostr;
+            
+            if (privateKey || hasNip07) {
+              const ownerPubkeyHex = repoOwnerPubkey.length === 64 ? repoOwnerPubkey : resolveEntityToPubkey(resolvedParams.entity) || "";
+              
+              if (ownerPubkeyHex) {
+                let statusEvent: any;
+                
+                if (hasNip07 && window.nostr) {
+                  const authorPubkey = await window.nostr.getPublicKey();
+                  statusEvent = {
+                    kind: KIND_STATUS_APPLIED,
+                    created_at: Math.floor(Date.now() / 1000),
+                    tags: [
+                      ["e", prEventId, "", "root"],
+                      ["p", ownerPubkeyHex],
+                      ["p", pr.author],
+                      ["a", `30617:${ownerPubkeyHex}:${resolvedParams.repo}`],
+                      ["merge-commit", commitId],
+                      ["r", commitId],
+                    ],
+                    content: `Merged PR #${pr.number || pr.id}`,
+                    pubkey: authorPubkey,
+                    id: "",
+                    sig: "",
+                  };
+                  statusEvent.id = getEventHash(statusEvent);
+                  statusEvent = await window.nostr.signEvent(statusEvent);
+                } else if (privateKey) {
+                  statusEvent = createStatusEvent({
+                    statusKind: KIND_STATUS_APPLIED,
+                    rootEventId: prEventId,
+                    ownerPubkey: ownerPubkeyHex,
+                    rootEventAuthor: pr.author,
+                    repoName: resolvedParams.repo,
+                    mergeCommitId: commitId,
+                    content: `Merged PR #${pr.number || pr.id}`,
+                  }, privateKey);
+                }
+                
+                if (publish && defaultRelays && defaultRelays.length > 0 && statusEvent) {
+                  publish(statusEvent, defaultRelays);
+                  console.log("✅ Published NIP-34 status event (merged):", statusEvent.id);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error("Failed to publish status event:", error);
+          // Don't block merge if status event publishing fails
+        }
+      }
 
       // 6. Add PR author to contributors if not already present
       if (pr.author && pr.author.length === 64) {

@@ -120,15 +120,63 @@ This document lists all Nostr Improvement Proposals (NIPs) and event kinds used 
 - **Content**: Empty (state is in tags)
 - **Required for**: Full NIP-34 compliance and recognition by ngit clients (e.g., gitworkshop.dev)
 
-### Kind 9803: Issues
+### Kind 1621: Issues (NIP-34)
 - **Purpose**: Issue tracking
 - **Usage**: Repository issues with bounties
-- **Tags**: `repo` (owner pubkey, repo name), `t[]` (labels), `p[]` (assignees), `e` (related events)
+- **Tags**: 
+  - `a`: Repository reference (`30617:<owner-pubkey>:<repo-id>`) - REQUIRED
+  - `r`: Earliest unique commit ID - REQUIRED
+  - `p`: Repository owner - REQUIRED
+  - `subject`: Issue title - REQUIRED
+  - `t[]`: Labels (optional)
+  - `p[]`: Assignees (optional, custom extension)
+- **Content**: Markdown description text (not JSON)
 
-### Kind 9804: Pull Requests
+### Kind 1618: Pull Requests (NIP-34)
 - **Purpose**: Code review and merging
 - **Usage**: Pull request workflow
-- **Tags**: `repo` (owner pubkey, repo name), `from_branch`, `to_branch`, `commit[]`, `t[]` (labels), `p[]` (assignees)
+- **Tags**:
+  - `a`: Repository reference (`30617:<owner-pubkey>:<repo-id>`) - REQUIRED
+  - `r`: Earliest unique commit ID - REQUIRED
+  - `p`: Repository owner - REQUIRED
+  - `subject`: PR title - REQUIRED
+  - `c`: Current commit ID (tip of PR branch) - REQUIRED
+  - `clone[]`: Git clone URLs - REQUIRED (at least one)
+  - `branch-name`: Branch name (optional)
+  - `merge-base`: Most recent common ancestor (optional)
+  - `t[]`: Labels (optional)
+- **Content**: Markdown description text (not JSON)
+
+### Kind 1619: Pull Request Updates (NIP-34)
+- **Purpose**: Update PR when new commits are pushed
+- **Usage**: Published when PR branch is updated with new commits
+- **Tags**:
+  - `a`: Repository reference (`30617:<owner-pubkey>:<repo-id>`) - REQUIRED
+  - `r`: Earliest unique commit ID - REQUIRED
+  - `p`: Repository owner - REQUIRED
+  - `E`: PR event ID (NIP-22) - REQUIRED
+  - `P`: PR author (NIP-22) - REQUIRED
+  - `c`: Updated commit ID (tip of PR branch) - REQUIRED
+  - `clone[]`: Git clone URLs - REQUIRED
+  - `merge-base`: Most recent common ancestor (optional)
+- **Content**: Empty (all data in tags)
+
+### Kinds 1630-1633: Status Events (NIP-34)
+- **Purpose**: Track status of issues, PRs, and patches
+- **Usage**: Separate events for status changes (not tags in main event)
+- **Tags**:
+  - `e`: Root event ID (issue/PR/patch) with marker "root" - REQUIRED
+  - `p`: Repository owner - REQUIRED
+  - `p`: Root event author - REQUIRED
+  - `a`: Repository reference (optional, for filter efficiency)
+  - `r`: Earliest unique commit (optional, for filter efficiency)
+  - For kind 1631 (Applied/Merged): `e` (accepted revision), `q[]` (applied patch IDs), `merge-commit`, `applied-as-commits[]`
+- **Content**: Optional markdown text
+- **Kinds**:
+  - **1630**: Open
+  - **1631**: Applied/Merged (for PRs) or Resolved (for issues)
+  - **1632**: Closed
+  - **1633**: Draft
 
 ### Kind 9806: Bounties
 - **Purpose**: Lightning bounties for issues
@@ -147,14 +195,14 @@ For relays to support gittr.space, they must allow these event kinds:
 ```toml
 # nostr-rs-relay config.toml
 [relay]
-allowed_kinds = [0, 1, 7, 50, 51, 52, 1337, 30617, 30618, 9735, 9803, 9804, 9806, 9807]
+allowed_kinds = [0, 1, 7, 50, 51, 52, 1337, 1618, 1619, 1621, 1630, 1631, 1632, 1633, 30617, 30618, 9735, 9806, 9807]
 ```
 
 ```yaml
 # strfry config
 relay:
   eventKinds:
-    allow: [0, 1, 7, 50, 51, 52, 1337, 30617, 30618, 9735, 9803, 9804, 9806, 9807]
+    allow: [0, 1, 7, 50, 51, 52, 1337, 1618, 1619, 1621, 1630, 1631, 1632, 1633, 30617, 30618, 9735, 9806, 9807]
 ```
 
 ## Summary Table
@@ -168,11 +216,16 @@ relay:
 | 51 | Custom | Repository (Legacy) | Repository announcements (read-only) |
 | 52 | Custom | SSH Keys | Git authentication |
 | 1337 | NIP-C0 | Code Snippets | Code snippet sharing |
+| 1618 | NIP-34 | Pull Requests | Pull request announcements |
+| 1619 | NIP-34 | PR Updates | PR branch updates (new commits) |
+| 1621 | NIP-34 | Issues | Issue tracking |
+| 1630 | NIP-34 | Status: Open | Issue/PR opened |
+| 1631 | NIP-34 | Status: Applied/Merged | PR merged or issue resolved |
+| 1632 | NIP-34 | Status: Closed | Issue/PR closed |
+| 1633 | NIP-34 | Status: Draft | Issue/PR set to draft |
 | 30617 | NIP-34 | Repository Metadata | Repository announcements (primary) |
 | 30618 | NIP-34 | Repository State | Repository state (required for ngit clients) |
 | 9735 | NIP-57 | Zaps | Lightning payments |
-| 9803 | Custom | Issues | Issue tracking |
-| 9804 | Custom | Pull Requests | Code reviews |
 | 9806 | Custom | Bounties | Issue bounties |
 | 9807 | Custom | Comments | Issue/PR comments |
 
