@@ -1126,8 +1126,8 @@ export default function RepositoriesPage() {
               deleted: repoData.deleted,
               archived: repoData.archived,
               // CRITICAL: Preserve privacy status from NIP-34 tags
-              publicRead: repoData.publicRead !== undefined ? repoData.publicRead : (existingRepo?.publicRead !== undefined ? existingRepo.publicRead : true),
-              publicWrite: repoData.publicWrite !== undefined ? repoData.publicWrite : (existingRepo?.publicWrite !== undefined ? existingRepo.publicWrite : false),
+              publicRead: repoData.publicRead !== undefined ? repoData.publicRead : ((existingRepo as any)?.publicRead !== undefined ? (existingRepo as any).publicRead : true),
+              publicWrite: repoData.publicWrite !== undefined ? repoData.publicWrite : ((existingRepo as any)?.publicWrite !== undefined ? (existingRepo as any).publicWrite : false),
               // Repository links
               links: repoData.links || existingRepo?.links,
               // GRASP-01: Store clone and relays tags from event.tags
