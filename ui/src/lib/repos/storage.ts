@@ -78,6 +78,8 @@ export interface StoredRepo {
   hasUnpushedEdits?: boolean;
   status?: string;
   syncedFromNostr?: boolean;
+  publicRead?: boolean; // NIP-34: Repository privacy (read access)
+  publicWrite?: boolean; // NIP-34: Repository privacy (write access)
 }
 
 const isRepoFileEntry = (value: unknown): value is RepoFileEntry => {

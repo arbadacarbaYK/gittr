@@ -742,10 +742,23 @@ export default function RepositoriesPage() {
                     // Extract earliest unique commit from "r" tag with "euc" marker
                     repoData.earliestUniqueCommit = tagValue;
                   }
+                  else if (tagName === "public-read") {
+                    // NIP-34: Parse public-read tag (true/false)
+                    repoData.publicRead = tagValue === "true";
+                  }
+                  else if (tagName === "public-write") {
+                    // NIP-34: Parse public-write tag (true/false)
+                    repoData.publicWrite = tagValue === "true";
+                  }
                 }
               }
-              repoData.publicRead = true;
-              repoData.publicWrite = false;
+              // Default to public if not specified in tags
+              if (repoData.publicRead === undefined) {
+                repoData.publicRead = true;
+              }
+              if (repoData.publicWrite === undefined) {
+                repoData.publicWrite = false;
+              }
             } else {
               try {
                 repoData = JSON.parse(event.content);
@@ -1112,6 +1125,9 @@ export default function RepositoriesPage() {
               // CRITICAL: Preserve deletion markers from Nostr (owner's deletion request)
               deleted: repoData.deleted,
               archived: repoData.archived,
+              // CRITICAL: Preserve privacy status from NIP-34 tags
+              publicRead: repoData.publicRead !== undefined ? repoData.publicRead : (existingRepo?.publicRead !== undefined ? existingRepo.publicRead : true),
+              publicWrite: repoData.publicWrite !== undefined ? repoData.publicWrite : (existingRepo?.publicWrite !== undefined ? existingRepo.publicWrite : false),
               // Repository links
               links: repoData.links || existingRepo?.links,
               // GRASP-01: Store clone and relays tags from event.tags
