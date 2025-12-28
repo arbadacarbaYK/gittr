@@ -355,6 +355,63 @@ export default function HelpPage() {
                 <li><strong>GitLab</strong> - Import from GitLab URLs (coming soon)</li>
               </ul>
               <p className="mt-2 text-sm text-gray-400">Imported repos maintain a link to their source (sourceUrl) and fetch files from the original git server.</p>
+              
+              <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded">
+                <p className="text-sm text-blue-200 font-semibold mb-2">🔒 Private Repository Support</p>
+                <p className="text-sm text-blue-100 mb-2">
+                  <strong>GitHub Private Repos:</strong> When you import a private GitHub repository, the privacy status is preserved. The repository will be marked as "Private" in gittr.space and the privacy status is included in the Nostr event (NIP-34 tags).
+                </p>
+                <ul className="text-sm text-blue-100 space-y-1 list-disc list-inside ml-2 mb-3">
+                  <li><strong>Files Access:</strong> Files from private GitHub repos require GitHub authentication. Connect your GitHub account via OAuth (Settings → SSH Keys) to access private repo files.</li>
+                  <li><strong>Other Clients:</strong> Other Nostr clients may not be able to access files from private GitHub repos without authentication. Files are pushed to the git-nostr-bridge during import, but if the bridge doesn't have the files, clients will need GitHub auth to fetch them.</li>
+                  <li><strong>Privacy in Nostr:</strong> The privacy status is stored in the repository metadata and included in NIP-34 event tags (<code className="bg-blue-900/50 px-1 rounded">public-read</code> and <code className="bg-blue-900/50 px-1 rounded">public-write</code>), but files themselves require authentication to access.</li>
+                </ul>
+                
+                <div className="mt-3 p-3 bg-yellow-900/20 border border-yellow-600/30 rounded">
+                  <p className="text-sm font-semibold text-yellow-200 mb-2">🔗 Identity Mapping & Access Control</p>
+                  <p className="text-sm text-yellow-100 mb-2">
+                    <strong>How Access Works:</strong> Access to private repositories is determined by your <strong>Nostr pubkey (npub)</strong>, not your GitHub username. This means:
+                  </p>
+                  <ul className="text-sm text-yellow-100 space-y-1 list-disc list-inside ml-2 mb-3">
+                    <li><strong>Owner:</strong> The repository owner (the Nostr pubkey that created/pushed the repo) has full access</li>
+                    <li><strong>Maintainers:</strong> Users whose Nostr pubkey (npub) is explicitly added as a maintainer in Repository Settings → Contributors</li>
+                    <li><strong>GitHub Identity:</strong> If you're a maintainer on GitHub but haven't linked your Nostr identity, you won't have access until the owner adds your npub</li>
+                  </ul>
+                  <p className="text-sm text-yellow-100 mb-2">
+                    <strong>Why This Matters:</strong> When importing from GitHub, contributors are mapped to Nostr identities using:
+                  </p>
+                  <ol className="text-sm text-yellow-100 space-y-1 list-decimal list-inside ml-2 mb-3">
+                    <li><strong>OAuth Mapping:</strong> If you've done GitHub OAuth, your GitHub username is linked to your Nostr pubkey in localStorage</li>
+                    <li><strong>NIP-39 Claims:</strong> If you've published a Kind 0 event with <code className="bg-yellow-900/50 px-1 rounded">["i", "github:username"]</code> tags, your identity is claimed on Nostr</li>
+                    <li><strong>Manual Addition:</strong> The repository owner can manually add maintainers by their npub in Repository Settings</li>
+                  </ol>
+                  <p className="text-sm text-yellow-200 font-semibold mb-1">⚠️ Common Issue: "Access Denied" for Maintainers</p>
+                  <p className="text-sm text-yellow-100 mb-2">
+                    If you're a maintainer on GitHub but can't access a private repo on gittr.space:
+                  </p>
+                  <ul className="text-sm text-yellow-100 space-y-1 list-disc list-inside ml-2">
+                    <li>The repository owner needs to add your <strong>Nostr pubkey (npub)</strong> as a maintainer in Repository Settings → Contributors</li>
+                    <li>Your GitHub username alone isn't enough - you need your npub explicitly added</li>
+                    <li>This ensures security: only the owner can grant access, and it's tied to your Nostr identity, not just GitHub</li>
+                  </ul>
+                </div>
+                
+                <div className="mt-3 p-3 bg-purple-900/20 border border-purple-600/30 rounded">
+                  <p className="text-sm font-semibold text-purple-200 mb-2">💻 CLI & API Access</p>
+                  <p className="text-sm text-purple-100 mb-2">
+                    When accessing private repositories via Git CLI or API:
+                  </p>
+                  <ul className="text-sm text-purple-100 space-y-1 list-disc list-inside ml-2 mb-2">
+                    <li><strong>Git Clone:</strong> Requires SSH keys configured in Settings → SSH Keys. The bridge checks your pubkey against the repository's maintainers list.</li>
+                    <li><strong>Error Message:</strong> If access is denied, you'll see: <code className="bg-purple-900/50 px-1 rounded">fatal: permission denied for read operation</code> with hints on how to get access.</li>
+                    <li><strong>API Endpoints:</strong> Private repo endpoints gracefully return null/404 for unauthorized users (no errors thrown).</li>
+                  </ul>
+                  <p className="text-sm text-purple-100">
+                    <strong>Note:</strong> The same access control applies - you need your npub added as a maintainer by the owner, regardless of whether you access via web UI, CLI, or API.
+                  </p>
+                </div>
+              </div>
+              
               <div className="mt-3 p-3 bg-red-900/20 border border-red-600/30 rounded">
                 <p className="text-sm text-red-200 font-semibold mb-1">⚠️ 4 MB Import Limit</p>
                 <p className="text-sm text-red-100">
@@ -726,11 +783,31 @@ export default function HelpPage() {
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Pull Requests</h3>
               <p>Create PRs to propose changes. Reviewers can approve, request changes, or merge PRs.</p>
+              
+              <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded">
+                <p className="text-sm font-semibold text-blue-200 mb-2">📋 How PRs Are Organized</p>
+                <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside ml-2">
+                  <li><strong>Sorted by creation time:</strong> PRs are displayed with the newest first, regardless of status changes</li>
+                  <li><strong>Aggregated from Nostr:</strong> PRs created by anyone (locally or on other clients) appear in the list automatically</li>
+                  <li><strong>Status tracking:</strong> Status changes (open → merged/closed) don't affect the chronological order</li>
+                  <li><strong>Real-time updates:</strong> New PRs and status changes from Nostr relays appear automatically</li>
+                </ul>
+              </div>
             </div>
 
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">Issues</h3>
               <p>Track bugs, feature requests, and discussions. Add bounties to incentivize solutions.</p>
+              
+              <div className="mt-3 p-3 bg-green-900/20 border border-green-600/30 rounded">
+                <p className="text-sm font-semibold text-green-200 mb-2">📋 How Issues Are Organized</p>
+                <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside ml-2">
+                  <li><strong>Sorted by creation time:</strong> Issues are displayed with the newest first, regardless of status changes</li>
+                  <li><strong>Aggregated from Nostr:</strong> Issues created by anyone (locally or on other clients) appear in the list automatically</li>
+                  <li><strong>Status tracking:</strong> Status changes (open → closed) don't affect the chronological order</li>
+                  <li><strong>Real-time updates:</strong> New issues and status changes from Nostr relays appear automatically</li>
+                </ul>
+              </div>
             </div>
 
             <div>

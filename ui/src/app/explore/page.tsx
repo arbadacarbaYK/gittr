@@ -122,6 +122,14 @@ function parseNIP34Repository(event: any): any {
           repoData.earliestUniqueCommit = tagValue;
         }
         break;
+      case "public-read":
+        // Privacy: public-read tag (true/false)
+        repoData.publicRead = tagValue === "true";
+        break;
+      case "public-write":
+        // Privacy: public-write tag (true/false)
+        repoData.publicWrite = tagValue === "true";
+        break;
     }
   }
   
@@ -130,9 +138,13 @@ function parseNIP34Repository(event: any): any {
     repoData.repositoryName = repoData.name;
   }
   
-  // Default publicRead/publicWrite for NIP-34 repos
-  repoData.publicRead = true;
-  repoData.publicWrite = false; // NIP-34 doesn't specify, default to read-only
+  // Default publicRead/publicWrite for NIP-34 repos (only if not set by tags)
+  if (repoData.publicRead === undefined) {
+    repoData.publicRead = true; // Default to public if not specified
+  }
+  if (repoData.publicWrite === undefined) {
+    repoData.publicWrite = false; // Default to read-only if not specified
+  }
   
   return repoData;
 }
@@ -175,6 +187,9 @@ type Repo = {
   lastNostrEventCreatedAt?: number;
   syncedFromNostr?: boolean;
   fromNostr?: boolean;
+  // Privacy
+  publicRead?: boolean;
+  publicWrite?: boolean;
 };
 
 function ExplorePageContent() {
@@ -1648,6 +1663,23 @@ function ExplorePageContent() {
         
         // Skip if owner marked as deleted/archived on Nostr (completely hidden from explore - no note shown)
         if (r.deleted === true || r.archived === true) return false;
+        
+        // Filter out private repos (unless user is the owner)
+        if (r.publicRead === false) {
+          // Check if current user is the owner
+          const repoOwnerPubkey = r.ownerPubkey || (r.entity && r.entity.startsWith("npub") ? (() => {
+            try {
+              const decoded = nip19.decode(r.entity);
+              return decoded.type === "npub" ? decoded.data as string : null;
+            } catch {
+              return null;
+            }
+          })() : null);
+          const isOwner = pubkey && repoOwnerPubkey && pubkey.toLowerCase() === repoOwnerPubkey.toLowerCase();
+          if (!isOwner) {
+            return false; // Hide private repos from non-owners
+          }
+        }
         
         // NOTE: Don't filter out repos without files - they may be newly created or files may load later
         // Repos from Nostr may not have files in the initial event, but they're still valid repos

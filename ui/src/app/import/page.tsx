@@ -298,6 +298,8 @@ export default function ImportPage() {
                     branches: importData.branches || [],
                     tags: importData.tags || [],
                     releases: importData.releases || [],
+                    // Preserve GitHub privacy status (defaults to public if not set)
+                    publicRead: importData.isPrivate === true ? false : true,
                     // Don't store issues/pulls/commits in main repo object - they're stored separately
                     createdAt: Date.now(),
                     ownerPubkey: pubkey || undefined,
@@ -413,7 +415,7 @@ export default function ImportPage() {
                         const repoEvent = createRepositoryEvent(
                           {
                             repositoryName: repoSlug,
-                            publicRead: true,
+                            publicRead: rec.publicRead !== false, // Preserve privacy status from import
                             publicWrite: false,
                             description: rec.description || `Imported from ${repo.html_url}`,
                             sourceUrl: repo.html_url,
@@ -1165,7 +1167,7 @@ export default function ImportPage() {
                 const repoEvent = createRepositoryEvent(
                   {
                     repositoryName: repoSlug,
-                    publicRead: true,
+                    publicRead: (rec as any).publicRead !== false, // Preserve privacy status from import
                     publicWrite: false,
                     description: rec.description || `Imported from ${repo.html_url}`,
                     sourceUrl: repo.html_url,

@@ -27,6 +27,7 @@ type Data = {
   homepage?: string; // GitHub Pages or website URL
   fileCount?: number;
   approximateSizeBytes?: number;
+  isPrivate?: boolean; // GitHub repo privacy status
 };
 
 async function fetchGithubTree(owner: string, repo: string, branch: string, token?: string | null) {
@@ -271,6 +272,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     let topics: string[] = [];
     let defaultBranch = "main";
     let homepage: string | undefined = undefined; // GitHub Pages or website URL
+    let isPrivate = false; // Track if GitHub repo is private
     if (repoResponse.ok) {
       const repoData: any = await repoResponse.json();
       description = repoData.description || "";
@@ -278,6 +280,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       forks = repoData.forks_count || 0;
       topics = repoData.topics || [];
       defaultBranch = repoData.default_branch || defaultBranch;
+      isPrivate = repoData.private === true; // Preserve GitHub privacy status
       // Get homepage/website URL (GitHub Pages link)
       if (repoData.homepage && typeof repoData.homepage === "string" && repoData.homepage.trim().length > 0) {
         const rawHomepage = repoData.homepage.trim();
@@ -508,6 +511,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       pulls,
       commits,
       homepage, // Include GitHub Pages/website URL
+      isPrivate, // Preserve GitHub privacy status
     };
 
     // Next.js API routes have a 4MB body limit (after gzip). 

@@ -203,3 +203,111 @@ export function getUserContributor(
   ) || null;
 }
 
+/**
+ * Get current user's GitHub username from localStorage (if they've done OAuth)
+ */
+function getCurrentUserGithubUsername(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const githubProfile = localStorage.getItem("gittr_github_profile");
+    if (githubProfile) {
+      try {
+        const profile = JSON.parse(githubProfile);
+        return profile.githubUsername || null;
+      } catch {
+        // Try to extract username from URL
+        try {
+          const url = new URL(githubProfile);
+          const pathParts = url.pathname.split("/").filter(p => p);
+          return pathParts[0] || null;
+        } catch {
+          return null;
+        }
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Check if user has access to a private repository
+ * Access is granted to: owner OR maintainer
+ * Similar to GitHub's model where collaborators (with any permission) can see private repos
+ * 
+ * IMPORTANT: Identity Mapping
+ * - Primary: Nostr pubkey (if user has claimed their GitHub identity via OAuth or NIP-39)
+ * - Fallback: GitHub username (if user has done OAuth and matches a contributor's githubLogin)
+ * 
+ * This handles the case where:
+ * - A maintainer on GitHub hasn't linked their Nostr identity yet
+ * - They've done OAuth, so we can match their GitHub username to contributors
+ */
+export function hasPrivateRepoAccess(
+  userPubkey: string | null | undefined,
+  repoContributors: ContributorWithRole[] | undefined,
+  repoOwnerPubkey?: string | null,
+  maintainers?: string[] // NIP-34 maintainers tags (pubkeys)
+): boolean {
+  if (!userPubkey) return false;
+  
+  const normalizedUser = userPubkey.toLowerCase();
+  
+  // Check if owner
+  if (isOwner(userPubkey, repoContributors, repoOwnerPubkey)) {
+    return true;
+  }
+  
+  // Check if maintainer (from contributors) by Nostr pubkey
+  const role = getUserRole(userPubkey, repoContributors);
+  if (role === "maintainer") {
+    return true;
+  }
+  
+  // Check if in NIP-34 maintainers tags
+  if (maintainers && Array.isArray(maintainers)) {
+    const isMaintainer = maintainers.some(m => {
+      // Handle both hex and npub formats
+      if (/^[0-9a-f]{64}$/i.test(m)) {
+        return m.toLowerCase() === normalizedUser;
+      }
+      // If npub, decode it
+      if (m.startsWith("npub")) {
+        try {
+          const { nip19 } = require("nostr-tools");
+          const decoded = nip19.decode(m);
+          if (decoded.type === "npub") {
+            return (decoded.data as string).toLowerCase() === normalizedUser;
+          }
+        } catch {
+          // Decode failed, skip
+        }
+      }
+      return false;
+    });
+    if (isMaintainer) {
+      return true;
+    }
+  }
+  
+  // FALLBACK: Check by GitHub username (if user has done OAuth)
+  // This handles the case where a maintainer on GitHub hasn't linked their Nostr identity
+  const currentUserGithubUsername = getCurrentUserGithubUsername();
+  if (currentUserGithubUsername && repoContributors) {
+    const matchingContributor = repoContributors.find(c => {
+      // Check if GitHub username matches AND they're a maintainer
+      const githubLoginMatch = c.githubLogin && 
+        c.githubLogin.toLowerCase() === currentUserGithubUsername.toLowerCase();
+      const isMaintainer = c.role === "maintainer" || 
+        (c.role === undefined && c.weight !== undefined && c.weight >= 50 && c.weight < 100);
+      return githubLoginMatch && isMaintainer;
+    });
+    if (matchingContributor) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
