@@ -7560,9 +7560,11 @@ export default function RepoCodePage() {
     if (!mounted || !repoData) return true; // Allow during loading
     
     const repoDataAny = repoData as any;
+    // CRITICAL: Only repos with explicit publicRead === false are private
+    // Repos without publicRead field (undefined) are treated as public (default)
     const isPrivate = repoDataAny?.publicRead === false;
     
-    // Public repos are accessible to everyone
+    // Public repos are accessible to everyone (including repos with undefined publicRead)
     if (!isPrivate) return true;
     
     // Private repos: check if user is owner or maintainer
@@ -10354,7 +10356,22 @@ export default function RepoCodePage() {
                                     if (!eventRepoData.clone) eventRepoData.clone = [];
                                     eventRepoData.clone.push(tagValue);
                                   }
+                                  else if (tagName === "public-read") {
+                                    // NIP-34: Parse public-read tag (true/false)
+                                    eventRepoData.publicRead = tagValue === "true";
+                                  }
+                                  else if (tagName === "public-write") {
+                                    // NIP-34: Parse public-write tag (true/false)
+                                    eventRepoData.publicWrite = tagValue === "true";
+                                  }
                                 }
+                              }
+                              // Default to public if not specified
+                              if (eventRepoData.publicRead === undefined) {
+                                eventRepoData.publicRead = true;
+                              }
+                              if (eventRepoData.publicWrite === undefined) {
+                                eventRepoData.publicWrite = false;
                               }
                               // Parse files from content if present
                               if (latestEvent.content) {
@@ -10396,6 +10413,9 @@ export default function RepoCodePage() {
                                   branches: eventRepoData.branches || [],
                                   contributors: eventRepoData.contributors || [],
                                   clone: eventRepoData.clone || [],
+                                  // CRITICAL: Preserve privacy status from NIP-34 tags
+                                  publicRead: eventRepoData.publicRead !== undefined ? eventRepoData.publicRead : true,
+                                  publicWrite: eventRepoData.publicWrite !== undefined ? eventRepoData.publicWrite : false,
                                   nostrEventId: latestEvent.id,
                                   lastNostrEventId: latestEvent.id,
                                   syncedFromNostr: true,
@@ -10421,6 +10441,9 @@ export default function RepoCodePage() {
                                 repo: eventRepoData.repositoryName || existingRepo.repo,
                                 description: eventRepoData.description || existingRepo.description,
                                 clone: eventRepoData.clone || existingRepo.clone,
+                                // CRITICAL: Preserve privacy status from NIP-34 tags
+                                publicRead: eventRepoData.publicRead !== undefined ? eventRepoData.publicRead : (existingRepo.publicRead !== undefined ? existingRepo.publicRead : true),
+                                publicWrite: eventRepoData.publicWrite !== undefined ? eventRepoData.publicWrite : (existingRepo.publicWrite !== undefined ? existingRepo.publicWrite : false),
                                 // Update event metadata
                                 nostrEventId: latestEvent.id,
                                 lastNostrEventId: latestEvent.id,
@@ -10463,6 +10486,9 @@ export default function RepoCodePage() {
                                 branches: eventRepoData.branches || [],
                                 contributors: eventRepoData.contributors || [],
                                 clone: eventRepoData.clone || [],
+                                // CRITICAL: Preserve privacy status from NIP-34 tags
+                                publicRead: eventRepoData.publicRead !== undefined ? eventRepoData.publicRead : true,
+                                publicWrite: eventRepoData.publicWrite !== undefined ? eventRepoData.publicWrite : false,
                                 nostrEventId: latestEvent.id,
                                 lastNostrEventId: latestEvent.id,
                                 syncedFromNostr: true,

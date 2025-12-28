@@ -1665,6 +1665,7 @@ function ExplorePageContent() {
         if (r.deleted === true || r.archived === true) return false;
         
         // Filter out private repos (unless user is the owner)
+        // NOTE: Repos without publicRead field (undefined) are treated as public (default)
         if (r.publicRead === false) {
           // Check if current user is the owner
           const repoOwnerPubkey = r.ownerPubkey || (r.entity && r.entity.startsWith("npub") ? (() => {
