@@ -1491,7 +1491,15 @@ export default function RepoCodePage() {
         // Priority: repositoryName > repo > slug > resolvedParams.repo
         const repoAny = repo as any;
         const repoName = repoAny?.repositoryName || repo.repo || repo.slug || resolvedParams.repo;
-        checkBridgeExists(repo.ownerPubkey, repoName, resolvedParams.entity).catch(err => {
+        checkBridgeExists(repo.ownerPubkey, repoName, resolvedParams.entity).then((bridgeProcessed) => {
+          // After bridge check completes, reload repo data from localStorage to get updated bridgeProcessed flag
+          const updatedRepos = loadStoredRepos();
+          const updatedRepo = findRepoByEntityAndName<StoredRepo>(updatedRepos, resolvedParams.entity, resolvedParams.repo);
+          if (updatedRepo) {
+            // Update repoData state with latest data from localStorage (including bridgeProcessed flag)
+            setRepoData(updatedRepo);
+          }
+        }).catch(err => {
           console.warn("Failed to check bridge:", err);
         });
       }
@@ -9530,9 +9538,12 @@ export default function RepoCodePage() {
         {/* Push to Nostr button for local repos */}
         {mounted ? (() => {
           try {
+            // CRITICAL: Use repoData state if available (most up-to-date), otherwise load from localStorage
+            // This ensures status updates immediately after bridge check completes
             const repos = loadStoredRepos();
-            // CRITICAL: Use findRepoByEntityAndName to support npub format
-            const repo = findRepoByEntityAndName(repos, resolvedParams.entity, decodedRepo);
+            const repoFromStorage = findRepoByEntityAndName(repos, resolvedParams.entity, decodedRepo);
+            // Prefer repoData state over localStorage (it's updated after bridge checks)
+            const repo = repoData || repoFromStorage;
             
             // Check ownership even if repo is not in localStorage
             const ownsByRepoRecord = currentUserPubkey && repo?.ownerPubkey &&
@@ -10648,23 +10659,50 @@ export default function RepoCodePage() {
                                 }
                               }
 
-                              // Show success message BEFORE reload (so user can see it)
+                              // Show success message
                               if (result.confirmed && result.stateEventId) {
                                 const announcementId = result.eventId?.slice(0, 16) || "unknown";
                                 const stateId = result.stateEventId?.slice(0, 16) || "unknown";
-                                alert(`✅ Repository pushed to Nostr!\n\n✅ Announcement event (30617): ${announcementId}...\n✅ State event (30618): ${stateId}...\n\nBoth events published and confirmed.\n\nPage will reload to show updated status.`);
+                                alert(`✅ Repository pushed to Nostr!\n\n✅ Announcement event (30617): ${announcementId}...\n✅ State event (30618): ${stateId}...\n\nBoth events published and confirmed.`);
                               } else if (result.stateEventId) {
                                 // Both events published but not yet confirmed
                                 const announcementId = result.eventId?.slice(0, 16) || "unknown";
                                 const stateId = result.stateEventId?.slice(0, 16) || "unknown";
-                                alert(`⚠️ Repository published but awaiting confirmation.\n\n✅ Announcement event (30617): ${announcementId}...\n✅ State event (30618): ${stateId}...\n\nBoth events published - confirmation may take a few moments.\n\nPage will reload to show updated status.`);
+                                alert(`⚠️ Repository published but awaiting confirmation.\n\n✅ Announcement event (30617): ${announcementId}...\n✅ State event (30618): ${stateId}...\n\nBoth events published - confirmation may take a few moments.`);
                               } else {
                                 // Only first event published (shouldn't happen with the fix, but handle gracefully)
-                                alert(`⚠️ Repository partially published.\n\nEvent ID: ${result.eventId?.slice(0, 16)}...\n\nSecond signature may not have completed. Please try pushing again.\n\nPage will reload.`);
+                                alert(`⚠️ Repository partially published.\n\nEvent ID: ${result.eventId?.slice(0, 16)}...\n\nSecond signature may not have completed. Please try pushing again.`);
                               }
 
-                              // Reload page data after push + bridge sync
-                              window.location.reload();
+                              // CRITICAL: Refresh repo data from localStorage and check bridge
+                              // This updates the status without a full page reload
+                              try {
+                                const updatedRepos = loadStoredRepos();
+                                const updatedRepo = findRepoByEntityAndName<StoredRepo>(updatedRepos, resolvedParams.entity, resolvedParams.repo);
+                                if (updatedRepo) {
+                                  setRepoData(updatedRepo);
+                                  
+                                  // Check bridge and update status
+                                  if (updatedRepo.ownerPubkey && /^[0-9a-f]{64}$/i.test(updatedRepo.ownerPubkey)) {
+                                    const repoAny = updatedRepo as any;
+                                    const repoName = repoAny?.repositoryName || updatedRepo.repo || updatedRepo.slug || resolvedParams.repo;
+                                    checkBridgeExists(updatedRepo.ownerPubkey, repoName, resolvedParams.entity).then((bridgeProcessed) => {
+                                      // Reload repo data again after bridge check to get updated bridgeProcessed flag
+                                      const finalRepos = loadStoredRepos();
+                                      const finalRepo = findRepoByEntityAndName<StoredRepo>(finalRepos, resolvedParams.entity, resolvedParams.repo);
+                                      if (finalRepo) {
+                                        setRepoData(finalRepo);
+                                      }
+                                    }).catch(err => {
+                                      console.warn("Failed to check bridge after push:", err);
+                                    });
+                                  }
+                                }
+                              } catch (error) {
+                                console.error("Failed to refresh repo data after push:", error);
+                                // Fallback to reload if refresh fails
+                                window.location.reload();
+                              }
                             } else {
                               alert(`❌ Failed to push: ${result.error || "Unknown error"}`);
                             }
