@@ -359,12 +359,13 @@ export default function HelpPage() {
               <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded">
                 <p className="text-sm text-blue-200 font-semibold mb-2">🔒 Private Repository Support</p>
                 <p className="text-sm text-blue-100 mb-2">
-                  <strong>GitHub Private Repos:</strong> When you import a private GitHub repository, the privacy status is preserved. The repository will be marked as "Private" in gittr.space and the privacy status is included in the Nostr event (NIP-34 tags).
+                  <strong>GitHub Private Repos:</strong> When you import a private GitHub repository, the privacy status is preserved locally. The repository will be marked as "Private" in gittr.space. Privacy is enforced via the <code className="bg-blue-900/50 px-1 rounded">maintainers</code> tag (NIP-34 spec) and bridge access control.
                 </p>
                 <ul className="text-sm text-blue-100 space-y-1 list-disc list-inside ml-2 mb-3">
+                  <li><strong>NIP-34 Spec Compliance:</strong> Privacy is NOT encoded in NIP-34 event tags (per spec). The NIP-34 spec does not include <code className="bg-blue-900/50 px-1 rounded">public-read</code> or <code className="bg-blue-900/50 px-1 rounded">public-write</code> tags. Privacy is determined by the <code className="bg-blue-900/50 px-1 rounded">maintainers</code> tag (which IS in the spec) and bridge-level access control.</li>
                   <li><strong>Files Access:</strong> Files from private GitHub repos require GitHub authentication. Connect your GitHub account via OAuth (Settings → SSH Keys) to access private repo files.</li>
-                  <li><strong>Other Clients:</strong> Other Nostr clients may not be able to access files from private GitHub repos without authentication. Files are pushed to the git-nostr-bridge during import, but if the bridge doesn't have the files, clients will need GitHub auth to fetch them.</li>
-                  <li><strong>Privacy in Nostr:</strong> The privacy status is stored in the repository metadata and included in NIP-34 event tags (<code className="bg-blue-900/50 px-1 rounded">public-read</code> and <code className="bg-blue-900/50 px-1 rounded">public-write</code>), but files themselves require authentication to access.</li>
+                  <li><strong>Other Clients:</strong> Other NIP-34 clients can see repository events on relays (for discoverability), but file access is restricted to maintainers via the bridge. Clients that support the <code className="bg-blue-900/50 px-1 rounded">maintainers</code> tag can identify private repos and enforce access control accordingly.</li>
+                  <li><strong>Access Control:</strong> Only users listed in the <code className="bg-blue-900/50 px-1 rounded">maintainers</code> tag (or the repository owner) can access private repos. This is enforced at the bridge level for Git operations (SSH/HTTPS) and at the API level for file fetching.</li>
                 </ul>
                 
                 <div className="mt-3 p-3 bg-yellow-900/20 border border-yellow-600/30 rounded">
