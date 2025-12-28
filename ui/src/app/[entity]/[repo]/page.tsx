@@ -10433,6 +10433,7 @@ export default function RepoCodePage() {
                               }
                               
                               // COMPLETE REPLACEMENT: Use Nostr event data exactly as returned
+                              const existingRepoAny = existingRepo as any;
                               repos[repoIndex] = {
                                 ...existingRepo,
                                 // Replace with Nostr data
@@ -10442,8 +10443,8 @@ export default function RepoCodePage() {
                                 description: eventRepoData.description || existingRepo.description,
                                 clone: eventRepoData.clone || existingRepo.clone,
                                 // CRITICAL: Preserve privacy status from NIP-34 tags
-                                publicRead: eventRepoData.publicRead !== undefined ? eventRepoData.publicRead : (existingRepo.publicRead !== undefined ? existingRepo.publicRead : true),
-                                publicWrite: eventRepoData.publicWrite !== undefined ? eventRepoData.publicWrite : (existingRepo.publicWrite !== undefined ? existingRepo.publicWrite : false),
+                                publicRead: eventRepoData.publicRead !== undefined ? eventRepoData.publicRead : (existingRepoAny.publicRead !== undefined ? existingRepoAny.publicRead : true),
+                                publicWrite: eventRepoData.publicWrite !== undefined ? eventRepoData.publicWrite : (existingRepoAny.publicWrite !== undefined ? existingRepoAny.publicWrite : false),
                                 // Update event metadata
                                 nostrEventId: latestEvent.id,
                                 lastNostrEventId: latestEvent.id,
@@ -10451,7 +10452,7 @@ export default function RepoCodePage() {
                                 // Clear unpushed edits flag (we just synced from Nostr)
                                 hasUnpushedEdits: false,
                                 // Preserve local-only data (logoUrl may not be in StoredRepo type but exists at runtime)
-                                ...((existingRepo as any).logoUrl ? { logoUrl: (existingRepo as any).logoUrl } : {}),
+                                ...(existingRepoAny.logoUrl ? { logoUrl: existingRepoAny.logoUrl } : {}),
                                 // Store created_at timestamp in SECONDS (NIP-34 format) - not milliseconds
                                 ...({ lastNostrEventCreatedAt: latestEvent.created_at } as any),
                               } as StoredRepo & { lastNostrEventCreatedAt?: number; logoUrl?: string };
