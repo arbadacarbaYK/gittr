@@ -199,7 +199,11 @@ export default function HomePage() {
       
       // Only check if repo has event ID but bridgeProcessed is not explicitly true
       if (hasEventId && bridgeProcessed !== true && ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) && repoName && entity) {
-        checkBridgeExists(ownerPubkey, repoName, entity).catch(err => {
+        checkBridgeExists(ownerPubkey, repoName, entity).then((bridgeProcessed) => {
+          // After bridge check completes, reload repos to get updated bridgeProcessed flag
+          // This ensures status badge updates from "awaiting bridge" to "live on nostr"
+          loadRepos();
+        }).catch(err => {
           console.warn(`[Home] Failed to check bridge for ${repoName}:`, err);
         });
       }
