@@ -12,7 +12,15 @@ export default function Logo({ className }: { className?: string }) {
       href="/" 
       onClick={(e) => {
         e.preventDefault();
-        router.push("/");
+        e.stopPropagation(); // Prevent event from bubbling up to parent handlers
+        // Use window.location.href for reliable navigation (same pattern as repo page links)
+        // This ensures navigation works even if router.push is blocked
+        try {
+          router.push("/");
+        } catch (error) {
+          // Fallback to window.location if router.push fails
+          window.location.href = "/";
+        }
       }}
       className={cn("items-center space-x-2 flex cursor-pointer", className)}
     >
