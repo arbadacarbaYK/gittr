@@ -1,12 +1,20 @@
+"use client";
+
 import { cn } from "@/lib/utils";
 import Image from "next/image";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function Logo({ className }: { className?: string }) {
+  const router = useRouter();
+  
   return (
-    <Link 
+    <a 
       href="/" 
-      className={cn("items-center space-x-2 flex", className)}
+      onClick={(e) => {
+        e.preventDefault();
+        router.push("/");
+      }}
+      className={cn("items-center space-x-2 flex cursor-pointer", className)}
     >
       <Image
         src="/logo.svg"
@@ -15,6 +23,6 @@ export default function Logo({ className }: { className?: string }) {
         height={32}
         className="hover:opacity-80 h-8"
       />
-    </Link>
+    </a>
   );
 }
