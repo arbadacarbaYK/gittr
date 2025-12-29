@@ -180,7 +180,87 @@ export const loadDeletedRepos = (): Array<{
 
 export const saveStoredRepos = (repos: StoredRepo[]): void => {
   if (typeof window === "undefined") return;
-  localStorage.setItem("gittr_repos", JSON.stringify(repos));
+  try {
+    localStorage.setItem("gittr_repos", JSON.stringify(repos));
+  } catch (error: any) {
+    if (error.name === 'QuotaExceededError' || error.message?.includes('quota')) {
+      console.error(`❌ [Storage] Quota exceeded when saving repos. Attempting cleanup...`);
+      
+      // Try to clean up old repos (older than 30 days)
+      try {
+        const now = Date.now();
+        const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+        
+        // Filter out old repos
+        const cleaned = repos.filter((r: any) => {
+          const lastActivity = r.updatedAt || r.lastModifiedAt || r.createdAt || 0;
+          return lastActivity > thirtyDaysAgo;
+        });
+        
+        if (cleaned.length < repos.length) {
+          console.log(`🧹 [Storage] Cleaned up ${repos.length - cleaned.length} old repos (older than 30 days)`);
+          // Try saving cleaned repos
+          try {
+            localStorage.setItem("gittr_repos", JSON.stringify(cleaned));
+            console.log(`✅ [Storage] Successfully saved ${cleaned.length} repos after cleanup`);
+            // Show user-friendly message
+            if (typeof window !== "undefined") {
+              setTimeout(() => {
+                alert(`⚠️ localStorage is getting full. Cleaned up old repos. ${cleaned.length} repos remaining.`);
+              }, 100);
+            }
+            return;
+          } catch (e2: any) {
+            console.error(`❌ [Storage] Still quota exceeded after cleanup:`, e2);
+            // Try even more aggressive cleanup - remove repos older than 7 days
+            const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+            const aggressiveCleanup = cleaned.filter((r: any) => {
+              const lastActivity = r.updatedAt || r.lastModifiedAt || r.createdAt || 0;
+              return lastActivity > sevenDaysAgo;
+            });
+            
+            if (aggressiveCleanup.length < cleaned.length) {
+              try {
+                localStorage.setItem("gittr_repos", JSON.stringify(aggressiveCleanup));
+                console.log(`✅ [Storage] Aggressive cleanup: ${aggressiveCleanup.length} repos remaining`);
+                if (typeof window !== "undefined") {
+                  setTimeout(() => {
+                    alert(`⚠️ localStorage is full. Cleaned up repos older than 7 days. ${aggressiveCleanup.length} repos remaining.`);
+                  }, 100);
+                }
+                return;
+              } catch (e3: any) {
+                console.error(`❌ [Storage] Still quota exceeded after aggressive cleanup:`, e3);
+                if (typeof window !== "undefined") {
+                  setTimeout(() => {
+                    alert(`❌ Error: localStorage is full. Please clear browser data or remove some repos manually.`);
+                  }, 100);
+                }
+                throw e3;
+              }
+            } else {
+              throw e2;
+            }
+          }
+        } else {
+          // No old repos to clean up, but still quota exceeded
+          console.error(`❌ [Storage] Quota exceeded but no old repos to clean up`);
+          if (typeof window !== "undefined") {
+            setTimeout(() => {
+              alert(`❌ Error: localStorage is full. Please clear browser data or remove some repos manually.`);
+            }, 100);
+          }
+          throw error;
+        }
+      } catch (cleanupError) {
+        console.error(`❌ [Storage] Cleanup failed:`, cleanupError);
+        throw error; // Re-throw original error
+      }
+    } else {
+      console.error("❌ [Storage] Failed to save repos:", error);
+      throw error;
+    }
+  }
 };
 
 export const isGitHostContributor = (

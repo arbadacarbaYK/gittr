@@ -2360,13 +2360,9 @@ export default function RepoCodePage() {
                 }
                 return r;
               });
-              localStorage.setItem("gittr_repos", JSON.stringify(updated));
+              saveStoredRepos(updated);
             } catch (e: any) {
-              if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
-                console.error(`❌ [File Fetch] Quota exceeded when updating repo list`);
-              } else {
               console.error("❌ [File Fetch] Failed to update localStorage:", e);
-              }
             }
             
             setFetchStatuses(statuses.map(s => ({
@@ -3170,7 +3166,7 @@ export default function RepoCodePage() {
                         }
                         return r;
                       });
-                      localStorage.setItem("gittr_repos", JSON.stringify(updated));
+                      saveStoredRepos(updated);
                       console.log("💾 [File Fetch] Updated localStorage with files from Nostr event");
                     } catch (e) {
                       console.error("❌ [File Fetch] Failed to update localStorage:", e);
@@ -3732,13 +3728,9 @@ export default function RepoCodePage() {
                           }
                           return r;
                         });
-                        localStorage.setItem("gittr_repos", JSON.stringify(updated));
+                        saveStoredRepos(updated);
                       } catch (e: any) {
-                        if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
-                          console.error(`❌ [File Fetch] Quota exceeded when updating repo list`);
-                        } else {
                         console.error("❌ [File Fetch] Failed to update localStorage:", e);
-                        }
                       }
                       
                       setFetchStatuses(statuses.map(s => ({
@@ -4026,7 +4018,7 @@ export default function RepoCodePage() {
                       }
                       return r;
                     });
-                    localStorage.setItem("gittr_repos", JSON.stringify(updated));
+                    saveStoredRepos(updated);
                   } catch (e) {
                     console.error("❌ [File Fetch] Failed to update localStorage:", e);
                   }
@@ -4171,7 +4163,7 @@ export default function RepoCodePage() {
                       }
                       return r;
                     });
-                    localStorage.setItem("gittr_repos", JSON.stringify(updated));
+                    saveStoredRepos(updated);
                     console.log("💾 [File Fetch] Updated localStorage with files");
                   } catch (e) {
                     console.error("❌ [File Fetch] Failed to update localStorage:", e);
@@ -4323,7 +4315,7 @@ export default function RepoCodePage() {
                             }
                             return r;
                           });
-                          localStorage.setItem("gittr_repos", JSON.stringify(updated));
+                          saveStoredRepos(updated);
                         } catch (e) {
                           console.error("❌ [File Fetch] Failed to update localStorage:", e);
                         }
@@ -4623,42 +4615,9 @@ export default function RepoCodePage() {
                           }
                           return r;
                         });
-                        localStorage.setItem("gittr_repos", JSON.stringify(updated));
+                        saveStoredRepos(updated);
                       } catch (e: any) {
-                        if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
-                          console.error(`❌ [File Fetch] Quota exceeded when updating repo list - attempting cleanup...`);
-                          // Try to clean up old repos
-                          try {
-                            const repos = loadStoredRepos();
-                            const now = Date.now();
-                            const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
-                            const cleaned = repos.filter((r: any) => {
-                              const lastActivity = r.updatedAt || r.lastModifiedAt || r.createdAt || 0;
-                              return lastActivity > thirtyDaysAgo;
-                            });
-                            localStorage.setItem("gittr_repos", JSON.stringify(cleaned));
-                            console.log(`🧹 [File Fetch] Cleaned up old repos: ${repos.length} -> ${cleaned.length}`);
-                            // Retry update after cleanup
-                            const updated = cleaned.map((r: any) => {
-                              const matchesOwner = r.ownerPubkey && ownerPubkey && 
-                                (r.ownerPubkey === ownerPubkey || r.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase());
-                              const matchesRepo = r.repo === resolvedParams.repo || r.slug === resolvedParams.repo || r.name === resolvedParams.repo;
-                              const matchesEntity = r.entity === resolvedParams.entity || 
-                                (r.entity && resolvedParams.entity && r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
-                              
-                              if ((matchesOwner || matchesEntity) && matchesRepo) {
-                                return { ...r, fileCount: files.length };
-                              }
-                              return r;
-                            });
-                            localStorage.setItem("gittr_repos", JSON.stringify(updated));
-                          } catch (e2: any) {
-                            console.error(`❌ [File Fetch] Still quota exceeded after cleanup:`, e2);
-                            alert(`⚠️ localStorage is full. Please clear browser data or remove some repos manually.`);
-                          }
-                        } else {
                         console.error("❌ [File Fetch] Failed to update localStorage:", e);
-                        }
                       }
                       
                       // Update final statuses - CRITICAL: Preserve successful statuses, don't overwrite them
@@ -4929,14 +4888,10 @@ export default function RepoCodePage() {
                                       }
                                       return r;
                                     });
-                                    localStorage.setItem("gittr_repos", JSON.stringify(updated));
+                                    saveStoredRepos(updated);
                                     console.log("💾 [File Fetch] Updated localStorage with fileCount from git server");
                                   } catch (e: any) {
-                                    if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
-                                      console.error(`❌ [File Fetch] Quota exceeded when updating repo list`);
-                                    } else {
                                     console.error("❌ [File Fetch] Failed to update localStorage:", e);
-                                    }
                                   }
                                   
                                   return; // Success - exit early
@@ -5147,14 +5102,10 @@ export default function RepoCodePage() {
                                 }
                                 return r;
                               });
-                              localStorage.setItem("gittr_repos", JSON.stringify(updated));
+                              saveStoredRepos(updated);
                               console.log("💾 [File Fetch] Updated localStorage with fileCount from git server");
                             } catch (e: any) {
-                              if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
-                                console.error(`❌ [File Fetch] Quota exceeded when updating repo list`);
-                              } else {
                               console.error("❌ [File Fetch] Failed to update localStorage:", e);
-                              }
                             }
                             
                             return; // Success
@@ -5343,14 +5294,10 @@ export default function RepoCodePage() {
                                 }
                                 return r;
                               });
-                              localStorage.setItem("gittr_repos", JSON.stringify(updated));
+                              saveStoredRepos(updated);
                               console.log("💾 [File Fetch] Updated localStorage with fileCount from GitLab");
                             } catch (e: any) {
-                              if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
-                                console.error(`❌ [File Fetch] Quota exceeded when updating repo list`);
-                              } else {
                               console.error("❌ [File Fetch] Failed to update localStorage:", e);
-                              }
                             }
                             
                             return; // Success
@@ -6159,14 +6106,10 @@ export default function RepoCodePage() {
             }
             return r;
           });
-          localStorage.setItem("gittr_repos", JSON.stringify(updated));
+          saveStoredRepos(updated);
           console.log(`💾 [File Fetch] Updated localStorage with fileCount from GRASP clone`);
         } catch (e: any) {
-          if (e.name === 'QuotaExceededError' || e.message?.includes('quota')) {
-            console.error(`❌ [File Fetch] Quota exceeded when updating repo list`);
-          } else {
           console.error("❌ [File Fetch] Failed to update localStorage:", e);
-          }
         }
       }
     };
