@@ -187,9 +187,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let actualBranch = branch; // Track which branch was actually used
     
     try {
+      // CRITICAL: Explicitly set UTF-8 encoding for git ls-tree to handle non-ASCII filenames (Cyrillic, Chinese, etc.)
       const result = await execAsync(
         `git --git-dir="${repoPath}" ls-tree -r --name-only ${branch}`,
-        { timeout: 10000 }
+        { timeout: 10000, encoding: 'utf8' } // CRITICAL: UTF-8 encoding for international filenames
       );
       stdout = result.stdout;
       stderr = result.stderr || "";
@@ -223,9 +224,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       for (const fallbackBranch of fallbackBranches) {
         try {
           console.log(`🔍 Trying fallback branch: ${fallbackBranch}`);
+          // CRITICAL: Explicitly set UTF-8 encoding for git ls-tree to handle non-ASCII filenames
           const { stdout: fallbackStdout, stderr: fallbackStderr } = await execAsync(
             `git --git-dir="${repoPath}" ls-tree -r --name-only ${fallbackBranch}`,
-            { timeout: 10000 }
+            { timeout: 10000, encoding: 'utf8' } // CRITICAL: UTF-8 encoding for international filenames
           );
           
           if (!fallbackStderr || fallbackStderr.includes("warning") || !fallbackStderr.includes("fatal")) {
@@ -244,10 +246,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               }
               
               // Get file size
+              // CRITICAL: Properly escape file path for git command to handle UTF-8 and special characters
               try {
+                const escapedFilePath = filePath.replace(/"/g, '\\"');
+                const escapedFallbackBranch = fallbackBranch.replace(/"/g, '\\"');
                 const { stdout: sizeOutput } = await execAsync(
-                  `git --git-dir="${repoPath}" cat-file -s ${fallbackBranch}:${filePath}`,
-                  { timeout: 5000 }
+                  `git --git-dir="${repoPath}" cat-file -s "${escapedFallbackBranch}:${escapedFilePath}"`,
+                  { timeout: 5000, encoding: 'utf8' } // CRITICAL: Explicitly set UTF-8 encoding
                 );
                 const size = parseInt(sizeOutput.trim(), 10);
                 files.push({ type: "file", path: filePath, size: isNaN(size) ? undefined : size });
@@ -290,11 +295,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log("✅ Git ls-tree succeeded, parsing files...");
 
     // Parse file list and build tree structure
+    // CRITICAL: git ls-tree outputs UTF-8 file paths - ensure they're preserved correctly
+    // Split by newline and filter empty lines, preserving UTF-8 encoding
     const filePaths = stdout.trim().split("\n").filter(Boolean);
     const files: Array<{ type: string; path: string; size?: number }> = [];
     const dirs = new Set<string>();
 
     for (const filePath of filePaths) {
+      // CRITICAL: Ensure file path is a valid UTF-8 string (git ls-tree outputs UTF-8)
+      // No need to decode - git already outputs UTF-8, and we want to preserve it as-is
       // Add all parent directories
       const parts = filePath.split("/");
       for (let i = 1; i < parts.length; i++) {
@@ -302,10 +311,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       // Get file size using git cat-file
+      // CRITICAL: Properly escape file path for git command to handle UTF-8 and special characters
       try {
+        const escapedFilePath = filePath.replace(/"/g, '\\"');
+        const escapedBranch = branch.replace(/"/g, '\\"');
         const { stdout: sizeOutput } = await execAsync(
-          `git --git-dir="${repoPath}" cat-file -s ${branch}:${filePath}`,
-          { timeout: 5000 }
+          `git --git-dir="${repoPath}" cat-file -s "${escapedBranch}:${escapedFilePath}"`,
+          { timeout: 5000, encoding: 'utf8' } // CRITICAL: Explicitly set UTF-8 encoding
         );
         const size = parseInt(sizeOutput.trim(), 10);
         files.push({ type: "file", path: filePath, size: isNaN(size) ? undefined : size });

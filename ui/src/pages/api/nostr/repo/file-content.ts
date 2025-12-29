@@ -84,6 +84,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!filePath || typeof filePath !== "string") {
     return res.status(400).json({ error: "path is required" });
   }
+  
+  // CRITICAL: Explicitly decode file path from URL encoding to handle non-ASCII characters (Cyrillic, Chinese, etc.)
+  // Next.js auto-decodes query params, but we ensure proper UTF-8 handling
+  const decodedFilePath = decodeURIComponent(filePath);
 
   // CRITICAL: Resolve ownerPubkey (supports hex, npub, or NIP-05 format)
   // This allows gitworkshop.dev to use NIP-05 format (e.g., geek@primal.net)
@@ -153,11 +157,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Git show format: git show <branch>:<filepath>
     // The filepath needs to be properly quoted to handle spaces and special characters
     // We'll use double quotes and escape any existing quotes in the path
-    const filePathStr: string = Array.isArray(filePath) ? (filePath[0] || "") : (typeof filePath === "string" ? filePath : "");
+    // CRITICAL: Use decoded file path to ensure non-ASCII characters (Cyrillic, Chinese, etc.) are handled correctly
+    const filePathStr: string = decodedFilePath;
     let branchStr: string = Array.isArray(branch) ? (branch[0] || "main") : (typeof branch === "string" ? branch : "main");
     if (!filePathStr) {
       return res.status(400).json({ error: "path is required" });
     }
+    // CRITICAL: Properly escape file path for git command - handle quotes, but preserve UTF-8 characters
+    // Git commands handle UTF-8 correctly when properly quoted
     const escapedFilePath = filePathStr.replace(/"/g, '\\"');
     
         // CRITICAL: Try branch fallback if initial branch fails (main -> master)
@@ -167,12 +174,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     
     try {
       const escapedBranch = branchStr.replace(/"/g, '\\"');
+      // CRITICAL: Use buffer encoding to get raw bytes (for binary detection), but ensure UTF-8 for file paths
+      // The file path is already properly escaped, and git handles UTF-8 paths correctly
       const result = await execAsync(
         `git --git-dir="${repoPath}" show "${escapedBranch}:${escapedFilePath}"`,
         { 
           timeout: 10000, 
           maxBuffer: 10 * 1024 * 1024, // 10MB max
-          encoding: 'buffer' as any // Get raw buffer to detect binary files
+          encoding: 'buffer' as any // Get raw buffer to detect binary files (file path is already UTF-8)
         }
       );
       stdout = result.stdout;
@@ -218,12 +227,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         try {
           console.log(`🔍 Trying fallback branch: ${fallbackBranch} for file: ${filePathStr}`);
           const escapedFallbackBranch = fallbackBranch.replace(/"/g, '\\"');
+          // CRITICAL: Use buffer encoding to get raw bytes (for binary detection), but ensure UTF-8 for file paths
           const result = await execAsync(
             `git --git-dir="${repoPath}" show "${escapedFallbackBranch}:${escapedFilePath}"`,
             { 
               timeout: 10000, 
               maxBuffer: 10 * 1024 * 1024,
-              encoding: 'buffer' as any
+              encoding: 'buffer' as any // Get raw buffer to detect binary files (file path is already UTF-8)
             }
           );
           stdout = result.stdout;
