@@ -314,7 +314,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // CRITICAL: Properly escape file path for git command to handle UTF-8 and special characters
       try {
         const escapedFilePath = filePath.replace(/"/g, '\\"');
-        const escapedBranch = branch.replace(/"/g, '\\"');
+        const branchStr: string = Array.isArray(branch) ? (branch[0] || "main") : (typeof branch === "string" ? branch : "main");
+        const escapedBranch = branchStr.replace(/"/g, '\\"');
         const { stdout: sizeOutput } = await execAsync(
           `git --git-dir="${repoPath}" cat-file -s "${escapedBranch}:${escapedFilePath}"`,
           { timeout: 5000, encoding: 'utf8' } // CRITICAL: Explicitly set UTF-8 encoding
