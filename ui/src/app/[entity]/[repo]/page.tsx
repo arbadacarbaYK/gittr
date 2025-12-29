@@ -1189,6 +1189,12 @@ export default function RepoCodePage() {
           // Ensure files is always an array, never undefined
           
           // Always set repoData with files from localStorage (if any)
+          // CRITICAL: Default publicRead to true (undefined = public) for repos pushed before public/private changes
+          // This ensures old repos without publicRead field are treated as public
+          const repoAny = repo as any;
+          const publicRead = repoAny.publicRead !== undefined ? repoAny.publicRead : true; // Default to public
+          const publicWrite = repoAny.publicWrite !== undefined ? repoAny.publicWrite : false; // Default to no public write
+          
           setRepoData({ 
             entity: repo.entity,
             repo: repo.repo || resolvedParams.repo,
@@ -1216,7 +1222,9 @@ export default function RepoCodePage() {
             relays: (repo as any).relays || [],
             ownerPubkey: ownerPubkey || repo.ownerPubkey,
             lastNostrEventId: (repo as any).lastNostrEventId || (repo as any).nostrEventId,
-          });
+            publicRead: publicRead, // CRITICAL: Default to true for old repos
+            publicWrite: publicWrite,
+          } as any);
           // Ensure branches present
           const branches = (repo.branches && repo.branches.length > 0)
             ? repo.branches
@@ -1496,11 +1504,33 @@ export default function RepoCodePage() {
         const repoName = repoAny?.repositoryName || repo.repo || repo.slug || resolvedParams.repo;
         checkBridgeExists(repo.ownerPubkey, repoName, resolvedParams.entity).then((bridgeProcessed) => {
           // After bridge check completes, reload repo data from localStorage to get updated bridgeProcessed flag
+          // CRITICAL: Preserve files that are already loaded in repoData state
+          const currentRepoData = repoDataRef.current;
+          const currentFiles = currentRepoData?.files;
+          
           const updatedRepos = loadStoredRepos();
           const updatedRepo = findRepoByEntityAndName<StoredRepo>(updatedRepos, resolvedParams.entity, resolvedParams.repo);
           if (updatedRepo) {
+            // CRITICAL: Preserve files from current state if they exist (they might be in separate storage)
+            // Also ensure publicRead defaults to true (undefined = public) for old repos
+            const filesToPreserve = currentFiles && Array.isArray(currentFiles) && currentFiles.length > 0 
+              ? currentFiles 
+              : (updatedRepo.files && Array.isArray(updatedRepo.files) && updatedRepo.files.length > 0
+                  ? updatedRepo.files
+                  : loadRepoFiles(resolvedParams.entity, resolvedParams.repo));
+            
+            // CRITICAL: Default publicRead to true (undefined = public) for repos pushed before public/private changes
+            const publicRead = (updatedRepo as any).publicRead !== undefined 
+              ? (updatedRepo as any).publicRead 
+              : true; // Default to public for old repos
+            
             // Update repoData state with latest data from localStorage (including bridgeProcessed flag)
-            setRepoData(updatedRepo);
+            // But preserve files and ensure publicRead defaults correctly
+            setRepoData({
+              ...updatedRepo,
+              files: filesToPreserve,
+              publicRead: publicRead,
+            } as any);
           }
         }).catch(err => {
           console.warn("Failed to check bridge:", err);
