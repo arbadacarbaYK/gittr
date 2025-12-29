@@ -1879,10 +1879,10 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
   };
 
   return (
-    <div className="container mx-auto max-w-6xl p-6">
+    <div className="container mx-auto max-w-6xl p-3 sm:p-4 md:p-6">
       {/* Banner */}
       {banner && (
-        <div className="mb-6 rounded-lg overflow-hidden h-48 bg-gradient-to-r from-purple-600 to-blue-600">
+        <div className="mb-4 sm:mb-6 rounded-lg overflow-hidden h-32 sm:h-40 md:h-48 bg-gradient-to-r from-purple-600 to-blue-600">
           <img 
             src={banner} 
             alt={`${displayName} banner`}
@@ -1895,15 +1895,15 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
       )}
       
       {/* User Profile Header */}
-      <div className="mb-6 border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
-        <div className="flex flex-col md:flex-row items-start gap-6">
+      <div className="mb-4 sm:mb-6 border border-[#383B42] rounded-lg p-3 sm:p-4 md:p-6 bg-[#171B21]">
+        <div className="flex flex-col md:flex-row items-start gap-4 sm:gap-6">
           {/* Avatar */}
           <div className="relative">
             {picture && picture.startsWith("http") ? (
             <img 
               src={picture} 
               alt={displayName}
-                className="w-32 h-32 rounded-full border-4 border-[#171B21] shrink-0 object-cover"
+                className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full border-4 border-[#171B21] shrink-0 object-cover"
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none';
                   const fallback = (e.target as HTMLElement).nextElementSibling as HTMLElement;
@@ -1912,7 +1912,7 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
               />
             ) : null}
             <div 
-              className={`w-32 h-32 rounded-full border-4 border-[#171B21] bg-purple-600 flex items-center justify-center text-4xl font-bold text-white shrink-0 ${picture && picture.startsWith("http") ? 'hidden' : ''}`}
+              className={`w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full border-4 border-[#171B21] bg-purple-600 flex items-center justify-center text-2xl sm:text-3xl md:text-4xl font-bold text-white shrink-0 ${picture && picture.startsWith("http") ? 'hidden' : ''}`}
             >
               {/* Use first 2 chars of displayName, but ensure it's not from npub or pubkey */}
               {(() => {
@@ -1941,10 +1941,10 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
           </div>
           
           {/* Profile Info */}
-          <div className="flex-1 w-full">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h1 className="text-4xl font-bold mb-2">{displayName}</h1>
+          <div className="flex-1 w-full min-w-0">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-0 mb-3 sm:mb-4">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 break-words">{displayName}</h1>
                 {nip05 && (
                   <div className="flex items-center gap-2 text-gray-400 mb-2">
                     <CheckCircle2 className="w-4 h-4 text-green-500" />
@@ -1952,11 +1952,12 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
                   </div>
             )}
             {about && (
-                  <p className="text-gray-300 mb-4 max-w-2xl">{about}</p>
+                  <p className="text-gray-300 mb-3 sm:mb-4 max-w-2xl break-words text-sm sm:text-base">{about}</p>
             )}
             </div>
               
               {/* Follow Button */}
+              <div className="flex-shrink-0">
               {isLoggedIn && !isOwnProfile && (
                 <Button
                   onClick={handleFollow}
@@ -1988,10 +1989,11 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
                   Edit Profile
                 </Button>
               )}
+              </div>
           </div>
             
             {/* Stats Row - Shows data from Nostr (repos) and local activities (commits, PRs, bounties) */}
-            <div className="flex flex-wrap gap-6 text-sm mb-4">
+            <div className="flex flex-wrap gap-3 sm:gap-4 md:gap-6 text-xs sm:text-sm mb-3 sm:mb-4">
               <div className="flex items-center gap-2">
                 <span className="text-gray-400">Repositories</span>
                 <span className="text-purple-400 font-semibold">{userRepos.length}</span>
@@ -2021,28 +2023,28 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
             </div>
             
             {/* Links */}
-            <div className="flex flex-wrap gap-4">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3 md:gap-4">
               {website && (
                 <a 
                   href={website.startsWith('http') ? website : `https://${website}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-purple-400 hover:text-purple-300 text-sm min-w-0"
+                  className="flex items-center gap-2 text-purple-400 hover:text-purple-300 text-xs sm:text-sm min-w-0"
                 >
-                  <Globe className="w-4 h-4 shrink-0" />
-                  <span className="truncate max-w-[200px] sm:max-w-none">{website.replace(/^https?:\/\//, '')}</span>
+                  <Globe className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
+                  <span className="truncate break-all">{website.replace(/^https?:\/\//, '')}</span>
                   <ExternalLink className="w-3 h-3 shrink-0" />
                 </a>
               )}
               {(lud16 || lnurl) && (
-                <div className="flex items-center gap-2 text-yellow-400 text-sm min-w-0">
-                  <Zap className="w-4 h-4 shrink-0" />
-                  <span className="truncate max-w-[200px] sm:max-w-none">Lightning: {lud16 || lnurl}</span>
+                <div className="flex items-center gap-2 text-yellow-400 text-xs sm:text-sm min-w-0">
+                  <Zap className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
+                  <span className="truncate break-all">Lightning: {lud16 || lnurl}</span>
                 </div>
               )}
               {displayPubkey && (
                 <div className="flex items-center gap-2 text-gray-400 text-xs font-mono min-w-0 max-w-full">
-                  <span className="truncate max-w-[150px] sm:max-w-[300px]">npub: {displayPubkey}</span>
+                  <span className="truncate break-all">npub: {displayPubkey}</span>
                   <a 
                     href={`https://nostr.com/${displayPubkey}`}
                     target="_blank"
@@ -2055,7 +2057,7 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
               )}
               {fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta) && (
                 <div className="flex items-center gap-2 text-gray-400 text-xs font-mono min-w-0 max-w-full">
-                  <span className="truncate max-w-[150px] sm:max-w-[300px]">pubkey: {fullPubkeyForMeta}</span>
+                  <span className="truncate break-all">pubkey: {fullPubkeyForMeta}</span>
                 </div>
               )}
             </div>
@@ -2077,8 +2079,8 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
               return null;
             })()}
             {userMeta?.identities && Array.isArray(userMeta.identities) && userMeta.identities.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-[#383B42]">
-                <h3 className="text-sm font-semibold text-gray-400 mb-2">Verified Identities</h3>
+              <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-[#383B42]">
+                <h3 className="text-xs sm:text-sm font-semibold text-gray-400 mb-2">Verified Identities</h3>
                 <div className="flex flex-wrap gap-2">
                   {userMeta.identities.map((identity: ClaimedIdentity, idx: number) => {
             const platformIcon = identity.platform === "github" ? "🐙" 
@@ -2116,7 +2118,7 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
                         href={platformUrl || "#"}
                         target={platformUrl ? "_blank" : undefined}
                         rel={platformUrl ? "noopener noreferrer" : undefined}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-[#22262C] border border-[#383B42] rounded-md text-sm hover:bg-[#2a2e34] hover:border-purple-500/50 transition-colors"
+                        className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-[#22262C] border border-[#383B42] rounded-md text-xs sm:text-sm hover:bg-[#2a2e34] hover:border-purple-500/50 transition-colors"
                         title={identity.proof ? `Proof: ${identity.proof}` : "No proof available"}
                       >
                 <span>{platformIcon}</span>
@@ -2137,11 +2139,11 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Contribution Graph */}
-        <div className="lg:col-span-2 border border-[#383B42] rounded p-4">
-          <div className="flex items-center gap-2 mb-4">
-            <h2 className="font-semibold">Activity Timeline</h2>
+        <div className="lg:col-span-2 border border-[#383B42] rounded p-3 sm:p-4">
+          <div className="flex items-center gap-2 mb-3 sm:mb-4">
+            <h2 className="text-base sm:text-lg font-semibold">Activity Timeline</h2>
             <Tooltip 
               content="Shows contributions over the last 52 weeks (1 year). Each box represents one week. Darker green indicates more contributions. Data comes from: Git commits synced from git-nostr-bridge, Pull requests and issues from Nostr network, Repository creation events. Counts are updated in real-time as you push code or create PRs/issues." 
               mobileClickable={true}
@@ -2150,11 +2152,11 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
               <HelpCircle className="w-4 h-4 text-gray-400 hover:text-gray-300 cursor-help" />
             </Tooltip>
           </div>
-          <div className="w-full">
-            <div className="w-full">
+          <div className="w-full overflow-x-auto">
+            <div className="w-full min-w-max sm:min-w-0">
               {/* Calculate box size to fit all weeks in container (52 weeks = 364 days) */}
               {/* Use CSS grid or flex with calculated width to fit all boxes in one row */}
-              <div className="flex gap-1 mb-2" style={{ width: '100%', overflow: 'hidden' }}>
+              <div className="flex gap-0.5 sm:gap-1 mb-2" style={{ width: '100%', minWidth: 'max-content' }}>
                 {weeks.map((week, idx) => {
                   // Calculate box width as percentage to fit all weeks: 100% / number of weeks
                   // Use min 2px width, max 12px width for readability
@@ -2201,7 +2203,7 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
                 </div>
                 <span>More</span>
               </div>
-              <p className="text-sm text-gray-400 mt-2">
+              <p className="text-xs sm:text-sm text-gray-400 mt-2">
                 {userStats?.activityCount || 0} contributions in the last year
               </p>
             </div>
@@ -2209,10 +2211,10 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
         </div>
 
         {/* Stats Sidebar - Shows local activity data (from localStorage) */}
-        <div className="space-y-4">
-          <div className="border border-[#383B42] rounded p-4">
+        <div className="space-y-3 sm:space-y-4">
+          <div className="border border-[#383B42] rounded p-3 sm:p-4">
             <div className="flex items-center gap-2 mb-2">
-              <h3 className="font-semibold">Statistics</h3>
+              <h3 className="text-sm sm:text-base font-semibold">Statistics</h3>
               <Tooltip 
                 content="Activity counts from the Nostr network and local storage. Total Activity: All contributions (pushes, PRs, issues, bounties). Pushes: Git commits pushed to repositories. PRs Merged: Pull requests that were merged. Bounties Claimed: Bounties completed. Repositories: Total number of repos. Data is shown immediately from local storage, then updated from Nostr network if higher values are found. These are all-time counts (not limited to the last year)." 
                 mobileClickable={true}
@@ -2221,10 +2223,10 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
                 <HelpCircle className="w-4 h-4 text-gray-400 hover:text-gray-300 cursor-help" />
               </Tooltip>
             </div>
-            <p className="text-xs text-gray-500 mb-3">
+            <p className="text-xs text-gray-500 mb-2 sm:mb-3">
               {nostrActivityCounts ? "Activity from Nostr network" : "Local activity data"}
             </p>
-            <div className="space-y-2 text-sm">
+            <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-400">Total Activity</span>
                 <span className="text-purple-400">
