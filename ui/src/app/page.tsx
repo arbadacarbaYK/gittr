@@ -904,6 +904,16 @@ export default function HomePage() {
     const repoName = repoPath.split("/")[0];
     const subPath = repoPath.includes("/") ? "/" + repoPath.split("/").slice(1).join("/") : "";
     
+    // CRITICAL: Check if entity is a hex pubkey (64 chars) and convert to npub
+    if (/^[0-9a-f]{64}$/i.test(entity)) {
+      try {
+        const npub = nip19.npubEncode(entity);
+        return `/${npub}/${repoName}${subPath}`;
+      } catch {
+        // Fallback to lookup if encoding fails
+      }
+    }
+    
     // Try to find the repo and get ownerPubkey
     try {
       const repos = loadStoredRepos();
