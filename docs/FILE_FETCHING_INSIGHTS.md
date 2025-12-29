@@ -245,7 +245,9 @@ if (repoData?.files && Array.isArray(repoData.files)) {
 let ownerPubkey = (repoData as any)?.ownerPubkey;
 // Resolve ownerPubkey (check localStorage, decode npub, etc.)
 if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-  const apiUrl = `/api/nostr/repo/file-content?ownerPubkey=...&repo=...&path=...&branch=...`;
+  // CRITICAL: File paths must be URL-encoded to handle non-ASCII characters (Cyrillic, Chinese, etc.)
+  // The API automatically decodes them and handles UTF-8 correctly
+  const apiUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(filePath)}&branch=${encodeURIComponent(branch)}`;
   const response = await fetch(apiUrl);
   if (response.ok) {
     // Use content from git-nostr-bridge
@@ -256,7 +258,8 @@ if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
 }
 
 // Strategy 3: Try external git servers via API proxy
-const apiUrl = `/api/git/file-content?sourceUrl=...&path=...&branch=...`;
+// CRITICAL: File paths must be URL-encoded to handle non-ASCII characters
+const apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(sourceUrl)}&path=${encodeURIComponent(filePath)}&branch=${encodeURIComponent(branch)}`;
 const response = await fetch(apiUrl);
 // Handle response...
 ```
