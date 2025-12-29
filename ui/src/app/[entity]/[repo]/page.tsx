@@ -1170,16 +1170,17 @@ export default function RepoCodePage() {
         }
         
         // Always set repoData, even if files/readme are empty (for foreign repos synced from Nostr)
-        // Only fetch from sourceUrl if we don't have any data AND there's a sourceUrl
+        // CRITICAL: Always check localStorage for files FIRST, regardless of sourceUrl
+        // This ensures files are loaded even if they're in a separate storage key
         try {
-          if (repo.readme !== undefined || repo.files !== undefined || (repo as any).fileCount !== undefined || !repo.sourceUrl) {
-          // We have data or no sourceUrl - load what we have
           // CRITICAL: Check separate files storage key first (for optimized storage)
+          // This should happen for ALL repos, not just those without sourceUrl
           let filesArray: RepoFileEntry[] = [];
           if (repo.files && Array.isArray(repo.files) && repo.files.length > 0) {
             filesArray = repo.files; // Use files from repo object if available
-          } else if ((repo as StoredRepo & { fileCount?: number }).fileCount && (repo as StoredRepo & { fileCount?: number }).fileCount! > 0) {
-            // Try loading from separate storage key
+          } else {
+            // Always try loading from separate storage key, even if repo has sourceUrl
+            // This fixes the issue where repos with sourceUrl weren't loading files from localStorage
             filesArray = loadRepoFiles(resolvedParams.entity, resolvedParams.repo);
             if (filesArray.length > 0) {
               console.log(`✅ [File Load] Loaded ${filesArray.length} files from separate storage key`);
@@ -1187,7 +1188,7 @@ export default function RepoCodePage() {
           }
           // Ensure files is always an array, never undefined
           
-          
+          // Always set repoData with files from localStorage (if any)
           setRepoData({ 
             entity: repo.entity,
             repo: repo.repo || resolvedParams.repo,
@@ -1231,8 +1232,10 @@ export default function RepoCodePage() {
             }
           }
           
+          // Only fetch from sourceUrl if we don't have files AND don't have readme
           // File fetching is handled in a separate useEffect below to prevent blocking
-        } else if (repo.sourceUrl) {
+          // But if we have no data at all, try fetching from sourceUrl as a one-time import
+          if (filesArray.length === 0 && !repo.readme && repo.sourceUrl) {
           // fetch if not cached
           (async () => {
             try {
@@ -1831,9 +1834,10 @@ export default function RepoCodePage() {
       // Continue to fetch - don't skip
     }
     
-    // CRITICAL: For local repos (no sourceUrl, no cloneUrls), check localStorage FIRST
+    // CRITICAL: For ALL repos, check localStorage FIRST before server fetching
     // If files exist in localStorage, use them and skip server fetching entirely
-    if (!hasSourceUrl && !hasCloneUrls && !hasFiles) {
+    // This fixes the issue where repos with sourceUrl/cloneUrls weren't checking localStorage
+    if (!hasFiles) {
       try {
         const repos = loadStoredRepos();
         const matchingRepo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
@@ -1847,7 +1851,7 @@ export default function RepoCodePage() {
           }
           
           if (localFiles.length > 0) {
-            console.log(`✅ [File Fetch] Local repo has ${localFiles.length} files in localStorage, using them (skipping server fetch)`);
+            console.log(`✅ [File Fetch] Repo has ${localFiles.length} files in localStorage, using them (skipping server fetch)`);
             // Update repoData with files from localStorage
             setRepoData(prev => prev ? {
               ...prev,
@@ -1855,11 +1859,11 @@ export default function RepoCodePage() {
             } : null);
             fileFetchAttemptedRef.current = repoKeyWithBranch; // Mark as attempted
             fileFetchInProgressRef.current = false;
-            return; // Skip server fetching for local repos
+            return; // Skip server fetching - files already loaded from localStorage
           }
         }
       } catch (e) {
-        console.error("❌ [File Fetch] Error checking localStorage for local repo:", e);
+        console.error("❌ [File Fetch] Error checking localStorage for repo:", e);
         // Continue to server fetch as fallback
       }
     }
