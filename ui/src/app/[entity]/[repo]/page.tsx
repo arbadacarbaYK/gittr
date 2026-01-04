@@ -10698,11 +10698,16 @@ export default function RepoCodePage() {
                                       await new Promise(resolve => setTimeout(resolve, delay));
                                       
                                       try {
-                                        const bridgeProcessed = await checkBridgeExists(updatedRepo.ownerPubkey, repoName, resolvedParams.entity || "");
+                                        const entity = resolvedParams.entity || updatedRepo.entity || "";
+                                        if (!entity) {
+                                          console.warn("Cannot check bridge: entity is missing");
+                                          return;
+                                        }
+                                        const bridgeProcessed = await checkBridgeExists(updatedRepo.ownerPubkey, repoName, entity);
                                         if (bridgeProcessed) {
                                           // Reload repo data after bridge check to get updated bridgeProcessed flag
                                           const finalRepos = loadStoredRepos();
-                                          const finalRepo = findRepoByEntityAndName<StoredRepo>(finalRepos, resolvedParams.entity, resolvedParams.repo);
+                                          const finalRepo = findRepoByEntityAndName<StoredRepo>(finalRepos, entity, resolvedParams.repo || "");
                                           if (finalRepo) {
                                             setRepoData(finalRepo);
                                           }
