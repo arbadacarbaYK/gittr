@@ -135,8 +135,9 @@ export default function SettingsLayout({
         </div>
 
         <div className="md:flex space-x-6">
-          <nav className="my-6 w-full max-w-xs">
-            <ul>
+          {/* Mobile: Horizontal scrollable navigation */}
+          <nav className="my-6 w-full md:max-w-xs overflow-x-auto md:overflow-x-visible">
+            <ul className="flex md:flex-col gap-2 md:gap-0">
               {links.map((link) => (
                 <li
                   key={link.name}
@@ -144,7 +145,7 @@ export default function SettingsLayout({
                     pathname == link.href
                       ? "border-purple-500"
                       : "border-transparent",
-                    "flex mb-1 px-2 border-l-2 transition-all"
+                    "flex mb-1 px-2 border-l-2 md:border-l-2 border-b md:border-b-0 transition-all min-w-fit md:min-w-0"
                   )}
                 >
                   <a
@@ -155,10 +156,10 @@ export default function SettingsLayout({
                     }}
                     className={cn(
                       pathname == link.href && "!bg-zinc-800/50",
-                      "flex w-full rounded hover:bg-zinc-900/50 text-sm items-center transition-all px-2 py-1 cursor-pointer"
+                      "flex w-full rounded hover:bg-zinc-900/50 text-sm items-center transition-all px-2 py-1 cursor-pointer whitespace-nowrap"
                     )}
                   >
-                    <link.Icon className="w-4 mr-2 text-zinc-400" />
+                    <link.Icon className="w-4 mr-2 text-zinc-400 flex-shrink-0" />
                     {link.name}
                   </a>
                 </li>

@@ -647,7 +647,10 @@ export default function RelaysPage() {
         {userRelaysExpanded && (
           <div className="ml-6 space-y-4">
             <p className="text-xs text-gray-500 mb-3">
-              Additional relays you've added. These are stored locally and used alongside default relays for metadata fetching and repository operations.
+              Additional relays you've added. These are stored locally and used alongside default relays for connecting to Nostr and fetching events.
+              <span className="block mt-1 text-yellow-400/80">
+                ⚠️ Note: Adding a GRASP server here adds it to your relay pool. To prioritize it for NIP-34 operations (file fetching, PRs), add it to your "Preferred GRASP Servers" list below.
+              </span>
             </p>
             
             <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-3">
@@ -663,6 +666,9 @@ export default function RelaysPage() {
                   className="mt-2"
                   {...register("relay")}
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Used for connecting to Nostr and fetching events (stored locally)
+                </p>
               </div>
               <div>
                 <Label htmlFor="type" className="text-sm text-gray-400">Type</Label>
@@ -735,6 +741,9 @@ export default function RelaysPage() {
             <p className="text-xs text-gray-500 mb-3">
               Your preferred GRASP servers for NIP-34 activities (file fetching, PR creation, repository cloning).
               These servers will be prioritized when available. Similar to NIP-65 relay lists.
+              <span className="block mt-1 text-blue-400/80">
+                ℹ️ This is different from adding relays above: this list is saved to Nostr (kind 10317) and used to prioritize clone URLs in NIP-34 operations. The servers above are for connecting to Nostr.
+              </span>
             </p>
             
             {graspListLoading ? (
@@ -781,7 +790,7 @@ export default function RelaysPage() {
                       </Button>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
-                      Only GRASP servers (git servers that are also Nostr relays) can be added.
+                      Only GRASP servers (git servers that are also Nostr relays) can be added. This list is saved to Nostr and used to prioritize clone URLs.
                     </p>
                   </div>
 
