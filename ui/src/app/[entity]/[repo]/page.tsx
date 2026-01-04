@@ -2269,7 +2269,10 @@ export default function RepoCodePage() {
                 }
               }
             },
-            eventPublisherPubkey
+            eventPublisherPubkey,
+            effectiveUserPubkey && /^[0-9a-f]{64}$/i.test(effectiveUserPubkey) ? effectiveUserPubkey : undefined,
+            subscribe,
+            defaultRelays
           );
           
           // Clear fetching message after fetch completes
@@ -3649,7 +3652,10 @@ export default function RepoCodePage() {
                           }
                         }
                       },
-                      eventPublisherPubkey
+                      eventPublisherPubkey,
+                      currentUserPubkey || undefined,
+                      subscribe,
+                      defaultRelays
                     );
                     
                     if (files && files.length > 0) {
@@ -3966,7 +3972,10 @@ export default function RepoCodePage() {
                       }
                     }
                   },
-                  eventPublisherPubkey
+                  eventPublisherPubkey,
+                  currentUserPubkey || undefined,
+                  subscribe,
+                  defaultRelays
                 );
                 
                 if (files && files.length > 0) {
@@ -4588,7 +4597,10 @@ export default function RepoCodePage() {
                           return updated;
                         });
                       },
-                      eventPublisherPubkey
+                      eventPublisherPubkey,
+                      currentUserPubkey || undefined,
+                      subscribe,
+                      defaultRelays
                     );
                     
                     if (files && files.length > 0) {
