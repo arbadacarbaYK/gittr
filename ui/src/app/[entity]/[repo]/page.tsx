@@ -10688,17 +10688,17 @@ export default function RepoCodePage() {
                                   // Add a delay and retry to give bridge time to process the events
                                   if (updatedRepo.ownerPubkey && /^[0-9a-f]{64}$/i.test(updatedRepo.ownerPubkey)) {
                                     const repoAny = updatedRepo as any;
-                                    const repoNameRaw = repoAny?.repositoryName || updatedRepo.repo || updatedRepo.slug || resolvedParams.repo;
-                                    const entityRaw = resolvedParams.entity || updatedRepo.entity || "";
+                                    const repoNameRaw: string | undefined = repoAny?.repositoryName || updatedRepo.repo || updatedRepo.slug || resolvedParams.repo;
+                                    const entityRaw: string | undefined = resolvedParams.entity || updatedRepo.entity || "";
                                     
                                     if (!repoNameRaw || !entityRaw) {
                                       console.warn("Cannot check bridge: repo name or entity is missing", { repoName: repoNameRaw, entity: entityRaw });
                                       return;
                                     }
                                     
-                                    // TypeScript: After validation, these are guaranteed to be strings
-                                    const repoName: string = repoNameRaw;
-                                    const entity: string = entityRaw;
+                                    // TypeScript: After validation, these are guaranteed to be strings (non-null assertion is safe here)
+                                    const repoName = repoNameRaw!;
+                                    const entity = entityRaw!;
                                     
                                     // Retry bridge check with delays (bridge needs time to process events from relays)
                                     const checkBridgeWithRetry = async (attempt: number = 1) => {
