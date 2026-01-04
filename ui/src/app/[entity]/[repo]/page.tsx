@@ -10688,13 +10688,17 @@ export default function RepoCodePage() {
                                   // Add a delay and retry to give bridge time to process the events
                                   if (updatedRepo.ownerPubkey && /^[0-9a-f]{64}$/i.test(updatedRepo.ownerPubkey)) {
                                     const repoAny = updatedRepo as any;
-                                    const repoName = repoAny?.repositoryName || updatedRepo.repo || updatedRepo.slug || resolvedParams.repo;
-                                    const entity = resolvedParams.entity || updatedRepo.entity || "";
+                                    const repoNameRaw = repoAny?.repositoryName || updatedRepo.repo || updatedRepo.slug || resolvedParams.repo;
+                                    const entityRaw = resolvedParams.entity || updatedRepo.entity || "";
                                     
-                                    if (!repoName || !entity) {
-                                      console.warn("Cannot check bridge: repo name or entity is missing", { repoName, entity });
+                                    if (!repoNameRaw || !entityRaw) {
+                                      console.warn("Cannot check bridge: repo name or entity is missing", { repoName: repoNameRaw, entity: entityRaw });
                                       return;
                                     }
+                                    
+                                    // TypeScript: After validation, these are guaranteed to be strings
+                                    const repoName: string = repoNameRaw;
+                                    const entity: string = entityRaw;
                                     
                                     // Retry bridge check with delays (bridge needs time to process events from relays)
                                     const checkBridgeWithRetry = async (attempt: number = 1) => {
@@ -10702,12 +10706,11 @@ export default function RepoCodePage() {
                                       await new Promise(resolve => setTimeout(resolve, delay));
                                       
                                       try {
-                                        // TypeScript: repoName and entity are guaranteed to be strings after validation above
-                                        const bridgeProcessed = await checkBridgeExists(updatedRepo.ownerPubkey, repoName as string, entity as string);
+                                        const bridgeProcessed = await checkBridgeExists(updatedRepo.ownerPubkey, repoName, entity);
                                         if (bridgeProcessed) {
                                           // Reload repo data after bridge check to get updated bridgeProcessed flag
                                           const finalRepos = loadStoredRepos();
-                                          const finalRepo = findRepoByEntityAndName<StoredRepo>(finalRepos, entity, resolvedParams.repo || "");
+                                          const finalRepo = findRepoByEntityAndName<StoredRepo>(finalRepos, entity, repoName);
                                           if (finalRepo) {
                                             setRepoData(finalRepo);
                                           }
