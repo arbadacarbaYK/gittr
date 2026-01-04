@@ -314,7 +314,7 @@ This diagram shows **all enhancements** added to the gittr.space platform across
 See **[NIPS_AND_EVENT_KINDS.md](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FNIPS_AND_EVENT_KINDS.md)** for complete documentation.
 
 **Standard NIPs:**
-- NIP-01 (Basic Protocol), NIP-11 (Relay Info), NIP-19 (bech32), NIP-25 (Reactions/Stars)
+- NIP-01 (Basic Protocol), NIP-11 (Relay Info), NIP-19 (bech32), NIP-22 (Comments), NIP-25 (Reactions/Stars)
 - NIP-33/34 (Replaceable Events - Repository announcements)
 - NIP-46 (Remote Signer/NIP-07), NIP-57 (Lightning Zaps), NIP-96 (Blossom file storage)
 - NIP-C0 (Code Snippets)
@@ -323,10 +323,15 @@ See **[NIPS_AND_EVENT_KINDS.md](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p
 - **Kind 50** – Repository permissions (original gitnostr protocol)
 - **Kind 51** – Repository metadata (legacy, read-only support)
 - **Kind 52** – SSH keys
-- **Kind 30617 (NIP-34)** – Replaceable repository announcements (primary source)
-- **Kind 9803 / 9804** – gittr extensions for issues and pull requests
-- **Kind 9806 / 9807** – Bounties and comments
+- **Kind 1111 (NIP-22)** – Comments (issue/PR comments)
 - **Kind 1337 (NIP-C0)** – Code snippets
+- **Kind 1618 (NIP-34)** – Pull requests
+- **Kind 1619 (NIP-34)** – Pull request updates
+- **Kind 1621 (NIP-34)** – Issues
+- **Kind 1630-1633 (NIP-34)** – Status events (Open/Applied/Closed/Draft)
+- **Kind 30617 (NIP-34)** – Repository metadata (primary source)
+- **Kind 30618 (NIP-34)** – Repository state (required for ngit clients)
+- **Kind 9806** – Bounties (custom extension)
 
 ## 📞 Support
 

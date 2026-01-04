@@ -974,17 +974,80 @@ export async function fetchFilesFromSource(
  * Fetch files from multiple git sources (NIP-34 clone tags)
  * Returns the first successful fetch, with status for all sources
  * @param eventPublisherPubkey - Optional: event publisher's pubkey (for bridge API when sources are nostr-git)
+ * @param userPubkey - Optional: user's pubkey to fetch their GRASP list preferences
+ * @param subscribe - Optional: Nostr subscribe function to fetch user's GRASP list
+ * @param defaultRelays - Optional: default relays for fetching GRASP list
  */
 export async function fetchFilesFromMultipleSources(
   cloneUrls: string[],
   branch: string = "main",
   onStatusUpdate?: (status: FetchStatus) => void,
-  eventPublisherPubkey?: string
+  eventPublisherPubkey?: string,
+  userPubkey?: string,
+  subscribe?: (
+    filters: any[],
+    relays: string[],
+    onEvent: (event: any, isAfterEose: boolean, relayURL?: string) => void,
+    maxDelayms?: number,
+    onEose?: (relayUrl: string, minCreatedAt: number) => void,
+    options?: any
+  ) => () => void,
+  defaultRelays?: string[]
 ): Promise<{
   files: Array<{ type: string; path: string; size?: number }> | null;
   statuses: FetchStatus[];
 }> {
-  const sources = cloneUrls.map(parseGitSource);
+  let prioritizedCloneUrls = cloneUrls;
+  
+  // If user has GRASP list preferences, prioritize those servers
+  if (userPubkey && subscribe && defaultRelays && cloneUrls.length > 0) {
+    try {
+      const { getUserGraspServers, graspRelayUrlsToDomains, prioritizeGraspServers } = await import("@/lib/utils/grasp-list");
+      const { getGraspServers, isGraspServer } = await import("@/lib/utils/grasp-servers");
+      
+      // Get user's GRASP list (non-blocking, with timeout)
+      const defaultGraspRelays = getGraspServers(defaultRelays);
+      const userGraspRelays = await Promise.race([
+        getUserGraspServers(subscribe, defaultRelays, userPubkey, defaultGraspRelays),
+        new Promise<string[]>((resolve) => setTimeout(() => resolve(defaultGraspRelays), 2000)) // 2s timeout
+      ]);
+      
+      // Convert to domains for matching against clone URLs
+      const userGraspDomains = graspRelayUrlsToDomains(userGraspRelays);
+      
+      if (userGraspDomains.length > 0) {
+        // Separate clone URLs into GRASP (from user's list) and others
+        const graspCloneUrls: string[] = [];
+        const otherCloneUrls: string[] = [];
+        
+        cloneUrls.forEach(url => {
+          // Check if this clone URL is from a user-preferred GRASP server
+          const isUserPreferredGrasp = userGraspDomains.some(domain => {
+            const urlDomain = url?.replace(/^https?:\/\//, '').replace(/^git@/, '').split('/')[0]?.split(':')[0];
+            if (!urlDomain || !domain) return false;
+            return urlDomain === domain || urlDomain.includes(domain) || domain.includes(urlDomain);
+          });
+          
+          if (isUserPreferredGrasp || isGraspServer(url)) {
+            graspCloneUrls.push(url);
+          } else {
+            otherCloneUrls.push(url);
+          }
+        });
+        
+        // Prioritize: user's preferred GRASP servers first, then other GRASP servers, then others
+        prioritizedCloneUrls = [...graspCloneUrls, ...otherCloneUrls];
+        
+        if (graspCloneUrls.length > 0) {
+          console.log(`✅ [File Fetch] Prioritized ${graspCloneUrls.length} clone URLs from user's preferred GRASP servers`);
+        }
+      }
+    } catch (error) {
+      console.warn(`⚠️ [File Fetch] Failed to prioritize by GRASP list, using original order:`, error);
+    }
+  }
+  
+  const sources = prioritizedCloneUrls.map(parseGitSource);
   const statuses: FetchStatus[] = sources.map(source => ({
     source,
     status: "pending",

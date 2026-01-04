@@ -6,10 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import useLocalStorage from "@/lib/hooks/useLocalStorage";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { XIcon, ChevronDown, ChevronRight, Server, Globe } from "lucide-react";
+import { XIcon, ChevronDown, ChevronRight, Server, Globe, Plus, Save } from "lucide-react";
 import { type FieldValues, useForm } from "react-hook-form";
 import { useEffect, useState, useRef } from "react";
-import { isGraspServer } from "@/lib/utils/grasp-servers";
+import { isGraspServer, getGraspServers } from "@/lib/utils/grasp-servers";
+import { createGraspListEvent, KIND_GRASP_LIST } from "@/lib/nostr/events";
+import { getUserGraspServers, parseGraspListEvent } from "@/lib/utils/grasp-list";
+import { getEventHash, signEvent, getPublicKey } from "nostr-tools";
 
 type RelayType = "relay" | "gitserver";
 
@@ -19,14 +22,22 @@ interface UserRelay {
 }
 
 export default function RelaysPage() {
-  const { addRelay, removeRelay, defaultRelays, getRelayStatuses, subscribe } = useNostrContext();
+  const { addRelay, removeRelay, defaultRelays, getRelayStatuses, subscribe, publish, pubkey } = useNostrContext();
   const [relayStatuses, setRelayStatuses] = useState<Map<string, number>>(new Map());
   const [defaultRelaysExpanded, setDefaultRelaysExpanded] = useState(false);
   const [userRelaysExpanded, setUserRelaysExpanded] = useState(true);
+  const [graspListExpanded, setGraspListExpanded] = useState(true);
   const [statusCheckAttempts, setStatusCheckAttempts] = useState<Map<string, number>>(new Map());
   const statusCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   // Track which relays have successfully delivered events (better indicator than WebSocket status)
   const [relaysWithEvents, setRelaysWithEvents] = useState<Map<string, number>>(new Map()); // Map<relayURL, timestamp>
+  
+  // GRASP list state
+  const [graspListServers, setGraspListServers] = useState<string[]>([]);
+  const [graspListLoading, setGraspListLoading] = useState(true);
+  const [graspListSaving, setGraspListSaving] = useState(false);
+  const [graspListStatus, setGraspListStatus] = useState<string>("");
+  const [newGraspServer, setNewGraspServer] = useState<string>("wss://");
   const { register, handleSubmit, reset, watch } = useForm<{ relay: string; type: RelayType }>({
     defaultValues: { relay: "wss://", type: "relay" }
   });
@@ -398,6 +409,131 @@ export default function RelaysPage() {
     return "Unknown";
   };
 
+  // Load user's GRASP list
+  useEffect(() => {
+    if (!pubkey || !subscribe || !defaultRelays) return;
+    
+    const loadGraspList = async () => {
+      setGraspListLoading(true);
+      try {
+        const defaultGraspRelays = getGraspServers(defaultRelays);
+        const userGraspServers = await getUserGraspServers(
+          subscribe,
+          defaultRelays,
+          pubkey,
+          defaultGraspRelays
+        );
+        setGraspListServers(userGraspServers);
+      } catch (error) {
+        console.error("[GRASP List] Failed to load:", error);
+        // Fallback to default GRASP servers
+        const defaultGraspRelays = getGraspServers(defaultRelays);
+        setGraspListServers(defaultGraspRelays);
+      } finally {
+        setGraspListLoading(false);
+      }
+    };
+    
+    loadGraspList();
+  }, [pubkey, subscribe, defaultRelays]);
+
+  // Save GRASP list to Nostr
+  const saveGraspList = async () => {
+    if (!pubkey || !publish || !defaultRelays) {
+      setGraspListStatus("Error: Not logged in");
+      setTimeout(() => setGraspListStatus(""), 3000);
+      return;
+    }
+
+    setGraspListSaving(true);
+    setGraspListStatus("Saving...");
+
+    try {
+      // Get private key or use NIP-07
+      const hasNip07 = typeof window !== "undefined" && window.nostr;
+      let privateKey: string | null = null;
+      
+      if (!hasNip07) {
+        // Try to get private key from localStorage
+        try {
+          const stored = localStorage.getItem("gittr_private_key");
+          if (stored) {
+            privateKey = stored;
+          }
+        } catch (e) {
+          console.warn("Failed to get private key:", e);
+        }
+      }
+
+      if (!hasNip07 && !privateKey) {
+        throw new Error("No signing method available. Please use NIP-07 extension or set private key.");
+      }
+
+      // Create GRASP list event
+      const graspListEvent = hasNip07 && window.nostr
+        ? await (async () => {
+            const { getEventHash } = await import("nostr-tools");
+            const signerPubkey = await window.nostr.getPublicKey();
+            
+            let event: any = {
+              kind: KIND_GRASP_LIST,
+              created_at: Math.floor(Date.now() / 1000),
+              tags: graspListServers.map(server => ["g", server]),
+              content: "",
+              pubkey: signerPubkey,
+              id: "",
+              sig: "",
+            };
+            
+            event.id = getEventHash(event);
+            event = await window.nostr.signEvent(event);
+            return event;
+          })()
+        : createGraspListEvent(
+            { graspServers: graspListServers },
+            privateKey!
+          );
+
+      // Publish to relays
+      if (publish) {
+        await publish(graspListEvent, defaultRelays);
+        setGraspListStatus("✅ Saved to Nostr!");
+        setTimeout(() => setGraspListStatus(""), 3000);
+      }
+    } catch (error: any) {
+      console.error("[GRASP List] Failed to save:", error);
+      setGraspListStatus(`Error: ${error.message || "Failed to save"}`);
+      setTimeout(() => setGraspListStatus(""), 5000);
+    } finally {
+      setGraspListSaving(false);
+    }
+  };
+
+  const addGraspServer = () => {
+    const url = newGraspServer.trim();
+    if (!url || !url.startsWith("wss://")) {
+      alert("Please enter a valid WebSocket URL (wss://...)");
+      return;
+    }
+    
+    if (!isGraspServer(url)) {
+      alert("This is not a GRASP server. GRASP servers are git servers that also act as Nostr relays.");
+      return;
+    }
+    
+    if (graspListServers.includes(url)) {
+      alert("This GRASP server is already in your list");
+      return;
+    }
+    
+    setGraspListServers([...graspListServers, url]);
+    setNewGraspServer("wss://");
+  };
+
+  const removeGraspServer = (url: string) => {
+    setGraspListServers(graspListServers.filter(s => s !== url));
+  };
+
   const renderRelayList = (relays: string[], showRemove: boolean = false) => {
     if (relays.length === 0) return null;
     
@@ -572,6 +708,113 @@ export default function RelaysPage() {
             
             {(userRelays || []).length === 0 && (
               <p className="text-xs text-gray-500 mt-4 italic">No additional relays added yet.</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* GRASP List Section */}
+      <div className="mb-6">
+        <button
+          onClick={() => setGraspListExpanded(!graspListExpanded)}
+          className="flex items-center gap-2 w-full mb-2 font-semibold text-sm text-gray-300 hover:text-gray-200 transition-colors"
+        >
+          {graspListExpanded ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
+          <Server className="h-4 w-4 text-purple-400" />
+          <span>Preferred GRASP Servers (NIP-34)</span>
+          <span className="text-xs text-gray-500 ml-auto">
+            ({graspListLoading ? "..." : graspListServers.length} servers)
+          </span>
+        </button>
+        {graspListExpanded && (
+          <div className="ml-6 space-y-4">
+            <p className="text-xs text-gray-500 mb-3">
+              Your preferred GRASP servers for NIP-34 activities (file fetching, PR creation, repository cloning).
+              These servers will be prioritized when available. Similar to NIP-65 relay lists.
+            </p>
+            
+            {graspListLoading ? (
+              <p className="text-xs text-gray-500 italic">Loading your GRASP list...</p>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  {graspListServers.length > 0 ? (
+                    graspListServers.map((server, index) => (
+                      <div key={server} className="flex items-center gap-2 p-2 bg-gray-800/50 rounded border border-gray-700">
+                        <span className="text-xs text-gray-400 w-6">#{index + 1}</span>
+                        <p className="flex-1 break-all text-sm text-gray-300">{server}</p>
+                        <XIcon
+                          className="text-red-400 cursor-pointer hover:text-red-300 flex-shrink-0"
+                          onClick={() => removeGraspServer(server)}
+                        />
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-gray-500 italic">No preferred GRASP servers set. Using defaults.</p>
+                  )}
+                </div>
+
+                <div className="space-y-3 border-t border-gray-700 pt-4">
+                  <div>
+                    <Label htmlFor="grasp-server" className="text-sm text-gray-400">Add GRASP server</Label>
+                    <div className="flex gap-2 mt-2">
+                      <Input
+                        type="text"
+                        id="grasp-server"
+                        placeholder="wss://git.gittr.space"
+                        value={newGraspServer}
+                        onChange={(e) => setNewGraspServer(e.target.value)}
+                        className="flex-1"
+                        pattern="^wss:\/\/.*\..*$"
+                      />
+                      <Button
+                        type="button"
+                        onClick={addGraspServer}
+                        className="h-8 !border-[#383B42] bg-[#22262C]"
+                        variant="outline"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Only GRASP servers (git servers that are also Nostr relays) can be added.
+                    </p>
+                  </div>
+
+                  <Button
+                    type="button"
+                    onClick={saveGraspList}
+                    disabled={graspListSaving || !pubkey}
+                    className="h-8 !border-[#383B42] bg-[#22262C]"
+                    variant="outline"
+                  >
+                    {graspListSaving ? (
+                      <>Saving...</>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save GRASP List to Nostr
+                      </>
+                    )}
+                  </Button>
+                  
+                  {graspListStatus && (
+                    <p className={`text-xs ${graspListStatus.startsWith("✅") ? "text-green-400" : "text-red-400"}`}>
+                      {graspListStatus}
+                    </p>
+                  )}
+                  
+                  {!pubkey && (
+                    <p className="text-xs text-yellow-400">
+                      ⚠️ You must be logged in to save your GRASP list to Nostr.
+                    </p>
+                  )}
+                </div>
+              </>
             )}
           </div>
         )}

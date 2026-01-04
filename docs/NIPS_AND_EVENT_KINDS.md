@@ -175,19 +175,30 @@ This document lists all Nostr Improvement Proposals (NIPs) and event kinds used 
 - **Content**: Optional markdown text
 - **Kinds**:
   - **1630**: Open
-  - **1631**: Applied/Merged (for PRs) or Resolved (for issues)
+  - **1631**: Applied/Merged (for PRs/patches) or Resolved (for issues)
   - **1632**: Closed
   - **1633**: Draft
+
+### Kind 10317: User GRASP List (NIP-34)
+- **Purpose**: List of GRASP servers the user generally wishes to use for NIP-34 related activity
+- **Usage**: Similar in function to NIP-65 relay list and NIP-B7 blossom list
+- **Tags**:
+  - `g[]`: GRASP service websocket URLs (wss://) in order of preference - zero or more
+- **Content**: Empty per NIP-34 spec
 
 ### Kind 9806: Bounties
 - **Purpose**: Lightning bounties for issues
 - **Usage**: Issue bounties with LNURL-withdraw
 - **Tags**: `repo`, `e` (issue ID), `amount`, `status`, `withdraw_id`, `lnurl`, `invoice`, `p[]` (creator, claimer)
 
-### Kind 9807: Comments
+### Kind 1111: Comments (NIP-22)
 - **Purpose**: Comments on issues, PRs, discussions
 - **Usage**: Issue/PR comments, discussion replies
-- **Tags**: `repo`, `e` (reply-to event ID), `issueId`, `prId`
+- **Tags**: 
+  - `E`: Event ID (root or reply) - REQUIRED (uppercase E per NIP-22)
+  - `P`: Pubkey (author of root event or reply target) - optional
+  - `repo`: Repository context (custom extension, not in NIP-22)
+- **Note**: Migrated from kind 1 (NIP-01) to kind 1111 (NIP-22) for proper threading support. Legacy kind 1 comments are still supported for backward compatibility.
 
 ## Relay Configuration
 
@@ -196,14 +207,14 @@ For relays to support gittr.space, they must allow these event kinds:
 ```toml
 # nostr-rs-relay config.toml
 [relay]
-allowed_kinds = [0, 1, 7, 50, 51, 52, 1337, 1618, 1619, 1621, 1630, 1631, 1632, 1633, 30617, 30618, 9735, 9806, 9807]
+allowed_kinds = [0, 1, 7, 50, 51, 52, 1337, 1111, 1617, 1618, 1619, 1621, 1630, 1631, 1632, 1633, 10317, 30617, 30618, 9735, 9806]
 ```
 
 ```yaml
 # strfry config
 relay:
   eventKinds:
-    allow: [0, 1, 7, 50, 51, 52, 1337, 1618, 1619, 1621, 1630, 1631, 1632, 1633, 30617, 30618, 9735, 9806, 9807]
+    allow: [0, 1, 7, 50, 51, 52, 1337, 1111, 1617, 1618, 1619, 1621, 1630, 1631, 1632, 1633, 10317, 30617, 30618, 9735, 9806]
 ```
 
 ## Summary Table
@@ -211,24 +222,26 @@ relay:
 | Kind | NIP | Name | Purpose |
 |------|-----|------|---------|
 | 0 | NIP-01 | Metadata | User profiles |
-| 1 | NIP-01 | Notes | Comments, discussions |
+| 1 | NIP-01 | Notes | Legacy comments (backward compatibility only) |
 | 7 | NIP-25 | Reactions | Stars, likes |
 | 50 | Custom | Repository Permissions | Git access control |
 | 51 | Custom | Repository (Legacy) | Repository announcements (read-only) |
 | 52 | Custom | SSH Keys | Git authentication |
+| 1111 | NIP-22 | Comments | Issue/PR/patch comments (primary) |
 | 1337 | NIP-C0 | Code Snippets | Code snippet sharing |
+| 1617 | NIP-34 | Patches | Patch-based code contributions |
 | 1618 | NIP-34 | Pull Requests | Pull request announcements |
 | 1619 | NIP-34 | PR Updates | PR branch updates (new commits) |
 | 1621 | NIP-34 | Issues | Issue tracking |
 | 1630 | NIP-34 | Status: Open | Issue/PR opened |
 | 1631 | NIP-34 | Status: Applied/Merged | PR merged or issue resolved |
 | 1632 | NIP-34 | Status: Closed | Issue/PR closed |
-| 1633 | NIP-34 | Status: Draft | Issue/PR set to draft |
+| 1633 | NIP-34 | Status: Draft | Issue/PR/patch set to draft |
+| 10317 | NIP-34 | User GRASP List | Preferred GRASP servers for NIP-34 activity |
 | 30617 | NIP-34 | Repository Metadata | Repository announcements (primary) |
 | 30618 | NIP-34 | Repository State | Repository state (required for ngit clients) |
 | 9735 | NIP-57 | Zaps | Lightning payments |
 | 9806 | Custom | Bounties | Issue bounties |
-| 9807 | Custom | Comments | Issue/PR comments |
 
 ## References
 

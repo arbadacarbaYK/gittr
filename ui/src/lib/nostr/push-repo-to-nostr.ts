@@ -209,18 +209,44 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       onProgress?.("⚠️ Warning: No git server URL configured. Other clients may not be able to fetch files.");
     }
     
-    // Priority 2: Add clone URLs for ALL known GRASP git servers
+    // Priority 2: Add clone URLs for GRASP git servers (prioritized by user preferences if available)
     // CRITICAL: Only include actual GRASP git servers (NOT regular Nostr relays)
     // GRASP servers serve git repos via HTTPS/SSH and can be cloned with standard git commands
     // Regular Nostr relays (like relay.damus.io, nos.lol) are NOT git servers and should NOT be in clone URLs
     if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
-      const { GRASP_SERVERS_FOR_PUSHING, KNOWN_GRASP_DOMAINS } = await import("../utils/grasp-servers");
+      const { GRASP_SERVERS_FOR_PUSHING, KNOWN_GRASP_DOMAINS, getGraspServers } = await import("../utils/grasp-servers");
+      const { getUserGraspServers, graspRelayUrlsToDomains, prioritizeGraspServers } = await import("../utils/grasp-list");
+      
+      // Try to get user's GRASP list preferences (non-blocking, falls back to defaults)
+      let prioritizedGraspDomains: string[] = [];
+      try {
+        // Get default GRASP servers from defaultRelays
+        const defaultGraspRelays = getGraspServers(defaultRelays);
+        const defaultGraspDomains = graspRelayUrlsToDomains(defaultGraspRelays);
+        
+        // Try to fetch user's GRASP list (with timeout - don't block if slow)
+        const userGraspRelays = await Promise.race([
+          getUserGraspServers(subscribe, defaultRelays, pubkey, defaultGraspRelays),
+          new Promise<string[]>((resolve) => setTimeout(() => resolve(defaultGraspRelays), 3000)) // 3s timeout
+        ]);
+        
+        // Convert relay URLs to domains and prioritize
+        const userGraspDomains = graspRelayUrlsToDomains(userGraspRelays);
+        prioritizedGraspDomains = prioritizeGraspServers(userGraspDomains, [...KNOWN_GRASP_DOMAINS]);
+        
+        console.log(`✅ [Push Repo] Using ${prioritizedGraspDomains.length} GRASP servers (${userGraspDomains.length} from user preferences, ${KNOWN_GRASP_DOMAINS.length - userGraspDomains.length} defaults)`);
+      } catch (error) {
+        console.warn(`⚠️ [Push Repo] Failed to fetch user GRASP list, using defaults:`, error);
+        prioritizedGraspDomains = [...KNOWN_GRASP_DOMAINS];
+      }
+      
       // CRITICAL: Include ALL known GRASP servers (including read-only ones) for clone URLs
       // This ensures maximum compatibility - clients can clone from any GRASP server that has the repo
       // Even if we don't push to read-only servers like git.jb55.com, clients should still be able to clone from them
-      const knownGitServers = [
-        ...KNOWN_GRASP_DOMAINS, // ALL known GRASP servers (for maximum clone URL coverage)
-      ];
+      // But prioritize user's preferred servers first
+      const knownGitServers = prioritizedGraspDomains.length > 0 
+        ? prioritizedGraspDomains 
+        : [...KNOWN_GRASP_DOMAINS]; // Fallback to all known if prioritization failed
     
       // Remove duplicates and filter out the primary server (already added above)
       const primaryServerDomain = configuredGitServerUrl 

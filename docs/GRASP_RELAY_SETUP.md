@@ -131,7 +131,8 @@ return [
    - Used for: Displaying user names, avatars, and profile data
    - Required for: User discovery, contributor metadata
 
-2. **Kind 1** (NIP-01: Notes) - Comments and discussions
+2. **Kind 1** (NIP-01: Notes) - Legacy comments (backward compatibility only)
+3. **Kind 1111** (NIP-22: Comments) - Issue/PR comments (primary)
    - Used for: Issue comments, PR comments, discussions
    - Required for: Collaboration features
 
@@ -151,25 +152,37 @@ return [
    - Used for: Repository zaps, tipping contributors
    - Required for: Payment features
 
-7. **Kind 9803** (Custom: Issues) - Issue tracking
-   - Used for: Repository issues with bounties
-   - Required for: Issue management
+7. **Kind 1111** (NIP-22: Comments) - Issue/PR comments
+   - Used for: Comments on issues, PRs, discussions
+   - Required for: Comment threading and NIP-22 compliance
 
 8. **Kind 1337** (NIP-C0: Code Snippets) - Code snippet sharing
    - Used for: Sharing code snippets from repositories
    - Required for: Code snippet features
 
-9. **Kind 30617** (NIP-34: Repository Metadata) - Repository announcements (primary)
+9. **Kind 1618** (NIP-34: Pull Requests) - Pull request announcements
+   - Used for: Code review and merging
+   - Required for: PR workflow
+
+10. **Kind 1619** (NIP-34: PR Updates) - Pull request updates
+   - Used for: PR branch updates (new commits)
+   - Required for: PR workflow
+
+11. **Kind 1621** (NIP-34: Issues) - Issue tracking
+   - Used for: Repository issues with bounties
+   - Required for: Issue management
+
+12. **Kind 1630-1633** (NIP-34: Status Events) - Status tracking
+   - Used for: Issue/PR status (Open/Applied/Closed/Draft)
+   - Required for: Status workflow
+
+13. **Kind 30617** (NIP-34: Repository Metadata) - Repository announcements (primary)
    - Used for: Repository metadata, discovery, announcements
    - Required for: Core repository functionality (replaces legacy kind 51)
 
-10. **Kind 30618** (NIP-34: Repository State) - Repository state announcements
+14. **Kind 30618** (NIP-34: Repository State) - Repository state announcements
    - Used for: Tracking branches, tags, and commit SHAs
    - Required for: Full NIP-34 compliance and ngit client recognition (e.g., gitworkshop.dev)
-
-11. **Kind 9804** (Custom: Pull Requests) - Pull requests
-   - Used for: Code review and merging
-   - Required for: PR workflow
 
 #### Configuring Your Relay:
 
@@ -181,7 +194,7 @@ return [
 [relay]
 # Allow all kinds (recommended for public relays)
 # OR specify allowed kinds:
-allowed_kinds = [0, 1, 50, 51, 52, 1337, 30617, 30618, 9735, 9803, 9804]
+allowed_kinds = [0, 1, 7, 50, 51, 52, 1111, 1337, 1618, 1619, 1621, 1630, 1631, 1632, 1633, 30617, 30618, 9735, 9806]
 ```
 
 **After updating config, restart relay:**

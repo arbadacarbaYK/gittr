@@ -62,18 +62,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Relay information (if this instance also runs a relay)
     relay_url: process.env.NEXT_PUBLIC_RELAY_URL || null,
     // Supported event kinds
-    supported_nips: [1, 11, 19, 33, 57, 96], // NIP-01 (Notes), NIP-11 (Relay Info), NIP-19 (bech32), NIP-33 (replaceable events), NIP-57 (Zaps), NIP-96 (Blossom)
+    supported_nips: [1, 11, 19, 22, 33, 34, 57, 96], // NIP-01 (Notes), NIP-11 (Relay Info), NIP-19 (bech32), NIP-22 (Comments), NIP-33 (replaceable events), NIP-34 (Git Repositories), NIP-57 (Zaps), NIP-96 (Blossom)
     // Custom event kinds for gittr
     custom_kinds: {
       50: "Repository Permissions",
       51: "Repository Announcements (legacy, read-only)",
       52: "SSH Keys",
       1337: "Code Snippets (NIP-C0)",
+      1111: "Comments (NIP-22)",
+      1617: "Patches (NIP-34)",
+      1618: "Pull Requests (NIP-34)",
+      1619: "Pull Request Updates (NIP-34)",
+      1621: "Issues (NIP-34)",
+      1630: "Status: Open (NIP-34)",
+      1631: "Status: Applied/Merged (NIP-34)",
+      1632: "Status: Closed (NIP-34)",
+      1633: "Status: Draft (NIP-34)",
+      10317: "User GRASP List (NIP-34)",
       30617: "Repository Metadata (NIP-34, primary publishing method)",
       30618: "Repository State (NIP-34, required for ngit clients)",
       9735: "Zaps (NIP-57)",
-      9803: "Issues",
-      9804: "Pull Requests",
+      9803: "Issues (legacy, deprecated)",
+      9804: "Pull Requests (legacy, deprecated)",
     },
   };
 
