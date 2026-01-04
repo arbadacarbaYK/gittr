@@ -1502,7 +1502,9 @@ export default function RepoCodePage() {
         // Priority: repositoryName > repo > slug > resolvedParams.repo
         const repoAny = repo as any;
         const repoName = repoAny?.repositoryName || repo.repo || repo.slug || resolvedParams.repo;
-        checkBridgeExists(repo.ownerPubkey, repoName, resolvedParams.entity).then((bridgeProcessed) => {
+        const entity = resolvedParams.entity || repo.entity || "";
+        if (repoName && entity) {
+          checkBridgeExists(repo.ownerPubkey, repoName, entity).then((bridgeProcessed) => {
           // After bridge check completes, reload repo data from localStorage to get updated bridgeProcessed flag
           // CRITICAL: Preserve files that are already loaded in repoData state
           const currentRepoData = repoDataRef.current;
@@ -1532,9 +1534,10 @@ export default function RepoCodePage() {
               publicRead: publicRead,
             } as any);
           }
-        }).catch(err => {
-          console.warn("Failed to check bridge:", err);
-        });
+          }).catch(err => {
+            console.warn("Failed to check bridge:", err);
+          });
+        }
       }
     } catch (error) {
       console.error("Failed to load Nostr event ID:", error);
@@ -10699,7 +10702,8 @@ export default function RepoCodePage() {
                                       await new Promise(resolve => setTimeout(resolve, delay));
                                       
                                       try {
-                                        const bridgeProcessed = await checkBridgeExists(updatedRepo.ownerPubkey, repoName, entity);
+                                        // TypeScript: repoName and entity are guaranteed to be strings after validation above
+                                        const bridgeProcessed = await checkBridgeExists(updatedRepo.ownerPubkey, repoName as string, entity as string);
                                         if (bridgeProcessed) {
                                           // Reload repo data after bridge check to get updated bridgeProcessed flag
                                           const finalRepos = loadStoredRepos();
