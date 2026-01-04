@@ -961,17 +961,19 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
           }
         }
         
-        // Get user stats using full pubkey (show immediately from localStorage)
+        // Get user stats using full pubkey (defer statistics loading to after page renders)
         // CRITICAL: getUserActivities now filters out activities from deleted repos
-        let activities = getUserActivities(fullPubkey);
-        let counts = getUserActivityCounts(fullPubkey);
-        let graph = getContributionGraph(fullPubkey);
-        
-        // CRITICAL: Set localStorage counts IMMEDIATELY so UI shows data right away
-        setActivityCounts(counts);
-        setContributionGraph(graph);
-        
-        // CRITICAL: Use localStorage counts as base (includes bridge commits + synced PRs/issues)
+        // Defer statistics loading to improve initial page load performance
+        setTimeout(() => {
+          let activities = getUserActivities(fullPubkey);
+          let counts = getUserActivityCounts(fullPubkey);
+          let graph = getContributionGraph(fullPubkey);
+          
+          // Set localStorage counts after page has rendered
+          setActivityCounts(counts);
+          setContributionGraph(graph);
+          
+          // CRITICAL: Use localStorage counts as base (includes bridge commits + synced PRs/issues)
         // Then add Nostr PRs/issues per repo in background
         // localStorage is already showing correct counts from bridge + synced data
         // We just add any additional PRs/issues from Nostr that might not be in localStorage yet
@@ -1237,28 +1239,24 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
           filteredReposCount: deduplicatedRepos.length, // Use actual filtered repo count
         });
         
-        // If no activities found, try triggering backfill
-        if (activities.length === 0) {
-          console.warn("No activities found - you may need to run backfillActivities()");
-          console.log("To backfill, run in console: localStorage.removeItem('gittr_activities_backfilled'); location.reload();");
-        }
-        
-        // CRITICAL: Always set localStorage counts immediately (before Nostr query)
-        // This ensures UI shows data right away, even if Nostr query fails or is slow
-        setActivityCounts(counts);
-        setContributionGraph(graph);
-        
-        // CRITICAL: Use actual filtered repo count instead of counting from activities
-        // This ensures deleted repos are excluded
-        setUserStats({
-          pubkey: fullPubkey,
-          activityCount: activities.length,
-          prMergedCount: activities.filter((a: any) => a.type === "pr_merged").length,
-          commitCount: activities.filter((a: any) => a.type === "commit_created").length,
-          bountyClaimedCount: activities.filter((a: any) => a.type === "bounty_claimed").length,
-          reposCreatedCount: deduplicatedRepos.length, // Use actual filtered repo count, not activities
-          lastActivity: activities.length > 0 ? Math.max(...activities.map((a: any) => a.timestamp)) : 0,
-        });
+          // If no activities found, try triggering backfill
+          if (activities.length === 0) {
+            console.warn("No activities found - you may need to run backfillActivities()");
+            console.log("To backfill, run in console: localStorage.removeItem('gittr_activities_backfilled'); location.reload();");
+          }
+          
+          // CRITICAL: Use actual filtered repo count instead of counting from activities
+          // This ensures deleted repos are excluded
+          setUserStats({
+            pubkey: fullPubkey,
+            activityCount: activities.length,
+            prMergedCount: activities.filter((a: any) => a.type === "pr_merged").length,
+            commitCount: activities.filter((a: any) => a.type === "commit_created").length,
+            bountyClaimedCount: activities.filter((a: any) => a.type === "bounty_claimed").length,
+            reposCreatedCount: deduplicatedRepos.length, // Use actual filtered repo count, not activities
+            lastActivity: activities.length > 0 ? Math.max(...activities.map((a: any) => a.timestamp)) : 0,
+          });
+        }, 100); // Defer statistics loading by 100ms to allow page to render first
         
         // Update metadata lookup to use full pubkey
         if (fullPubkey !== entityParam) {
