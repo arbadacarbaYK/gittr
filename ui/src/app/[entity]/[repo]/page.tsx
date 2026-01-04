@@ -10686,9 +10686,10 @@ export default function RepoCodePage() {
                                   if (updatedRepo.ownerPubkey && /^[0-9a-f]{64}$/i.test(updatedRepo.ownerPubkey)) {
                                     const repoAny = updatedRepo as any;
                                     const repoName = repoAny?.repositoryName || updatedRepo.repo || updatedRepo.slug || resolvedParams.repo;
+                                    const entity = resolvedParams.entity || updatedRepo.entity || "";
                                     
-                                    if (!repoName) {
-                                      console.warn("Cannot check bridge: repo name is missing");
+                                    if (!repoName || !entity) {
+                                      console.warn("Cannot check bridge: repo name or entity is missing", { repoName, entity });
                                       return;
                                     }
                                     
@@ -10698,11 +10699,6 @@ export default function RepoCodePage() {
                                       await new Promise(resolve => setTimeout(resolve, delay));
                                       
                                       try {
-                                        const entity = resolvedParams.entity || updatedRepo.entity || "";
-                                        if (!entity) {
-                                          console.warn("Cannot check bridge: entity is missing");
-                                          return;
-                                        }
                                         const bridgeProcessed = await checkBridgeExists(updatedRepo.ownerPubkey, repoName, entity);
                                         if (bridgeProcessed) {
                                           // Reload repo data after bridge check to get updated bridgeProcessed flag
