@@ -10697,11 +10697,11 @@ export default function RepoCodePage() {
                                     }
                                     
                                     // Retry bridge check with delays (bridge needs time to process events from relays)
+                                    // TypeScript: After validation above, these are guaranteed to be strings
+                                    const repoName: string = repoNameRaw as string;
+                                    const entity: string = entityRaw as string;
+                                    
                                     const checkBridgeWithRetry = async (attempt: number = 1) => {
-                                      // TypeScript: After validation above, these are guaranteed to be strings
-                                      const repoName: string = repoNameRaw as string;
-                                      const entity: string = entityRaw as string;
-                                      
                                       const delay = attempt * 2000; // 2s, 4s, 6s
                                       await new Promise(resolve => setTimeout(resolve, delay));
                                       
