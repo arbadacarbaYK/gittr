@@ -10681,19 +10681,47 @@ export default function RepoCodePage() {
                                   setRepoData(updatedRepo);
                                   
                                   // Check bridge and update status
+                                  // CRITICAL: Bridge processes events asynchronously from Nostr relays
+                                  // Add a delay and retry to give bridge time to process the events
                                   if (updatedRepo.ownerPubkey && /^[0-9a-f]{64}$/i.test(updatedRepo.ownerPubkey)) {
                                     const repoAny = updatedRepo as any;
                                     const repoName = repoAny?.repositoryName || updatedRepo.repo || updatedRepo.slug || resolvedParams.repo;
-                                    checkBridgeExists(updatedRepo.ownerPubkey, repoName, resolvedParams.entity).then((bridgeProcessed) => {
-                                      // Reload repo data again after bridge check to get updated bridgeProcessed flag
-                                      const finalRepos = loadStoredRepos();
-                                      const finalRepo = findRepoByEntityAndName<StoredRepo>(finalRepos, resolvedParams.entity, resolvedParams.repo);
-                                      if (finalRepo) {
-                                        setRepoData(finalRepo);
+                                    
+                                    if (!repoName) {
+                                      console.warn("Cannot check bridge: repo name is missing");
+                                      return;
+                                    }
+                                    
+                                    // Retry bridge check with delays (bridge needs time to process events from relays)
+                                    const checkBridgeWithRetry = async (attempt: number = 1) => {
+                                      const delay = attempt * 2000; // 2s, 4s, 6s
+                                      await new Promise(resolve => setTimeout(resolve, delay));
+                                      
+                                      try {
+                                        const bridgeProcessed = await checkBridgeExists(updatedRepo.ownerPubkey, repoName, resolvedParams.entity || "");
+                                        if (bridgeProcessed) {
+                                          // Reload repo data after bridge check to get updated bridgeProcessed flag
+                                          const finalRepos = loadStoredRepos();
+                                          const finalRepo = findRepoByEntityAndName<StoredRepo>(finalRepos, resolvedParams.entity, resolvedParams.repo);
+                                          if (finalRepo) {
+                                            setRepoData(finalRepo);
+                                          }
+                                        } else if (attempt < 3) {
+                                          // Retry up to 3 times (total 12 seconds)
+                                          console.log(`⏳ [Bridge Check] Attempt ${attempt + 1}/3: Bridge not ready yet, retrying...`);
+                                          checkBridgeWithRetry(attempt + 1);
+                                        } else {
+                                          console.warn(`⚠️ [Bridge Check] Bridge still not ready after ${attempt} attempts - bridge may need more time to process events`);
+                                        }
+                                      } catch (err) {
+                                        console.warn(`Failed to check bridge after push (attempt ${attempt}):`, err);
+                                        if (attempt < 3) {
+                                          checkBridgeWithRetry(attempt + 1);
+                                        }
                                       }
-                                    }).catch(err => {
-                                      console.warn("Failed to check bridge after push:", err);
-                                    });
+                                    };
+                                    
+                                    checkBridgeWithRetry();
                                   }
                                 }
                               } catch (error) {

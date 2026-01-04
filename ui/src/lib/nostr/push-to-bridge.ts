@@ -288,7 +288,12 @@ export async function pushFilesToBridge({
       refs: finalRefs,
     };
 
+    // CRITICAL: Bridge processes events asynchronously from Nostr relays
+    // Add a delay before checking to give bridge time to process the events
+    // The bridge needs to receive the announcement event (kind 30617) from relays first
     try {
+      // Wait 2 seconds for bridge to process events from relays
+      await new Promise(resolve => setTimeout(resolve, 2000));
       await checkBridgeExists(ownerPubkey, repoSlug, entity);
     } catch (error) {
       console.warn("Failed to verify bridge sync:", error);
