@@ -25,11 +25,14 @@ export async function checkBridgeExists(ownerPubkey: string, repoName: string, e
       const data = await response.json();
       const exists = data.exists === true;
       // Update repo in localStorage with bridgeProcessed flag
+      // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
+      // Priority: repositoryName > repo > slug
       try {
         const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
-        const repoIndex = repos.findIndex((r: any) => 
-          (r.slug === repoName || r.repo === repoName) && r.entity === entity
-        );
+        const repoIndex = repos.findIndex((r: any) => {
+          const rRepoName = r.repositoryName || r.repo || r.slug;
+          return (rRepoName === repoName || r.slug === repoName || r.repo === repoName) && r.entity === entity;
+        });
         
         if (repoIndex >= 0) {
           repos[repoIndex] = { 
@@ -37,6 +40,9 @@ export async function checkBridgeExists(ownerPubkey: string, repoName: string, e
             bridgeProcessed: exists 
           };
           localStorage.setItem("gittr_repos", JSON.stringify(repos));
+          console.log(`✅ [Bridge Check] Updated bridgeProcessed=${exists} for repo: ${repoName}`);
+        } else {
+          console.warn(`⚠️ [Bridge Check] Could not find repo in localStorage: ${repoName} (entity: ${entity})`);
         }
       } catch (storageError) {
         console.warn("Failed to update bridgeProcessed flag:", storageError);
