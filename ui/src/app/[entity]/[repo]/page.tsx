@@ -3547,7 +3547,7 @@ export default function RepoCodePage() {
                       ? eventPubkey 
                       : undefined;
                     // Get current user's pubkey for GRASP list preferences
-          const currentUserPubkey = pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? pubkey : null;
+          const currentUserPubkey = effectiveUserPubkey && /^[0-9a-f]{64}$/i.test(effectiveUserPubkey) ? effectiveUserPubkey : null;
           
           const { files, statuses } = await fetchFilesFromMultipleSources(
                       cloneUrls,
@@ -3901,7 +3901,7 @@ export default function RepoCodePage() {
                   ? resolvedOwnerPubkey 
                   : (ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? ownerPubkeyForLink : undefined);
                 // Get current user's pubkey for GRASP list preferences
-          const currentUserPubkey = pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? pubkey : null;
+          const currentUserPubkey = effectiveUserPubkey && /^[0-9a-f]{64}$/i.test(effectiveUserPubkey) ? effectiveUserPubkey : null;
           
           const { files, statuses } = await fetchFilesFromMultipleSources(
                   cloneUrls,
@@ -4546,7 +4546,7 @@ export default function RepoCodePage() {
                       ? resolvedOwnerPubkey 
                       : (ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? ownerPubkeyForLink : undefined);
                     // Get current user's pubkey for GRASP list preferences
-          const currentUserPubkey = pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? pubkey : null;
+          const currentUserPubkey = effectiveUserPubkey && /^[0-9a-f]{64}$/i.test(effectiveUserPubkey) ? effectiveUserPubkey : null;
           
           const { files, statuses } = await fetchFilesFromMultipleSources(
                       cloneUrls,
