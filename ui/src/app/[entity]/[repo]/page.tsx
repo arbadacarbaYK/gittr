@@ -10696,17 +10696,19 @@ export default function RepoCodePage() {
                                       return;
                                     }
                                     
-                                    // Retry bridge check with delays (bridge needs time to process events from relays)
-                                    // TypeScript: After validation above, these are guaranteed to be strings
-                                    const repoName: string = repoNameRaw as string;
-                                    const entity: string = entityRaw as string;
+                                    // TypeScript: After validation, these are guaranteed to be strings
+                                    // Convert to strings explicitly to satisfy TypeScript closure type narrowing
+                                    const repoName = String(repoNameRaw);
+                                    const entity = String(entityRaw);
+                                    const ownerPubkey = updatedRepo.ownerPubkey;
                                     
+                                    // Retry bridge check with delays (bridge needs time to process events from relays)
                                     const checkBridgeWithRetry = async (attempt: number = 1) => {
                                       const delay = attempt * 2000; // 2s, 4s, 6s
                                       await new Promise(resolve => setTimeout(resolve, delay));
                                       
                                       try {
-                                        const bridgeProcessed = await checkBridgeExists(updatedRepo.ownerPubkey, repoName, entity);
+                                        const bridgeProcessed = await checkBridgeExists(ownerPubkey, repoName, entity);
                                         if (bridgeProcessed) {
                                           // Reload repo data after bridge check to get updated bridgeProcessed flag
                                           const finalRepos = loadStoredRepos();
