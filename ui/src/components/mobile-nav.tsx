@@ -87,6 +87,19 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
             );
             }
           )}
+          
+          {/* Add Profile Settings link for mobile */}
+          {isLoggedIn && (
+            <Link
+              href="/settings/profile"
+              onClick={onClick}
+              className={cn(
+                "hover:text-gray-400 flex w-full items-center border-b border-b-lightgray p-3 text-sm font-medium "
+              )}
+            >
+              Profile Settings
+            </Link>
+          )}
 
           {items.map((item, index) => (
             <Link
