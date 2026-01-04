@@ -1228,17 +1228,17 @@ export default function EntityPage({ params }: { params: Promise<{ entity: strin
           }
         }
         
-        // Debug: log what we found
-        console.log("Profile stats for", fullPubkey, {
-          totalActivities: activities.length,
-          commits: activities.filter(a => a.type === "commit_created").length,
-          prsMerged: activities.filter(a => a.type === "pr_merged").length,
-          bountiesClaimed: activities.filter(a => a.type === "bounty_claimed").length,
-          counts: counts,
-          allActivityTypes: activities.map(a => a.type),
-          filteredReposCount: deduplicatedRepos.length, // Use actual filtered repo count
-        });
-        
+          // Debug: log what we found
+          console.log("Profile stats for", fullPubkey, {
+            totalActivities: activities.length,
+            commits: activities.filter(a => a.type === "commit_created").length,
+            prsMerged: activities.filter(a => a.type === "pr_merged").length,
+            bountiesClaimed: activities.filter(a => a.type === "bounty_claimed").length,
+            counts: counts,
+            allActivityTypes: activities.map(a => a.type),
+            filteredReposCount: deduplicatedRepos.length, // Use actual filtered repo count
+          });
+          
           // If no activities found, try triggering backfill
           if (activities.length === 0) {
             console.warn("No activities found - you may need to run backfillActivities()");
