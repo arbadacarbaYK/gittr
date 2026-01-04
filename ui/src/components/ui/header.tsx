@@ -50,7 +50,6 @@ export const DropdownItems = [
   {
     title: "Your Profile",
     href: "/profile", // Will be replaced dynamically
-    mobile: false,
   },
   {
     title: "Settings",
