@@ -7,16 +7,18 @@ export const KIND_REPOSITORY_NIP34 = 30617; // NIP-34: Repository announcements
 export const KIND_REPOSITORY_STATE = 30618; // NIP-34: Repository state (refs, branches, commits) - required by ngit clients
 export const KIND_REPOSITORY_PERMISSION = 50; // gitnostr protocol
 export const KIND_SSH_KEY = 52; // gitnostr protocol
-export const KIND_ISSUE = 1621; // NIP-34: Issues
+export const KIND_PATCH = 1617; // NIP-34: Patches
 export const KIND_PULL_REQUEST = 1618; // NIP-34: Pull Requests
 export const KIND_PR_UPDATE = 1619; // NIP-34: Pull Request Updates
+export const KIND_ISSUE = 1621; // NIP-34: Issues
 export const KIND_STATUS_OPEN = 1630; // NIP-34: Status - Open
 export const KIND_STATUS_APPLIED = 1631; // NIP-34: Status - Applied/Merged (PRs) or Resolved (Issues)
 export const KIND_STATUS_CLOSED = 1632; // NIP-34: Status - Closed
 export const KIND_STATUS_DRAFT = 1633; // NIP-34: Status - Draft
+export const KIND_GRASP_LIST = 10317; // NIP-34: User GRASP list (preferred GRASP servers)
 export const KIND_DISCUSSION = 9805; // Custom: Discussions
 export const KIND_BOUNTY = 9806; // Custom: Bounties
-export const KIND_COMMENT = 1; // NIP-01: Notes (for comments)
+export const KIND_COMMENT = 1111; // NIP-22: Comments (was kind 1, migrated to NIP-22)
 export const KIND_REACTION = 7; // NIP-25: Reactions
 export const KIND_ZAP = 9735; // NIP-57: Zaps
 export const KIND_DELETION = 5; // NIP-09: Deletion/Revocation events
@@ -89,6 +91,28 @@ export interface DiscussionEvent {
   status?: "open" | "closed";
 }
 
+export interface PatchEvent {
+  repoEntity: string; // Owner entity (npub or pubkey)
+  repoName: string; // Repository identifier (matches "d" tag in announcement)
+  ownerPubkey: string; // Full 64-char hex pubkey of repository owner (for "a" tag)
+  earliestUniqueCommit?: string; // Earliest unique commit ID (for "r" tag)
+  patchContent: string; // Contents of `git format-patch` output - REQUIRED
+  isRoot?: boolean; // If true, this is the first patch in a series (adds "root" tag)
+  isRootRevision?: boolean; // If true, this is the first patch in a revision (adds "root-revision" tag)
+  previousPatchEventId?: string; // Event ID of previous patch in series (for NIP-10 reply tag)
+  rootPatchEventId?: string; // Event ID of original root patch (for first patch in revision)
+  currentCommitId?: string; // Current commit ID (for "commit" and "r" tags)
+  parentCommitId?: string; // Parent commit ID (for "parent-commit" tag)
+  commitPgpSig?: string; // PGP signature (or empty string for unsigned) - for "commit-pgp-sig" tag
+  committer?: {
+    name: string;
+    email: string;
+    timestamp: number; // Unix timestamp
+    timezoneOffset: number; // Timezone offset in minutes
+  }; // For "committer" tag: ["committer", name, email, timestamp, timezoneOffset]
+  notifyUsers?: string[]; // Additional users to notify (for "p" tags)
+}
+
 export interface PullRequestEvent {
   repoEntity: string; // Owner entity (npub or pubkey)
   repoName: string; // Repository identifier (matches "d" tag in announcement)
@@ -117,7 +141,13 @@ export interface CommentEvent {
   repoName?: string;
   issueId?: string;
   prId?: string;
+  patchId?: string; // Patch event ID (for NIP-22 comments on patches)
   content: string;
+}
+
+export interface GraspListEvent {
+  graspServers: string[]; // GRASP service websocket URLs (wss://) in order of preference
+  // Content is empty per NIP-34 spec
 }
 
 export interface BountyEvent {
@@ -512,6 +542,88 @@ export function createIssueEvent(
   return event;
 }
 
+// Create and sign a Nostr patch event (NIP-34 kind 1617)
+// Per NIP-34: https://nips.nostr.com/34#patches
+// Patches SHOULD be used if each event is under 60kb, otherwise PRs SHOULD be used
+export function createPatchEvent(
+  patch: PatchEvent,
+  privateKey: string
+): any {
+  const pubkey = getPublicKey(privateKey);
+  
+  // NIP-34 required tags
+  const tags: string[][] = [
+    // ["a", "30617:<base-repo-owner-pubkey>:<base-repo-id>"] - REQUIRED
+    ["a", `30617:${patch.ownerPubkey}:${patch.repoName}`],
+    // ["r", "<earliest-unique-commit-id-of-repo>"] - REQUIRED (helps clients subscribe to all patches for a repo)
+    ...(patch.earliestUniqueCommit ? [["r", patch.earliestUniqueCommit]] : []),
+    // ["p", "<repository-owner>"] - REQUIRED
+    ["p", patch.ownerPubkey],
+  ];
+  
+  // Optional: Notify other users
+  if (patch.notifyUsers && patch.notifyUsers.length > 0) {
+    patch.notifyUsers.forEach(user => tags.push(["p", user]));
+  }
+  
+  // NIP-34: Tag structure for patches
+  // - ["t", "root"] - for first patch in a series (omitted for additional patches)
+  // - ["t", "root-revision"] - for first patch in a revision
+  if (patch.isRoot) {
+    tags.push(["t", "root"]);
+  }
+  if (patch.isRootRevision) {
+    tags.push(["t", "root-revision"]);
+  }
+  
+  // NIP-10 threading: Patches in a patch set SHOULD include e reply tag pointing to previous patch
+  // First patch revision SHOULD include e reply to original root patch
+  if (patch.previousPatchEventId) {
+    tags.push(["e", patch.previousPatchEventId, "", "reply"]);
+  }
+  if (patch.rootPatchEventId && patch.isRootRevision) {
+    tags.push(["e", patch.rootPatchEventId, "", "reply"]);
+  }
+  
+  // Optional tags for stable commit IDs (per NIP-34 spec)
+  if (patch.currentCommitId) {
+    tags.push(["commit", patch.currentCommitId]);
+    tags.push(["r", patch.currentCommitId]); // So clients can find existing patches for a specific commit
+  }
+  
+  if (patch.parentCommitId) {
+    tags.push(["parent-commit", patch.parentCommitId]);
+  }
+  
+  if (patch.commitPgpSig !== undefined) {
+    tags.push(["commit-pgp-sig", patch.commitPgpSig || ""]); // Empty string for unsigned commit
+  }
+  
+  if (patch.committer) {
+    tags.push([
+      "committer",
+      patch.committer.name,
+      patch.committer.email,
+      String(patch.committer.timestamp),
+      String(patch.committer.timezoneOffset)
+    ]);
+  }
+
+  // NIP-34: Content is the patch itself (contents of `git format-patch`)
+  const event = {
+    kind: KIND_PATCH, // NIP-34: kind 1617
+    created_at: Math.floor(Date.now() / 1000),
+    tags,
+    content: patch.patchContent, // Contents of `git format-patch` output
+    pubkey,
+    id: "",
+    sig: "",
+  };
+
+  event.id = getEventHash(event);
+  event.sig = signEvent(event, privateKey);
+  return event;
+}
 
 // Create and sign a Nostr pull request event (NIP-34 kind 1618)
 // Per NIP-34: https://nips.nostr.com/34#pull-requests
@@ -773,7 +885,9 @@ export function createDiscussionEvent(
 }
 
 
-// Create and sign a Nostr comment event
+// Create and sign a Nostr comment event (NIP-22 kind 1111)
+// Per NIP-22: https://nips.nostr.com/22
+// NIP-22 uses uppercase tags (E, P) instead of lowercase (e, p) for event/pubkey references
 export function createCommentEvent(
   comment: CommentEvent,
   privateKey: string
@@ -782,43 +896,52 @@ export function createCommentEvent(
   
   const tags: string[][] = [];
   
-  // Repo context tags
+  // Repo context tags (custom extension, not in NIP-22)
   if (comment.repoEntity && comment.repoName) {
     tags.push(["repo", comment.repoEntity, comment.repoName]);
   }
   
-  // NIP-10 threading: 
-  // - If replying to an issue/PR, that's the root
-  // - If replying to a comment, the issue/PR is root, comment is reply
+  // NIP-22 threading: Uses uppercase E and P tags
+  // - E: Event ID (root or reply)
+  // - P: Pubkey (author of root event or reply target)
+  // - Lowercase e/p tags are deprecated in NIP-22
   if (comment.issueId) {
-    // Issue is the root
-    tags.push(["e", comment.issueId, "", "root"]);
+    // Issue is the root - use uppercase E tag per NIP-22
+    tags.push(["E", comment.issueId]);
     
     // If replyTo is set and different from issueId, it's a reply to a comment
     if (comment.replyTo && comment.replyTo !== comment.issueId) {
-      tags.push(["e", comment.replyTo, "", "reply"]);
-    } else {
-      // Direct reply to issue
-      tags.push(["e", comment.issueId, "", "reply"]);
+      // Reply to comment - add reply event ID
+      tags.push(["E", comment.replyTo]);
     }
+    // Note: For direct replies to issue, we only need the root E tag
   } else if (comment.prId) {
-    // PR is the root
-    tags.push(["e", comment.prId, "", "root"]);
+    // PR is the root - use uppercase E tag per NIP-22
+    tags.push(["E", comment.prId]);
     
     // If replyTo is set and different from prId, it's a reply to a comment
     if (comment.replyTo && comment.replyTo !== comment.prId) {
-      tags.push(["e", comment.replyTo, "", "reply"]);
-    } else {
-      // Direct reply to PR
-      tags.push(["e", comment.prId, "", "reply"]);
+      // Reply to comment - add reply event ID
+      tags.push(["E", comment.replyTo]);
     }
+    // Note: For direct replies to PR, we only need the root E tag
+  } else if (comment.patchId) {
+    // Patch is the root - use uppercase E tag per NIP-22
+    tags.push(["E", comment.patchId]);
+    
+    // If replyTo is set and different from patchId, it's a reply to a comment
+    if (comment.replyTo && comment.replyTo !== comment.patchId) {
+      // Reply to comment - add reply event ID
+      tags.push(["E", comment.replyTo]);
+    }
+    // Note: For direct replies to patch, we only need the root E tag
   } else if (comment.replyTo) {
     // Fallback: if only replyTo is set, treat as root
-    tags.push(["e", comment.replyTo, "", "root"]);
+    tags.push(["E", comment.replyTo]);
   }
   
   const event = {
-    kind: KIND_COMMENT,
+    kind: KIND_COMMENT, // NIP-22: kind 1111
     created_at: Math.floor(Date.now() / 1000),
     tags,
     content: comment.content,
@@ -832,6 +955,45 @@ export function createCommentEvent(
   return event;
 }
 
+// Create and sign a Nostr GRASP list event (NIP-34 kind 10317)
+// Per NIP-34: https://nips.nostr.com/34#user-grasp-list
+// List of GRASP servers the user generally wishes to use for NIP-34 related activity
+// Similar in function to NIP-65 relay list and NIP-B7 blossom list
+export function createGraspListEvent(
+  graspList: GraspListEvent,
+  privateKey: string
+): any {
+  const pubkey = getPublicKey(privateKey);
+  
+  // NIP-34: Build tags array with GRASP server URLs in order of preference
+  const tags: string[][] = [];
+  
+  // Add GRASP service websocket URLs (wss://) in order of preference
+  // Format: ["g", "<grasp-service-websocket-url>"]
+  graspList.graspServers.forEach(serverUrl => {
+    // Validate that it's a websocket URL
+    if (serverUrl && (serverUrl.startsWith("wss://") || serverUrl.startsWith("ws://"))) {
+      tags.push(["g", serverUrl]);
+    } else {
+      console.warn(`⚠️ [createGraspListEvent] Invalid GRASP server URL (must be wss:// or ws://): ${serverUrl}`);
+    }
+  });
+
+  // NIP-34: Content is empty per spec
+  const event = {
+    kind: KIND_GRASP_LIST, // NIP-34: kind 10317
+    created_at: Math.floor(Date.now() / 1000),
+    tags,
+    content: "", // Empty per NIP-34 spec
+    pubkey,
+    id: "",
+    sig: "",
+  };
+
+  event.id = getEventHash(event);
+  event.sig = signEvent(event, privateKey);
+  return event;
+}
 
 // Create and sign a Nostr bounty event (KIND_BOUNTY = 9806)
 export function createBountyEvent(

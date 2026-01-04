@@ -3546,7 +3546,10 @@ export default function RepoCodePage() {
                     const eventPublisherPubkey = (eventPubkey && typeof eventPubkey === 'string' && /^[0-9a-f]{64}$/i.test(eventPubkey)) 
                       ? eventPubkey 
                       : undefined;
-                    const { files, statuses } = await fetchFilesFromMultipleSources(
+                    // Get current user's pubkey for GRASP list preferences
+          const currentUserPubkey = pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? pubkey : null;
+          
+          const { files, statuses } = await fetchFilesFromMultipleSources(
                       cloneUrls,
                       branch,
                       (status: FetchStatus) => {
@@ -3897,7 +3900,10 @@ export default function RepoCodePage() {
                 const eventPublisherPubkey = resolvedOwnerPubkey && /^[0-9a-f]{64}$/i.test(resolvedOwnerPubkey) 
                   ? resolvedOwnerPubkey 
                   : (ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? ownerPubkeyForLink : undefined);
-                const { files, statuses } = await fetchFilesFromMultipleSources(
+                // Get current user's pubkey for GRASP list preferences
+          const currentUserPubkey = pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? pubkey : null;
+          
+          const { files, statuses } = await fetchFilesFromMultipleSources(
                   cloneUrls,
                   branch,
                   (status: FetchStatus) => {
@@ -4539,7 +4545,10 @@ export default function RepoCodePage() {
                     const eventPublisherPubkey = resolvedOwnerPubkey && /^[0-9a-f]{64}$/i.test(resolvedOwnerPubkey) 
                       ? resolvedOwnerPubkey 
                       : (ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink) ? ownerPubkeyForLink : undefined);
-                    const { files, statuses } = await fetchFilesFromMultipleSources(
+                    // Get current user's pubkey for GRASP list preferences
+          const currentUserPubkey = pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? pubkey : null;
+          
+          const { files, statuses } = await fetchFilesFromMultipleSources(
                       cloneUrls,
                       branch,
                       (status: FetchStatus) => {

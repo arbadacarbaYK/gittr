@@ -346,7 +346,8 @@ export default function NewPullRequestPage({ params }: { params: Promise<{ entit
                                     : undefined);
       
       // Get clone URLs from repo data (required for NIP-34 "clone" tag)
-      const cloneUrls: string[] = [];
+      // Prioritize user's preferred GRASP servers if available
+      let cloneUrls: string[] = [];
       if (repoData.clone && Array.isArray(repoData.clone)) {
         cloneUrls.push(...repoData.clone.filter((url: string) => 
           url && typeof url === "string" && 
@@ -361,6 +362,54 @@ export default function NewPullRequestPage({ params }: { params: Promise<{ entit
         if (gitServerUrl && finalOwnerPubkey) {
           const cleanUrl = gitServerUrl.trim().replace(/^["']|["']$/g, '');
           cloneUrls.push(`${cleanUrl}/${finalOwnerPubkey}/${repo}.git`);
+        }
+      }
+      
+      // Prioritize user's preferred GRASP servers if available
+      if (currentUserPubkey && /^[0-9a-f]{64}$/i.test(currentUserPubkey) && defaultRelays && cloneUrls.length > 0) {
+        try {
+          const { getUserGraspServers, graspRelayUrlsToDomains } = await import("@/lib/utils/grasp-list");
+          const { getGraspServers, isGraspServer } = await import("@/lib/utils/grasp-servers");
+          const { subscribe } = await import("@/lib/nostr/NostrContext").then(m => ({ subscribe: m.useNostrContext().subscribe }));
+          
+          // Get user's GRASP list (non-blocking, with timeout)
+          const defaultGraspRelays = getGraspServers(defaultRelays);
+          const userGraspRelays = await Promise.race([
+            getUserGraspServers(subscribe!, defaultRelays, currentUserPubkey, defaultGraspRelays),
+            new Promise<string[]>((resolve) => setTimeout(() => resolve(defaultGraspRelays), 2000)) // 2s timeout
+          ]);
+          
+          // Convert to domains for matching against clone URLs
+          const userGraspDomains = graspRelayUrlsToDomains(userGraspRelays);
+          
+          if (userGraspDomains.length > 0) {
+            // Separate clone URLs into user-preferred GRASP and others
+            const preferredGraspUrls: string[] = [];
+            const otherUrls: string[] = [];
+            
+            cloneUrls.forEach(url => {
+              const isUserPreferredGrasp = userGraspDomains.some(domain => {
+                const urlDomain = url?.replace(/^https?:\/\//, '').replace(/^git@/, '').split('/')[0]?.split(':')[0];
+                if (!urlDomain || !domain) return false;
+                return urlDomain === domain || urlDomain.includes(domain) || domain.includes(urlDomain);
+              });
+              
+              if (isUserPreferredGrasp || isGraspServer(url)) {
+                preferredGraspUrls.push(url);
+              } else {
+                otherUrls.push(url);
+              }
+            });
+            
+            // Prioritize: user's preferred GRASP servers first, then others
+            cloneUrls = [...preferredGraspUrls, ...otherUrls];
+            
+            if (preferredGraspUrls.length > 0) {
+              console.log(`✅ [PR Create] Prioritized ${preferredGraspUrls.length} clone URLs from user's preferred GRASP servers`);
+            }
+          }
+        } catch (error) {
+          console.warn(`⚠️ [PR Create] Failed to prioritize by GRASP list, using original order:`, error);
         }
       }
       

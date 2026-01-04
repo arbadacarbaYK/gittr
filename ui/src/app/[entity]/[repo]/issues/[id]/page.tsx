@@ -222,12 +222,14 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
   useEffect(() => {
     if (!subscribe || !defaultRelays || !issue?.id || !issueEventId) return;
 
-    // Subscribe to comments (kind 1) and code snippets (kind 1337) that reference this issue
+    // Subscribe to comments (kind 1111, NIP-22) and code snippets (kind 1337) that reference this issue
+    // Note: Also query for legacy kind 1 comments for backward compatibility
     const unsub = subscribe(
       [
         {
-          kinds: [KIND_COMMENT, KIND_CODE_SNIPPET],
-          "#e": [issueEventId], // Comments/snippets that reference the issue event ID
+          kinds: [KIND_COMMENT, KIND_CODE_SNIPPET, 1], // Include legacy kind 1 for backward compatibility
+          "#E": [issueEventId], // NIP-22: uppercase E tag for event references
+          "#e": [issueEventId], // Legacy: lowercase e tag for backward compatibility
         },
       ],
       defaultRelays,
@@ -255,14 +257,16 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
           }
         }
         
-        // Handle comments
-        if (event.kind === KIND_COMMENT) {
+        // Handle comments (kind 1111 per NIP-22, or legacy kind 1)
+        if (event.kind === KIND_COMMENT || event.kind === 1) {
           try {
             // Parse comment from event
-            const eTags = event.tags.filter((t): t is string[] => Array.isArray(t) && t[0] === "e");
+            // NIP-22 uses uppercase E tags, legacy uses lowercase e tags
+            const eTags = event.tags.filter((t): t is string[] => Array.isArray(t) && (t[0] === "e" || t[0] === "E"));
             const repoTag = event.tags.find((t): t is string[] => Array.isArray(t) && t[0] === "repo");
             
             // Verify this comment is for our issue and repo
+            // Check both uppercase E (NIP-22) and lowercase e (legacy) tags
             const isForThisIssue = eTags.some((t) => t[1] === issueEventId);
             const isForThisRepo = repoTag && repoTag[1] === entity && repoTag[2] === repo;
             
@@ -734,23 +738,23 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
         const authorPubkey = await window.nostr.getPublicKey();
         
         const tags: string[][] = [
-          ["repo", entity, repo],
+          ["repo", entity, repo], // Custom extension, not in NIP-22
         ];
 
-        // NIP-10 threading: root is the issue event ID, reply is parent comment ID
+        // NIP-22 threading: Uses uppercase E tags (not lowercase e tags)
+        // - E: Event ID (root or reply)
+        // - First E tag is the root event (issue), additional E tags are reply targets
         if (issueEventId) {
-          tags.push(["e", issueEventId, "", "root"]);
+          tags.push(["E", issueEventId]); // Root event (issue) - uppercase E per NIP-22
         }
         
         if (replyParentId) {
-          tags.push(["e", replyParentId, "", "reply"]);
-        } else if (issueEventId) {
-          // If no parent, reply directly to issue
-          tags.push(["e", issueEventId, "", "reply"]);
+          tags.push(["E", replyParentId]); // Reply target (parent comment) - uppercase E per NIP-22
         }
+        // Note: For direct replies to issue, we only need the root E tag
 
         commentEvent = {
-          kind: KIND_COMMENT,
+          kind: KIND_COMMENT, // NIP-22: kind 1111
           created_at: Math.floor(now / 1000),
           tags,
           content: commentContent.trim(),

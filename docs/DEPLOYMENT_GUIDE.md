@@ -59,7 +59,8 @@ Use this checklist to track your deployment progress:
 
 **Required Event Kinds:**
 - **Kind 0** (Metadata) - User profiles
-- **Kind 1** (Notes) - Comments and discussions
+- **Kind 1** (Notes) - Legacy comments (backward compatibility only)
+- **Kind 1111** (NIP-22: Comments) - Issue/PR comments (primary)
 - **Kind 50** (Repository Permissions) - Git access control
 - **Kind 51** (Repository) - Repository announcements (legacy)
 - **Kind 52** (SSH Keys) - Git authentication
