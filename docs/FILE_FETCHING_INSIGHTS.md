@@ -749,7 +749,10 @@ const treeUrl = `${baseUrl}/api/v1/repos${fullPath}/git/trees/${branch}?recursiv
 
 ### 7. **localStorage Caching**
 
-- Both file lists and file content are cached in localStorage
+- File lists are cached in localStorage only for owned/local repos (or repos with unpushed edits)
+- View-only repos keep file lists in memory to avoid localStorage quota issues
+- File content overrides are only cached when persistence is required
+- When storage pressure is detected, foreign repo caches are auto-cleared
 - Strict matching (entity + repo name) prevents loading wrong data
 - Corruption detection skips invalid cached data
 
