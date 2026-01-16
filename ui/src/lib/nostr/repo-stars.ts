@@ -1,5 +1,6 @@
 // NIP-25: Repository star reactions and NIP-51: Following lists
-import { Filter, Event } from "nostr-tools";
+import { Event, Filter } from "nostr-tools";
+
 import { KIND_REACTION } from "./events";
 
 /**
@@ -12,7 +13,7 @@ export async function queryRepoStars(
 ): Promise<{ count: number; starers: string[] }> {
   return new Promise((resolve) => {
     const starers = new Set<string>();
-    
+
     const filters: Filter[] = [
       {
         kinds: [KIND_REACTION],
@@ -20,7 +21,7 @@ export async function queryRepoStars(
         "#k": ["30617"], // Reactions to kind 30617 events
       },
     ];
-    
+
     const unsubscribe = subscribe(filters, (event: Event) => {
       // Only count positive reactions (stars)
       // Normalize pubkey to lowercase to prevent case-sensitivity issues
@@ -28,7 +29,7 @@ export async function queryRepoStars(
         starers.add(event.pubkey.toLowerCase());
       }
     });
-    
+
     // Wait a bit for events to come in, then resolve
     setTimeout(() => {
       unsubscribe();
@@ -51,7 +52,7 @@ export async function publishStarReaction(
 ): Promise<{ success: boolean; eventId?: string; error?: string }> {
   try {
     const signer = await getSigner();
-    
+
     // Create unsigned event
     const unsignedEvent = {
       kind: KIND_REACTION,
@@ -64,13 +65,13 @@ export async function publishStarReaction(
       content: "+",
       pubkey: "", // Will be set by signer
     };
-    
+
     // Sign the event
     const signedEvent = await signer.signEvent(unsignedEvent);
-    
+
     // Publish to relays
     await publish(signedEvent);
-    
+
     return {
       success: true,
       eventId: signedEvent.id,
@@ -96,7 +97,7 @@ export async function removeStarReaction(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const signer = await getSigner();
-    
+
     // Create negative reaction (NIP-25: "-" means remove reaction)
     const unsignedEvent = {
       kind: KIND_REACTION,
@@ -109,10 +110,10 @@ export async function removeStarReaction(
       content: "-", // Negative reaction (unstar)
       pubkey: "", // Will be set by signer
     };
-    
+
     const signedEvent = await signer.signEvent(unsignedEvent);
     await publish(signedEvent);
-    
+
     return { success: true };
   } catch (error: any) {
     console.error("[Repo Stars] Failed to remove star reaction:", error);
@@ -122,4 +123,3 @@ export async function removeStarReaction(
     };
   }
 }
-

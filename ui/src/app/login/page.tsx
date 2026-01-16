@@ -1,17 +1,17 @@
 "use client";
 
-import { useCallback, useRef, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { LoginType, checkType } from "@/lib/utils";
 
-import { Puzzle, Shield, X, Camera, Scan } from "lucide-react";
+import { Html5Qrcode } from "html5-qrcode";
+import { Camera, Puzzle, Scan, Shield, X } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { nip05, nip19 } from "nostr-tools";
-import { Html5Qrcode } from "html5-qrcode";
 
 export default function Login() {
   const { setAuthor, remoteSigner } = useNostrContext();
@@ -26,7 +26,9 @@ export default function Login() {
   // Check for NIP-07 extension after mount (prevents hydration mismatch)
   useEffect(() => {
     setMounted(true);
-    setHasNip07(typeof window !== "undefined" && typeof window.nostr !== "undefined");
+    setHasNip07(
+      typeof window !== "undefined" && typeof window.nostr !== "undefined"
+    );
   }, []);
 
   const [remoteModalOpen, setRemoteModalOpen] = useState(false);
@@ -79,7 +81,9 @@ export default function Login() {
 
   const handleRemoteConnect = useCallback(async () => {
     if (!remoteSigner) {
-      setRemoteError("Remote signer manager not ready yet. Please try again in a moment.");
+      setRemoteError(
+        "Remote signer manager not ready yet. Please try again in a moment."
+      );
       return;
     }
     if (!remoteToken.trim()) {
@@ -98,7 +102,7 @@ export default function Login() {
         const session = remoteSigner?.getSession();
         if (session?.userPubkey && setAuthor) {
           const npub = nip19.npubEncode(session.userPubkey);
-        setAuthor(npub);
+          setAuthor(npub);
         }
       }
       setRemoteBusy(false);
@@ -135,7 +139,7 @@ export default function Login() {
   const startQRScanner = useCallback(async () => {
     // Wait for the DOM element to be available
     setShowQRScanner(true);
-    
+
     // Use setTimeout to ensure DOM is updated
     setTimeout(async () => {
       const container = document.getElementById("qr-scanner-container");
@@ -145,17 +149,17 @@ export default function Login() {
         setShowQRScanner(false);
         return;
       }
-      
+
       try {
         // Stop any existing scanner first
         if (qrScannerRef.current) {
           await qrScannerRef.current.stop().catch(() => {});
           qrScannerRef.current.clear();
         }
-        
+
         const scanner = new Html5Qrcode("qr-scanner-container");
         qrScannerRef.current = scanner;
-        
+
         await scanner.start(
           { facingMode: "environment" }, // Use back camera on mobile
           {
@@ -167,26 +171,38 @@ export default function Login() {
             // Successfully scanned a QR code
             console.log("[Login] QR code scanned:", decodedText);
             stopQRScanner().catch(console.error);
-            
+
             // Validate it's a bunker:// or nostrconnect:// URI
-            if (decodedText.startsWith("bunker://") || decodedText.startsWith("nostrconnect://")) {
+            if (
+              decodedText.startsWith("bunker://") ||
+              decodedText.startsWith("nostrconnect://")
+            ) {
               setRemoteToken(decodedText);
               setRemoteError(null);
             } else {
-              setRemoteError("Scanned QR code is not a valid bunker:// or nostrconnect:// token");
+              setRemoteError(
+                "Scanned QR code is not a valid bunker:// or nostrconnect:// token"
+              );
             }
           },
           (errorMessage) => {
             // Scanning failed or no QR code found - ignore, keep scanning
             // Only log if it's not the expected "No QR code found" message
-            if (!errorMessage.includes("No QR code found") && !errorMessage.includes("NotFoundException")) {
+            if (
+              !errorMessage.includes("No QR code found") &&
+              !errorMessage.includes("NotFoundException")
+            ) {
               console.debug("[Login] QR scan:", errorMessage);
             }
           }
         );
       } catch (error: any) {
         console.error("[Login] Failed to start QR scanner:", error);
-        setRemoteError(`Camera access failed: ${error.message || "Please allow camera permissions"}`);
+        setRemoteError(
+          `Camera access failed: ${
+            error.message || "Please allow camera permissions"
+          }`
+        );
         setShowQRScanner(false);
         if (qrScannerRef.current) {
           qrScannerRef.current.clear();
@@ -209,7 +225,7 @@ export default function Login() {
   useEffect(() => {
     // Only attempt auto-login once
     if (autoLoginAttempted) return;
-    
+
     const attemptAutoLogin = async () => {
       // Check if NIP-07 extension is available
       if (typeof window !== "undefined" && window.nostr) {
@@ -221,19 +237,22 @@ export default function Login() {
           await handleLogin();
         } catch (error) {
           // Extension not ready or user denied, don't auto-login
-          console.log("[Login] NIP-07 extension detected but not ready for auto-login:", error);
+          console.log(
+            "[Login] NIP-07 extension detected but not ready for auto-login:",
+            error
+          );
           setAutoLoginAttempted(false); // Allow retry
         }
       }
     };
-    
+
     // Try immediately
     attemptAutoLogin();
-    
+
     // Also try after a delay (extensions may inject window.nostr asynchronously)
     const timer1 = setTimeout(attemptAutoLogin, 500);
     const timer2 = setTimeout(attemptAutoLogin, 1500);
-    
+
     return () => {
       clearTimeout(timer1);
       clearTimeout(timer2);
@@ -270,16 +289,26 @@ export default function Login() {
                 }}
               >
                 <Shield className="h-4 w-4" />
-                {remoteSession ? "Reconnect Remote Signer" : "Pair Remote Signer (NIP-46)"}
+                {remoteSession
+                  ? "Reconnect Remote Signer"
+                  : "Pair Remote Signer (NIP-46)"}
               </Button>
               <p className="text-xs text-gray-400 text-center">
-                Paste or scan a <code className="font-mono text-purple-400">bunker://</code> or{" "}
-                <code className="font-mono text-purple-400">nostrconnect://</code> token from your hardware signer.
+                Paste or scan a{" "}
+                <code className="font-mono text-purple-400">bunker://</code> or{" "}
+                <code className="font-mono text-purple-400">
+                  nostrconnect://
+                </code>{" "}
+                token from your hardware signer.
               </p>
               {remoteSession ? (
                 <div className="rounded border border-purple-700/40 bg-purple-950/30 px-3 py-2 text-xs text-purple-100">
-                  <p className="font-semibold text-purple-300">Remote signer paired</p>
-                  <p className="mt-1 break-all text-[11px] text-purple-200/80">{remoteSession.userPubkey}</p>
+                  <p className="font-semibold text-purple-300">
+                    Remote signer paired
+                  </p>
+                  <p className="mt-1 break-all text-[11px] text-purple-200/80">
+                    {remoteSession.userPubkey}
+                  </p>
                   <Button
                     size="sm"
                     variant="ghost"
@@ -366,7 +395,8 @@ export default function Login() {
                     <p className="text-center">Continue with extension</p>
                   </Button>
                   <p className="mt-2 text-xs text-gray-400 text-center">
-                    ✓ NIP-07 extension detected. You will be signed in automatically, or click above to sign in manually.
+                    ✓ NIP-07 extension detected. You will be signed in
+                    automatically, or click above to sign in manually.
                   </p>
                 </div>
               </div>
@@ -387,8 +417,8 @@ export default function Login() {
                         <a
                           className="underline text-purple-400 hover:text-purple-300"
                           href="https://www.getflamingo.org"
-                        target="_blank"
-                        rel="noreferrer"
+                          target="_blank"
+                          rel="noreferrer"
                         >
                           Flamingo
                         </a>
@@ -396,8 +426,8 @@ export default function Login() {
                         <a
                           className="underline text-purple-400 hover:text-purple-300"
                           href="https://addons.mozilla.org/en-US/firefox/addon/nos2x-fox/"
-                        target="_blank"
-                        rel="noreferrer"
+                          target="_blank"
+                          rel="noreferrer"
                         >
                           nos2x-fox
                         </a>
@@ -437,8 +467,8 @@ export default function Login() {
                         <a
                           className="underline"
                           href="https://www.getflamingo.org"
-                        target="_blank"
-                        rel="noreferrer"
+                          target="_blank"
+                          rel="noreferrer"
                         >
                           Flamingo
                         </a>
@@ -446,8 +476,8 @@ export default function Login() {
                         <a
                           className="underline"
                           href="https://addons.mozilla.org/en-US/firefox/addon/nos2x-fox/"
-                        target="_blank"
-                        rel="noreferrer"
+                          target="_blank"
+                          rel="noreferrer"
                         >
                           nos2x-fox
                         </a>
@@ -490,9 +520,13 @@ export default function Login() {
           <div className="w-full max-w-lg rounded-xl border border-purple-800/40 bg-[#0f1117] p-6 shadow-2xl">
             <div className="flex items-start justify-between">
               <div>
-                <h2 className="text-xl font-semibold">Pair Remote Signer (NIP-46)</h2>
+                <h2 className="text-xl font-semibold">
+                  Pair Remote Signer (NIP-46)
+                </h2>
                 <p className="mt-1 text-sm text-gray-400">
-                  Scan or paste the <code className="font-mono text-purple-400">bunker://</code> QR/text shown on your remote signer device.
+                  Scan or paste the{" "}
+                  <code className="font-mono text-purple-400">bunker://</code>{" "}
+                  QR/text shown on your remote signer device.
                 </p>
               </div>
               <button
@@ -505,7 +539,10 @@ export default function Login() {
             </div>
             <div className="mt-4 space-y-3">
               <div className="flex items-center gap-2">
-                <label htmlFor="remote-token" className="text-sm font-medium flex-1">
+                <label
+                  htmlFor="remote-token"
+                  className="text-sm font-medium flex-1"
+                >
                   Remote signer token
                 </label>
                 <Button
@@ -553,9 +590,7 @@ export default function Login() {
                 />
               )}
               {remoteError ? (
-                <p className="text-sm text-red-400">
-                  {remoteError}
-                </p>
+                <p className="text-sm text-red-400">{remoteError}</p>
               ) : null}
               <p className="text-xs text-gray-400">
                 Learn more about this flow in{" "}
@@ -567,7 +602,8 @@ export default function Login() {
                 >
                   NIP-46 (Remote Signing)
                 </a>
-                . Pairing stores only the ephemeral client key for reconnecting; sign out to fully remove it.
+                . Pairing stores only the ephemeral client key for reconnecting;
+                sign out to fully remove it.
               </p>
             </div>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
@@ -593,6 +629,6 @@ export default function Login() {
           </div>
         </div>
       ) : null}
-  </>
+    </>
   );
 }

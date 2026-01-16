@@ -1,14 +1,18 @@
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+
 import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
-import { nip19, nip04 } from "nostr-tools";
-import { getPublicKey, getEventHash, signEvent } from "nostr-tools";
 import { RelayPool } from "nostr-relaypool";
+import { nip04, nip19 } from "nostr-tools";
+import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
 
 /**
  * API endpoint for sending platform notifications
  * Uses server-side environment variables for platform identity
  */
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   // Handle OPTIONS request for CORS
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res);
@@ -25,17 +29,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { recipientPubkey, title, message, url } = req.body || {};
 
   if (!recipientPubkey || !title || !message) {
-    return res.status(400).json({ error: "missing_params", message: "Missing recipientPubkey, title, or message" });
+    return res.status(400).json({
+      error: "missing_params",
+      message: "Missing recipientPubkey, title, or message",
+    });
   }
 
   // Get platform's Nostr private key from env
   // If not set, return response indicating client should use user's own key
   const nostrNsec = process.env.NOSTR_NSEC;
   if (!nostrNsec) {
-    console.log("NOSTR_NSEC not configured - notifications will use user's own key");
-    return res.status(200).json({ 
+    console.log(
+      "NOSTR_NSEC not configured - notifications will use user's own key"
+    );
+    return res.status(200).json({
       status: "use_user_key",
-      message: "Platform key not configured, use user's own key for notifications"
+      message:
+        "Platform key not configured, use user's own key for notifications",
     });
   }
 
@@ -51,7 +61,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     } catch (error) {
       console.error("Failed to decode NOSTR_NSEC:", error);
-      return res.status(500).json({ error: "invalid_key", message: "Invalid NOSTR_NSEC format" });
+      return res
+        .status(500)
+        .json({ error: "invalid_key", message: "Invalid NOSTR_NSEC format" });
     }
 
     const senderPubkey = getPublicKey(privateKey);
@@ -73,7 +85,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     } catch (error) {
       console.error("Invalid recipient pubkey/npub:", recipientPubkey);
-      return res.status(400).json({ error: "invalid_recipient", message: "Invalid recipient pubkey/npub format" });
+      return res.status(400).json({
+        error: "invalid_recipient",
+        message: "Invalid recipient pubkey/npub format",
+      });
     }
 
     // Format the notification message
@@ -107,14 +122,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const envRelays = process.env.NEXT_PUBLIC_NOSTR_RELAYS;
     let defaultRelays: string[];
     if (envRelays && envRelays.trim().length > 0) {
-      const parsed = envRelays.split(",")
-        .map(r => r.trim())
-        .filter(r => r.length > 0 && r.startsWith("wss://"));
-      defaultRelays = parsed.length > 0 ? parsed : [
-        "wss://relay.damus.io",
-        "wss://nos.lol",
-        "wss://relay.nostr.bg",
-      ];
+      const parsed = envRelays
+        .split(",")
+        .map((r) => r.trim())
+        .filter((r) => r.length > 0 && r.startsWith("wss://"));
+      defaultRelays =
+        parsed.length > 0
+          ? parsed
+          : ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.nostr.bg"];
     } else {
       defaultRelays = [
         "wss://relay.damus.io",
@@ -126,9 +141,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Create a temporary relay pool and publish
     const tempPool = new RelayPool(defaultRelays);
     tempPool.publish(event, defaultRelays);
-    
-    console.log("Platform notification sent via Nostr DM to", recipientHex.slice(0, 8) + "...");
-    
+
+    console.log(
+      "Platform notification sent via Nostr DM to",
+      recipientHex.slice(0, 8) + "..."
+    );
+
     // Clean up after a delay
     setTimeout(() => {
       void tempPool.close();
@@ -138,16 +156,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // which is called from sendTelegramDM() in the notification service
     // This endpoint only handles Nostr DMs
 
-    return res.status(200).json({ 
+    return res.status(200).json({
       status: "ok",
       message: "Notification sent",
     });
   } catch (error: any) {
     console.error("Failed to send platform notification:", error);
-    return res.status(500).json({ 
-      error: "send_failed", 
-      message: error.message || "Failed to send notification" 
+    return res.status(500).json({
+      error: "send_failed",
+      message: error.message || "Failed to send notification",
     });
   }
 }
-

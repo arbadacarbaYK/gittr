@@ -1,4 +1,12 @@
-import { type UnsignedEvent, generatePrivateKey, getPublicKey, getEventHash, signEvent, nip19, nip04 } from "nostr-tools";
+import {
+  type UnsignedEvent,
+  generatePrivateKey,
+  getEventHash,
+  getPublicKey,
+  nip04,
+  nip19,
+  signEvent,
+} from "nostr-tools";
 import type { Event as NostrEvent } from "nostr-tools";
 
 import { WEB_STORAGE_KEYS } from "./localStorage";
@@ -77,7 +85,10 @@ export function parseRemoteSignerUri(input: string): RemoteSignerConfig {
       throw new Error("Invalid bunker token: missing remote signer pubkey");
     }
     const params = new URLSearchParams(query);
-    const relays = params.getAll("relay").map((relay) => relay.trim()).filter(Boolean);
+    const relays = params
+      .getAll("relay")
+      .map((relay) => relay.trim())
+      .filter(Boolean);
     if (relays.length === 0) {
       throw new Error("Remote signer token missing relay query param");
     }
@@ -99,12 +110,19 @@ export function parseRemoteSignerUri(input: string): RemoteSignerConfig {
       throw new Error("Invalid nostrconnect URI: missing client pubkey");
     }
     const params = new URLSearchParams(query);
-    const relays = params.getAll("relay").map((relay) => relay.trim()).filter(Boolean);
+    const relays = params
+      .getAll("relay")
+      .map((relay) => relay.trim())
+      .filter(Boolean);
     if (relays.length === 0) {
       throw new Error("nostrconnect URI missing relay");
     }
     const secret = params.get("secret") || undefined;
-    const permissions = params.get("perms")?.split(",").map((p) => p.trim()).filter(Boolean);
+    const permissions = params
+      .get("perms")
+      ?.split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
     const label = params.get("name") || undefined;
     return {
       remotePubkey: clientPubkey.toLowerCase(),
@@ -115,7 +133,9 @@ export function parseRemoteSignerUri(input: string): RemoteSignerConfig {
     };
   }
 
-  throw new Error("Unsupported remote signer URI. Use bunker:// or nostrconnect://");
+  throw new Error(
+    "Unsupported remote signer URI. Use bunker:// or nostrconnect://"
+  );
 }
 
 export function loadStoredRemoteSignerSession(): RemoteSignerSession | null {
@@ -134,7 +154,9 @@ export function loadStoredRemoteSignerSession(): RemoteSignerSession | null {
   }
 }
 
-export function persistRemoteSignerSession(session: RemoteSignerSession | null) {
+export function persistRemoteSignerSession(
+  session: RemoteSignerSession | null
+) {
   if (typeof window === "undefined") return;
   try {
     if (!session) {
@@ -158,7 +180,11 @@ export class RemoteSignerManager {
   private unsubscribe?: () => void;
   private originalNostr: typeof window.nostr | undefined;
   private adapter: any;
-  onStateChange?: (state: RemoteSignerState, session: RemoteSignerSession | null, error?: string) => void;
+  onStateChange?: (
+    state: RemoteSignerState,
+    session: RemoteSignerSession | null,
+    error?: string
+  ) => void;
   private lastError?: string;
 
   constructor(deps: RemoteSignerDeps) {
@@ -193,7 +219,10 @@ export class RemoteSignerManager {
     } catch (error: any) {
       console.error("[RemoteSigner] Failed to resume session:", error);
       this.clearSession();
-      this.notifyState("error", error?.message || "Failed to resume remote signer session");
+      this.notifyState(
+        "error",
+        error?.message || "Failed to resume remote signer session"
+      );
     }
   }
 
@@ -231,7 +260,11 @@ export class RemoteSignerManager {
       }
       await this.sendRequest(session, "connect", connectParams, 20000);
 
-      const remotePubkeyHex = await this.sendRequest(session, "get_public_key", []);
+      const remotePubkeyHex = await this.sendRequest(
+        session,
+        "get_public_key",
+        []
+      );
       if (!remotePubkeyHex || typeof remotePubkeyHex !== "string") {
         throw new Error("Remote signer did not return a pubkey");
       }
@@ -248,7 +281,10 @@ export class RemoteSignerManager {
     } catch (error: any) {
       console.error("[RemoteSigner] Pairing failed:", error);
       this.clearSession();
-      this.notifyState("error", error?.message || "Remote signer pairing failed");
+      this.notifyState(
+        "error",
+        error?.message || "Remote signer pairing failed"
+      );
       throw error;
     }
   }
@@ -368,11 +404,17 @@ export class RemoteSignerManager {
     const session = this.session;
     if (!session) return;
     if (!event || event.kind !== 24133) return;
-    const pTags = event.tags?.filter((tag: any) => Array.isArray(tag) && tag[0] === "p").map((tag: any) => tag[1]);
+    const pTags = event.tags
+      ?.filter((tag: any) => Array.isArray(tag) && tag[0] === "p")
+      .map((tag: any) => tag[1]);
     if (!pTags || !pTags.includes(session.clientPubkey)) return;
     // Decrypt payload
     try {
-      const plaintext = await nip04.decrypt(session.clientSecretKey, event.pubkey, event.content);
+      const plaintext = await nip04.decrypt(
+        session.clientSecretKey,
+        event.pubkey,
+        event.content
+      );
       const message = JSON.parse(plaintext);
       const pending = message?.id ? this.pending.get(message.id) : undefined;
       if (!pending) {
@@ -403,14 +445,16 @@ export class RemoteSignerManager {
       method,
       params,
     });
-    const ciphertext = await nip04.encrypt(session.clientSecretKey, session.remotePubkey, payload);
+    const ciphertext = await nip04.encrypt(
+      session.clientSecretKey,
+      session.remotePubkey,
+      payload
+    );
     const unsignedEvent: any = {
       kind: 24133,
       created_at: Math.floor(Date.now() / 1000),
       content: ciphertext,
-      tags: [
-        ["p", session.remotePubkey],
-      ],
+      tags: [["p", session.remotePubkey]],
       pubkey: getPublicKey(session.clientSecretKey),
     };
     unsignedEvent.id = getEventHash(unsignedEvent);
@@ -447,19 +491,24 @@ function createRemoteNip07Adapter(manager: RemoteSignerManager) {
     getRelays: async () => {
       const session = manager.getSession();
       if (!session) return {};
-      return session.relays.reduce<Record<string, { read: boolean; write: boolean }>>((acc, relay) => {
+      return session.relays.reduce<
+        Record<string, { read: boolean; write: boolean }>
+      >((acc, relay) => {
         acc[relay] = { read: true, write: true };
         return acc;
       }, {});
     },
     nip04: {
-      encrypt: (pubkey: string, plaintext: string) => manager.nip04Encrypt(pubkey, plaintext),
-      decrypt: (pubkey: string, ciphertext: string) => manager.nip04Decrypt(pubkey, ciphertext),
+      encrypt: (pubkey: string, plaintext: string) =>
+        manager.nip04Encrypt(pubkey, plaintext),
+      decrypt: (pubkey: string, ciphertext: string) =>
+        manager.nip04Decrypt(pubkey, ciphertext),
     },
     nip44: {
-      encrypt: (pubkey: string, plaintext: string) => manager.nip44Encrypt(pubkey, plaintext),
-      decrypt: (pubkey: string, ciphertext: string) => manager.nip44Decrypt(pubkey, ciphertext),
+      encrypt: (pubkey: string, plaintext: string) =>
+        manager.nip44Encrypt(pubkey, plaintext),
+      decrypt: (pubkey: string, ciphertext: string) =>
+        manager.nip44Decrypt(pubkey, ciphertext),
     },
   };
 }
-

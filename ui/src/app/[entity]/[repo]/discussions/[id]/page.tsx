@@ -1,31 +1,40 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef, use } from "react";
-import Link from "next/link";
+import { use, useCallback, useEffect, useRef, useState } from "react";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { MessageCircle, ArrowLeft, Reply } from "lucide-react";
-import useSession from "@/lib/nostr/useSession";
-import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
-import {
-  loadDiscussionById,
-  persistDiscussion,
-  type Discussion,
-  type DiscussionComment,
-} from "@/lib/discussions/storage";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
+import { Button } from "@/components/ui/button";
 import { CopyableCodeBlock } from "@/components/ui/copyable-code-block";
 import { Reactions } from "@/components/ui/reactions";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  type Discussion,
+  type DiscussionComment,
+  loadDiscussionById,
+  persistDiscussion,
+} from "@/lib/discussions/storage";
+import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import useSession from "@/lib/nostr/useSession";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 
-type ThreadedComment = DiscussionComment & { depth: number; children: ThreadedComment[] };
+import { ArrowLeft, MessageCircle, Reply } from "lucide-react";
+import Link from "next/link";
+import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import remarkGfm from "remark-gfm";
 
-export default function DiscussionDetailPage({ params }: { params: Promise<{ entity: string; repo: string; id: string }> }) {
+type ThreadedComment = DiscussionComment & {
+  depth: number;
+  children: ThreadedComment[];
+};
+
+export default function DiscussionDetailPage({
+  params,
+}: {
+  params: Promise<{ entity: string; repo: string; id: string }>;
+}) {
   const resolvedParams = use(params);
   const { pubkey: currentUserPubkey } = useNostrContext();
   const [discussion, setDiscussion] = useState<Discussion | null>(null);
@@ -38,7 +47,11 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
   // Load discussion
   useEffect(() => {
     try {
-      const foundDiscussion = loadDiscussionById(resolvedParams.entity, resolvedParams.repo, resolvedParams.id);
+      const foundDiscussion = loadDiscussionById(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        resolvedParams.id
+      );
       setDiscussion(foundDiscussion);
     } catch (error) {
       console.error("Failed to load discussion:", error);
@@ -49,7 +62,12 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
 
   // Get all participant pubkeys for metadata
   const participantPubkeys = discussion
-    ? Array.from(new Set([discussion.author, ...discussion.comments.map((comment) => comment.author)]))
+    ? Array.from(
+        new Set([
+          discussion.author,
+          ...discussion.comments.map((comment) => comment.author),
+        ])
+      )
     : [];
   const metadata = useContributorMetadata(participantPubkeys);
 
@@ -62,7 +80,9 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
     if (!replyContent.trim() || !discussion || !currentUserPubkey) return;
 
     try {
-      const commentId = `comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const commentId = `comment-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
       const newComment: DiscussionComment = {
         id: commentId,
         author: currentUserPubkey,
@@ -71,20 +91,27 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
         parentId: replyParentId || undefined,
       };
 
-      const updatedComments: DiscussionComment[] = [...discussion.comments, newComment];
+      const updatedComments: DiscussionComment[] = [
+        ...discussion.comments,
+        newComment,
+      ];
       const updatedDiscussion: Discussion = {
         ...discussion,
         comments: updatedComments,
         commentCount: updatedComments.length,
       };
 
-      persistDiscussion(resolvedParams.entity, resolvedParams.repo, updatedDiscussion);
+      persistDiscussion(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        updatedDiscussion
+      );
 
       setDiscussion(updatedDiscussion);
       setReplyContent("");
       setReplyingTo(null);
       setReplyParentId(null);
-      
+
       // Focus textarea if still mounted
       if (textareaRef.current) {
         textareaRef.current.focus();
@@ -104,7 +131,9 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
   };
 
   // Build threaded comment tree
-  const buildCommentTree = (comments: DiscussionComment[]): ThreadedComment[] => {
+  const buildCommentTree = (
+    comments: DiscussionComment[]
+  ): ThreadedComment[] => {
     const commentMap = new Map<string, ThreadedComment>();
     const rootComments: ThreadedComment[] = [];
 
@@ -156,7 +185,11 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
     const indent = comment.depth * 32; // 32px per level
 
     return (
-      <div key={comment.id} className="mb-4" style={{ marginLeft: `${indent}px` }}>
+      <div
+        key={comment.id}
+        className="mb-4"
+        style={{ marginLeft: `${indent}px` }}
+      >
         <div className="border border-gray-700 rounded p-4 bg-gray-900/50">
           <div className="flex items-start gap-3">
             <Avatar className="h-8 w-8 flex-shrink-0">
@@ -185,11 +218,22 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
                   remarkPlugins={[remarkGfm]}
                   rehypePlugins={[rehypeRaw]}
                   components={{
-                    code: ({ node, inline, className, children, ...props }: any) => {
+                    code: ({
+                      node,
+                      inline,
+                      className,
+                      children,
+                      ...props
+                    }: any) => {
                       return (
-                        <CopyableCodeBlock 
-                          inline={inline} 
-                          className={inline ? "bg-gray-900 px-1 rounded text-green-400" : className || "bg-gray-900 rounded p-4 overflow-x-auto"}
+                        <CopyableCodeBlock
+                          inline={inline}
+                          className={
+                            inline
+                              ? "bg-gray-900 px-1 rounded text-green-400"
+                              : className ||
+                                "bg-gray-900 rounded p-4 overflow-x-auto"
+                          }
                         >
                           {children}
                         </CopyableCodeBlock>
@@ -220,7 +264,7 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
             </div>
           </div>
         </div>
-        
+
         {/* Render nested replies */}
         {comment.children.length > 0 && (
           <div className="mt-2">
@@ -241,7 +285,9 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
         <div className="text-center py-12">
           <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-500" />
           <h2 className="text-xl font-semibold mb-2">Discussion not found</h2>
-          <Link href={`/${resolvedParams.entity}/${resolvedParams.repo}/discussions`}>
+          <Link
+            href={`/${resolvedParams.entity}/${resolvedParams.repo}/discussions`}
+          >
             <Button variant="outline">Back to Discussions</Button>
           </Link>
         </div>
@@ -262,7 +308,7 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
           <ArrowLeft className="h-4 w-4" />
           Back to Discussions
         </Link>
-        
+
         <div className="flex items-start gap-4 mb-4">
           <Avatar className="h-10 w-10">
             <AvatarImage src={authorMeta?.picture} />
@@ -295,11 +341,22 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
                 components={{
-                  code: ({ node, inline, className, children, ...props }: any) => {
+                  code: ({
+                    node,
+                    inline,
+                    className,
+                    children,
+                    ...props
+                  }: any) => {
                     return (
-                      <CopyableCodeBlock 
-                        inline={inline} 
-                        className={inline ? "bg-gray-900 px-1 rounded text-green-400" : className || "bg-gray-900 rounded p-4 overflow-x-auto"}
+                      <CopyableCodeBlock
+                        inline={inline}
+                        className={
+                          inline
+                            ? "bg-gray-900 px-1 rounded text-green-400"
+                            : className ||
+                              "bg-gray-900 rounded p-4 overflow-x-auto"
+                        }
                       >
                         {children}
                       </CopyableCodeBlock>
@@ -325,7 +382,8 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
       {/* Comments Section */}
       <div className="border-t border-gray-700 pt-6">
         <h2 className="text-xl font-semibold mb-4">
-          {discussion.commentCount || 0} {discussion.commentCount === 1 ? "Comment" : "Comments"}
+          {discussion.commentCount || 0}{" "}
+          {discussion.commentCount === 1 ? "Comment" : "Comments"}
         </h2>
 
         {/* Threaded Comments */}
@@ -344,7 +402,10 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
           <div className="border border-gray-700 rounded p-4 bg-gray-900/50">
             {replyingTo && (
               <div className="mb-2 text-sm text-gray-400">
-                Replying to <span className="text-purple-400">{replyingTo.slice(0, 8)}...</span>
+                Replying to{" "}
+                <span className="text-purple-400">
+                  {replyingTo.slice(0, 8)}...
+                </span>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -363,7 +424,9 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
               ref={textareaRef}
               value={replyContent}
               onChange={(e) => setReplyContent(e.target.value)}
-              placeholder={replyingTo ? "Write a reply..." : "Write a comment..."}
+              placeholder={
+                replyingTo ? "Write a reply..." : "Write a comment..."
+              }
               className="min-h-24 mb-3"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -396,4 +459,3 @@ export default function DiscussionDetailPage({ params }: { params: Promise<{ ent
     </div>
   );
 }
-

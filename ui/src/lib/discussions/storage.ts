@@ -39,7 +39,8 @@ const sanitizeComment = (raw: unknown): DiscussionComment | null => {
     return null;
   }
   const content = typeof base.content === "string" ? base.content : "";
-  const createdAt = typeof base.createdAt === "number" ? base.createdAt : Date.now();
+  const createdAt =
+    typeof base.createdAt === "number" ? base.createdAt : Date.now();
   const comment: DiscussionComment = {
     id,
     author,
@@ -72,13 +73,15 @@ const sanitizeDiscussion = (raw: unknown): Discussion | null => {
   const base = raw as Record<string, unknown>;
   const id = typeof base.id === "string" ? base.id : null;
   const title = typeof base.title === "string" ? base.title : null;
-  const description = typeof base.description === "string" ? base.description : "";
+  const description =
+    typeof base.description === "string" ? base.description : "";
   const author = typeof base.author === "string" ? base.author : null;
   if (!id || !title || !author) {
     return null;
   }
   const comments = sanitizeComments(base.comments);
-  const createdAt = typeof base.createdAt === "number" ? base.createdAt : Date.now();
+  const createdAt =
+    typeof base.createdAt === "number" ? base.createdAt : Date.now();
   const commentCount =
     typeof base.commentCount === "number" ? base.commentCount : comments.length;
 
@@ -87,7 +90,8 @@ const sanitizeDiscussion = (raw: unknown): Discussion | null => {
     title,
     description,
     author,
-    authorName: typeof base.authorName === "string" ? base.authorName : undefined,
+    authorName:
+      typeof base.authorName === "string" ? base.authorName : undefined,
     category: typeof base.category === "string" ? base.category : undefined,
     createdAt,
     commentCount,
@@ -127,13 +131,18 @@ export const persistDiscussion = (
   updatedDiscussion: Discussion
 ): void => {
   const discussions = loadDiscussions(entity, repo);
-  const exists = discussions.some((discussion) => discussion.id === updatedDiscussion.id);
+  const exists = discussions.some(
+    (discussion) => discussion.id === updatedDiscussion.id
+  );
   const updatedList = exists
     ? discussions.map((discussion) =>
         discussion.id === updatedDiscussion.id ? updatedDiscussion : discussion
       )
     : [...discussions, updatedDiscussion];
-  localStorage.setItem(getStorageKey(entity, repo), JSON.stringify(updatedList));
+  localStorage.setItem(
+    getStorageKey(entity, repo),
+    JSON.stringify(updatedList)
+  );
 };
 
 export const appendDiscussion = (
@@ -143,6 +152,8 @@ export const appendDiscussion = (
 ): void => {
   const discussions = loadDiscussions(entity, repo);
   discussions.push(newDiscussion);
-  localStorage.setItem(getStorageKey(entity, repo), JSON.stringify(discussions));
+  localStorage.setItem(
+    getStorageKey(entity, repo),
+    JSON.stringify(discussions)
+  );
 };
-

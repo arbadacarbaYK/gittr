@@ -6,14 +6,21 @@
 /**
  * Mask secret in string (for logging/debugging)
  */
-export function maskSecret(secret: string | null | undefined, visibleChars: number = 4): string {
+export function maskSecret(
+  secret: string | null | undefined,
+  visibleChars: number = 4
+): string {
   if (!secret || secret.length === 0) return "***";
-  
+
   if (secret.length <= visibleChars * 2) {
     return "*".repeat(secret.length);
   }
 
-  return secret.slice(0, visibleChars) + "*".repeat(secret.length - visibleChars * 2) + secret.slice(-visibleChars);
+  return (
+    secret.slice(0, visibleChars) +
+    "*".repeat(secret.length - visibleChars * 2) +
+    secret.slice(-visibleChars)
+  );
 }
 
 /**
@@ -43,8 +50,12 @@ export function sanitizeErrorMessage(error: any): string {
   let message = error.message || String(error);
 
   // Mask common secret patterns
-  message = message.replace(/nsec[a-z0-9]+/gi, (match: string) => maskSecret(match));
-  message = message.replace(/[a-f0-9]{64}/gi, (match: string) => isSecret(match) ? maskSecret(match) : match);
+  message = message.replace(/nsec[a-z0-9]+/gi, (match: string) =>
+    maskSecret(match)
+  );
+  message = message.replace(/[a-f0-9]{64}/gi, (match: string) =>
+    isSecret(match) ? maskSecret(match) : match
+  );
   message = message.replace(/sk_[a-zA-Z0-9_]+/g, maskSecret);
   message = message.replace(/Bearer [A-Za-z0-9._-]+/g, (match: string) => {
     const parts = match.split(" ");
@@ -110,8 +121,12 @@ function sanitizeObject(obj: any): any {
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
       const value = obj[key];
-      
-      if (secretFields.some((field) => key.toLowerCase().includes(field.toLowerCase()))) {
+
+      if (
+        secretFields.some((field) =>
+          key.toLowerCase().includes(field.toLowerCase())
+        )
+      ) {
         sanitized[key] = maskSecret(String(value));
       } else if (typeof value === "object" && value !== null) {
         sanitized[key] = sanitizeObject(value);
@@ -136,4 +151,3 @@ export function validateErrorResponse(error: any): {
     code: error.code || "INTERNAL_ERROR",
   };
 }
-

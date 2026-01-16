@@ -35,12 +35,28 @@ export function MermaidRenderer({ code, className }: MermaidRendererProps) {
 
         // Ensure labels containing line breaks stay within brackets by replacing remaining newlines with \n
         const wrapNewlines = (input: string, regex: RegExp) =>
-          input.replace(regex, (_match, start: string, _newline: string, end: string) => `${start}\\n${end}`);
+          input.replace(
+            regex,
+            (_match, start: string, _newline: string, end: string) =>
+              `${start}\\n${end}`
+          );
 
-        normalizedCode = wrapNewlines(normalizedCode, /(\[[^\]]*)(\n)([^\]]*\])/g);
-        normalizedCode = wrapNewlines(normalizedCode, /(\([^\)]*)(\n)([^\)]*\))/g);
-        normalizedCode = wrapNewlines(normalizedCode, /(\{[^\}]*)(\n)([^\}]*\})/g);
-        const { svg } = await mermaid.render(`mermaid-${renderId}`, normalizedCode);
+        normalizedCode = wrapNewlines(
+          normalizedCode,
+          /(\[[^\]]*)(\n)([^\]]*\])/g
+        );
+        normalizedCode = wrapNewlines(
+          normalizedCode,
+          /(\([^\)]*)(\n)([^\)]*\))/g
+        );
+        normalizedCode = wrapNewlines(
+          normalizedCode,
+          /(\{[^\}]*)(\n)([^\}]*\})/g
+        );
+        const { svg } = await mermaid.render(
+          `mermaid-${renderId}`,
+          normalizedCode
+        );
         if (!cancelled) {
           setDiagram(svg);
           setError(null);
@@ -63,7 +79,9 @@ export function MermaidRenderer({ code, className }: MermaidRendererProps) {
   if (error) {
     return (
       <details className="bg-red-950 text-red-300 p-3 rounded border border-red-700 text-sm">
-        <summary className="cursor-pointer">Failed to render mermaid diagram</summary>
+        <summary className="cursor-pointer">
+          Failed to render mermaid diagram
+        </summary>
         <pre className="overflow-x-auto whitespace-pre-wrap text-xs mt-2">
           {error}
         </pre>
@@ -75,9 +93,12 @@ export function MermaidRenderer({ code, className }: MermaidRendererProps) {
   }
 
   if (!diagram) {
-    return <div className="text-gray-400 text-sm italic">Rendering diagram…</div>;
+    return (
+      <div className="text-gray-400 text-sm italic">Rendering diagram…</div>
+    );
   }
 
-  return <div className={className} dangerouslySetInnerHTML={{ __html: diagram }} />;
+  return (
+    <div className={className} dangerouslySetInnerHTML={{ __html: diagram }} />
+  );
 }
-

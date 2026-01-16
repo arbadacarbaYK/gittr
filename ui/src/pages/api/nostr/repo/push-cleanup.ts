@@ -1,11 +1,16 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
-import { existsSync } from "fs";
-import { rm } from "fs/promises";
-import { join } from "path";
-import os from "os";
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+import { existsSync } from "fs";
+import type { NextApiRequest, NextApiResponse } from "next";
+import os from "os";
+import { join } from "path";
+
+import { rm } from "fs/promises";
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   if (req.method === "OPTIONS") {
     return handleOptionsRequest(res);
   }
@@ -30,26 +35,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     if (existsSync(tempDir)) {
       await rm(tempDir, { recursive: true, force: true });
-      console.log(`🧹 [Bridge Push Cleanup] Cleaned up working directory for failed push session: ${pushSessionId}`);
-      return res.status(200).json({ 
-        success: true, 
+      console.log(
+        `🧹 [Bridge Push Cleanup] Cleaned up working directory for failed push session: ${pushSessionId}`
+      );
+      return res.status(200).json({
+        success: true,
         message: "Working directory cleaned up",
-        pushSessionId 
+        pushSessionId,
       });
     } else {
-      console.log(`📝 [Bridge Push Cleanup] Working directory not found (may have been cleaned up already): ${pushSessionId}`);
-      return res.status(200).json({ 
-        success: true, 
+      console.log(
+        `📝 [Bridge Push Cleanup] Working directory not found (may have been cleaned up already): ${pushSessionId}`
+      );
+      return res.status(200).json({
+        success: true,
         message: "Working directory not found (already cleaned up)",
-        pushSessionId 
+        pushSessionId,
       });
     }
   } catch (error: any) {
-    console.error(`❌ [Bridge Push Cleanup] Failed to clean up working directory:`, error?.message);
-    return res.status(500).json({ 
+    console.error(
+      `❌ [Bridge Push Cleanup] Failed to clean up working directory:`,
+      error?.message
+    );
+    return res.status(500).json({
       error: error?.message || "Failed to clean up working directory",
-      pushSessionId 
+      pushSessionId,
     });
   }
 }
-

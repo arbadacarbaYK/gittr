@@ -1,22 +1,30 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+
 import SettingsHero from "@/components/settings-hero";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
-import useSession from "@/lib/nostr/useSession";
-import { getUserMetadata } from "@/lib/utils/entity-resolver";
-import { ClaimedIdentity } from "@/lib/nostr/useContributorMetadata";
-import { X, Plus, CheckCircle2, Copy, ChevronDown, ChevronUp } from "lucide-react";
-
-import { type SubmitHandler, useForm } from "react-hook-form";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { getEventHash, signEvent, nip19 } from "nostr-tools";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
+import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import { ClaimedIdentity } from "@/lib/nostr/useContributorMetadata";
+import useSession from "@/lib/nostr/useSession";
+import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+import { getUserMetadata } from "@/lib/utils/entity-resolver";
+
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Plus,
+  X,
+} from "lucide-react";
+import { getEventHash, nip19, signEvent } from "nostr-tools";
+import { type SubmitHandler, useForm } from "react-hook-form";
 
 type ProfileFormInputs = {
   displayName: string;
@@ -31,7 +39,9 @@ export default function ProfilePage() {
   const { publish, subscribe, defaultRelays, pubkey } = useNostrContext();
   // CRITICAL: Use centralized metadata cache instead of separate useMetadata hook
   // The hook returns the FULL cache, not just the pubkeys passed to it
-  const metadataMap = useContributorMetadata(pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? [pubkey] : []);
+  const metadataMap = useContributorMetadata(
+    pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? [pubkey] : []
+  );
   // CRITICAL: Use centralized metadata lookup function for consistent behavior across all pages
   const metadata = getUserMetadata(pubkey, metadataMap);
   const { picture, name } = useSession();
@@ -42,7 +52,7 @@ export default function ProfilePage() {
   const [newIdentityName, setNewIdentityName] = useState<string>("");
   const [newIdentityProof, setNewIdentityProof] = useState<string>("");
   const [mounted, setMounted] = useState(false);
-  
+
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -52,10 +62,19 @@ export default function ProfilePage() {
   const actualPicture = picture || metadata.picture || "";
   // CRITICAL: Never show shortened pubkey - prefer metadata name/display_name, or use npub
   const actualName = (() => {
-    if (name && name !== "Anonymous Nostrich" && name.length > 8 && !/^[0-9a-f]{8,64}$/i.test(name)) {
+    if (
+      name &&
+      name !== "Anonymous Nostrich" &&
+      name.length > 8 &&
+      !/^[0-9a-f]{8,64}$/i.test(name)
+    ) {
       return name;
     }
-    if (metadata.name && metadata.name.trim().length > 0 && metadata.name !== "Anonymous Nostrich") {
+    if (
+      metadata.name &&
+      metadata.name.trim().length > 0 &&
+      metadata.name !== "Anonymous Nostrich"
+    ) {
       return metadata.name;
     }
     if (metadata.display_name && metadata.display_name.trim().length > 0) {
@@ -73,16 +92,22 @@ export default function ProfilePage() {
   // CRITICAL: Get the actual username from metadata (not the fallback npub)
   const actualUserName = (() => {
     // Priority 1: Use metadata.name if it's a real username (not npub or pubkey)
-    if (metadata.name && metadata.name.trim().length > 0 && 
-        metadata.name !== "Anonymous Nostrich" && 
-        !metadata.name.startsWith("npub") && 
-        !/^[0-9a-f]{8,64}$/i.test(metadata.name)) {
+    if (
+      metadata.name &&
+      metadata.name.trim().length > 0 &&
+      metadata.name !== "Anonymous Nostrich" &&
+      !metadata.name.startsWith("npub") &&
+      !/^[0-9a-f]{8,64}$/i.test(metadata.name)
+    ) {
       return metadata.name;
     }
     // Priority 2: Use session name if it's valid
-    if (name && name !== "Anonymous Nostrich" && 
-        name.length > 8 && 
-        !/^[0-9a-f]{8,64}$/i.test(name)) {
+    if (
+      name &&
+      name !== "Anonymous Nostrich" &&
+      name.length > 8 &&
+      !/^[0-9a-f]{8,64}$/i.test(name)
+    ) {
       return name;
     }
     // Priority 3: Use metadata.display_name
@@ -111,7 +136,7 @@ export default function ProfilePage() {
 
   // Watch form values to debug
   const formValues = watch();
-  
+
   // Load existing identities from metadata
   // NIP-39 is just Kind 0 events with i tags - any relay supporting Kind 0 supports NIP-39
   // localStorage fallback is ONLY for propagation delays (relays might not have the event yet)
@@ -122,19 +147,26 @@ export default function ProfilePage() {
       setIdentities([]);
       return;
     }
-    
+
     const normalizedPubkey = pubkey.toLowerCase();
     const backupKey = `gittr_profile_identities_backup_${normalizedPubkey}`;
     const backupTimeKey = `gittr_profile_identities_backup_time_${normalizedPubkey}`;
     const backupConfirmedKey = `gittr_profile_identities_backup_confirmed_${normalizedPubkey}`;
-    
-    if (metadata.identities && Array.isArray(metadata.identities) && metadata.identities.length > 0) {
-      console.log("✅ [Profile Settings] Loading identities from Nostr metadata (NIP-39):", metadata.identities);
+
+    if (
+      metadata.identities &&
+      Array.isArray(metadata.identities) &&
+      metadata.identities.length > 0
+    ) {
+      console.log(
+        "✅ [Profile Settings] Loading identities from Nostr metadata (NIP-39):",
+        metadata.identities
+      );
       setIdentities(metadata.identities);
       // Update backup when we get fresh metadata from Nostr (Nostr now has it, so backup is confirmed)
       localStorage.setItem(backupKey, JSON.stringify(metadata.identities));
       localStorage.setItem(backupTimeKey, Date.now().toString());
-      localStorage.setItem(backupConfirmedKey, 'true'); // Nostr has it, so confirmed
+      localStorage.setItem(backupConfirmedKey, "true"); // Nostr has it, so confirmed
     } else {
       // Fallback: Use localStorage backup if available (persists until we get confirmation from Nostr)
       // This handles propagation delays and server restarts
@@ -142,22 +174,33 @@ export default function ProfilePage() {
       try {
         const backupTime = localStorage.getItem(backupTimeKey);
         const backup = localStorage.getItem(backupKey);
-        const backupConfirmed = localStorage.getItem(backupConfirmedKey) === 'true';
-        
+        const backupConfirmed =
+          localStorage.getItem(backupConfirmedKey) === "true";
+
         if (backup && backupTime) {
           const backupIdentities = JSON.parse(backup);
           if (Array.isArray(backupIdentities) && backupIdentities.length > 0) {
             const timeSinceBackup = Date.now() - parseInt(backupTime, 10);
             const hoursSinceBackup = timeSinceBackup / (60 * 60 * 1000);
-            
+
             // Use backup if:
             // 1. It was confirmed by relays (keep it indefinitely until Nostr has it)
             // 2. OR it's less than 24 hours old (propagation delay)
             if (backupConfirmed || hoursSinceBackup < 24) {
-              console.log(`⚠️ [Profile Settings] Using localStorage backup (${backupConfirmed ? 'confirmed' : 'unconfirmed'}, ${Math.round(hoursSinceBackup * 10) / 10}h ago - ${backupIdentities.length} identities)`);
+              console.log(
+                `⚠️ [Profile Settings] Using localStorage backup (${
+                  backupConfirmed ? "confirmed" : "unconfirmed"
+                }, ${Math.round(hoursSinceBackup * 10) / 10}h ago - ${
+                  backupIdentities.length
+                } identities)`
+              );
               setIdentities(backupIdentities);
             } else {
-              console.warn(`⚠️ [Profile Settings] Backup is ${Math.round(hoursSinceBackup)} hours old and unconfirmed - clearing. Check relay connectivity.`);
+              console.warn(
+                `⚠️ [Profile Settings] Backup is ${Math.round(
+                  hoursSinceBackup
+                )} hours old and unconfirmed - clearing. Check relay connectivity.`
+              );
               // Only clear if it's old AND unconfirmed
               localStorage.removeItem(backupKey);
               localStorage.removeItem(backupTimeKey);
@@ -174,35 +217,38 @@ export default function ProfilePage() {
       }
     }
   }, [metadata.identities, pubkey]);
-  
+
   // Load GitHub connection from account settings and sync with NIP-39 identities
   useEffect(() => {
     if (!pubkey) return;
-    
+
     // Check if user has connected GitHub on account page
     const githubProfile = localStorage.getItem("gittr_github_profile");
     if (githubProfile) {
       try {
         // Extract username from GitHub URL
         const url = new URL(githubProfile);
-        const pathParts = url.pathname.split("/").filter(p => p);
+        const pathParts = url.pathname.split("/").filter((p) => p);
         const githubUsername = pathParts[0];
-        
+
         if (githubUsername) {
           // Check if this GitHub identity is already in the identities list
-          setIdentities(prev => {
-            const hasGithubIdentity = prev.some(id => 
-              id.platform === "github" && id.identity === githubUsername
+          setIdentities((prev) => {
+            const hasGithubIdentity = prev.some(
+              (id) => id.platform === "github" && id.identity === githubUsername
             );
-            
+
             // If not in list, add it (but don't overwrite existing ones)
             if (!hasGithubIdentity) {
-              return [...prev, {
-                platform: "github",
-                identity: githubUsername,
-                proof: undefined, // User can add proof later
-                verified: false,
-              }];
+              return [
+                ...prev,
+                {
+                  platform: "github",
+                  identity: githubUsername,
+                  proof: undefined, // User can add proof later
+                  verified: false,
+                },
+              ];
             }
             return prev;
           });
@@ -212,34 +258,43 @@ export default function ProfilePage() {
       }
     }
   }, [pubkey]); // Run when pubkey changes or component mounts
-  
+
   // Listen for GitHub connection events from account page
   useEffect(() => {
     const handleGithubConnected = (event: CustomEvent) => {
       const { username } = event.detail;
       if (username) {
-        setIdentities(prev => {
+        setIdentities((prev) => {
           // Check if already in identities
-          const hasGithubIdentity = prev.some(id => 
-            id.platform === "github" && id.identity === username
+          const hasGithubIdentity = prev.some(
+            (id) => id.platform === "github" && id.identity === username
           );
-          
+
           if (!hasGithubIdentity) {
-            return [...prev, {
-              platform: "github",
-              identity: username,
-              proof: undefined,
-              verified: false,
-            }];
+            return [
+              ...prev,
+              {
+                platform: "github",
+                identity: username,
+                proof: undefined,
+                verified: false,
+              },
+            ];
           }
           return prev;
         });
       }
     };
-    
-    window.addEventListener('gittr:github-connected', handleGithubConnected as EventListener);
+
+    window.addEventListener(
+      "gittr:github-connected",
+      handleGithubConnected as EventListener
+    );
     return () => {
-      window.removeEventListener('gittr:github-connected', handleGithubConnected as EventListener);
+      window.removeEventListener(
+        "gittr:github-connected",
+        handleGithubConnected as EventListener
+      );
     };
   }, []);
 
@@ -254,20 +309,26 @@ export default function ProfilePage() {
       name: metadata.name,
       nip05: metadata.nip05,
       about: metadata.about ? metadata.about.substring(0, 30) + "..." : "",
-      pubkey: pubkey ? pubkey.slice(0, 8) : "none"
+      pubkey: pubkey ? pubkey.slice(0, 8) : "none",
     });
-    
+
     // Recompute actualUserName for the reset
     const newActualUserName = (() => {
-      if (metadata.name && metadata.name.trim().length > 0 && 
-          metadata.name !== "Anonymous Nostrich" && 
-          !metadata.name.startsWith("npub") && 
-          !/^[0-9a-f]{8,64}$/i.test(metadata.name)) {
+      if (
+        metadata.name &&
+        metadata.name.trim().length > 0 &&
+        metadata.name !== "Anonymous Nostrich" &&
+        !metadata.name.startsWith("npub") &&
+        !/^[0-9a-f]{8,64}$/i.test(metadata.name)
+      ) {
         return metadata.name;
       }
-      if (name && name !== "Anonymous Nostrich" && 
-          name.length > 8 && 
-          !/^[0-9a-f]{8,64}$/i.test(name)) {
+      if (
+        name &&
+        name !== "Anonymous Nostrich" &&
+        name.length > 8 &&
+        !/^[0-9a-f]{8,64}$/i.test(name)
+      ) {
         return name;
       }
       if (metadata.display_name && metadata.display_name.trim().length > 0) {
@@ -275,7 +336,7 @@ export default function ProfilePage() {
       }
       return "";
     })();
-    
+
     // Create a key from metadata to detect actual changes
     const metadataKey = JSON.stringify({
       display_name: metadata.display_name || "",
@@ -285,30 +346,36 @@ export default function ProfilePage() {
       userName: newActualUserName || "",
       lud16: metadata.lud16 || "",
     });
-    
+
     // Always update form if metadata exists and hasn't been processed yet
     // This ensures form fields are populated even if metadata loads after initial render
     if (metadataKey !== metadataProcessedRef.current) {
       const formData = {
-      displayName: metadata.display_name || "",
+        displayName: metadata.display_name || "",
         userName: newActualUserName || "",
-      nip5: metadata.nip05 || "",
-      description: metadata.about || "",
-      banner: metadata.banner || "",
-      lud16: metadata.lud16 || "",
+        nip5: metadata.nip05 || "",
+        description: metadata.about || "",
+        banner: metadata.banner || "",
+        lud16: metadata.lud16 || "",
       };
-      
+
       reset(formData);
       metadataProcessedRef.current = metadataKey;
-      console.log("✅ [Profile Settings] Updated form with metadata:", { 
-        display_name: metadata.display_name, 
-        name: metadata.name, 
+      console.log("✅ [Profile Settings] Updated form with metadata:", {
+        display_name: metadata.display_name,
+        name: metadata.name,
         userName: newActualUserName,
         nip05: metadata.nip05,
         about: metadata.about ? metadata.about.substring(0, 50) + "..." : "",
-        formData
+        formData,
       });
-    } else if (metadataKey && (metadata.display_name || metadata.name || metadata.nip05 || metadata.about)) {
+    } else if (
+      metadataKey &&
+      (metadata.display_name ||
+        metadata.name ||
+        metadata.nip05 ||
+        metadata.about)
+    ) {
       // If metadata exists but form might not be populated, ensure it's set
       const currentFormData = {
         displayName: formValues.displayName || "",
@@ -318,7 +385,7 @@ export default function ProfilePage() {
         banner: formValues.banner || "",
         lud16: formValues.lud16 || "",
       };
-      
+
       const expectedFormData = {
         displayName: metadata.display_name || "",
         userName: newActualUserName || "",
@@ -327,20 +394,37 @@ export default function ProfilePage() {
         banner: metadata.banner || "",
         lud16: metadata.lud16 || "",
       };
-      
+
       // Only reset if form is empty but metadata exists
-      if (!currentFormData.displayName && !currentFormData.userName && !currentFormData.nip5 && !currentFormData.description) {
-        if (expectedFormData.displayName || expectedFormData.userName || expectedFormData.nip5 || expectedFormData.description) {
+      if (
+        !currentFormData.displayName &&
+        !currentFormData.userName &&
+        !currentFormData.nip5 &&
+        !currentFormData.description
+      ) {
+        if (
+          expectedFormData.displayName ||
+          expectedFormData.userName ||
+          expectedFormData.nip5 ||
+          expectedFormData.description
+        ) {
           reset(expectedFormData);
-          console.log("✅ [Profile Settings] Form was empty, populated with metadata:", expectedFormData);
+          console.log(
+            "✅ [Profile Settings] Form was empty, populated with metadata:",
+            expectedFormData
+          );
         }
       }
     }
   }, [metadata, name, reset, formValues, pubkey]);
 
   const onSubmit: SubmitHandler<ProfileFormInputs> = async (data) => {
-    console.log("🔄 [Profile Settings] onSubmit called", { hasPubkey: !!pubkey, hasPublish: !!publish, hasSubscribe: !!subscribe });
-    
+    console.log("🔄 [Profile Settings] onSubmit called", {
+      hasPubkey: !!pubkey,
+      hasPublish: !!publish,
+      hasSubscribe: !!subscribe,
+    });
+
     if (!pubkey) {
       setUpdateStatus("❌ Please log in to update your profile");
       return;
@@ -349,12 +433,14 @@ export default function ProfilePage() {
     // Check for NIP-07 first (preferred method - like repo pushing)
     const hasNip07 = typeof window !== "undefined" && window.nostr;
     let privateKey: string | null = null;
-    
+
     if (!hasNip07) {
       // Fallback to stored private key only if NIP-07 not available
       privateKey = await getNostrPrivateKey();
       if (!privateKey) {
-        setUpdateStatus("❌ No signing method available. Please use a NIP-07 extension (like Alby or nos2x) or configure a private key in Settings.");
+        setUpdateStatus(
+          "❌ No signing method available. Please use a NIP-07 extension (like Alby or nos2x) or configure a private key in Settings."
+        );
         return;
       }
     }
@@ -368,11 +454,11 @@ export default function ProfilePage() {
       // Empty strings will be converted to undefined and removed, preventing overwriting of existing relay metadata
       // CRITICAL: Preserve existing metadata fields if form field is empty (prevents losing NIP-05, LUD-16, etc.)
       const newMetadata: Record<string, any> = {};
-      
+
       // Get existing metadata to preserve fields that aren't being updated
       const existingNip05 = metadata.nip05;
       const existingLud16 = metadata.lud16;
-      
+
       if (data.displayName && data.displayName.trim()) {
         newMetadata.display_name = data.displayName.trim();
       }
@@ -417,7 +503,7 @@ export default function ProfilePage() {
           }
         }
       });
-      
+
       let event: any = {
         kind: 0,
         created_at: Math.floor(Date.now() / 1000),
@@ -430,7 +516,7 @@ export default function ProfilePage() {
 
       // Hash the event first
       event.id = getEventHash(event);
-      
+
       // Sign with NIP-07 or private key
       if (hasNip07 && window.nostr) {
         // Use NIP-07 extension - this will trigger a popup for the user to sign
@@ -450,7 +536,7 @@ export default function ProfilePage() {
       // Publish to relays with confirmation
       if (publish && subscribe) {
         setUpdateStatus("Publishing profile update to relays...");
-        
+
         try {
           // Store identities in localStorage as backup (persists until we get confirmation from Nostr)
           // NIP-39 works on all Kind 0-supporting relays - this backup handles propagation delays and server restarts
@@ -461,22 +547,29 @@ export default function ProfilePage() {
           const backupConfirmedKey = `gittr_profile_identities_backup_confirmed_${normalizedPubkey}`;
           localStorage.setItem(backupKey, JSON.stringify(identities));
           localStorage.setItem(backupTimeKey, Date.now().toString());
-          localStorage.setItem(backupConfirmedKey, 'false'); // Will be set to true if confirmed
-          
+          localStorage.setItem(backupConfirmedKey, "false"); // Will be set to true if confirmed
+
           // Log the event being published for debugging
-          console.log("📤 [Profile Settings] Publishing event with identities:", {
-            eventId: event.id.substring(0, 16) + '...',
-            fullEventId: event.id,
-            iTags: event.tags.filter((t: any) => Array.isArray(t) && t[0] === 'i'),
-            identitiesCount: identities.length,
-            allTags: event.tags,
-            pubkey: pubkey?.substring(0, 16) + '...',
-            relaysCount: defaultRelays?.length || 0,
-            relays: defaultRelays
-          });
-          
+          console.log(
+            "📤 [Profile Settings] Publishing event with identities:",
+            {
+              eventId: event.id.substring(0, 16) + "...",
+              fullEventId: event.id,
+              iTags: event.tags.filter(
+                (t: any) => Array.isArray(t) && t[0] === "i"
+              ),
+              identitiesCount: identities.length,
+              allTags: event.tags,
+              pubkey: pubkey?.substring(0, 16) + "...",
+              relaysCount: defaultRelays?.length || 0,
+              relays: defaultRelays,
+            }
+          );
+
           // Publish with confirmation (like we do for repos)
-          console.log("📡 [Profile Settings] Calling publishWithConfirmation...");
+          console.log(
+            "📡 [Profile Settings] Calling publishWithConfirmation..."
+          );
           const result = await publishWithConfirmation(
             publish,
             subscribe,
@@ -484,29 +577,34 @@ export default function ProfilePage() {
             defaultRelays || [],
             10000 // 10 second timeout
           );
-          
+
           console.log("📬 [Profile Settings] publishWithConfirmation result:", {
             eventId: result.eventId,
             confirmed: result.confirmed,
             confirmedRelays: result.confirmedRelays,
-            confirmedRelaysCount: result.confirmedRelays.length
+            confirmedRelaysCount: result.confirmedRelays.length,
           });
-          
+
           // Store event locally as backup
-          localStorage.setItem(`gittr_profile_update_${Date.now()}`, JSON.stringify(event));
-          
+          localStorage.setItem(
+            `gittr_profile_update_${Date.now()}`,
+            JSON.stringify(event)
+          );
+
           // CRITICAL: Immediately update the metadata cache with the new values
           // This ensures the banner (and other fields) appear immediately on the profile page
           // even before relays fully propagate the update
           if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
             try {
               const normalizedPubkey = pubkey.toLowerCase();
-              const cacheKey = 'gittr_metadata_cache';
-              const existingCache = JSON.parse(localStorage.getItem(cacheKey) || '{}');
-              
+              const cacheKey = "gittr_metadata_cache";
+              const existingCache = JSON.parse(
+                localStorage.getItem(cacheKey) || "{}"
+              );
+
               // Parse the event content to get the metadata
               const eventMetadata = JSON.parse(event.content);
-              
+
               // Parse identities from i tags
               const eventIdentities: ClaimedIdentity[] = [];
               if (event.tags && Array.isArray(event.tags)) {
@@ -514,7 +612,7 @@ export default function ProfilePage() {
                   if (Array.isArray(tag) && tag.length >= 2 && tag[0] === "i") {
                     const identityString = tag[1];
                     const proof = tag[2] || undefined;
-                    
+
                     if (identityString && typeof identityString === "string") {
                       const parts = identityString.split(":");
                       if (parts.length >= 2 && parts[0]) {
@@ -533,7 +631,7 @@ export default function ProfilePage() {
                   }
                 }
               }
-              
+
               // Update cache with new metadata (merge with existing to preserve other fields)
               existingCache[normalizedPubkey] = {
                 ...existingCache[normalizedPubkey],
@@ -541,51 +639,81 @@ export default function ProfilePage() {
                 identities: eventIdentities, // CRITICAL: Include identities from i tags
                 created_at: event.created_at, // Update timestamp
               };
-              
+
               localStorage.setItem(cacheKey, JSON.stringify(existingCache));
-              console.log(`✅ [Profile Settings] Updated metadata cache immediately with ${eventIdentities.length} identities:`, eventIdentities.map(i => `${i.platform}:${i.identity}`));
-              
+              console.log(
+                `✅ [Profile Settings] Updated metadata cache immediately with ${eventIdentities.length} identities:`,
+                eventIdentities.map((i) => `${i.platform}:${i.identity}`)
+              );
+
               // CRITICAL: Dispatch custom event to notify other components (same-tab updates)
               // Storage events only fire from OTHER tabs, so we need a custom event for same-tab updates
-              window.dispatchEvent(new CustomEvent('gittr:metadata-cache-updated', {
-                detail: {
-                  pubkey: normalizedPubkey,
-                  metadata: {
-                    ...eventMetadata,
-                    identities: eventIdentities // Include identities in the event
-                  }
-                }
-              }));
-              console.log(`📢 [Profile Settings] Dispatched metadata cache update event for ${normalizedPubkey.slice(0, 8)}`);
+              window.dispatchEvent(
+                new CustomEvent("gittr:metadata-cache-updated", {
+                  detail: {
+                    pubkey: normalizedPubkey,
+                    metadata: {
+                      ...eventMetadata,
+                      identities: eventIdentities, // Include identities in the event
+                    },
+                  },
+                })
+              );
+              console.log(
+                `📢 [Profile Settings] Dispatched metadata cache update event for ${normalizedPubkey.slice(
+                  0,
+                  8
+                )}`
+              );
             } catch (e) {
-              console.warn("⚠️ [Profile Settings] Failed to update metadata cache immediately:", e);
+              console.warn(
+                "⚠️ [Profile Settings] Failed to update metadata cache immediately:",
+                e
+              );
             }
           }
-          
+
           if (result.confirmed) {
             // Mark backup as confirmed - keep it until Nostr metadata has it
             // CRITICAL: Use pubkey-specific keys
             if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
               const normalizedPubkey = pubkey.toLowerCase();
               const backupConfirmedKey = `gittr_profile_identities_backup_confirmed_${normalizedPubkey}`;
-              localStorage.setItem(backupConfirmedKey, 'true');
+              localStorage.setItem(backupConfirmedKey, "true");
             }
-            setUpdateStatus(`✅ Profile update published and confirmed! Event ID: ${result.eventId.substring(0, 16)}... Confirmed by ${result.confirmedRelays.length} relay(s). Reloading in 3 seconds...`);
-            console.log("✅ [Profile Settings] Event confirmed by relays:", result.confirmedRelays);
+            setUpdateStatus(
+              `✅ Profile update published and confirmed! Event ID: ${result.eventId.substring(
+                0,
+                16
+              )}... Confirmed by ${
+                result.confirmedRelays.length
+              } relay(s). Reloading in 3 seconds...`
+            );
+            console.log(
+              "✅ [Profile Settings] Event confirmed by relays:",
+              result.confirmedRelays
+            );
           } else {
             // Keep backup but mark as unconfirmed - will expire after 24 hours
             // CRITICAL: Use pubkey-specific keys
             if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
               const normalizedPubkey = pubkey.toLowerCase();
               const backupConfirmedKey = `gittr_profile_identities_backup_confirmed_${normalizedPubkey}`;
-              localStorage.setItem(backupConfirmedKey, 'false');
+              localStorage.setItem(backupConfirmedKey, "false");
             }
-            setUpdateStatus(`⚠️ Profile update published but awaiting confirmation. Event ID: ${result.eventId.substring(0, 16)}... Reloading in 3 seconds...`);
-            console.warn("⚠️ [Profile Settings] Event published but not confirmed yet. This might be due to relay connectivity issues.");
+            setUpdateStatus(
+              `⚠️ Profile update published but awaiting confirmation. Event ID: ${result.eventId.substring(
+                0,
+                16
+              )}... Reloading in 3 seconds...`
+            );
+            console.warn(
+              "⚠️ [Profile Settings] Event published but not confirmed yet. This might be due to relay connectivity issues."
+            );
           }
-          
+
           setUpdating(false);
-          
+
           // Wait for relays to propagate, then refresh metadata
           setTimeout(() => {
             window.location.reload();
@@ -595,18 +723,25 @@ export default function ProfilePage() {
           console.error("❌ [Profile Settings] Error details:", {
             message: error.message,
             stack: error.stack,
-            name: error.name
+            name: error.name,
           });
-          setUpdateStatus(`❌ Error publishing: ${error.message || "Failed to publish"}`);
+          setUpdateStatus(
+            `❌ Error publishing: ${error.message || "Failed to publish"}`
+          );
           setUpdating(false);
         }
       } else {
-        console.error("❌ [Profile Settings] Missing publish or subscribe:", { hasPublish: !!publish, hasSubscribe: !!subscribe });
+        console.error("❌ [Profile Settings] Missing publish or subscribe:", {
+          hasPublish: !!publish,
+          hasSubscribe: !!subscribe,
+        });
         throw new Error("Publish or subscribe function not available");
       }
     } catch (error: any) {
       console.error("❌ [Profile Settings] onSubmit error:", error);
-      setUpdateStatus(`❌ Error: ${error.message || "Failed to update profile"}`);
+      setUpdateStatus(
+        `❌ Error: ${error.message || "Failed to update profile"}`
+      );
       setUpdating(false);
     }
   };
@@ -682,10 +817,11 @@ export default function ProfilePage() {
                 placeholder="https://example.com/banner.jpg"
               />
               <p className="text-xs text-gray-500 mt-1">
-                URL for your profile banner image (displayed at the top of your profile page)
+                URL for your profile banner image (displayed at the top of your
+                profile page)
               </p>
             </div>
-            
+
             <div className="space-y-1">
               <Label htmlFor="lud16">Lightning Address (LUD-16)</Label>
               <Input
@@ -695,46 +831,66 @@ export default function ProfilePage() {
                 placeholder="yourname@example.com"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Your Lightning address for receiving payments (e.g., satoshi@lightning.com)
+                Your Lightning address for receiving payments (e.g.,
+                satoshi@lightning.com)
               </p>
             </div>
-            
+
             {/* Claimed Identities (NIP-39) */}
             <div className="space-y-3 border-t border-[#383B42] pt-4">
-              <Label className="text-base font-semibold">Verified Identities (NIP-39)</Label>
+              <Label className="text-base font-semibold">
+                Verified Identities (NIP-39)
+              </Label>
               <p className="text-sm text-zinc-500">
-                Claim your external identities (GitHub, X, etc.) to verify ownership.
+                Claim your external identities (GitHub, X, etc.) to verify
+                ownership.
                 <br />
-                <span className="text-purple-400">💡 Tip:</span> If you connected GitHub on the{" "}
-                <a href="/settings/account" className="text-purple-400 hover:text-purple-300 underline">
+                <span className="text-purple-400">💡 Tip:</span> If you
+                connected GitHub on the{" "}
+                <a
+                  href="/settings/account"
+                  className="text-purple-400 hover:text-purple-300 underline"
+                >
                   Account page
                 </a>
                 , it will appear here automatically.
               </p>
-              
+
               {/* Existing Identities */}
               {identities.length > 0 && (
                 <div className="space-y-2">
                   {identities.map((identity, idx) => {
-                    const platformDisplayName = identity.platform === "twitter" 
-                      ? "X" 
-                      : identity.platform === "telegram"
-                      ? "Telegram"
-                      : identity.platform === "mastodon"
-                      ? "Mastodon"
-                      : identity.platform.charAt(0).toUpperCase() + identity.platform.slice(1);
-                    const identityDisplay = identity.platform === "telegram" 
-                      ? identity.identity 
-                      : identity.platform === "mastodon"
-                      ? identity.identity
-                      : `@${identity.identity}`;
-                    
+                    const platformDisplayName =
+                      identity.platform === "twitter"
+                        ? "X"
+                        : identity.platform === "telegram"
+                        ? "Telegram"
+                        : identity.platform === "mastodon"
+                        ? "Mastodon"
+                        : identity.platform.charAt(0).toUpperCase() +
+                          identity.platform.slice(1);
+                    const identityDisplay =
+                      identity.platform === "telegram"
+                        ? identity.identity
+                        : identity.platform === "mastodon"
+                        ? identity.identity
+                        : `@${identity.identity}`;
+
                     return (
-                      <div key={idx} className="flex items-center gap-2 p-2 bg-[#22262C] border border-[#383B42] rounded">
-                        <span className="text-sm text-gray-300">{platformDisplayName}</span>
-                        <span className="text-sm text-purple-400">{identityDisplay}</span>
+                      <div
+                        key={idx}
+                        className="flex items-center gap-2 p-2 bg-[#22262C] border border-[#383B42] rounded"
+                      >
+                        <span className="text-sm text-gray-300">
+                          {platformDisplayName}
+                        </span>
+                        <span className="text-sm text-purple-400">
+                          {identityDisplay}
+                        </span>
                         {identity.proof && (
-                          <span className="text-xs text-gray-500">Proof: {identity.proof}</span>
+                          <span className="text-xs text-gray-500">
+                            Proof: {identity.proof}
+                          </span>
                         )}
                         <Button
                           type="button"
@@ -742,7 +898,9 @@ export default function ProfilePage() {
                           size="sm"
                           className="ml-auto h-6 w-6 p-0"
                           onClick={() => {
-                            setIdentities(identities.filter((_, i) => i !== idx));
+                            setIdentities(
+                              identities.filter((_, i) => i !== idx)
+                            );
                           }}
                         >
                           <X className="w-4 h-4" />
@@ -752,7 +910,7 @@ export default function ProfilePage() {
                   })}
                 </div>
               )}
-              
+
               {/* Add New Identity */}
               <div className="space-y-2 p-3 bg-[#22262C] border border-[#383B42] rounded">
                 <div className="flex gap-2">
@@ -770,7 +928,13 @@ export default function ProfilePage() {
                   </select>
                   <Input
                     type="text"
-                    placeholder={newIdentityPlatform === "telegram" ? "User ID (e.g., 1087295469)" : newIdentityPlatform === "mastodon" ? "instance/@username" : "username"}
+                    placeholder={
+                      newIdentityPlatform === "telegram"
+                        ? "User ID (e.g., 1087295469)"
+                        : newIdentityPlatform === "mastodon"
+                        ? "instance/@username"
+                        : "username"
+                    }
                     value={newIdentityName}
                     onChange={(e) => setNewIdentityName(e.target.value)}
                     className="flex-1"
@@ -779,10 +943,10 @@ export default function ProfilePage() {
                 <Input
                   type="text"
                   placeholder={
-                    newIdentityPlatform === "github" 
-                      ? "Proof (GitHub Gist ID)" 
-                      : newIdentityPlatform === "twitter" 
-                      ? "Proof (Tweet ID from x.com/username/status/1234567890)" 
+                    newIdentityPlatform === "github"
+                      ? "Proof (GitHub Gist ID)"
+                      : newIdentityPlatform === "twitter"
+                      ? "Proof (Tweet ID from x.com/username/status/1234567890)"
                       : newIdentityPlatform === "telegram"
                       ? "Proof (channel/message_id, e.g., nostrdirectory/770)"
                       : newIdentityPlatform === "mastodon"
@@ -801,48 +965,60 @@ export default function ProfilePage() {
                     if (newIdentityPlatform && newIdentityName) {
                       // Normalize identity for Telegram (should be user ID, not username)
                       let normalizedIdentity = newIdentityName.trim();
-                      let normalizedProof = newIdentityProof.trim() || undefined;
-                      
+                      let normalizedProof =
+                        newIdentityProof.trim() || undefined;
+
                       // For Telegram, ensure we're using user ID (numeric)
                       if (newIdentityPlatform === "telegram") {
                         // Remove @ if user added it
-                        normalizedIdentity = normalizedIdentity.replace(/^@/, "");
+                        normalizedIdentity = normalizedIdentity.replace(
+                          /^@/,
+                          ""
+                        );
                         // Ensure it's numeric (user ID)
                         if (!/^\d+$/.test(normalizedIdentity)) {
-                          alert("Telegram identity must be a numeric User ID (e.g., 1087295469). Get it from @userinfobot on Telegram.");
+                          alert(
+                            "Telegram identity must be a numeric User ID (e.g., 1087295469). Get it from @userinfobot on Telegram."
+                          );
                           return;
                         }
                       }
-                      
+
                       // For Mastodon, normalize format
                       if (newIdentityPlatform === "mastodon") {
                         // Should be in format: instance/@username or instance/username
                         if (!normalizedIdentity.includes("/")) {
-                          alert("Mastodon identity must be in format: instance/@username (e.g., bitcoinhackers.org/@semisol)");
+                          alert(
+                            "Mastodon identity must be in format: instance/@username (e.g., bitcoinhackers.org/@semisol)"
+                          );
                           return;
                         }
                       }
-                      
+
                       const newIdentity = {
                         platform: newIdentityPlatform,
                         identity: normalizedIdentity,
                         proof: normalizedProof,
                         verified: false,
                       };
-                      
+
                       // Check for duplicates
                       const isDuplicate = identities.some(
-                        id => id.platform === newIdentity.platform && id.identity === newIdentity.identity
+                        (id) =>
+                          id.platform === newIdentity.platform &&
+                          id.identity === newIdentity.identity
                       );
-                      
+
                       if (isDuplicate) {
-                        alert(`This ${newIdentityPlatform} identity is already added.`);
+                        alert(
+                          `This ${newIdentityPlatform} identity is already added.`
+                        );
                         return;
                       }
-                      
+
                       const updatedIdentities = [...identities, newIdentity];
                       setIdentities(updatedIdentities);
-                      
+
                       // Save to backup immediately (before publishing)
                       // CRITICAL: Use pubkey-specific keys to prevent cross-account identity leakage
                       if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
@@ -850,14 +1026,26 @@ export default function ProfilePage() {
                         const backupKey = `gittr_profile_identities_backup_${normalizedPubkey}`;
                         const backupTimeKey = `gittr_profile_identities_backup_time_${normalizedPubkey}`;
                         const backupConfirmedKey = `gittr_profile_identities_backup_confirmed_${normalizedPubkey}`;
-                        localStorage.setItem(backupKey, JSON.stringify(updatedIdentities));
-                        localStorage.setItem(backupTimeKey, Date.now().toString());
-                        localStorage.setItem(backupConfirmedKey, 'false'); // Will be confirmed after successful publish
+                        localStorage.setItem(
+                          backupKey,
+                          JSON.stringify(updatedIdentities)
+                        );
+                        localStorage.setItem(
+                          backupTimeKey,
+                          Date.now().toString()
+                        );
+                        localStorage.setItem(backupConfirmedKey, "false"); // Will be confirmed after successful publish
                       }
-                      
-                      console.log("✅ [Profile Settings] Added identity:", newIdentity);
-                      console.log("✅ [Profile Settings] Total identities:", updatedIdentities.length);
-                      
+
+                      console.log(
+                        "✅ [Profile Settings] Added identity:",
+                        newIdentity
+                      );
+                      console.log(
+                        "✅ [Profile Settings] Total identities:",
+                        updatedIdentities.length
+                      );
+
                       setNewIdentityName("");
                       setNewIdentityProof("");
                     }
@@ -872,10 +1060,20 @@ export default function ProfilePage() {
               {/* Collapsible Help Sections - shown when platform is selected */}
               <div className="text-xs text-gray-400 space-y-2 mt-2">
                 {/* GitHub Help */}
-                <div className={`border border-[#383B42] rounded overflow-hidden transition-all ${newIdentityPlatform === "github" ? "bg-[#171B21]" : "bg-[#0f172a]"}`}>
+                <div
+                  className={`border border-[#383B42] rounded overflow-hidden transition-all ${
+                    newIdentityPlatform === "github"
+                      ? "bg-[#171B21]"
+                      : "bg-[#0f172a]"
+                  }`}
+                >
                   <button
                     type="button"
-                    onClick={() => setNewIdentityPlatform(newIdentityPlatform === "github" ? "" : "github")}
+                    onClick={() =>
+                      setNewIdentityPlatform(
+                        newIdentityPlatform === "github" ? "" : "github"
+                      )
+                    }
                     className="w-full flex items-center justify-between p-2 text-left hover:bg-[#22262C] transition-colors"
                   >
                     <strong className="text-gray-300">GitHub</strong>
@@ -889,21 +1087,45 @@ export default function ProfilePage() {
                     <div className="p-2 border-t border-[#383B42]">
                       <p className="mb-2">Create a public Gist with:</p>
                       <ul className="list-disc list-inside ml-2 mt-1 space-y-1">
-                        <li><strong>Content:</strong> <code className="bg-[#22262C] px-1 rounded">Verifying that I control the following Nostr public key: "npub1abc123..."</code></li>
+                        <li>
+                          <strong>Content:</strong>{" "}
+                          <code className="bg-[#22262C] px-1 rounded">
+                            Verifying that I control the following Nostr public
+                            key: "npub1abc123..."
+                          </code>
+                        </li>
                       </ul>
-                      <p className="mt-2">Then use the Gist ID (from the URL: <code className="bg-[#22262C] px-1 rounded">gist.github.com/username/1234567890abcdef</code>) as proof.</p>
+                      <p className="mt-2">
+                        Then use the Gist ID (from the URL:{" "}
+                        <code className="bg-[#22262C] px-1 rounded">
+                          gist.github.com/username/1234567890abcdef
+                        </code>
+                        ) as proof.
+                      </p>
                     </div>
                   )}
                 </div>
 
                 {/* X/Twitter Help */}
-                <div className={`border border-[#383B42] rounded overflow-hidden transition-all ${newIdentityPlatform === "twitter" ? "bg-[#171B21]" : "bg-[#0f172a]"}`}>
+                <div
+                  className={`border border-[#383B42] rounded overflow-hidden transition-all ${
+                    newIdentityPlatform === "twitter"
+                      ? "bg-[#171B21]"
+                      : "bg-[#0f172a]"
+                  }`}
+                >
                   <button
                     type="button"
-                    onClick={() => setNewIdentityPlatform(newIdentityPlatform === "twitter" ? "" : "twitter")}
+                    onClick={() =>
+                      setNewIdentityPlatform(
+                        newIdentityPlatform === "twitter" ? "" : "twitter"
+                      )
+                    }
                     className="w-full flex items-center justify-between p-2 text-left hover:bg-[#22262C] transition-colors"
                   >
-                    <strong className="text-gray-300">X (formerly Twitter)</strong>
+                    <strong className="text-gray-300">
+                      X (formerly Twitter)
+                    </strong>
                     {newIdentityPlatform === "twitter" ? (
                       <ChevronUp className="w-4 h-4" />
                     ) : (
@@ -913,18 +1135,41 @@ export default function ProfilePage() {
                   {newIdentityPlatform === "twitter" && (
                     <div className="p-2 border-t border-[#383B42] space-y-3">
                       <div>
-                        <p className="mb-2 font-semibold">Option 1: Post a tweet</p>
+                        <p className="mb-2 font-semibold">
+                          Option 1: Post a tweet
+                        </p>
                         <ul className="list-disc list-inside ml-2 mt-1 space-y-1">
-                          <li><strong>Content:</strong> <code className="bg-[#22262C] px-1 rounded">Verifying my account on nostr My Public Key: "npub1abc123..."</code></li>
-                          <li>Use the Tweet ID (from URL: <code className="bg-[#22262C] px-1 rounded">x.com/username/status/1234567890</code>) as proof</li>
+                          <li>
+                            <strong>Content:</strong>{" "}
+                            <code className="bg-[#22262C] px-1 rounded">
+                              Verifying my account on nostr My Public Key:
+                              "npub1abc123..."
+                            </code>
+                          </li>
+                          <li>
+                            Use the Tweet ID (from URL:{" "}
+                            <code className="bg-[#22262C] px-1 rounded">
+                              x.com/username/status/1234567890
+                            </code>
+                            ) as proof
+                          </li>
                         </ul>
                       </div>
                       <div className="border-t border-[#383B42] pt-2">
-                        <p className="mb-2 font-semibold">Option 2: Add to bio</p>
+                        <p className="mb-2 font-semibold">
+                          Option 2: Add to bio
+                        </p>
                         <ul className="list-disc list-inside ml-2 mt-1 space-y-1">
                           <li>Add your npub to your X profile bio</li>
-                          <li>Use your username as proof (no Tweet ID needed)</li>
-                          <li>Example proof: <code className="bg-[#22262C] px-1 rounded">your_username</code></li>
+                          <li>
+                            Use your username as proof (no Tweet ID needed)
+                          </li>
+                          <li>
+                            Example proof:{" "}
+                            <code className="bg-[#22262C] px-1 rounded">
+                              your_username
+                            </code>
+                          </li>
                         </ul>
                       </div>
                     </div>
@@ -932,10 +1177,20 @@ export default function ProfilePage() {
                 </div>
 
                 {/* Telegram Help */}
-                <div className={`border border-[#383B42] rounded overflow-hidden transition-all ${newIdentityPlatform === "telegram" ? "bg-[#171B21]" : "bg-[#0f172a]"}`}>
+                <div
+                  className={`border border-[#383B42] rounded overflow-hidden transition-all ${
+                    newIdentityPlatform === "telegram"
+                      ? "bg-[#171B21]"
+                      : "bg-[#0f172a]"
+                  }`}
+                >
                   <button
                     type="button"
-                    onClick={() => setNewIdentityPlatform(newIdentityPlatform === "telegram" ? "" : "telegram")}
+                    onClick={() =>
+                      setNewIdentityPlatform(
+                        newIdentityPlatform === "telegram" ? "" : "telegram"
+                      )
+                    }
                     className="w-full flex items-center justify-between p-2 text-left hover:bg-[#22262C] transition-colors"
                   >
                     <strong className="text-gray-300">Telegram</strong>
@@ -949,26 +1204,48 @@ export default function ProfilePage() {
                     <div className="p-2 border-t border-[#383B42]">
                       <p className="mb-2">Post in a public channel/group:</p>
                       <ol className="list-decimal list-inside ml-2 mt-1 space-y-2">
-                    <li><strong>Post verification message:</strong> In the <a href="https://t.me/gittrspace" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300">@gittrspace</a> channel, post:
+                        <li>
+                          <strong>Post verification message:</strong> In the{" "}
+                          <a
+                            href="https://t.me/gittrspace"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-purple-400 hover:text-purple-300"
+                          >
+                            @gittrspace
+                          </a>{" "}
+                          channel, post:
                           <div className="mt-1 p-2 bg-[#22262C] border border-[#383B42] rounded flex items-center gap-2 group">
-                            <code className="flex-1 text-xs select-all" id="telegram-verification-text">Verifying that I control the following Nostr public key: "npub1abc123..."</code>
+                            <code
+                              className="flex-1 text-xs select-all"
+                              id="telegram-verification-text"
+                            >
+                              Verifying that I control the following Nostr
+                              public key: "npub1abc123..."
+                            </code>
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
                               className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
                               onClick={async (e) => {
-                                const text = document.getElementById("telegram-verification-text")?.textContent || "";
+                                const text =
+                                  document.getElementById(
+                                    "telegram-verification-text"
+                                  )?.textContent || "";
                                 try {
                                   await navigator.clipboard.writeText(text);
-                                  const btn = e.currentTarget as HTMLButtonElement;
+                                  const btn =
+                                    e.currentTarget as HTMLButtonElement;
                                   if (btn) {
                                     const originalHTML = btn.innerHTML;
                                     btn.innerHTML = "✓";
-                                    btn.className = "h-6 w-6 p-0 text-green-400";
+                                    btn.className =
+                                      "h-6 w-6 p-0 text-green-400";
                                     setTimeout(() => {
                                       btn.innerHTML = originalHTML;
-                                      btn.className = "h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity";
+                                      btn.className =
+                                        "h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity";
                                     }, 2000);
                                   }
                                 } catch (err) {
@@ -981,33 +1258,114 @@ export default function ProfilePage() {
                             </Button>
                           </div>
                         </li>
-                    <li><strong>Get your info:</strong> The bot will reply to your message in the channel with your message ID. Then start a conversation with <a href="https://t.me/ngitspacebot" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300">@ngitspacebot</a> (send <code className="bg-[#22262C] px-1 rounded">/start</code>) to get your User ID.</li>
-                    <li><strong>Add to gittr.space:</strong> Use the values from the bot:
+                        <li>
+                          <strong>Get your info:</strong> The bot will reply to
+                          your message in the channel with your message ID. Then
+                          start a conversation with{" "}
+                          <a
+                            href="https://t.me/ngitspacebot"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-purple-400 hover:text-purple-300"
+                          >
+                            @ngitspacebot
+                          </a>{" "}
+                          (send{" "}
+                          <code className="bg-[#22262C] px-1 rounded">
+                            /start
+                          </code>
+                          ) to get your User ID.
+                        </li>
+                        <li>
+                          <strong>Add to gittr.space:</strong> Use the values
+                          from the bot:
                           <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
-                            <li>Platform: <code className="bg-[#22262C] px-1 rounded">telegram</code></li>
-                            <li>User ID: <code className="bg-[#22262C] px-1 rounded">from bot's DM</code></li>
-                            <li>Proof: <code className="bg-[#22262C] px-1 rounded">gittrspace/message_id</code> (from bot's DM)</li>
+                            <li>
+                              Platform:{" "}
+                              <code className="bg-[#22262C] px-1 rounded">
+                                telegram
+                              </code>
+                            </li>
+                            <li>
+                              User ID:{" "}
+                              <code className="bg-[#22262C] px-1 rounded">
+                                from bot's DM
+                              </code>
+                            </li>
+                            <li>
+                              Proof:{" "}
+                              <code className="bg-[#22262C] px-1 rounded">
+                                gittrspace/message_id
+                              </code>{" "}
+                              (from bot's DM)
+                            </li>
                           </ul>
                         </li>
                       </ol>
                       <div className="text-xs text-gray-500 mt-2 p-2 bg-[#171B21] border border-[#383B42] rounded">
-                        <p className="font-semibold text-gray-400 mb-1">💡 Alternative ways to get your User ID (if needed):</p>
+                        <p className="font-semibold text-gray-400 mb-1">
+                          💡 Alternative ways to get your User ID (if needed):
+                        </p>
                         <ul className="list-disc list-inside ml-2 space-y-1">
-                          <li>Message <a href="https://t.me/userinfobot" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300">@userinfobot</a> or <a href="https://t.me/MissRose_bot" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300">@MissRose_bot</a> on Telegram</li>
-                          <li>Telegram Desktop: Settings → Advanced → Experimental → Enable "Show Peer ID" (then view your profile)</li>
-                          <li>Telegram Web: Your User ID is in the URL when viewing your profile (e.g., <code className="bg-[#22262C] px-1 rounded">web.telegram.org/k/#-123456789</code>)</li>
+                          <li>
+                            Message{" "}
+                            <a
+                              href="https://t.me/userinfobot"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-purple-400 hover:text-purple-300"
+                            >
+                              @userinfobot
+                            </a>{" "}
+                            or{" "}
+                            <a
+                              href="https://t.me/MissRose_bot"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-purple-400 hover:text-purple-300"
+                            >
+                              @MissRose_bot
+                            </a>{" "}
+                            on Telegram
+                          </li>
+                          <li>
+                            Telegram Desktop: Settings → Advanced → Experimental
+                            → Enable "Show Peer ID" (then view your profile)
+                          </li>
+                          <li>
+                            Telegram Web: Your User ID is in the URL when
+                            viewing your profile (e.g.,{" "}
+                            <code className="bg-[#22262C] px-1 rounded">
+                              web.telegram.org/k/#-123456789
+                            </code>
+                            )
+                          </li>
                         </ul>
-                        <p className="mt-2 text-gray-400">Note: The bot will send you your User ID automatically, so you usually don't need these alternatives!</p>
+                        <p className="mt-2 text-gray-400">
+                          Note: The bot will send you your User ID
+                          automatically, so you usually don't need these
+                          alternatives!
+                        </p>
                       </div>
                     </div>
                   )}
                 </div>
 
                 {/* Mastodon Help */}
-                <div className={`border border-[#383B42] rounded overflow-hidden transition-all ${newIdentityPlatform === "mastodon" ? "bg-[#171B21]" : "bg-[#0f172a]"}`}>
+                <div
+                  className={`border border-[#383B42] rounded overflow-hidden transition-all ${
+                    newIdentityPlatform === "mastodon"
+                      ? "bg-[#171B21]"
+                      : "bg-[#0f172a]"
+                  }`}
+                >
                   <button
                     type="button"
-                    onClick={() => setNewIdentityPlatform(newIdentityPlatform === "mastodon" ? "" : "mastodon")}
+                    onClick={() =>
+                      setNewIdentityPlatform(
+                        newIdentityPlatform === "mastodon" ? "" : "mastodon"
+                      )
+                    }
                     className="w-full flex items-center justify-between p-2 text-left hover:bg-[#22262C] transition-colors"
                   >
                     <strong className="text-gray-300">Mastodon</strong>
@@ -1021,26 +1379,40 @@ export default function ProfilePage() {
                     <div className="p-2 border-t border-[#383B42]">
                       <p className="mb-2">Post on your instance:</p>
                       <ol className="list-decimal list-inside ml-2 mt-1 space-y-2">
-                        <li><strong>Post content:</strong> On your Mastodon instance, post:
+                        <li>
+                          <strong>Post content:</strong> On your Mastodon
+                          instance, post:
                           <div className="mt-1 p-2 bg-[#22262C] border border-[#383B42] rounded flex items-center gap-2 group">
-                            <code className="flex-1 text-xs select-all" id="mastodon-verification-text">Verifying that I control the following Nostr public key: "npub1abc123..."</code>
+                            <code
+                              className="flex-1 text-xs select-all"
+                              id="mastodon-verification-text"
+                            >
+                              Verifying that I control the following Nostr
+                              public key: "npub1abc123..."
+                            </code>
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
                               className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
                               onClick={async (e) => {
-                                const text = document.getElementById("mastodon-verification-text")?.textContent || "";
+                                const text =
+                                  document.getElementById(
+                                    "mastodon-verification-text"
+                                  )?.textContent || "";
                                 try {
                                   await navigator.clipboard.writeText(text);
-                                  const btn = e.currentTarget as HTMLButtonElement;
+                                  const btn =
+                                    e.currentTarget as HTMLButtonElement;
                                   if (btn) {
                                     const originalHTML = btn.innerHTML;
                                     btn.innerHTML = "✓";
-                                    btn.className = "h-6 w-6 p-0 text-green-400";
+                                    btn.className =
+                                      "h-6 w-6 p-0 text-green-400";
                                     setTimeout(() => {
                                       btn.innerHTML = originalHTML;
-                                      btn.className = "h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity";
+                                      btn.className =
+                                        "h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity";
                                     }, 2000);
                                   }
                                 } catch (err) {
@@ -1053,21 +1425,53 @@ export default function ProfilePage() {
                             </Button>
                           </div>
                         </li>
-                        <li><strong>Get Post ID:</strong> After posting, look at the URL of your post. It will look like:
-                          <code className="block mt-1 bg-[#22262C] px-2 py-1 rounded text-xs">https://your-instance.com/@username/123456789012345678</code>
-                          The number at the end (<code className="bg-[#22262C] px-1 rounded">123456789012345678</code>) is your Post ID.
+                        <li>
+                          <strong>Get Post ID:</strong> After posting, look at
+                          the URL of your post. It will look like:
+                          <code className="block mt-1 bg-[#22262C] px-2 py-1 rounded text-xs">
+                            https://your-instance.com/@username/123456789012345678
+                          </code>
+                          The number at the end (
+                          <code className="bg-[#22262C] px-1 rounded">
+                            123456789012345678
+                          </code>
+                          ) is your Post ID.
                         </li>
-                        <li><strong>Add to gittr:</strong>
+                        <li>
+                          <strong>Add to gittr:</strong>
                           <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
-                            <li>Platform: <code className="bg-[#22262C] px-1 rounded">mastodon</code></li>
-                            <li>Identity: <code className="bg-[#22262C] px-1 rounded">your-instance.com/@username</code> (from your profile URL)</li>
-                            <li>Proof: <code className="bg-[#22262C] px-1 rounded">your-instance.com/@username/post_id</code> (instance/@username/post_id format)</li>
+                            <li>
+                              Platform:{" "}
+                              <code className="bg-[#22262C] px-1 rounded">
+                                mastodon
+                              </code>
+                            </li>
+                            <li>
+                              Identity:{" "}
+                              <code className="bg-[#22262C] px-1 rounded">
+                                your-instance.com/@username
+                              </code>{" "}
+                              (from your profile URL)
+                            </li>
+                            <li>
+                              Proof:{" "}
+                              <code className="bg-[#22262C] px-1 rounded">
+                                your-instance.com/@username/post_id
+                              </code>{" "}
+                              (instance/@username/post_id format)
+                            </li>
                           </ul>
                         </li>
                       </ol>
                       <div className="text-xs text-gray-500 mt-2 p-2 bg-[#171B21] border border-[#383B42] rounded">
-                        <p className="font-semibold text-gray-400 mb-1">💡 Tip:</p>
-                        <p>You can also find the Post ID by clicking the timestamp on your post - it will show the direct link with the ID in the URL.</p>
+                        <p className="font-semibold text-gray-400 mb-1">
+                          💡 Tip:
+                        </p>
+                        <p>
+                          You can also find the Post ID by clicking the
+                          timestamp on your post - it will show the direct link
+                          with the ID in the URL.
+                        </p>
                       </div>
                     </div>
                   )}
@@ -1084,15 +1488,18 @@ export default function ProfilePage() {
               {updating ? "Publishing..." : "Update profile"}
             </Button>
             {updateStatus && (
-              <div className={`mt-2 p-3 rounded text-sm ${
-                updateStatus.startsWith("✅") 
-                  ? "bg-green-900/30 border border-green-700 text-green-300"
-                  : updateStatus.startsWith("⚠️")
-                  ? "bg-yellow-900/30 border border-yellow-700 text-yellow-300"
-                  : updateStatus.startsWith("Error") || updateStatus.includes("Error")
-                  ? "bg-red-900/30 border border-red-700 text-red-300"
-                  : "bg-blue-900/30 border border-blue-700 text-blue-300"
-              }`}>
+              <div
+                className={`mt-2 p-3 rounded text-sm ${
+                  updateStatus.startsWith("✅")
+                    ? "bg-green-900/30 border border-green-700 text-green-300"
+                    : updateStatus.startsWith("⚠️")
+                    ? "bg-yellow-900/30 border border-yellow-700 text-yellow-300"
+                    : updateStatus.startsWith("Error") ||
+                      updateStatus.includes("Error")
+                    ? "bg-red-900/30 border border-red-700 text-red-300"
+                    : "bg-blue-900/30 border border-blue-700 text-blue-300"
+                }`}
+              >
                 {updateStatus}
               </div>
             )}
@@ -1107,40 +1514,55 @@ export default function ProfilePage() {
               alt="Profile"
               suppressHydrationWarning
               className="my-4 rounded-full w-52 h-52 max-w-52 max-h-52 object-cover"
-              style={{ maxWidth: '13rem', maxHeight: '13rem' }}
+              style={{ maxWidth: "13rem", maxHeight: "13rem" }}
               onError={(e) => {
                 (e.target as HTMLImageElement).src = "/default-avatar.png";
               }}
             />
           </div>
-          
+
           {/* Nostr Credentials */}
           <div className="border border-gray-700 rounded-lg p-4 bg-gray-800/50">
-            <Label className="text-base font-semibold mb-3 block">Nostr Credentials</Label>
+            <Label className="text-base font-semibold mb-3 block">
+              Nostr Credentials
+            </Label>
             <div className="space-y-3">
               <div>
-                <Label className="text-xs text-gray-400 mb-1 block">Public Key (hex)</Label>
+                <Label className="text-xs text-gray-400 mb-1 block">
+                  Public Key (hex)
+                </Label>
                 <div className="bg-gray-900 p-2 rounded border border-gray-700">
-                  <code className="text-xs text-gray-300 font-mono break-all" suppressHydrationWarning>
-                    {mounted ? (pubkey || "Not available") : "Not available"}
+                  <code
+                    className="text-xs text-gray-300 font-mono break-all"
+                    suppressHydrationWarning
+                  >
+                    {mounted ? pubkey || "Not available" : "Not available"}
                   </code>
                 </div>
               </div>
               <div>
-                <Label className="text-xs text-gray-400 mb-1 block">NPUB (bech32)</Label>
+                <Label className="text-xs text-gray-400 mb-1 block">
+                  NPUB (bech32)
+                </Label>
                 <div className="bg-gray-900 p-2 rounded border border-gray-700">
-                  <code className="text-xs text-gray-300 font-mono break-all" suppressHydrationWarning>
-                    {mounted && pubkey ? (() => {
-                      try {
-                        return nip19.npubEncode(pubkey);
-                      } catch {
-                        return "Invalid pubkey";
-                      }
-                    })() : "Not available"}
+                  <code
+                    className="text-xs text-gray-300 font-mono break-all"
+                    suppressHydrationWarning
+                  >
+                    {mounted && pubkey
+                      ? (() => {
+                          try {
+                            return nip19.npubEncode(pubkey);
+                          } catch {
+                            return "Invalid pubkey";
+                          }
+                        })()
+                      : "Not available"}
                   </code>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  This is your Nostr public identifier. Share your npub to receive messages or be mentioned.
+                  This is your Nostr public identifier. Share your npub to
+                  receive messages or be mentioned.
                 </p>
               </div>
             </div>

@@ -1,14 +1,18 @@
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+
 import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
 
 /**
  * Server-side proxy for GitHub API requests
  * Uses platform OAuth token from environment if available
  * This allows 5000 requests/hour instead of 60/hour (per IP)
- * 
+ *
  * Endpoint: GET /api/github/proxy?endpoint=/repos/owner/repo/...
  */
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   // Handle OPTIONS request for CORS
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res);
@@ -37,11 +41,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const platformToken = process.env.GITHUB_PLATFORM_TOKEN || null;
 
   try {
-    const url = `https://api.github.com${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
-    
+    const url = `https://api.github.com${
+      endpoint.startsWith("/") ? endpoint : `/${endpoint}`
+    }`;
+
     const headers: Record<string, string> = {
       "User-Agent": "gittr-space",
-      "Accept": "application/vnd.github.v3+json"
+      Accept: "application/vnd.github.v3+json",
     };
 
     // Use platform token if available (increases rate limit from 60 to 5000/hour)
@@ -49,15 +55,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       headers["Authorization"] = `Bearer ${platformToken}`;
     }
 
-
     const response = await fetch(url, { headers: headers as any });
 
     // Forward response
     const data = await response.text();
-    const contentType = response.headers.get("content-type") || "application/json";
+    const contentType =
+      response.headers.get("content-type") || "application/json";
 
     res.setHeader("Content-Type", contentType);
-    
+
     // Forward rate limit headers for debugging
     const rateLimitRemaining = response.headers.get("x-ratelimit-remaining");
     const rateLimitReset = response.headers.get("x-ratelimit-reset");
@@ -69,17 +75,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (!response.ok) {
-      console.error(`❌ [GitHub Proxy] GitHub API returned error ${response.status}:`, data.substring(0, 200));
+      console.error(
+        `❌ [GitHub Proxy] GitHub API returned error ${response.status}:`,
+        data.substring(0, 200)
+      );
     } else {
     }
 
     return res.status(response.status).send(data);
   } catch (error: any) {
     console.error("GitHub proxy error:", error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: "Failed to fetch from GitHub API",
-      details: error.message 
+      details: error.message,
     });
   }
 }
-

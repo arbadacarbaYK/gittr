@@ -1,31 +1,59 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useMemo } from "react";
+
 import SettingsHero from "@/components/settings-hero";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import DistributeZaps from "@/components/ui/distribute-zaps";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { createRepositoryEvent, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
-import { useParams, useRouter } from "next/navigation";
-import { Zap, ArrowRight, CheckCircle, X, Plus, Lock, Globe, BookOpen, MessageSquare, Youtube, Twitter, Github, Link as LinkIcon } from "lucide-react";
-import DistributeZaps from "@/components/ui/distribute-zaps";
-import { getAccumulatedZaps } from "@/lib/payments/zap-repo";
-import RepoWalletConfig from "./RepoWalletConfig";
-import { Textarea } from "@/components/ui/textarea";
-import { normalizeUrlOnBlur } from "@/lib/utils/url-normalize";
-import { getRepoStorageKey, normalizeEntityForStorage } from "@/lib/utils/entity-normalizer";
-import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { loadStoredRepos, saveStoredRepos, type StoredRepo, type StoredContributor } from "@/lib/repos/storage";
-import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
-import { useMemo } from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { RepoLink } from "@/components/ui/repo-links";
+import { Textarea } from "@/components/ui/textarea";
+import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  KIND_REPOSITORY_NIP34,
+  createRepositoryEvent,
+} from "@/lib/nostr/events";
+import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import { getAccumulatedZaps } from "@/lib/payments/zap-repo";
+import { canManageSettings, isOwner } from "@/lib/repo-permissions";
+import {
+  type StoredContributor,
+  type StoredRepo,
+  loadStoredRepos,
+  saveStoredRepos,
+} from "@/lib/repos/storage";
+import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { formatDate24h } from "@/lib/utils/date-format";
-import { isOwner, canManageSettings } from "@/lib/repo-permissions";
+import {
+  getRepoStorageKey,
+  normalizeEntityForStorage,
+} from "@/lib/utils/entity-normalizer";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import { normalizeUrlOnBlur } from "@/lib/utils/url-normalize";
+
+import {
+  ArrowRight,
+  BookOpen,
+  CheckCircle,
+  Github,
+  Globe,
+  Link as LinkIcon,
+  Lock,
+  MessageSquare,
+  Plus,
+  Twitter,
+  X,
+  Youtube,
+  Zap,
+} from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+
+import RepoWalletConfig from "./RepoWalletConfig";
 
 interface ZapSplit {
   pubkey: string;
@@ -45,25 +73,30 @@ export default function RepoSettingsPage() {
   const { publish, defaultRelays, pubkey } = useNostrContext();
   const entity = params?.entity as string;
   const repo = params?.repo as string;
-  
+
   const [isOwnerUser, setIsOwnerUser] = useState(false);
   const [loadingOwnerCheck, setLoadingOwnerCheck] = useState(true);
-  
+
   // CRITICAL: Settings page is owner-only - check access on mount
   useEffect(() => {
     try {
       const repos = loadStoredRepos();
       const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
-      
+
       if (repoData && pubkey) {
         const repoOwnerPubkey = getRepoOwnerPubkey(repoData, entity);
-        const userIsOwner = isOwner(pubkey, repoData.contributors, repoOwnerPubkey);
+        const userIsOwner = isOwner(
+          pubkey,
+          repoData.contributors,
+          repoOwnerPubkey
+        );
         const canManage = canManageSettings(
-          repoData.contributors?.find((c: StoredContributor) => 
-            c.pubkey && c.pubkey.toLowerCase() === pubkey.toLowerCase()
+          repoData.contributors?.find(
+            (c: StoredContributor) =>
+              c.pubkey && c.pubkey.toLowerCase() === pubkey.toLowerCase()
           ) || null
         );
-        
+
         setIsOwnerUser(userIsOwner || canManage);
       } else {
         setIsOwnerUser(false);
@@ -74,7 +107,7 @@ export default function RepoSettingsPage() {
       setLoadingOwnerCheck(false);
     }
   }, [entity, repo, pubkey]);
-  
+
   // Redirect non-owners away from settings
   useEffect(() => {
     if (!loadingOwnerCheck && !isOwnerUser && pubkey) {
@@ -82,7 +115,7 @@ export default function RepoSettingsPage() {
       router.push(`/${entity}/${repo}`);
     }
   }, [loadingOwnerCheck, isOwnerUser, entity, repo, pubkey, router]);
-  
+
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
@@ -97,13 +130,15 @@ export default function RepoSettingsPage() {
   const [milestoneName, setMilestoneName] = useState("");
   const [milestoneDescription, setMilestoneDescription] = useState("");
   const [milestoneDueDate, setMilestoneDueDate] = useState("");
-  const [accumulatedZaps, setAccumulatedZaps] = useState<Array<{
-    amount: number;
-    paymentHash: string;
-    comment?: string;
-    createdAt: number;
-    status: "received" | "split";
-  }>>([]);
+  const [accumulatedZaps, setAccumulatedZaps] = useState<
+    Array<{
+      amount: number;
+      paymentHash: string;
+      comment?: string;
+      createdAt: number;
+      status: "received" | "split";
+    }>
+  >([]);
   const [repoWalletConfig, setRepoWalletConfig] = useState<{
     lnurl?: string;
     lnaddress?: string;
@@ -114,8 +149,12 @@ export default function RepoSettingsPage() {
   }>({});
   const [requiredApprovals, setRequiredApprovals] = useState<number>(1);
   const [gitSshBase, setGitSshBase] = useState("");
-  const [owners, setOwners] = useState<Array<{ pubkey: string; name?: string; weight: number; role: "owner" }>>([]);
-  const [maintainers, setMaintainers] = useState<Array<{ pubkey: string; name?: string; weight: number; role: "maintainer" }>>([]);
+  const [owners, setOwners] = useState<
+    Array<{ pubkey: string; name?: string; weight: number; role: "owner" }>
+  >([]);
+  const [maintainers, setMaintainers] = useState<
+    Array<{ pubkey: string; name?: string; weight: number; role: "maintainer" }>
+  >([]);
   const [newOwnerInput, setNewOwnerInput] = useState("");
   const [newMaintainerInput, setNewMaintainerInput] = useState("");
   const [isPublic, setIsPublic] = useState(true);
@@ -129,7 +168,7 @@ export default function RepoSettingsPage() {
     try {
       const repos = loadStoredRepos();
       const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
-      
+
       if (repoData) {
         const repoWithExtras = repoData as StoredRepo & {
           zapPolicy?: { splits?: ZapSplit[] };
@@ -148,35 +187,79 @@ export default function RepoSettingsPage() {
         // Load repo wallet config
         setRepoWalletConfig(repoWithExtras.walletConfig || {});
         // Load gitSshBase
-        setGitSshBase(repoWithExtras.gitSshBase || process.env.NEXT_PUBLIC_GIT_SSH_BASE || "");
+        setGitSshBase(
+          repoWithExtras.gitSshBase ||
+            process.env.NEXT_PUBLIC_GIT_SSH_BASE ||
+            ""
+        );
         // Load visibility (default to public if not set)
-        setIsPublic(repoWithExtras.publicRead !== undefined ? repoWithExtras.publicRead : true);
+        setIsPublic(
+          repoWithExtras.publicRead !== undefined
+            ? repoWithExtras.publicRead
+            : true
+        );
         // Load owners (role: "owner" or weight: 100)
-        const ownersList = (repoData.contributors || []).filter((c: StoredContributor): c is StoredContributor & { pubkey: string } => 
-          (c.role === "owner" || (c.role === undefined && c.weight === 100)) && !!c.pubkey
+        const ownersList = (repoData.contributors || []).filter(
+          (c: StoredContributor): c is StoredContributor & { pubkey: string } =>
+            (c.role === "owner" ||
+              (c.role === undefined && c.weight === 100)) &&
+            !!c.pubkey
         );
-        setOwners(ownersList.length > 0 
-          ? ownersList.map((o) => ({ pubkey: o.pubkey, name: o.name, weight: o.weight ?? 100, role: "owner" as const }))
-          : (repoData.ownerPubkey ? [{ pubkey: repoData.ownerPubkey, weight: 100, role: "owner" as const }] : [])
+        setOwners(
+          ownersList.length > 0
+            ? ownersList.map((o) => ({
+                pubkey: o.pubkey,
+                name: o.name,
+                weight: o.weight ?? 100,
+                role: "owner" as const,
+              }))
+            : repoData.ownerPubkey
+            ? [
+                {
+                  pubkey: repoData.ownerPubkey,
+                  weight: 100,
+                  role: "owner" as const,
+                },
+              ]
+            : []
         );
-        
+
         // Load maintainers (role: "maintainer" or weight: 50-99)
-        const maintainersList = (repoData.contributors || []).filter((c: StoredContributor): c is StoredContributor & { pubkey: string } => 
-          (c.role === "maintainer" || (c.role === undefined && c.weight !== undefined && c.weight >= 50 && c.weight < 100)) && !!c.pubkey
+        const maintainersList = (repoData.contributors || []).filter(
+          (c: StoredContributor): c is StoredContributor & { pubkey: string } =>
+            (c.role === "maintainer" ||
+              (c.role === undefined &&
+                c.weight !== undefined &&
+                c.weight >= 50 &&
+                c.weight < 100)) &&
+            !!c.pubkey
         );
-        setMaintainers(maintainersList.map((m) => ({ pubkey: m.pubkey, name: m.name, weight: m.weight ?? 50, role: "maintainer" as const })));
+        setMaintainers(
+          maintainersList.map((m) => ({
+            pubkey: m.pubkey,
+            name: m.name,
+            weight: m.weight ?? 50,
+            role: "maintainer" as const,
+          }))
+        );
         // Load repo links
         setRepoLinks(repoData.links || []);
       }
-      
+
       // Load accumulated zaps
       const repoId = `${entity}/${repo}`;
       setAccumulatedZaps(getAccumulatedZaps(repoId));
-      
+
       // Load milestones
       try {
-        const milestonesKey = getRepoStorageKey("gittr_milestones", entity, repo);
-        const loaded = JSON.parse(localStorage.getItem(milestonesKey) || "[]") as Milestone[];
+        const milestonesKey = getRepoStorageKey(
+          "gittr_milestones",
+          entity,
+          repo
+        );
+        const loaded = JSON.parse(
+          localStorage.getItem(milestonesKey) || "[]"
+        ) as Milestone[];
         setMilestones(loaded);
       } catch {
         setMilestones([]);
@@ -192,7 +275,7 @@ export default function RepoSettingsPage() {
   };
 
   const handleRemoveTag = (tag: string) => {
-    setTags(tags.filter(t => t !== tag));
+    setTags(tags.filter((t) => t !== tag));
   };
 
   const handleAddSplit = () => {
@@ -212,7 +295,7 @@ export default function RepoSettingsPage() {
   };
 
   const handleRemoveSplit = (pubkey: string) => {
-    setZapSplits(zapSplits.filter(s => s.pubkey !== pubkey));
+    setZapSplits(zapSplits.filter((s) => s.pubkey !== pubkey));
   };
 
   const handleSave = async () => {
@@ -221,7 +304,7 @@ export default function RepoSettingsPage() {
       alert("Only repository owners can save settings");
       return;
     }
-    
+
     setSaving(true);
     setStatus("");
 
@@ -229,9 +312,11 @@ export default function RepoSettingsPage() {
       // CRITICAL: Require signature for settings changes (owner must sign)
       const privateKey = await getNostrPrivateKey();
       const hasNip07 = typeof window !== "undefined" && window.nostr;
-      
+
       if (!privateKey && !hasNip07) {
-        alert("Saving settings requires signature. Please configure NIP-07 extension or private key in settings.");
+        alert(
+          "Saving settings requires signature. Please configure NIP-07 extension or private key in settings."
+        );
         setSaving(false);
         return;
       }
@@ -242,34 +327,43 @@ export default function RepoSettingsPage() {
         const found = findRepoByEntityAndName<StoredRepo>([r], entity, repo);
         return found !== undefined;
       });
-      
+
       if (repoIndex >= 0 && repos[repoIndex]) {
         // Update contributors: ensure all owners are in contributors with weight 100
         const existingContributors = repos[repoIndex].contributors || [];
-        const ownerPubkeys = owners.map(o => o.pubkey);
-        
+        const ownerPubkeys = owners.map((o) => o.pubkey);
+
         // Remove old owners from contributors (weight 100) that are not in new owners list
-        const contributorsWithoutOldOwners = existingContributors.filter((c: StoredContributor) => 
-          c.weight !== 100 || (c.pubkey && ownerPubkeys.includes(c.pubkey))
+        const contributorsWithoutOldOwners = existingContributors.filter(
+          (c: StoredContributor) =>
+            c.weight !== 100 || (c.pubkey && ownerPubkeys.includes(c.pubkey))
         );
-        
+
         // Add all owners as contributors with weight 100
         const updatedContributors = [
-          ...owners.map(o => ({
+          ...owners.map((o) => ({
             pubkey: o.pubkey,
-            name: ownerMetadata[o.pubkey]?.display_name || ownerMetadata[o.pubkey]?.name || o.name,
+            name:
+              ownerMetadata[o.pubkey]?.display_name ||
+              ownerMetadata[o.pubkey]?.name ||
+              o.name,
             weight: 100,
           })),
-          ...contributorsWithoutOldOwners.filter((c: StoredContributor) => c.weight !== 100),
+          ...contributorsWithoutOldOwners.filter(
+            (c: StoredContributor) => c.weight !== 100
+          ),
         ];
-        
+
         repos[repoIndex] = {
           ...repos[repoIndex],
           description,
           topics: tags,
           zapPolicy: zapSplits.length > 0 ? { splits: zapSplits } : undefined,
-          logoUrl: logoInput ? (logoInput.trim() || undefined) : undefined,
-          walletConfig: Object.keys(repoWalletConfig).length > 0 ? repoWalletConfig : undefined,
+          logoUrl: logoInput ? logoInput.trim() || undefined : undefined,
+          walletConfig:
+            Object.keys(repoWalletConfig).length > 0
+              ? repoWalletConfig
+              : undefined,
           gitSshBase: gitSshBase || undefined,
           requiredApprovals: requiredApprovals,
           contributors: updatedContributors,
@@ -298,23 +392,33 @@ export default function RepoSettingsPage() {
         };
         repoWithExtras.publicRead = isPublic;
         repoWithExtras.publicWrite = false; // Repos are read-only for non-owners
-        repoWithExtras.zapPolicy = zapSplits.length > 0 ? { splits: zapSplits } : undefined;
-        repoWithExtras.logoUrl = logoInput ? (logoInput.trim() || undefined) : undefined;
-        repoWithExtras.walletConfig = Object.keys(repoWalletConfig).length > 0 ? repoWalletConfig : undefined;
+        repoWithExtras.zapPolicy =
+          zapSplits.length > 0 ? { splits: zapSplits } : undefined;
+        repoWithExtras.logoUrl = logoInput
+          ? logoInput.trim() || undefined
+          : undefined;
+        repoWithExtras.walletConfig =
+          Object.keys(repoWalletConfig).length > 0
+            ? repoWalletConfig
+            : undefined;
         repoWithExtras.gitSshBase = gitSshBase || undefined;
         repoWithExtras.requiredApprovals = requiredApprovals;
         saveStoredRepos(repos);
-        
+
         // Mark repo as having unpushed edits if it was previously live
-        if (repos[repoIndex].lastNostrEventId || repos[repoIndex].nostrEventId || repos[repoIndex].syncedFromNostr) {
+        if (
+          repos[repoIndex].lastNostrEventId ||
+          repos[repoIndex].nostrEventId ||
+          repos[repoIndex].syncedFromNostr
+        ) {
           const { markRepoAsEdited } = await import("@/lib/utils/repo-status");
           markRepoAsEdited(repo, entity);
         }
-        
+
         // Trigger event to notify repo page to reload
         window.dispatchEvent(new Event("gittr:repo-updated"));
       }
-      
+
       // Save milestones
       try {
         const milestonesKey = `gittr_milestones_${entity}_${repo}`;
@@ -325,8 +429,12 @@ export default function RepoSettingsPage() {
       if (publish && pubkey && privateKey) {
         // Load repo data to preserve clone/relays tags from original push
         const repos = loadStoredRepos();
-        const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
-        
+        const repoData = findRepoByEntityAndName<StoredRepo>(
+          repos,
+          entity,
+          repo
+        );
+
         const repoEvent = createRepositoryEvent(
           {
             repositoryName: repo,
@@ -350,7 +458,7 @@ export default function RepoSettingsPage() {
       } else {
         setStatus("Settings saved");
       }
-      
+
       // Navigate back to repo page after showing success message
       setTimeout(() => {
         router.push(`/${entity}/${repo}`);
@@ -368,25 +476,36 @@ export default function RepoSettingsPage() {
       alert("Only repository owners can delete repositories");
       return;
     }
-    
-    if (!confirm(`Delete repository ${entity}/${repo}? This cannot be undone.\n\nNote: If this repo was published to Nostr, a deletion marker will be published to notify other clients. The repo will be hidden from your local view and won't be re-added when syncing from Nostr.`)) return;
-    
+
+    if (
+      !confirm(
+        `Delete repository ${entity}/${repo}? This cannot be undone.\n\nNote: If this repo was published to Nostr, a deletion marker will be published to notify other clients. The repo will be hidden from your local view and won't be re-added when syncing from Nostr.`
+      )
+    )
+      return;
+
     // CRITICAL: Require signature for deletion (owner must sign)
     const privateKey = await getNostrPrivateKey();
     const hasNip07 = typeof window !== "undefined" && window.nostr;
-    
+
     if (!privateKey && !hasNip07) {
-      alert("Deleting repositories requires signature. Please configure NIP-07 extension or private key in settings.");
+      alert(
+        "Deleting repositories requires signature. Please configure NIP-07 extension or private key in settings."
+      );
       return;
     }
-    
+
     try {
       setDeleting(true);
       const repos = loadStoredRepos();
-      
+
       // Find the repo to get its full data for deletion event
-      const repoToDelete = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
-      
+      const repoToDelete = findRepoByEntityAndName<StoredRepo>(
+        repos,
+        entity,
+        repo
+      );
+
       // STEP 1: Delete locally first (remove from repos list)
       // Match by entity (exact) or slug (if entity is slug) or ownerPubkey
       // Also match by repo name exactly
@@ -394,18 +513,18 @@ export default function RepoSettingsPage() {
         const found = findRepoByEntityAndName<StoredRepo>([r], entity, repo);
         return found === undefined; // Keep repos that DON'T match
       });
-      
+
       saveStoredRepos(next);
-      
+
       // STEP 2: Publish deletion marker to Nostr (if repo was published)
       // This notifies other clients that the owner has deleted the repo
       // Only publish if repo was actually committed to Nostr (has event ID)
-      const wasPublishedToNostr = repoToDelete && (
-        (repoToDelete as any).lastNostrEventId || 
-        (repoToDelete as any).nostrEventId || 
-        (repoToDelete as any).syncedFromNostr
-      );
-      
+      const wasPublishedToNostr =
+        repoToDelete &&
+        ((repoToDelete as any).lastNostrEventId ||
+          (repoToDelete as any).nostrEventId ||
+          (repoToDelete as any).syncedFromNostr);
+
       // CRITICAL: Publish deletion marker to Nostr (non-blocking)
       // Don't wait for publish to complete - local deletion is done, button should be re-enabled
       if (publish && pubkey && repoToDelete && wasPublishedToNostr) {
@@ -416,7 +535,7 @@ export default function RepoSettingsPage() {
             // Sign with NIP-07 or private key
             const hasNip07 = typeof window !== "undefined" && window.nostr;
             const privateKey = hasNip07 ? null : await getNostrPrivateKey();
-            
+
             if (hasNip07 || privateKey) {
               // Publish a replacement event with deleted: true
               // This uses the same "d" tag, so it replaces the previous event (NIP-34 replaceable events)
@@ -425,7 +544,7 @@ export default function RepoSettingsPage() {
                 sourceUrl?: string;
                 forkedFrom?: string;
               };
-              
+
               let deletionEvent: any;
               if (hasNip07 && window.nostr) {
                 // Use NIP-07 (supports remote signer)
@@ -438,9 +557,15 @@ export default function RepoSettingsPage() {
                   tags: [
                     ["d", repo],
                     ["name", repo],
-                    ...(repoWithExtras.description ? [["description", repoWithExtras.description]] : []),
-                    ...(repoWithExtras.sourceUrl ? [["source", repoWithExtras.sourceUrl]] : []),
-                    ...(repoWithExtras.forkedFrom ? [["forkedFrom", repoWithExtras.forkedFrom]] : []),
+                    ...(repoWithExtras.description
+                      ? [["description", repoWithExtras.description]]
+                      : []),
+                    ...(repoWithExtras.sourceUrl
+                      ? [["source", repoWithExtras.sourceUrl]]
+                      : []),
+                    ...(repoWithExtras.forkedFrom
+                      ? [["forkedFrom", repoWithExtras.forkedFrom]]
+                      : []),
                   ],
                   content: JSON.stringify({
                     deleted: true,
@@ -452,13 +577,20 @@ export default function RepoSettingsPage() {
                   sig: "",
                 };
                 deletionEvent.id = getEventHash(deletionEvent);
-                
+
                 // CRITICAL: Add timeout for NIP-07 signing on mobile (can hang)
                 const signPromise = window.nostr.signEvent(deletionEvent);
-                const timeoutPromise = new Promise((_, reject) => 
-                  setTimeout(() => reject(new Error("Signing timeout - please try again")), 30000)
+                const timeoutPromise = new Promise((_, reject) =>
+                  setTimeout(
+                    () =>
+                      reject(new Error("Signing timeout - please try again")),
+                    30000
+                  )
                 );
-                deletionEvent = await Promise.race([signPromise, timeoutPromise]);
+                deletionEvent = await Promise.race([
+                  signPromise,
+                  timeoutPromise,
+                ]);
               } else if (privateKey) {
                 // Use private key (fallback)
                 deletionEvent = createRepositoryEvent(
@@ -477,48 +609,69 @@ export default function RepoSettingsPage() {
               } else {
                 throw new Error("No signing method available");
               }
-              
+
               // CRITICAL: Don't await publish - make it non-blocking
               // Local deletion is complete, button should be re-enabled
               try {
                 publish(deletionEvent, defaultRelays);
-                console.log("✅ Published deletion marker to Nostr - other clients will hide this repo");
+                console.log(
+                  "✅ Published deletion marker to Nostr - other clients will hide this repo"
+                );
               } catch (error: any) {
-                console.error("Failed to publish deletion marker to Nostr:", error);
+                console.error(
+                  "Failed to publish deletion marker to Nostr:",
+                  error
+                );
                 // Local deletion is already done, so this is just a warning
               }
             }
           } catch (error: any) {
-            console.error("Failed to create/publish deletion marker to Nostr:", error);
+            console.error(
+              "Failed to create/publish deletion marker to Nostr:",
+              error
+            );
             // Continue - local deletion is already done
           }
         })();
       } else if (repoToDelete && !wasPublishedToNostr) {
-        console.log("ℹ️ Repo was not published to Nostr, skipping deletion event");
+        console.log(
+          "ℹ️ Repo was not published to Nostr, skipping deletion event"
+        );
       }
-      
+
       // STEP 3: Mark repo as deleted in deletion list to prevent re-adding from Nostr sync
       // This is a safety mechanism: even if our deletion event hasn't propagated yet,
       // or if the repo was never published, we prevent it from being re-added when syncing.
       // When syncing, we respect deletion events from Nostr (both our own and others').
       // Store deletion with BOTH entity (npub) and ownerPubkey for robust matching
-      const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number; ownerPubkey?: string}>;
+      const deletedRepos = JSON.parse(
+        localStorage.getItem("gittr_deleted_repos") || "[]"
+      ) as Array<{
+        entity: string;
+        repo: string;
+        deletedAt: number;
+        ownerPubkey?: string;
+      }>;
       const deletedRepoKey = `${entity}/${repo}`.toLowerCase();
-      
+
       // Get ownerPubkey if available (for robust matching during sync)
       const ownerPubkey = repoToDelete?.ownerPubkey || pubkey;
-      
+
       // Check if already in deleted list (by entity/repo or by ownerPubkey/repo)
-      const alreadyDeleted = deletedRepos.some(d => {
+      const alreadyDeleted = deletedRepos.some((d) => {
         const dKey = `${d.entity}/${d.repo}`.toLowerCase();
         if (dKey === deletedRepoKey) return true;
         // Also check by ownerPubkey if available (most reliable)
-        if (ownerPubkey && d.ownerPubkey && d.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase()) {
+        if (
+          ownerPubkey &&
+          d.ownerPubkey &&
+          d.ownerPubkey.toLowerCase() === ownerPubkey.toLowerCase()
+        ) {
           return d.repo.toLowerCase() === repo.toLowerCase();
         }
         return false;
       });
-      
+
       if (!alreadyDeleted) {
         deletedRepos.push({
           entity: entity,
@@ -526,19 +679,27 @@ export default function RepoSettingsPage() {
           deletedAt: Date.now(),
           ownerPubkey: ownerPubkey || undefined, // Store ownerPubkey for robust matching (convert null to undefined)
         });
-        localStorage.setItem("gittr_deleted_repos", JSON.stringify(deletedRepos));
-        console.log(`✅ Marked repo as deleted in deletion list: ${deletedRepoKey} (ownerPubkey: ${ownerPubkey?.slice(0, 16)}...)`);
+        localStorage.setItem(
+          "gittr_deleted_repos",
+          JSON.stringify(deletedRepos)
+        );
+        console.log(
+          `✅ Marked repo as deleted in deletion list: ${deletedRepoKey} (ownerPubkey: ${ownerPubkey?.slice(
+            0,
+            16
+          )}...)`
+        );
       }
-      
+
       // Clean all possible localStorage keys related to this repo
       const normalizedEntity = normalizeEntityForStorage(entity);
       const keyVariations = [
         `${normalizedEntity}__${repo}`,
         `${normalizedEntity}_${repo}`,
       ];
-      
+
       // Clean overrides, deleted caches, PRs, Issues, etc.
-      keyVariations.forEach(keyBase => {
+      keyVariations.forEach((keyBase) => {
         localStorage.removeItem(`gittr_repo_overrides__${keyBase}`);
         localStorage.removeItem(`gittr_repo_deleted__${keyBase}`);
         localStorage.removeItem(`gittr_prs__${keyBase}`);
@@ -547,16 +708,16 @@ export default function RepoSettingsPage() {
         localStorage.removeItem(`gittr_discussions__${keyBase}`);
         localStorage.removeItem(`gittr_releases__${keyBase}`);
       });
-      
+
       // Also try with entity/repo format
       const zapRepoKey = `${entity}/${repo}`;
       localStorage.removeItem(`gittr_accumulated_zaps_${zapRepoKey}`);
-      
+
       // CRITICAL: Re-enable button immediately after local deletion is complete
       // Nostr publish is non-blocking, so don't wait for it
       setDeleting(false);
       setStatus("Repository deleted successfully");
-      
+
       // Navigate away after a short delay to show success message
       setTimeout(() => {
         window.location.href = "/repositories";
@@ -564,22 +725,26 @@ export default function RepoSettingsPage() {
     } catch (e) {
       console.error("Delete error:", e);
       setDeleting(false);
-      setStatus(`Failed to delete repository: ${e instanceof Error ? e.message : String(e)}`);
+      setStatus(
+        `Failed to delete repository: ${
+          e instanceof Error ? e.message : String(e)
+        }`
+      );
     }
   };
 
   // Get owner and maintainer metadata for display
   const ownerPubkeys = useMemo(() => {
-    return owners.map(o => o.pubkey).filter(Boolean);
+    return owners.map((o) => o.pubkey).filter(Boolean);
   }, [owners]);
   const maintainerPubkeys = useMemo(() => {
-    return maintainers.map(m => m.pubkey).filter(Boolean);
+    return maintainers.map((m) => m.pubkey).filter(Boolean);
   }, [maintainers]);
   const allRolePubkeys = useMemo(() => {
     return [...ownerPubkeys, ...maintainerPubkeys];
   }, [ownerPubkeys, maintainerPubkeys]);
   const ownerMetadata = useContributorMetadata(allRolePubkeys);
-  
+
   // Get entity display name (use first owner's name or fallback to entity)
   const entityDisplayName = useMemo(() => {
     if (owners.length > 0 && owners[0]?.pubkey) {
@@ -601,7 +766,7 @@ export default function RepoSettingsPage() {
 
   const handleAddOwner = () => {
     if (!newOwnerInput.trim()) return;
-    
+
     // Try to decode npub or use as-is if it's a pubkey
     let pubkey = newOwnerInput.trim();
     try {
@@ -611,25 +776,27 @@ export default function RepoSettingsPage() {
         pubkey = decoded.data as string;
       }
     } catch {}
-    
+
     // Validate pubkey
     if (!/^[0-9a-f]{64}$/i.test(pubkey)) {
       setStatus("Error: Invalid pubkey or npub");
       return;
     }
-    
+
     // Check if already an owner
-    if (owners.some(o => o.pubkey === pubkey)) {
+    if (owners.some((o) => o.pubkey === pubkey)) {
       setStatus("Error: User is already an owner");
       return;
     }
-    
+
     // Check if already a maintainer
-    if (maintainers.some(m => m.pubkey === pubkey)) {
-      setStatus("Error: User is already a maintainer. Remove from maintainers first.");
+    if (maintainers.some((m) => m.pubkey === pubkey)) {
+      setStatus(
+        "Error: User is already a maintainer. Remove from maintainers first."
+      );
       return;
     }
-    
+
     // Add owner
     setOwners([...owners, { pubkey, weight: 100, role: "owner" }]);
     setNewOwnerInput("");
@@ -642,20 +809,20 @@ export default function RepoSettingsPage() {
       setStatus("Error: Cannot remove the last owner");
       return;
     }
-    
+
     // Don't allow removing yourself
     if (pubkeyToRemove === pubkey) {
       setStatus("Error: Cannot remove yourself as owner");
       return;
     }
-    
-    setOwners(owners.filter(o => o.pubkey !== pubkeyToRemove));
+
+    setOwners(owners.filter((o) => o.pubkey !== pubkeyToRemove));
     setStatus("Owner removed (save to persist)");
   };
 
   const handleAddMaintainer = () => {
     if (!newMaintainerInput.trim()) return;
-    
+
     // Try to decode npub or use as-is if it's a pubkey
     let pubkey = newMaintainerInput.trim();
     try {
@@ -665,33 +832,36 @@ export default function RepoSettingsPage() {
         pubkey = decoded.data as string;
       }
     } catch {}
-    
+
     // Validate pubkey
     if (!/^[0-9a-f]{64}$/i.test(pubkey)) {
       setStatus("Error: Invalid pubkey or npub");
       return;
     }
-    
+
     // Check if already an owner
-    if (owners.some(o => o.pubkey === pubkey)) {
+    if (owners.some((o) => o.pubkey === pubkey)) {
       setStatus("Error: User is already an owner");
       return;
     }
-    
+
     // Check if already a maintainer
-    if (maintainers.some(m => m.pubkey === pubkey)) {
+    if (maintainers.some((m) => m.pubkey === pubkey)) {
       setStatus("Error: User is already a maintainer");
       return;
     }
-    
+
     // Add maintainer
-    setMaintainers([...maintainers, { pubkey, weight: 50, role: "maintainer" }]);
+    setMaintainers([
+      ...maintainers,
+      { pubkey, weight: 50, role: "maintainer" },
+    ]);
     setNewMaintainerInput("");
     setStatus("Maintainer added (save to persist)");
   };
 
   const handleRemoveMaintainer = (pubkeyToRemove: string) => {
-    setMaintainers(maintainers.filter(m => m.pubkey !== pubkeyToRemove));
+    setMaintainers(maintainers.filter((m) => m.pubkey !== pubkeyToRemove));
     setStatus("Maintainer removed (save to persist)");
   };
 
@@ -700,13 +870,13 @@ export default function RepoSettingsPage() {
       setStatus("Error: URL is required");
       return;
     }
-    
+
     // Normalize URL (add https:// if missing)
     let normalizedUrl = newLinkUrl.trim();
     if (!normalizedUrl.match(/^https?:\/\//i)) {
       normalizedUrl = `https://${normalizedUrl}`;
     }
-    
+
     // Validate URL format
     try {
       new URL(normalizedUrl);
@@ -714,13 +884,13 @@ export default function RepoSettingsPage() {
       setStatus("Error: Invalid URL format");
       return;
     }
-    
+
     const newLink: RepoLink = {
       type: newLinkType,
       url: normalizedUrl,
       label: newLinkLabel.trim() || undefined,
     };
-    
+
     setRepoLinks([...repoLinks, newLink]);
     setNewLinkUrl("");
     setNewLinkLabel("");
@@ -742,29 +912,34 @@ export default function RepoSettingsPage() {
       </div>
     );
   }
-  
+
   // Show access denied for non-owners (if logged in)
   if (!isOwnerUser && pubkey) {
     return (
       <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
         <SettingsHero title={`${entityDisplayName}/${repo} Settings`} />
         <div className="mt-4 p-6 border border-red-500/50 bg-red-900/20 rounded">
-          <h2 className="text-xl font-semibold text-red-400 mb-2">Access Denied</h2>
+          <h2 className="text-xl font-semibold text-red-400 mb-2">
+            Access Denied
+          </h2>
           <p className="text-gray-300">
-            Only repository owners can access settings. You will be redirected to the repository page.
+            Only repository owners can access settings. You will be redirected
+            to the repository page.
           </p>
         </div>
       </div>
     );
   }
-  
+
   // Show login prompt for non-logged-in users
   if (!pubkey) {
     return (
       <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
         <SettingsHero title={`${entityDisplayName}/${repo} Settings`} />
         <div className="mt-4 p-6 border border-yellow-500/50 bg-yellow-900/20 rounded">
-          <h2 className="text-xl font-semibold text-yellow-400 mb-2">Login Required</h2>
+          <h2 className="text-xl font-semibold text-yellow-400 mb-2">
+            Login Required
+          </h2>
           <p className="text-gray-300">
             Please log in to access repository settings.
           </p>
@@ -776,7 +951,7 @@ export default function RepoSettingsPage() {
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
       <SettingsHero title={`${entityDisplayName}/${repo} Settings`} />
-      
+
       <div className="mt-6 space-y-6">
         <div>
           <Label htmlFor="logo">Repository picture (URL or path in repo)</Label>
@@ -793,7 +968,9 @@ export default function RepoSettingsPage() {
             placeholder="example.com/logo.png or https://..."
             className="mt-2"
           />
-          <p className="text-xs text-gray-400 mt-1">If empty, we auto-detect a file named logo.(png|jpg|svg|webp|ico).</p>
+          <p className="text-xs text-gray-400 mt-1">
+            If empty, we auto-detect a file named logo.(png|jpg|svg|webp|ico).
+          </p>
         </div>
         <div>
           <Label htmlFor="description">Description</Label>
@@ -812,11 +989,16 @@ export default function RepoSettingsPage() {
             id="gitSshBase"
             value={gitSshBase}
             onChange={(e) => setGitSshBase(e.target.value)}
-            placeholder={process.env.NEXT_PUBLIC_GIT_SSH_BASE || "git.gittr.space"}
+            placeholder={
+              process.env.NEXT_PUBLIC_GIT_SSH_BASE || "git.gittr.space"
+            }
             className="mt-2"
           />
           <p className="text-xs text-gray-400 mt-1">
-            SSH server hostname for Git operations. Used in clone URLs: <code className="bg-gray-800 px-1 rounded">git@{gitSshBase}:owner/repo.git</code>
+            SSH server hostname for Git operations. Used in clone URLs:{" "}
+            <code className="bg-gray-800 px-1 rounded">
+              git@{gitSshBase}:owner/repo.git
+            </code>
           </p>
         </div>
 
@@ -827,13 +1009,15 @@ export default function RepoSettingsPage() {
               id="tags"
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
+              onKeyPress={(e) =>
+                e.key === "Enter" && (e.preventDefault(), handleAddTag())
+              }
               placeholder="Add tag"
             />
             <Button onClick={handleAddTag}>Add</Button>
           </div>
           <div className="flex flex-wrap gap-2 mt-2">
-            {tags.map(tag => (
+            {tags.map((tag) => (
               <Badge key={tag} className="flex items-center gap-1">
                 {tag}
                 <button
@@ -856,13 +1040,18 @@ export default function RepoSettingsPage() {
             Configure how zaps to this repository are split among contributors.
             Total weights must sum to 100%.
           </p>
-          
+
           <div className="space-y-2">
             {zapSplits.map((split, idx) => {
               const total = zapSplits.reduce((sum, s) => sum + s.weight, 0);
               return (
-                <div key={idx} className="flex items-center gap-2 p-2 border border-gray-700 rounded">
-                  <code className="text-sm flex-1">{split.pubkey.slice(0, 16)}...</code>
+                <div
+                  key={idx}
+                  className="flex items-center gap-2 p-2 border border-gray-700 rounded"
+                >
+                  <code className="text-sm flex-1">
+                    {split.pubkey.slice(0, 16)}...
+                  </code>
                   <span className="text-sm">{split.weight}%</span>
                   <Button
                     size="sm"
@@ -874,7 +1063,7 @@ export default function RepoSettingsPage() {
                 </div>
               );
             })}
-            
+
             <div className="flex gap-2 mt-2">
               <Input
                 value={splitPubkey}
@@ -893,7 +1082,7 @@ export default function RepoSettingsPage() {
               />
               <Button onClick={handleAddSplit}>Add</Button>
             </div>
-            
+
             {zapSplits.length > 0 && (
               <p className="text-sm text-gray-400 mt-2">
                 Total: {zapSplits.reduce((sum, s) => sum + s.weight, 0)}%
@@ -903,11 +1092,10 @@ export default function RepoSettingsPage() {
         </div>
 
         <div>
-          <Label>
-            Repository Visibility
-          </Label>
+          <Label>Repository Visibility</Label>
           <p className="text-sm text-gray-400 mt-1 mb-3">
-            Control who can view this repository. Private repositories are only visible to owners and contributors.
+            Control who can view this repository. Private repositories are only
+            visible to owners and contributors.
           </p>
           <div className="flex items-center gap-4">
             <Button
@@ -932,18 +1120,23 @@ export default function RepoSettingsPage() {
         </div>
 
         <div>
-          <Label>
-            Required Approvals
-          </Label>
+          <Label>Required Approvals</Label>
           <p className="text-sm text-gray-400 mt-1 mb-3">
-            Number of additional approvals required from owners/maintainers (excluding the person merging). Set to 0 to allow owners to merge their own changes without approvals. Only owners and maintainers can merge PRs; contributors can only approve.
+            Number of additional approvals required from owners/maintainers
+            (excluding the person merging). Set to 0 to allow owners to merge
+            their own changes without approvals. Only owners and maintainers can
+            merge PRs; contributors can only approve.
           </p>
           <Input
             type="number"
             min="0"
             max="10"
             value={requiredApprovals}
-            onChange={(e) => setRequiredApprovals(Math.max(0, Math.min(10, parseInt(e.target.value) || 0)))}
+            onChange={(e) =>
+              setRequiredApprovals(
+                Math.max(0, Math.min(10, parseInt(e.target.value) || 0))
+              )
+            }
             placeholder="1"
             className="w-32"
           />
@@ -953,16 +1146,24 @@ export default function RepoSettingsPage() {
         <div>
           <Label>Repository Owners</Label>
           <p className="text-xs text-gray-400 mb-2">
-            Owners can merge PRs, manage settings, and delete the repository. Contributors can only approve PRs.
+            Owners can merge PRs, manage settings, and delete the repository.
+            Contributors can only approve PRs.
           </p>
           <div className="space-y-2">
             {owners.map((owner) => {
               const meta = ownerMetadata[owner.pubkey];
-              const displayName = meta?.display_name || meta?.name || owner.name || owner.pubkey.slice(0, 8) + "...";
+              const displayName =
+                meta?.display_name ||
+                meta?.name ||
+                owner.name ||
+                owner.pubkey.slice(0, 8) + "...";
               const isCurrentUser = owner.pubkey === pubkey;
-              
+
               return (
-                <div key={owner.pubkey} className="flex items-center justify-between p-2 border border-gray-700 rounded">
+                <div
+                  key={owner.pubkey}
+                  className="flex items-center justify-between p-2 border border-gray-700 rounded"
+                >
                   <div className="flex items-center gap-2">
                     <Avatar className="h-6 w-6 ring-2 ring-purple-500">
                       {meta?.picture && meta.picture.startsWith("http") ? (
@@ -974,7 +1175,9 @@ export default function RepoSettingsPage() {
                     </Avatar>
                     <span className="text-sm">{displayName}</span>
                     {isCurrentUser && (
-                      <Badge variant="outline" className="text-xs">You</Badge>
+                      <Badge variant="outline" className="text-xs">
+                        You
+                      </Badge>
                     )}
                   </div>
                   {owners.length > 1 && !isCurrentUser && (
@@ -1010,16 +1213,24 @@ export default function RepoSettingsPage() {
         <div>
           <Label>Maintainers</Label>
           <p className="text-xs text-gray-400 mb-2">
-            Maintainers can merge PRs and approve PRs, but cannot manage all settings or delete the repository.
+            Maintainers can merge PRs and approve PRs, but cannot manage all
+            settings or delete the repository.
           </p>
           <div className="space-y-2">
             {maintainers.map((maintainer) => {
               const meta = ownerMetadata[maintainer.pubkey];
-              const displayName = meta?.display_name || meta?.name || maintainer.name || maintainer.pubkey.slice(0, 8) + "...";
+              const displayName =
+                meta?.display_name ||
+                meta?.name ||
+                maintainer.name ||
+                maintainer.pubkey.slice(0, 8) + "...";
               const isCurrentUser = maintainer.pubkey === pubkey;
-              
+
               return (
-                <div key={maintainer.pubkey} className="flex items-center justify-between p-2 border border-gray-700 rounded">
+                <div
+                  key={maintainer.pubkey}
+                  className="flex items-center justify-between p-2 border border-gray-700 rounded"
+                >
                   <div className="flex items-center gap-2">
                     <Avatar className="h-6 w-6 ring-2 ring-blue-500">
                       {meta?.picture && meta.picture.startsWith("http") ? (
@@ -1031,7 +1242,9 @@ export default function RepoSettingsPage() {
                     </Avatar>
                     <span className="text-sm">{displayName}</span>
                     {isCurrentUser && (
-                      <Badge variant="outline" className="text-xs">You</Badge>
+                      <Badge variant="outline" className="text-xs">
+                        You
+                      </Badge>
                     )}
                   </div>
                   <Button
@@ -1062,24 +1275,41 @@ export default function RepoSettingsPage() {
           {/* Show contributors that can be added as maintainers */}
           {(() => {
             const repos = loadStoredRepos();
-            const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+            const repoData = findRepoByEntityAndName<StoredRepo>(
+              repos,
+              entity,
+              repo
+            );
             const allContributors = repoData?.contributors || [];
             // Filter: contributors that are not already owners or maintainers, and have a pubkey
-            const availableContributors = allContributors.filter((c: StoredContributor): c is StoredContributor & { pubkey: string } => 
-              !!c.pubkey && 
-              /^[0-9a-f]{64}$/i.test(c.pubkey) &&
-              !owners.some(o => o.pubkey.toLowerCase() === c.pubkey!.toLowerCase()) &&
-              !maintainers.some(m => m.pubkey.toLowerCase() === c.pubkey!.toLowerCase())
+            const availableContributors = allContributors.filter(
+              (
+                c: StoredContributor
+              ): c is StoredContributor & { pubkey: string } =>
+                !!c.pubkey &&
+                /^[0-9a-f]{64}$/i.test(c.pubkey) &&
+                !owners.some(
+                  (o) => o.pubkey.toLowerCase() === c.pubkey!.toLowerCase()
+                ) &&
+                !maintainers.some(
+                  (m) => m.pubkey.toLowerCase() === c.pubkey!.toLowerCase()
+                )
             );
-            
+
             if (availableContributors.length > 0) {
               return (
                 <div className="mt-3 pt-3 border-t border-gray-700">
-                  <p className="text-xs text-gray-400 mb-2">Add from contributors:</p>
+                  <p className="text-xs text-gray-400 mb-2">
+                    Add from contributors:
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {availableContributors.slice(0, 5).map((contrib: any) => {
                       const meta = ownerMetadata[contrib.pubkey];
-                      const displayName = meta?.display_name || meta?.name || contrib.name || contrib.pubkey.slice(0, 8) + "...";
+                      const displayName =
+                        meta?.display_name ||
+                        meta?.name ||
+                        contrib.name ||
+                        contrib.pubkey.slice(0, 8) + "...";
                       return (
                         <Button
                           key={contrib.pubkey}
@@ -1092,7 +1322,9 @@ export default function RepoSettingsPage() {
                           className="text-xs"
                         >
                           <Plus className="h-3 w-3 mr-1" />
-                          {displayName.length > 15 ? displayName.slice(0, 15) + "..." : displayName}
+                          {displayName.length > 15
+                            ? displayName.slice(0, 15) + "..."
+                            : displayName}
                         </Button>
                       );
                     })}
@@ -1110,25 +1342,38 @@ export default function RepoSettingsPage() {
             Payment Configuration
           </Label>
           <p className="text-sm text-gray-400 mt-1 mb-3">
-            Configure wallet addresses for this repository (optional - defaults to user settings).
-            Receiving: where zaps to the repo come in. Sending: for splits when repo receives zaps.
-            Note: Bounties use YOUR wallet from Settings → Account, not the repo wallet.
+            Configure wallet addresses for this repository (optional - defaults
+            to user settings). Receiving: where zaps to the repo come in.
+            Sending: for splits when repo receives zaps. Note: Bounties use YOUR
+            wallet from Settings → Account, not the repo wallet.
           </p>
-          
-          <RepoWalletConfig entity={entity} repo={repo} onConfigChange={setRepoWalletConfig} />
+
+          <RepoWalletConfig
+            entity={entity}
+            repo={repo}
+            onConfigChange={setRepoWalletConfig}
+          />
         </div>
 
         {/* Distribute zaps UI */}
-        <DistributeZaps entity={entity} repo={repo} contributors={(() => {
-          const foundRepo = loadStoredRepos().find((r: StoredRepo) => r.entity === entity && r.repo === repo);
-          return (foundRepo?.contributors || []).map((c: StoredContributor) => ({
-            pubkey: c.pubkey,
-            name: c.name,
-            picture: c.picture,
-            weight: c.weight ?? 0,
-            githubLogin: c.githubLogin || c.login,
-          }));
-        })()} />
+        <DistributeZaps
+          entity={entity}
+          repo={repo}
+          contributors={(() => {
+            const foundRepo = loadStoredRepos().find(
+              (r: StoredRepo) => r.entity === entity && r.repo === repo
+            );
+            return (foundRepo?.contributors || []).map(
+              (c: StoredContributor) => ({
+                pubkey: c.pubkey,
+                name: c.name,
+                picture: c.picture,
+                weight: c.weight ?? 0,
+                githubLogin: c.githubLogin || c.login,
+              })
+            );
+          })()}
+        />
 
         {/* Repository Links */}
         <div>
@@ -1137,28 +1382,46 @@ export default function RepoSettingsPage() {
             Repository Links
           </Label>
           <p className="text-sm text-gray-400 mt-1 mb-3">
-            Add links to documentation, social media, Discord, Slack, YouTube, Twitter, GitHub, or other resources. These will be displayed on the repository page below the contributors section.
+            Add links to documentation, social media, Discord, Slack, YouTube,
+            Twitter, GitHub, or other resources. These will be displayed on the
+            repository page below the contributors section.
           </p>
-          
+
           <div className="space-y-2 mb-4">
             {repoLinks.map((link, idx) => {
-              const Icon = link.type === "docs" ? BookOpen :
-                          link.type === "discord" || link.type === "slack" ? MessageSquare :
-                          link.type === "youtube" ? Youtube :
-                          link.type === "twitter" ? Twitter :
-                          link.type === "github" ? Github :
-                          LinkIcon;
-              
-              const typeLabel = link.type === "docs" ? "Documentation" :
-                               link.type === "discord" ? "Discord" :
-                               link.type === "slack" ? "Slack" :
-                               link.type === "youtube" ? "YouTube" :
-                               link.type === "twitter" ? "Twitter" :
-                               link.type === "github" ? "GitHub" :
-                               "Link";
-              
+              const Icon =
+                link.type === "docs"
+                  ? BookOpen
+                  : link.type === "discord" || link.type === "slack"
+                  ? MessageSquare
+                  : link.type === "youtube"
+                  ? Youtube
+                  : link.type === "twitter"
+                  ? Twitter
+                  : link.type === "github"
+                  ? Github
+                  : LinkIcon;
+
+              const typeLabel =
+                link.type === "docs"
+                  ? "Documentation"
+                  : link.type === "discord"
+                  ? "Discord"
+                  : link.type === "slack"
+                  ? "Slack"
+                  : link.type === "youtube"
+                  ? "YouTube"
+                  : link.type === "twitter"
+                  ? "Twitter"
+                  : link.type === "github"
+                  ? "GitHub"
+                  : "Link";
+
               return (
-                <div key={idx} className="flex items-center justify-between p-2 border border-gray-700 rounded">
+                <div
+                  key={idx}
+                  className="flex items-center justify-between p-2 border border-gray-700 rounded"
+                >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <Icon className="h-4 w-4 shrink-0 text-gray-400" />
                     <span className="text-sm text-gray-300 truncate">
@@ -1180,12 +1443,14 @@ export default function RepoSettingsPage() {
               );
             })}
           </div>
-          
+
           <div className="space-y-2">
             <div className="flex gap-2">
               <select
                 value={newLinkType}
-                onChange={(e) => setNewLinkType(e.target.value as RepoLink["type"])}
+                onChange={(e) =>
+                  setNewLinkType(e.target.value as RepoLink["type"])
+                }
                 className="px-3 py-2 bg-[#171B21] border border-gray-700 rounded text-white"
               >
                 <option value="docs">Documentation</option>
@@ -1231,14 +1496,21 @@ export default function RepoSettingsPage() {
           <p className="text-sm text-gray-400 mt-1 mb-3">
             Create milestones to track progress and organize issues.
           </p>
-          
+
           <div className="space-y-3">
             {milestones.map((milestone) => (
-              <div key={milestone.id} className="flex items-start gap-2 p-3 border border-gray-700 rounded">
+              <div
+                key={milestone.id}
+                className="flex items-start gap-2 p-3 border border-gray-700 rounded"
+              >
                 <div className="flex-1">
-                  <div className="font-medium text-purple-400">{milestone.name}</div>
+                  <div className="font-medium text-purple-400">
+                    {milestone.name}
+                  </div>
                   {milestone.description && (
-                    <div className="text-sm text-gray-400 mt-1">{milestone.description}</div>
+                    <div className="text-sm text-gray-400 mt-1">
+                      {milestone.description}
+                    </div>
                   )}
                   {milestone.dueDate && (
                     <div className="text-xs text-gray-500 mt-1">
@@ -1250,14 +1522,16 @@ export default function RepoSettingsPage() {
                   size="sm"
                   variant="ghost"
                   onClick={() => {
-                    setMilestones(milestones.filter(m => m.id !== milestone.id));
+                    setMilestones(
+                      milestones.filter((m) => m.id !== milestone.id)
+                    );
                   }}
                 >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
             ))}
-            
+
             <div className="border border-gray-700 rounded p-3 space-y-2">
               <Input
                 value={milestoneName}
@@ -1283,10 +1557,14 @@ export default function RepoSettingsPage() {
                 onClick={() => {
                   if (milestoneName.trim()) {
                     const newMilestone: Milestone = {
-                      id: `milestone-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                      id: `milestone-${Date.now()}-${Math.random()
+                        .toString(36)
+                        .substr(2, 9)}`,
                       name: milestoneName.trim(),
                       description: milestoneDescription.trim() || undefined,
-                      dueDate: milestoneDueDate ? new Date(milestoneDueDate).getTime() : undefined,
+                      dueDate: milestoneDueDate
+                        ? new Date(milestoneDueDate).getTime()
+                        : undefined,
                     };
                     setMilestones([...milestones, newMilestone]);
                     setMilestoneName("");
@@ -1304,11 +1582,7 @@ export default function RepoSettingsPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button
-            onClick={handleSave}
-            disabled={saving}
-            variant="default"
-          >
+          <Button onClick={handleSave} disabled={saving} variant="default">
             {saving ? "Saving..." : "Save Settings"}
           </Button>
           <Button
@@ -1321,9 +1595,11 @@ export default function RepoSettingsPage() {
             {deleting ? "Deleting..." : "Delete Repository"}
           </Button>
           {status && (
-            <span className={`text-sm ${
-              status.includes("Error") ? "text-red-400" : "text-green-400"
-            }`}>
+            <span
+              className={`text-sm ${
+                status.includes("Error") ? "text-red-400" : "text-green-400"
+              }`}
+            >
               {status}
             </span>
           )}

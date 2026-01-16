@@ -13,7 +13,9 @@ export async function sendTelegramChannelAnnouncement(
   try {
     const telegramChatId = process.env.TELEGRAM_CHAT_ID;
     if (!telegramChatId) {
-      console.warn("TELEGRAM_CHAT_ID not configured, skipping channel announcement");
+      console.warn(
+        "TELEGRAM_CHAT_ID not configured, skipping channel announcement"
+      );
       return;
     }
 
@@ -39,4 +41,3 @@ export async function sendTelegramChannelAnnouncement(
     // Don't throw - announcements should be best-effort
   }
 }
-

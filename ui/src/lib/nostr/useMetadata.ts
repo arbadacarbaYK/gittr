@@ -19,14 +19,14 @@ const useMetadata = (relays: string[] = []) => {
   const [metadata, setMetadata] = useState<Metadata>({});
   useEffect(() => {
     if (!subscribe || !pubkey) return;
-    
+
     // Set timeout to prevent hanging indefinitely
     const timeout = setTimeout(() => {
       console.log("Metadata fetch timeout after 10s");
     }, 10000);
 
     let unsub: (() => void) | undefined;
-    
+
     try {
       unsub = subscribe(
         [

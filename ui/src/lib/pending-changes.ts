@@ -1,6 +1,6 @@
 /**
  * Pending Changes Tracking System
- * 
+ *
  * Tracks file edits, deletions, and uploads that should be included in a PR
  */
 
@@ -20,16 +20,20 @@ export interface PendingUpload {
   mimeType?: string; // Preserve MIME type so we can render preview (png, jpg, etc.)
 }
 
-const getPendingEditsKey = (entity: string, repo: string, pubkey: string) => 
+const getPendingEditsKey = (entity: string, repo: string, pubkey: string) =>
   `gittr_pending_edits__${entity}__${repo}__${pubkey}`;
 
-const getPendingUploadsKey = (entity: string, repo: string, pubkey: string) => 
+const getPendingUploadsKey = (entity: string, repo: string, pubkey: string) =>
   `gittr_pending_uploads__${entity}__${repo}__${pubkey}`;
 
 /**
  * Get all pending edits for a user in a repository
  */
-export function getPendingEdits(entity: string, repo: string, pubkey: string): PendingEdit[] {
+export function getPendingEdits(
+  entity: string,
+  repo: string,
+  pubkey: string
+): PendingEdit[] {
   try {
     const key = getPendingEditsKey(entity, repo, pubkey);
     const stored = localStorage.getItem(key);
@@ -42,12 +46,17 @@ export function getPendingEdits(entity: string, repo: string, pubkey: string): P
 /**
  * Add or update a pending edit
  */
-export function addPendingEdit(entity: string, repo: string, pubkey: string, edit: PendingEdit): void {
+export function addPendingEdit(
+  entity: string,
+  repo: string,
+  pubkey: string,
+  edit: PendingEdit
+): void {
   try {
     const key = getPendingEditsKey(entity, repo, pubkey);
     const existing = getPendingEdits(entity, repo, pubkey);
     // Remove existing edit for same path, add new one
-    const filtered = existing.filter(e => e.path !== edit.path);
+    const filtered = existing.filter((e) => e.path !== edit.path);
     filtered.push(edit);
     localStorage.setItem(key, JSON.stringify(filtered));
   } catch (error) {
@@ -58,11 +67,16 @@ export function addPendingEdit(entity: string, repo: string, pubkey: string, edi
 /**
  * Remove a pending edit
  */
-export function removePendingEdit(entity: string, repo: string, pubkey: string, path: string): void {
+export function removePendingEdit(
+  entity: string,
+  repo: string,
+  pubkey: string,
+  path: string
+): void {
   try {
     const key = getPendingEditsKey(entity, repo, pubkey);
     const existing = getPendingEdits(entity, repo, pubkey);
-    const filtered = existing.filter(e => e.path !== path);
+    const filtered = existing.filter((e) => e.path !== path);
     localStorage.setItem(key, JSON.stringify(filtered));
   } catch (error) {
     console.error("Failed to remove pending edit:", error);
@@ -72,7 +86,11 @@ export function removePendingEdit(entity: string, repo: string, pubkey: string, 
 /**
  * Clear all pending edits (typically after PR creation)
  */
-export function clearPendingEdits(entity: string, repo: string, pubkey: string): void {
+export function clearPendingEdits(
+  entity: string,
+  repo: string,
+  pubkey: string
+): void {
   try {
     const key = getPendingEditsKey(entity, repo, pubkey);
     localStorage.removeItem(key);
@@ -84,7 +102,11 @@ export function clearPendingEdits(entity: string, repo: string, pubkey: string):
 /**
  * Get all pending uploads for a user in a repository
  */
-export function getPendingUploads(entity: string, repo: string, pubkey: string): PendingUpload[] {
+export function getPendingUploads(
+  entity: string,
+  repo: string,
+  pubkey: string
+): PendingUpload[] {
   try {
     const key = getPendingUploadsKey(entity, repo, pubkey);
     const stored = localStorage.getItem(key);
@@ -97,12 +119,17 @@ export function getPendingUploads(entity: string, repo: string, pubkey: string):
 /**
  * Add a pending upload
  */
-export function addPendingUpload(entity: string, repo: string, pubkey: string, upload: PendingUpload): void {
+export function addPendingUpload(
+  entity: string,
+  repo: string,
+  pubkey: string,
+  upload: PendingUpload
+): void {
   try {
     const key = getPendingUploadsKey(entity, repo, pubkey);
     const existing = getPendingUploads(entity, repo, pubkey);
     // Remove existing upload for same path, add new one
-    const filtered = existing.filter(u => u.path !== upload.path);
+    const filtered = existing.filter((u) => u.path !== upload.path);
     filtered.push(upload);
     localStorage.setItem(key, JSON.stringify(filtered));
   } catch (error) {
@@ -113,11 +140,16 @@ export function addPendingUpload(entity: string, repo: string, pubkey: string, u
 /**
  * Remove a pending upload
  */
-export function removePendingUpload(entity: string, repo: string, pubkey: string, path: string): void {
+export function removePendingUpload(
+  entity: string,
+  repo: string,
+  pubkey: string,
+  path: string
+): void {
   try {
     const key = getPendingUploadsKey(entity, repo, pubkey);
     const existing = getPendingUploads(entity, repo, pubkey);
-    const filtered = existing.filter(u => u.path !== path);
+    const filtered = existing.filter((u) => u.path !== path);
     localStorage.setItem(key, JSON.stringify(filtered));
   } catch (error) {
     console.error("Failed to remove pending upload:", error);
@@ -127,7 +159,11 @@ export function removePendingUpload(entity: string, repo: string, pubkey: string
 /**
  * Clear all pending uploads
  */
-export function clearPendingUploads(entity: string, repo: string, pubkey: string): void {
+export function clearPendingUploads(
+  entity: string,
+  repo: string,
+  pubkey: string
+): void {
   try {
     const key = getPendingUploadsKey(entity, repo, pubkey);
     localStorage.removeItem(key);
@@ -139,7 +175,11 @@ export function clearPendingUploads(entity: string, repo: string, pubkey: string
 /**
  * Get all pending changes (edits + uploads) for a user
  */
-export function getAllPendingChanges(entity: string, repo: string, pubkey: string): {
+export function getAllPendingChanges(
+  entity: string,
+  repo: string,
+  pubkey: string
+): {
   edits: PendingEdit[];
   uploads: PendingUpload[];
 } {
@@ -152,8 +192,11 @@ export function getAllPendingChanges(entity: string, repo: string, pubkey: strin
 /**
  * Clear all pending changes (edits + uploads)
  */
-export function clearAllPendingChanges(entity: string, repo: string, pubkey: string): void {
+export function clearAllPendingChanges(
+  entity: string,
+  repo: string,
+  pubkey: string
+): void {
   clearPendingEdits(entity, repo, pubkey);
   clearPendingUploads(entity, repo, pubkey);
 }
-

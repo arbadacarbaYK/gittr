@@ -2,12 +2,23 @@
  * Push local repository to Nostr
  * Gathers all repo data and publishes complete repository event
  */
-
-import { createRepositoryEvent, KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "./events";
-import { publishWithConfirmation, storeRepoEventId } from "./publish-with-confirmation";
-import { setRepoStatus } from "../utils/repo-status";
+import {
+  type StoredRepo,
+  loadRepoOverrides,
+  loadStoredRepos,
+} from "../repos/storage";
 import { getGraspServers } from "../utils/grasp-servers";
-import { loadStoredRepos, loadRepoOverrides, type StoredRepo } from "../repos/storage";
+import { setRepoStatus } from "../utils/repo-status";
+
+import {
+  KIND_REPOSITORY,
+  KIND_REPOSITORY_NIP34,
+  createRepositoryEvent,
+} from "./events";
+import {
+  publishWithConfirmation,
+  storeRepoEventId,
+} from "./publish-with-confirmation";
 
 export interface BridgeFilePayload {
   path: string;
@@ -44,16 +55,34 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
   error?: string;
   filesForBridge?: BridgeFilePayload[];
 }> {
-  const { repoSlug, entity, publish, subscribe, defaultRelays, privateKey, pubkey, onProgress } = options;
-  
+  const {
+    repoSlug,
+    entity,
+    publish,
+    subscribe,
+    defaultRelays,
+    privateKey,
+    pubkey,
+    onProgress,
+  } = options;
+
   // CRITICAL: Validate pubkey format - must be 64-char hex
   if (!pubkey || !/^[0-9a-f]{64}$/i.test(pubkey)) {
-    const errorMsg = `❌ [Push Repo] CRITICAL: Invalid pubkey format! Expected 64-char hex, got: ${pubkey ? `${pubkey.substring(0, 20)}... (${pubkey.length} chars)` : 'null/undefined'}`;
+    const errorMsg = `❌ [Push Repo] CRITICAL: Invalid pubkey format! Expected 64-char hex, got: ${
+      pubkey
+        ? `${pubkey.substring(0, 20)}... (${pubkey.length} chars)`
+        : "null/undefined"
+    }`;
     console.error(errorMsg);
     throw new Error(errorMsg);
   }
-  console.log(`✅ [Push Repo] Using pubkey: ${pubkey.substring(0, 8)}...${pubkey.substring(56)} (64-char hex, verified)`);
-  
+  console.log(
+    `✅ [Push Repo] Using pubkey: ${pubkey.substring(
+      0,
+      8
+    )}...${pubkey.substring(56)} (64-char hex, verified)`
+  );
+
   // Check for NIP-07 first
   const hasNip07 = typeof window !== "undefined" && window.nostr;
 
@@ -63,8 +92,9 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     // Record push attempt timestamp to detect stuck status
     try {
       const repos = loadStoredRepos();
-      const repoIndex = repos.findIndex((r: any) => 
-        (r.slug === repoSlug || r.repo === repoSlug) && r.entity === entity
+      const repoIndex = repos.findIndex(
+        (r: any) =>
+          (r.slug === repoSlug || r.repo === repoSlug) && r.entity === entity
       );
       if (repoIndex >= 0) {
         (repos[repoIndex] as any).lastPushAttempt = Date.now();
@@ -77,8 +107,8 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
 
     // Step 2: Load all repo data from localStorage
     const repos = loadStoredRepos();
-    const repo = repos.find((r) => 
-      (r.slug === repoSlug || r.repo === repoSlug) && r.entity === entity
+    const repo = repos.find(
+      (r) => (r.slug === repoSlug || r.repo === repoSlug) && r.entity === entity
     ) as StoredRepo & {
       gitSshBase?: string;
       releases?: unknown[];
@@ -96,15 +126,19 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     // Priority: repositoryName > repo > slug > repoSlug (parameter)
     // This ensures we use the exact name that matches what's stored in git-nostr-bridge
     const repoDataAny = repo as any; // Type assertion for dynamic fields
-    let actualRepositoryName = repoDataAny?.repositoryName || repoDataAny?.repo || repoDataAny?.slug || repoSlug;
-    
+    let actualRepositoryName =
+      repoDataAny?.repositoryName ||
+      repoDataAny?.repo ||
+      repoDataAny?.slug ||
+      repoSlug;
+
     // Extract repo name (handle paths like "gitnostr.com/gitworkshop")
-    if (actualRepositoryName.includes('/')) {
-      const parts = actualRepositoryName.split('/');
+    if (actualRepositoryName.includes("/")) {
+      const parts = actualRepositoryName.split("/");
       actualRepositoryName = parts[parts.length - 1] || actualRepositoryName;
     }
-    actualRepositoryName = actualRepositoryName.replace(/\.git$/, '');
-    
+    actualRepositoryName = actualRepositoryName.replace(/\.git$/, "");
+
     // CRITICAL: Log repository name resolution for debugging
     console.log(`🔍 [Push Repo] Repository name resolution:`, {
       repositoryName: repoDataAny?.repositoryName,
@@ -112,13 +146,13 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       slug: repoDataAny?.slug,
       repoSlug,
       actualRepositoryName,
-      pubkey: pubkey ? `${pubkey.substring(0, 8)}...` : 'none',
+      pubkey: pubkey ? `${pubkey.substring(0, 8)}...` : "none",
       entity,
     });
 
     // Step 3: Gather all related data (PRs, issues, etc.)
     onProgress?.("Loading pull requests and issues...");
-    
+
     // Step 4: Build clone URLs array
     // CRITICAL: Include clone URLs for ALL known git servers so clients know where to look
     // This follows NIP-34 best practices - clients will try all clone URLs until one works
@@ -137,12 +171,15 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         cloneUrls.push(trimmed);
       }
     };
-    
+
     // CRITICAL: Validate pubkey format for GRASP server URLs
     if (!pubkey || !/^[0-9a-f]{64}$/i.test(pubkey)) {
-      console.warn(`⚠️ [Push Repo] Invalid pubkey format, cannot generate GRASP clone URLs:`, pubkey);
+      console.warn(
+        `⚠️ [Push Repo] Invalid pubkey format, cannot generate GRASP clone URLs:`,
+        pubkey
+      );
     }
-    
+
     // Priority 1: Add configured git server URL (primary server)
     // NOTE: In Next.js, NEXT_PUBLIC_* env vars are embedded at build time
     // For dev mode, they must be in .env.local and server must be restarted
@@ -153,12 +190,17 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       isSet: !!configuredGitServerUrl,
       trimmed: configuredGitServerUrl?.trim(),
     });
-    
-    if (configuredGitServerUrl && configuredGitServerUrl.trim() && pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
+
+    if (
+      configuredGitServerUrl &&
+      configuredGitServerUrl.trim() &&
+      pubkey &&
+      /^[0-9a-f]{64}$/i.test(pubkey)
+    ) {
       const trimmedUrl = configuredGitServerUrl.trim();
       // Remove any quotes that might have been added accidentally
-      const cleanUrl = trimmedUrl.replace(/^["']|["']$/g, '');
-      
+      const cleanUrl = trimmedUrl.replace(/^["']|["']$/g, "");
+
       // CRITICAL: For GRASP servers, construct the full clone URL with ownerPubkey and repo name
       // NIP-34 spec: clone tag includes [http|https]://<grasp-path>/<valid-npub>/<string>.git
       // MUST use npub format in GRASP clone URLs, not hex pubkey
@@ -166,96 +208,162 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       const { isGraspServer } = await import("../utils/grasp-servers");
       if (isGraspServer(cleanUrl)) {
         // Extract domain from URL (remove protocol)
-        const urlWithoutProtocol = cleanUrl.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '');
-        const serverDomain = urlWithoutProtocol.split('/')[0];
-        
+        const urlWithoutProtocol = cleanUrl
+          .replace(/^https?:\/\//, "")
+          .replace(/^wss?:\/\//, "");
+        const serverDomain = urlWithoutProtocol.split("/")[0];
+
         // Only proceed if we have a valid server domain and pubkey
-        if (serverDomain && typeof serverDomain === 'string' && serverDomain.length > 0 && pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
+        if (
+          serverDomain &&
+          typeof serverDomain === "string" &&
+          serverDomain.length > 0 &&
+          pubkey &&
+          /^[0-9a-f]{64}$/i.test(pubkey)
+        ) {
           // NIP-34: Convert hex pubkey to npub format for GRASP clone URLs
           const { nip19 } = await import("nostr-tools");
           let npub: string;
           try {
             npub = nip19.npubEncode(pubkey);
           } catch (e) {
-            console.warn(`⚠️ [Push Repo] Failed to encode pubkey to npub for GRASP clone URL, using hex as fallback:`, e);
+            console.warn(
+              `⚠️ [Push Repo] Failed to encode pubkey to npub for GRASP clone URL, using hex as fallback:`,
+              e
+            );
             npub = pubkey; // Fallback to hex if encoding fails (shouldn't happen)
           }
-          
+
           // Add HTTPS URL (NIP-34 format: <grasp-path>/<valid-npub>/<string>.git)
           const httpsCloneUrl = `https://${serverDomain}/${npub}/${actualRepositoryName}.git`;
           addCloneUrl(httpsCloneUrl);
-          console.log(`🔗 [Push Repo] Added primary GRASP server HTTPS clone URL (npub format): ${httpsCloneUrl}`);
-          
+          console.log(
+            `🔗 [Push Repo] Added primary GRASP server HTTPS clone URL (npub format): ${httpsCloneUrl}`
+          );
+
           // Add SSH URL (for users with SSH keys)
           // Note: SSH URLs may still use hex in some implementations, but we use npub for consistency
-          const gitSshBase = repo.gitSshBase || (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_GIT_SSH_BASE) || "git.gittr.space";
-          const sshHost = (serverDomain === "git.gittr.space" || serverDomain.includes("gittr.space")) ? gitSshBase : serverDomain;
+          const gitSshBase =
+            repo.gitSshBase ||
+            (typeof process !== "undefined" &&
+              process.env?.NEXT_PUBLIC_GIT_SSH_BASE) ||
+            "git.gittr.space";
+          const sshHost =
+            serverDomain === "git.gittr.space" ||
+            serverDomain.includes("gittr.space")
+              ? gitSshBase
+              : serverDomain;
           const sshCloneUrl = `git@${sshHost}:${npub}/${actualRepositoryName}.git`;
           addCloneUrl(sshCloneUrl);
-          console.log(`🔗 [Push Repo] Added primary GRASP server SSH clone URL (npub format): ${sshCloneUrl}`);
+          console.log(
+            `🔗 [Push Repo] Added primary GRASP server SSH clone URL (npub format): ${sshCloneUrl}`
+          );
         } else {
-          console.warn(`⚠️ [Push Repo] Could not extract server domain from URL or invalid pubkey:`, { cleanUrl, pubkey });
+          console.warn(
+            `⚠️ [Push Repo] Could not extract server domain from URL or invalid pubkey:`,
+            { cleanUrl, pubkey }
+          );
         }
       } else {
         addCloneUrl(cleanUrl);
-        console.log(`🔗 [Push Repo] Added configured git server URL: ${cleanUrl}`);
+        console.log(
+          `🔗 [Push Repo] Added configured git server URL: ${cleanUrl}`
+        );
       }
     } else if (!configuredGitServerUrl || !configuredGitServerUrl.trim()) {
       // Log warning if no git server URL is configured (repos created locally need this)
-      console.error(`❌ [Push Repo] NEXT_PUBLIC_GIT_SERVER_URL is not set or empty!`, {
-        rawValue: configuredGitServerUrl,
-        allEnvVars: Object.keys(process.env).filter(k => k.includes('GIT') || k.includes('NOSTR')),
-      });
-      onProgress?.("⚠️ Warning: No git server URL configured. Other clients may not be able to fetch files.");
+      console.error(
+        `❌ [Push Repo] NEXT_PUBLIC_GIT_SERVER_URL is not set or empty!`,
+        {
+          rawValue: configuredGitServerUrl,
+          allEnvVars: Object.keys(process.env).filter(
+            (k) => k.includes("GIT") || k.includes("NOSTR")
+          ),
+        }
+      );
+      onProgress?.(
+        "⚠️ Warning: No git server URL configured. Other clients may not be able to fetch files."
+      );
     }
-    
+
     // Priority 2: Add clone URLs for GRASP git servers (prioritized by user preferences if available)
     // CRITICAL: Only include actual GRASP git servers (NOT regular Nostr relays)
     // GRASP servers serve git repos via HTTPS/SSH and can be cloned with standard git commands
     // Regular Nostr relays (like relay.damus.io, nos.lol) are NOT git servers and should NOT be in clone URLs
     if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
-      const { GRASP_SERVERS_FOR_PUSHING, KNOWN_GRASP_DOMAINS, getGraspServers } = await import("../utils/grasp-servers");
-      const { getUserGraspServers, graspRelayUrlsToDomains, prioritizeGraspServers } = await import("../utils/grasp-list");
-      
+      const {
+        GRASP_SERVERS_FOR_PUSHING,
+        KNOWN_GRASP_DOMAINS,
+        getGraspServers,
+      } = await import("../utils/grasp-servers");
+      const {
+        getUserGraspServers,
+        graspRelayUrlsToDomains,
+        prioritizeGraspServers,
+      } = await import("../utils/grasp-list");
+
       // Try to get user's GRASP list preferences (non-blocking, falls back to defaults)
       let prioritizedGraspDomains: string[] = [];
       try {
         // Get default GRASP servers from defaultRelays
         const defaultGraspRelays = getGraspServers(defaultRelays);
         const defaultGraspDomains = graspRelayUrlsToDomains(defaultGraspRelays);
-        
+
         // Try to fetch user's GRASP list (with timeout - don't block if slow)
         const userGraspRelays = await Promise.race([
-          getUserGraspServers(subscribe, defaultRelays, pubkey, defaultGraspRelays),
-          new Promise<string[]>((resolve) => setTimeout(() => resolve(defaultGraspRelays), 3000)) // 3s timeout
+          getUserGraspServers(
+            subscribe,
+            defaultRelays,
+            pubkey,
+            defaultGraspRelays
+          ),
+          new Promise<string[]>((resolve) =>
+            setTimeout(() => resolve(defaultGraspRelays), 3000)
+          ), // 3s timeout
         ]);
-        
+
         // Convert relay URLs to domains and prioritize
         const userGraspDomains = graspRelayUrlsToDomains(userGraspRelays);
-        prioritizedGraspDomains = prioritizeGraspServers(userGraspDomains, [...KNOWN_GRASP_DOMAINS]);
-        
-        console.log(`✅ [Push Repo] Using ${prioritizedGraspDomains.length} GRASP servers (${userGraspDomains.length} from user preferences, ${KNOWN_GRASP_DOMAINS.length - userGraspDomains.length} defaults)`);
+        prioritizedGraspDomains = prioritizeGraspServers(userGraspDomains, [
+          ...KNOWN_GRASP_DOMAINS,
+        ]);
+
+        console.log(
+          `✅ [Push Repo] Using ${
+            prioritizedGraspDomains.length
+          } GRASP servers (${userGraspDomains.length} from user preferences, ${
+            KNOWN_GRASP_DOMAINS.length - userGraspDomains.length
+          } defaults)`
+        );
       } catch (error) {
-        console.warn(`⚠️ [Push Repo] Failed to fetch user GRASP list, using defaults:`, error);
+        console.warn(
+          `⚠️ [Push Repo] Failed to fetch user GRASP list, using defaults:`,
+          error
+        );
         prioritizedGraspDomains = [...KNOWN_GRASP_DOMAINS];
       }
-      
+
       // CRITICAL: Include ALL known GRASP servers (including read-only ones) for clone URLs
       // This ensures maximum compatibility - clients can clone from any GRASP server that has the repo
       // Even if we don't push to read-only servers like git.jb55.com, clients should still be able to clone from them
       // But prioritize user's preferred servers first
-      const knownGitServers = prioritizedGraspDomains.length > 0 
-        ? prioritizedGraspDomains 
-        : [...KNOWN_GRASP_DOMAINS]; // Fallback to all known if prioritization failed
-    
+      const knownGitServers =
+        prioritizedGraspDomains.length > 0
+          ? prioritizedGraspDomains
+          : [...KNOWN_GRASP_DOMAINS]; // Fallback to all known if prioritization failed
+
       // Remove duplicates and filter out the primary server (already added above)
-      const primaryServerDomain = configuredGitServerUrl 
-        ? configuredGitServerUrl.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '').split('/')[0]
+      const primaryServerDomain = configuredGitServerUrl
+        ? configuredGitServerUrl
+            .replace(/^https?:\/\//, "")
+            .replace(/^wss?:\/\//, "")
+            .split("/")[0]
         : null;
-      
-      const uniqueServers = [...new Set(knownGitServers)]
-        .filter(server => server !== primaryServerDomain);
-      
+
+      const uniqueServers = [...new Set(knownGitServers)].filter(
+        (server) => server !== primaryServerDomain
+      );
+
       // Generate clone URLs for all known servers
       // CRITICAL: Add BOTH HTTPS and SSH URLs per NIP-34 spec (supports https://, git://, ssh://)
       // NIP-34 spec: clone tag includes [http|https]://<grasp-path>/<valid-npub>/<string>.git
@@ -266,38 +374,60 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       try {
         npub = nip19.npubEncode(pubkey);
       } catch (e) {
-        console.warn(`⚠️ [Push Repo] Failed to encode pubkey to npub for GRASP clone URLs, using hex as fallback:`, e);
+        console.warn(
+          `⚠️ [Push Repo] Failed to encode pubkey to npub for GRASP clone URLs, using hex as fallback:`,
+          e
+        );
         npub = pubkey; // Fallback to hex if encoding fails (shouldn't happen)
       }
-      
-      const gitSshBase = repo.gitSshBase || (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_GIT_SSH_BASE) || "git.gittr.space";
-      
-      uniqueServers.forEach(server => {
+
+      const gitSshBase =
+        repo.gitSshBase ||
+        (typeof process !== "undefined" &&
+          process.env?.NEXT_PUBLIC_GIT_SSH_BASE) ||
+        "git.gittr.space";
+
+      uniqueServers.forEach((server) => {
         // Add HTTPS URL (works for everyone, read-only or with credentials)
         // NIP-34 format: <grasp-path>/<valid-npub>/<string>.git
         const httpsCloneUrl = `https://${server}/${npub}/${actualRepositoryName}.git`;
         addCloneUrl(httpsCloneUrl);
-        console.log(`🔗 [Push Repo] Added HTTPS clone URL (npub format): ${httpsCloneUrl}`);
-        
+        console.log(
+          `🔗 [Push Repo] Added HTTPS clone URL (npub format): ${httpsCloneUrl}`
+        );
+
         // Add SSH URL (for users with SSH keys - allows push/pull)
         // Use gitSshBase if server matches, otherwise use server domain directly
         // Note: SSH URLs use npub format for consistency with NIP-34 spec
-        const sshHost = (server === "git.gittr.space" || server.includes("gittr.space")) ? gitSshBase : server;
+        const sshHost =
+          server === "git.gittr.space" || server.includes("gittr.space")
+            ? gitSshBase
+            : server;
         const sshCloneUrl = `git@${sshHost}:${npub}/${actualRepositoryName}.git`;
         addCloneUrl(sshCloneUrl);
-        console.log(`🔗 [Push Repo] Added SSH clone URL (npub format): ${sshCloneUrl}`);
+        console.log(
+          `🔗 [Push Repo] Added SSH clone URL (npub format): ${sshCloneUrl}`
+        );
       });
-      
-      console.log(`✅ [Push Repo] Added ${uniqueServers.length * 2} clone URLs (HTTPS + SSH) for ${uniqueServers.length} GRASP servers (total: ${cloneUrls.length})`);
+
+      console.log(
+        `✅ [Push Repo] Added ${
+          uniqueServers.length * 2
+        } clone URLs (HTTPS + SSH) for ${
+          uniqueServers.length
+        } GRASP servers (total: ${cloneUrls.length})`
+      );
     } else {
-      console.warn(`⚠️ [Push Repo] Cannot add GRASP server clone URLs - invalid pubkey format`);
+      console.warn(
+        `⚠️ [Push Repo] Cannot add GRASP server clone URLs - invalid pubkey format`
+      );
     }
-    
+
     // NOTE: nostr:// URLs are NOT added to clone tags per NIP-34 spec
     // NIP-34 clone tags must contain standard git clone URLs (https://, git://, ssh://)
     // Clients like gitworkshop.dev generate nostr:// URLs from event metadata (pubkey + repo name + relays)
     // We do NOT include nostr:// URLs in clone tags - they are client-generated, not event-stored
-    
+
     if (repo.sourceUrl) {
       // CRITICAL: Normalize SSH URLs (git@host:path) to HTTPS format before checking
       let normalizedSourceUrl = repo.sourceUrl;
@@ -305,17 +435,19 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       if (sshMatch) {
         const [, host, path] = sshMatch;
         normalizedSourceUrl = `https://${host}/${path}`;
-        console.log(`🔄 [Push Repo] Normalized SSH sourceUrl to HTTPS: ${normalizedSourceUrl}`);
+        console.log(
+          `🔄 [Push Repo] Normalized SSH sourceUrl to HTTPS: ${normalizedSourceUrl}`
+        );
       }
-      
+
       // Check if sourceUrl is GitHub/GitLab/Codeberg and add it to clone URLs
-      const isGitHub = normalizedSourceUrl.includes('github.com');
-      const isGitLab = normalizedSourceUrl.includes('gitlab.com');
-      const isCodeberg = normalizedSourceUrl.includes('codeberg.org');
+      const isGitHub = normalizedSourceUrl.includes("github.com");
+      const isGitLab = normalizedSourceUrl.includes("gitlab.com");
+      const isCodeberg = normalizedSourceUrl.includes("codeberg.org");
       if (isGitHub || isGitLab || isCodeberg) {
         // Convert sourceUrl to clone URL format (add .git if needed)
         let cloneUrl = normalizedSourceUrl;
-        if (!cloneUrl.endsWith('.git')) {
+        if (!cloneUrl.endsWith(".git")) {
           cloneUrl = `${cloneUrl}.git`;
         }
         // Only add if not already in array
@@ -325,22 +457,23 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
 
     // Step 5: Merge file overrides (user edits) into files array
     onProgress?.("Merging file overrides...");
-    const savedOverrides = typeof window !== 'undefined' 
-      ? loadRepoOverrides(entity, repoSlug)
-      : {};
-    
+    const savedOverrides =
+      typeof window !== "undefined" ? loadRepoOverrides(entity, repoSlug) : {};
+
     // CRITICAL: Filter out deleted files before pushing to Nostr
     // Deleted files are tracked separately in deletedPaths and should NOT be included in the event
     const { loadRepoDeletedPaths } = await import("../repos/storage");
-    const deletedPaths = typeof window !== 'undefined' 
-      ? loadRepoDeletedPaths(entity, repoSlug)
-      : [];
-    
+    const deletedPaths =
+      typeof window !== "undefined"
+        ? loadRepoDeletedPaths(entity, repoSlug)
+        : [];
+
     // Start with repo files (or empty array if none), excluding deleted files
     // CRITICAL: Normalize paths for comparison (deletedPaths are normalized)
     const { normalizeFilePath } = await import("../repos/storage");
-    const allFiles = (repo.files && Array.isArray(repo.files)) ? [...repo.files] : [];
-    
+    const allFiles =
+      repo.files && Array.isArray(repo.files) ? [...repo.files] : [];
+
     // CRITICAL: Log file loading status for debugging
     console.log(`📋 [Push Repo] File loading status:`, {
       repoFilesLength: repo.files?.length || 0,
@@ -350,13 +483,19 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       repoSlug,
       actualRepositoryName,
       entity,
-      pubkey: pubkey ? `${pubkey.substring(0, 8)}...` : 'none',
-      filesWithContent: allFiles.filter((f: any) => f.content && f.content.length > 0).length,
-      filesWithoutContent: allFiles.filter((f: any) => !f.content || f.content.length === 0).length,
+      pubkey: pubkey ? `${pubkey.substring(0, 8)}...` : "none",
+      filesWithContent: allFiles.filter(
+        (f: any) => f.content && f.content.length > 0
+      ).length,
+      filesWithoutContent: allFiles.filter(
+        (f: any) => !f.content || f.content.length === 0
+      ).length,
     });
-    
-    const normalizedDeletedPaths = deletedPaths.map(p => normalizeFilePath(p));
-    
+
+    const normalizedDeletedPaths = deletedPaths.map((p) =>
+      normalizeFilePath(p)
+    );
+
     // CRITICAL: Also check if any deleted paths match files by partial match (for cases where path normalization differs)
     const baseFiles = allFiles.filter((file: any) => {
       const filePath = normalizeFilePath(file.path || "");
@@ -365,40 +504,78 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         return false;
       }
       // Check if any deleted path is contained in file path or vice versa (for edge cases)
-      const isDeleted = normalizedDeletedPaths.some(deletedPath => {
-        return filePath === deletedPath || 
-               filePath.includes(deletedPath) || 
-               deletedPath.includes(filePath);
+      const isDeleted = normalizedDeletedPaths.some((deletedPath) => {
+        return (
+          filePath === deletedPath ||
+          filePath.includes(deletedPath) ||
+          deletedPath.includes(filePath)
+        );
       });
       return !isDeleted;
     });
-    
+
     if (deletedPaths.length > 0) {
       const filteredCount = allFiles.length - baseFiles.length;
       if (filteredCount > 0) {
-        onProgress?.(`📝 Filtered out ${filteredCount} deleted file(s) from push`);
+        onProgress?.(
+          `📝 Filtered out ${filteredCount} deleted file(s) from push`
+        );
         console.log(`🗑️ [Push Repo] Filtered deleted files:`, {
           deletedPaths,
           normalizedDeletedPaths,
           filteredCount,
-          remainingFiles: baseFiles.map(f => f.path),
+          remainingFiles: baseFiles.map((f) => f.path),
         });
       } else {
-        console.warn(`⚠️ [Push Repo] Deleted paths exist but no files were filtered:`, {
-          deletedPaths,
-          normalizedDeletedPaths,
-          allFilePaths: allFiles.map(f => f.path),
-        });
+        console.warn(
+          `⚠️ [Push Repo] Deleted paths exist but no files were filtered:`,
+          {
+            deletedPaths,
+            normalizedDeletedPaths,
+            allFilePaths: allFiles.map((f) => f.path),
+          }
+        );
       }
     }
-    
+
     // Helper function to detect if a file is binary
     const isBinaryFile = (path: string): boolean => {
-      const ext = path.split('.').pop()?.toLowerCase() || '';
-      const binaryExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'pdf', 'woff', 'woff2', 'ttf', 'otf', 'eot', 'mp4', 'mp3', 'wav', 'avi', 'mov', 'zip', 'tar', 'gz', 'bz2', 'xz', '7z', 'rar', 'exe', 'dll', 'so', 'dylib', 'bin'];
+      const ext = path.split(".").pop()?.toLowerCase() || "";
+      const binaryExts = [
+        "png",
+        "jpg",
+        "jpeg",
+        "gif",
+        "webp",
+        "svg",
+        "ico",
+        "pdf",
+        "woff",
+        "woff2",
+        "ttf",
+        "otf",
+        "eot",
+        "mp4",
+        "mp3",
+        "wav",
+        "avi",
+        "mov",
+        "zip",
+        "tar",
+        "gz",
+        "bz2",
+        "xz",
+        "7z",
+        "rar",
+        "exe",
+        "dll",
+        "so",
+        "dylib",
+        "bin",
+      ];
       return binaryExts.includes(ext);
     };
-    
+
     // Merge overrides into files
     // CRITICAL: NIP-34 architecture - files should be stored on git servers, NOT in Nostr events
     // - Binary files: Exclude content, only include metadata (path, type, size, sha)
@@ -406,10 +583,14 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     // - Large text files: Exclude content, only include metadata
     // Files must be pushed to git-nostr-bridge via git push before publishing Nostr event
     const MAX_TEXT_FILE_SIZE_KB = 10; // Only include content for small text files
-    
+
     const bridgeFilesMap = new Map<string, BridgeFilePayload>();
 
-    const setBridgeEntry = (path: string, content: string | undefined, isBinary: boolean) => {
+    const setBridgeEntry = (
+      path: string,
+      content: string | undefined,
+      isBinary: boolean
+    ) => {
       if (!path) return;
       const existing = bridgeFilesMap.get(path);
       if (!existing) {
@@ -423,161 +604,197 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       }
     };
 
-    const filesWithOverrides = baseFiles.map((file: any) => {
-      const filePath = file.path || "";
-              // CRITICAL: Normalize path before processing
-              const normalizedPath = normalizeFilePath(filePath);
-              
-              // Skip invalid paths (empty after normalization, like "/")
-              if (!normalizedPath) {
-                return null;
-              }
-              
-              const isBinary = file.isBinary !== undefined ? file.isBinary : isBinaryFile(normalizedPath);
-              
-              // Get content from overrides (check both original and normalized path)
-              const fileContent = savedOverrides[filePath] !== undefined 
-                ? savedOverrides[filePath] 
-                : (savedOverrides[normalizedPath] !== undefined
-                  ? savedOverrides[normalizedPath]
-                  : (file.content || ""));
-              
-              // Calculate content size (base64 is ~33% larger than raw)
-              const contentSizeBytes = fileContent ? (fileContent.length * 3) / 4 : 0;
-              const contentSizeKB = contentSizeBytes / 1024;
-              
-              // For binary files: Always exclude content (only metadata)
-              // For text files: Include content only if small (< 10KB)
-              const shouldIncludeContent = !isBinary && contentSizeKB < MAX_TEXT_FILE_SIZE_KB;
-              
-      const fileEntry: any = {
+    const filesWithOverrides = baseFiles
+      .map((file: any) => {
+        const filePath = file.path || "";
+        // CRITICAL: Normalize path before processing
+        const normalizedPath = normalizeFilePath(filePath);
+
+        // Skip invalid paths (empty after normalization, like "/")
+        if (!normalizedPath) {
+          return null;
+        }
+
+        const isBinary =
+          file.isBinary !== undefined
+            ? file.isBinary
+            : isBinaryFile(normalizedPath);
+
+        // Get content from overrides (check both original and normalized path)
+        const fileContent =
+          savedOverrides[filePath] !== undefined
+            ? savedOverrides[filePath]
+            : savedOverrides[normalizedPath] !== undefined
+            ? savedOverrides[normalizedPath]
+            : file.content || "";
+
+        // Calculate content size (base64 is ~33% larger than raw)
+        const contentSizeBytes = fileContent ? (fileContent.length * 3) / 4 : 0;
+        const contentSizeKB = contentSizeBytes / 1024;
+
+        // For binary files: Always exclude content (only metadata)
+        // For text files: Include content only if small (< 10KB)
+        const shouldIncludeContent =
+          !isBinary && contentSizeKB < MAX_TEXT_FILE_SIZE_KB;
+
+        const fileEntry: any = {
           ...file,
-                path: normalizedPath, // CRITICAL: Use normalized path in event
-                // Only include content for small text files
-                content: shouldIncludeContent ? fileContent : undefined,
-                isBinary: isBinary,
-                // Keep metadata (type, size, sha, url) for all files
-              };
-              
-              // CRITICAL: For binary files without content, ensure we have at least path and isBinary flag
-              // Other clients will fetch these from git servers using clone URLs
-              if (isBinary && !fileEntry.content) {
-                // Ensure binary files have proper metadata for client discovery
-                // Clients will use clone URLs to fetch the actual file content
-                fileEntry.type = fileEntry.type || "file";
-              }
-              
-      // CRITICAL: For bridge push, we need the actual content (including binary files)
-      // Binary files are stored as base64 in overrides, so we must include them for bridge push
-      // Even though they're excluded from the Nostr event (metadata-only), they need to be in the bridge
-      // Check multiple sources in order of reliability:
-      // 1. savedOverrides (via fileContent - already checked above)
-      // 2. file.content directly
-      // 3. file.data (alternative field name)
-      // 4. Check overrides again with normalized path (in case path wasn't normalized when stored)
-      let bridgeContent = fileContent; // This already checks savedOverrides[filePath] and savedOverrides[normalizedPath]
-      
-      if (!bridgeContent || bridgeContent === "") {
-        // Try file.content directly
-        bridgeContent = (file.content && typeof file.content === "string" && file.content.length > 0) 
-          ? file.content 
-          : undefined;
-      }
-      
-      if (!bridgeContent || bridgeContent === "") {
-        // Try file.data (alternative field name)
-        bridgeContent = ((file as any).data && typeof (file as any).data === "string" && (file as any).data.length > 0)
-          ? (file as any).data
-          : undefined;
-      }
-      
-      // For binary files, we MUST have content for bridge push (base64 encoded)
-      // Without it, other clients can't fetch the file from the git server
-      if (isBinary) {
-        if (bridgeContent && bridgeContent.length > 0) {
-          // CRITICAL: Ensure binary content is pure base64 (no data: URL prefix)
-          // FileReader.readAsDataURL returns "data:image/png;base64,..." but we need just the base64 part
-          const cleanBase64 = bridgeContent.includes(',') 
-            ? bridgeContent.split(',')[1] || bridgeContent
-            : bridgeContent;
-          setBridgeEntry(normalizedPath, cleanBase64, isBinary);
-          console.log(`✅ [Push Repo] Binary file ${normalizedPath} included in bridge push (${cleanBase64.length} chars base64)`);
-        } else {
-          // CRITICAL: Binary files without content can't be pushed to bridge
-          // This means other clients won't be able to fetch the file
-          console.error(`❌ [Push Repo] Binary file ${normalizedPath} has NO content for bridge push - other clients will NOT be able to fetch this file!`);
-          console.error(`   Checked sources: savedOverrides[${filePath}], savedOverrides[${normalizedPath}], file.content, file.data`);
-          // Still add to map but mark as missing content (will be in missingFiles array)
-          setBridgeEntry(normalizedPath, undefined, isBinary);
+          path: normalizedPath, // CRITICAL: Use normalized path in event
+          // Only include content for small text files
+          content: shouldIncludeContent ? fileContent : undefined,
+          isBinary: isBinary,
+          // Keep metadata (type, size, sha, url) for all files
+        };
+
+        // CRITICAL: For binary files without content, ensure we have at least path and isBinary flag
+        // Other clients will fetch these from git servers using clone URLs
+        if (isBinary && !fileEntry.content) {
+          // Ensure binary files have proper metadata for client discovery
+          // Clients will use clone URLs to fetch the actual file content
+          fileEntry.type = fileEntry.type || "file";
         }
-      } else {
-        // CRITICAL: For text files, if we don't have content yet, still add to map
-        // It will be fetched later from bridge or GitHub
-        // But log a warning if content is missing
+
+        // CRITICAL: For bridge push, we need the actual content (including binary files)
+        // Binary files are stored as base64 in overrides, so we must include them for bridge push
+        // Even though they're excluded from the Nostr event (metadata-only), they need to be in the bridge
+        // Check multiple sources in order of reliability:
+        // 1. savedOverrides (via fileContent - already checked above)
+        // 2. file.content directly
+        // 3. file.data (alternative field name)
+        // 4. Check overrides again with normalized path (in case path wasn't normalized when stored)
+        let bridgeContent = fileContent; // This already checks savedOverrides[filePath] and savedOverrides[normalizedPath]
+
         if (!bridgeContent || bridgeContent === "") {
-          console.warn(`⚠️ [Push Repo] Text file ${normalizedPath} has NO content in localStorage - will try to fetch from bridge/GitHub`);
+          // Try file.content directly
+          bridgeContent =
+            file.content &&
+            typeof file.content === "string" &&
+            file.content.length > 0
+              ? file.content
+              : undefined;
         }
-        setBridgeEntry(normalizedPath, bridgeContent, isBinary);
+
+        if (!bridgeContent || bridgeContent === "") {
+          // Try file.data (alternative field name)
+          bridgeContent =
+            (file as any).data &&
+            typeof (file as any).data === "string" &&
+            (file as any).data.length > 0
+              ? (file as any).data
+              : undefined;
+        }
+
+        // For binary files, we MUST have content for bridge push (base64 encoded)
+        // Without it, other clients can't fetch the file from the git server
+        if (isBinary) {
+          if (bridgeContent && bridgeContent.length > 0) {
+            // CRITICAL: Ensure binary content is pure base64 (no data: URL prefix)
+            // FileReader.readAsDataURL returns "data:image/png;base64,..." but we need just the base64 part
+            const cleanBase64 = bridgeContent.includes(",")
+              ? bridgeContent.split(",")[1] || bridgeContent
+              : bridgeContent;
+            setBridgeEntry(normalizedPath, cleanBase64, isBinary);
+            console.log(
+              `✅ [Push Repo] Binary file ${normalizedPath} included in bridge push (${cleanBase64.length} chars base64)`
+            );
+          } else {
+            // CRITICAL: Binary files without content can't be pushed to bridge
+            // This means other clients won't be able to fetch the file
+            console.error(
+              `❌ [Push Repo] Binary file ${normalizedPath} has NO content for bridge push - other clients will NOT be able to fetch this file!`
+            );
+            console.error(
+              `   Checked sources: savedOverrides[${filePath}], savedOverrides[${normalizedPath}], file.content, file.data`
+            );
+            // Still add to map but mark as missing content (will be in missingFiles array)
+            setBridgeEntry(normalizedPath, undefined, isBinary);
+          }
+        } else {
+          // CRITICAL: For text files, if we don't have content yet, still add to map
+          // It will be fetched later from bridge or GitHub
+          // But log a warning if content is missing
+          if (!bridgeContent || bridgeContent === "") {
+            console.warn(
+              `⚠️ [Push Repo] Text file ${normalizedPath} has NO content in localStorage - will try to fetch from bridge/GitHub`
+            );
+          }
+          setBridgeEntry(normalizedPath, bridgeContent, isBinary);
+        }
+
+        return fileEntry;
+      })
+      .filter((f: any) => f !== null); // Filter out null entries (invalid paths)
+
+    // Add any new files from overrides that aren't in the base files
+    // CRITICAL: Also filter out deleted files from overrides
+    for (const [overridePath, overrideContent] of Object.entries(
+      savedOverrides
+    )) {
+      // Normalize override path for comparison
+      const normalizedOverridePath = normalizeFilePath(overridePath);
+
+      // Skip invalid paths (empty after normalization, like "/")
+      if (!normalizedOverridePath) {
+        continue;
       }
 
-      return fileEntry;
-            }).filter((f: any) => f !== null); // Filter out null entries (invalid paths)
-    
-    // Add any new files from overrides that aren't in the base files
-            // CRITICAL: Also filter out deleted files from overrides
-    for (const [overridePath, overrideContent] of Object.entries(savedOverrides)) {
-              // Normalize override path for comparison
-              const normalizedOverridePath = normalizeFilePath(overridePath);
-              
-              // Skip invalid paths (empty after normalization, like "/")
-              if (!normalizedOverridePath) {
-                continue;
-              }
-              
-              // Skip if file is marked as deleted (check exact match and partial matches)
-              const isDeleted = normalizedDeletedPaths.some(deletedPath => {
-                return normalizedOverridePath === deletedPath || 
-                       normalizedOverridePath.includes(deletedPath) || 
-                       deletedPath.includes(normalizedOverridePath);
-              });
-              if (isDeleted) {
-                console.log(`🗑️ [Push Repo] Skipping deleted file from overrides: ${overridePath} (normalized: ${normalizedOverridePath})`);
-                continue;
-              }
-              
-              // Skip if already in filesWithOverrides
-              if (!filesWithOverrides.find((f: any) => normalizeFilePath(f.path || "") === normalizedOverridePath)) {
-                const isBinary = isBinaryFile(normalizedOverridePath);
-                const contentSizeBytes = overrideContent ? (overrideContent.length * 3) / 4 : 0;
-                const contentSizeKB = contentSizeBytes / 1024;
-                const shouldIncludeContent = !isBinary && contentSizeKB < MAX_TEXT_FILE_SIZE_KB;
-                
-                const newFileEntry: any = {
+      // Skip if file is marked as deleted (check exact match and partial matches)
+      const isDeleted = normalizedDeletedPaths.some((deletedPath) => {
+        return (
+          normalizedOverridePath === deletedPath ||
+          normalizedOverridePath.includes(deletedPath) ||
+          deletedPath.includes(normalizedOverridePath)
+        );
+      });
+      if (isDeleted) {
+        console.log(
+          `🗑️ [Push Repo] Skipping deleted file from overrides: ${overridePath} (normalized: ${normalizedOverridePath})`
+        );
+        continue;
+      }
+
+      // Skip if already in filesWithOverrides
+      if (
+        !filesWithOverrides.find(
+          (f: any) => normalizeFilePath(f.path || "") === normalizedOverridePath
+        )
+      ) {
+        const isBinary = isBinaryFile(normalizedOverridePath);
+        const contentSizeBytes = overrideContent
+          ? (overrideContent.length * 3) / 4
+          : 0;
+        const contentSizeKB = contentSizeBytes / 1024;
+        const shouldIncludeContent =
+          !isBinary && contentSizeKB < MAX_TEXT_FILE_SIZE_KB;
+
+        const newFileEntry: any = {
           type: "file",
-                  path: normalizedOverridePath, // CRITICAL: Use normalized path in event
-                  // Only include content for small text files
-                  content: shouldIncludeContent ? overrideContent : undefined,
-                  isBinary: isBinary,
-                };
-                
-                // CRITICAL: For binary files without content, ensure proper metadata
-                // Other clients will fetch these from git servers using clone URLs
-                if (isBinary && !newFileEntry.content) {
-                  // Binary file metadata is sufficient - clients will fetch from git server
-                }
-                
+          path: normalizedOverridePath, // CRITICAL: Use normalized path in event
+          // Only include content for small text files
+          content: shouldIncludeContent ? overrideContent : undefined,
+          isBinary: isBinary,
+        };
+
+        // CRITICAL: For binary files without content, ensure proper metadata
+        // Other clients will fetch these from git servers using clone URLs
+        if (isBinary && !newFileEntry.content) {
+          // Binary file metadata is sufficient - clients will fetch from git server
+        }
+
         setBridgeEntry(normalizedOverridePath, overrideContent, isBinary);
-                filesWithOverrides.push(newFileEntry);
+        filesWithOverrides.push(newFileEntry);
       }
     }
-    
+
     // CRITICAL: Per NIP-34, files should NOT be included in Nostr events
     // Files are stored on git servers (via git-nostr-bridge), not in Nostr events
     // The files array is only used for bridge push, not for the Nostr event content
     const totalFiles = filesWithOverrides.length;
-    
+
     if (totalFiles > 0) {
-      onProgress?.(`📦 Preparing ${totalFiles} file(s) for bridge push (files are NOT included in Nostr event per NIP-34)`);
+      onProgress?.(
+        `📦 Preparing ${totalFiles} file(s) for bridge push (files are NOT included in Nostr event per NIP-34)`
+      );
     }
 
     // CRITICAL: Files should already be in localStorage from import/create workflow
@@ -587,20 +804,23 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     // Directories (no extension, no content) are automatically excluded
     const filesForBridge: any[] = [];
     const filesNeedingContent: any[] = [];
-    
+
     for (const file of Array.from(bridgeFilesMap.values())) {
       // Skip directories (they don't have content and shouldn't be in the push)
-      if (!file.path || file.path.endsWith('/')) {
+      if (!file.path || file.path.endsWith("/")) {
         continue;
       }
-      
+
       // Check if it's a directory by checking if it has no extension and no content
-      const hasExtension = file.path.includes('.') && file.path.split('.').pop()?.length && file.path.split('.').pop()!.length < 10;
+      const hasExtension =
+        file.path.includes(".") &&
+        file.path.split(".").pop()?.length &&
+        file.path.split(".").pop()!.length < 10;
       if (!hasExtension && (!file.content || file.content.length === 0)) {
         // Likely a directory - skip
         continue;
       }
-      
+
       // Files with content are ready to push
       if (file.content && file.content.length > 0) {
         filesForBridge.push(file);
@@ -609,15 +829,22 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         filesNeedingContent.push(file);
       }
     }
-    
+
     // Try to fetch missing content from bridge API (for imported repos where files are already on bridge)
     // CRITICAL: Add timeout to prevent hanging on large repos
     if (filesNeedingContent.length > 0) {
-      onProgress?.(`🔍 Fetching ${filesNeedingContent.length} file(s) from bridge API (missing from localStorage)...`);
-      onProgress?.(`⏱️ This may take a moment for large repos - timeout after 2 minutes`);
-      
+      onProgress?.(
+        `🔍 Fetching ${filesNeedingContent.length} file(s) from bridge API (missing from localStorage)...`
+      );
+      onProgress?.(
+        `⏱️ This may take a moment for large repos - timeout after 2 minutes`
+      );
+
       // Helper function to add timeout to fetch
-      const fetchWithTimeout = async (url: string, timeoutMs: number = 30000): Promise<Response> => {
+      const fetchWithTimeout = async (
+        url: string,
+        timeoutMs: number = 30000
+      ): Promise<Response> => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         try {
@@ -626,163 +853,237 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           return response;
         } catch (error: any) {
           clearTimeout(timeoutId);
-          if (error.name === 'AbortError') {
+          if (error.name === "AbortError") {
             throw new Error(`Request timeout after ${timeoutMs}ms`);
           }
           throw error;
         }
       };
-      
+
       // Limit concurrent fetches to avoid overwhelming the API
       const BATCH_SIZE = 5;
       const FILE_FETCH_TIMEOUT = 30000; // 30 seconds per file
       const TOTAL_FETCH_TIMEOUT = 120000; // 2 minutes total for all files
       const fetchStartTime = Date.now();
-      
+
       for (let i = 0; i < filesNeedingContent.length; i += BATCH_SIZE) {
         // Check if we've exceeded total timeout
         if (Date.now() - fetchStartTime > TOTAL_FETCH_TIMEOUT) {
-          console.warn(`⚠️ [Push Repo] File fetch timeout after ${TOTAL_FETCH_TIMEOUT}ms - skipping remaining files`);
-          onProgress?.(`⚠️ File fetch timeout - skipping remaining files. Files should be in localStorage from import.`);
+          console.warn(
+            `⚠️ [Push Repo] File fetch timeout after ${TOTAL_FETCH_TIMEOUT}ms - skipping remaining files`
+          );
+          onProgress?.(
+            `⚠️ File fetch timeout - skipping remaining files. Files should be in localStorage from import.`
+          );
           break;
         }
-        
+
         const batch = filesNeedingContent.slice(i, i + BATCH_SIZE);
-        await Promise.all(batch.map(async (file) => {
-          try {
-            const response = await fetchWithTimeout(
-              `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(pubkey)}&repo=${encodeURIComponent(actualRepositoryName)}&path=${encodeURIComponent(file.path)}&branch=${encodeURIComponent(repo.defaultBranch || "main")}`,
-              FILE_FETCH_TIMEOUT
-            );
-            
-            if (response.ok) {
-              const data = await response.json();
-              if (data.content && data.content.length > 0) {
-                // For binary files, ensure content is base64 (bridge API returns base64 for binary)
-                if (file.isBinary) {
-                  // Bridge API should already return base64 for binary files
-                  file.content = data.content;
-                } else {
-                  file.content = data.content;
-                }
-                filesForBridge.push(file);
-                console.log(`✅ [Push Repo] Fetched content for ${file.path} from bridge API`);
-                return;
-              }
-            } else if (response.status === 404) {
-              // File doesn't exist on bridge yet - will be excluded
-              console.warn(`⚠️ [Push Repo] File ${file.path} not found on bridge (404)`);
-            }
-          } catch (err: any) {
-            if (err.message && err.message.includes('timeout')) {
-              console.warn(`⏱️ [Push Repo] Timeout fetching ${file.path} from bridge API (${FILE_FETCH_TIMEOUT}ms)`);
-            } else {
-              console.warn(`⚠️ [Push Repo] Failed to fetch ${file.path} from bridge API:`, err);
-            }
-          }
-          
-          // If we couldn't fetch from bridge, try fetching from source (GitHub/GitLab/Codeberg)
-          if (repo.sourceUrl) {
+        await Promise.all(
+          batch.map(async (file) => {
             try {
-              console.log(`🔍 [Push Repo] Trying to fetch ${file.path} from source (${repo.sourceUrl})...`);
-              const sourceMatch = repo.sourceUrl.match(/(?:github|gitlab|codeberg)\.(?:com|org)\/([^\/]+)\/([^\/]+)/i);
-              if (sourceMatch && sourceMatch[1] && sourceMatch[2]) {
-                const [, owner, repoNameRaw] = sourceMatch;
-                // CRITICAL: Strip .git suffix from repoName for raw URLs (raw.githubusercontent.com doesn't use .git)
-                const repoName = repoNameRaw.replace(/\.git$/, '');
-                const platform = repo.sourceUrl.includes('github') ? 'github' : 
-                                 repo.sourceUrl.includes('gitlab') ? 'gitlab' : 'codeberg';
-                const branch = repo.defaultBranch || 'main';
-                
-                // Fetch file content from source
-                // CRITICAL: For GitHub, use Contents API which returns base64 for binary, text for text
-                // For text files, we can use raw.githubusercontent.com for faster fetching
-                let sourceFileUrl: string;
-                let useRaw = false;
-                
-                if (platform === 'github') {
-                  // Try raw URL first for text files (faster, no API rate limit)
-                  if (!file.isBinary) {
-                    sourceFileUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${encodeURIComponent(file.path)}`;
+              const response = await fetchWithTimeout(
+                `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+                  pubkey
+                )}&repo=${encodeURIComponent(
+                  actualRepositoryName
+                )}&path=${encodeURIComponent(
+                  file.path
+                )}&branch=${encodeURIComponent(repo.defaultBranch || "main")}`,
+                FILE_FETCH_TIMEOUT
+              );
+
+              if (response.ok) {
+                const data = await response.json();
+                if (data.content && data.content.length > 0) {
+                  // For binary files, ensure content is base64 (bridge API returns base64 for binary)
+                  if (file.isBinary) {
+                    // Bridge API should already return base64 for binary files
+                    file.content = data.content;
+                  } else {
+                    file.content = data.content;
+                  }
+                  filesForBridge.push(file);
+                  console.log(
+                    `✅ [Push Repo] Fetched content for ${file.path} from bridge API`
+                  );
+                  return;
+                }
+              } else if (response.status === 404) {
+                // File doesn't exist on bridge yet - will be excluded
+                console.warn(
+                  `⚠️ [Push Repo] File ${file.path} not found on bridge (404)`
+                );
+              }
+            } catch (err: any) {
+              if (err.message && err.message.includes("timeout")) {
+                console.warn(
+                  `⏱️ [Push Repo] Timeout fetching ${file.path} from bridge API (${FILE_FETCH_TIMEOUT}ms)`
+                );
+              } else {
+                console.warn(
+                  `⚠️ [Push Repo] Failed to fetch ${file.path} from bridge API:`,
+                  err
+                );
+              }
+            }
+
+            // If we couldn't fetch from bridge, try fetching from source (GitHub/GitLab/Codeberg)
+            if (repo.sourceUrl) {
+              try {
+                console.log(
+                  `🔍 [Push Repo] Trying to fetch ${file.path} from source (${repo.sourceUrl})...`
+                );
+                const sourceMatch = repo.sourceUrl.match(
+                  /(?:github|gitlab|codeberg)\.(?:com|org)\/([^\/]+)\/([^\/]+)/i
+                );
+                if (sourceMatch && sourceMatch[1] && sourceMatch[2]) {
+                  const [, owner, repoNameRaw] = sourceMatch;
+                  // CRITICAL: Strip .git suffix from repoName for raw URLs (raw.githubusercontent.com doesn't use .git)
+                  const repoName = repoNameRaw.replace(/\.git$/, "");
+                  const platform = repo.sourceUrl.includes("github")
+                    ? "github"
+                    : repo.sourceUrl.includes("gitlab")
+                    ? "gitlab"
+                    : "codeberg";
+                  const branch = repo.defaultBranch || "main";
+
+                  // Fetch file content from source
+                  // CRITICAL: For GitHub, use Contents API which returns base64 for binary, text for text
+                  // For text files, we can use raw.githubusercontent.com for faster fetching
+                  let sourceFileUrl: string;
+                  let useRaw = false;
+
+                  if (platform === "github") {
+                    // Try raw URL first for text files (faster, no API rate limit)
+                    if (!file.isBinary) {
+                      sourceFileUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(
+                        branch
+                      )}/${encodeURIComponent(file.path)}`;
+                      useRaw = true;
+                    } else {
+                      // For binary, use Contents API to get base64
+                      // Note: GitHub API uses repoName with or without .git, but we'll use the normalized one
+                      sourceFileUrl = `/api/github/proxy?endpoint=${encodeURIComponent(
+                        `/repos/${owner}/${repoName}/contents/${encodeURIComponent(
+                          file.path
+                        )}?ref=${encodeURIComponent(branch)}`
+                      )}`;
+                    }
+                  } else if (platform === "gitlab") {
+                    sourceFileUrl = `/api/gitlab/proxy?endpoint=${encodeURIComponent(
+                      `/projects/${encodeURIComponent(
+                        `${owner}/${repoName}`
+                      )}/repository/files/${encodeURIComponent(
+                        file.path
+                      )}/raw?ref=${encodeURIComponent(branch)}`
+                    )}`;
                     useRaw = true;
                   } else {
-                    // For binary, use Contents API to get base64
-                    // Note: GitHub API uses repoName with or without .git, but we'll use the normalized one
-                    sourceFileUrl = `/api/github/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoName}/contents/${encodeURIComponent(file.path)}?ref=${encodeURIComponent(branch)}`)}`;
+                    sourceFileUrl = `/api/codeberg/proxy?endpoint=${encodeURIComponent(
+                      `/repos/${owner}/${repoName}/contents/${encodeURIComponent(
+                        file.path
+                      )}?ref=${encodeURIComponent(branch)}`
+                    )}`;
                   }
-                } else if (platform === 'gitlab') {
-                  sourceFileUrl = `/api/gitlab/proxy?endpoint=${encodeURIComponent(`/projects/${encodeURIComponent(`${owner}/${repoName}`)}/repository/files/${encodeURIComponent(file.path)}/raw?ref=${encodeURIComponent(branch)}`)}`;
-                  useRaw = true;
-                } else {
-                  sourceFileUrl = `/api/codeberg/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoName}/contents/${encodeURIComponent(file.path)}?ref=${encodeURIComponent(branch)}`)}`;
-                }
-                
-                const sourceResponse = await fetchWithTimeout(sourceFileUrl, FILE_FETCH_TIMEOUT);
-                if (sourceResponse.ok) {
-                  if (useRaw || (!file.isBinary && platform === 'github')) {
-                    // Raw content (text files from GitHub raw, or GitLab raw)
-                    if (file.isBinary) {
-                      // Binary from raw URL - convert to base64
-                      const arrayBuffer = await sourceResponse.arrayBuffer();
-                      // Browser-compatible base64 encoding
-                      const bytes = new Uint8Array(arrayBuffer);
-                      let binary = '';
-                      for (let i = 0; i < bytes.length; i++) {
-                        const byte = bytes[i];
-                        if (byte !== undefined) {
-                          binary += String.fromCharCode(byte);
+
+                  const sourceResponse = await fetchWithTimeout(
+                    sourceFileUrl,
+                    FILE_FETCH_TIMEOUT
+                  );
+                  if (sourceResponse.ok) {
+                    if (useRaw || (!file.isBinary && platform === "github")) {
+                      // Raw content (text files from GitHub raw, or GitLab raw)
+                      if (file.isBinary) {
+                        // Binary from raw URL - convert to base64
+                        const arrayBuffer = await sourceResponse.arrayBuffer();
+                        // Browser-compatible base64 encoding
+                        const bytes = new Uint8Array(arrayBuffer);
+                        let binary = "";
+                        for (let i = 0; i < bytes.length; i++) {
+                          const byte = bytes[i];
+                          if (byte !== undefined) {
+                            binary += String.fromCharCode(byte);
+                          }
                         }
-                      }
-                      file.content = btoa(binary);
-                    } else {
-                      // Text file
-                      file.content = await sourceResponse.text();
-                    }
-                    filesForBridge.push(file);
-                    console.log(`✅ [Push Repo] Fetched ${file.isBinary ? 'binary' : 'text'} content for ${file.path} from ${platform} (raw)`);
-                    return;
-                  } else {
-                    // Contents API response (GitHub for binary, Codeberg)
-                    const sourceData = await sourceResponse.json();
-                    if (sourceData.content) {
-                      if (sourceData.encoding === 'base64') {
-                        // Already base64 encoded
-                        file.content = sourceData.content;
+                        file.content = btoa(binary);
                       } else {
-                        // Not base64 - for binary files, this shouldn't happen (GitHub API always returns base64 for binary)
-                        // For text files, use content as-is
-                        if (file.isBinary) {
-                          console.warn(`⚠️ [Push Repo] Binary file ${file.path} from ${platform} API has encoding "${sourceData.encoding}" (expected "base64") - may be corrupted`);
-                          // Try to use as-is (might be base64 without encoding field)
-                          file.content = sourceData.content;
-                        } else {
-                          file.content = sourceData.content;
-                        }
+                        // Text file
+                        file.content = await sourceResponse.text();
                       }
                       filesForBridge.push(file);
-                      console.log(`✅ [Push Repo] Fetched ${file.isBinary ? 'binary' : 'text'} content for ${file.path} from ${platform} (API) - ${file.content.length} chars`);
+                      console.log(
+                        `✅ [Push Repo] Fetched ${
+                          file.isBinary ? "binary" : "text"
+                        } content for ${file.path} from ${platform} (raw)`
+                      );
                       return;
+                    } else {
+                      // Contents API response (GitHub for binary, Codeberg)
+                      const sourceData = await sourceResponse.json();
+                      if (sourceData.content) {
+                        if (sourceData.encoding === "base64") {
+                          // Already base64 encoded
+                          file.content = sourceData.content;
+                        } else {
+                          // Not base64 - for binary files, this shouldn't happen (GitHub API always returns base64 for binary)
+                          // For text files, use content as-is
+                          if (file.isBinary) {
+                            console.warn(
+                              `⚠️ [Push Repo] Binary file ${file.path} from ${platform} API has encoding "${sourceData.encoding}" (expected "base64") - may be corrupted`
+                            );
+                            // Try to use as-is (might be base64 without encoding field)
+                            file.content = sourceData.content;
+                          } else {
+                            file.content = sourceData.content;
+                          }
+                        }
+                        filesForBridge.push(file);
+                        console.log(
+                          `✅ [Push Repo] Fetched ${
+                            file.isBinary ? "binary" : "text"
+                          } content for ${file.path} from ${platform} (API) - ${
+                            file.content.length
+                          } chars`
+                        );
+                        return;
+                      }
                     }
+                  } else {
+                    console.warn(
+                      `⚠️ [Push Repo] Source fetch failed for ${file.path}: ${sourceResponse.status} ${sourceResponse.statusText}`
+                    );
                   }
-                } else {
-                  console.warn(`⚠️ [Push Repo] Source fetch failed for ${file.path}: ${sourceResponse.status} ${sourceResponse.statusText}`);
                 }
+              } catch (sourceError: any) {
+                console.warn(
+                  `⚠️ [Push Repo] Failed to fetch ${file.path} from source:`,
+                  sourceError?.message || sourceError
+                );
               }
-            } catch (sourceError: any) {
-              console.warn(`⚠️ [Push Repo] Failed to fetch ${file.path} from source:`, sourceError?.message || sourceError);
             }
-          }
-          
-          // If we still couldn't fetch, exclude the file
-          console.warn(`⚠️ [Push Repo] Excluding file from bridge push (no content available): ${file.path}`);
-          console.warn(`   💡 This file should have been loaded during import/create. If it's missing, re-import the repository.`);
-        }));
+
+            // If we still couldn't fetch, exclude the file
+            console.warn(
+              `⚠️ [Push Repo] Excluding file from bridge push (no content available): ${file.path}`
+            );
+            console.warn(
+              `   💡 This file should have been loaded during import/create. If it's missing, re-import the repository.`
+            );
+          })
+        );
       }
-      
+
       // CRITICAL: After fetching, log results
-      console.log(`📊 [Push Repo] After fetching: ${filesForBridge.length} files with content, ${filesNeedingContent.length - filesForBridge.length} still missing content`);
+      console.log(
+        `📊 [Push Repo] After fetching: ${
+          filesForBridge.length
+        } files with content, ${
+          filesNeedingContent.length - filesForBridge.length
+        } still missing content`
+      );
     }
-    
+
     // CRITICAL: Log detailed info about files
     console.log(`📊 [Push Repo] File analysis:`, {
       totalFilesInRepo: baseFiles.length,
@@ -792,42 +1093,57 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       repoSourceUrl: repo.sourceUrl,
       hasFilesInLocalStorage: baseFiles.length > 0,
       actualRepositoryName,
-      pubkey: pubkey ? `${pubkey.substring(0, 8)}...` : 'none',
+      pubkey: pubkey ? `${pubkey.substring(0, 8)}...` : "none",
       entity,
       filePathsSample: Array.from(bridgeFilesMap.keys()).slice(0, 10),
     });
-    
+
     // CRITICAL: If we have no files at all (bridgeFilesMap is empty), try to fetch file list from GitHub first
     // ALSO: If bridgeFilesMap has files but none have content, we need to fetch file list and content
     // This handles the case where localStorage has file metadata but no content
     if (bridgeFilesMap.size === 0 && repo.sourceUrl && baseFiles.length === 0) {
-      console.error(`❌ [Push Repo] CRITICAL: No files found in localStorage! Attempting to fetch file list from GitHub...`, {
-        repoSourceUrl: repo.sourceUrl,
-        baseFilesLength: baseFiles.length,
-        repoFilesLength: repo.files?.length || 0,
-      });
-      
-      onProgress?.("🚨 Emergency: No files in localStorage - fetching file list from GitHub...");
-      const githubMatch = repo.sourceUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+      console.error(
+        `❌ [Push Repo] CRITICAL: No files found in localStorage! Attempting to fetch file list from GitHub...`,
+        {
+          repoSourceUrl: repo.sourceUrl,
+          baseFilesLength: baseFiles.length,
+          repoFilesLength: repo.files?.length || 0,
+        }
+      );
+
+      onProgress?.(
+        "🚨 Emergency: No files in localStorage - fetching file list from GitHub..."
+      );
+      const githubMatch = repo.sourceUrl.match(
+        /github\.com\/([^\/]+)\/([^\/]+)/
+      );
       if (githubMatch && githubMatch[1] && githubMatch[2]) {
         const [, owner, repoNameRaw] = githubMatch;
         // CRITICAL: Strip .git suffix from repoName for raw URLs (raw.githubusercontent.com doesn't use .git)
-        const repoName = repoNameRaw.replace(/\.git$/, '');
+        const repoName = repoNameRaw.replace(/\.git$/, "");
         const branch = repo.defaultBranch || "main";
-        
+
         try {
           // Fetch file tree from GitHub API
           // Note: GitHub API accepts repoName with or without .git, but we'll use the normalized one
-          const treeUrl = `/api/github/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoName}/git/trees/${encodeURIComponent(branch)}?recursive=1`)}`;
+          const treeUrl = `/api/github/proxy?endpoint=${encodeURIComponent(
+            `/repos/${owner}/${repoName}/git/trees/${encodeURIComponent(
+              branch
+            )}?recursive=1`
+          )}`;
           const treeResponse = await fetch(treeUrl);
-          
+
           if (treeResponse.ok) {
             const treeData = await treeResponse.json();
             if (treeData.tree && Array.isArray(treeData.tree)) {
               // Filter to only files (not directories)
-              const fileEntries = treeData.tree.filter((entry: any) => entry.type === "blob" && entry.path);
-              console.log(`✅ [Push Repo] Emergency: Fetched ${fileEntries.length} file paths from GitHub`);
-              
+              const fileEntries = treeData.tree.filter(
+                (entry: any) => entry.type === "blob" && entry.path
+              );
+              console.log(
+                `✅ [Push Repo] Emergency: Fetched ${fileEntries.length} file paths from GitHub`
+              );
+
               // Add ALL files to bridgeFilesMap (without content yet) - NO LIMIT
               fileEntries.forEach((entry: any) => {
                 const normalizedPath = normalizeFilePath(entry.path);
@@ -836,104 +1152,141 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
                   setBridgeEntry(normalizedPath, undefined, isBinary);
                 }
               });
-              
+
               // Now fetch content for ALL files - NO LIMIT
               const filesToFetch = Array.from(bridgeFilesMap.keys());
-              console.log(`🚨 [Push Repo] Emergency: Now fetching content for ALL ${filesToFetch.length} files...`);
-              
+              console.log(
+                `🚨 [Push Repo] Emergency: Now fetching content for ALL ${filesToFetch.length} files...`
+              );
+
               const BATCH_SIZE = 5;
               for (let i = 0; i < filesToFetch.length; i += BATCH_SIZE) {
                 const batch = filesToFetch.slice(i, i + BATCH_SIZE);
-                await Promise.all(batch.map(async (filePath) => {
-                  try {
-                    const file = bridgeFilesMap.get(filePath);
-                    if (!file) return;
-                    
-                    const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${encodeURIComponent(filePath)}`;
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 10000);
-                    
+                await Promise.all(
+                  batch.map(async (filePath) => {
                     try {
-                      const response = await fetch(rawUrl, { 
-                        headers: { "User-Agent": "gittr-space" },
-                        signal: controller.signal
-                      });
-                      clearTimeout(timeoutId);
-                      
-                      if (response.ok) {
-                        // CRITICAL: Handle binary files correctly - convert to base64
-                        if (file.isBinary) {
-                          const arrayBuffer = await response.arrayBuffer();
-                          // Browser-compatible base64 encoding
-                          const bytes = new Uint8Array(arrayBuffer);
-                          let binary = '';
-                          for (let i = 0; i < bytes.length; i++) {
-                            const byte = bytes[i];
-                            if (byte !== undefined) {
-                              binary += String.fromCharCode(byte);
+                      const file = bridgeFilesMap.get(filePath);
+                      if (!file) return;
+
+                      const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(
+                        branch
+                      )}/${encodeURIComponent(filePath)}`;
+                      const controller = new AbortController();
+                      const timeoutId = setTimeout(
+                        () => controller.abort(),
+                        10000
+                      );
+
+                      try {
+                        const response = await fetch(rawUrl, {
+                          headers: { "User-Agent": "gittr-space" },
+                          signal: controller.signal,
+                        });
+                        clearTimeout(timeoutId);
+
+                        if (response.ok) {
+                          // CRITICAL: Handle binary files correctly - convert to base64
+                          if (file.isBinary) {
+                            const arrayBuffer = await response.arrayBuffer();
+                            // Browser-compatible base64 encoding
+                            const bytes = new Uint8Array(arrayBuffer);
+                            let binary = "";
+                            for (let i = 0; i < bytes.length; i++) {
+                              const byte = bytes[i];
+                              if (byte !== undefined) {
+                                binary += String.fromCharCode(byte);
+                              }
+                            }
+                            const base64 = btoa(binary);
+                            if (base64 && base64.length > 0) {
+                              file.content = base64;
+                              filesForBridge.push(file);
+                              console.log(
+                                `✅ [Push Repo] Emergency fetch: Got binary ${filePath} (${base64.length} chars base64)`
+                              );
+                            }
+                          } else {
+                            const content = await response.text();
+                            if (content && content.length > 0) {
+                              file.content = content;
+                              filesForBridge.push(file);
+                              console.log(
+                                `✅ [Push Repo] Emergency fetch: Got text ${filePath} (${content.length} chars)`
+                              );
                             }
                           }
-                          const base64 = btoa(binary);
-                          if (base64 && base64.length > 0) {
-                            file.content = base64;
-                            filesForBridge.push(file);
-                            console.log(`✅ [Push Repo] Emergency fetch: Got binary ${filePath} (${base64.length} chars base64)`);
-                          }
-                        } else {
-                          const content = await response.text();
-                          if (content && content.length > 0) {
-                            file.content = content;
-                            filesForBridge.push(file);
-                            console.log(`✅ [Push Repo] Emergency fetch: Got text ${filePath} (${content.length} chars)`);
-                          }
+                        }
+                      } catch (fetchError: any) {
+                        clearTimeout(timeoutId);
+                        if (fetchError.name !== "AbortError") {
+                          console.warn(
+                            `⚠️ [Push Repo] Emergency fetch failed for ${filePath}:`,
+                            fetchError?.message
+                          );
                         }
                       }
-                    } catch (fetchError: any) {
-                      clearTimeout(timeoutId);
-                      if (fetchError.name !== 'AbortError') {
-                        console.warn(`⚠️ [Push Repo] Emergency fetch failed for ${filePath}:`, fetchError?.message);
-                      }
+                    } catch (e: any) {
+                      console.warn(
+                        `⚠️ [Push Repo] Emergency fetch error for ${filePath}:`,
+                        e?.message
+                      );
                     }
-                  } catch (e: any) {
-                    console.warn(`⚠️ [Push Repo] Emergency fetch error for ${filePath}:`, e?.message);
-                  }
-                }));
+                  })
+                );
               }
-              
-              console.log(`📊 [Push Repo] After emergency file list + content fetch: ${filesForBridge.length} files with content`);
+
+              console.log(
+                `📊 [Push Repo] After emergency file list + content fetch: ${filesForBridge.length} files with content`
+              );
             }
           }
         } catch (treeError: any) {
-          console.error(`❌ [Push Repo] Failed to fetch file tree from GitHub:`, treeError);
+          console.error(
+            `❌ [Push Repo] Failed to fetch file tree from GitHub:`,
+            treeError
+          );
         }
       }
     }
-    
-    // CRITICAL: If we still have no files with content, but we have files in the repo, 
+
+    // CRITICAL: If we still have no files with content, but we have files in the repo,
     // we MUST fetch from GitHub NOW (not wait for refetch)
     // This handles the case where localStorage has file metadata but no content
-    if (filesForBridge.length === 0 && (bridgeFilesMap.size > 0 || baseFiles.length > 0) && repo.sourceUrl) {
-      console.error(`❌ [Push Repo] CRITICAL: No files with content after fetching! Attempting emergency GitHub fetch...`, {
-        bridgeFilesMapSize: bridgeFilesMap.size,
-        baseFilesLength: baseFiles.length,
-        filesNeedingContent: filesNeedingContent.length,
-        repoSourceUrl: repo.sourceUrl,
-        allFilePaths: Array.from(bridgeFilesMap.keys()).slice(0, 10),
-        baseFilePaths: baseFiles.slice(0, 10).map((f: any) => f.path),
-      });
-      
+    if (
+      filesForBridge.length === 0 &&
+      (bridgeFilesMap.size > 0 || baseFiles.length > 0) &&
+      repo.sourceUrl
+    ) {
+      console.error(
+        `❌ [Push Repo] CRITICAL: No files with content after fetching! Attempting emergency GitHub fetch...`,
+        {
+          bridgeFilesMapSize: bridgeFilesMap.size,
+          baseFilesLength: baseFiles.length,
+          filesNeedingContent: filesNeedingContent.length,
+          repoSourceUrl: repo.sourceUrl,
+          allFilePaths: Array.from(bridgeFilesMap.keys()).slice(0, 10),
+          baseFilePaths: baseFiles.slice(0, 10).map((f: any) => f.path),
+        }
+      );
+
       // EMERGENCY: Fetch ALL files from GitHub right now - NO LIMIT
-      onProgress?.("🚨 Emergency: Fetching ALL files from GitHub (this may take a moment)...");
-      const githubMatch = repo.sourceUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+      onProgress?.(
+        "🚨 Emergency: Fetching ALL files from GitHub (this may take a moment)..."
+      );
+      const githubMatch = repo.sourceUrl.match(
+        /github\.com\/([^\/]+)\/([^\/]+)/
+      );
       if (githubMatch && githubMatch[1] && githubMatch[2]) {
         const [, owner, repoNameRaw] = githubMatch;
         // CRITICAL: Strip .git suffix from repoName for raw URLs (raw.githubusercontent.com doesn't use .git)
-        const repoName = repoNameRaw.replace(/\.git$/, '');
+        const repoName = repoNameRaw.replace(/\.git$/, "");
         const branch = repo.defaultBranch || "main";
-        
+
         // CRITICAL: If bridgeFilesMap is empty but baseFiles exist, populate it first
         if (bridgeFilesMap.size === 0 && baseFiles.length > 0) {
-          console.log(`🚨 [Push Repo] Emergency: bridgeFilesMap is empty but baseFiles exist (${baseFiles.length}) - populating from baseFiles...`);
+          console.log(
+            `🚨 [Push Repo] Emergency: bridgeFilesMap is empty but baseFiles exist (${baseFiles.length}) - populating from baseFiles...`
+          );
           baseFiles.forEach((file: any) => {
             const normalizedPath = normalizeFilePath(file.path || "");
             if (normalizedPath) {
@@ -941,87 +1294,116 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
               setBridgeEntry(normalizedPath, undefined, isBinary);
             }
           });
-          console.log(`✅ [Push Repo] Emergency: Populated bridgeFilesMap with ${bridgeFilesMap.size} files from baseFiles`);
+          console.log(
+            `✅ [Push Repo] Emergency: Populated bridgeFilesMap with ${bridgeFilesMap.size} files from baseFiles`
+          );
         }
-        
+
         const allFilesToFetch = Array.from(bridgeFilesMap.keys()); // NO LIMIT - fetch ALL files
-        
-        console.log(`🚨 [Push Repo] Emergency fetch: Fetching ALL ${allFilesToFetch.length} files from GitHub...`);
-        
+
+        console.log(
+          `🚨 [Push Repo] Emergency fetch: Fetching ALL ${allFilesToFetch.length} files from GitHub...`
+        );
+
         const BATCH_SIZE = 5;
         for (let i = 0; i < allFilesToFetch.length; i += BATCH_SIZE) {
           const batch = allFilesToFetch.slice(i, i + BATCH_SIZE);
-          await Promise.all(batch.map(async (filePath) => {
-            try {
-              const file = bridgeFilesMap.get(filePath);
-              if (!file || (file.content && file.content.length > 0)) return; // Skip if already has content
-              
-              const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(branch)}/${encodeURIComponent(filePath)}`;
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 10000);
-              
+          await Promise.all(
+            batch.map(async (filePath) => {
               try {
-                const response = await fetch(rawUrl, { 
-                  headers: { "User-Agent": "gittr-space" },
-                  signal: controller.signal
-                });
-                clearTimeout(timeoutId);
-                
-                if (response.ok) {
-                  // CRITICAL: Handle binary files correctly - convert to base64
-                  if (file.isBinary) {
-                    const arrayBuffer = await response.arrayBuffer();
-                    // Browser-compatible base64 encoding
-                    const bytes = new Uint8Array(arrayBuffer);
-                    let binary = '';
-                    for (let i = 0; i < bytes.length; i++) {
-                      const byte = bytes[i];
-                      if (byte !== undefined) {
-                        binary += String.fromCharCode(byte);
+                const file = bridgeFilesMap.get(filePath);
+                if (!file || (file.content && file.content.length > 0)) return; // Skip if already has content
+
+                const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(
+                  branch
+                )}/${encodeURIComponent(filePath)}`;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+                try {
+                  const response = await fetch(rawUrl, {
+                    headers: { "User-Agent": "gittr-space" },
+                    signal: controller.signal,
+                  });
+                  clearTimeout(timeoutId);
+
+                  if (response.ok) {
+                    // CRITICAL: Handle binary files correctly - convert to base64
+                    if (file.isBinary) {
+                      const arrayBuffer = await response.arrayBuffer();
+                      // Browser-compatible base64 encoding
+                      const bytes = new Uint8Array(arrayBuffer);
+                      let binary = "";
+                      for (let i = 0; i < bytes.length; i++) {
+                        const byte = bytes[i];
+                        if (byte !== undefined) {
+                          binary += String.fromCharCode(byte);
+                        }
+                      }
+                      const base64 = btoa(binary);
+                      if (base64 && base64.length > 0) {
+                        file.content = base64;
+                        filesForBridge.push(file);
+                        console.log(
+                          `✅ [Push Repo] Emergency fetch: Got binary ${filePath} (${base64.length} chars base64)`
+                        );
+                      }
+                    } else {
+                      const content = await response.text();
+                      if (content && content.length > 0) {
+                        file.content = content;
+                        filesForBridge.push(file);
+                        console.log(
+                          `✅ [Push Repo] Emergency fetch: Got text ${filePath} (${content.length} chars)`
+                        );
                       }
                     }
-                    const base64 = btoa(binary);
-                    if (base64 && base64.length > 0) {
-                      file.content = base64;
-                      filesForBridge.push(file);
-                      console.log(`✅ [Push Repo] Emergency fetch: Got binary ${filePath} (${base64.length} chars base64)`);
-                    }
-                  } else {
-                    const content = await response.text();
-                    if (content && content.length > 0) {
-                      file.content = content;
-                      filesForBridge.push(file);
-                      console.log(`✅ [Push Repo] Emergency fetch: Got text ${filePath} (${content.length} chars)`);
-                    }
+                  }
+                } catch (fetchError: any) {
+                  clearTimeout(timeoutId);
+                  if (fetchError.name !== "AbortError") {
+                    console.warn(
+                      `⚠️ [Push Repo] Emergency fetch failed for ${filePath}:`,
+                      fetchError?.message
+                    );
                   }
                 }
-              } catch (fetchError: any) {
-                clearTimeout(timeoutId);
-                if (fetchError.name !== 'AbortError') {
-                  console.warn(`⚠️ [Push Repo] Emergency fetch failed for ${filePath}:`, fetchError?.message);
-                }
+              } catch (e: any) {
+                console.warn(
+                  `⚠️ [Push Repo] Emergency fetch error for ${filePath}:`,
+                  e?.message
+                );
               }
-            } catch (e: any) {
-              console.warn(`⚠️ [Push Repo] Emergency fetch error for ${filePath}:`, e?.message);
-            }
-          }));
+            })
+          );
         }
-        
-        console.log(`📊 [Push Repo] After emergency fetch: ${filesForBridge.length} files with content`);
+
+        console.log(
+          `📊 [Push Repo] After emergency fetch: ${filesForBridge.length} files with content`
+        );
       }
     }
-    
+
     if (filesForBridge.length === 0 && bridgeFilesMap.size > 0) {
-      console.error(`❌ [Push Repo] CRITICAL: No files with content to push to bridge!`, {
-        bridgeFilesMapSize: bridgeFilesMap.size,
-        filesNeedingContent: filesNeedingContent.length,
-        repoSourceUrl: repo.sourceUrl,
-        allFilePaths: Array.from(bridgeFilesMap.keys()),
-      });
-      onProgress?.("⚠️ No files with content to push to bridge - files should be in localStorage from import/create");
-      onProgress?.("💡 If files are missing, re-import the repository to load all files into localStorage");
+      console.error(
+        `❌ [Push Repo] CRITICAL: No files with content to push to bridge!`,
+        {
+          bridgeFilesMapSize: bridgeFilesMap.size,
+          filesNeedingContent: filesNeedingContent.length,
+          repoSourceUrl: repo.sourceUrl,
+          allFilePaths: Array.from(bridgeFilesMap.keys()),
+        }
+      );
+      onProgress?.(
+        "⚠️ No files with content to push to bridge - files should be in localStorage from import/create"
+      );
+      onProgress?.(
+        "💡 If files are missing, re-import the repository to load all files into localStorage"
+      );
     } else if (filesForBridge.length > 0) {
-      onProgress?.(`✅ ${filesForBridge.length} file(s) ready for bridge push (from localStorage)`);
+      onProgress?.(
+        `✅ ${filesForBridge.length} file(s) ready for bridge push (from localStorage)`
+      );
     } else if (bridgeFilesMap.size === 0) {
       console.error(`❌ [Push Repo] CRITICAL: No files found in repo at all!`, {
         baseFilesLength: baseFiles.length,
@@ -1033,47 +1415,60 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
 
     // Step 6: Create repository event with ALL current state
     onProgress?.("Creating repository event...");
-    
+
     let repoEvent: any;
-    
+
     if (hasNip07 && window.nostr) {
       // Use NIP-07 - create unsigned event, hash it, then sign with extension
       const { getEventHash } = await import("nostr-tools");
       const signerPubkey = await window.nostr.getPublicKey();
-      
+
       // NIP-34: Build tags array with required metadata
       const nip34Tags: string[][] = [
         ["d", actualRepositoryName], // NIP-34: Use repo name only (not entity/repo)
       ];
-      
+
       // NIP-34: Add name tag
       // CRITICAL: Always include "name" tag for discoverability by other clients
       const repoName = repo.name || actualRepositoryName;
       if (repoName) {
         nip34Tags.push(["name", repoName]);
       }
-      
+
       // NIP-34: Add description tag
       // CRITICAL: Always include "description" tag (other clients expect it)
-      const description = repo.description || `Repository: ${repoName || actualRepositoryName}`;
+      const description =
+        repo.description || `Repository: ${repoName || actualRepositoryName}`;
       if (description) {
         nip34Tags.push(["description", description]);
       }
-      
+
       // NIP-34: Add clone tags
       // CRITICAL: Per NIP-34 spec, clone tags must contain standard git clone URLs (https://, git://, ssh://)
       // DO NOT include nostr:// URLs - clients generate those from event metadata
       // Prioritize HTTP/HTTPS URLs first, then other formats (SSH, etc.)
-      const httpCloneUrls = cloneUrls.filter(url => 
-        url && typeof url === "string" && (url.startsWith('http://') || url.startsWith('https://')) && !url.startsWith('nostr://')
+      const httpCloneUrls = cloneUrls.filter(
+        (url) =>
+          url &&
+          typeof url === "string" &&
+          (url.startsWith("http://") || url.startsWith("https://")) &&
+          !url.startsWith("nostr://")
       );
-      const otherCloneUrls = cloneUrls.filter(url => 
-        url && typeof url === "string" && !url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('nostr://')
+      const otherCloneUrls = cloneUrls.filter(
+        (url) =>
+          url &&
+          typeof url === "string" &&
+          !url.startsWith("http://") &&
+          !url.startsWith("https://") &&
+          !url.startsWith("nostr://")
       );
       const prioritizedCloneUrls = [...httpCloneUrls, ...otherCloneUrls];
-      
-      console.log(`🔍 [Push Repo] Adding clone tags (prioritized: ${httpCloneUrls.length} HTTP, ${otherCloneUrls.length} other). cloneUrls array:`, prioritizedCloneUrls);
-      prioritizedCloneUrls.forEach(url => {
+
+      console.log(
+        `🔍 [Push Repo] Adding clone tags (prioritized: ${httpCloneUrls.length} HTTP, ${otherCloneUrls.length} other). cloneUrls array:`,
+        prioritizedCloneUrls
+      );
+      prioritizedCloneUrls.forEach((url) => {
         if (url && typeof url === "string" && url.trim().length > 0) {
           const trimmedUrl = url.trim();
           nip34Tags.push(["clone", trimmedUrl]);
@@ -1082,14 +1477,23 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           console.warn(`   ⚠️ Skipping invalid clone URL:`, url);
         }
       });
-      
+
       // Log all tags for debugging
-      const cloneTagsInTags = nip34Tags.filter(t => t[0] === "clone");
-      console.log(`📋 [Push Repo] Clone tags in nip34Tags: ${cloneTagsInTags.length}`, cloneTagsInTags.map(t => t[1]));
-      
+      const cloneTagsInTags = nip34Tags.filter((t) => t[0] === "clone");
+      console.log(
+        `📋 [Push Repo] Clone tags in nip34Tags: ${cloneTagsInTags.length}`,
+        cloneTagsInTags.map((t) => t[1])
+      );
+
       // Validate: Ensure at least one clone URL exists
-      if (cloneUrls.length === 0 || cloneUrls.every(url => !url || typeof url !== "string" || url.trim().length === 0)) {
-        const errorMsg = "⚠️ Warning: No clone URLs provided. Repository may not be discoverable by other NIP-34 clients. Set NEXT_PUBLIC_GIT_SERVER_URL in .env.local and restart the dev server.";
+      if (
+        cloneUrls.length === 0 ||
+        cloneUrls.every(
+          (url) => !url || typeof url !== "string" || url.trim().length === 0
+        )
+      ) {
+        const errorMsg =
+          "⚠️ Warning: No clone URLs provided. Repository may not be discoverable by other NIP-34 clients. Set NEXT_PUBLIC_GIT_SERVER_URL in .env.local and restart the dev server.";
         onProgress?.(errorMsg);
         console.error(`❌ [Push Repo] ${errorMsg}`, {
           configuredGitServerUrl,
@@ -1098,16 +1502,19 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           envVar: process.env.NEXT_PUBLIC_GIT_SERVER_URL,
         });
       } else {
-        console.log(`✅ [Push Repo] Clone URLs configured (${cloneUrls.length}):`, cloneUrls);
+        console.log(
+          `✅ [Push Repo] Clone URLs configured (${cloneUrls.length}):`,
+          cloneUrls
+        );
       }
-      
+
       // NIP-34: Add relays tags
       // CRITICAL: Per NIP-34 spec, each relay should be in a separate tag
       // Format: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"], etc.
-      // 
+      //
       // IMPORTANT: Only add relay URLs that actually exist in defaultRelays
       // We do NOT create fake relay URLs from clone URLs - only use real relays
-      // 
+      //
       // Note on gitworkshop.dev GRASP server recognition:
       // - gitworkshop.dev recognizes clone URLs as GRASP servers if the relay URL matches the clone URL domain
       // - Example: Clone URL https://relay.ngit.dev/... + Relay wss://relay.ngit.dev = recognized as GRASP server
@@ -1115,82 +1522,110 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       // - This is correct: git.gittr.space will show in "git servers" but not "grasp servers" on other clients
       const { getGraspServers } = await import("../utils/grasp-servers");
       const graspRelays = getGraspServers(defaultRelays);
-      console.log(`🔍 [Push Repo] Filtering relays: ${defaultRelays.length} total, ${graspRelays.length} GRASP/git relays`);
-      
+      console.log(
+        `🔍 [Push Repo] Filtering relays: ${defaultRelays.length} total, ${graspRelays.length} GRASP/git relays`
+      );
+
       // CRITICAL: Only add relay URLs that match clone URL domains IF they actually exist in defaultRelays
       // This ensures gitworkshop.dev recognizes GRASP servers correctly
       // Example: If clone URL is https://relay.ngit.dev/... and wss://relay.ngit.dev is in defaultRelays, add it
       const relayUrlsFromCloneUrls = new Set<string>();
-      cloneUrls.forEach(cloneUrl => {
-        if (cloneUrl && typeof cloneUrl === 'string' && (cloneUrl.startsWith('http://') || cloneUrl.startsWith('https://'))) {
+      cloneUrls.forEach((cloneUrl) => {
+        if (
+          cloneUrl &&
+          typeof cloneUrl === "string" &&
+          (cloneUrl.startsWith("http://") || cloneUrl.startsWith("https://"))
+        ) {
           // Extract domain from clone URL and convert to wss:// format
-          const domain = cloneUrl.replace(/^https?:\/\//, '').split('/')[0];
+          const domain = cloneUrl.replace(/^https?:\/\//, "").split("/")[0];
           if (domain) {
             const potentialRelayUrl = `wss://${domain}`;
             // CRITICAL: Only add if this relay URL actually exists in defaultRelays
             // Don't create fake relay URLs for git servers that aren't relays
-            if (defaultRelays.some(r => {
-              const normalized = r.startsWith("wss://") || r.startsWith("ws://") ? r : `wss://${r}`;
-              return normalized === potentialRelayUrl || normalized.startsWith(potentialRelayUrl + '/');
-            })) {
+            if (
+              defaultRelays.some((r) => {
+                const normalized =
+                  r.startsWith("wss://") || r.startsWith("ws://")
+                    ? r
+                    : `wss://${r}`;
+                return (
+                  normalized === potentialRelayUrl ||
+                  normalized.startsWith(potentialRelayUrl + "/")
+                );
+              })
+            ) {
               relayUrlsFromCloneUrls.add(potentialRelayUrl);
-              console.log(`🔗 [Push Repo] Found matching relay for clone URL: ${cloneUrl} -> ${potentialRelayUrl}`);
+              console.log(
+                `🔗 [Push Repo] Found matching relay for clone URL: ${cloneUrl} -> ${potentialRelayUrl}`
+              );
             } else {
-              console.log(`⚠️ [Push Repo] Clone URL domain ${domain} has no matching relay in defaultRelays - skipping (gitworkshop.dev won't recognize as GRASP server)`);
+              console.log(
+                `⚠️ [Push Repo] Clone URL domain ${domain} has no matching relay in defaultRelays - skipping (gitworkshop.dev won't recognize as GRASP server)`
+              );
             }
           }
         }
       });
-      
+
       // Combine GRASP relays from defaultRelays with relay URLs that match clone URLs
       const allGraspRelays = new Set<string>();
-      graspRelays.forEach(relay => {
-        const normalizedRelay = relay.startsWith("wss://") || relay.startsWith("ws://") 
-          ? relay 
-          : `wss://${relay}`;
+      graspRelays.forEach((relay) => {
+        const normalizedRelay =
+          relay.startsWith("wss://") || relay.startsWith("ws://")
+            ? relay
+            : `wss://${relay}`;
         allGraspRelays.add(normalizedRelay);
       });
-      relayUrlsFromCloneUrls.forEach(relay => {
+      relayUrlsFromCloneUrls.forEach((relay) => {
         allGraspRelays.add(relay);
       });
-      
+
       if (allGraspRelays.size > 0) {
         // CRITICAL: Ensure all relay URLs have wss:// prefix before adding as separate tags
-        Array.from(allGraspRelays).forEach(relay => {
-        nip34Tags.push(["relays", relay]);
+        Array.from(allGraspRelays).forEach((relay) => {
+          nip34Tags.push(["relays", relay]);
           console.log(`✅ [Push Repo] Added relay tag: ${relay}`);
-      });
-        console.log(`✅ [Push Repo] Added ${allGraspRelays.size} separate relay tag(s) per NIP-34 spec (${graspRelays.length} from defaultRelays, ${relayUrlsFromCloneUrls.size} matching clone URLs)`);
+        });
+        console.log(
+          `✅ [Push Repo] Added ${allGraspRelays.size} separate relay tag(s) per NIP-34 spec (${graspRelays.length} from defaultRelays, ${relayUrlsFromCloneUrls.size} matching clone URLs)`
+        );
       }
-      
+
       // NIP-34: Add topics
       if (repo.topics && repo.topics.length > 0) {
-        repo.topics.forEach(topic => {
+        repo.topics.forEach((topic) => {
           nip34Tags.push(["t", topic]);
         });
       }
-      
+
       // NIP-34: Add web tags (from logoUrl or links)
-      if (repo.logoUrl && (repo.logoUrl.startsWith("http://") || repo.logoUrl.startsWith("https://"))) {
+      if (
+        repo.logoUrl &&
+        (repo.logoUrl.startsWith("http://") ||
+          repo.logoUrl.startsWith("https://"))
+      ) {
         nip34Tags.push(["web", repo.logoUrl]);
       }
       if (repo.links && Array.isArray(repo.links)) {
-        repo.links.forEach(link => {
-          if (link.url && (link.url.startsWith("http://") || link.url.startsWith("https://"))) {
+        repo.links.forEach((link) => {
+          if (
+            link.url &&
+            (link.url.startsWith("http://") || link.url.startsWith("https://"))
+          ) {
             nip34Tags.push(["web", link.url]);
           }
         });
       }
-      
+
       // NIP-34: Add maintainers tags (from contributors + owner)
       // CRITICAL: Always include event publisher (owner) as maintainer for discoverability
       const maintainerPubkeys = new Set<string>();
-      
+
       // Add event publisher (owner) as maintainer
       if (signerPubkey && /^[0-9a-f]{64}$/i.test(signerPubkey)) {
         maintainerPubkeys.add(signerPubkey);
       }
-      
+
       // Add contributors as maintainers
       if (repo.contributors && Array.isArray(repo.contributors)) {
         repo.contributors.forEach((c: any) => {
@@ -1200,69 +1635,103 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           }
         });
       }
-      
+
       // Add all maintainers to tags
       // CRITICAL: Use npub format per NIP-34 best practices (Dan Conway feedback)
       // Convert hex pubkeys to npub format for maintainers tags
       const { nip19 } = await import("nostr-tools");
-      maintainerPubkeys.forEach(pubkey => {
+      maintainerPubkeys.forEach((pubkey) => {
         try {
           const npub = nip19.npubEncode(pubkey);
           nip34Tags.push(["maintainers", npub]);
         } catch (e) {
           // Fallback to hex if encoding fails (shouldn't happen with valid pubkeys)
-          console.warn(`⚠️ [Push Repo] Failed to encode pubkey to npub, using hex:`, e);
-        nip34Tags.push(["maintainers", pubkey]);
+          console.warn(
+            `⚠️ [Push Repo] Failed to encode pubkey to npub, using hex:`,
+            e
+          );
+          nip34Tags.push(["maintainers", pubkey]);
         }
       });
-      
+
       // NIP-34: Add "r" tag with "euc" marker for earliest unique commit (optional but recommended)
       // This helps identify repos among forks and group related repos
       // Try to get first commit from localStorage, or fetch from bridge if not available
       let earliestCommitId: string | undefined;
-      
+
       // First, try localStorage commits
-      if (repo.commits && Array.isArray(repo.commits) && repo.commits.length > 0) {
+      if (
+        repo.commits &&
+        Array.isArray(repo.commits) &&
+        repo.commits.length > 0
+      ) {
         // Use the first commit (oldest) as the earliest unique commit
         const firstCommit = repo.commits[0] as any;
-        if (firstCommit && typeof firstCommit === 'object' && firstCommit.id && typeof firstCommit.id === 'string') {
+        if (
+          firstCommit &&
+          typeof firstCommit === "object" &&
+          firstCommit.id &&
+          typeof firstCommit.id === "string"
+        ) {
           earliestCommitId = firstCommit.id;
         }
       }
-      
+
       // If not in localStorage, try fetching from bridge API
-      if (!earliestCommitId && typeof window !== 'undefined') {
+      if (!earliestCommitId && typeof window !== "undefined") {
         try {
           const branch = repo.defaultBranch || "main";
-          const commitsUrl = `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(pubkey)}&repo=${encodeURIComponent(actualRepositoryName)}&branch=${encodeURIComponent(branch)}&limit=100`;
+          const commitsUrl = `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
+            pubkey
+          )}&repo=${encodeURIComponent(
+            actualRepositoryName
+          )}&branch=${encodeURIComponent(branch)}&limit=100`;
           const commitsResponse = await fetch(commitsUrl);
           if (commitsResponse.ok) {
             const commitsData = await commitsResponse.json();
-            if (commitsData.commits && Array.isArray(commitsData.commits) && commitsData.commits.length > 0) {
+            if (
+              commitsData.commits &&
+              Array.isArray(commitsData.commits) &&
+              commitsData.commits.length > 0
+            ) {
               // Git log returns commits in reverse chronological order (newest first)
               // So the LAST commit in the array is the earliest (oldest)
-              const earliestCommit = commitsData.commits[commitsData.commits.length - 1];
-              if (earliestCommit && earliestCommit.id && typeof earliestCommit.id === 'string') {
+              const earliestCommit =
+                commitsData.commits[commitsData.commits.length - 1];
+              if (
+                earliestCommit &&
+                earliestCommit.id &&
+                typeof earliestCommit.id === "string"
+              ) {
                 earliestCommitId = earliestCommit.id;
-                console.log(`✅ [Push Repo] Fetched earliest unique commit from bridge: ${earliestCommitId}`);
+                console.log(
+                  `✅ [Push Repo] Fetched earliest unique commit from bridge: ${earliestCommitId}`
+                );
               }
             }
           }
         } catch (error) {
-          console.warn(`⚠️ [Push Repo] Failed to fetch earliest commit from bridge:`, error);
+          console.warn(
+            `⚠️ [Push Repo] Failed to fetch earliest commit from bridge:`,
+            error
+          );
         }
       }
-      
+
       if (earliestCommitId) {
         nip34Tags.push(["r", earliestCommitId, "euc"]);
-        console.log(`✅ [Push Repo] Added earliest unique commit tag: ${earliestCommitId}`);
+        console.log(
+          `✅ [Push Repo] Added earliest unique commit tag: ${earliestCommitId}`
+        );
       } else {
-        console.log(`ℹ️ [Push Repo] No commits found - skipping "r" tag with "euc" marker (optional per NIP-34)`);
+        console.log(
+          `ℹ️ [Push Repo] No commits found - skipping "r" tag with "euc" marker (optional per NIP-34)`
+        );
       }
-      
+
       // NIP-34: Add "t" tag for "personal-fork" if this is a fork (optional)
       // We don't currently track this, but could add it if needed
-      
+
       // Keep legacy tags for backward compatibility (source, forkedFrom)
       if (repo.sourceUrl) {
         nip34Tags.push(["source", repo.sourceUrl]);
@@ -1279,13 +1748,17 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           if (!trimmedUrl) return;
           const linkType = (link.type || "other").toString();
           const linkTag: string[] = ["link", linkType, trimmedUrl];
-          if (link.label && typeof link.label === "string" && link.label.trim().length > 0) {
+          if (
+            link.label &&
+            typeof link.label === "string" &&
+            link.label.trim().length > 0
+          ) {
             linkTag.push(link.label.trim());
           }
           nip34Tags.push(linkTag);
         });
       }
-      
+
       // NIP-34: Content field MUST be empty per spec
       // All metadata goes in tags, not in content
       // Bridge compatibility: We still send metadata to bridge via /api/nostr/repo/event endpoint
@@ -1298,53 +1771,73 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         id: "",
         sig: "",
       };
-      
+
       // Hash event
       repoEvent.id = getEventHash(repoEvent);
-      
+
       // CRITICAL: Log event structure before signing to verify clone tags are present
-      const cloneTagsInEvent = repoEvent.tags.filter((t: any[]) => Array.isArray(t) && t[0] === "clone");
+      const cloneTagsInEvent = repoEvent.tags.filter(
+        (t: any[]) => Array.isArray(t) && t[0] === "clone"
+      );
       console.log(`🔍 [Push Repo] Event structure before signing:`, {
         eventId: repoEvent.id,
         kind: repoEvent.kind,
-        pubkey: repoEvent.pubkey ? `${repoEvent.pubkey.substring(0, 8)}...` : 'none',
+        pubkey: repoEvent.pubkey
+          ? `${repoEvent.pubkey.substring(0, 8)}...`
+          : "none",
         totalTags: repoEvent.tags.length,
         cloneTagsCount: cloneTagsInEvent.length,
         cloneTags: cloneTagsInEvent.map((t: any[]) => t[1]),
-        dTag: repoEvent.tags.find((t: any[]) => Array.isArray(t) && t[0] === "d")?.[1],
-        nameTag: repoEvent.tags.find((t: any[]) => Array.isArray(t) && t[0] === "name")?.[1],
-        descriptionTag: repoEvent.tags.find((t: any[]) => Array.isArray(t) && t[0] === "description")?.[1],
-        maintainersCount: repoEvent.tags.filter((t: any[]) => Array.isArray(t) && t[0] === "maintainers").length,
+        dTag: repoEvent.tags.find(
+          (t: any[]) => Array.isArray(t) && t[0] === "d"
+        )?.[1],
+        nameTag: repoEvent.tags.find(
+          (t: any[]) => Array.isArray(t) && t[0] === "name"
+        )?.[1],
+        descriptionTag: repoEvent.tags.find(
+          (t: any[]) => Array.isArray(t) && t[0] === "description"
+        )?.[1],
+        maintainersCount: repoEvent.tags.filter(
+          (t: any[]) => Array.isArray(t) && t[0] === "maintainers"
+        ).length,
       });
-      
+
       // Check event size before signing (Nostr events typically have ~100KB limit)
       // Note: Binary files should already be excluded, but check anyway
       const eventJson = JSON.stringify(repoEvent);
       const eventSizeBytes = new Blob([eventJson]).size;
       const eventSizeKB = eventSizeBytes / 1024;
       const MAX_EVENT_SIZE_KB = 95; // Leave some buffer below 100KB limit
-      
+
       if (eventSizeKB > MAX_EVENT_SIZE_KB) {
         // This shouldn't happen if binary files are excluded, but handle it anyway
         throw new Error(
-          `Event size (${eventSizeKB.toFixed(1)}KB) exceeds Nostr limit (~100KB). ` +
-          `Please remove large files from the repository or push files to git-nostr-bridge via git push first. ` +
-          `According to NIP-34, files should be stored on git servers, not in Nostr events.`
+          `Event size (${eventSizeKB.toFixed(
+            1
+          )}KB) exceeds Nostr limit (~100KB). ` +
+            `Please remove large files from the repository or push files to git-nostr-bridge via git push first. ` +
+            `According to NIP-34, files should be stored on git servers, not in Nostr events.`
         );
       } else if (eventSizeKB > 80) {
         // Warn if getting close to limit
-        onProgress?.(`⚠️ Event size is ${eventSizeKB.toFixed(1)}KB (close to 100KB limit)`);
+        onProgress?.(
+          `⚠️ Event size is ${eventSizeKB.toFixed(1)}KB (close to 100KB limit)`
+        );
       }
-      
+
       // Sign with NIP-07
       // Handle user cancellation gracefully
       console.log(`✍️ [Push Repo] Signing event with NIP-07...`);
       try {
-      repoEvent = await window.nostr.signEvent(repoEvent);
-        
+        repoEvent = await window.nostr.signEvent(repoEvent);
+
         // CRITICAL: Verify clone tags are still present after signing
-        const cloneTagsAfterSign = repoEvent.tags.filter((t: any[]) => Array.isArray(t) && t[0] === "clone");
-        console.log(`✅ [Push Repo] Event signed successfully. Event ID: ${repoEvent.id}`);
+        const cloneTagsAfterSign = repoEvent.tags.filter(
+          (t: any[]) => Array.isArray(t) && t[0] === "clone"
+        );
+        console.log(
+          `✅ [Push Repo] Event signed successfully. Event ID: ${repoEvent.id}`
+        );
         console.log(`🔍 [Push Repo] Event structure after signing:`, {
           eventId: repoEvent.id,
           cloneTagsCount: cloneTagsAfterSign.length,
@@ -1354,9 +1847,14 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         });
       } catch (signError: any) {
         // User canceled signing or error occurred
-        const errorMessage = signError?.message || signError?.toString() || "Unknown error";
+        const errorMessage =
+          signError?.message || signError?.toString() || "Unknown error";
         console.error(`❌ [Push Repo] Signing failed:`, errorMessage);
-        if (errorMessage.includes("cancel") || errorMessage.includes("reject") || errorMessage.includes("User rejected")) {
+        if (
+          errorMessage.includes("cancel") ||
+          errorMessage.includes("reject") ||
+          errorMessage.includes("User rejected")
+        ) {
           throw new Error("Signing canceled by user");
         }
         throw new Error(`Signing failed: ${errorMessage}`);
@@ -1380,7 +1878,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           forks: repo.forks,
           languages: repo.languages,
           topics: repo.topics || [],
-          contributors: (repo.contributors || []).map(c => ({
+          contributors: (repo.contributors || []).map((c) => ({
             ...c,
             weight: c.weight ?? 0,
           })),
@@ -1390,23 +1888,46 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             if (repo.branches.length === 0) return [];
             // Check if first element is a string (old format)
             if (typeof repo.branches[0] === "string") {
-              return (repo.branches as string[]).map(name => ({ name }));
+              return (repo.branches as string[]).map((name) => ({ name }));
             }
             // Otherwise, filter to ensure correct format
             const result: Array<{ name: string; commit?: string }> = [];
             for (const b of repo.branches) {
-              if (typeof b === "object" && b !== null && "name" in b && typeof (b as { name: unknown }).name === "string") {
+              if (
+                typeof b === "object" &&
+                b !== null &&
+                "name" in b &&
+                typeof (b as { name: unknown }).name === "string"
+              ) {
                 result.push(b as { name: string; commit?: string });
               }
             }
             return result;
           })(),
-          releases: Array.isArray(repo.releases) ? repo.releases.filter((r): r is { tag: string; name: string; description?: string; createdAt?: number } => 
-            typeof r === "object" && r !== null && "tag" in r && "name" in r
-          ) : [],
+          releases: Array.isArray(repo.releases)
+            ? repo.releases.filter(
+                (
+                  r
+                ): r is {
+                  tag: string;
+                  name: string;
+                  description?: string;
+                  createdAt?: number;
+                } =>
+                  typeof r === "object" &&
+                  r !== null &&
+                  "tag" in r &&
+                  "name" in r
+              )
+            : [],
           logoUrl: repo.logoUrl,
           requiredApprovals: repo.requiredApprovals,
-          zapPolicy: typeof repo.zapPolicy === "string" ? undefined : (repo.zapPolicy as { splits: Array<{ pubkey: string; weight: number }> } | undefined),
+          zapPolicy:
+            typeof repo.zapPolicy === "string"
+              ? undefined
+              : (repo.zapPolicy as
+                  | { splits: Array<{ pubkey: string; weight: number }> }
+                  | undefined),
           links: repo.links,
           // GRASP-01: Add clone and relays tags
           // CRITICAL: Include both git server URL and GitHub/GitLab/Codeberg sourceUrl in clone array
@@ -1415,27 +1936,33 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         },
         privateKey
       );
-      
+
       // Check event size (same check as NIP-07 path)
       // Note: Binary files should already be excluded, but check anyway
       const eventJson = JSON.stringify(repoEvent);
       const eventSizeBytes = new Blob([eventJson]).size;
       const eventSizeKB = eventSizeBytes / 1024;
       const MAX_EVENT_SIZE_KB = 95; // Leave some buffer below 100KB limit
-      
+
       if (eventSizeKB > MAX_EVENT_SIZE_KB) {
         // This shouldn't happen if binary files are excluded, but handle it anyway
         throw new Error(
-          `Event size (${eventSizeKB.toFixed(1)}KB) exceeds Nostr limit (~100KB). ` +
-          `Please remove large files from the repository or push files to git-nostr-bridge via git push first. ` +
-          `According to NIP-34, files should be stored on git servers, not in Nostr events.`
+          `Event size (${eventSizeKB.toFixed(
+            1
+          )}KB) exceeds Nostr limit (~100KB). ` +
+            `Please remove large files from the repository or push files to git-nostr-bridge via git push first. ` +
+            `According to NIP-34, files should be stored on git servers, not in Nostr events.`
         );
       } else if (eventSizeKB > 80) {
         // Warn if getting close to limit
-        onProgress?.(`⚠️ Event size is ${eventSizeKB.toFixed(1)}KB (close to 100KB limit)`);
+        onProgress?.(
+          `⚠️ Event size is ${eventSizeKB.toFixed(1)}KB (close to 100KB limit)`
+        );
       }
     } else {
-      throw new Error("No signing method available. Please use NIP-07 extension or configure a private key.");
+      throw new Error(
+        "No signing method available. Please use NIP-07 extension or configure a private key."
+      );
     }
 
     // Step 6: Publish with confirmation
@@ -1443,18 +1970,26 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     // Publish to ALL default relays for maximum discoverability by other clients
     // Other NIP-34 clients query all relays, not just GRASP servers
     const publishRelays = defaultRelays.length > 0 ? defaultRelays : [];
-    
+
     if (publishRelays.length === 0) {
       throw new Error("No relays available for publishing.");
     }
-    
+
     // Log relay distribution for debugging
     const graspRelays = getGraspServers(defaultRelays);
-    const regularRelays = defaultRelays.filter(r => !graspRelays.includes(r));
-    onProgress?.(`Publishing to ${publishRelays.length} relay${publishRelays.length > 1 ? 's' : ''} (${graspRelays.length} GRASP, ${regularRelays.length} regular) for maximum discoverability...`);
-    
+    const regularRelays = defaultRelays.filter((r) => !graspRelays.includes(r));
+    onProgress?.(
+      `Publishing to ${publishRelays.length} relay${
+        publishRelays.length > 1 ? "s" : ""
+      } (${graspRelays.length} GRASP, ${
+        regularRelays.length
+      } regular) for maximum discoverability...`
+    );
+
     // CRITICAL: Log event one more time before publishing to verify structure
-    const finalCloneTags = repoEvent.tags.filter((t: any[]) => Array.isArray(t) && t[0] === "clone");
+    const finalCloneTags = repoEvent.tags.filter(
+      (t: any[]) => Array.isArray(t) && t[0] === "clone"
+    );
     console.log(`🚀 [Push Repo] About to publish event:`, {
       eventId: repoEvent.id,
       kind: repoEvent.kind,
@@ -1463,7 +1998,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       relaysToPublish: publishRelays.length,
       relayList: publishRelays,
     });
-    
+
     const result = await publishWithConfirmation(
       publish,
       subscribe,
@@ -1477,11 +2012,13 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       confirmed: result.confirmed,
       confirmedRelays: result.confirmedRelays,
     });
-    
+
     // CRITICAL: Send announcement event directly to bridge API for immediate processing
     // This avoids waiting for relay propagation which can take 10-60 seconds
     if (result.eventId && repoEvent.kind === KIND_REPOSITORY_NIP34) {
-      onProgress?.("📡 Sending event directly to bridge for immediate processing...");
+      onProgress?.(
+        "📡 Sending event directly to bridge for immediate processing..."
+      );
       try {
         const bridgeResponse = await fetch("/api/nostr/repo/event", {
           method: "POST",
@@ -1490,19 +2027,29 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         });
         if (bridgeResponse.ok) {
           const bridgeResult = await bridgeResponse.json();
-          console.log(`✅ [Push Repo] Event sent directly to bridge:`, bridgeResult);
+          console.log(
+            `✅ [Push Repo] Event sent directly to bridge:`,
+            bridgeResult
+          );
           onProgress?.("✅ Bridge received event - processing immediately!");
         } else {
-          console.warn(`⚠️ [Push Repo] Bridge API returned ${bridgeResponse.status} - bridge will receive via relay subscription`);
+          console.warn(
+            `⚠️ [Push Repo] Bridge API returned ${bridgeResponse.status} - bridge will receive via relay subscription`
+          );
         }
       } catch (bridgeError: any) {
         // Don't fail - bridge will receive via relay subscription
-        console.warn(`⚠️ [Push Repo] Failed to send to bridge API (will receive via relay):`, bridgeError?.message);
+        console.warn(
+          `⚠️ [Push Repo] Failed to send to bridge API (will receive via relay):`,
+          bridgeError?.message
+        );
       }
     }
-    
+
     // CRITICAL: Log event structure for debugging - verify clone tags are present
-    const publishedCloneTags = repoEvent.tags.filter((t: any[]) => Array.isArray(t) && t[0] === "clone");
+    const publishedCloneTags = repoEvent.tags.filter(
+      (t: any[]) => Array.isArray(t) && t[0] === "clone"
+    );
     console.log(`🔍 [Push Repo] Published event structure:`, {
       eventId: result.eventId,
       kind: repoEvent.kind,
@@ -1520,23 +2067,29 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       // Step 7: Store event ID and update status
       storeRepoEventId(repoSlug, entity, result.eventId, result.confirmed);
       if (result.confirmed) {
-      setRepoStatus(repoSlug, entity, "live");
-      onProgress?.("✅ Published to Nostr!");
+        setRepoStatus(repoSlug, entity, "live");
+        onProgress?.("✅ Published to Nostr!");
       } else {
-        onProgress?.("⚠️ First event published but awaiting confirmation - continuing to second signature...");
+        onProgress?.(
+          "⚠️ First event published but awaiting confirmation - continuing to second signature..."
+        );
       }
-      
+
       // Step 7.5: Push files to bridge and get commit SHAs (non-blocking)
       // CRITICAL: We're NOT waiting for relay confirmation - we proceed as soon as first event is published
       // We're waiting for the bridge to process files and return commit SHAs for the state event
       // However, the state event CAN be published with empty commits - bridge will update it later
       // So we don't block the second signature on bridge push completion
       let refs: Array<{ ref: string; commit: string }> = [];
-      
+
       if (filesForBridge && filesForBridge.length > 0) {
-        onProgress?.(`📤 Pushing ${filesForBridge.length} file(s) to bridge...`);
-        onProgress?.(`⏱️ This may take several minutes for large repos (timeout: 5 minutes)`);
-        
+        onProgress?.(
+          `📤 Pushing ${filesForBridge.length} file(s) to bridge...`
+        );
+        onProgress?.(
+          `⏱️ This may take several minutes for large repos (timeout: 5 minutes)`
+        );
+
         // CRITICAL: For large repos, start bridge push but don't block second signature
         // We'll try to get refs after a short wait, then proceed with second signature
         // The bridge push will continue in background
@@ -1547,7 +2100,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         const commitDate = Math.floor(Date.now() / 1000);
         // CRITICAL: Log bridge push parameters for debugging
         console.log(`📤 [Push Repo] Pushing to bridge:`, {
-          ownerPubkey: pubkey ? `${pubkey.substring(0, 8)}...` : 'none',
+          ownerPubkey: pubkey ? `${pubkey.substring(0, 8)}...` : "none",
           repoSlug: actualRepositoryName,
           entity,
           branch: repo.defaultBranch || "main",
@@ -1555,7 +2108,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           commitDate,
           bridgePath: `{reposDir}/${pubkey}/${actualRepositoryName}.git`,
         });
-        
+
         const bridgePushPromise = pushFilesToBridge({
           ownerPubkey: pubkey,
           repoSlug: actualRepositoryName,
@@ -1565,67 +2118,103 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           commitDate, // Pass commit date (current time - when this push happens)
         }).catch((error: any) => {
           console.error("❌ [Push Repo] Bridge push failed:", error);
-          onProgress?.("⚠️ Bridge push failed - state event may have empty commits");
+          onProgress?.(
+            "⚠️ Bridge push failed - state event may have empty commits"
+          );
           return null;
         });
-        
+
         // CRITICAL: Wait for bridge push to complete before creating state event
         // This ensures all chunks are processed and we get refs from the final chunk
         // The state event must reference the latest commit that includes ALL files
-        onProgress?.("⏳ Waiting for bridge push to complete (all chunks must finish)...");
+        onProgress?.(
+          "⏳ Waiting for bridge push to complete (all chunks must finish)..."
+        );
         try {
           // CRITICAL: Wait for bridge push to complete - this ensures all chunks are processed
           // Each chunk commits separately, but we need the final chunk's refs (which includes all files)
           const pushResult = await bridgePushPromise;
-          
+
           if (pushResult && pushResult.refs && Array.isArray(pushResult.refs)) {
             refs = pushResult.refs;
-            const refsWithCommits = refs.filter(r => r.commit && r.commit.length > 0).length;
-            console.log(`✅ [Push Repo] Got ${refs.length} refs with ${refsWithCommits} commit SHAs from completed bridge push`);
+            const refsWithCommits = refs.filter(
+              (r) => r.commit && r.commit.length > 0
+            ).length;
+            console.log(
+              `✅ [Push Repo] Got ${refs.length} refs with ${refsWithCommits} commit SHAs from completed bridge push`
+            );
             if (refsWithCommits > 0) {
-              onProgress?.(`✅ Got ${refsWithCommits} refs with commit SHAs from all chunks - ready to publish state event!`);
+              onProgress?.(
+                `✅ Got ${refsWithCommits} refs with commit SHAs from all chunks - ready to publish state event!`
+              );
             } else {
-              console.warn(`⚠️ [Push Repo] Bridge push completed but no commit SHAs in refs`);
-              onProgress?.("⚠️ Bridge push completed but no commit SHAs - state event will have empty commits");
+              console.warn(
+                `⚠️ [Push Repo] Bridge push completed but no commit SHAs in refs`
+              );
+              onProgress?.(
+                "⚠️ Bridge push completed but no commit SHAs - state event will have empty commits"
+              );
             }
           } else {
             // Bridge push completed but no refs - try fetching from bridge API as fallback
-            console.warn(`⚠️ [Push Repo] Bridge push completed but no refs returned - trying bridge API...`);
+            console.warn(
+              `⚠️ [Push Repo] Bridge push completed but no refs returned - trying bridge API...`
+            );
             try {
               const refsResponse = await fetch(
-                `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(pubkey)}&repo=${encodeURIComponent(actualRepositoryName)}`
+                `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
+                  pubkey
+                )}&repo=${encodeURIComponent(actualRepositoryName)}`
               );
               if (refsResponse.ok) {
                 const refsData = await refsResponse.json();
                 if (refsData.refs && Array.isArray(refsData.refs)) {
                   const fetchedRefs = refsData.refs;
-                  const refsWithCommits = fetchedRefs.filter((r: any) => r.commit && r.commit.length > 0).length;
+                  const refsWithCommits = fetchedRefs.filter(
+                    (r: any) => r.commit && r.commit.length > 0
+                  ).length;
                   if (refsWithCommits > 0) {
                     refs = fetchedRefs;
-                    console.log(`✅ [Push Repo] Got ${refs.length} refs (${refsWithCommits} with commit SHAs) from bridge API fallback`);
-                    onProgress?.(`✅ Got ${refsWithCommits} refs with commit SHAs - proceeding with second signature!`);
+                    console.log(
+                      `✅ [Push Repo] Got ${refs.length} refs (${refsWithCommits} with commit SHAs) from bridge API fallback`
+                    );
+                    onProgress?.(
+                      `✅ Got ${refsWithCommits} refs with commit SHAs - proceeding with second signature!`
+                    );
                   } else {
-                    console.log(`⚠️ [Push Repo] Bridge API returned refs but no commit SHAs`);
-                    onProgress?.("⚠️ Bridge push completed but no commit SHAs - state event will have empty commits");
+                    console.log(
+                      `⚠️ [Push Repo] Bridge API returned refs but no commit SHAs`
+                    );
+                    onProgress?.(
+                      "⚠️ Bridge push completed but no commit SHAs - state event will have empty commits"
+                    );
                   }
                 }
               }
             } catch (fallbackError) {
-              console.warn(`⚠️ [Push Repo] Bridge API fetch failed:`, fallbackError);
-              onProgress?.("⚠️ Cannot fetch refs - state event will have empty commits");
+              console.warn(
+                `⚠️ [Push Repo] Bridge API fetch failed:`,
+                fallbackError
+              );
+              onProgress?.(
+                "⚠️ Cannot fetch refs - state event will have empty commits"
+              );
             }
           }
-          
         } catch (bridgeError: any) {
           console.error("❌ [Push Repo] Bridge push error:", bridgeError);
-          onProgress?.("⚠️ Bridge push error - proceeding with second signature anyway");
+          onProgress?.(
+            "⚠️ Bridge push error - proceeding with second signature anyway"
+          );
           // Continue anyway - we'll try to get refs, but may fail
         }
       } else {
         // No files to push - but we still need to create a new commit with --allow-empty
         // This ensures every push creates a new commit with the current timestamp
         // Otherwise, the state event will point to an old commit
-        onProgress?.("📤 Pushing to bridge to create new commit (no file changes)...");
+        onProgress?.(
+          "📤 Pushing to bridge to create new commit (no file changes)..."
+        );
         const { pushFilesToBridge } = await import("./push-to-bridge");
         const commitDate = Math.floor(Date.now() / 1000);
         const bridgePushPromise = pushFilesToBridge({
@@ -1637,42 +2226,66 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           commitDate,
         }).catch((error: any) => {
           console.error("❌ [Push Repo] Bridge push failed:", error);
-          onProgress?.("⚠️ Bridge push failed - trying to get existing refs...");
+          onProgress?.(
+            "⚠️ Bridge push failed - trying to get existing refs..."
+          );
           return null;
         });
-        
+
         // Try to get refs quickly
         try {
           const QUICK_REF_TIMEOUT = 10000;
-          const timeoutPromise = new Promise((resolve) => setTimeout(resolve, QUICK_REF_TIMEOUT));
-          const pushResult = await Promise.race([bridgePushPromise, timeoutPromise.then(() => null)]);
-          
+          const timeoutPromise = new Promise((resolve) =>
+            setTimeout(resolve, QUICK_REF_TIMEOUT)
+          );
+          const pushResult = await Promise.race([
+            bridgePushPromise,
+            timeoutPromise.then(() => null),
+          ]);
+
           if (pushResult && pushResult.refs && Array.isArray(pushResult.refs)) {
             refs = pushResult.refs;
-            const refsWithCommits = refs.filter(r => r.commit && r.commit.length > 0).length;
+            const refsWithCommits = refs.filter(
+              (r) => r.commit && r.commit.length > 0
+            ).length;
             if (refsWithCommits > 0) {
-              console.log(`✅ [Push Repo] Got ${refs.length} refs with ${refsWithCommits} commit SHAs from empty push`);
-              onProgress?.(`✅ Got ${refsWithCommits} refs with commit SHAs - ready to publish state event!`);
+              console.log(
+                `✅ [Push Repo] Got ${refs.length} refs with ${refsWithCommits} commit SHAs from empty push`
+              );
+              onProgress?.(
+                `✅ Got ${refsWithCommits} refs with commit SHAs - ready to publish state event!`
+              );
             }
           } else {
             // Fallback: try to get existing refs
-        try {
-          const refsResponse = await fetch(
-            `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(pubkey)}&repo=${encodeURIComponent(actualRepositoryName)}`
-          );
-          if (refsResponse.ok) {
-            const refsData = await refsResponse.json();
-            if (refsData.refs && Array.isArray(refsData.refs)) {
-              refs = refsData.refs;
-              const refsWithCommits = refs.filter(r => r.commit && r.commit.length > 0).length;
-              console.log(`✅ [Push Repo] Got ${refs.length} existing refs (${refsWithCommits} with commit SHAs)`);
-              if (refsWithCommits > 0) {
-                onProgress?.(`✅ Got ${refsWithCommits} existing refs with commit SHAs`);
+            try {
+              const refsResponse = await fetch(
+                `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
+                  pubkey
+                )}&repo=${encodeURIComponent(actualRepositoryName)}`
+              );
+              if (refsResponse.ok) {
+                const refsData = await refsResponse.json();
+                if (refsData.refs && Array.isArray(refsData.refs)) {
+                  refs = refsData.refs;
+                  const refsWithCommits = refs.filter(
+                    (r) => r.commit && r.commit.length > 0
+                  ).length;
+                  console.log(
+                    `✅ [Push Repo] Got ${refs.length} existing refs (${refsWithCommits} with commit SHAs)`
+                  );
+                  if (refsWithCommits > 0) {
+                    onProgress?.(
+                      `✅ Got ${refsWithCommits} existing refs with commit SHAs`
+                    );
+                  }
+                }
               }
-            }
-          }
-        } catch (refsError) {
-          console.warn(`⚠️ [Push Repo] Error fetching existing refs:`, refsError);
+            } catch (refsError) {
+              console.warn(
+                `⚠️ [Push Repo] Error fetching existing refs:`,
+                refsError
+              );
             }
           }
         } catch (bridgeError: any) {
@@ -1680,97 +2293,133 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           onProgress?.("⚠️ Bridge push error - trying to get existing refs...");
         }
       }
-      
+
       // Step 8: Publish state event (kind 30618) - REQUIRED per NIP-34 for ngit clients
       // This is MANDATORY for "Nostr state" recognition - contains repository refs/branches
       // CRITICAL: NIP-07 cannot batch sign events - each event needs its own signature
       // This means you'll see TWO signature prompts (one for announcement, one for state)
       // Both events are REQUIRED for full NIP-34 compliance and ngit client recognition
-      onProgress?.("📦 Preparing state event (kind 30618) - required for ngit clients...");
-      onProgress?.("⚠️ IMPORTANT: A second signature prompt will appear shortly");
-      onProgress?.("⚠️ Please stay on this page - do not close or navigate away!");
-      
+      onProgress?.(
+        "📦 Preparing state event (kind 30618) - required for ngit clients..."
+      );
+      onProgress?.(
+        "⚠️ IMPORTANT: A second signature prompt will appear shortly"
+      );
+      onProgress?.(
+        "⚠️ Please stay on this page - do not close or navigate away!"
+      );
+
       // If we still don't have refs, create minimal state event with branch names
       // This should only happen if bridge is unavailable or repo has no branches
-      if (refs.length === 0 && repo.branches && Array.isArray(repo.branches) && repo.branches.length > 0) {
+      if (
+        refs.length === 0 &&
+        repo.branches &&
+        Array.isArray(repo.branches) &&
+        repo.branches.length > 0
+      ) {
         const defaultBranch = repo.defaultBranch || "main";
-        refs = repo.branches.map((b: any) => {
-          const branchName = typeof b === "string" ? b : b.name || defaultBranch;
-      return {
-            ref: `refs/heads/${branchName}`,
-            commit: "", // Empty commit - last resort fallback
-          };
-        }).filter((r: any) => r.ref);
-        console.log(`📝 [Push Repo] Created fallback state event with ${refs.length} branch refs (no commit SHAs - bridge unavailable)`);
+        refs = repo.branches
+          .map((b: any) => {
+            const branchName =
+              typeof b === "string" ? b : b.name || defaultBranch;
+            return {
+              ref: `refs/heads/${branchName}`,
+              commit: "", // Empty commit - last resort fallback
+            };
+          })
+          .filter((r: any) => r.ref);
+        console.log(
+          `📝 [Push Repo] Created fallback state event with ${refs.length} branch refs (no commit SHAs - bridge unavailable)`
+        );
       }
-      
+
       // Ensure we have at least the default branch (last resort)
       if (refs.length === 0) {
         const defaultBranch = repo.defaultBranch || "main";
         refs = [{ ref: `refs/heads/${defaultBranch}`, commit: "" }];
-        console.log(`📝 [Push Repo] Creating minimal fallback state event with default branch: ${defaultBranch}`);
+        console.log(
+          `📝 [Push Repo] Creating minimal fallback state event with default branch: ${defaultBranch}`
+        );
       }
-      
+
       // Final check - CRITICAL: gitworkshop.dev REQUIRES commit SHAs in state event
       // If we don't have commit SHAs, we MUST retry fetching refs or fail the push
-      const refsWithCommits = refs.filter(r => r.commit && r.commit.length > 0).length;
+      const refsWithCommits = refs.filter(
+        (r) => r.commit && r.commit.length > 0
+      ).length;
       if (refsWithCommits === 0) {
         // CRITICAL: gitworkshop.dev will NOT recognize state without commit SHAs
         // Try one more time to fetch refs from bridge (may need a moment to process)
-        onProgress?.("⚠️ No commit SHAs found - retrying refs fetch from bridge...");
+        onProgress?.(
+          "⚠️ No commit SHAs found - retrying refs fetch from bridge..."
+        );
         try {
           // Wait a moment for bridge to process the push
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          await new Promise((resolve) => setTimeout(resolve, 3000));
           const retryRefsResponse = await fetch(
-            `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(pubkey)}&repo=${encodeURIComponent(actualRepositoryName)}`
+            `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
+              pubkey
+            )}&repo=${encodeURIComponent(actualRepositoryName)}`
           );
           if (retryRefsResponse.ok) {
             const retryRefsData = await retryRefsResponse.json();
             if (retryRefsData.refs && Array.isArray(retryRefsData.refs)) {
-              const retryRefsWithCommits = retryRefsData.refs.filter((r: any) => r.commit && r.commit.length > 0).length;
+              const retryRefsWithCommits = retryRefsData.refs.filter(
+                (r: any) => r.commit && r.commit.length > 0
+              ).length;
               if (retryRefsWithCommits > 0) {
                 refs = retryRefsData.refs;
-                onProgress?.(`✅ Got ${retryRefsWithCommits} refs with commit SHAs after retry!`);
+                onProgress?.(
+                  `✅ Got ${retryRefsWithCommits} refs with commit SHAs after retry!`
+                );
               } else {
                 onProgress?.("❌ CRITICAL: Still no commit SHAs after retry");
-                onProgress?.("❌ State event will be published but gitworkshop.dev will NOT recognize it");
-                onProgress?.("💡 Bridge may need more time - you may need to push again later");
+                onProgress?.(
+                  "❌ State event will be published but gitworkshop.dev will NOT recognize it"
+                );
+                onProgress?.(
+                  "💡 Bridge may need more time - you may need to push again later"
+                );
               }
             }
           }
         } catch (retryError) {
           console.warn(`⚠️ [Push Repo] Retry refs fetch failed:`, retryError);
-          onProgress?.("❌ CRITICAL: Cannot get commit SHAs - state event will have empty commits");
+          onProgress?.(
+            "❌ CRITICAL: Cannot get commit SHAs - state event will have empty commits"
+          );
           onProgress?.("❌ other clients will NOT recognize this state event");
         }
       } else {
-        onProgress?.(`✅ State event ready with ${refsWithCommits} refs containing commit SHAs`);
+        onProgress?.(
+          `✅ State event ready with ${refsWithCommits} refs containing commit SHAs`
+        );
       }
-      
+
       // Publish state event (even with empty commits if bridge push is still running)
       // CRITICAL: This is REQUIRED per NIP-34 - ngit clients need this to recognize "Nostr state"
       // NOTE: This will trigger a second NIP-07 signature prompt - both events are required
       // NOTE: The bridge doesn't update the state event - it returns refs that we use to publish it
       // If published with empty commits, other clients might not recognize it until republished with commit SHAs
-      onProgress?.("📤 Signing state event (kind 30618) - required for ngit clients...");
-      
+      onProgress?.(
+        "📤 Signing state event (kind 30618) - required for ngit clients..."
+      );
+
       const { KIND_REPOSITORY_STATE } = await import("./events");
       let stateEvent: any;
-      
+
       if (hasNip07 && window.nostr) {
         const { getEventHash } = await import("nostr-tools");
         const signerPubkey = await window.nostr.getPublicKey();
-        
+
         // Create unsigned state event
         // Per NIP-34: ref path is the tag name, commit-id is the tag value
         // Format: ["refs/heads/main", "commit-id"]
         let defaultBranchName: string | null = null;
-        const stateTags: string[][] = [
-          ["d", actualRepositoryName],
-        ];
-        
+        const stateTags: string[][] = [["d", actualRepositoryName]];
+
         // Add refs as tags (ref path is tag name, commit is value)
-        refs.forEach(r => {
+        refs.forEach((r) => {
           if (r.ref && typeof r.ref === "string") {
             stateTags.push([r.ref, r.commit || ""]);
             // Track default branch name for HEAD tag
@@ -1779,24 +2428,25 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             }
           }
         });
-        
+
         // Add HEAD tag pointing to default branch (NIP-34 requirement)
         // Format: ["HEAD", "ref: refs/heads/<branch-name>"]
         // Always use repo.defaultBranch as source of truth, not first ref encountered
         const defaultBranch = repo.defaultBranch || "main";
         const headTagValue = `ref: refs/heads/${defaultBranch}`;
         stateTags.push(["HEAD", headTagValue]);
-        
+
         // Log state event structure for debugging
         console.log(`📝 [Push Repo] State event structure:`, {
           kind: KIND_REPOSITORY_STATE,
           dTag: actualRepositoryName,
           refsCount: refs.length,
-          refsWithCommits: refs.filter(r => r.commit && r.commit.length > 0).length,
+          refsWithCommits: refs.filter((r) => r.commit && r.commit.length > 0)
+            .length,
           headTag: headTagValue,
           author: signerPubkey.slice(0, 16) + "...",
         });
-        
+
         stateEvent = {
           kind: KIND_REPOSITORY_STATE,
           created_at: Math.floor(Date.now() / 1000),
@@ -1806,26 +2456,31 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           id: "",
           sig: "",
         };
-        
+
         stateEvent.id = getEventHash(stateEvent);
-        
+
         // CRITICAL: Log state event BEFORE signing to verify format
         console.log(`📝 [Push Repo] State event BEFORE signing:`, {
           kind: stateEvent.kind,
           id: stateEvent.id,
           pubkey: stateEvent.pubkey.slice(0, 16) + "...",
           created_at: stateEvent.created_at,
-          tags: stateEvent.tags.map((t: any[]) => [t[0], t[1]?.slice(0, 16) + "..." || ""]),
+          tags: stateEvent.tags.map((t: any[]) => [
+            t[0],
+            t[1]?.slice(0, 16) + "..." || "",
+          ]),
           content: stateEvent.content,
         });
-        
+
         // Sign state event - REQUIRED, not optional
         // If user cancels, we must fail the entire push (state event is mandatory)
         // NOTE: State event content is empty per NIP-34 spec (kind 30618)
         // The event data is in the tags (refs, HEAD, etc.), not in content
         // This is correct per spec: https://github.com/nostr-protocol/nips/blob/master/34.md#repository-state-announcements
         onProgress?.("📝 Signing repository state event (kind 30618)...");
-        onProgress?.("   Note: Content is empty per NIP-34 spec - data is in tags (refs, branches, commits)");
+        onProgress?.(
+          "   Note: Content is empty per NIP-34 spec - data is in tags (refs, branches, commits)"
+        );
         try {
           // NIP-07 signEvent returns the full signed event object (same as announcement event)
           const signedStateEvent = await window.nostr.signEvent(stateEvent);
@@ -1833,24 +2488,31 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           stateEvent = signedStateEvent;
           console.log(`✅ [Push Repo] State event signed successfully:`, {
             id: stateEvent.id,
-            sig: typeof stateEvent.sig === 'string' && stateEvent.sig.length > 0 ? stateEvent.sig.slice(0, 16) + "..." : "invalid",
+            sig:
+              typeof stateEvent.sig === "string" && stateEvent.sig.length > 0
+                ? stateEvent.sig.slice(0, 16) + "..."
+                : "invalid",
           });
         } catch (signError: any) {
-          const isUserCancel = signError?.message?.includes("cancel") || 
-                               signError?.message?.includes("reject") ||
-                               signError?.message?.includes("User rejected");
+          const isUserCancel =
+            signError?.message?.includes("cancel") ||
+            signError?.message?.includes("reject") ||
+            signError?.message?.includes("User rejected");
           if (isUserCancel) {
-            console.error(`❌ [Push Repo] State event signature cancelled - state event is REQUIRED per NIP-34`);
+            console.error(
+              `❌ [Push Repo] State event signature cancelled - state event is REQUIRED per NIP-34`
+            );
             onProgress?.("❌ State event is required - push incomplete");
             // Revert status since push is incomplete
             setRepoStatus(repoSlug, entity, "local");
             return {
               success: false,
-        eventId: result.eventId,
+              eventId: result.eventId,
               confirmed: false,
-              error: "State event signature cancelled - both announcement and state events are required per NIP-34",
-        filesForBridge,
-      };
+              error:
+                "State event signature cancelled - both announcement and state events are required per NIP-34",
+              filesForBridge,
+            };
           }
           throw signError; // Re-throw if not a cancellation
         }
@@ -1860,20 +2522,31 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         // Pass default branch ref for HEAD tag (NIP-34 requirement)
         const defaultBranch = repo.defaultBranch || "main";
         const defaultBranchRef = `refs/heads/${defaultBranch}`;
-        stateEvent = createRepositoryStateEvent(actualRepositoryName, refs, privateKey, defaultBranchRef);
-    } else {
-        throw new Error("Cannot sign state event - no NIP-07 or private key available");
+        stateEvent = createRepositoryStateEvent(
+          actualRepositoryName,
+          refs,
+          privateKey,
+          defaultBranchRef
+        );
+      } else {
+        throw new Error(
+          "Cannot sign state event - no NIP-07 or private key available"
+        );
       }
-      
+
       if (!stateEvent) {
         throw new Error("Failed to create state event");
       }
-      
+
       // Publish state event - REQUIRED
       // CRITICAL: Must publish to same relays as announcement for ngit clients to find it
       onProgress?.("✅ Ready to publish state event!");
-      onProgress?.("🔐 Second signature prompt appearing now - please sign to complete push");
-      console.log(`📊 [Push Repo] Publishing state event to ${publishRelays.length} relays...`);
+      onProgress?.(
+        "🔐 Second signature prompt appearing now - please sign to complete push"
+      );
+      console.log(
+        `📊 [Push Repo] Publishing state event to ${publishRelays.length} relays...`
+      );
       const stateResult = await publishWithConfirmation(
         publish,
         subscribe,
@@ -1881,36 +2554,40 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         publishRelays, // Use same relays as announcement
         15000 // 15 second timeout for state event (longer since it's critical)
       );
-      
+
       console.log(`📊 [Push Repo] State event published:`, {
         eventId: stateResult.eventId,
         confirmed: stateResult.confirmed,
         refsCount: refs.length,
-        hasCommits: refs.some(r => r.commit && r.commit.length > 0),
+        hasCommits: refs.some((r) => r.commit && r.commit.length > 0),
         defaultBranch: repo.defaultBranch || "main",
         stateEventTags: stateEvent.tags.map((t: any[]) => t[0]),
       });
-      
+
       // CRITICAL: Verify state event is queryable on relays (for gitworkshop.dev)
       // Query for the state event we just published to ensure it's findable
       // IMPORTANT: Use ALL default relays, not just publishRelays, since gitworkshop.dev may use different relays
       if (stateResult.eventId && stateResult.confirmed) {
-        onProgress?.("🔍 Verifying state event is queryable on relays (checking multiple relays for gitworkshop.dev compatibility)...");
+        onProgress?.(
+          "🔍 Verifying state event is queryable on relays (checking multiple relays for gitworkshop.dev compatibility)..."
+        );
         try {
           const { KIND_REPOSITORY_STATE } = await import("./events");
           // Use ALL default relays for verification (gitworkshop.dev may use different relays)
           // defaultRelays already contains all relays (both GRASP and regular)
           const allRelaysForVerification = defaultRelays;
-          
+
           let foundStateEvent = false;
           let foundOnRelays: string[] = [];
           const verifyUnsub = subscribe(
-            [{
-              kinds: [KIND_REPOSITORY_STATE],
-              authors: [pubkey],
-              "#d": [actualRepositoryName],
-              limit: 1,
-            }],
+            [
+              {
+                kinds: [KIND_REPOSITORY_STATE],
+                authors: [pubkey],
+                "#d": [actualRepositoryName],
+                limit: 1,
+              },
+            ],
             allRelaysForVerification, // CRITICAL: Use all relays, not just publishRelays
             (event, isAfterEose, relayURL) => {
               if (event.id === stateResult.eventId) {
@@ -1918,24 +2595,30 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
                 if (relayURL && !foundOnRelays.includes(relayURL)) {
                   foundOnRelays.push(relayURL);
                 }
-                const refsWithCommits = event.tags.filter((t: any[]) => 
-                  t[0] && t[0].startsWith("refs/") && t[1] && t[1].length > 0
+                const refsWithCommits = event.tags.filter(
+                  (t: any[]) =>
+                    t[0] && t[0].startsWith("refs/") && t[1] && t[1].length > 0
                 ).length;
-                console.log(`✅ [Push Repo] State event verified on relay ${relayURL || 'unknown'}:`, {
-                  eventId: event.id.slice(0, 16) + "...",
-                  refsWithCommits,
-                  hasHEAD: event.tags.some((t: any[]) => t[0] === "HEAD"),
-                  allTags: event.tags.map((t: any[]) => t[0]),
-                });
+                console.log(
+                  `✅ [Push Repo] State event verified on relay ${
+                    relayURL || "unknown"
+                  }:`,
+                  {
+                    eventId: event.id.slice(0, 16) + "...",
+                    refsWithCommits,
+                    hasHEAD: event.tags.some((t: any[]) => t[0] === "HEAD"),
+                    allTags: event.tags.map((t: any[]) => t[0]),
+                  }
+                );
               }
             },
             10000 // 10 second timeout for verification (longer to allow relay sync)
           );
-          
+
           // Wait longer for verification (relays may need time to sync)
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          await new Promise((resolve) => setTimeout(resolve, 5000));
           verifyUnsub();
-          
+
           // NIP-34: Use npub format for gitworkshop.dev URLs (follows clone URL pattern)
           // Convert once and reuse for both success and fallback messages
           const { nip19 } = await import("nostr-tools");
@@ -1946,77 +2629,119 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             npub = pubkey; // Fallback to hex if encoding fails
           }
           const gitworkshopUrl = `https://gitworkshop.dev/${npub}/${actualRepositoryName}`;
-          
+
           if (foundStateEvent) {
-            const refsWithCommits = refs.filter(r => r.commit && r.commit.length > 0).length;
+            const refsWithCommits = refs.filter(
+              (r) => r.commit && r.commit.length > 0
+            ).length;
             if (refsWithCommits > 0) {
-              onProgress?.("✅ State event published and verified on relay(s)!");
-              onProgress?.(`   Found on ${foundOnRelays.length} relay(s): ${foundOnRelays.slice(0, 2).join(", ")}${foundOnRelays.length > 2 ? "..." : ""}`);
-              onProgress?.("✅ ngit clients (like gitworkshop.dev) should now recognize Nostr state.");
+              onProgress?.(
+                "✅ State event published and verified on relay(s)!"
+              );
+              onProgress?.(
+                `   Found on ${foundOnRelays.length} relay(s): ${foundOnRelays
+                  .slice(0, 2)
+                  .join(", ")}${foundOnRelays.length > 2 ? "..." : ""}`
+              );
+              onProgress?.(
+                "✅ ngit clients (like gitworkshop.dev) should now recognize Nostr state."
+              );
               onProgress?.(`🔗 View on gitworkshop.dev: ${gitworkshopUrl}`);
             } else {
               onProgress?.("⚠️ State event published but has no commit SHAs");
-              onProgress?.("💡 gitworkshop.dev may not recognize it until bridge processes files");
-              onProgress?.("💡 Bridge should update the state event automatically once commits are ready");
+              onProgress?.(
+                "💡 gitworkshop.dev may not recognize it until bridge processes files"
+              );
+              onProgress?.(
+                "💡 Bridge should update the state event automatically once commits are ready"
+              );
             }
           } else {
-            onProgress?.("⚠️ State event published but not yet queryable on checked relays");
+            onProgress?.(
+              "⚠️ State event published but not yet queryable on checked relays"
+            );
             onProgress?.("💡 It may take a few minutes for relays to sync");
-            onProgress?.("💡 gitworkshop.dev may use different relays - check manually in a few minutes");
+            onProgress?.(
+              "💡 gitworkshop.dev may use different relays - check manually in a few minutes"
+            );
             onProgress?.(`🔗 Check on gitworkshop.dev: ${gitworkshopUrl}`);
           }
         } catch (verifyError) {
-          console.warn(`⚠️ [Push Repo] Error verifying state event:`, verifyError);
-          onProgress?.("⚠️ Could not verify state event on relays (this is OK - it may still be syncing)");
+          console.warn(
+            `⚠️ [Push Repo] Error verifying state event:`,
+            verifyError
+          );
+          onProgress?.(
+            "⚠️ Could not verify state event on relays (this is OK - it may still be syncing)"
+          );
         }
       } else {
         onProgress?.("⚠️ State event published but awaiting confirmation");
-        onProgress?.("💡 It may take a few minutes for gitworkshop.dev to sync");
+        onProgress?.(
+          "💡 It may take a few minutes for gitworkshop.dev to sync"
+        );
       }
-      
+
       // CRITICAL: Send state event directly to bridge API for immediate processing
       // The state event contains commit refs - bridge needs it to process the repository
       // IMPORTANT: Bridge requires repository to exist before processing state event
       // So we wait for announcement event to be processed first
       const { KIND_REPOSITORY_STATE: STATE_KIND } = await import("./events");
       if (stateResult.eventId && stateEvent.kind === STATE_KIND) {
-        onProgress?.("📡 Waiting for announcement event to be processed by bridge...");
-        
+        onProgress?.(
+          "📡 Waiting for announcement event to be processed by bridge..."
+        );
+
         // Wait for repository to exist on bridge (created by announcement event)
         // Poll up to 10 times with 500ms delay = 5 seconds max wait
         let repoExists = false;
         const maxAttempts = 10;
         const delayMs = 500;
-        
+
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
           try {
             const existsResponse = await fetch(
-              `/api/nostr/repo/exists?ownerPubkey=${encodeURIComponent(pubkey)}&repo=${encodeURIComponent(actualRepositoryName)}`
+              `/api/nostr/repo/exists?ownerPubkey=${encodeURIComponent(
+                pubkey
+              )}&repo=${encodeURIComponent(actualRepositoryName)}`
             );
             if (existsResponse.ok) {
               const existsData = await existsResponse.json();
               if (existsData.exists === true) {
                 repoExists = true;
-                console.log(`✅ [Push Repo] Repository exists on bridge (attempt ${attempt + 1}/${maxAttempts})`);
+                console.log(
+                  `✅ [Push Repo] Repository exists on bridge (attempt ${
+                    attempt + 1
+                  }/${maxAttempts})`
+                );
                 break;
               }
             }
           } catch (checkError: any) {
-            console.warn(`⚠️ [Push Repo] Error checking repo existence:`, checkError?.message);
+            console.warn(
+              `⚠️ [Push Repo] Error checking repo existence:`,
+              checkError?.message
+            );
           }
-          
+
           if (attempt < maxAttempts - 1) {
-            await new Promise(resolve => setTimeout(resolve, delayMs));
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
           }
         }
-        
+
         if (!repoExists) {
-          console.warn(`⚠️ [Push Repo] Repository not found on bridge after ${maxAttempts} attempts - state event will be processed when repo is created`);
-          onProgress?.("⚠️ Bridge hasn't processed announcement event yet - state event will be processed when repo exists");
+          console.warn(
+            `⚠️ [Push Repo] Repository not found on bridge after ${maxAttempts} attempts - state event will be processed when repo is created`
+          );
+          onProgress?.(
+            "⚠️ Bridge hasn't processed announcement event yet - state event will be processed when repo exists"
+          );
         }
-        
+
         // Send state event to bridge (even if repo doesn't exist yet - bridge will queue it)
-        onProgress?.("📡 Sending state event directly to bridge for immediate processing...");
+        onProgress?.(
+          "📡 Sending state event directly to bridge for immediate processing..."
+        );
         try {
           const bridgeResponse = await fetch("/api/nostr/repo/event", {
             method: "POST",
@@ -2025,22 +2750,38 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           });
           if (bridgeResponse.ok) {
             const bridgeResult = await bridgeResponse.json();
-            console.log(`✅ [Push Repo] State event sent directly to bridge:`, bridgeResult);
-            onProgress?.("✅ Bridge received state event - processing commits immediately!");
+            console.log(
+              `✅ [Push Repo] State event sent directly to bridge:`,
+              bridgeResult
+            );
+            onProgress?.(
+              "✅ Bridge received state event - processing commits immediately!"
+            );
           } else {
-            console.warn(`⚠️ [Push Repo] Bridge API returned ${bridgeResponse.status} for state event - bridge will receive via relay subscription`);
+            console.warn(
+              `⚠️ [Push Repo] Bridge API returned ${bridgeResponse.status} for state event - bridge will receive via relay subscription`
+            );
           }
         } catch (bridgeError: any) {
           // Don't fail - bridge will receive via relay subscription
-          console.warn(`⚠️ [Push Repo] Failed to send state event to bridge API (will receive via relay):`, bridgeError?.message);
+          console.warn(
+            `⚠️ [Push Repo] Failed to send state event to bridge API (will receive via relay):`,
+            bridgeError?.message
+          );
         }
       }
-      
+
       // CRITICAL: Store state event ID in localStorage (both events are required for "live" status)
       if (stateResult.eventId) {
-        storeRepoEventId(repoSlug, entity, result.eventId, result.confirmed, stateResult.eventId);
+        storeRepoEventId(
+          repoSlug,
+          entity,
+          result.eventId,
+          result.confirmed,
+          stateResult.eventId
+        );
       }
-      
+
       return {
         success: true,
         eventId: result.eventId, // Announcement event ID (for backward compatibility)
@@ -2053,8 +2794,10 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       // This should only happen if there was an error, not just lack of confirmation
       storeRepoEventId(repoSlug, entity, result.eventId, result.confirmed);
       setRepoStatus(repoSlug, entity, "local"); // Revert to local if not confirmed
-      onProgress?.("⚠️ First event published but second signature could not proceed");
-      
+      onProgress?.(
+        "⚠️ First event published but second signature could not proceed"
+      );
+
       return {
         success: true,
         eventId: result.eventId,
@@ -2066,11 +2809,14 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     // Revert status on error (including user cancellation)
     setRepoStatus(repoSlug, entity, "local");
     onProgress?.("❌ Failed to push");
-    
+
     // Provide user-friendly error message
     const errorMessage = error?.message || error?.toString() || "Unknown error";
-    const isUserCancel = errorMessage.includes("cancel") || errorMessage.includes("reject") || errorMessage.includes("User rejected");
-    
+    const isUserCancel =
+      errorMessage.includes("cancel") ||
+      errorMessage.includes("reject") ||
+      errorMessage.includes("User rejected");
+
     return {
       success: false,
       confirmed: false,
@@ -2079,4 +2825,3 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     };
   }
 }
-

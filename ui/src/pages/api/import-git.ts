@@ -1,11 +1,12 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+
 import { exec } from "child_process";
-import { promisify } from "util";
 import * as fs from "fs";
-import * as path from "path";
+import type { NextApiRequest, NextApiResponse } from "next";
 import { tmpdir } from "os";
+import * as path from "path";
+import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
@@ -16,9 +17,20 @@ type Data = {
   slug?: string;
   repo?: string;
   readme?: string;
-  files?: Array<{ type: string; path: string; size?: number; content?: string; isBinary?: boolean }>;
+  files?: Array<{
+    type: string;
+    path: string;
+    size?: number;
+    content?: string;
+    isBinary?: boolean;
+  }>;
   description?: string;
-  contributors?: Array<{ login?: string; name?: string; avatar_url?: string; contributions?: number }>;
+  contributors?: Array<{
+    login?: string;
+    name?: string;
+    avatar_url?: string;
+    contributions?: number;
+  }>;
   defaultBranch?: string;
   branches?: string[];
 };
@@ -26,7 +38,9 @@ type Data = {
 /**
  * Parse git URL to extract owner and repo name
  */
-function parseGitUrl(sourceUrl: string): { owner: string; repo: string; host: string } | null {
+function parseGitUrl(
+  sourceUrl: string
+): { owner: string; repo: string; host: string } | null {
   try {
     // Normalize SSH URLs (git@host:owner/repo.git) to HTTPS
     let normalizedUrl = sourceUrl;
@@ -39,10 +53,10 @@ function parseGitUrl(sourceUrl: string): { owner: string; repo: string; host: st
     } else if (sourceUrl.startsWith("git://")) {
       normalizedUrl = sourceUrl.replace(/^git:\/\//, "https://");
     }
-    
+
     const url = new URL(normalizedUrl);
     const parts = url.pathname.split("/").filter(Boolean);
-    
+
     if (parts.length >= 2) {
       const owner = parts[0];
       const repo = parts[parts.length - 1];
@@ -72,17 +86,26 @@ function parseGitUrl(sourceUrl: string): { owner: string; repo: string; host: st
  * Clone repository to temporary directory and extract files
  */
 async function cloneAndExtractFiles(sourceUrl: string): Promise<{
-  files: Array<{ type: string; path: string; size?: number; content?: string; isBinary?: boolean }>;
+  files: Array<{
+    type: string;
+    path: string;
+    size?: number;
+    content?: string;
+    isBinary?: boolean;
+  }>;
   readme?: string;
   defaultBranch?: string;
   branches?: string[];
 } | null> {
-  const tempDir = path.join(tmpdir(), `gittr-import-${Date.now()}-${Math.random().toString(36).substring(7)}`);
-  
+  const tempDir = path.join(
+    tmpdir(),
+    `gittr-import-${Date.now()}-${Math.random().toString(36).substring(7)}`
+  );
+
   try {
     // Create temp directory
     fs.mkdirSync(tempDir, { recursive: true });
-    
+
     // Normalize URL for git clone
     let cloneUrl = sourceUrl;
     if (sourceUrl.startsWith("git@")) {
@@ -91,23 +114,30 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
     } else if (sourceUrl.startsWith("git://")) {
       // Convert git:// to https://
       cloneUrl = sourceUrl.replace(/^git:\/\//, "https://");
-    } else if (!sourceUrl.startsWith("http://") && !sourceUrl.startsWith("https://")) {
+    } else if (
+      !sourceUrl.startsWith("http://") &&
+      !sourceUrl.startsWith("https://")
+    ) {
       // Assume HTTPS if no protocol
       cloneUrl = `https://${sourceUrl}`;
     }
-    
+
     console.log(`🔍 [Import Git] Cloning ${cloneUrl} to ${tempDir}`);
-    
+
     // Clone repository (shallow clone for speed)
     const { stdout, stderr } = await execAsync(
       `git clone --depth 1 "${cloneUrl}" "${tempDir}"`,
       { timeout: 60000 } // 60 second timeout
     );
-    
-    if (stderr && !stderr.includes("Cloning into") && !stderr.includes("warning")) {
+
+    if (
+      stderr &&
+      !stderr.includes("Cloning into") &&
+      !stderr.includes("warning")
+    ) {
       console.warn("Git clone stderr:", stderr);
     }
-    
+
     // Get default branch
     let defaultBranch = "main";
     try {
@@ -119,7 +149,7 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
     } catch {
       // Default to main if branch detection fails
     }
-    
+
     // Get branches
     let branches: string[] = [defaultBranch];
     try {
@@ -129,43 +159,54 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
       );
       branches = branchesOutput
         .split("\n")
-        .map(b => b.trim().replace(/^origin\//, ""))
-        .filter(b => b && b !== "HEAD")
+        .map((b) => b.trim().replace(/^origin\//, ""))
+        .filter((b) => b && b !== "HEAD")
         .slice(0, 50); // Limit to 50 branches
     } catch {
       // Use default branch only
     }
-    
+
     // Walk directory and collect files
-    const files: Array<{ type: string; path: string; size?: number; content?: string; isBinary?: boolean }> = [];
+    const files: Array<{
+      type: string;
+      path: string;
+      size?: number;
+      content?: string;
+      isBinary?: boolean;
+    }> = [];
     let readme: string | undefined;
-    
+
     function walkDir(dir: string, basePath: string = "") {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
-      
+
       for (const entry of entries) {
         // Skip .git directory
         if (entry.name === ".git") continue;
-        
+
         const fullPath = path.join(dir, entry.name);
-        const relativePath = basePath ? `${basePath}/${entry.name}` : entry.name;
-        
+        const relativePath = basePath
+          ? `${basePath}/${entry.name}`
+          : entry.name;
+
         if (entry.isDirectory()) {
           files.push({ type: "dir", path: relativePath });
           walkDir(fullPath, relativePath);
         } else {
           const stats = fs.statSync(fullPath);
           const size = stats.size;
-          
+
           // Check if it's a README file
-          if (entry.name.toLowerCase().match(/^readme(\.(md|txt|rst))?$/i) && !readme) {
+          if (
+            entry.name.toLowerCase().match(/^readme(\.(md|txt|rst))?$/i) &&
+            !readme
+          ) {
             try {
               readme = fs.readFileSync(fullPath, "utf-8");
             } catch {
               // Skip if can't read
             }
           }
-          
+
           // Check if binary (heuristic: check for null bytes or large size)
           let isBinary = false;
           if (size > 1024 * 1024) {
@@ -174,10 +215,26 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
           } else {
             // Check file extension
             const ext = path.extname(entry.name).toLowerCase();
-            const binaryExts = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".dll", ".so", ".dylib"];
+            const binaryExts = [
+              ".png",
+              ".jpg",
+              ".jpeg",
+              ".gif",
+              ".webp",
+              ".svg",
+              ".ico",
+              ".pdf",
+              ".zip",
+              ".tar",
+              ".gz",
+              ".exe",
+              ".dll",
+              ".so",
+              ".dylib",
+            ];
             isBinary = binaryExts.includes(ext);
           }
-          
+
           let content: string | undefined;
           if (!isBinary && size < 1024 * 100) {
             // Read text files < 100KB
@@ -187,7 +244,7 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
               // Skip if can't read
             }
           }
-          
+
           files.push({
             type: "file",
             path: relativePath,
@@ -198,12 +255,12 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
         }
       }
     }
-    
+
     walkDir(tempDir);
-    
+
     // Clean up temp directory
     fs.rmSync(tempDir, { recursive: true, force: true });
-    
+
     return {
       files,
       readme,
@@ -222,7 +279,10 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
   }
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse<Data>) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse<Data>
+) {
   // Handle OPTIONS request for CORS
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res);
@@ -243,15 +303,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   }
 
   const { sourceUrl } = req.body || {};
-  
+
   if (!sourceUrl || typeof sourceUrl !== "string") {
-    return res.status(400).json({ status: "invalid_url", message: "Source URL is required" });
+    return res
+      .status(400)
+      .json({ status: "invalid_url", message: "Source URL is required" });
   }
 
   // Parse git URL
   const parsed = parseGitUrl(sourceUrl);
   if (!parsed) {
-    return res.status(400).json({ status: "invalid_url", message: "Invalid git URL format" });
+    return res
+      .status(400)
+      .json({ status: "invalid_url", message: "Invalid git URL format" });
   }
 
   const { owner, repo, host } = parsed;
@@ -260,11 +324,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   try {
     // Clone and extract files
     const extracted = await cloneAndExtractFiles(sourceUrl);
-    
+
     if (!extracted) {
-      return res.status(500).json({ 
-        status: "clone_failed", 
-        message: "Failed to clone repository. Please check the URL and ensure it's publicly accessible." 
+      return res.status(500).json({
+        status: "clone_failed",
+        message:
+          "Failed to clone repository. Please check the URL and ensure it's publicly accessible.",
       });
     }
 
@@ -288,4 +353,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     });
   }
 }
-

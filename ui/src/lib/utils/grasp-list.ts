@@ -1,12 +1,11 @@
 /**
  * GRASP List Utilities (NIP-34 kind 10317)
- * 
+ *
  * Handles fetching and parsing user GRASP lists (preferred GRASP servers)
  * Similar to NIP-65 relay lists and NIP-B7 blossom lists
- * 
+ *
  * Per NIP-34: https://github.com/nostrability/schemata/tree/master/nips/nip-34
  */
-
 import { KIND_GRASP_LIST } from "@/lib/nostr/events";
 
 export interface GraspListData {
@@ -27,14 +26,17 @@ export function parseGraspListEvent(event: any): GraspListData | null {
   }
 
   const graspServers: string[] = [];
-  
+
   // Extract "g" tags (GRASP server URLs in order of preference)
   if (event.tags && Array.isArray(event.tags)) {
     for (const tag of event.tags) {
       if (Array.isArray(tag) && tag.length >= 2 && tag[0] === "g") {
         const serverUrl = tag[1];
         // Validate that it's a websocket URL
-        if (serverUrl && (serverUrl.startsWith("wss://") || serverUrl.startsWith("ws://"))) {
+        if (
+          serverUrl &&
+          (serverUrl.startsWith("wss://") || serverUrl.startsWith("ws://"))
+        ) {
           graspServers.push(serverUrl);
         }
       }
@@ -52,7 +54,7 @@ export function parseGraspListEvent(event: any): GraspListData | null {
 /**
  * Get user's preferred GRASP servers from their GRASP list
  * Falls back to default GRASP servers if no list is found
- * 
+ *
  * @param subscribe - Nostr subscribe function
  * @param relays - Array of relay URLs to query
  * @param userPubkey - User pubkey to fetch GRASP list for
@@ -98,18 +100,22 @@ export async function getUserGraspServers(
         eoseCount++;
         if (eoseCount >= expectedEose) {
           unsub();
-          
+
           if (latestEvent) {
             const parsed = parseGraspListEvent(latestEvent);
             if (parsed && parsed.graspServers.length > 0) {
-              console.log(`✅ [GRASP List] Found user GRASP list with ${parsed.graspServers.length} servers`);
+              console.log(
+                `✅ [GRASP List] Found user GRASP list with ${parsed.graspServers.length} servers`
+              );
               resolve(parsed.graspServers);
               return;
             }
           }
-          
+
           // Fallback to default GRASP servers
-          console.log(`ℹ️ [GRASP List] No user GRASP list found, using default GRASP servers`);
+          console.log(
+            `ℹ️ [GRASP List] No user GRASP list found, using default GRASP servers`
+          );
           resolve(defaultGraspServers);
         }
       }
@@ -133,7 +139,7 @@ export async function getUserGraspServers(
 /**
  * Prioritize GRASP servers based on user preferences
  * Returns GRASP servers in order: user preferences first, then defaults
- * 
+ *
  * @param userGraspServers - User's preferred GRASP servers (from kind 10317)
  * @param defaultGraspServers - Default GRASP servers to use as fallback
  * @returns Prioritized list of GRASP servers
@@ -144,27 +150,27 @@ export function prioritizeGraspServers(
 ): string[] {
   // Start with user preferences
   const prioritized: string[] = [...userGraspServers];
-  
+
   // Add defaults that aren't already in user preferences
   for (const server of defaultGraspServers) {
     if (!prioritized.includes(server)) {
       prioritized.push(server);
     }
   }
-  
+
   return prioritized;
 }
 
 /**
  * Convert GRASP server relay URLs (wss://) to git clone URL domains
  * Extracts domain from wss:// URLs for use in clone URLs
- * 
+ *
  * @param graspRelayUrls - Array of GRASP server relay URLs (wss://)
  * @returns Array of domains (without protocol) for use in clone URLs
  */
 export function graspRelayUrlsToDomains(graspRelayUrls: string[]): string[] {
   return graspRelayUrls
-    .map(url => {
+    .map((url) => {
       // Extract domain from wss:// or ws:// URL
       const match = url.match(/^wss?:\/\/([^\/]+)/);
       return match ? match[1] : null;

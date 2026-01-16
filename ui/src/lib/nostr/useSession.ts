@@ -1,6 +1,7 @@
+import { nip19 } from "nostr-tools";
+
 import { useNostrContext } from "./NostrContext";
 import { useContributorMetadata } from "./useContributorMetadata";
-import { nip19 } from "nostr-tools";
 
 export enum PermissionLevel {
   None = 0,
@@ -12,12 +13,13 @@ const useSession = () => {
   const { pubkey } = useNostrContext();
   // TODO: Add authInitialized back to NostrContext if needed
   const authInitialized = true; // Temporarily set to true - not in NostrContext
-  
+
   // Use centralized metadata cache (same as other parts of the app)
   const metadataMap = useContributorMetadata(
     pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? [pubkey] : []
   );
-  const metadata = pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? (metadataMap[pubkey] || {}) : {};
+  const metadata =
+    pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? metadataMap[pubkey] || {} : {};
 
   // If we have a pubkey, we're logged in
   // authInitialized is mainly for preventing flickering during initial load when checking extensions
@@ -29,7 +31,11 @@ const useSession = () => {
   let name: string;
   if (metadata.display_name && metadata.display_name.trim().length > 0) {
     name = metadata.display_name;
-  } else if (metadata.name && metadata.name.trim().length > 0 && metadata.name !== "Anonymous Nostrich") {
+  } else if (
+    metadata.name &&
+    metadata.name.trim().length > 0 &&
+    metadata.name !== "Anonymous Nostrich"
+  ) {
     name = metadata.name;
   } else if (isLoggedIn && pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
     // Show npub format instead of shortened pubkey
@@ -43,7 +49,7 @@ const useSession = () => {
   } else {
     name = "Anonymous Nostrich";
   }
-  
+
   const initials = name
     .split(" ")
     .map((n) => n[0])

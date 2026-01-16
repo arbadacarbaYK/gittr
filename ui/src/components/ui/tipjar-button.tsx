@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Zap } from "lucide-react";
-import { ZapButton } from "./zap-button";
+
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { getZapCount } from "@/lib/payments/zap-tracker";
+
+import { Zap } from "lucide-react";
+
+import { ZapButton } from "./zap-button";
 
 interface TipjarButtonProps {
   recipient: string; // pubkey/npub
@@ -21,11 +24,11 @@ export function TipjarButton({
   contextType = "user",
   variant = "outline",
   size = "sm",
-  className
+  className,
 }: TipjarButtonProps) {
   const { pubkey } = useNostrContext();
   const zapCount = getZapCount(recipient, contextId, contextType);
-  
+
   return (
     <div className="flex items-center gap-2">
       <ZapButton
@@ -36,11 +39,8 @@ export function TipjarButton({
         className={className}
       />
       {zapCount > 0 && (
-        <span className="text-sm text-gray-400">
-          {zapCount} sats
-        </span>
+        <span className="text-sm text-gray-400">{zapCount} sats</span>
       )}
     </div>
   );
 }
-

@@ -1,6 +1,5 @@
 // LNURL Pay protocol implementation
 // LNURL is a bech32-encoded URL that resolves to payment endpoints
-
 import { bech32 } from "bech32";
 
 export interface LNURLPayResponse {
@@ -63,24 +62,28 @@ export function decodeLNURL(lnurl: string): string {
  */
 export async function resolveLNURL(lnurl: string): Promise<LNURLPayResponse> {
   const url = decodeLNURL(lnurl);
-  
+
   const response = await fetch(url);
   if (!response.ok) {
     const errorText = await response.text().catch(() => "Unknown error");
-    console.error("LNURL resolution failed:", response.status, response.statusText);
+    console.error(
+      "LNURL resolution failed:",
+      response.status,
+      response.statusText
+    );
     throw new Error(`LNURL resolution failed: ${response.statusText}`);
   }
-  
+
   const data = await response.json();
-  
+
   if (data.status === "ERROR") {
     throw new Error(`LNURL error: ${data.reason || "Unknown error"}`);
   }
-  
+
   if (data.tag !== "payRequest") {
     throw new Error(`Unsupported LNURL tag: ${data.tag || "unknown"}`);
   }
-  
+
   return data as LNURLPayResponse;
 }
 
@@ -99,7 +102,7 @@ export async function createInvoiceFromLightningAddress(
   if (!name || !domain) {
     throw new Error(`Invalid LUD-16 format: ${lud16}`);
   }
-  
+
   const lnurl = `https://${domain}/.well-known/lnurlp/${name}`;
   return createInvoiceFromLNURL(lnurl, amount, comment);
 }
@@ -117,31 +120,36 @@ export async function createInvoiceFromLNURL(
   if (!lnurl.startsWith("http://") && !lnurl.startsWith("https://")) {
     resolvedUrl = decodeLNURL(lnurl);
   }
-  
+
   const payResponse = await resolveLNURL(resolvedUrl);
-  
+
   if (!payResponse.callback) {
     throw new Error("LNURL callback not found");
   }
-  
+
   if (payResponse.minSendable && amount < payResponse.minSendable) {
-    throw new Error(`Amount too low. Minimum: ${payResponse.minSendable} msats (requested: ${amount} msats)`);
+    throw new Error(
+      `Amount too low. Minimum: ${payResponse.minSendable} msats (requested: ${amount} msats)`
+    );
   }
   if (payResponse.maxSendable && amount > payResponse.maxSendable) {
-    throw new Error(`Amount too high. Maximum: ${payResponse.maxSendable} msats (requested: ${amount} msats)`);
+    throw new Error(
+      `Amount too high. Maximum: ${payResponse.maxSendable} msats (requested: ${amount} msats)`
+    );
   }
-  
+
   const commentAllowed = payResponse.commentAllowed ?? 0;
   const callbackUrl = new URL(payResponse.callback);
   callbackUrl.searchParams.set("amount", String(amount));
-  
+
   // Add comment if provided and allowed
   // Some LNbits versions expect the comment parameter to be present even if empty
   if (commentAllowed > 0 && comment) {
     // Truncate comment to allowed length
-    const truncatedComment = comment.length > commentAllowed 
-      ? comment.substring(0, commentAllowed) 
-      : comment;
+    const truncatedComment =
+      comment.length > commentAllowed
+        ? comment.substring(0, commentAllowed)
+        : comment;
     callbackUrl.searchParams.set("comment", truncatedComment);
   } else if (commentAllowed > 0) {
     // LNbits compatibility: include empty comment parameter if comments are allowed
@@ -149,16 +157,16 @@ export async function createInvoiceFromLNURL(
     callbackUrl.searchParams.set("comment", "");
   }
   // If commentAllowed === 0, don't include comment parameter at all (Alby compatibility)
-  
+
   const finalCallbackUrl = callbackUrl.toString();
-  
+
   const callbackResponse = await fetch(finalCallbackUrl, {
     method: "GET",
     headers: {
-      "Accept": "application/json",
-    }
+      Accept: "application/json",
+    },
   });
-  
+
   if (!callbackResponse.ok) {
     const errorText = await callbackResponse.text();
     let errorMessage = `LNURL callback failed: ${callbackResponse.status} ${callbackResponse.statusText}`;
@@ -174,13 +182,13 @@ export async function createInvoiceFromLNURL(
     }
     throw new Error(errorMessage);
   }
-  
-  const callbackData = await callbackResponse.json() as LNURLPayCallbackResponse;
-  
+
+  const callbackData =
+    (await callbackResponse.json()) as LNURLPayCallbackResponse;
+
   if (callbackData.pr) {
     return callbackData.pr;
   }
-  
+
   throw new Error("No invoice (pr) in LNURL callback response");
 }
-

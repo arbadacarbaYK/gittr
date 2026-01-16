@@ -1,6 +1,5 @@
 // Zap tracking and history utilities
 // Tracks zaps sent and received, displays counts
-
 import { nip19 } from "nostr-tools";
 
 // Helper to normalize pubkey/npub for comparison
@@ -40,7 +39,7 @@ export interface ZapRecord {
 // Store zap in history
 export function recordZap(zap: ZapRecord): void {
   if (typeof window === "undefined") return;
-  
+
   try {
     const zaps = JSON.parse(localStorage.getItem("gittr_zaps") || "[]");
     zaps.push(zap);
@@ -51,41 +50,56 @@ export function recordZap(zap: ZapRecord): void {
 }
 
 // Get zap count for a recipient/context
-export function getZapCount(recipient: string, contextId?: string, type?: string): number {
+export function getZapCount(
+  recipient: string,
+  contextId?: string,
+  type?: string
+): number {
   if (typeof window === "undefined") return 0;
-  
+
   try {
-    const zaps = JSON.parse(localStorage.getItem("gittr_zaps") || "[]") as ZapRecord[];
-    return zaps.filter(z => 
-      z.recipient === recipient && 
-      z.status === "paid" &&
-      (!contextId || z.contextId === contextId) &&
-      (!type || z.type === type)
-    ).reduce((sum, z) => sum + z.amount, 0);
+    const zaps = JSON.parse(
+      localStorage.getItem("gittr_zaps") || "[]"
+    ) as ZapRecord[];
+    return zaps
+      .filter(
+        (z) =>
+          z.recipient === recipient &&
+          z.status === "paid" &&
+          (!contextId || z.contextId === contextId) &&
+          (!type || z.type === type)
+      )
+      .reduce((sum, z) => sum + z.amount, 0);
   } catch {
     return 0;
   }
 }
 
 // Get zap history for a recipient/context
-export function getZapHistory(recipient?: string, contextId?: string, limit: number = 50): ZapRecord[] {
+export function getZapHistory(
+  recipient?: string,
+  contextId?: string,
+  limit: number = 50
+): ZapRecord[] {
   if (typeof window === "undefined") return [];
-  
+
   try {
-    const zaps = JSON.parse(localStorage.getItem("gittr_zaps") || "[]") as ZapRecord[];
+    const zaps = JSON.parse(
+      localStorage.getItem("gittr_zaps") || "[]"
+    ) as ZapRecord[];
     let filtered = zaps;
-    
+
     if (recipient) {
-      filtered = filtered.filter(z => z.recipient === recipient);
+      filtered = filtered.filter((z) => z.recipient === recipient);
     }
-    
+
     if (contextId) {
-      filtered = filtered.filter(z => z.contextId === contextId);
+      filtered = filtered.filter((z) => z.contextId === contextId);
     }
-    
+
     // Sort by creation time, newest first
     filtered.sort((a, b) => b.createdAt - a.createdAt);
-    
+
     return filtered.slice(0, limit);
   } catch {
     return [];
@@ -96,4 +110,3 @@ export function getZapHistory(recipient?: string, contextId?: string, limit: num
 export function getZapTotal(recipient: string, contextId?: string): number {
   return getZapCount(recipient, contextId);
 }
-

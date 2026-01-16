@@ -1,16 +1,29 @@
 "use client";
 
-import { ExternalLink, BookOpen, MessageCircle, Youtube, Link as LinkIcon } from "lucide-react";
-import { 
-  MessageSquare, // Discord/Slack
-  Twitter,
+import {
+  BookOpen,
+  ExternalLink,
+  Link as LinkIcon,
+  MessageCircle,
+  Youtube,
+} from "lucide-react";
+import {
+  FileText,
   Github,
   Globe,
-  FileText,
+  MessageSquare, // Discord/Slack
+  Twitter,
 } from "lucide-react";
 
 export interface RepoLink {
-  type: "docs" | "discord" | "slack" | "youtube" | "twitter" | "github" | "other";
+  type:
+    | "docs"
+    | "discord"
+    | "slack"
+    | "youtube"
+    | "twitter"
+    | "github"
+    | "other";
   url: string;
   label?: string; // Optional custom label
 }
@@ -44,7 +57,7 @@ const getLinkIcon = (type: RepoLink["type"]) => {
 // Get display label for link type
 const getLinkLabel = (link: RepoLink) => {
   if (link.label) return link.label;
-  
+
   switch (link.type) {
     case "docs":
       return "Documentation";
@@ -68,7 +81,7 @@ const getLinkLabel = (link: RepoLink) => {
 // Group links by type
 const groupLinksByType = (links: RepoLink[]) => {
   const grouped: Record<string, RepoLink[]> = {};
-  links.forEach(link => {
+  links.forEach((link) => {
     if (!grouped[link.type]) {
       grouped[link.type] = [];
     }
@@ -92,12 +105,12 @@ export function RepoLinks({ links = [] }: RepoLinksProps) {
     <div className="mt-4 space-y-3">
       <h3 className="font-bold text-sm">Links</h3>
       <div className="space-y-2">
-        {types.map(type => {
+        {types.map((type) => {
           const typeLinks = grouped[type];
           if (!typeLinks || typeLinks.length === 0) return null;
-          
+
           const Icon = getLinkIcon(type);
-          
+
           return (
             <div key={type} className="space-y-1">
               {typeLinks.map((link, idx) => (
@@ -124,4 +137,3 @@ export function RepoLinks({ links = [] }: RepoLinksProps) {
     </div>
   );
 }
-

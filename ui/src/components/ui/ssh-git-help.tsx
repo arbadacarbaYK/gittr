@@ -1,7 +1,8 @@
 "use client";
 
-import { X, Terminal, Key, GitBranch, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+import { AlertCircle, GitBranch, Key, Terminal, X } from "lucide-react";
 
 interface SSHGitHelpProps {
   entity: string;
@@ -12,7 +13,14 @@ interface SSHGitHelpProps {
   onClose?: () => void;
 }
 
-export function SSHGitHelp({ entity, repo, sshUrl, httpsUrls, nostrUrls, onClose }: SSHGitHelpProps) {
+export function SSHGitHelp({
+  entity,
+  repo,
+  sshUrl,
+  httpsUrls,
+  nostrUrls,
+  onClose,
+}: SSHGitHelpProps) {
   const handleClose = () => {
     if (onClose) {
       onClose();
@@ -26,11 +34,11 @@ export function SSHGitHelp({ entity, repo, sshUrl, httpsUrls, nostrUrls, onClose
   };
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       onClick={handleBackdropClick}
     >
-      <div 
+      <div
         className="bg-gray-900 border border-gray-700 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
@@ -57,11 +65,25 @@ export function SSHGitHelp({ entity, repo, sshUrl, httpsUrls, nostrUrls, onClose
               1. Set Up SSH Keys
             </h3>
             <ol className="list-decimal list-inside space-y-2 text-gray-300 text-sm">
-              <li>Go to <strong>Settings → SSH Keys</strong></li>
-              <li>Either:
+              <li>
+                Go to <strong>Settings → SSH Keys</strong>
+              </li>
+              <li>
+                Either:
                 <ul className="list-disc list-inside ml-6 mt-1 space-y-1">
-                  <li><strong>Generate new key</strong>: Download private key, save to <code className="bg-gray-800 px-1 rounded">~/.ssh/id_ed25519</code></li>
-                  <li><strong>Add existing key</strong>: Paste public key from <code className="bg-gray-800 px-1 rounded">~/.ssh/id_*.pub</code></li>
+                  <li>
+                    <strong>Generate new key</strong>: Download private key,
+                    save to{" "}
+                    <code className="bg-gray-800 px-1 rounded">
+                      ~/.ssh/id_ed25519
+                    </code>
+                  </li>
+                  <li>
+                    <strong>Add existing key</strong>: Paste public key from{" "}
+                    <code className="bg-gray-800 px-1 rounded">
+                      ~/.ssh/id_*.pub
+                    </code>
+                  </li>
                 </ul>
               </li>
             </ol>
@@ -74,27 +96,34 @@ export function SSHGitHelp({ entity, repo, sshUrl, httpsUrls, nostrUrls, onClose
               2. Clone Repository
             </h3>
             <div className="space-y-3">
-            <div className="bg-gray-800 border border-gray-700 rounded p-3">
-                <p className="text-sm text-green-400 font-semibold mb-2">Option A: SSH (Standard Git - Recommended)</p>
-              <code className="block text-green-400 font-mono text-sm break-all">
-                {sshUrl || `git clone git@gittr.space:${entity}/${repo}.git`}
-              </code>
-              {sshUrl && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    navigator.clipboard.writeText(`git clone ${sshUrl}`);
-                  }}
-                  className="mt-2 text-xs"
-                >
+              <div className="bg-gray-800 border border-gray-700 rounded p-3">
+                <p className="text-sm text-green-400 font-semibold mb-2">
+                  Option A: SSH (Standard Git - Recommended)
+                </p>
+                <code className="block text-green-400 font-mono text-sm break-all">
+                  {sshUrl || `git clone git@gittr.space:${entity}/${repo}.git`}
+                </code>
+                {sshUrl && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`git clone ${sshUrl}`);
+                    }}
+                    className="mt-2 text-xs"
+                  >
                     Copy SSH Clone Command
-                </Button>
-              )}
-                <p className="mt-2 text-xs text-gray-400">Standard Git approach, no additional tools needed. Requires SSH keys (see Step 1).</p>
+                  </Button>
+                )}
+                <p className="mt-2 text-xs text-gray-400">
+                  Standard Git approach, no additional tools needed. Requires
+                  SSH keys (see Step 1).
+                </p>
               </div>
               <div className="bg-gray-800 border border-blue-700 rounded p-3">
-                <p className="text-sm text-blue-300 font-semibold mb-2">Option B: HTTPS (GRASP git servers)</p>
+                <p className="text-sm text-blue-300 font-semibold mb-2">
+                  Option B: HTTPS (GRASP git servers)
+                </p>
                 <code className="block text-blue-200 font-mono text-sm break-all">
                   {httpsUrls && httpsUrls.length > 0
                     ? `git clone ${httpsUrls[0]}`
@@ -106,26 +135,43 @@ export function SSHGitHelp({ entity, repo, sshUrl, httpsUrls, nostrUrls, onClose
                   </p>
                 )}
                 <p className="mt-2 text-xs text-gray-400">
-                  Works anywhere Git is available (CI, Codespaces, etc.). Read-only unless the remote grants access.
+                  Works anywhere Git is available (CI, Codespaces, etc.).
+                  Read-only unless the remote grants access.
                 </p>
               </div>
-              
+
               <div className="bg-gray-800 border border-purple-700 rounded p-3">
-                <p className="text-sm text-purple-400 font-semibold mb-2">Option C: nostr:// Protocol (Ecosystem Standard)</p>
-                {(nostrUrls && nostrUrls.length > 0 ? nostrUrls : [
-                  `nostr://${entity.substring(0, 12)}@relay.ngit.dev/${repo}`
-                ]).map((url, idx) => (
-                  <code key={idx} className="block text-purple-200 font-mono text-sm break-all">
+                <p className="text-sm text-purple-400 font-semibold mb-2">
+                  Option C: nostr:// Protocol (Ecosystem Standard)
+                </p>
+                {(nostrUrls && nostrUrls.length > 0
+                  ? nostrUrls
+                  : [
+                      `nostr://${entity.substring(
+                        0,
+                        12
+                      )}@relay.ngit.dev/${repo}`,
+                    ]
+                ).map((url, idx) => (
+                  <code
+                    key={idx}
+                    className="block text-purple-200 font-mono text-sm break-all"
+                  >
                     git clone {url}
                   </code>
                 ))}
                 <p className="mt-2 text-xs text-gray-400">
-                  Requires <code className="bg-gray-900 px-1 rounded">git-remote-nostr</code>. Matches the format used by other NIP-34 clients.
+                  Requires{" "}
+                  <code className="bg-gray-900 px-1 rounded">
+                    git-remote-nostr
+                  </code>
+                  . Matches the format used by other NIP-34 clients.
                 </p>
               </div>
             </div>
             <p className="mt-3 text-xs text-gray-400">
-              All three formats are published in each NIP-34 repository event. Use whichever best fits your tooling.
+              All three formats are published in each NIP-34 repository event.
+              Use whichever best fits your tooling.
             </p>
           </div>
 
@@ -145,7 +191,8 @@ export function SSHGitHelp({ entity, repo, sshUrl, httpsUrls, nostrUrls, onClose
             </div>
             <p className="text-xs text-gray-400 mt-2">
               <AlertCircle className="h-3 w-3 inline mr-1" />
-              Only repository owners can push. For collaborative changes, create a pull request via the web interface.
+              Only repository owners can push. For collaborative changes, create
+              a pull request via the web interface.
             </p>
           </div>
 
@@ -154,10 +201,17 @@ export function SSHGitHelp({ entity, repo, sshUrl, httpsUrls, nostrUrls, onClose
             <h3 className="text-lg font-semibold mb-3">Common Issues</h3>
             <div className="space-y-3 text-sm text-gray-300">
               <div>
-                <strong className="text-yellow-400">"Permission denied (publickey)"</strong>
+                <strong className="text-yellow-400">
+                  "Permission denied (publickey)"
+                </strong>
                 <ul className="list-disc list-inside ml-4 mt-1 space-y-1 text-xs">
                   <li>Check SSH key is added in Settings → SSH Keys</li>
-                  <li>Verify private key permissions (600): <code className="bg-gray-800 px-1 rounded">chmod 600 ~/.ssh/id_*</code></li>
+                  <li>
+                    Verify private key permissions (600):{" "}
+                    <code className="bg-gray-800 px-1 rounded">
+                      chmod 600 ~/.ssh/id_*
+                    </code>
+                  </li>
                 </ul>
               </div>
               <div>
@@ -173,7 +227,15 @@ export function SSHGitHelp({ entity, repo, sshUrl, httpsUrls, nostrUrls, onClose
           {/* Learn More */}
           <div className="pt-4 border-t border-gray-700">
             <p className="text-xs text-gray-400">
-              For detailed documentation, see <a href="https://github.com/arbadacarbaYK/gittr/blob/main/docs/SSH_GIT_GUIDE.md" className="text-purple-400 hover:underline" target="_blank" rel="noopener noreferrer">SSH & Git Guide</a>
+              For detailed documentation, see{" "}
+              <a
+                href="https://github.com/arbadacarbaYK/gittr/blob/main/docs/SSH_GIT_GUIDE.md"
+                className="text-purple-400 hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                SSH & Git Guide
+              </a>
             </p>
           </div>
         </div>
@@ -181,4 +243,3 @@ export function SSHGitHelp({ entity, repo, sshUrl, httpsUrls, nostrUrls, onClose
     </div>
   );
 }
-

@@ -1,41 +1,56 @@
 // server component wrapper that exports metadata
 // and imports the client layout component
+import { Metadata } from "next";
 
-import { Metadata } from 'next';
-import ClientLayout from './layout-client';
+import ClientLayout from "./layout-client";
+
+const DEV_CACHE_BUST = "dev-2026-01-15-01";
 
 export const metadata: Metadata = {
   title: {
-    default: 'gittr - Decentralized Git Hosting on Nostr',
-    template: '%s | gittr',
+    default: "gittr - Decentralized Git Hosting on Nostr",
+    template: "%s | gittr",
   },
-  description: 'A truly censorship-resistant alternative to GitHub built on Nostr. Host your repositories on a decentralized network.',
-  keywords: ['git', 'nostr', 'decentralized', 'censorship-resistant', 'github alternative', 'git hosting', 'nostr git'],
-  authors: [{ name: 'gittr' }],
-  creator: 'gittr',
-  publisher: 'gittr',
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space'),
+  description:
+    "A truly censorship-resistant alternative to GitHub built on Nostr. Host your repositories on a decentralized network.",
+  keywords: [
+    "git",
+    "nostr",
+    "decentralized",
+    "censorship-resistant",
+    "github alternative",
+    "git hosting",
+    "nostr git",
+  ],
+  authors: [{ name: "gittr" }],
+  creator: "gittr",
+  publisher: "gittr",
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space"
+  ),
   openGraph: {
-    type: 'website',
-    locale: 'en_US',
-    url: process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space',
-    siteName: 'gittr',
-    title: 'gittr - Decentralized Git Hosting on Nostr',
-    description: 'A truly censorship-resistant alternative to GitHub built on Nostr.',
+    type: "website",
+    locale: "en_US",
+    url: process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space",
+    siteName: "gittr",
+    title: "gittr - Decentralized Git Hosting on Nostr",
+    description:
+      "A truly censorship-resistant alternative to GitHub built on Nostr.",
     images: [
       {
-        url: '/logo.svg',
+        url: "/logo.svg",
         width: 1200,
         height: 630,
-        alt: 'gittr logo',
+        alt: "gittr logo",
       },
     ],
   },
   twitter: {
-    card: 'summary_large_image',
-    title: 'gittr - Decentralized Git Hosting on Nostr',
-    description: 'A truly censorship-resistant alternative to GitHub built on Nostr.',
-    images: ['/logo.svg'],
+    card: "summary_large_image",
+    title: "gittr - Decentralized Git Hosting on Nostr",
+    description:
+      "A truly censorship-resistant alternative to GitHub built on Nostr.",
+    images: ["/logo.svg"],
   },
   robots: {
     index: true,
@@ -43,13 +58,13 @@ export const metadata: Metadata = {
     googleBot: {
       index: true,
       follow: true,
-      'max-video-preview': -1,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
     },
   },
   alternates: {
-    canonical: process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space',
+    canonical: process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space",
   },
 };
 
@@ -61,6 +76,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning data-theme="arcade80s">
       <head>
+        <meta name="gittr-build" content={DEV_CACHE_BUST} />
         {/* Apply theme before React hydrates to prevent flash */}
         <script
           dangerouslySetInnerHTML={{
@@ -112,44 +128,55 @@ export default function RootLayout({
                 }
                 
                 // Suppress console errors early (before Next.js dev tools interceptor)
-                if (typeof console !== 'undefined' && console.error) {
-                  const originalError = console.error;
-                  console.error = function(...args) {
-                    // Check all arguments more thoroughly
+                if (typeof console !== 'undefined') {
+                  const buildFullMessage = (args) => {
                     const allMessages = args.map(arg => {
                       if (typeof arg === 'string') return arg;
                       if (arg && typeof arg === 'object') {
                         if (arg.message) return arg.message.toString();
                         if (arg.toString) return arg.toString();
-                        // Check for React error objects
                         if (arg.name && arg.stack) return arg.name + ' ' + arg.stack;
                       }
                       return '';
                     }).join(' ');
                     const stackTrace = args.find(arg => arg && arg.stack)?.stack?.toString() || '';
-                    const fullMessage = (allMessages + ' ' + stackTrace).toLowerCase();
-                    
-                    // Check for suppressed error patterns (case-insensitive)
-                    if (
-                      fullMessage.includes('error connecting relay') ||
-                      fullMessage.includes('websocket connection to') ||
-                      (fullMessage.includes('wss://') && (fullMessage.includes('failed') || fullMessage.includes('error') || fullMessage.includes('502'))) ||
-                      fullMessage.includes('accessing element.ref was removed in react 19') ||
-                      fullMessage.includes('ref is now a regular prop') ||
-                      fullMessage.includes('element.ref was removed') ||
-                      fullMessage.includes('will be removed from the jsx element type') ||
-                      fullMessage.includes('[file fetch] api error: 404') ||
-                      (fullMessage.includes('api error') && fullMessage.includes('404')) ||
-                      fullMessage.includes('element.ref') && fullMessage.includes('react 19')
-                    ) {
-                      return;
-                    }
-                    originalError.apply(console, args);
+                    return (allMessages + ' ' + stackTrace).toLowerCase();
                   };
-                  
-                  // Also intercept window.console.error
-                  if (typeof window !== 'undefined' && window.console && window.console.error !== console.error) {
-                    window.console.error = console.error;
+                  const shouldSuppress = (fullMessage) => (
+                    fullMessage.includes('error connecting relay') ||
+                    fullMessage.includes('websocket connection to') ||
+                    (fullMessage.includes('wss://') && (fullMessage.includes('failed') || fullMessage.includes('error') || fullMessage.includes('502'))) ||
+                    fullMessage.includes('accessing element.ref was removed in react 19') ||
+                    fullMessage.includes('ref is now a regular prop') ||
+                    fullMessage.includes('element.ref was removed') ||
+                    fullMessage.includes('will be removed from the jsx element type') ||
+                    fullMessage.includes('[file fetch] api error: 404') ||
+                    (fullMessage.includes('api error') && fullMessage.includes('404')) ||
+                    (fullMessage.includes('element.ref') && fullMessage.includes('react 19'))
+                  );
+
+                  if (console.error) {
+                    const originalError = console.error;
+                    console.error = function(...args) {
+                      const fullMessage = buildFullMessage(args);
+                      if (shouldSuppress(fullMessage)) return;
+                      originalError.apply(console, args);
+                    };
+                    if (typeof window !== 'undefined' && window.console && window.console.error !== console.error) {
+                      window.console.error = console.error;
+                    }
+                  }
+
+                  if (console.warn) {
+                    const originalWarn = console.warn;
+                    console.warn = function(...args) {
+                      const fullMessage = buildFullMessage(args);
+                      if (shouldSuppress(fullMessage)) return;
+                      originalWarn.apply(console, args);
+                    };
+                    if (typeof window !== 'undefined' && window.console && window.console.warn !== console.warn) {
+                      window.console.warn = console.warn;
+                    }
                   }
                 }
               })();
@@ -163,4 +190,3 @@ export default function RootLayout({
     </html>
   );
 }
-

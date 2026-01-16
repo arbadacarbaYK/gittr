@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { Input } from "@/components/ui/input";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { nip19 } from "nostr-tools";
+import { Input } from "@/components/ui/input";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { cn } from "@/lib/utils";
+
+import { nip19 } from "nostr-tools";
 
 export interface NostrUser {
   pubkey: string;
@@ -28,12 +30,12 @@ interface NostrUserSearchProps {
 
 /**
  * Nostr User Search Component
- * 
+ *
  * Searches for Nostr users by:
  * - Name/display_name (from cached metadata)
  * - npub (full or partial)
  * - pubkey (full or partial)
- * 
+ *
  * CRITICAL: Uses debounced search to avoid blocking input.
  * The input value is updated immediately, but search is debounced.
  */
@@ -77,7 +79,7 @@ export function NostrUserSearch({
 
   // Load all cached metadata from localStorage
   const cachedMetadata = useMemo(() => {
-    if (typeof window === 'undefined') return {} as Record<string, any>;
+    if (typeof window === "undefined") return {} as Record<string, any>;
     try {
       const cached = localStorage.getItem("gittr_metadata_cache");
       if (cached) {
@@ -148,14 +150,15 @@ export function NostrUserSearch({
     }
 
     // 2. Search repo contributors
-    if (typeof window === 'undefined') return results;
+    if (typeof window === "undefined") return results;
     try {
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
       for (const repo of repos) {
         if (repo.contributors && Array.isArray(repo.contributors)) {
           for (const contrib of repo.contributors) {
             if (contrib.pubkey && /^[0-9a-f]{64}$/i.test(contrib.pubkey)) {
-              const meta = cachedMetadataMap[contrib.pubkey.toLowerCase()] || contrib;
+              const meta =
+                cachedMetadataMap[contrib.pubkey.toLowerCase()] || contrib;
               addUser(contrib.pubkey, meta);
             }
           }
@@ -165,8 +168,10 @@ export function NostrUserSearch({
 
     // 3. Search users from activities
     try {
-      if (typeof window === 'undefined') return results;
-      const activities = JSON.parse(localStorage.getItem("gittr_activities") || "[]");
+      if (typeof window === "undefined") return results;
+      const activities = JSON.parse(
+        localStorage.getItem("gittr_activities") || "[]"
+      );
       for (const activity of activities) {
         if (activity.user && /^[0-9a-f]{64}$/i.test(activity.user)) {
           const meta = cachedMetadataMap[activity.user.toLowerCase()];
@@ -234,31 +239,39 @@ export function NostrUserSearch({
 
   // Show results when query changes and has results
   useEffect(() => {
-    setShowResults(debouncedQuery.trim().length > 0 && searchResults.length > 0);
+    setShowResults(
+      debouncedQuery.trim().length > 0 && searchResults.length > 0
+    );
     setSelectedIndex(0);
   }, [debouncedQuery, searchResults.length]);
 
   // Handle input change - CRITICAL: Update immediately, don't block
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = e.target.value;
-    setSearchQuery(newValue);
-    onChange(newValue); // Update parent immediately
-    // Don't force showResults here - let debounced query handle it
-  }, [onChange]);
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const newValue = e.target.value;
+      setSearchQuery(newValue);
+      onChange(newValue); // Update parent immediately
+      // Don't force showResults here - let debounced query handle it
+    },
+    [onChange]
+  );
 
   // Handle user selection
-  const handleSelectUser = useCallback((user: NostrUser) => {
-    onChange(user.npub); // Set npub as value
-    setSearchQuery(user.npub);
-    setShowResults(false);
-    if (onSelect) {
-      onSelect(user);
-    }
-    // Keep focus on input
-    setTimeout(() => {
-      inputRef.current?.focus();
-    }, 0);
-  }, [onChange, onSelect]);
+  const handleSelectUser = useCallback(
+    (user: NostrUser) => {
+      onChange(user.npub); // Set npub as value
+      setSearchQuery(user.npub);
+      setShowResults(false);
+      if (onSelect) {
+        onSelect(user);
+      }
+      // Keep focus on input
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 0);
+    },
+    [onChange, onSelect]
+  );
 
   // Keyboard navigation
   useEffect(() => {
@@ -296,9 +309,14 @@ export function NostrUserSearch({
   // Scroll selected into view
   useEffect(() => {
     if (resultsRef.current && searchResults.length > 0) {
-      const selectedElement = resultsRef.current.children[selectedIndex] as HTMLElement;
+      const selectedElement = resultsRef.current.children[
+        selectedIndex
+      ] as HTMLElement;
       if (selectedElement) {
-        selectedElement.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        selectedElement.scrollIntoView({
+          block: "nearest",
+          behavior: "smooth",
+        });
       }
     }
   }, [selectedIndex, searchResults.length]);
@@ -328,7 +346,7 @@ export function NostrUserSearch({
         onBlur={(e) => {
           // Don't close if clicking on results
           const relatedTarget = e.relatedTarget as HTMLElement;
-          if (relatedTarget?.closest('[data-user-result]')) {
+          if (relatedTarget?.closest("[data-user-result]")) {
             return;
           }
           // Delay closing to allow click events to fire
@@ -346,7 +364,8 @@ export function NostrUserSearch({
           data-user-result
         >
           {searchResults.map((user, index) => {
-            const displayName = user.display_name || user.name || user.npub.slice(0, 16) + "...";
+            const displayName =
+              user.display_name || user.name || user.npub.slice(0, 16) + "...";
             const isSelected = index === selectedIndex;
 
             return (
@@ -384,4 +403,3 @@ export function NostrUserSearch({
     </div>
   );
 }
-

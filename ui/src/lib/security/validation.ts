@@ -71,7 +71,10 @@ export function validateGitHubURL(url: string): string | null {
 
   try {
     const urlObj = new URL(validated);
-    if (urlObj.hostname !== "github.com" && !urlObj.hostname.endsWith(".github.com")) {
+    if (
+      urlObj.hostname !== "github.com" &&
+      !urlObj.hostname.endsWith(".github.com")
+    ) {
       return null;
     }
 
@@ -386,7 +389,9 @@ export class RateLimiter {
     const requests = this.requests.get(key) || [];
 
     // Remove old requests outside the window
-    const recentRequests = requests.filter((time) => now - time < this.windowMs);
+    const recentRequests = requests.filter(
+      (time) => now - time < this.windowMs
+    );
 
     if (recentRequests.length >= this.maxRequests) {
       return false; // Rate limit exceeded
@@ -403,4 +408,3 @@ export class RateLimiter {
     this.requests.delete(key);
   }
 }
-

@@ -1,19 +1,30 @@
 "use client";
 
-import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
-import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { getRepoOwnerPubkey, getEntityDisplayName, resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
-
 import * as React from "react";
-import { useCallback, useEffect, useState, useMemo, use } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 
 import FilterBar from "@/components/filter-bar";
-import { Button } from "@/components/ui/button";
-import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { nip19 } from "nostr-tools";
+import { Button } from "@/components/ui/button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { KIND_ISSUE, KIND_STATUS_OPEN, KIND_STATUS_CLOSED } from "@/lib/nostr/events";
+import {
+  KIND_ISSUE,
+  KIND_STATUS_CLOSED,
+  KIND_STATUS_OPEN,
+} from "@/lib/nostr/events";
+import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import {
+  formatDate24h,
+  formatDateTime24h,
+  formatTime24h,
+} from "@/lib/utils/date-format";
+import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
+import {
+  getEntityDisplayName,
+  getRepoOwnerPubkey,
+  resolveEntityToPubkey,
+} from "@/lib/utils/entity-resolver";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { clsx } from "clsx";
 import {
@@ -27,7 +38,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { formatDateTime24h, formatDate24h, formatTime24h } from "@/lib/utils/date-format";
+import { nip19 } from "nostr-tools";
 
 interface IIssueData {
   id: string;
@@ -46,7 +57,11 @@ interface IIssueData {
   createdAt?: number;
 }
 
-export default function RepoIssuesPage({ params }: { params: Promise<{ entity: string; repo: string }> }) {
+export default function RepoIssuesPage({
+  params,
+}: {
+  params: Promise<{ entity: string; repo: string }>;
+}) {
   const resolvedParams = use(params);
   const [mounted, setMounted] = useState(false);
   const [issueStatus, setIssueStatus] = useState<"open" | "closed">("open");
@@ -64,7 +79,11 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
 
   const loadIssues = useCallback(() => {
     try {
-      const key = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
+      const key = getRepoStorageKey(
+        "gittr_issues",
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
       const list = JSON.parse(localStorage.getItem(key) || "[]");
       // Filter by status and map correctly
       const filtered = list.filter((it: any) => {
@@ -75,7 +94,7 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
         id: it.id || String(idx),
         entity: it.entity || resolvedParams.entity,
         repo: it.repo || resolvedParams.repo,
-        title: it.title || `Issue ${idx+1}`,
+        title: it.title || `Issue ${idx + 1}`,
         number: it.number || String(idx + 1), // Use actual number from saved issue
         date: it.createdAt ? formatDateTime24h(it.createdAt) : "",
         author: it.author || "you",
@@ -97,13 +116,13 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
 
   useEffect(() => {
     loadIssues();
-    
+
     // Listen for new issue creation
     const handleIssueCreated = () => {
       loadIssues();
     };
     window.addEventListener("gittr:issue-created", handleIssueCreated);
-    
+
     return () => {
       window.removeEventListener("gittr:issue-created", handleIssueCreated);
     };
@@ -111,7 +130,14 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
 
   // Subscribe to Issues from Nostr relays for this repo
   useEffect(() => {
-    if (!subscribe || !defaultRelays || defaultRelays.length === 0 || !resolvedParams.entity || !resolvedParams.repo) return;
+    if (
+      !subscribe ||
+      !defaultRelays ||
+      defaultRelays.length === 0 ||
+      !resolvedParams.entity ||
+      !resolvedParams.repo
+    )
+      return;
 
     // Resolve full pubkey from entity (could be npub, prefix, or full pubkey)
     const resolveEntityPubkey = async () => {
@@ -122,7 +148,11 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
       }
       // Otherwise, try to find the repo and get ownerPubkey
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
-      const repo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
+      const repo = findRepoByEntityAndName(
+        repos,
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
       if (repo?.ownerPubkey && /^[0-9a-f]{64}$/i.test(repo.ownerPubkey)) {
         return repo.ownerPubkey;
       }
@@ -143,7 +173,7 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
           "#repo": [resolvedParams.entity, resolvedParams.repo], // Old format
         },
       ];
-      
+
       // Add NIP-34 "a" tag filter if we have owner pubkey
       if (entityPubkey && /^[0-9a-f]{64}$/i.test(entityPubkey)) {
         filters.push({
@@ -151,7 +181,7 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
           "#a": [`30617:${entityPubkey}:${resolvedParams.repo}`], // NIP-34 format
         });
       }
-      
+
       const unsub = subscribe(
         filters,
         defaultRelays,
@@ -160,9 +190,13 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
             try {
               // NIP-34: Parse from tags, not JSON content
               const aTag = event.tags.find((t: string[]) => t[0] === "a");
-              const subjectTag = event.tags.find((t: string[]) => t[0] === "subject");
-              const pTag = event.tags.find((t: string[]) => t[0] === "p" && !t[2]); // Repository owner (no marker)
-              
+              const subjectTag = event.tags.find(
+                (t: string[]) => t[0] === "subject"
+              );
+              const pTag = event.tags.find(
+                (t: string[]) => t[0] === "p" && !t[2]
+              ); // Repository owner (no marker)
+
               // Verify this issue belongs to the current repo via "a" tag
               // Format: "30617:<owner-pubkey>:<repo-id>"
               if (aTag && aTag[1]) {
@@ -170,46 +204,73 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
                 if (aParts.length >= 3 && aParts[0] === "30617") {
                   const repoOwnerPubkey = aParts[1];
                   const repoId = aParts[2];
-                  
+
                   // Check if this matches our repo
                   if (repoId !== resolvedParams.repo) {
                     return; // Not for this repo
                   }
-                  
+
                   // Also check if owner matches (entity or entityPubkey)
-                  if (repoOwnerPubkey && repoOwnerPubkey !== entityPubkey && 
-                      !resolvedParams.entity.includes(repoOwnerPubkey.slice(0, 8)) &&
-                      repoOwnerPubkey !== entityPubkey) {
+                  if (
+                    repoOwnerPubkey &&
+                    repoOwnerPubkey !== entityPubkey &&
+                    !resolvedParams.entity.includes(
+                      repoOwnerPubkey.slice(0, 8)
+                    ) &&
+                    repoOwnerPubkey !== entityPubkey
+                  ) {
                     // Might still be valid if entity resolves to this pubkey
                     // Continue processing
                   }
                 } else {
                   // Old format - try to parse from "repo" tag
-                  const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
-                  if (!repoTag || (repoTag[1] !== resolvedParams.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== resolvedParams.repo) {
+                  const repoTag = event.tags.find(
+                    (t: string[]) => t[0] === "repo"
+                  );
+                  if (
+                    !repoTag ||
+                    (repoTag[1] !== resolvedParams.entity &&
+                      repoTag[1] !== entityPubkey) ||
+                    repoTag[2] !== resolvedParams.repo
+                  ) {
                     return;
                   }
                 }
               } else {
                 // Fallback: Old format with "repo" tag
-                const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
-                if (!repoTag || (repoTag[1] !== resolvedParams.entity && repoTag[1] !== entityPubkey) || repoTag[2] !== resolvedParams.repo) {
+                const repoTag = event.tags.find(
+                  (t: string[]) => t[0] === "repo"
+                );
+                if (
+                  !repoTag ||
+                  (repoTag[1] !== resolvedParams.entity &&
+                    repoTag[1] !== entityPubkey) ||
+                  repoTag[2] !== resolvedParams.repo
+                ) {
                   return;
                 }
               }
 
-              const key = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
-              const existingIssues = JSON.parse(localStorage.getItem(key) || "[]");
-              
+              const key = getRepoStorageKey(
+                "gittr_issues",
+                resolvedParams.entity,
+                resolvedParams.repo
+              );
+              const existingIssues = JSON.parse(
+                localStorage.getItem(key) || "[]"
+              );
+
               // Check if issue already exists
-              const existingIndex = existingIssues.findIndex((i: any) => i.id === event.id);
-              
+              const existingIndex = existingIssues.findIndex(
+                (i: any) => i.id === event.id
+              );
+
               // NIP-34: Extract from tags
               // Title from "subject" tag (NIP-34) or JSON content (old format)
               let title = subjectTag ? subjectTag[1] : "";
               let description = event.content || ""; // NIP-34: content is markdown
               let bountyData: any = {};
-              
+
               // Try to parse old JSON format for backward compatibility
               if (!title && event.content) {
                 try {
@@ -219,7 +280,9 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
                   bountyData = {
                     bountyAmount: oldData.bountyAmount,
                     bountyInvoice: oldData.bountyInvoice,
-                    bountyStatus: oldData.bountyStatus || (oldData.bountyAmount ? "pending" : undefined),
+                    bountyStatus:
+                      oldData.bountyStatus ||
+                      (oldData.bountyAmount ? "pending" : undefined),
                     bountyWithdrawId: oldData.bountyWithdrawId,
                     bountyLnurl: oldData.bountyLnurl,
                     bountyWithdrawUrl: oldData.bountyWithdrawUrl,
@@ -228,18 +291,23 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
                   // Not JSON, use as-is (NIP-34 markdown)
                 }
               }
-              
+
               // Extract labels from "t" tags (NIP-34) or "label" tags (old format)
               const labels = event.tags
                 .filter((t: string[]) => t[0] === "t" || t[0] === "label")
                 .map((t: string[]) => t[1]);
-              
+
               // Extract assignees from "p" tags with "assignee" marker (custom) or all "p" tags (old format)
               const assignees = event.tags
-                .filter((t: string[]) => t[0] === "p" && (t[2] === "assignee" || !t[2]))
+                .filter(
+                  (t: string[]) =>
+                    t[0] === "p" && (t[2] === "assignee" || !t[2])
+                )
                 .map((t: string[]) => t[1])
-                .filter((p: string | undefined): p is string => !!p && p !== pTag?.[1]); // Exclude repo owner
-              
+                .filter(
+                  (p: string | undefined): p is string => !!p && p !== pTag?.[1]
+                ); // Exclude repo owner
+
               // Status: Default to "open" - will be updated by status events (kinds 1630-1632)
               // NIP-34: Status comes from separate status events, not tags
               const status = "open"; // Default, will be updated by status event subscription
@@ -260,13 +328,19 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
               };
 
               if (existingIndex >= 0) {
-                existingIssues[existingIndex] = { ...existingIssues[existingIndex], ...issue };
+                existingIssues[existingIndex] = {
+                  ...existingIssues[existingIndex],
+                  ...issue,
+                };
               } else {
                 existingIssues.push(issue);
               }
 
               // Store issue event ID for status event subscription
-              const issueToUpdate = existingIndex >= 0 ? existingIssues[existingIndex] : existingIssues[existingIssues.length - 1];
+              const issueToUpdate =
+                existingIndex >= 0
+                  ? existingIssues[existingIndex]
+                  : existingIssues[existingIssues.length - 1];
               if (!issueToUpdate.nostrEventId) {
                 issueToUpdate.nostrEventId = event.id;
               }
@@ -280,10 +354,16 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
       );
 
       // Subscribe to status events (NIP-34 kinds 1630-1632) for all issues in this repo
-      const issuesKey = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
+      const issuesKey = getRepoStorageKey(
+        "gittr_issues",
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
       const allIssues = JSON.parse(localStorage.getItem(issuesKey) || "[]");
-      const issueEventIds = allIssues.map((issue: any) => issue.nostrEventId || issue.id).filter(Boolean);
-      
+      const issueEventIds = allIssues
+        .map((issue: any) => issue.nostrEventId || issue.id)
+        .filter(Boolean);
+
       if (issueEventIds.length > 0) {
         const statusFilters: any[] = [
           {
@@ -292,21 +372,25 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
             "#k": ["1621"], // Only issue status events (not PR status events)
           },
         ];
-        
+
         const statusUnsub = subscribe(
           statusFilters,
           defaultRelays,
           (event, isAfterEose, relayURL) => {
             if (cancelled) return;
-            
+
             // Find the root issue event ID from the "e" tag with "root" marker
-            const rootTag = event.tags.find((t: string[]) => t[0] === "e" && t[3] === "root");
+            const rootTag = event.tags.find(
+              (t: string[]) => t[0] === "e" && t[3] === "root"
+            );
             if (!rootTag || !rootTag[1]) return;
-            
+
             const issueEventId = rootTag[1];
             const issues = JSON.parse(localStorage.getItem(issuesKey) || "[]");
-            const issueIndex = issues.findIndex((i: any) => (i.nostrEventId || i.id) === issueEventId);
-            
+            const issueIndex = issues.findIndex(
+              (i: any) => (i.nostrEventId || i.id) === issueEventId
+            );
+
             if (issueIndex >= 0) {
               // Update issue status based on status event kind
               let newStatus: "open" | "closed" = "open";
@@ -315,10 +399,11 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
               } else if (event.kind === KIND_STATUS_OPEN) {
                 newStatus = "open";
               }
-              
+
               // Only update if this status event is newer than the current one
               const currentIssue = issues[issueIndex];
-              const currentStatusEventTime = currentIssue.lastStatusEventTime || 0;
+              const currentStatusEventTime =
+                currentIssue.lastStatusEventTime || 0;
               if (event.created_at * 1000 > currentStatusEventTime) {
                 issues[issueIndex] = {
                   ...currentIssue,
@@ -332,7 +417,7 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
             }
           }
         );
-        
+
         return () => {
           cancelled = true;
           if (unsub) unsub();
@@ -345,7 +430,13 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
         };
       }
     })();
-  }, [subscribe, defaultRelays, resolvedParams.entity, resolvedParams.repo, loadIssues]);
+  }, [
+    subscribe,
+    defaultRelays,
+    resolvedParams.entity,
+    resolvedParams.repo,
+    loadIssues,
+  ]);
 
   const handleIssueStatusOpen = useCallback(() => setIssueStatus("open"), []);
   const handleIssueStatusClosed = useCallback(
@@ -361,36 +452,47 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
 
   // Get all unique author pubkeys (only full 64-char pubkeys for metadata lookup)
   const authorPubkeys = useMemo(() => {
-    return Array.from(new Set(
-      issues
-        .map(i => i.author)
-        .filter(Boolean)
-        .filter(author => /^[a-f0-9]{64}$/i.test(author)) // Only full 64-char pubkeys
-    ));
+    return Array.from(
+      new Set(
+        issues
+          .map((i) => i.author)
+          .filter(Boolean)
+          .filter((author) => /^[a-f0-9]{64}$/i.test(author)) // Only full 64-char pubkeys
+      )
+    );
   }, [issues]);
 
   // Fetch Nostr metadata for all authors
   const authorMetadata = useContributorMetadata(authorPubkeys);
 
   // Helper to get entity display name (username instead of npub)
-  const getEntityDisplayNameForRepo = useCallback((entity: string, repo: string) => {
-    try {
-      const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
-      const foundRepo = findRepoByEntityAndName(repos, entity, repo);
-      const ownerPubkey = foundRepo ? getRepoOwnerPubkey(foundRepo, entity) : null;
-      
-      // Get display name using the same logic as other pages
-      if (ownerPubkey) {
-        const displayName = getEntityDisplayName(ownerPubkey, authorMetadata, entity);
-        return displayName;
+  const getEntityDisplayNameForRepo = useCallback(
+    (entity: string, repo: string) => {
+      try {
+        const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
+        const foundRepo = findRepoByEntityAndName(repos, entity, repo);
+        const ownerPubkey = foundRepo
+          ? getRepoOwnerPubkey(foundRepo, entity)
+          : null;
+
+        // Get display name using the same logic as other pages
+        if (ownerPubkey) {
+          const displayName = getEntityDisplayName(
+            ownerPubkey,
+            authorMetadata,
+            entity
+          );
+          return displayName;
+        }
+      } catch {
+        // Fallback to entity if lookup fails
       }
-    } catch {
-      // Fallback to entity if lookup fails
-    }
-    
-    // Fallback: use entity as-is (might be npub already, or 8-char prefix)
-    return entity.startsWith('npub') ? entity.slice(0, 16) + '...' : entity;
-  }, [authorMetadata]);
+
+      // Fallback: use entity as-is (might be npub already, or 8-char prefix)
+      return entity.startsWith("npub") ? entity.slice(0, 16) + "..." : entity;
+    },
+    [authorMetadata]
+  );
 
   // Helper to generate repo URL (keep entity as-is for routing, but display username)
   const getRepoUrl = useCallback((entity: string, repo: string) => {
@@ -445,7 +547,8 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
                   })}
                   onClick={handleIssueStatusOpen}
                 >
-                  <CircleDot className="h-5 w-5 mr-2 mt-0.5" /> {mounted ? issues.length : 0} Open
+                  <CircleDot className="h-5 w-5 mr-2 mt-0.5" />{" "}
+                  {mounted ? issues.length : 0} Open
                 </button>
                 <button
                   className={clsx("flex text-zinc-400 hover:text-zinc-200", {
@@ -453,15 +556,27 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
                   })}
                   onClick={handleIssueStatusClosed}
                 >
-                  <Check className="h-5 w-5 mr-2 mt-0.5" /> {mounted ? (() => {
-                    try {
-                      const key = getRepoStorageKey("gittr_issues", resolvedParams.entity, resolvedParams.repo);
-                      const list = JSON.parse(localStorage.getItem(key) || "[]");
-                      return list.filter((it: any) => (it.status || "open") === "closed").length;
-                    } catch {
-                      return 0;
-                    }
-                  })() : 0} Closed
+                  <Check className="h-5 w-5 mr-2 mt-0.5" />{" "}
+                  {mounted
+                    ? (() => {
+                        try {
+                          const key = getRepoStorageKey(
+                            "gittr_issues",
+                            resolvedParams.entity,
+                            resolvedParams.repo
+                          );
+                          const list = JSON.parse(
+                            localStorage.getItem(key) || "[]"
+                          );
+                          return list.filter(
+                            (it: any) => (it.status || "open") === "closed"
+                          ).length;
+                        } catch {
+                          return 0;
+                        }
+                      })()
+                    : 0}{" "}
+                  Closed
                 </button>
               </div>
               <div className="mt-2 flex text-gray-400 lg:mt-0 space-x-6">
@@ -505,21 +620,24 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
                           className="text-zinc-400 hover:text-purple-500"
                           href={getRepoUrl(item.entity, item.repo)}
                         >
-                          {getEntityDisplayNameForRepo(item.entity, item.repo)}/{item.repo}
+                          {getEntityDisplayNameForRepo(item.entity, item.repo)}/
+                          {item.repo}
                         </Link>
                       </span>
 
                       <Link
                         className="text-zinc-200 hover:text-purple-500 pl-7 sm:pl-3"
-                        href={`${getRepoUrl(item.entity, item.repo)}/issues/${item.number}`}
+                        href={`${getRepoUrl(item.entity, item.repo)}/issues/${
+                          item.number
+                        }`}
                       >
                         {item.title}
                       </Link>
                     </div>
                     <div className="ml-7 text-zinc-400 flex items-center gap-2">
                       #{item.number} opened {item.date} by{" "}
-                      <Link 
-                        className="hover:text-purple-500 flex items-center gap-1 group" 
+                      <Link
+                        className="hover:text-purple-500 flex items-center gap-1 group"
                         href={`/${item.author}`}
                         title={(() => {
                           if (item.author && item.author.length === 64) {
@@ -544,7 +662,10 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
                           <AvatarFallback className="bg-purple-600 text-white text-[10px]">
                             {(() => {
                               const meta = authorMetadata[item.author];
-                              const name = meta?.display_name || meta?.name || item.author.slice(0, 8);
+                              const name =
+                                meta?.display_name ||
+                                meta?.name ||
+                                item.author.slice(0, 8);
                               return name.slice(0, 2).toUpperCase();
                             })()}
                           </AvatarFallback>
@@ -552,21 +673,27 @@ export default function RepoIssuesPage({ params }: { params: Promise<{ entity: s
                         <span>
                           {(() => {
                             const meta = authorMetadata[item.author];
-                            return meta?.display_name || meta?.name || item.author.slice(0, 8) + "...";
+                            return (
+                              meta?.display_name ||
+                              meta?.name ||
+                              item.author.slice(0, 8) + "..."
+                            );
                           })()}
                         </span>
-                        {item.author && item.author.length === 64 && (() => {
-                          try {
-                            const npub = nip19.npubEncode(item.author);
-                            return (
-                              <span className="text-xs text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity font-mono ml-1">
-                                ({npub.slice(0, 16)}...)
-                              </span>
-                            );
-                          } catch {
-                            return null;
-                          }
-                        })()}
+                        {item.author &&
+                          item.author.length === 64 &&
+                          (() => {
+                            try {
+                              const npub = nip19.npubEncode(item.author);
+                              return (
+                                <span className="text-xs text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity font-mono ml-1">
+                                  ({npub.slice(0, 16)}...)
+                                </span>
+                              );
+                            } catch {
+                              return null;
+                            }
+                          })()}
                       </Link>
                     </div>
                   </div>

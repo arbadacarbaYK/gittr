@@ -18,7 +18,9 @@ export interface ArchitectureDiagram {
 /**
  * Analyze repository structure and generate architecture diagram
  */
-export function analyzeArchitecture(files: Array<{ type: string; path: string }>): ArchitectureDiagram {
+export function analyzeArchitecture(
+  files: Array<{ type: string; path: string }>
+): ArchitectureDiagram {
   const nodes: ArchitectureNode[] = [];
   const edges: Array<{ from: string; to: string; type: string }> = [];
   const nodeMap = new Map<string, ArchitectureNode>();
@@ -78,9 +80,12 @@ export function analyzeArchitecture(files: Array<{ type: string; path: string }>
 /**
  * Identify entry points (main files, index files, app files)
  */
-function identifyEntryPoints(
-  filePaths: string[]
-): Array<{ id: string; name: string; type: ArchitectureNode["type"]; path: string }> {
+function identifyEntryPoints(filePaths: string[]): Array<{
+  id: string;
+  name: string;
+  type: ArchitectureNode["type"];
+  path: string;
+}> {
   const entryPoints: Array<{
     id: string;
     name: string;
@@ -148,7 +153,10 @@ function identifyEntryPoints(
 function identifyModules(
   filePaths: string[]
 ): Array<{ id: string; name: string; path: string }> {
-  const moduleMap = new Map<string, { id: string; name: string; path: string }>();
+  const moduleMap = new Map<
+    string,
+    { id: string; name: string; path: string }
+  >();
 
   filePaths.forEach((path) => {
     const parts = path.split("/");
@@ -188,17 +196,23 @@ function findParentModule(
  * Generate Mermaid diagram from architecture - shows hierarchical structure
  * This view shows entry points, modules, and their relationships (different from layered view)
  */
-export function generateMermaidDiagram(architecture: ArchitectureDiagram): string {
+export function generateMermaidDiagram(
+  architecture: ArchitectureDiagram
+): string {
   if (architecture.nodes.length === 0) {
-    return "graph TB\n  Empty[\"No structure found\"]\n";
+    return 'graph TB\n  Empty["No structure found"]\n';
   }
 
   // Use graph LR (left-right) for better flow visualization
   let mermaid = "graph LR\n";
 
   // Separate entry points from modules
-  const entryPoints = architecture.nodes.filter((n) => 
-    n.type === "api" || n.type === "component" || n.type === "service" || n.type === "config"
+  const entryPoints = architecture.nodes.filter(
+    (n) =>
+      n.type === "api" ||
+      n.type === "component" ||
+      n.type === "service" ||
+      n.type === "config"
   );
   const modules = architecture.nodes.filter((n) => n.type === "module");
 
@@ -208,7 +222,7 @@ export function generateMermaidDiagram(architecture: ArchitectureDiagram): strin
     const path = module.path || "";
     const parts = path.split("/");
     const groupKey = parts.length > 1 ? parts.slice(0, -1).join("/") : "root";
-    
+
     if (!moduleGroups.has(groupKey)) {
       moduleGroups.set(groupKey, []);
     }
@@ -219,7 +233,8 @@ export function generateMermaidDiagram(architecture: ArchitectureDiagram): strin
   entryPoints.forEach((node) => {
     const shape = getNodeShape(node.type);
     const label = sanitizeLabel(node.label);
-    const displayName = node.label.length > 25 ? node.label.substring(0, 22) + "..." : node.label;
+    const displayName =
+      node.label.length > 25 ? node.label.substring(0, 22) + "..." : node.label;
     mermaid += `  ${label}${shape}[\"${displayName}\"]\n`;
   });
 
@@ -227,12 +242,16 @@ export function generateMermaidDiagram(architecture: ArchitectureDiagram): strin
   if (moduleGroups.size > 1) {
     moduleGroups.forEach((groupModules, groupKey) => {
       if (groupModules.length > 0) {
-        const groupName = groupKey === "root" ? "Root" : groupKey.split("/").pop() || "Modules";
+        const groupName =
+          groupKey === "root" ? "Root" : groupKey.split("/").pop() || "Modules";
         const sanitizedGroupName = sanitizeLabel(groupName);
         mermaid += `  subgraph ${sanitizedGroupName}[\"${groupName}\"]\n`;
         groupModules.forEach((node) => {
           const label = sanitizeLabel(node.label);
-          const displayName = node.label.length > 25 ? node.label.substring(0, 22) + "..." : node.label;
+          const displayName =
+            node.label.length > 25
+              ? node.label.substring(0, 22) + "..."
+              : node.label;
           mermaid += `    ${label}[\"${displayName}\"]\n`;
         });
         mermaid += "  end\n";
@@ -242,7 +261,10 @@ export function generateMermaidDiagram(architecture: ArchitectureDiagram): strin
     // No grouping - just add modules directly
     modules.forEach((node) => {
       const label = sanitizeLabel(node.label);
-      const displayName = node.label.length > 25 ? node.label.substring(0, 22) + "..." : node.label;
+      const displayName =
+        node.label.length > 25
+          ? node.label.substring(0, 22) + "..."
+          : node.label;
       mermaid += `  ${label}[\"${displayName}\"]\n`;
     });
   }
@@ -308,18 +330,18 @@ export function generateLayeredArchitecture(
 ): string {
   // Include ALL files, not just code files
   const allFiles = files.filter((f) => f.type === "file");
-  
+
   if (allFiles.length === 0) {
-    return "graph TB\n  Empty[\"No files found\"]\n";
+    return 'graph TB\n  Empty["No files found"]\n';
   }
 
   const layers = identifyLayers(allFiles.map((f) => f.path));
 
   // Use graph TB (top-bottom) for better vertical layout with subgraphs
   let mermaid = "graph TB\n";
-  
+
   // Frontend subgraph - show ALL files
-  mermaid += "  subgraph Frontend[\"Frontend\"]\n";
+  mermaid += '  subgraph Frontend["Frontend"]\n';
   if (layers.frontend.length > 0) {
     layers.frontend.forEach((filePath) => {
       const fileName = filePath.split("/").pop() || filePath;
@@ -332,7 +354,7 @@ export function generateLayeredArchitecture(
   mermaid += "  end\n";
 
   // API subgraph - show ALL files
-  mermaid += "  subgraph API[\"API\"]\n";
+  mermaid += '  subgraph API["API"]\n';
   if (layers.api.length > 0) {
     layers.api.forEach((filePath) => {
       const fileName = filePath.split("/").pop() || filePath;
@@ -345,7 +367,7 @@ export function generateLayeredArchitecture(
   mermaid += "  end\n";
 
   // Backend subgraph - show ALL files
-  mermaid += "  subgraph Backend[\"Backend\"]\n";
+  mermaid += '  subgraph Backend["Backend"]\n';
   if (layers.backend.length > 0) {
     layers.backend.forEach((filePath) => {
       const fileName = filePath.split("/").pop() || filePath;
@@ -359,7 +381,7 @@ export function generateLayeredArchitecture(
 
   // Database subgraph - only if it has files
   if (layers.database.length > 0) {
-    mermaid += "  subgraph Database[\"Database\"]\n";
+    mermaid += '  subgraph Database["Database"]\n';
     layers.database.forEach((filePath) => {
       const fileName = filePath.split("/").pop() || filePath;
       const label = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -374,13 +396,13 @@ export function generateLayeredArchitecture(
   } else if (layers.frontend.length === 0 && layers.api.length > 0) {
     mermaid += "  Frontend -.-> API\n";
   }
-  
+
   if (layers.api.length > 0 && layers.backend.length > 0) {
     mermaid += "  API --> Backend\n";
   } else if (layers.api.length === 0 && layers.backend.length > 0) {
     mermaid += "  API -.-> Backend\n";
   }
-  
+
   if (layers.backend.length > 0 && layers.database.length > 0) {
     mermaid += "  Backend --> Database\n";
   }
@@ -466,4 +488,3 @@ function identifyLayers(filePaths: string[]): {
 
   return layers;
 }
-

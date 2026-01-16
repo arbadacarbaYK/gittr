@@ -1,12 +1,13 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+
 import Image from "next/image";
 
 export default function Logo({ className }: { className?: string }) {
   return (
-    <a 
-      href="/" 
+    <a
+      href="/"
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation(); // Prevent event from bubbling up to parent handlers

@@ -56,11 +56,10 @@ export const securityHeaders = [
  */
 export function getSecurityHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
-  
+
   securityHeaders.forEach((header) => {
     headers[header.key] = header.value;
   });
 
   return headers;
 }
-

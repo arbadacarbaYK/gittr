@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+
 import { Button } from "@/components/ui/button";
+
 import { useRouter } from "next/navigation";
 
 export default function CleanupReposPage() {
@@ -43,8 +45,8 @@ export default function CleanupReposPage() {
         `${entity}_${repoName}`,
         `${entity}/${repoName}`,
       ];
-      
-      keyVariations.forEach(keyBase => {
+
+      keyVariations.forEach((keyBase) => {
         // Issues, PRs, overrides, etc.
         localStorage.removeItem(`gittr_issues__${keyBase}`);
         localStorage.removeItem(`gittr_prs__${keyBase}`);
@@ -63,7 +65,9 @@ export default function CleanupReposPage() {
       localStorage.removeItem(`gittr_prs__${entity}__${repoName}`);
       localStorage.removeItem(`gittr_accumulated_zaps_${repoKey}`);
 
-      console.log(`Deleted repo ${entity}/${repoName} and all related data from localStorage`);
+      console.log(
+        `Deleted repo ${entity}/${repoName} and all related data from localStorage`
+      );
     } catch (error) {
       console.error("Failed to delete repo:", error);
       alert(`Failed to delete repo: ${error}`);
@@ -77,11 +81,15 @@ export default function CleanupReposPage() {
         Delete malformed or unwanted repositories from localStorage.
       </p>
       <div className="mb-4 p-3 bg-yellow-900/20 border border-yellow-500 rounded text-sm">
-        <p className="text-yellow-400 font-semibold mb-1">⚠️ About Nostr Events</p>
+        <p className="text-yellow-400 font-semibold mb-1">
+          ⚠️ About Nostr Events
+        </p>
         <p className="text-yellow-300">
-          If a repository was published to Nostr relays, the event remains on relays even after local deletion. 
-          Nostr events cannot be truly deleted, but you can publish a replacement event to update it. 
-          The repo will be removed from your local storage, but others may still see it if they sync from Nostr.
+          If a repository was published to Nostr relays, the event remains on
+          relays even after local deletion. Nostr events cannot be truly
+          deleted, but you can publish a replacement event to update it. The
+          repo will be removed from your local storage, but others may still see
+          it if they sync from Nostr.
         </p>
       </div>
 
@@ -99,7 +107,12 @@ export default function CleanupReposPage() {
       <div className="space-y-2 mb-6">
         {repos.map((repo, idx) => {
           const entity = repo.entity || repo.slug?.split("/")[0] || "unknown";
-          const repoName = repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug || "unknown";
+          const repoName =
+            repo.repo ||
+            repo.slug?.split("/")[1] ||
+            repo.name ||
+            repo.slug ||
+            "unknown";
           const key = `${entity}/${repoName}`;
 
           return (
@@ -146,4 +159,3 @@ export default function CleanupReposPage() {
     </div>
   );
 }
-

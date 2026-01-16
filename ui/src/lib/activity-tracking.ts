@@ -1,15 +1,21 @@
 /**
  * Activity Tracking System
  * Tracks all user activities for stats and timeline display
- * 
+ *
  * CRITICAL: Activity counts should come from Nostr events (network), not localStorage
  * People use multiple clients, so we need to count what's actually on Nostr
  */
-
+import {
+  KIND_ISSUE,
+  KIND_PULL_REQUEST,
+  KIND_REPOSITORY_NIP34,
+  KIND_REPOSITORY_STATE,
+  KIND_STATUS_APPLIED,
+  KIND_STATUS_CLOSED,
+} from "./nostr/events";
 import { getRepoOwnerPubkey } from "./utils/entity-resolver";
-import { KIND_REPOSITORY_NIP34, KIND_REPOSITORY_STATE, KIND_PULL_REQUEST, KIND_ISSUE, KIND_STATUS_APPLIED, KIND_STATUS_CLOSED } from "./nostr/events";
 
-export type ActivityType = 
+export type ActivityType =
   | "repo_created"
   | "repo_imported"
   | "pr_created"
@@ -49,7 +55,9 @@ const ACTIVITY_MAX_AGE = 365 * 24 * 60 * 60 * 1000; // 1 year
 /**
  * Record an activity
  */
-export function recordActivity(activity: Omit<Activity, "id" | "timestamp">): void {
+export function recordActivity(
+  activity: Omit<Activity, "id" | "timestamp">
+): void {
   try {
     const activities = getActivities();
     const newActivity: Activity = {
@@ -57,20 +65,22 @@ export function recordActivity(activity: Omit<Activity, "id" | "timestamp">): vo
       id: `activity-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       timestamp: Date.now(),
     };
-    
+
     activities.push(newActivity);
-    
+
     // Clean up old activities (older than 1 year)
     const cutoff = Date.now() - ACTIVITY_MAX_AGE;
-    const filtered = activities.filter(a => a.timestamp >= cutoff);
-    
+    const filtered = activities.filter((a) => a.timestamp >= cutoff);
+
     // Keep last 10000 activities
     const recent = filtered.slice(-10000);
-    
+
     localStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(recent));
-    
+
     // Dispatch event for real-time updates
-    window.dispatchEvent(new CustomEvent("gittr:activity-recorded", { detail: newActivity }));
+    window.dispatchEvent(
+      new CustomEvent("gittr:activity-recorded", { detail: newActivity })
+    );
   } catch (error) {
     console.error("Failed to record activity:", error);
   }
@@ -94,9 +104,13 @@ export function getActivities(): Activity[] {
  */
 function isRepoDeleted(entity: string, repo: string): boolean {
   try {
-    const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
+    const deletedRepos = JSON.parse(
+      localStorage.getItem("gittr_deleted_repos") || "[]"
+    ) as Array<{ entity: string; repo: string; deletedAt: number }>;
     const repoKey = `${entity}/${repo}`.toLowerCase();
-    return deletedRepos.some(d => `${d.entity}/${d.repo}`.toLowerCase() === repoKey);
+    return deletedRepos.some(
+      (d) => `${d.entity}/${d.repo}`.toLowerCase() === repoKey
+    );
   } catch {
     return false;
   }
@@ -109,7 +123,7 @@ function isRepoDeleted(entity: string, repo: string): boolean {
  */
 export function getUserActivities(userPubkey: string): Activity[] {
   const allActivities = getActivities();
-  
+
   // Normalize the userPubkey - if it's npub, decode it
   let normalizedPubkey = userPubkey;
   if (userPubkey.startsWith("npub")) {
@@ -123,34 +137,49 @@ export function getUserActivities(userPubkey: string): Activity[] {
       // Invalid npub, use as-is
     }
   }
-  
+
   // Get 8-char prefix for matching
-  const prefix = normalizedPubkey.length >= 8 ? normalizedPubkey.slice(0, 8).toLowerCase() : null;
-  
-  return allActivities.filter(a => {
+  const prefix =
+    normalizedPubkey.length >= 8
+      ? normalizedPubkey.slice(0, 8).toLowerCase()
+      : null;
+
+  return allActivities.filter((a) => {
     const activityUser = a.user?.toLowerCase() || "";
     const normalizedPubkeyLower = normalizedPubkey.toLowerCase();
-    
+
     // Match user pubkey
     let userMatches = false;
     // Exact match (full pubkey)
     if (activityUser === normalizedPubkeyLower) userMatches = true;
     // Match by 8-char prefix
     else if (prefix && activityUser.startsWith(prefix)) userMatches = true;
-    else if (prefix && normalizedPubkeyLower.startsWith(activityUser.slice(0, 8))) userMatches = true;
+    else if (
+      prefix &&
+      normalizedPubkeyLower.startsWith(activityUser.slice(0, 8))
+    )
+      userMatches = true;
     // Match if activity user is prefix of search pubkey
-    else if (activityUser.length === 8 && normalizedPubkeyLower.startsWith(activityUser)) userMatches = true;
-    
+    else if (
+      activityUser.length === 8 &&
+      normalizedPubkeyLower.startsWith(activityUser)
+    )
+      userMatches = true;
+
     if (!userMatches) return false;
-    
+
     // Filter out activities from deleted repos
     if (a.repo && a.entity) {
-      const [activityEntity, activityRepo] = a.repo.split('/');
-      if (activityEntity && activityRepo && isRepoDeleted(activityEntity, activityRepo)) {
+      const [activityEntity, activityRepo] = a.repo.split("/");
+      if (
+        activityEntity &&
+        activityRepo &&
+        isRepoDeleted(activityEntity, activityRepo)
+      ) {
         return false;
       }
     }
-    
+
     return true;
   });
 }
@@ -159,25 +188,30 @@ export function getUserActivities(userPubkey: string): Activity[] {
  * Get activities for a specific repo
  */
 export function getRepoActivities(repoId: string): Activity[] {
-  return getActivities().filter(a => a.repo === repoId);
+  return getActivities().filter((a) => a.repo === repoId);
 }
 
 /**
  * Get activities in a date range
  */
-export function getActivitiesInRange(startDate: number, endDate: number): Activity[] {
+export function getActivitiesInRange(
+  startDate: number,
+  endDate: number
+): Activity[] {
   return getActivities().filter(
-    a => a.timestamp >= startDate && a.timestamp <= endDate
+    (a) => a.timestamp >= startDate && a.timestamp <= endDate
   );
 }
 
 /**
  * Get activity count by type for a user
  */
-export function getUserActivityCounts(userPubkey: string): Record<ActivityType, number> {
+export function getUserActivityCounts(
+  userPubkey: string
+): Record<ActivityType, number> {
   const activities = getUserActivities(userPubkey);
   const counts: Record<string, number> = {};
-  
+
   Object.values([
     "repo_created",
     "repo_imported",
@@ -191,10 +225,10 @@ export function getUserActivityCounts(userPubkey: string): Record<ActivityType, 
     "repo_zapped",
     "file_edited",
     "release_created",
-  ] as ActivityType[]).forEach(type => {
-    counts[type] = activities.filter(a => a.type === type).length;
+  ] as ActivityType[]).forEach((type) => {
+    counts[type] = activities.filter((a) => a.type === type).length;
   });
-  
+
   return counts as Record<ActivityType, number>;
 }
 
@@ -202,29 +236,31 @@ export function getUserActivityCounts(userPubkey: string): Record<ActivityType, 
  * Get contribution graph data (like GitHub's activity graph)
  * Returns array of {date: string, count: number} for last 52 weeks
  */
-export function getContributionGraph(userPubkey: string): Array<{date: string; count: number}> {
+export function getContributionGraph(
+  userPubkey: string
+): Array<{ date: string; count: number }> {
   const activities = getUserActivities(userPubkey);
   const weeks: Record<string, number> = {};
-  
+
   // Initialize last 52 weeks
   const now = Date.now();
   for (let i = 0; i < 365; i++) {
     const date = new Date(now - i * 24 * 60 * 60 * 1000);
     const dateStr = date.toISOString().split("T")[0];
     if (dateStr) {
-    weeks[dateStr] = 0;
+      weeks[dateStr] = 0;
     }
   }
-  
+
   // Count activities per day
-  activities.forEach(activity => {
+  activities.forEach((activity) => {
     const date = new Date(activity.timestamp);
     const dateStr = date.toISOString().split("T")[0];
     if (dateStr && dateStr in weeks && weeks[dateStr] !== undefined) {
       weeks[dateStr] = (weeks[dateStr] || 0) + 1;
     }
   });
-  
+
   // Convert to array sorted by date
   return Object.entries(weeks)
     .map(([date, count]) => ({ date, count }))
@@ -237,44 +273,51 @@ export function getContributionGraph(userPubkey: string): Array<{date: string; c
  */
 export function backfillActivities(): void {
   const activities: Omit<Activity, "id" | "timestamp">[] = [];
-  
+
   try {
     // 1. Get all repos
-    const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
-    
+    const repos = JSON.parse(
+      localStorage.getItem("gittr_repos") || "[]"
+    ) as any[];
+
     repos.forEach((repo: any) => {
       if (!repo.entity || repo.entity === "user") return;
       const repoId = `${repo.entity}/${repo.repo || repo.slug}`;
-      
+
       // Get full owner pubkey from repo (repos always have full pubkey in ownerPubkey)
       const ownerPubkey = getRepoOwnerPubkey(repo, repo.entity);
       if (!ownerPubkey) {
         // Skip repos without valid owner pubkey
         return;
       }
-      
+
       // Repo creation/import
       // CRITICAL: Always create activity for repos, even if createdAt is missing
       // Use createdAt if available, otherwise use current time (for existing repos)
       const repoCreatedAt = repo.createdAt || repo.updatedAt || Date.now();
-        activities.push({
-          type: repo.sourceUrl ? "repo_imported" : "repo_created",
-          user: ownerPubkey, // Use full pubkey, not entity
-          repo: repoId,
-          entity: repo.entity,
-          repoName: repo.name || repo.repo || repo.slug,
+      activities.push({
+        type: repo.sourceUrl ? "repo_imported" : "repo_created",
+        user: ownerPubkey, // Use full pubkey, not entity
+        repo: repoId,
+        entity: repo.entity,
+        repoName: repo.name || repo.repo || repo.slug,
         timestamp: repoCreatedAt, // Use actual timestamp if available
       } as any);
-      
+
       // Commits
-      const commitsKey = `gittr_commits__${repo.entity}__${repo.repo || repo.slug}`;
-      const commits = JSON.parse(localStorage.getItem(commitsKey) || "[]") as any[];
+      const commitsKey = `gittr_commits__${repo.entity}__${
+        repo.repo || repo.slug
+      }`;
+      const commits = JSON.parse(
+        localStorage.getItem(commitsKey) || "[]"
+      ) as any[];
       commits.forEach((commit: any) => {
         if (commit.timestamp || commit.createdAt) {
           // Use commit.author if it's a full pubkey, otherwise use ownerPubkey
-          const commitUser = (commit.author && /^[0-9a-f]{64}$/i.test(commit.author)) 
-            ? commit.author 
-            : ownerPubkey;
+          const commitUser =
+            commit.author && /^[0-9a-f]{64}$/i.test(commit.author)
+              ? commit.author
+              : ownerPubkey;
           activities.push({
             type: "commit_created",
             user: commitUser,
@@ -288,16 +331,17 @@ export function backfillActivities(): void {
           });
         }
       });
-      
+
       // PRs
       const prsKey = `gittr_prs__${repo.entity}__${repo.repo || repo.slug}`;
       const prs = JSON.parse(localStorage.getItem(prsKey) || "[]") as any[];
       prs.forEach((pr: any) => {
         if (pr.createdAt) {
           // Use pr.author if it's a full pubkey, otherwise use ownerPubkey
-          const prUser = (pr.author && /^[0-9a-f]{64}$/i.test(pr.author)) 
-            ? pr.author 
-            : ownerPubkey;
+          const prUser =
+            pr.author && /^[0-9a-f]{64}$/i.test(pr.author)
+              ? pr.author
+              : ownerPubkey;
           activities.push({
             type: "pr_created",
             user: prUser,
@@ -311,9 +355,12 @@ export function backfillActivities(): void {
         }
         if (pr.mergedAt && pr.status === "merged") {
           // Use pr.mergedBy or pr.author if full pubkey, otherwise use ownerPubkey
-          const mergedBy = (pr.mergedBy && /^[0-9a-f]{64}$/i.test(pr.mergedBy))
-            ? pr.mergedBy
-            : ((pr.author && /^[0-9a-f]{64}$/i.test(pr.author)) ? pr.author : ownerPubkey);
+          const mergedBy =
+            pr.mergedBy && /^[0-9a-f]{64}$/i.test(pr.mergedBy)
+              ? pr.mergedBy
+              : pr.author && /^[0-9a-f]{64}$/i.test(pr.author)
+              ? pr.author
+              : ownerPubkey;
           activities.push({
             type: "pr_merged",
             user: mergedBy,
@@ -327,16 +374,21 @@ export function backfillActivities(): void {
           });
         }
       });
-      
+
       // Issues
-      const issuesKey = `gittr_issues__${repo.entity}__${repo.repo || repo.slug}`;
-      const issues = JSON.parse(localStorage.getItem(issuesKey) || "[]") as any[];
+      const issuesKey = `gittr_issues__${repo.entity}__${
+        repo.repo || repo.slug
+      }`;
+      const issues = JSON.parse(
+        localStorage.getItem(issuesKey) || "[]"
+      ) as any[];
       issues.forEach((issue: any) => {
         if (issue.createdAt) {
           // Use issue.author if it's a full pubkey, otherwise use ownerPubkey
-          const issueUser = (issue.author && /^[0-9a-f]{64}$/i.test(issue.author))
-            ? issue.author
-            : ownerPubkey;
+          const issueUser =
+            issue.author && /^[0-9a-f]{64}$/i.test(issue.author)
+              ? issue.author
+              : ownerPubkey;
           activities.push({
             type: "issue_created",
             user: issueUser,
@@ -349,9 +401,10 @@ export function backfillActivities(): void {
           });
         }
         if (issue.bountyAmount && issue.bountyStatus === "paid") {
-          const bountyUser = (issue.author && /^[0-9a-f]{64}$/i.test(issue.author))
-            ? issue.author
-            : ownerPubkey;
+          const bountyUser =
+            issue.author && /^[0-9a-f]{64}$/i.test(issue.author)
+              ? issue.author
+              : ownerPubkey;
           activities.push({
             type: "bounty_created",
             user: bountyUser, // Bounty creator
@@ -382,44 +435,47 @@ export function backfillActivities(): void {
         }
       });
     });
-    
+
     // Record all backfilled activities
     // CRITICAL: Use original timestamp from activity if available, otherwise use current time
     // CRITICAL: Check for duplicates before recording to prevent counting same activity multiple times
     const existingActivities = getActivities();
     const existingActivityIds = new Set(
-      existingActivities.map(a => {
+      existingActivities.map((a) => {
         // Create unique ID from activity type, repo, user, and timestamp (rounded to nearest second to handle minor differences)
         const ts = Math.floor(a.timestamp / 1000) * 1000;
         return `${a.type}:${a.repo}:${a.user}:${ts}`;
       })
     );
-    
+
     let newCount = 0;
-    activities.forEach(activity => {
+    activities.forEach((activity) => {
       const timestamp = (activity as any).timestamp || Date.now();
       const roundedTs = Math.floor(timestamp / 1000) * 1000;
       const activityId = `${activity.type}:${activity.repo}:${activity.user}:${roundedTs}`;
-      
+
       // Skip if this activity already exists
       if (existingActivityIds.has(activityId)) {
         return;
       }
-      
+
       recordActivity({
         ...activity,
         timestamp: timestamp,
       } as any);
       newCount++;
     });
-    
+
     if (newCount > 0) {
-      console.log(`✅ [Backfill] Recorded ${newCount} new activities (skipped ${activities.length - newCount} duplicates)`);
+      console.log(
+        `✅ [Backfill] Recorded ${newCount} new activities (skipped ${
+          activities.length - newCount
+        } duplicates)`
+      );
     }
-    
+
     // Mark as backfilled to prevent duplicate runs
     localStorage.setItem("gittr_activities_backfilled", Date.now().toString());
-    
   } catch (error) {
     console.error("Failed to backfill activities:", error);
   }
@@ -439,7 +495,11 @@ export async function syncCommitsFromBridge(
   try {
     // Fetch commits from bridge API
     const response = await fetch(
-      `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(branch)}&limit=100`
+      `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
+        ownerPubkey
+      )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
+        branch
+      )}&limit=100`
     );
 
     if (!response.ok) {
@@ -447,7 +507,9 @@ export async function syncCommitsFromBridge(
         // Repo not cloned yet - this is normal, not an error
         return 0;
       }
-      console.warn(`⚠️ [Activity Sync] Failed to fetch commits: ${response.status} ${response.statusText}`);
+      console.warn(
+        `⚠️ [Activity Sync] Failed to fetch commits: ${response.status} ${response.statusText}`
+      );
       return 0;
     }
 
@@ -464,8 +526,8 @@ export async function syncCommitsFromBridge(
     // Get existing commit IDs to avoid duplicates
     const existingCommitIds = new Set(
       existingActivities
-        .filter(a => a.repo === repoId && a.type === "commit_created")
-        .map(a => a.metadata?.commitId)
+        .filter((a) => a.repo === repoId && a.type === "commit_created")
+        .map((a) => a.metadata?.commitId)
         .filter((id): id is string => !!id)
     );
 
@@ -479,7 +541,7 @@ export async function syncCommitsFromBridge(
       // Git commits might have email like "user@example.com" or "npub1xxx@example.com"
       // Or author name might be a pubkey
       let commitUser = ownerPubkey; // Default to repo owner
-      
+
       if (commit.authorEmail) {
         // Check if email contains npub
         const npubMatch = commit.authorEmail.match(/npub1[a-z0-9]{58}/i);
@@ -487,7 +549,10 @@ export async function syncCommitsFromBridge(
           try {
             const { nip19 } = require("nostr-tools");
             const decoded = nip19.decode(npubMatch[0]);
-            if (decoded.type === "npub" && /^[0-9a-f]{64}$/i.test(decoded.data as string)) {
+            if (
+              decoded.type === "npub" &&
+              /^[0-9a-f]{64}$/i.test(decoded.data as string)
+            ) {
               commitUser = decoded.data as string;
             }
           } catch {
@@ -526,12 +591,17 @@ export async function syncCommitsFromBridge(
     }
 
     if (syncedCount > 0) {
-      console.log(`✅ [Activity Sync] Synced ${syncedCount} commits from bridge for ${repoId}`);
+      console.log(
+        `✅ [Activity Sync] Synced ${syncedCount} commits from bridge for ${repoId}`
+      );
     }
 
     return syncedCount;
   } catch (error) {
-    console.error("❌ [Activity Sync] Failed to sync commits from bridge:", error);
+    console.error(
+      "❌ [Activity Sync] Failed to sync commits from bridge:",
+      error
+    );
     return 0;
   }
 }
@@ -543,11 +613,15 @@ export async function syncCommitsFromBridge(
  */
 export function syncIssuesAndPRsFromNostr(userPubkey: string): number {
   try {
-    const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
+    const repos = JSON.parse(
+      localStorage.getItem("gittr_repos") || "[]"
+    ) as any[];
     const userRepos = repos.filter((repo: any) => {
       if (!repo.entity || repo.entity === "user") return false;
       const ownerPubkey = getRepoOwnerPubkey(repo, repo.entity);
-      return ownerPubkey && ownerPubkey.toLowerCase() === userPubkey.toLowerCase();
+      return (
+        ownerPubkey && ownerPubkey.toLowerCase() === userPubkey.toLowerCase()
+      );
     });
 
     let syncedCount = 0;
@@ -563,30 +637,41 @@ export function syncIssuesAndPRsFromNostr(userPubkey: string): number {
       // Get existing issue/PR IDs to avoid duplicates
       const existingIssueIds = new Set(
         existingActivities
-          .filter(a => a.repo === repoId && (a.type === "issue_created" || a.type === "issue_closed"))
-          .map(a => a.metadata?.issueId)
+          .filter(
+            (a) =>
+              a.repo === repoId &&
+              (a.type === "issue_created" || a.type === "issue_closed")
+          )
+          .map((a) => a.metadata?.issueId)
           .filter((id): id is string => !!id)
       );
-      
+
       const existingPRIds = new Set(
         existingActivities
-          .filter(a => a.repo === repoId && (a.type === "pr_created" || a.type === "pr_merged"))
-          .map(a => a.metadata?.prId)
+          .filter(
+            (a) =>
+              a.repo === repoId &&
+              (a.type === "pr_created" || a.type === "pr_merged")
+          )
+          .map((a) => a.metadata?.prId)
           .filter((id): id is string => !!id)
       );
 
       // Sync issues from localStorage
       const issuesKey = `gittr_issues__${repo.entity}__${repoName}`;
-      const issues = JSON.parse(localStorage.getItem(issuesKey) || "[]") as any[];
-      
+      const issues = JSON.parse(
+        localStorage.getItem(issuesKey) || "[]"
+      ) as any[];
+
       for (const issue of issues) {
         if (existingIssueIds.has(issue.id)) continue;
-        
+
         if (issue.createdAt) {
-          const issueUser = (issue.author && /^[0-9a-f]{64}$/i.test(issue.author))
-            ? issue.author
-            : ownerPubkey;
-          
+          const issueUser =
+            issue.author && /^[0-9a-f]{64}$/i.test(issue.author)
+              ? issue.author
+              : ownerPubkey;
+
           recordActivity({
             type: "issue_created",
             user: issueUser,
@@ -600,12 +685,13 @@ export function syncIssuesAndPRsFromNostr(userPubkey: string): number {
           } as any);
           syncedCount++;
         }
-        
+
         if (issue.status === "closed" && issue.closedAt) {
-          const closedBy = (issue.closedBy && /^[0-9a-f]{64}$/i.test(issue.closedBy))
-            ? issue.closedBy
-            : ownerPubkey;
-          
+          const closedBy =
+            issue.closedBy && /^[0-9a-f]{64}$/i.test(issue.closedBy)
+              ? issue.closedBy
+              : ownerPubkey;
+
           recordActivity({
             type: "issue_closed",
             user: closedBy,
@@ -624,15 +710,16 @@ export function syncIssuesAndPRsFromNostr(userPubkey: string): number {
       // Sync PRs from localStorage
       const prsKey = `gittr_prs__${repo.entity}__${repoName}`;
       const prs = JSON.parse(localStorage.getItem(prsKey) || "[]") as any[];
-      
+
       for (const pr of prs) {
         if (existingPRIds.has(pr.id)) continue;
-        
+
         if (pr.createdAt) {
-          const prUser = (pr.author && /^[0-9a-f]{64}$/i.test(pr.author))
-            ? pr.author
-            : ownerPubkey;
-          
+          const prUser =
+            pr.author && /^[0-9a-f]{64}$/i.test(pr.author)
+              ? pr.author
+              : ownerPubkey;
+
           recordActivity({
             type: "pr_created",
             user: prUser,
@@ -646,12 +733,15 @@ export function syncIssuesAndPRsFromNostr(userPubkey: string): number {
           } as any);
           syncedCount++;
         }
-        
+
         if (pr.mergedAt && pr.status === "merged") {
-          const mergedBy = (pr.mergedBy && /^[0-9a-f]{64}$/i.test(pr.mergedBy))
-            ? pr.mergedBy
-            : ((pr.author && /^[0-9a-f]{64}$/i.test(pr.author)) ? pr.author : ownerPubkey);
-          
+          const mergedBy =
+            pr.mergedBy && /^[0-9a-f]{64}$/i.test(pr.mergedBy)
+              ? pr.mergedBy
+              : pr.author && /^[0-9a-f]{64}$/i.test(pr.author)
+              ? pr.author
+              : ownerPubkey;
+
           recordActivity({
             type: "pr_merged",
             user: mergedBy,
@@ -670,12 +760,20 @@ export function syncIssuesAndPRsFromNostr(userPubkey: string): number {
     }
 
     if (syncedCount > 0) {
-      console.log(`✅ [Activity Sync] Synced ${syncedCount} issues/PRs from Nostr for user ${userPubkey.slice(0, 8)}...`);
+      console.log(
+        `✅ [Activity Sync] Synced ${syncedCount} issues/PRs from Nostr for user ${userPubkey.slice(
+          0,
+          8
+        )}...`
+      );
     }
 
     return syncedCount;
   } catch (error) {
-    console.error("❌ [Activity Sync] Failed to sync issues/PRs from Nostr:", error);
+    console.error(
+      "❌ [Activity Sync] Failed to sync issues/PRs from Nostr:",
+      error
+    );
     return 0;
   }
 }
@@ -684,13 +782,19 @@ export function syncIssuesAndPRsFromNostr(userPubkey: string): number {
  * Sync commits from bridge for all repos owned by a user
  * This is called when viewing a profile to ensure activity bar is up-to-date
  */
-export async function syncUserCommitsFromBridge(userPubkey: string): Promise<number> {
+export async function syncUserCommitsFromBridge(
+  userPubkey: string
+): Promise<number> {
   try {
-    const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
+    const repos = JSON.parse(
+      localStorage.getItem("gittr_repos") || "[]"
+    ) as any[];
     const userRepos = repos.filter((repo: any) => {
       if (!repo.entity || repo.entity === "user") return false;
       const ownerPubkey = getRepoOwnerPubkey(repo, repo.entity);
-      return ownerPubkey && ownerPubkey.toLowerCase() === userPubkey.toLowerCase();
+      return (
+        ownerPubkey && ownerPubkey.toLowerCase() === userPubkey.toLowerCase()
+      );
     });
 
     let totalSynced = 0;
@@ -704,18 +808,31 @@ export async function syncUserCommitsFromBridge(userPubkey: string): Promise<num
       const branch = repo.defaultBranch || "main";
 
       try {
-        const synced = await syncCommitsFromBridge(ownerPubkey, repo.entity, repoName, branch);
+        const synced = await syncCommitsFromBridge(
+          ownerPubkey,
+          repo.entity,
+          repoName,
+          branch
+        );
         totalSynced += synced;
-        
+
         // Small delay between repos to avoid overwhelming the bridge
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 200));
       } catch (error) {
-        console.error(`❌ [Activity Sync] Failed to sync commits for ${repo.entity}/${repoName}:`, error);
+        console.error(
+          `❌ [Activity Sync] Failed to sync commits for ${repo.entity}/${repoName}:`,
+          error
+        );
       }
     }
 
     if (totalSynced > 0) {
-      console.log(`✅ [Activity Sync] Synced ${totalSynced} total commits from bridge for user ${userPubkey.slice(0, 8)}...`);
+      console.log(
+        `✅ [Activity Sync] Synced ${totalSynced} total commits from bridge for user ${userPubkey.slice(
+          0,
+          8
+        )}...`
+      );
     }
 
     return totalSynced;
@@ -728,7 +845,7 @@ export async function syncUserCommitsFromBridge(userPubkey: string): Promise<num
 /**
  * Count activities directly from Nostr events (network source of truth)
  * This is the PRIMARY way to count activities - people use multiple clients!
- * 
+ *
  * Counts:
  * - Repos: kind 30617 (repo announcements)
  * - Pushes: kind 30618 (repo state events - indicate new commits/pushes)
@@ -761,13 +878,21 @@ export function countActivitiesFromNostr(
   const { getGraspServers } = require("@/lib/utils/grasp-servers");
   const graspRelays = getGraspServers(relays);
   const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
-  
+
   // CRITICAL: Normalize pubkey to lowercase for consistent querying
   // Nostr pubkeys are case-insensitive, but some relays might be strict
   const normalizedPubkey = userPubkey.toLowerCase();
-  
-  console.log(`🔍 [Nostr Activity Count] Starting query for ${normalizedPubkey.slice(0, 8)}... using ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`, activeRelays);
-  
+
+  console.log(
+    `🔍 [Nostr Activity Count] Starting query for ${normalizedPubkey.slice(
+      0,
+      8
+    )}... using ${activeRelays.length} GRASP/git relays (filtered from ${
+      relays.length
+    } total):`,
+    activeRelays
+  );
+
   return new Promise((resolve) => {
     const counts: NostrActivityCounts = {
       repos: 0,
@@ -837,7 +962,9 @@ export function countActivitiesFromNostr(
         // Count repo announcements (kind 30617) - but DON'T count as activity
         // Repos are metadata, not user actions. We track them separately.
         if (event.kind === KIND_REPOSITORY_NIP34) {
-          const dTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "d");
+          const dTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "d"
+          );
           const repoName = dTag?.[1];
           if (repoName) {
             const repoKey = `${event.pubkey}/${repoName}`;
@@ -872,7 +999,9 @@ export function countActivitiesFromNostr(
         else if (event.kind === KIND_STATUS_APPLIED) {
           const eventPubkey = (event.pubkey || "").toLowerCase();
           if (eventPubkey === normalizedPubkey) {
-            const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+            const kTag = event.tags?.find(
+              (t: any) => Array.isArray(t) && t[0] === "k"
+            );
             if (kTag && kTag[1] === "1618") {
               // This is a PR merged status
               counts.prsMerged++;
@@ -895,7 +1024,9 @@ export function countActivitiesFromNostr(
         else if (event.kind === KIND_STATUS_CLOSED) {
           const eventPubkey = (event.pubkey || "").toLowerCase();
           if (eventPubkey === normalizedPubkey) {
-            const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+            const kTag = event.tags?.find(
+              (t: any) => Array.isArray(t) && t[0] === "k"
+            );
             if (kTag && kTag[1] === "1621") {
               // This is an issue closed status
               counts.issuesClosed++;
@@ -912,15 +1043,21 @@ export function countActivitiesFromNostr(
           resolved = true;
           setTimeout(() => {
             unsub();
-            console.log(`✅ [Nostr Activity Count] Final counts from Nostr for ${userPubkey.slice(0, 8)}:`, {
-              repos: counts.repos,
-              pushes: counts.pushes,
-              prsCreated: counts.prsCreated,
-              prsMerged: counts.prsMerged,
-              issuesCreated: counts.issuesCreated,
-              issuesClosed: counts.issuesClosed,
-              total: counts.total,
-            });
+            console.log(
+              `✅ [Nostr Activity Count] Final counts from Nostr for ${userPubkey.slice(
+                0,
+                8
+              )}:`,
+              {
+                repos: counts.repos,
+                pushes: counts.pushes,
+                prsCreated: counts.prsCreated,
+                prsMerged: counts.prsMerged,
+                issuesCreated: counts.issuesCreated,
+                issuesClosed: counts.issuesClosed,
+                total: counts.total,
+              }
+            );
             resolve(counts);
           }, 1000); // Wait 1s after EOSE for any delayed events
         }
@@ -933,18 +1070,20 @@ export function countActivitiesFromNostr(
       if (!resolved) {
         resolved = true;
         unsub();
-        console.log(`⏱️ [Nostr Activity Count] Timeout after 15s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`, {
-          repos: counts.repos,
-          pushes: counts.pushes,
-          prsCreated: counts.prsCreated,
-          prsMerged: counts.prsMerged,
-          issuesCreated: counts.issuesCreated,
-          issuesClosed: counts.issuesClosed,
-          total: counts.total,
-        });
+        console.log(
+          `⏱️ [Nostr Activity Count] Timeout after 15s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`,
+          {
+            repos: counts.repos,
+            pushes: counts.pushes,
+            prsCreated: counts.prsCreated,
+            prsMerged: counts.prsMerged,
+            issuesCreated: counts.issuesCreated,
+            issuesClosed: counts.issuesClosed,
+            total: counts.total,
+          }
+        );
         resolve(counts);
       }
     }, 15000);
   });
 }
-

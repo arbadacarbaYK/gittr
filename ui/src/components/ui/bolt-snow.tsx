@@ -35,7 +35,7 @@ export function BoltSnow() {
     const initDigits = () => {
       const digits: Digit[] = [];
       const digitCount = 50; // More digits for snow effect
-      
+
       for (let i = 0; i < digitCount; i++) {
         digits.push({
           x: Math.random() * canvas.width,
@@ -52,23 +52,29 @@ export function BoltSnow() {
     initDigits();
 
     // Draw a digit (0 or 1)
-    const drawDigit = (x: number, y: number, value: string, size: number, opacity: number) => {
+    const drawDigit = (
+      x: number,
+      y: number,
+      value: string,
+      size: number,
+      opacity: number
+    ) => {
       ctx.save();
       ctx.globalAlpha = opacity;
-      
+
       // Use theme colors (purple/cyan range)
       const hue = 280 + Math.random() * 40;
       ctx.fillStyle = `hsl(${hue}, 70%, 70%)`;
       ctx.font = `${size}px monospace`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      
+
       // Subtle glow
       ctx.shadowBlur = 3;
       ctx.shadowColor = `hsl(${hue}, 70%, 70%)`;
-      
+
       ctx.fillText(value, x, y);
-      
+
       ctx.restore();
     };
 
@@ -119,4 +125,3 @@ export function BoltSnow() {
     />
   );
 }
-

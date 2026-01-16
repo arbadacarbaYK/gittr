@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+
 import SettingsHero from "@/components/settings-hero";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+
 import { nip19 } from "nostr-tools";
 
 type Channel = "nostr" | "telegram";
@@ -59,8 +61,10 @@ export default function NotificationsPage() {
   useEffect(() => {
     try {
       const stored = localStorage.getItem("gittr_notifications");
-      const loadedPrefs = stored ? { ...DEFAULT_PREFS, ...JSON.parse(stored) } : DEFAULT_PREFS;
-      
+      const loadedPrefs = stored
+        ? { ...DEFAULT_PREFS, ...JSON.parse(stored) }
+        : DEFAULT_PREFS;
+
       // Auto-populate npub from logged-in user if not set
       if (pubkey && !loadedPrefs.channels.nostr.npub) {
         try {
@@ -70,7 +74,7 @@ export default function NotificationsPage() {
           console.error("Failed to encode npub:", error);
         }
       }
-      
+
       setPrefs(loadedPrefs);
     } catch {}
   }, [pubkey]);
@@ -87,13 +91,16 @@ export default function NotificationsPage() {
   };
 
   const toggleEvent = (key: EventKey) => {
-    setPrefs(p => ({ ...p, events: { ...p.events, [key]: !p.events[key] } }));
+    setPrefs((p) => ({ ...p, events: { ...p.events, [key]: !p.events[key] } }));
   };
 
   const toggleChannel = (ch: Channel) => {
-    setPrefs(p => ({
+    setPrefs((p) => ({
       ...p,
-      channels: { ...p.channels, [ch]: { ...p.channels[ch], enabled: !p.channels[ch].enabled } },
+      channels: {
+        ...p.channels,
+        [ch]: { ...p.channels[ch], enabled: !p.channels[ch].enabled },
+      },
     }));
   };
 
@@ -115,12 +122,22 @@ export default function NotificationsPage() {
             </label>
             {prefs.channels.nostr.enabled && (
               <div className="ml-6">
-                <Label htmlFor="npub">Your npub (for self-test/DM fallback)</Label>
+                <Label htmlFor="npub">
+                  Your npub (for self-test/DM fallback)
+                </Label>
                 <Input
                   id="npub"
                   placeholder="npub1... (optional)"
                   value={prefs.channels.nostr.npub || ""}
-                  onChange={(e) => setPrefs(p => ({ ...p, channels: { ...p.channels, nostr: { ...p.channels.nostr, npub: e.target.value } } }))}
+                  onChange={(e) =>
+                    setPrefs((p) => ({
+                      ...p,
+                      channels: {
+                        ...p.channels,
+                        nostr: { ...p.channels.nostr, npub: e.target.value },
+                      },
+                    }))
+                  }
                 />
               </div>
             )}
@@ -139,36 +156,63 @@ export default function NotificationsPage() {
               <div className="ml-6 space-y-2">
                 <div>
                   <Label htmlFor="tg-handle">Telegram handle (optional)</Label>
-                <Input
+                  <Input
                     id="tg-handle"
-                  placeholder="@username (optional, @ not required)"
-                  value={prefs.channels.telegram.handle || ""}
-                  onChange={(e) => {
-                    // Strip @ if user adds it, we'll handle it in display
-                    let handle = e.target.value;
-                    if (handle.startsWith('@')) {
-                      handle = handle.substring(1);
-                    }
-                    setPrefs(p => ({ ...p, channels: { ...p.channels, telegram: { ...p.channels.telegram, handle } } }));
-                  }}
-                />
+                    placeholder="@username (optional, @ not required)"
+                    value={prefs.channels.telegram.handle || ""}
+                    onChange={(e) => {
+                      // Strip @ if user adds it, we'll handle it in display
+                      let handle = e.target.value;
+                      if (handle.startsWith("@")) {
+                        handle = handle.substring(1);
+                      }
+                      setPrefs((p) => ({
+                        ...p,
+                        channels: {
+                          ...p.channels,
+                          telegram: { ...p.channels.telegram, handle },
+                        },
+                      }));
+                    }}
+                  />
                 </div>
                 <div>
-                  <Label htmlFor="tg-userid">Telegram User ID (required for DMs)</Label>
+                  <Label htmlFor="tg-userid">
+                    Telegram User ID (required for DMs)
+                  </Label>
                   <Input
                     id="tg-userid"
                     placeholder="123456789"
                     value={prefs.channels.telegram.userId || ""}
-                    onChange={(e) => setPrefs(p => ({ ...p, channels: { ...p.channels, telegram: { ...p.channels.telegram, userId: e.target.value } } }))}
+                    onChange={(e) =>
+                      setPrefs((p) => ({
+                        ...p,
+                        channels: {
+                          ...p.channels,
+                          telegram: {
+                            ...p.channels.telegram,
+                            userId: e.target.value,
+                          },
+                        },
+                      }))
+                    }
                   />
                   <p className="text-xs text-gray-400 mt-1">
-                    Get your ID: Message <a href="https://t.me/userinfobot" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300">@userinfobot</a> on Telegram
+                    Get your ID: Message{" "}
+                    <a
+                      href="https://t.me/userinfobot"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-purple-400 hover:text-purple-300"
+                    >
+                      @userinfobot
+                    </a>{" "}
+                    on Telegram
                   </p>
                 </div>
               </div>
             )}
           </div>
-
         </section>
 
         <section className="space-y-3">
@@ -189,8 +233,15 @@ export default function NotificationsPage() {
                 ["bounty_released", "Bounty released to me"],
               ] as [EventKey, string][]
             ).map(([key, label]) => (
-              <label key={key} className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={!!prefs.events[key]} onChange={() => toggleEvent(key)} />
+              <label
+                key={key}
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={!!prefs.events[key]}
+                  onChange={() => toggleEvent(key)}
+                />
                 <span>{label}</span>
               </label>
             ))}
@@ -199,7 +250,9 @@ export default function NotificationsPage() {
           <div className="flex items-center gap-3">
             <Button onClick={save}>SAVE NOW</Button>
             {status && <span className="text-gray-400 text-sm">{status}</span>}
-            <p className="text-xs text-gray-500">Changes are not active until you click "SAVE NOW"</p>
+            <p className="text-xs text-gray-500">
+              Changes are not active until you click "SAVE NOW"
+            </p>
           </div>
         </section>
       </div>

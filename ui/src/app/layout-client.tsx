@@ -1,35 +1,60 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+
 import { Header } from "@/components/ui/header";
-import NostrProvider from "@/lib/nostr/NostrContext";
-import { migrateEntityUser } from "@/lib/migrations/migrate-entity-user";
+import {
+  KeyboardShortcuts,
+  useKeyboardShortcuts,
+} from "@/components/ui/keyboard-shortcuts";
 import { migrateEntityToPubkey } from "@/lib/migrations/migrate-entity-to-pubkey";
+import { migrateEntityUser } from "@/lib/migrations/migrate-entity-user";
 import { migrateRepoName } from "@/lib/migrations/migrate-repo-name";
 import { migrateLegacyLocalStorage } from "@/lib/migrations/migrate-storage";
-import useSession from "@/lib/nostr/useSession";
+import NostrProvider from "@/lib/nostr/NostrContext";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { useKeyboardShortcuts, KeyboardShortcuts } from "@/components/ui/keyboard-shortcuts";
+import useSession from "@/lib/nostr/useSession";
+import { clearNonLocalReposFromStorage } from "@/lib/repos/storage";
 import "@/styles/globals.css";
 
 function MigrationRunner() {
   const { name: userName, isLoggedIn } = useSession();
   const { pubkey } = useNostrContext();
-  
+
   useEffect(() => {
     // Run migration when user is logged in and has a valid username
     if (isLoggedIn && userName && userName !== "Anonymous Nostrich") {
       migrateEntityUser(userName, isLoggedIn);
     }
-    
+
     // CRITICAL: Always run migration to fix ALL repos with 8-char entities (not just current user's)
     // This ensures repos from all users get migrated, even if current user isn't logged in
     migrateEntityToPubkey(pubkey, userName);
-    
+
     // Migrate repos to ensure name field is always set (runs on every page load)
     migrateRepoName();
   }, [userName, isLoggedIn, pubkey]);
-  
+
+  return null;
+}
+
+function AnonymousCleanupRunner() {
+  const { isLoggedIn } = useSession();
+  const hasRunRef = useRef(false);
+
+  useEffect(() => {
+    if (isLoggedIn || hasRunRef.current) return;
+    const result = clearNonLocalReposFromStorage({
+      preserveWithMetadata: true,
+    });
+    if (result.clearedKeys > 0) {
+      console.log(
+        `🧹 [Storage] Cleared ${result.clearedRepos} repo caches and ${result.clearedKeys} keys for anonymous session`
+      );
+    }
+    hasRunRef.current = true;
+  }, [isLoggedIn]);
+
   return null;
 }
 
@@ -43,13 +68,19 @@ export default function ClientLayout({
   // Rename legacy ngit_* storage keys to gittr_* on first load
   useEffect(() => {
     migrateLegacyLocalStorage();
-    
+
     // Migrate classic theme to arcade80s (new default)
     // CRITICAL: This runs after React hydration, so we need to be aggressive
     try {
       const currentTheme = localStorage.getItem("gittr_theme");
       // Check for classic, null, undefined, empty string, or invalid values
-      if (!currentTheme || currentTheme === "classic" || currentTheme === "null" || currentTheme === "undefined" || currentTheme.trim() === "") {
+      if (
+        !currentTheme ||
+        currentTheme === "classic" ||
+        currentTheme === "null" ||
+        currentTheme === "undefined" ||
+        currentTheme.trim() === ""
+      ) {
         localStorage.setItem("gittr_theme", "arcade80s");
         document.documentElement.setAttribute("data-theme", "arcade80s");
         document.documentElement.classList.add("dark");
@@ -78,7 +109,7 @@ export default function ClientLayout({
   // Suppress annoying relay connection errors/warnings from nostr-relaypool and React 19 ref warnings from Radix UI
   useEffect(() => {
     if (typeof window === "undefined") return;
-    
+
     // Helper function to check if message should be suppressed
     const shouldSuppress = (fullMessage: string): boolean => {
       return (
@@ -88,7 +119,11 @@ export default function ClientLayout({
         fullMessage.includes("WebSocket") ||
         fullMessage.includes("reconnecting after") ||
         fullMessage.includes("reconnecting") ||
-        (fullMessage.includes("wss://") && (fullMessage.includes("failed") || fullMessage.includes("Error") || fullMessage.includes("502") || fullMessage.includes("reconnecting"))) ||
+        (fullMessage.includes("wss://") &&
+          (fullMessage.includes("failed") ||
+            fullMessage.includes("Error") ||
+            fullMessage.includes("502") ||
+            fullMessage.includes("reconnecting"))) ||
         fullMessage.includes("Accessing element.ref was removed in React 19") ||
         fullMessage.includes("ref is now a regular prop") ||
         fullMessage.includes("element.ref was removed") ||
@@ -99,21 +134,28 @@ export default function ClientLayout({
         fullMessage.includes("warning-keys")
       );
     };
-    
+
     // Helper function to extract full message from args
     const extractMessage = (args: any[]): string => {
-      const allMessages = args.map(arg => {
-        if (typeof arg === 'string') return arg;
-        if (arg?.message) return arg.message.toString();
-        if (arg?.toString) return arg.toString();
-        return '';
-      }).join(' ');
-      const stackTrace = args.find(arg => arg?.stack)?.stack?.toString() || '';
-      return allMessages + ' ' + stackTrace;
+      const allMessages = args
+        .map((arg) => {
+          if (typeof arg === "string") return arg;
+          if (arg?.message) return arg.message.toString();
+          if (arg?.toString) return arg.toString();
+          return "";
+        })
+        .join(" ");
+      const stackTrace =
+        args.find((arg) => arg?.stack)?.stack?.toString() || "";
+      return allMessages + " " + stackTrace;
     };
-    
-    // Filter console.error - must run early to catch errors before Next.js interceptor
+
     const originalError = console.error;
+    const originalWarn = console.warn;
+    const originalWindowError = window.console.error;
+    const originalWindowWarn = window.console.warn;
+
+    // Filter console.error - must run early to catch errors before Next.js interceptor
     console.error = (...args: any[]) => {
       const fullMessage = extractMessage(args);
       if (shouldSuppress(fullMessage)) {
@@ -121,9 +163,8 @@ export default function ClientLayout({
       }
       originalError.apply(console, args);
     };
-    
+
     // Filter console.warn - WebSocket reconnection warnings come through here
-    const originalWarn = console.warn;
     console.warn = (...args: any[]) => {
       const fullMessage = extractMessage(args);
       if (shouldSuppress(fullMessage)) {
@@ -131,9 +172,8 @@ export default function ClientLayout({
       }
       originalWarn.apply(console, args);
     };
-    
+
     // Also filter window.console.error (used by some libraries)
-    const originalWindowError = window.console.error;
     window.console.error = (...args: any[]) => {
       const fullMessage = extractMessage(args);
       if (shouldSuppress(fullMessage)) {
@@ -141,9 +181,8 @@ export default function ClientLayout({
       }
       originalWindowError.apply(window.console, args);
     };
-    
+
     // Also filter window.console.warn (used by some libraries)
-    const originalWindowWarn = window.console.warn;
     window.console.warn = (...args: any[]) => {
       const fullMessage = extractMessage(args);
       if (shouldSuppress(fullMessage)) {
@@ -151,7 +190,7 @@ export default function ClientLayout({
       }
       originalWindowWarn.apply(window.console, args);
     };
-    
+
     return () => {
       console.error = originalError;
       console.warn = originalWarn;
@@ -167,16 +206,16 @@ export default function ClientLayout({
         const t = localStorage.getItem("gittr_theme") || "arcade80s";
         document.documentElement.dataset.theme = t;
       };
-      
+
       // Apply immediately
       applyTheme();
-      
+
       // Listen for storage changes (when theme is changed in another tab)
       window.addEventListener("storage", applyTheme);
-      
+
       // Also listen for custom theme change events
       window.addEventListener("theme-changed", applyTheme);
-      
+
       return () => {
         window.removeEventListener("storage", applyTheme);
         window.removeEventListener("theme-changed", applyTheme);
@@ -185,15 +224,18 @@ export default function ClientLayout({
   }, []);
 
   return (
-        <NostrProvider>
-            <div className="dark min-h-screen theme-bg-primary theme-text-primary">
-              <MigrationRunner />
-              <Header />
-              <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%]">
-                {children}
-              </div>
-              {showShortcuts && <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />}
-            </div>
-        </NostrProvider>
+    <NostrProvider>
+      <div className="dark min-h-screen theme-bg-primary theme-text-primary">
+        <MigrationRunner />
+        <AnonymousCleanupRunner />
+        <Header />
+        <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%]">
+          {children}
+        </div>
+        {showShortcuts && (
+          <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />
+        )}
+      </div>
+    </NostrProvider>
   );
 }

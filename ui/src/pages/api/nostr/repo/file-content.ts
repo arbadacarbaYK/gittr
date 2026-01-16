@@ -1,10 +1,11 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+
 import { exec } from "child_process";
-import { promisify } from "util";
-import { join } from "path";
 import { existsSync } from "fs";
-import { nip19, nip05 } from "nostr-tools";
+import type { NextApiRequest, NextApiResponse } from "next";
+import { nip05, nip19 } from "nostr-tools";
+import { join } from "path";
+import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
@@ -13,50 +14,78 @@ const execAsync = promisify(exec);
  * This allows bridge API endpoints to accept NIP-05 format (e.g., geek@primal.net)
  * for compatibility with gitworkshop.dev
  */
-async function resolveOwnerPubkey(ownerPubkeyInput: string): Promise<{ pubkey: string; error?: string }> {
+async function resolveOwnerPubkey(
+  ownerPubkeyInput: string
+): Promise<{ pubkey: string; error?: string }> {
   // If already a full hex pubkey, return it
   if (/^[0-9a-f]{64}$/i.test(ownerPubkeyInput)) {
     return { pubkey: ownerPubkeyInput.toLowerCase() };
   }
-  
+
   // If npub, decode it
   if (ownerPubkeyInput.startsWith("npub")) {
     try {
       const decoded = nip19.decode(ownerPubkeyInput);
-      if (decoded.type === "npub" && typeof decoded.data === "string" && decoded.data.length === 64) {
+      if (
+        decoded.type === "npub" &&
+        typeof decoded.data === "string" &&
+        decoded.data.length === 64
+      ) {
         return { pubkey: decoded.data.toLowerCase() };
       }
       return { pubkey: "", error: "Invalid npub format" };
     } catch (error: any) {
-      return { pubkey: "", error: `Failed to decode npub: ${error?.message || "invalid format"}` };
+      return {
+        pubkey: "",
+        error: `Failed to decode npub: ${error?.message || "invalid format"}`,
+      };
     }
   }
-  
+
   // If NIP-05 format (contains @), resolve it
   if (ownerPubkeyInput.includes("@")) {
     try {
       const profile = await nip05.queryProfile(ownerPubkeyInput);
       if (profile?.pubkey && /^[0-9a-f]{64}$/i.test(profile.pubkey)) {
-        console.log(`✅ [Bridge API] Resolved NIP-05 ${ownerPubkeyInput} to pubkey: ${profile.pubkey.slice(0, 8)}...`);
+        console.log(
+          `✅ [Bridge API] Resolved NIP-05 ${ownerPubkeyInput} to pubkey: ${profile.pubkey.slice(
+            0,
+            8
+          )}...`
+        );
         return { pubkey: profile.pubkey.toLowerCase() };
       }
-      return { pubkey: "", error: `NIP-05 ${ownerPubkeyInput} did not return a valid pubkey` };
+      return {
+        pubkey: "",
+        error: `NIP-05 ${ownerPubkeyInput} did not return a valid pubkey`,
+      };
     } catch (error: any) {
-      return { pubkey: "", error: `Failed to resolve NIP-05 ${ownerPubkeyInput}: ${error?.message || "unknown error"}` };
+      return {
+        pubkey: "",
+        error: `Failed to resolve NIP-05 ${ownerPubkeyInput}: ${
+          error?.message || "unknown error"
+        }`,
+      };
     }
   }
-  
-  return { pubkey: "", error: `Invalid ownerPubkey format: must be 64-char hex, npub, or NIP-05 (received: ${ownerPubkeyInput.length} chars)` };
+
+  return {
+    pubkey: "",
+    error: `Invalid ownerPubkey format: must be 64-char hex, npub, or NIP-05 (received: ${ownerPubkeyInput.length} chars)`,
+  };
 }
 
 /**
  * API endpoint to fetch individual file content from git-nostr-bridge
- * 
+ *
  * Endpoint: GET /api/nostr/repo/file-content?ownerPubkey={pubkey}&repo={repoName}&path={filePath}&branch={branch}
- * 
+ *
  * CRITICAL: ownerPubkey must be the FULL 64-char hex pubkey (not npub, not 8-char prefix)
  */
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   // Handle OPTIONS request for CORS
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res);
@@ -70,7 +99,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { ownerPubkey: ownerPubkeyInput, repo: repoName, path: filePath, branch = "main" } = req.query;
+  const {
+    ownerPubkey: ownerPubkeyInput,
+    repo: repoName,
+    path: filePath,
+    branch = "main",
+  } = req.query;
 
   // Validate inputs
   if (!ownerPubkeyInput || typeof ownerPubkeyInput !== "string") {
@@ -84,7 +118,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (!filePath || typeof filePath !== "string") {
     return res.status(400).json({ error: "path is required" });
   }
-  
+
   // CRITICAL: Explicitly decode file path from URL encoding to handle non-ASCII characters (Cyrillic, Chinese, etc.)
   // Next.js auto-decodes query params, but we ensure proper UTF-8 handling
   const decodedFilePath = decodeURIComponent(filePath);
@@ -93,28 +127,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // This allows gitworkshop.dev to use NIP-05 format (e.g., geek@primal.net)
   const resolved = await resolveOwnerPubkey(ownerPubkeyInput);
   if (resolved.error || !resolved.pubkey) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       error: resolved.error || "Failed to resolve ownerPubkey",
     });
   }
-  
+
   const ownerPubkey = resolved.pubkey;
 
   // Get repository directory from environment or git-nostr-bridge config file
   // Priority: env vars > config file > defaults (same as files.ts and clone.ts)
-  let reposDir = process.env.GIT_NOSTR_BRIDGE_REPOS_DIR ||
-                 process.env.REPOS_DIR ||
-                 process.env.GITNOSTR_REPOS_DIR;
-  
+  let reposDir =
+    process.env.GIT_NOSTR_BRIDGE_REPOS_DIR ||
+    process.env.REPOS_DIR ||
+    process.env.GITNOSTR_REPOS_DIR;
+
   // If not set in env, try to read from git-nostr-bridge config file
   // Try both root's home and git-nostr user's home
   if (!reposDir) {
     const { readFileSync } = require("fs");
     const configPaths = [
-      process.env.HOME ? `${process.env.HOME}/.config/git-nostr/git-nostr-bridge.json` : null,
-      "/home/git-nostr/.config/git-nostr/git-nostr-bridge.json"
+      process.env.HOME
+        ? `${process.env.HOME}/.config/git-nostr/git-nostr-bridge.json`
+        : null,
+      "/home/git-nostr/.config/git-nostr/git-nostr-bridge.json",
     ].filter(Boolean) as string[];
-    
+
     for (const configPath of configPaths) {
       try {
         if (existsSync(configPath)) {
@@ -122,22 +159,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const config = JSON.parse(configContent);
           if (config.repositoryDir) {
             // Expand ~ to home directory if present
-            const homeDir = configPath.includes("/home/git-nostr") ? "/home/git-nostr" : (process.env.HOME || "");
+            const homeDir = configPath.includes("/home/git-nostr")
+              ? "/home/git-nostr"
+              : process.env.HOME || "";
             reposDir = config.repositoryDir.replace(/^~/, homeDir);
             console.log("📁 Using repositoryDir from config:", reposDir);
             break;
           }
         }
       } catch (error: any) {
-        console.warn(`⚠️ Failed to read git-nostr-bridge config from ${configPath}:`, error.message);
+        console.warn(
+          `⚠️ Failed to read git-nostr-bridge config from ${configPath}:`,
+          error.message
+        );
       }
     }
   }
-  
+
   // Fallback to common default locations
   if (!reposDir) {
-    reposDir = process.env.HOME 
-      ? `${process.env.HOME}/git-nostr-repositories`  // Most common default
+    reposDir = process.env.HOME
+      ? `${process.env.HOME}/git-nostr-repositories` // Most common default
       : "/tmp/gitnostr/repos";
   }
 
@@ -146,7 +188,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     // Check if repository exists
     if (!existsSync(repoPath)) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         error: "Repository not found",
         path: repoPath,
       });
@@ -159,55 +201,76 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // We'll use double quotes and escape any existing quotes in the path
     // CRITICAL: Use decoded file path to ensure non-ASCII characters (Cyrillic, Chinese, etc.) are handled correctly
     const filePathStr: string = decodedFilePath;
-    let branchStr: string = Array.isArray(branch) ? (branch[0] || "main") : (typeof branch === "string" ? branch : "main");
+    let branchStr: string = Array.isArray(branch)
+      ? branch[0] || "main"
+      : typeof branch === "string"
+      ? branch
+      : "main";
     if (!filePathStr) {
       return res.status(400).json({ error: "path is required" });
     }
     // CRITICAL: Properly escape file path for git command - handle quotes, but preserve UTF-8 characters
     // Git commands handle UTF-8 correctly when properly quoted
     const escapedFilePath = filePathStr.replace(/"/g, '\\"');
-    
-        // CRITICAL: Try branch fallback if initial branch fails (main -> master)
-        let stdout: Buffer | string = Buffer.alloc(0), stderr: string = "";
+
+    // CRITICAL: Try branch fallback if initial branch fails (main -> master)
+    let stdout: Buffer | string = Buffer.alloc(0),
+      stderr: string = "";
     let actualBranch = branchStr;
     let branchNotFound = false;
-    
+
     try {
       const escapedBranch = branchStr.replace(/"/g, '\\"');
       // CRITICAL: Use buffer encoding to get raw bytes (for binary detection), but ensure UTF-8 for file paths
       // The file path is already properly escaped, and git handles UTF-8 paths correctly
       const result = await execAsync(
         `git --git-dir="${repoPath}" show "${escapedBranch}:${escapedFilePath}"`,
-        { 
-          timeout: 10000, 
+        {
+          timeout: 10000,
           maxBuffer: 10 * 1024 * 1024, // 10MB max
-          encoding: 'buffer' as any // Get raw buffer to detect binary files (file path is already UTF-8)
+          encoding: "buffer" as any, // Get raw buffer to detect binary files (file path is already UTF-8)
         }
       );
       stdout = result.stdout;
-      stderr = (result.stderr ? (Buffer.isBuffer(result.stderr) ? result.stderr.toString() : result.stderr) : "") || "";
+      stderr =
+        (result.stderr
+          ? Buffer.isBuffer(result.stderr)
+            ? result.stderr.toString()
+            : result.stderr
+          : "") || "";
     } catch (error: any) {
       // execAsync throws when command fails - extract stderr from error
       stderr = error.stderr || error.message || String(error);
       stdout = error.stdout || Buffer.alloc(0);
-      
+
       // CRITICAL: Check if stdout exists in error - git sometimes outputs to stderr even on success
       // If we have stdout content, treat it as success
-      if (stdout && (Buffer.isBuffer(stdout) ? stdout.length > 0 : (typeof stdout === 'string' && stdout.length > 0))) {
+      if (
+        stdout &&
+        (Buffer.isBuffer(stdout)
+          ? stdout.length > 0
+          : typeof stdout === "string" && stdout.length > 0)
+      ) {
         // We have content, treat as success (git might have warnings in stderr)
         branchNotFound = false;
-        console.log(`✅ Got file content from '${branchStr}' branch (${Buffer.isBuffer(stdout) ? stdout.length : stdout.length} bytes, had error but stdout exists)`);
-      } else if (stderr.includes("fatal: not a valid object name") || 
-          stderr.includes("fatal: Not a valid object name") ||
-          stderr.includes("fatal: invalid object name") ||
-          stderr.includes("fatal: Invalid object name") ||
-          stderr.includes("fatal: ambiguous argument")) {
+        console.log(
+          `✅ Got file content from '${branchStr}' branch (${
+            Buffer.isBuffer(stdout) ? stdout.length : stdout.length
+          } bytes, had error but stdout exists)`
+        );
+      } else if (
+        stderr.includes("fatal: not a valid object name") ||
+        stderr.includes("fatal: Not a valid object name") ||
+        stderr.includes("fatal: invalid object name") ||
+        stderr.includes("fatal: Invalid object name") ||
+        stderr.includes("fatal: ambiguous argument")
+      ) {
         // This is a "branch not found" error (git uses different error message formats)
         branchNotFound = true;
       } else {
         // Other error - might be file not found
         if (stderr && !stdout) {
-          return res.status(404).json({ 
+          return res.status(404).json({
             error: "File not found",
             path: filePath,
             branch: branchStr,
@@ -217,70 +280,110 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         throw error;
       }
     }
-    
+
     // If branch not found, try fallback branches
     if (branchNotFound) {
-      console.warn(`⚠️ Branch ${branchStr} not found, trying fallback branches...`);
-      const fallbackBranches = branchStr === "main" ? ["master"] : branchStr === "master" ? ["main"] : ["main", "master"];
-      
+      console.warn(
+        `⚠️ Branch ${branchStr} not found, trying fallback branches...`
+      );
+      const fallbackBranches =
+        branchStr === "main"
+          ? ["master"]
+          : branchStr === "master"
+          ? ["main"]
+          : ["main", "master"];
+
       for (const fallbackBranch of fallbackBranches) {
         try {
-          console.log(`🔍 Trying fallback branch: ${fallbackBranch} for file: ${filePathStr}`);
+          console.log(
+            `🔍 Trying fallback branch: ${fallbackBranch} for file: ${filePathStr}`
+          );
           const escapedFallbackBranch = fallbackBranch.replace(/"/g, '\\"');
           // CRITICAL: Use buffer encoding to get raw bytes (for binary detection), but ensure UTF-8 for file paths
           const result = await execAsync(
             `git --git-dir="${repoPath}" show "${escapedFallbackBranch}:${escapedFilePath}"`,
-            { 
-              timeout: 10000, 
+            {
+              timeout: 10000,
               maxBuffer: 10 * 1024 * 1024,
-              encoding: 'buffer' as any // Get raw buffer to detect binary files (file path is already UTF-8)
+              encoding: "buffer" as any, // Get raw buffer to detect binary files (file path is already UTF-8)
             }
           );
           stdout = result.stdout;
-          stderr = (result.stderr ? (Buffer.isBuffer(result.stderr) ? result.stderr.toString() : result.stderr) : "") || "";
-          
+          stderr =
+            (result.stderr
+              ? Buffer.isBuffer(result.stderr)
+                ? result.stderr.toString()
+                : result.stderr
+              : "") || "";
+
           // Check if we actually got content (not just an empty buffer)
           // Note: stdout is always Buffer when encoding is 'buffer', but type is Buffer | string for compatibility
-          const stdoutLength = Buffer.isBuffer(stdout) ? stdout.length : ((stdout as string).length || 0);
+          const stdoutLength = Buffer.isBuffer(stdout)
+            ? stdout.length
+            : (stdout as string).length || 0;
           if (stdout && stdoutLength > 0) {
             actualBranch = fallbackBranch;
             branchNotFound = false; // Reset flag - we found the file
-            console.log(`✅ Found file in '${fallbackBranch}' branch (${stdoutLength} bytes)`);
+            console.log(
+              `✅ Found file in '${fallbackBranch}' branch (${stdoutLength} bytes)`
+            );
             break; // Success - exit loop
           } else {
-            console.warn(`⚠️ Fallback branch '${fallbackBranch}' returned empty content`);
+            console.warn(
+              `⚠️ Fallback branch '${fallbackBranch}' returned empty content`
+            );
             // Continue to next fallback
           }
         } catch (fallbackError: any) {
-          const fallbackStderr = fallbackError.stderr || fallbackError.message || String(fallbackError);
+          const fallbackStderr =
+            fallbackError.stderr ||
+            fallbackError.message ||
+            String(fallbackError);
           const fallbackStdout = fallbackError.stdout || Buffer.alloc(0);
-          console.warn(`⚠️ Failed to fetch from '${fallbackBranch}' branch:`, fallbackStderr.substring(0, 200));
-          
+          console.warn(
+            `⚠️ Failed to fetch from '${fallbackBranch}' branch:`,
+            fallbackStderr.substring(0, 200)
+          );
+
           // If the error has stdout, it might still be valid (some git commands output to stderr even on success)
           // Also check if the error message indicates branch not found (we should try next fallback)
-          const isBranchError = fallbackStderr.includes("fatal: not a valid object name") ||
+          const isBranchError =
+            fallbackStderr.includes("fatal: not a valid object name") ||
             fallbackStderr.includes("fatal: Not a valid object name") ||
             fallbackStderr.includes("fatal: invalid object name") ||
             fallbackStderr.includes("fatal: Invalid object name") ||
             fallbackStderr.includes("fatal: ambiguous argument");
-          
-          if (fallbackStdout && (Buffer.isBuffer(fallbackStdout) ? fallbackStdout.length > 0 : (typeof fallbackStdout === 'string' && fallbackStdout.length > 0))) {
+
+          if (
+            fallbackStdout &&
+            (Buffer.isBuffer(fallbackStdout)
+              ? fallbackStdout.length > 0
+              : typeof fallbackStdout === "string" && fallbackStdout.length > 0)
+          ) {
             stdout = fallbackStdout;
             actualBranch = fallbackBranch;
             branchNotFound = false;
-            console.log(`✅ Found file in '${fallbackBranch}' branch (from error stdout, ${Buffer.isBuffer(fallbackStdout) ? fallbackStdout.length : fallbackStdout.length} bytes)`);
+            console.log(
+              `✅ Found file in '${fallbackBranch}' branch (from error stdout, ${
+                Buffer.isBuffer(fallbackStdout)
+                  ? fallbackStdout.length
+                  : fallbackStdout.length
+              } bytes)`
+            );
             break;
           } else if (!isBranchError) {
             // Not a branch error and no stdout - file doesn't exist in this branch
-            console.warn(`⚠️ File not found in '${fallbackBranch}' branch (not a branch error)`);
+            console.warn(
+              `⚠️ File not found in '${fallbackBranch}' branch (not a branch error)`
+            );
           }
           // Continue to next fallback
         }
       }
-      
+
       // If all branches failed
       if (branchNotFound && (!stdout || (stderr && stderr.includes("fatal")))) {
-        return res.status(404).json({ 
+        return res.status(404).json({
           error: "File not found in any branch",
           path: filePath,
           branch: branchStr,
@@ -290,7 +393,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     if (stderr && !stdout) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         error: "File not found",
         path: filePath,
         branch: actualBranch,
@@ -299,81 +402,184 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Detect if file is binary by checking for null bytes or common binary patterns
     const buffer = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
-    const ext = filePath.split('.').pop()?.toLowerCase() || '';
-    const textExts = ['txt', 'md', 'json', 'js', 'ts', 'jsx', 'tsx', 'css', 'html', 'htm', 'xml', 'yml', 'yaml', 'toml', 'ini', 'conf', 'log', 'csv', 'tsv', 'sh', 'bash', 'zsh', 'fish', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'sql', 'r', 'm', 'swift', 'kt', 'scala', 'clj', 'hs', 'elm', 'ex', 'exs', 'erl', 'hrl', 'ml', 'mli', 'fs', 'fsx', 'vb', 'cs', 'dart', 'lua', 'vim', 'vimrc', 'gitignore', 'gitattributes', 'dockerfile', 'makefile', 'cmake', 'gradle', 'maven', 'pom', 'sbt', 'build', 'rakefile', 'gemfile', 'podfile', 'cartfile'];
-    const binaryExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'pdf', 'woff', 'woff2', 'ttf', 'otf', 'eot', 'mp4', 'mp3', 'wav', 'avi', 'mov', 'zip', 'tar', 'gz', 'bz2', 'xz', '7z', 'rar', 'exe', 'dll', 'so', 'dylib', 'bin'];
-    
+    const ext = filePath.split(".").pop()?.toLowerCase() || "";
+    const textExts = [
+      "txt",
+      "md",
+      "json",
+      "js",
+      "ts",
+      "jsx",
+      "tsx",
+      "css",
+      "html",
+      "htm",
+      "xml",
+      "yml",
+      "yaml",
+      "toml",
+      "ini",
+      "conf",
+      "log",
+      "csv",
+      "tsv",
+      "sh",
+      "bash",
+      "zsh",
+      "fish",
+      "py",
+      "rb",
+      "go",
+      "rs",
+      "java",
+      "c",
+      "cpp",
+      "h",
+      "hpp",
+      "sql",
+      "r",
+      "m",
+      "swift",
+      "kt",
+      "scala",
+      "clj",
+      "hs",
+      "elm",
+      "ex",
+      "exs",
+      "erl",
+      "hrl",
+      "ml",
+      "mli",
+      "fs",
+      "fsx",
+      "vb",
+      "cs",
+      "dart",
+      "lua",
+      "vim",
+      "vimrc",
+      "gitignore",
+      "gitattributes",
+      "dockerfile",
+      "makefile",
+      "cmake",
+      "gradle",
+      "maven",
+      "pom",
+      "sbt",
+      "build",
+      "rakefile",
+      "gemfile",
+      "podfile",
+      "cartfile",
+    ];
+    const binaryExts = [
+      "png",
+      "jpg",
+      "jpeg",
+      "gif",
+      "webp",
+      "svg",
+      "ico",
+      "pdf",
+      "woff",
+      "woff2",
+      "ttf",
+      "otf",
+      "eot",
+      "mp4",
+      "mp3",
+      "wav",
+      "avi",
+      "mov",
+      "zip",
+      "tar",
+      "gz",
+      "bz2",
+      "xz",
+      "7z",
+      "rar",
+      "exe",
+      "dll",
+      "so",
+      "dylib",
+      "bin",
+    ];
+
     // Check for null bytes (indicates binary file)
     const hasNullBytes = buffer.includes(0);
     const isBinaryByExt = binaryExts.includes(ext);
     const isTextByExt = textExts.includes(ext);
-    
+
     // Determine if binary: has null bytes OR is binary extension (but NOT text extension)
     const isBinary = (hasNullBytes || isBinaryByExt) && !isTextByExt;
-    
+
     if (isBinary) {
       // For binary files, encode as base64
-      const base64Content = buffer.toString('base64');
-        return res.status(200).json({ 
-          content: base64Content,
-          path: filePath,
-          branch: actualBranch, // Return actual branch used
-          isBinary: true,
-        });
-      } else {
-        // For text files, return as UTF-8 string
-        // Try to decode as UTF-8, fallback to base64 if it fails
-        try {
-          const textContent = buffer.toString('utf8');
-          // Check if decoded content is valid UTF-8 text (no control characters except common ones)
-          if (/[\x00-\x08\x0E-\x1F]/.test(textContent)) {
-            // Contains control characters, likely binary - encode as base64
-            const base64Content = buffer.toString('base64');
-            return res.status(200).json({ 
-              content: base64Content,
-              path: filePath,
-              branch: actualBranch, // Return actual branch used
-              isBinary: true,
-            });
-          }
-          return res.status(200).json({ 
-            content: textContent,
-            path: filePath,
-            branch: actualBranch, // Return actual branch used
-            isBinary: false,
-          });
-        } catch (e) {
-          // UTF-8 decoding failed, encode as base64
-          const base64Content = buffer.toString('base64');
-          return res.status(200).json({ 
+      const base64Content = buffer.toString("base64");
+      return res.status(200).json({
+        content: base64Content,
+        path: filePath,
+        branch: actualBranch, // Return actual branch used
+        isBinary: true,
+      });
+    } else {
+      // For text files, return as UTF-8 string
+      // Try to decode as UTF-8, fallback to base64 if it fails
+      try {
+        const textContent = buffer.toString("utf8");
+        // Check if decoded content is valid UTF-8 text (no control characters except common ones)
+        if (/[\x00-\x08\x0E-\x1F]/.test(textContent)) {
+          // Contains control characters, likely binary - encode as base64
+          const base64Content = buffer.toString("base64");
+          return res.status(200).json({
             content: base64Content,
             path: filePath,
             branch: actualBranch, // Return actual branch used
             isBinary: true,
           });
         }
+        return res.status(200).json({
+          content: textContent,
+          path: filePath,
+          branch: actualBranch, // Return actual branch used
+          isBinary: false,
+        });
+      } catch (e) {
+        // UTF-8 decoding failed, encode as base64
+        const base64Content = buffer.toString("base64");
+        return res.status(200).json({
+          content: base64Content,
+          path: filePath,
+          branch: actualBranch, // Return actual branch used
+          isBinary: true,
+        });
       }
+    }
   } catch (error: any) {
     console.error("Error fetching file content:", error);
-    
+
     if (error.message?.includes("fatal: ambiguous argument")) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: "Branch not found",
         branch,
       });
     }
 
-    if (error.message?.includes("fatal: Path") || error.message?.includes("does not exist")) {
-      return res.status(404).json({ 
+    if (
+      error.message?.includes("fatal: Path") ||
+      error.message?.includes("does not exist")
+    ) {
+      return res.status(404).json({
         error: "File not found",
         path: filePath,
       });
     }
 
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: "Failed to fetch file content",
       details: error.message,
     });
   }
 }
-

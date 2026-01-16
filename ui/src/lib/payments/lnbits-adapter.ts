@@ -1,14 +1,14 @@
 /**
  * LNbits API Adapter
- * 
+ *
  * Supports both:
  * - LNbits v0.12.12 (bitcoindelta.club) - Legacy API
  * - LNbits latest (azzamo.online) - New API
- * 
+ *
  * Automatically detects version and adapts API calls accordingly
  */
 
-export type LNbitsApiVersion = '0.12.12' | 'latest' | 'unknown';
+export type LNbitsApiVersion = "0.12.12" | "latest" | "unknown";
 
 export interface LNbitsConfig {
   url: string;
@@ -46,20 +46,22 @@ export interface LNbitsWalletResponse {
 /**
  * Detect LNbits API version by querying the /api/v1/info endpoint
  */
-export async function detectLNbitsVersion(config: LNbitsConfig): Promise<LNbitsApiVersion> {
+export async function detectLNbitsVersion(
+  config: LNbitsConfig
+): Promise<LNbitsApiVersion> {
   try {
-    const normalizedUrl = config.url.replace(/\/$/, '');
+    const normalizedUrl = config.url.replace(/\/$/, "");
     const infoResponse = await fetch(`${normalizedUrl}/api/v1/info`, {
-      method: 'GET',
+      method: "GET",
       headers: {
-        'X-Api-Key': config.adminKey,
-        'Content-Type': 'application/json',
+        "X-Api-Key": config.adminKey,
+        "Content-Type": "application/json",
       },
     });
 
     if (!infoResponse.ok) {
       // If info endpoint doesn't exist, try to infer from other endpoints
-      return 'unknown';
+      return "unknown";
     }
 
     const infoData = await infoResponse.json();
@@ -67,18 +69,18 @@ export async function detectLNbitsVersion(config: LNbitsConfig): Promise<LNbitsA
 
     if (version) {
       // Compare version strings
-      if (version.startsWith('0.12.') || version === '0.12.12') {
-        return '0.12.12';
+      if (version.startsWith("0.12.") || version === "0.12.12") {
+        return "0.12.12";
       }
       // Assume newer versions use latest API
-      return 'latest';
+      return "latest";
     }
 
     // Fallback: try to detect by API behavior
-    return 'unknown';
+    return "unknown";
   } catch (error) {
-    console.warn('Failed to detect LNbits version:', error);
-    return 'unknown';
+    console.warn("Failed to detect LNbits version:", error);
+    return "unknown";
   }
 }
 
@@ -90,12 +92,12 @@ export async function createPayment(
   request: LNbitsPaymentRequest,
   version?: LNbitsApiVersion
 ): Promise<LNbitsPaymentResponse> {
-  const apiVersion = version || await detectLNbitsVersion(config);
-  const normalizedUrl = config.url.replace(/\/$/, '');
+  const apiVersion = version || (await detectLNbitsVersion(config));
+  const normalizedUrl = config.url.replace(/\/$/, "");
 
   const headers: Record<string, string> = {
-    'X-Api-Key': config.adminKey,
-    'Content-Type': 'application/json',
+    "X-Api-Key": config.adminKey,
+    "Content-Type": "application/json",
   };
 
   // Build request body - use format compatible with both versions
@@ -107,10 +109,10 @@ export async function createPayment(
   if (request.out) {
     // Paying invoice - both versions use bolt11
     if (!request.bolt11) {
-      throw new Error('bolt11 invoice is required for outgoing payments');
+      throw new Error("bolt11 invoice is required for outgoing payments");
     }
     body.bolt11 = request.bolt11;
-    
+
     // Include extra fields if provided (works in both versions)
     if (request.extra) {
       body.extra = request.extra;
@@ -121,16 +123,16 @@ export async function createPayment(
   } else {
     // Creating invoice - both versions use amount
     if (!request.amount) {
-      throw new Error('amount is required for creating invoices');
+      throw new Error("amount is required for creating invoices");
     }
     body.amount = request.amount;
-    
+
     // Include memo - both versions support 'memo' field
     // For 'unknown' version, try with just memo first, then add description if needed
     if (request.memo) {
       body.memo = request.memo;
       // If version is latest or unknown, also include description for compatibility
-      if (apiVersion === 'latest' || apiVersion === 'unknown') {
+      if (apiVersion === "latest" || apiVersion === "unknown") {
         body.description = request.memo;
       }
     }
@@ -139,10 +141,10 @@ export async function createPayment(
   // Try the request - if it fails with validation error, try alternative format
   let response: Response;
   let data: any;
-  
+
   try {
     response = await fetch(`${normalizedUrl}/api/v1/payments`, {
-      method: 'POST',
+      method: "POST",
       headers,
       body: JSON.stringify(body),
     });
@@ -150,29 +152,38 @@ export async function createPayment(
     if (!response.ok) {
       const errorText = await response.text();
       let errorMessage = errorText;
-      
+
       // Try to parse error for better message
       try {
         const errorJson = JSON.parse(errorText);
-        errorMessage = errorJson.detail || errorJson.message || errorJson.error || errorText;
+        errorMessage =
+          errorJson.detail || errorJson.message || errorJson.error || errorText;
       } catch {
         // Keep original error text
       }
-      
+
       // If it's a validation error (422) and we included 'description', try without it (legacy format)
-      if ((apiVersion === 'latest' || apiVersion === 'unknown') && response.status === 422 && !request.out && body.description) {
+      if (
+        (apiVersion === "latest" || apiVersion === "unknown") &&
+        response.status === 422 &&
+        !request.out &&
+        body.description
+      ) {
         // Try without 'description' field (legacy v0.12.12 format)
-        const legacyBody: Record<string, any> = { out: false, amount: request.amount };
+        const legacyBody: Record<string, any> = {
+          out: false,
+          amount: request.amount,
+        };
         if (request.memo) {
           legacyBody.memo = request.memo;
         }
-        
+
         const legacyResponse = await fetch(`${normalizedUrl}/api/v1/payments`, {
-          method: 'POST',
+          method: "POST",
           headers,
           body: JSON.stringify(legacyBody),
         });
-        
+
         if (legacyResponse.ok) {
           data = await legacyResponse.json();
         } else {
@@ -186,8 +197,14 @@ export async function createPayment(
     }
   } catch (fetchError: any) {
     // Handle network errors
-    if (fetchError.message && !fetchError.message.includes('LNbits') && !fetchError.message.includes('payment API')) {
-      throw new Error(`Network error connecting to LNbits: ${fetchError.message}`);
+    if (
+      fetchError.message &&
+      !fetchError.message.includes("LNbits") &&
+      !fetchError.message.includes("payment API")
+    ) {
+      throw new Error(
+        `Network error connecting to LNbits: ${fetchError.message}`
+      );
     }
     throw fetchError;
   }
@@ -211,19 +228,19 @@ export async function getWalletBalance(
   config: LNbitsConfig,
   version?: LNbitsApiVersion
 ): Promise<{ balance: number; balanceMsat: number; balanceSats: number }> {
-  const apiVersion = version || await detectLNbitsVersion(config);
-  const normalizedUrl = config.url.replace(/\/$/, '');
+  const apiVersion = version || (await detectLNbitsVersion(config));
+  const normalizedUrl = config.url.replace(/\/$/, "");
 
   const headers: Record<string, string> = {
-    'X-Api-Key': config.adminKey,
-    'Content-Type': 'application/json',
+    "X-Api-Key": config.adminKey,
+    "Content-Type": "application/json",
   };
 
   let walletData: LNbitsWalletResponse;
 
   // Try /api/v1/wallet first (works in both versions if admin key has direct access)
   let walletResponse = await fetch(`${normalizedUrl}/api/v1/wallet`, {
-    method: 'GET',
+    method: "GET",
     headers,
   });
 
@@ -232,16 +249,20 @@ export async function getWalletBalance(
   } else {
     // Fallback: List wallets and get first one (more reliable across versions)
     const walletsResponse = await fetch(`${normalizedUrl}/api/v1/wallets`, {
-      method: 'GET',
+      method: "GET",
       headers,
     });
 
     if (!walletsResponse.ok) {
       const errorText = await walletsResponse.text();
-      let errorMessage = 'Failed to fetch wallet balance';
+      let errorMessage = "Failed to fetch wallet balance";
       try {
         const errorJson = JSON.parse(errorText);
-        errorMessage = errorJson.detail || errorJson.message || errorJson.error || errorMessage;
+        errorMessage =
+          errorJson.detail ||
+          errorJson.message ||
+          errorJson.error ||
+          errorMessage;
       } catch {
         if (errorText) {
           errorMessage = errorText.substring(0, 200);
@@ -252,32 +273,38 @@ export async function getWalletBalance(
 
     const wallets = await walletsResponse.json();
     // Handle both array format and object with data property (both versions)
-    const walletList = Array.isArray(wallets) ? wallets : (wallets.data || wallets.wallets || []);
-    
+    const walletList = Array.isArray(wallets)
+      ? wallets
+      : wallets.data || wallets.wallets || [];
+
     if (walletList.length === 0) {
-      throw new Error('No wallets found for this admin key');
+      throw new Error("No wallets found for this admin key");
     }
 
     // Get the first wallet (admin wallet)
     const adminWallet = walletList[0];
     const walletId = adminWallet.id || adminWallet.wallet_id;
-    
+
     if (!walletId) {
-      throw new Error('Wallet ID not found in response');
+      throw new Error("Wallet ID not found in response");
     }
 
     // Get balance for the specific wallet
     walletResponse = await fetch(`${normalizedUrl}/api/v1/wallet/${walletId}`, {
-      method: 'GET',
+      method: "GET",
       headers,
     });
 
     if (!walletResponse.ok) {
       const errorText = await walletResponse.text();
-      let errorMessage = 'Failed to fetch wallet balance';
+      let errorMessage = "Failed to fetch wallet balance";
       try {
         const errorJson = JSON.parse(errorText);
-        errorMessage = errorJson.detail || errorJson.message || errorJson.error || errorMessage;
+        errorMessage =
+          errorJson.detail ||
+          errorJson.message ||
+          errorJson.error ||
+          errorMessage;
       } catch {
         if (errorText) {
           errorMessage = errorText.substring(0, 200);
@@ -290,7 +317,11 @@ export async function getWalletBalance(
   }
 
   // Normalize balance field (always in millisats)
-  const balanceMsat = walletData.balance_msat ?? walletData.balanceMsat ?? walletData.balance ?? 0;
+  const balanceMsat =
+    walletData.balance_msat ??
+    walletData.balanceMsat ??
+    walletData.balance ??
+    0;
   const balanceSats = Math.floor(balanceMsat / 1000);
 
   return {
@@ -314,13 +345,19 @@ export async function createWithdrawLink(
     is_unique?: boolean;
   },
   version?: LNbitsApiVersion
-): Promise<{ id: string; lnurl: string; title?: string; uses?: number; max_withdrawable?: number }> {
-  const apiVersion = version || await detectLNbitsVersion(config);
-  const normalizedUrl = config.url.replace(/\/$/, '');
+): Promise<{
+  id: string;
+  lnurl: string;
+  title?: string;
+  uses?: number;
+  max_withdrawable?: number;
+}> {
+  const apiVersion = version || (await detectLNbitsVersion(config));
+  const normalizedUrl = config.url.replace(/\/$/, "");
 
   const headers: Record<string, string> = {
-    'X-Api-Key': config.adminKey,
-    'Content-Type': 'application/json',
+    "X-Api-Key": config.adminKey,
+    "Content-Type": "application/json",
   };
 
   // Build request body - check if latest API requires different fields
@@ -344,7 +381,7 @@ export async function createWithdrawLink(
   // The withdraw extension API is consistent across versions
 
   const response = await fetch(`${normalizedUrl}/withdraw/api/v1/links`, {
-    method: 'POST',
+    method: "POST",
     headers,
     body: JSON.stringify(body),
   });
@@ -374,24 +411,27 @@ export async function getWithdrawLink(
   linkId: string,
   version?: LNbitsApiVersion
 ): Promise<any> {
-  const apiVersion = version || await detectLNbitsVersion(config);
-  const normalizedUrl = config.url.replace(/\/$/, '');
+  const apiVersion = version || (await detectLNbitsVersion(config));
+  const normalizedUrl = config.url.replace(/\/$/, "");
 
   const headers: Record<string, string> = {
-    'X-Api-Key': config.adminKey,
-    'Content-Type': 'application/json',
+    "X-Api-Key": config.adminKey,
+    "Content-Type": "application/json",
   };
 
   // Use invoice key if available (read-only access)
   const apiKey = config.invoiceKey || config.adminKey;
 
-  const response = await fetch(`${normalizedUrl}/withdraw/api/v1/links/${linkId}`, {
-    method: 'GET',
-    headers: {
-      ...headers,
-      'X-Api-Key': apiKey,
-    },
-  });
+  const response = await fetch(
+    `${normalizedUrl}/withdraw/api/v1/links/${linkId}`,
+    {
+      method: "GET",
+      headers: {
+        ...headers,
+        "X-Api-Key": apiKey,
+      },
+    }
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -408,17 +448,17 @@ export async function listWithdrawLinks(
   config: LNbitsConfig,
   version?: LNbitsApiVersion
 ): Promise<any[]> {
-  const apiVersion = version || await detectLNbitsVersion(config);
-  const normalizedUrl = config.url.replace(/\/$/, '');
+  const apiVersion = version || (await detectLNbitsVersion(config));
+  const normalizedUrl = config.url.replace(/\/$/, "");
 
   // Use invoice key if available (read-only access)
   const apiKey = config.invoiceKey || config.adminKey;
 
   const response = await fetch(`${normalizedUrl}/withdraw/api/v1/links`, {
-    method: 'GET',
+    method: "GET",
     headers: {
-      'X-Api-Key': apiKey,
-      'Content-Type': 'application/json',
+      "X-Api-Key": apiKey,
+      "Content-Type": "application/json",
     },
   });
 
@@ -428,8 +468,7 @@ export async function listWithdrawLinks(
   }
 
   const data = await response.json();
-  
-  // Normalize response format (might be array or object with data property)
-  return Array.isArray(data) ? data : (data.data || data.links || []);
-}
 
+  // Normalize response format (might be array or object with data property)
+  return Array.isArray(data) ? data : data.data || data.links || [];
+}

@@ -1,27 +1,31 @@
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+
 import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
 
 // NWC Balance endpoint - fetches wallet balance via Nostr Wallet Connect
 // This is done client-side for security (secret key must not leave the browser)
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   if (req.method !== "POST") {
-  // Handle OPTIONS request for CORS (GRASP requirement)
-  if (req.method === "OPTIONS") {
-    handleOptionsRequest(res);
-    return;
-  }
+    // Handle OPTIONS request for CORS (GRASP requirement)
+    if (req.method === "OPTIONS") {
+      handleOptionsRequest(res);
+      return;
+    }
 
-  // Set CORS headers (GRASP requirement)
-  setCorsHeaders(res);
+    // Set CORS headers (GRASP requirement)
+    setCorsHeaders(res);
     return res.status(405).json({ status: "method_not_allowed" });
   }
 
   const { nwcString } = req.body || {};
 
   if (!nwcString) {
-    return res.status(400).json({ 
-      status: "missing_params", 
-      message: "Missing NWC connection string" 
+    return res.status(400).json({
+      status: "missing_params",
+      message: "Missing NWC connection string",
     });
   }
 
@@ -31,10 +35,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Parse NWC connection string
     const normalizedUri = nwcString.replace(/^nostr\+walletconnect:/, "http:");
     const nwcUrl = new URL(normalizedUri);
-    const walletPubkey = nwcUrl.hostname || nwcUrl.pathname.replace(/^\/+/, "").replace(/\/$/, "");
+    const walletPubkey =
+      nwcUrl.hostname || nwcUrl.pathname.replace(/^\/+/, "").replace(/\/$/, "");
     const relay = nwcUrl.searchParams.get("relay");
     const secret = nwcUrl.searchParams.get("secret");
-    
+
     if (!walletPubkey || !relay || !secret) {
       return res.status(400).json({
         status: "invalid_nwc",
@@ -57,4 +62,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 }
-

@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
-import { cva, type VariantProps } from "class-variance-authority";
+
+import { type VariantProps, cva } from "class-variance-authority";
 
 const badgeVariants = cva(
   "rounded px-2 py-1 text-xs font-medium inline-flex items-center justify-center text-center",
@@ -21,17 +22,6 @@ export interface BadgeProps extends VariantProps<typeof badgeVariants> {
   className?: string;
 }
 
-export const Badge = ({
-  children,
-  className,
-  variant,
-}: BadgeProps) => (
-  <span
-    className={cn(
-      badgeVariants({ variant }),
-      className
-    )}
-  >
-    {children}
-  </span>
+export const Badge = ({ children, className, variant }: BadgeProps) => (
+  <span className={cn(badgeVariants({ variant }), className)}>{children}</span>
 );

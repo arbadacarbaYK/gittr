@@ -1,10 +1,11 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+
 import { exec } from "child_process";
-import { promisify } from "util";
-import { join } from "path";
 import { existsSync } from "fs";
-import { nip19, nip05 } from "nostr-tools";
+import type { NextApiRequest, NextApiResponse } from "next";
+import { nip05, nip19 } from "nostr-tools";
+import { join } from "path";
+import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
@@ -13,40 +14,65 @@ const execAsync = promisify(exec);
  * This allows bridge API endpoints to accept NIP-05 format (e.g., geek@primal.net)
  * for compatibility with gitworkshop.dev
  */
-async function resolveOwnerPubkey(ownerPubkeyInput: string): Promise<{ pubkey: string; error?: string }> {
+async function resolveOwnerPubkey(
+  ownerPubkeyInput: string
+): Promise<{ pubkey: string; error?: string }> {
   // If already a full hex pubkey, return it
   if (/^[0-9a-f]{64}$/i.test(ownerPubkeyInput)) {
     return { pubkey: ownerPubkeyInput.toLowerCase() };
   }
-  
+
   // If npub, decode it
   if (ownerPubkeyInput.startsWith("npub")) {
     try {
       const decoded = nip19.decode(ownerPubkeyInput);
-      if (decoded.type === "npub" && typeof decoded.data === "string" && decoded.data.length === 64) {
+      if (
+        decoded.type === "npub" &&
+        typeof decoded.data === "string" &&
+        decoded.data.length === 64
+      ) {
         return { pubkey: decoded.data.toLowerCase() };
       }
       return { pubkey: "", error: "Invalid npub format" };
     } catch (error: any) {
-      return { pubkey: "", error: `Failed to decode npub: ${error?.message || "invalid format"}` };
+      return {
+        pubkey: "",
+        error: `Failed to decode npub: ${error?.message || "invalid format"}`,
+      };
     }
   }
-  
+
   // If NIP-05 format (contains @), resolve it
   if (ownerPubkeyInput.includes("@")) {
     try {
       const profile = await nip05.queryProfile(ownerPubkeyInput);
       if (profile?.pubkey && /^[0-9a-f]{64}$/i.test(profile.pubkey)) {
-        console.log(`✅ [Bridge API] Resolved NIP-05 ${ownerPubkeyInput} to pubkey: ${profile.pubkey.slice(0, 8)}...`);
+        console.log(
+          `✅ [Bridge API] Resolved NIP-05 ${ownerPubkeyInput} to pubkey: ${profile.pubkey.slice(
+            0,
+            8
+          )}...`
+        );
         return { pubkey: profile.pubkey.toLowerCase() };
       }
-      return { pubkey: "", error: `NIP-05 ${ownerPubkeyInput} did not return a valid pubkey` };
+      return {
+        pubkey: "",
+        error: `NIP-05 ${ownerPubkeyInput} did not return a valid pubkey`,
+      };
     } catch (error: any) {
-      return { pubkey: "", error: `Failed to resolve NIP-05 ${ownerPubkeyInput}: ${error?.message || "unknown error"}` };
+      return {
+        pubkey: "",
+        error: `Failed to resolve NIP-05 ${ownerPubkeyInput}: ${
+          error?.message || "unknown error"
+        }`,
+      };
     }
   }
-  
-  return { pubkey: "", error: `Invalid ownerPubkey format: must be 64-char hex, npub, or NIP-05 (received: ${ownerPubkeyInput.length} chars)` };
+
+  return {
+    pubkey: "",
+    error: `Invalid ownerPubkey format: must be 64-char hex, npub, or NIP-05 (received: ${ownerPubkeyInput.length} chars)`,
+  };
 }
 
 async function resolveReposDir(): Promise<string> {
@@ -57,7 +83,9 @@ async function resolveReposDir(): Promise<string> {
 
   if (!reposDir) {
     const configPaths = [
-      process.env.HOME ? `${process.env.HOME}/.config/git-nostr/git-nostr-bridge.json` : null,
+      process.env.HOME
+        ? `${process.env.HOME}/.config/git-nostr/git-nostr-bridge.json`
+        : null,
       "/home/git-nostr/.config/git-nostr/git-nostr-bridge.json",
     ].filter(Boolean) as string[];
 
@@ -94,7 +122,10 @@ interface Commit {
   parentIds?: string[];
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   // Handle OPTIONS request for CORS
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res);
@@ -105,7 +136,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { ownerPubkey: ownerPubkeyInput, repo: repoName, branch, limit } = req.query;
+  const {
+    ownerPubkey: ownerPubkeyInput,
+    repo: repoName,
+    branch,
+    limit,
+  } = req.query;
 
   if (!ownerPubkeyInput || typeof ownerPubkeyInput !== "string") {
     return res.status(400).json({ error: "ownerPubkey is required" });
@@ -115,18 +151,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // This allows gitworkshop.dev to use NIP-05 format (e.g., geek@primal.net)
   const resolved = await resolveOwnerPubkey(ownerPubkeyInput);
   if (resolved.error || !resolved.pubkey) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       error: resolved.error || "Failed to resolve ownerPubkey",
     });
   }
-  
+
   const ownerPubkey = resolved.pubkey;
 
   if (!repoName || typeof repoName !== "string") {
     return res.status(400).json({ error: "Invalid repo name" });
   }
 
-  const branchName = (typeof branch === "string" ? branch : "main").trim() || "main";
+  const branchName =
+    (typeof branch === "string" ? branch : "main").trim() || "main";
   const commitLimit = limit ? parseInt(limit as string, 10) : 100;
   const safeLimit = Math.min(Math.max(commitLimit, 1), 500); // Between 1 and 500
 
@@ -136,16 +173,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     if (!existsSync(repoPath)) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         error: "Repository not found",
-        hint: "Repository may not be cloned yet by git-nostr-bridge"
+        hint: "Repository may not be cloned yet by git-nostr-bridge",
       });
     }
 
     // Get commits using git log
     // Format: %H = full hash, %s = subject, %an = author name, %ae = author email, %at = author timestamp, %P = parent hashes
     const gitLogCommand = `git --git-dir="${repoPath}" log --format="%H|%s|%an|%ae|%at|%P" --max-count=${safeLimit} ${branchName}`;
-    
+
     let stdout: string;
     try {
       const result = await execAsync(gitLogCommand, { timeout: 10000 });
@@ -155,12 +192,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (branchName !== "main" && branchName !== "master") {
         try {
           const fallbackCommand = `git --git-dir="${repoPath}" log --format="%H|%s|%an|%ae|%at|%P" --max-count=${safeLimit} main`;
-          const fallbackResult = await execAsync(fallbackCommand, { timeout: 10000 });
+          const fallbackResult = await execAsync(fallbackCommand, {
+            timeout: 10000,
+          });
           stdout = fallbackResult.stdout;
         } catch (fallbackError) {
           // Try master as last resort
           const masterCommand = `git --git-dir="${repoPath}" log --format="%H|%s|%an|%ae|%at|%P" --max-count=${safeLimit} master`;
-          const masterResult = await execAsync(masterCommand, { timeout: 10000 });
+          const masterResult = await execAsync(masterCommand, {
+            timeout: 10000,
+          });
           stdout = masterResult.stdout;
         }
       } else {
@@ -169,20 +210,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const commits: Commit[] = [];
-    
+
     if (stdout.trim()) {
       const lines = stdout.trim().split("\n");
       for (const line of lines) {
         const parts = line.split("|");
         if (parts.length >= 5) {
-          const [hash, message, authorName, authorEmail, timestampStr, ...parentHashes] = parts;
-          
+          const [
+            hash,
+            message,
+            authorName,
+            authorEmail,
+            timestampStr,
+            ...parentHashes
+          ] = parts;
+
           if (hash && message && timestampStr) {
             const timestamp = parseInt(timestampStr, 10) * 1000; // Convert to milliseconds
-            const parentIds = parentHashes.length > 0 && parentHashes[0] 
-              ? parentHashes[0].trim().split(/\s+/).filter(p => p.length > 0)
-              : [];
-            
+            const parentIds =
+              parentHashes.length > 0 && parentHashes[0]
+                ? parentHashes[0]
+                    .trim()
+                    .split(/\s+/)
+                    .filter((p) => p.length > 0)
+                : [];
+
             commits.push({
               id: hash.trim(),
               message: message.trim(),
@@ -200,10 +252,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ commits });
   } catch (error: any) {
     console.error("❌ [Commits API] Error:", error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: "Failed to fetch commits",
-      message: error?.message || "Unknown error"
+      message: error?.message || "Unknown error",
     });
   }
 }
-

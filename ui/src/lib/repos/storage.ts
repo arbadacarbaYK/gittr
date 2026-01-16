@@ -169,29 +169,9 @@ export const clearForeignReposFromStorage = (
     return { clearedRepos: 0, clearedKeys: 0, keptRepos: 0 };
   }
 
-  const metadataPatterns = new Set<string>();
-  if (preserveWithMetadata) {
-    const metadataPrefixes = [
-      "gittr_issues__",
-      "gittr_prs__",
-      "gittr_commits__",
-      "gittr_releases__",
-      "gittr_discussions__",
-      "gittr_milestones_",
-    ];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key) continue;
-      const prefix = metadataPrefixes.find((p) => key.startsWith(p));
-      if (prefix) {
-        metadataPatterns.add(key.replace(prefix, ""));
-      }
-      if (key.includes("gittr_issue_comments_")) {
-        const stripped = key.replace("gittr_issue_comments_", "");
-        metadataPatterns.add(stripped);
-      }
-    }
-  }
+  const metadataPatterns = preserveWithMetadata
+    ? collectMetadataPatterns()
+    : new Set<string>();
 
   const keptRepos = allRepos.filter((repo) => {
     if (isRepoOwnedByPubkey(repo, pubkey)) return true;
@@ -216,8 +196,9 @@ export const clearForeignReposFromStorage = (
 
   localStorage.setItem("gittr_repos", JSON.stringify(keptRepos));
 
-  const foreignRepoKeyPatterns = buildRepoKeyPatterns(foreignRepos);
-  const keysToRemove = removeStorageKeysForPatterns(foreignRepoKeyPatterns);
+  const keptRepoPatterns = buildRepoKeyPatterns(keptRepos);
+  metadataPatterns.forEach((pattern) => keptRepoPatterns.push(pattern));
+  const keysToRemove = removeRepoStorageKeysExceptPatterns(keptRepoPatterns);
 
   return {
     clearedRepos: foreignRepos.length,
@@ -226,7 +207,9 @@ export const clearForeignReposFromStorage = (
   };
 };
 
-export const clearNonLocalReposFromStorage = (): {
+export const clearNonLocalReposFromStorage = (options?: {
+  preserveWithMetadata?: boolean;
+}): {
   clearedRepos: number;
   clearedKeys: number;
   keptRepos: number;
@@ -243,13 +226,35 @@ export const clearNonLocalReposFromStorage = (): {
     return { clearedRepos: 0, clearedKeys: 0, keptRepos: 0 };
   }
 
-  const keptRepos = allRepos.filter((repo) => hasLocalChanges(repo));
+  const preserveWithMetadata = options?.preserveWithMetadata ?? true;
+  const metadataPatterns = preserveWithMetadata
+    ? collectMetadataPatterns()
+    : new Set<string>();
+
+  const keptRepos = allRepos.filter((repo) => {
+    if (hasLocalChanges(repo)) return true;
+    if (preserveWithMetadata) {
+      const entity = repo.entity || repo.slug?.split("/")[0] || "";
+      const repoName =
+        repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug || "";
+      if (entity && repoName) {
+        const pattern = getRepoStorageKey(
+          "gittr_test",
+          entity,
+          repoName
+        ).replace("gittr_test__", "");
+        if (metadataPatterns.has(pattern)) return true;
+      }
+    }
+    return false;
+  });
   const removedRepos = allRepos.filter((repo) => !keptRepos.includes(repo));
 
   localStorage.setItem("gittr_repos", JSON.stringify(keptRepos));
 
-  const removedRepoKeyPatterns = buildRepoKeyPatterns(removedRepos);
-  const keysToRemove = removeStorageKeysForPatterns(removedRepoKeyPatterns);
+  const keptRepoPatterns = buildRepoKeyPatterns(keptRepos);
+  metadataPatterns.forEach((pattern) => keptRepoPatterns.push(pattern));
+  const keysToRemove = removeRepoStorageKeysExceptPatterns(keptRepoPatterns);
 
   return {
     clearedRepos: removedRepos.length,
@@ -275,6 +280,84 @@ const buildRepoKeyPatterns = (repos: StoredRepo[]): string[] => {
   return patterns;
 };
 
+const repoDataKeyPrefixes = [
+  "gittr_files__",
+  "gittr_issues__",
+  "gittr_prs__",
+  "gittr_commits__",
+  "gittr_releases__",
+  "gittr_discussions__",
+  "gittr_milestones_",
+  "gittr_overrides__",
+  "gittr_repo_overrides__",
+  "gittr_accumulated_zaps_",
+];
+
+const isRepoDataKey = (key: string): boolean => {
+  if (repoDataKeyPrefixes.some((prefix) => key.startsWith(prefix))) return true;
+  return key.includes("gittr_issue_comments_");
+};
+
+const matchesRepoPattern = (key: string, pattern: string): boolean => {
+  return (
+    key.includes(`__${pattern}`) ||
+    key.includes(`_${pattern.replace("__", "_")}`) ||
+    key.includes(`/${pattern.replace("__", "/")}`)
+  );
+};
+
+const collectMetadataPatterns = (): Set<string> => {
+  const metadataPatterns = new Set<string>();
+  const metadataPrefixes = [
+    "gittr_issues__",
+    "gittr_prs__",
+    "gittr_commits__",
+    "gittr_releases__",
+    "gittr_discussions__",
+    "gittr_milestones_",
+  ];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    const prefix = metadataPrefixes.find((p) => key.startsWith(p));
+    if (prefix) {
+      metadataPatterns.add(key.replace(prefix, ""));
+    }
+    if (key.includes("gittr_issue_comments_")) {
+      const stripped = key.replace("gittr_issue_comments_", "");
+      metadataPatterns.add(stripped);
+    }
+  }
+  return metadataPatterns;
+};
+
+const removeRepoStorageKeysExceptPatterns = (
+  allowedPatterns: string[]
+): string[] => {
+  const keysToRemove: string[] = [];
+  const uniquePatterns = new Set(allowedPatterns.filter(Boolean));
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !isRepoDataKey(key)) continue;
+
+    let isAllowed = false;
+    for (const pattern of uniquePatterns) {
+      if (matchesRepoPattern(key, pattern)) {
+        isAllowed = true;
+        break;
+      }
+    }
+
+    if (!isAllowed) {
+      keysToRemove.push(key);
+    }
+  }
+
+  keysToRemove.forEach((key) => localStorage.removeItem(key));
+  return keysToRemove;
+};
+
 const removeStorageKeysForPatterns = (patterns: string[]): string[] => {
   const keysToRemove: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
@@ -283,27 +366,9 @@ const removeStorageKeysForPatterns = (patterns: string[]): string[] => {
 
     let isMatchingRepoKey = false;
     for (const pattern of patterns) {
-      if (
-        key.includes(`__${pattern}`) ||
-        key.includes(`_${pattern.replace("__", "_")}`) ||
-        key.includes(`/${pattern.replace("__", "/")}`)
-      ) {
-        if (
-          key.startsWith("gittr_files__") ||
-          key.startsWith("gittr_issues__") ||
-          key.startsWith("gittr_prs__") ||
-          key.startsWith("gittr_commits__") ||
-          key.startsWith("gittr_releases__") ||
-          key.startsWith("gittr_discussions__") ||
-          key.startsWith("gittr_milestones_") ||
-          key.startsWith("gittr_overrides__") ||
-          key.startsWith("gittr_repo_overrides__") ||
-          key.startsWith("gittr_accumulated_zaps_") ||
-          key.includes("gittr_issue_comments_")
-        ) {
-          isMatchingRepoKey = true;
-          break;
-        }
+      if (matchesRepoPattern(key, pattern) && isRepoDataKey(key)) {
+        isMatchingRepoKey = true;
+        break;
       }
     }
 

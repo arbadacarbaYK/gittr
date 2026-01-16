@@ -2,7 +2,6 @@
  * Server-side helper to fetch Nostr user metadata (kind 0) from relays
  * Used in API routes where we don't have access to React context
  */
-
 import { nip19 } from "nostr-tools";
 
 const DEFAULT_RELAYS = [
@@ -39,7 +38,7 @@ export async function fetchUserMetadata(
     }
 
     const targetRelays = relays || DEFAULT_RELAYS;
-    
+
     // Use dynamic import to avoid SSR issues
     const { RelayPool } = await import("nostr-relaypool");
     const pool = new RelayPool(targetRelays);
@@ -96,4 +95,3 @@ export async function fetchUserMetadata(
     return null;
   }
 }
-

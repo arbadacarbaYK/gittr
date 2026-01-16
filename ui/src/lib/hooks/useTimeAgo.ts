@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from "react";
 
 /**
  * Safely calculates time ago string, preventing hydration mismatches
@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
  */
 export function useTimeAgo(timestamp: number): string {
   const [mounted, setMounted] = useState(false);
-  const [timeStr, setTimeStr] = useState('');
+  const [timeStr, setTimeStr] = useState("");
 
   useEffect(() => {
     setMounted(true);
@@ -14,16 +14,17 @@ export function useTimeAgo(timestamp: number): string {
 
   useEffect(() => {
     if (!mounted) return;
-    
+
     const updateTime = () => {
       const timeAgo = Math.floor((Date.now() - timestamp) / 1000 / 60);
-      const str = timeAgo < 1 
-        ? "just now" 
-        : timeAgo < 60 
-          ? `${timeAgo}m ago` 
-          : timeAgo < 1440 
-            ? `${Math.floor(timeAgo / 60)}h ago` 
-            : `${Math.floor(timeAgo / 1440)}d ago`;
+      const str =
+        timeAgo < 1
+          ? "just now"
+          : timeAgo < 60
+          ? `${timeAgo}m ago`
+          : timeAgo < 1440
+          ? `${Math.floor(timeAgo / 60)}h ago`
+          : `${Math.floor(timeAgo / 1440)}d ago`;
       setTimeStr(str);
     };
 
@@ -35,4 +36,3 @@ export function useTimeAgo(timestamp: number): string {
 
   return timeStr;
 }
-

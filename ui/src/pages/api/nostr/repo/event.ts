@@ -1,11 +1,15 @@
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+
 import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
 
 /**
  * Proxy Nostr events directly to git-nostr-bridge HTTP API
  * This allows immediate processing without waiting for relay propagation
  */
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   if (req.method === "OPTIONS") {
     return handleOptionsRequest(res);
   }
@@ -31,13 +35,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       eventId: event.id,
       eventKeys: Object.keys(event),
     });
-    return res.status(400).json({ 
+    return res.status(400).json({
       error: "Invalid event: missing pubkey, sig, or created_at",
       details: {
         hasPubkey: !!event.pubkey,
         hasSig: !!event.sig,
         hasCreatedAt: !!event.created_at,
-      }
+      },
     });
   }
 
@@ -69,7 +73,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`❌ [Bridge Event API] Bridge returned error: ${response.status} ${errorText}`);
+      console.error(
+        `❌ [Bridge Event API] Bridge returned error: ${response.status} ${errorText}`
+      );
       return res.status(response.status).json({
         error: `Bridge error: ${errorText}`,
         status: response.status,
@@ -77,16 +83,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const result = await response.json();
-    console.log(`✅ [Bridge Event API] Event sent to bridge: ${event.id.slice(0, 16)}...`);
+    console.log(
+      `✅ [Bridge Event API] Event sent to bridge: ${event.id.slice(0, 16)}...`
+    );
     return res.status(200).json(result);
   } catch (error: any) {
-    console.error(`❌ [Bridge Event API] Failed to send event to bridge:`, error);
+    console.error(
+      `❌ [Bridge Event API] Failed to send event to bridge:`,
+      error
+    );
     // Don't fail the request - event was published to relays, bridge will get it eventually
     return res.status(200).json({
       status: "relay_only",
-      message: "Event published to relays, bridge will receive it via relay subscription",
+      message:
+        "Event published to relays, bridge will receive it via relay subscription",
       error: error?.message || "Bridge not available",
     });
   }
 }
-

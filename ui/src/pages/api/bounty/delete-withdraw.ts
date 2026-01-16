@@ -1,11 +1,15 @@
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+
 import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
 
 /**
  * Delete/cancel an LNbits withdraw link
  * Used when an issue with a bounty is closed without a PR
  */
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   // Handle OPTIONS request for CORS (GRASP requirement)
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res);
@@ -19,21 +23,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ status: "method_not_allowed" });
   }
 
-  const { 
-    withdrawId,
-    lnbitsUrl,
-    lnbitsAdminKey,
-  } = req.body || req.query || {};
+  const { withdrawId, lnbitsUrl, lnbitsAdminKey } = req.body || req.query || {};
 
   if (!withdrawId) {
-    return res.status(400).json({ 
-      status: "missing_params", 
-      message: "Missing withdrawId" 
+    return res.status(400).json({
+      status: "missing_params",
+      message: "Missing withdrawId",
     });
   }
 
-  const finalLnbitsAdminKey = lnbitsAdminKey || process.env.LNBITS_ADMIN_KEY || "";
-  const finalLnbitsUrl = (lnbitsUrl || process.env.LNBITS_URL || "https://bitcoindelta.club").replace(/\/$/, "");
+  const finalLnbitsAdminKey =
+    lnbitsAdminKey || process.env.LNBITS_ADMIN_KEY || "";
+  const finalLnbitsUrl = (
+    lnbitsUrl ||
+    process.env.LNBITS_URL ||
+    "https://bitcoindelta.club"
+  ).replace(/\/$/, "");
 
   if (!finalLnbitsAdminKey) {
     return res.status(400).json({
@@ -46,7 +51,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // LNbits withdraw extension API: DELETE /withdraw/api/v1/links/{id}
     // Note: Some LNbits versions may not support DELETE, so we try both DELETE and POST
     let deleteResponse: Response;
-    
+
     try {
       // Try DELETE first (standard REST)
       deleteResponse = await fetch(
@@ -113,4 +118,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 }
-

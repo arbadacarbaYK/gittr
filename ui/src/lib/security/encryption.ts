@@ -1,7 +1,7 @@
 /**
  * Client-side encryption for sensitive localStorage data
  * Uses Web Crypto API with AES-GCM encryption
- * 
+ *
  * Security Notes:
  * - Encryption password is derived from user input using PBKDF2
  * - Salt is stored with encrypted data (not sensitive, prevents rainbow table attacks)
@@ -21,7 +21,10 @@ const PBKDF2_KEY_LENGTH = 256; // 256 bits = 32 bytes for AES-256
 /**
  * Derive encryption key from password using PBKDF2
  */
-async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
+async function deriveKey(
+  password: string,
+  salt: Uint8Array
+): Promise<CryptoKey> {
   const encoder = new TextEncoder();
   const passwordKey = await crypto.subtle.importKey(
     "raw",
@@ -75,7 +78,10 @@ async function hashPassword(password: string): Promise<string> {
 /**
  * Encrypt sensitive data
  */
-export async function encryptData(plaintext: string, password: string): Promise<string> {
+export async function encryptData(
+  plaintext: string,
+  password: string
+): Promise<string> {
   try {
     // Generate salt and IV
     const salt = generateSalt();
@@ -119,7 +125,10 @@ export async function encryptData(plaintext: string, password: string): Promise<
 /**
  * Decrypt sensitive data
  */
-export async function decryptData(ciphertext: string, password: string): Promise<string> {
+export async function decryptData(
+  ciphertext: string,
+  password: string
+): Promise<string> {
   try {
     // Decode from base64
     const combined = new Uint8Array(
@@ -178,7 +187,9 @@ export async function setEncryptionPassword(password: string): Promise<void> {
 /**
  * Verify encryption password
  */
-export async function verifyEncryptionPassword(password: string): Promise<boolean> {
+export async function verifyEncryptionPassword(
+  password: string
+): Promise<boolean> {
   const storedHash = localStorage.getItem(PASSWORD_KEY);
   if (!storedHash) return false;
 
@@ -192,7 +203,7 @@ export async function verifyEncryptionPassword(password: string): Promise<boolea
 export function clearEncryptionPassword(): void {
   localStorage.removeItem(PASSWORD_KEY);
   localStorage.removeItem(SALT_KEY);
-  
+
   // Remove all encrypted data keys
   const keysToRemove: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
@@ -201,15 +212,21 @@ export function clearEncryptionPassword(): void {
       keysToRemove.push(key);
     }
   }
-  keysToRemove.forEach(key => localStorage.removeItem(key));
+  keysToRemove.forEach((key) => localStorage.removeItem(key));
 }
 
 /**
  * Store encrypted sensitive data
  */
-export async function setEncryptedItem(key: string, value: string, password: string): Promise<void> {
+export async function setEncryptedItem(
+  key: string,
+  value: string,
+  password: string
+): Promise<void> {
   if (!isEncryptionEnabled()) {
-    throw new Error("Encryption not enabled. Call setEncryptionPassword() first.");
+    throw new Error(
+      "Encryption not enabled. Call setEncryptionPassword() first."
+    );
   }
 
   const encrypted = await encryptData(value, password);
@@ -219,7 +236,10 @@ export async function setEncryptedItem(key: string, value: string, password: str
 /**
  * Get and decrypt sensitive data
  */
-export async function getEncryptedItem(key: string, password: string): Promise<string | null> {
+export async function getEncryptedItem(
+  key: string,
+  password: string
+): Promise<string | null> {
   if (!isEncryptionEnabled()) {
     return null;
   }
@@ -254,7 +274,9 @@ export async function migrateToEncrypted(
   migrateCallback?: () => string | null
 ): Promise<void> {
   // Check if plaintext version exists
-  const plaintext = migrateCallback ? migrateCallback() : localStorage.getItem(key);
+  const plaintext = migrateCallback
+    ? migrateCallback()
+    : localStorage.getItem(key);
   if (!plaintext) {
     return; // Nothing to migrate
   }
@@ -265,4 +287,3 @@ export async function migrateToEncrypted(
   // Remove plaintext version
   localStorage.removeItem(key);
 }
-

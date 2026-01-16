@@ -1,14 +1,18 @@
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+
 import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
 
 /**
  * NIP-11 Relay Information Document
  * GRASP protocol requires this endpoint to list supported GRASP versions
- * 
+ *
  * Endpoint: GET /api/nostr/info
  * Returns: JSON document with relay information including supported_grasps
  */
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   // Handle OPTIONS request for CORS (GRASP requirement)
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res);
@@ -23,20 +27,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   // Get domain from environment or request
-  const domain = process.env.NEXT_PUBLIC_DOMAIN || 
-    (typeof req.headers.host !== 'undefined' ? req.headers.host : 'localhost:3000');
-  
-  const protocol = process.env.NEXT_PUBLIC_PROTOCOL || 
-    (req.headers['x-forwarded-proto'] || (req.headers.host?.includes('localhost') ? 'http' : 'https'));
-  
+  const domain =
+    process.env.NEXT_PUBLIC_DOMAIN ||
+    (typeof req.headers.host !== "undefined"
+      ? req.headers.host
+      : "localhost:3000");
+
+  const protocol =
+    process.env.NEXT_PUBLIC_PROTOCOL ||
+    req.headers["x-forwarded-proto"] ||
+    (req.headers.host?.includes("localhost") ? "http" : "https");
+
   const baseUrl = `${protocol}://${domain}`;
-  
+
   // Get git server URL from environment
   const gitServerUrl = process.env.NEXT_PUBLIC_GIT_SERVER_URL || baseUrl;
-  
+
   // Get default relays from environment
-  const defaultRelays = process.env.NEXT_PUBLIC_NOSTR_RELAYS?.split(',').map(r => r.trim()).filter(Boolean) || 
-    ['wss://relay.damus.io'];
+  const defaultRelays = process.env.NEXT_PUBLIC_NOSTR_RELAYS?.split(",")
+    .map((r) => r.trim())
+    .filter(Boolean) || ["wss://relay.damus.io"];
 
   // Get platform pubkey for NIP-05 verification (optional)
   const platformPubkey = process.env.NEXT_PUBLIC_PLATFORM_PUBKEY || null;
@@ -44,7 +54,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // NIP-11 document with GRASP protocol support
   const nip11Document = {
     name: "gittr Relay",
-    description: "Gittr client with GRASP protocol support for distributed Git hosting",
+    description:
+      "Gittr client with GRASP protocol support for distributed Git hosting",
     pubkey: platformPubkey, // Platform pubkey for NIP-05 verification (e.g., _@gittr.space)
     contact: process.env.NEXT_PUBLIC_CONTACT_EMAIL || "",
     software: "gittr",
@@ -56,7 +67,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Full GRASP compliance requires gittr-relay setup (see docs/GRASP_RELAY_SETUP.md)
     ],
     // GRASP protocol: Repository acceptance criteria
-    repo_acceptance_criteria: "Accepts all public repository announcements (kind 30617, NIP-34 replaceable events) that list this instance in clone or relays tags. Also reads legacy kind 51 for backwards compatibility. For GRASP-05 archive mode, also accepts repos not listing this instance.",
+    repo_acceptance_criteria:
+      "Accepts all public repository announcements (kind 30617, NIP-34 replaceable events) that list this instance in clone or relays tags. Also reads legacy kind 51 for backwards compatibility. For GRASP-05 archive mode, also accepts repos not listing this instance.",
     // Git server information
     git_server_url: gitServerUrl,
     // Relay information (if this instance also runs a relay)
@@ -89,4 +101,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   return res.status(200).json(nip11Document);
 }
-

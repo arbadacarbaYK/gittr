@@ -182,9 +182,11 @@ Handle binary vs text files
 #### ✅ Client-Side (Browser localStorage) - **ALL User Data**
 - **Nostr private keys** (encrypted with user password)
 - **Payment credentials** (LNbits admin keys, LNURL, NWC - encrypted)
-- **Repositories** (metadata, files, readme)
+- **Repositories** (metadata; file trees/overrides persist only for owned or locally edited repos)
 - **Issues & PRs** (all user data)
 - **User settings** (preferences, themes)
+
+**Cache behavior:** View-only foreign repos are kept in memory when possible; anonymous sessions auto-clean gittr repo caches under storage pressure and never touch non-gittr keys.
 
 **✅ All personal data stays on YOUR device - never on the server!**
 

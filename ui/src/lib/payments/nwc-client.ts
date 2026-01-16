@@ -21,11 +21,11 @@ export function parseNWC(uri: string): NWCConfig | null {
     const url = new URL(uri);
     const relay = url.searchParams.get("relay");
     const secret = url.searchParams.get("secret");
-    
+
     if (!relay || !secret) {
       return null;
     }
-    
+
     return { relay, secret };
   } catch {
     return null;
@@ -46,13 +46,13 @@ export async function createNWCInvoice(
   // 3. Sending to NWC relay
   // 4. Receiving response event (kind 23195)
   // 5. Decrypting to get invoice
-  
+
   // Simplified: Return a LNURL-like response
   // In production, this would use proper NWC protocol
-  
+
   throw new Error(
     "Full NWC implementation requires Nostr event encryption. " +
-    "For now, use LNbits for creating invoices or implement full NWC client."
+      "For now, use LNbits for creating invoices or implement full NWC client."
   );
 }
 
@@ -61,4 +61,3 @@ export async function getNWCBalance(config: NWCConfig): Promise<number> {
   // Similar to createInvoice - requires full NWC implementation
   throw new Error("NWC balance check requires full NWC client implementation");
 }
-

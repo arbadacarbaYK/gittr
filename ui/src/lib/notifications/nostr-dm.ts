@@ -1,6 +1,14 @@
 // Send Nostr DM notifications using NIP-04 encryption
-import { getEventHash, signEvent, nip04, getPublicKey, nip19 } from "nostr-tools";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+
+import {
+  getEventHash,
+  getPublicKey,
+  nip04,
+  nip19,
+  signEvent,
+} from "nostr-tools";
+
 import type { EventKey } from "./prefs";
 
 export interface NotificationData {
@@ -66,19 +74,27 @@ export async function sendNostrDM(
           const result = await response.json();
           // Check if API says to use user's key (NOSTR_NSEC not configured)
           if (result.status === "use_user_key") {
-            console.log("Platform key not configured, using user's own key for notification");
+            console.log(
+              "Platform key not configured, using user's own key for notification"
+            );
             // Fall through to use user's key
           } else {
-          console.log("Platform notification sent via API");
-          return;
+            console.log("Platform notification sent via API");
+            return;
           }
         } else {
           const error = await response.json();
-          console.warn("API notification failed, falling back to user key:", error);
+          console.warn(
+            "API notification failed, falling back to user key:",
+            error
+          );
           // Fall through to use user's key as fallback
         }
       } catch (error) {
-        console.warn("API notification request failed, falling back to user key:", error);
+        console.warn(
+          "API notification request failed, falling back to user key:",
+          error
+        );
         // Fall through to use user's key as fallback
       }
     }
@@ -100,7 +116,9 @@ export async function sendNostrDM(
     }
 
     // Format the notification message
-    const messageText = `${data.title}\n\n${data.message}${data.url ? `\n\n${data.url}` : ""}`;
+    const messageText = `${data.title}\n\n${data.message}${
+      data.url ? `\n\n${data.url}` : ""
+    }`;
 
     // Encrypt message using NIP-04
     const encryptedContent = await nip04.encrypt(
@@ -135,9 +153,10 @@ export async function sendNostrDM(
       const envRelays = process.env.NEXT_PUBLIC_NOSTR_RELAYS;
       let defaultRelays: string[];
       if (envRelays && envRelays.trim().length > 0) {
-        const parsed = envRelays.split(",")
-          .map(r => r.trim())
-          .filter(r => r.length > 0 && r.startsWith("wss://"));
+        const parsed = envRelays
+          .split(",")
+          .map((r) => r.trim())
+          .filter((r) => r.length > 0 && r.startsWith("wss://"));
         defaultRelays = parsed.length > 0 ? parsed : getDefaultRelays();
       } else {
         defaultRelays = getDefaultRelays();
@@ -146,9 +165,12 @@ export async function sendNostrDM(
       // Create a temporary relay pool just for this publish
       const tempPool = new RelayPool(defaultRelays);
       tempPool.publish(event, defaultRelays);
-      
-      console.log("Nostr DM notification sent to", recipientHex.slice(0, 8) + "...");
-      
+
+      console.log(
+        "Nostr DM notification sent to",
+        recipientHex.slice(0, 8) + "..."
+      );
+
       // Clean up after a delay (relays will close automatically)
       setTimeout(() => {
         tempPool.close();
@@ -175,4 +197,3 @@ function getDefaultRelays(): string[] {
     "wss://nostr.wine",
   ];
 }
-

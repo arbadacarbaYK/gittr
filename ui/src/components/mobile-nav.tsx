@@ -9,7 +9,6 @@ import { cn } from "@/lib/utils";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-
 import { nip19 } from "nostr-tools";
 
 import { type MainNavItem } from "./main-nav";
@@ -56,12 +55,12 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
             <div className="flex items-center p-3 space-x-2">
               <Avatar className="w-8 h-8 overflow-hidden shrink-0">
                 {picture && picture.startsWith("http") ? (
-                  <AvatarImage 
-                    src={picture} 
-                    className="w-8 h-8 object-cover max-w-8 max-h-8" 
-                    decoding="async" 
+                  <AvatarImage
+                    src={picture}
+                    className="w-8 h-8 object-cover max-w-8 max-h-8"
+                    decoding="async"
                     loading="lazy"
-                    style={{ maxWidth: '2rem', maxHeight: '2rem' }}
+                    style={{ maxWidth: "2rem", maxHeight: "2rem" }}
                   />
                 ) : null}
                 <AvatarFallback>{initials}</AvatarFallback>
@@ -72,19 +71,22 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
 
           {DropdownItems.filter((item) => item.mobile !== false).map(
             (filteredItem, index) => {
-              const href = filteredItem.href === "/profile" ? profileHref : filteredItem.href;
+              const href =
+                filteredItem.href === "/profile"
+                  ? profileHref
+                  : filteredItem.href;
               return (
-              <Link
-                key={index}
-                href={href}
-                onClick={onClick}
-                className={cn(
-                  "hover:text-gray-400 flex w-full items-center border-b border-b-lightgray p-3 text-sm font-medium "
-                )}
-              >
-                {filteredItem.title}
-              </Link>
-            );
+                <Link
+                  key={index}
+                  href={href}
+                  onClick={onClick}
+                  className={cn(
+                    "hover:text-gray-400 flex w-full items-center border-b border-b-lightgray p-3 text-sm font-medium "
+                  )}
+                >
+                  {filteredItem.title}
+                </Link>
+              );
             }
           )}
 

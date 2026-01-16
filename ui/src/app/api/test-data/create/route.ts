@@ -9,7 +9,7 @@ export async function POST() {
     // This endpoint just returns instructions for creating test data
     // Actual data creation must happen in the browser (client-side)
     // since we need access to localStorage
-    
+
     return NextResponse.json({
       success: true,
       message: "Test data script available. Run it in browser console.",
@@ -49,7 +49,7 @@ window.dispatchEvent(new CustomEvent("gittr:issue-created"));
 window.dispatchEvent(new CustomEvent("gittr:pr-created"));
 
 alert("✅ Test data created! Refresh the page.");
-      `.trim()
+      `.trim(),
     });
   } catch (error) {
     return NextResponse.json(
@@ -58,4 +58,3 @@ alert("✅ Test data created! Refresh the page.");
     );
   }
 }
-

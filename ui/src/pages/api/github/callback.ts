@@ -1,7 +1,11 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+import type { NextApiRequest, NextApiResponse } from "next";
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   // Handle OPTIONS request for CORS (GRASP requirement)
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res);
@@ -19,7 +23,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   // CRITICAL: State verification - check both cookie (server-side) and allow state from query (fallback)
   // The cookie might not be available in popup context, so we'll verify state in the callback HTML
   // by checking it against what the parent window stored in sessionStorage
-  
+
   // If there's an error from GitHub, pass it to parent
   if (error) {
     const html = `
@@ -30,17 +34,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 </head>
 <body>
   <script>
-    console.log('[OAuth Callback] Error from GitHub:', ${JSON.stringify(error)});
+    console.log('[OAuth Callback] Error from GitHub:', ${JSON.stringify(
+      error
+    )});
     setTimeout(() => {
       if (window.opener && !window.opener.closed) {
         window.opener.postMessage({
           type: 'GITHUB_OAUTH_CALLBACK',
           error: ${JSON.stringify(error)},
-          errorDescription: ${JSON.stringify(req.query.error_description || null)}
+          errorDescription: ${JSON.stringify(
+            req.query.error_description || null
+          )}
         }, window.location.origin);
         setTimeout(() => window.close(), 1000);
       } else {
-        window.location.href = '/settings/ssh-keys?error=' + encodeURIComponent(${JSON.stringify(error)});
+        window.location.href = '/settings/ssh-keys?error=' + encodeURIComponent(${JSON.stringify(
+          error
+        )});
       }
     }, 100);
   </script>
@@ -82,20 +92,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     res.setHeader("Content-Type", "text/html");
     return res.status(200).send(html);
   }
-  
+
   // Verify state - check cookie if available, but proceed anyway (frontend will verify)
   // The cookie might not be available in popup context, so we'll verify in the callback HTML
   const stateStr = Array.isArray(state) ? state[0] : state;
-  const cookieStateStr = Array.isArray(cookieState) ? cookieState[0] : cookieState;
+  const cookieStateStr = Array.isArray(cookieState)
+    ? cookieState[0]
+    : cookieState;
   const stateMatchesCookie = cookieStateStr && stateStr === cookieStateStr;
-  
+
   // If state doesn't match cookie, log warning but proceed (frontend will verify)
   if (!stateMatchesCookie && cookieStateStr) {
-    console.warn(`⚠️ [GitHub OAuth] State mismatch: cookie=${cookieStateStr.substring(0, 8)}..., query=${stateStr?.substring(0, 8)}...`);
+    console.warn(
+      `⚠️ [GitHub OAuth] State mismatch: cookie=${cookieStateStr.substring(
+        0,
+        8
+      )}..., query=${stateStr?.substring(0, 8)}...`
+    );
   }
 
   const codeStr = Array.isArray(code) ? code[0] : code;
-  
+
   if (!codeStr) {
     const html = `
 <!DOCTYPE html>
@@ -127,50 +144,69 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const CLIENT_ID = process.env.GITHUB_CLIENT_ID || "";
     const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || "";
-    
+
     // Determine redirect URI - must match what was used in auth.ts
     // Use origin header if available, otherwise construct from host header
-    const requestOrigin = req.headers.origin || (req.headers.host ? `https://${req.headers.host}` : null);
-    const REDIRECT_URI = process.env.GITHUB_REDIRECT_URI || (requestOrigin ? `${requestOrigin}/api/github/callback` : null);
-    
-    console.log('[GitHub Callback] Redirect URI:', { 
+    const requestOrigin =
+      req.headers.origin ||
+      (req.headers.host ? `https://${req.headers.host}` : null);
+    const REDIRECT_URI =
+      process.env.GITHUB_REDIRECT_URI ||
+      (requestOrigin ? `${requestOrigin}/api/github/callback` : null);
+
+    console.log("[GitHub Callback] Redirect URI:", {
       fromEnv: !!process.env.GITHUB_REDIRECT_URI,
       requestOrigin,
-      finalRedirectUri: REDIRECT_URI?.substring(0, 50) + '...',
-      actualUrl: req.url
+      finalRedirectUri: REDIRECT_URI?.substring(0, 50) + "...",
+      actualUrl: req.url,
     });
-    
+
     if (!REDIRECT_URI) {
       throw new Error("GitHub OAuth redirect URI not configured");
     }
 
     if (!CLIENT_ID || !CLIENT_SECRET) {
-      console.error("[GitHub OAuth] Missing credentials:", { hasClientId: !!CLIENT_ID, hasClientSecret: !!CLIENT_SECRET });
-      throw new Error("GitHub OAuth not configured. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET environment variables.");
+      console.error("[GitHub OAuth] Missing credentials:", {
+        hasClientId: !!CLIENT_ID,
+        hasClientSecret: !!CLIENT_SECRET,
+      });
+      throw new Error(
+        "GitHub OAuth not configured. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET environment variables."
+      );
     }
 
-    console.log("[GitHub OAuth] Exchanging code for token...", { hasCode: !!codeStr, redirectUri: REDIRECT_URI });
+    console.log("[GitHub OAuth] Exchanging code for token...", {
+      hasCode: !!codeStr,
+      redirectUri: REDIRECT_URI,
+    });
 
     // Exchange code for access token
-    const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-      },
-      body: JSON.stringify({
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
-        code: codeStr,
-        redirect_uri: REDIRECT_URI,
-      }),
-    });
+    const tokenResponse = await fetch(
+      "https://github.com/login/oauth/access_token",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          client_id: CLIENT_ID,
+          client_secret: CLIENT_SECRET,
+          code: codeStr,
+          redirect_uri: REDIRECT_URI,
+        }),
+      }
+    );
 
     const tokenData = await tokenResponse.json();
 
     if (tokenData.error) {
       console.error("[GitHub OAuth] Token exchange error:", tokenData);
-      throw new Error(tokenData.error_description || tokenData.error || "Failed to exchange code for token");
+      throw new Error(
+        tokenData.error_description ||
+          tokenData.error ||
+          "Failed to exchange code for token"
+      );
     }
 
     if (!tokenData.access_token) {
@@ -179,24 +215,33 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const accessToken = tokenData.access_token;
-    console.log("[GitHub OAuth] Token exchange successful, fetching user profile...");
+    console.log(
+      "[GitHub OAuth] Token exchange successful, fetching user profile..."
+    );
 
     // Get user profile from GitHub
     const userResponse = await fetch("https://api.github.com/user", {
       headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "Accept": "application/vnd.github.v3+json",
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github.v3+json",
       },
     });
 
     if (!userResponse.ok) {
       const errorText = await userResponse.text();
-      console.error("[GitHub OAuth] Failed to fetch user profile:", { status: userResponse.status, error: errorText });
-      throw new Error(`Failed to fetch GitHub profile: ${userResponse.status} ${errorText}`);
+      console.error("[GitHub OAuth] Failed to fetch user profile:", {
+        status: userResponse.status,
+        error: errorText,
+      });
+      throw new Error(
+        `Failed to fetch GitHub profile: ${userResponse.status} ${errorText}`
+      );
     }
 
     const userData = await userResponse.json();
-    console.log("[GitHub OAuth] User profile fetched successfully:", { username: userData.login });
+    console.log("[GitHub OAuth] User profile fetched successfully:", {
+      username: userData.login,
+    });
 
     // Return HTML that posts success message to parent window
     const html = `
@@ -255,10 +300,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         // CRITICAL: Always store token in localStorage first (fallback if parent window is unavailable)
         // Since popup and parent share the same origin, localStorage is accessible to both
         try {
-          localStorage.setItem("gittr_github_token", ${JSON.stringify(accessToken)});
+          localStorage.setItem("gittr_github_token", ${JSON.stringify(
+            accessToken
+          )});
           localStorage.setItem("gittr_github_profile", JSON.stringify({
             githubUsername: ${JSON.stringify(userData.login)},
-            githubUrl: ${JSON.stringify(`https://github.com/${userData.login}`)},
+            githubUrl: ${JSON.stringify(
+              `https://github.com/${userData.login}`
+            )},
             githubId: ${JSON.stringify(userData.id)},
             avatarUrl: ${JSON.stringify(userData.avatar_url)}
           }));
@@ -341,7 +390,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).send(html);
   } catch (error: any) {
     console.error("GitHub OAuth error:", error);
-    const errorMessage = error?.message || error?.toString() || "OAuth flow failed";
+    const errorMessage =
+      error?.message || error?.toString() || "OAuth flow failed";
     const errorStr = JSON.stringify(errorMessage);
     const html = `
 <!DOCTYPE html>
@@ -392,4 +442,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).send(html);
   }
 }
-

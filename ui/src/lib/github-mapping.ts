@@ -1,5 +1,4 @@
 // GitHub to Nostr user mapping utilities
-
 import { sanitizeContributors } from "./utils/contributors";
 
 export interface GitHubMapping {
@@ -16,7 +15,9 @@ export interface GitHubContributor {
 export function getGithubProfile(pubkey: string): string | null {
   if (typeof window === "undefined") return null;
   try {
-    const mappings = JSON.parse(localStorage.getItem("gittr_github_mappings") || "{}") as GitHubMapping;
+    const mappings = JSON.parse(
+      localStorage.getItem("gittr_github_mappings") || "{}"
+    ) as GitHubMapping;
     return mappings[pubkey] || null;
   } catch {
     return null;
@@ -31,21 +32,25 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 // Query Nostr for GitHub identity mappings via NIP-39
 // This queries all Kind 0 events with "i" tags containing "github:username"
 export async function queryGithubIdentitiesFromNostr(
-  subscribe: (filters: any[], relays: string[], callback: (event: any, isAfterEose: boolean, relayURL?: string) => void) => () => void,
+  subscribe: (
+    filters: any[],
+    relays: string[],
+    callback: (event: any, isAfterEose: boolean, relayURL?: string) => void
+  ) => () => void,
   defaultRelays: string[],
   githubLogins: string[]
 ): Promise<Map<string, string>> {
   if (typeof window === "undefined") return new Map();
-  
+
   // Check cache first
   const now = Date.now();
-  if (githubIdentityCache && (now - githubIdentityCacheTimestamp) < CACHE_TTL) {
+  if (githubIdentityCache && now - githubIdentityCacheTimestamp < CACHE_TTL) {
     return githubIdentityCache;
   }
-  
+
   const identityMap = new Map<string, string>();
-  const githubLoginsLower = new Set(githubLogins.map(l => l.toLowerCase()));
-  
+  const githubLoginsLower = new Set(githubLogins.map((l) => l.toLowerCase()));
+
   return new Promise((resolve) => {
     let resolved = false;
     const timeout = setTimeout(() => {
@@ -53,11 +58,13 @@ export async function queryGithubIdentitiesFromNostr(
         resolved = true;
         githubIdentityCache = identityMap;
         githubIdentityCacheTimestamp = Date.now();
-        console.log(`✅ [GitHub Identity] Cached ${identityMap.size} GitHub identity mappings from Nostr`);
+        console.log(
+          `✅ [GitHub Identity] Cached ${identityMap.size} GitHub identity mappings from Nostr`
+        );
         resolve(identityMap);
       }
     }, 10000); // 10 second timeout
-    
+
     // Query all Kind 0 events (we'll filter by i tags in the callback)
     // Note: We can't filter by i tags in the filter itself (not all relays support it)
     const unsub = subscribe(
@@ -69,23 +76,35 @@ export async function queryGithubIdentitiesFromNostr(
           for (const tag of event.tags) {
             if (Array.isArray(tag) && tag.length >= 2 && tag[0] === "i") {
               const identityString = tag[1];
-              if (typeof identityString === "string" && identityString.startsWith("github:")) {
-                const githubUsername = identityString.substring(7).toLowerCase(); // Remove "github:" prefix
+              if (
+                typeof identityString === "string" &&
+                identityString.startsWith("github:")
+              ) {
+                const githubUsername = identityString
+                  .substring(7)
+                  .toLowerCase(); // Remove "github:" prefix
                 if (githubLoginsLower.has(githubUsername)) {
                   identityMap.set(githubUsername, event.pubkey.toLowerCase());
-                  console.log(`🔗 [GitHub Identity] Found mapping: ${githubUsername} -> ${event.pubkey.slice(0, 8)}...`);
+                  console.log(
+                    `🔗 [GitHub Identity] Found mapping: ${githubUsername} -> ${event.pubkey.slice(
+                      0,
+                      8
+                    )}...`
+                  );
                 }
               }
             }
           }
         }
-        
+
         if (isAfterEose && !resolved) {
           resolved = true;
           clearTimeout(timeout);
           githubIdentityCache = identityMap;
           githubIdentityCacheTimestamp = Date.now();
-          console.log(`✅ [GitHub Identity] Cached ${identityMap.size} GitHub identity mappings from Nostr (EOSE)`);
+          console.log(
+            `✅ [GitHub Identity] Cached ${identityMap.size} GitHub identity mappings from Nostr (EOSE)`
+          );
           unsub();
           resolve(identityMap);
         }
@@ -100,58 +119,82 @@ export function getPubkeyFromGithub(githubLogin: string): string | null {
   if (typeof window === "undefined") return null;
   try {
     // First, check localStorage mappings
-    const mappings = JSON.parse(localStorage.getItem("gittr_github_mappings") || "{}") as GitHubMapping;
+    const mappings = JSON.parse(
+      localStorage.getItem("gittr_github_mappings") || "{}"
+    ) as GitHubMapping;
     // Regex to extract username from GitHub URLs (handles https://, http://, git@, www., etc.)
-    const githubUrlRegex = /(?:git@|https?:\/\/)?(?:www\.)?github\.com[:/]?(?:\/)?([\w\-\.]+)/i;
-    
+    const githubUrlRegex =
+      /(?:git@|https?:\/\/)?(?:www\.)?github\.com[:/]?(?:\/)?([\w\-\.]+)/i;
+
     // DEBUG: Log all mappings to diagnose issues
     const mappingCount = Object.keys(mappings).length;
     if (mappingCount > 0) {
-      console.debug(`🔍 [GitHub Mapping] Checking ${mappingCount} localStorage mappings for login: ${githubLogin}`);
+      console.debug(
+        `🔍 [GitHub Mapping] Checking ${mappingCount} localStorage mappings for login: ${githubLogin}`
+      );
     }
-    
+
     for (const pubkey in mappings) {
       const githubUrlRaw = mappings[pubkey];
       // Skip undefined/null values
       if (typeof githubUrlRaw !== "string" || !githubUrlRaw) continue;
-      
+
       // Extract username using regex - much simpler!
       const match = githubUrlRaw.match(githubUrlRegex);
       if (!match || !match[1]) continue;
-      
+
       const username = match[1].toLowerCase();
       const loginLower = githubLogin.toLowerCase();
-      
+
       // CRITICAL: Only return pubkey if username EXACTLY matches login (case-insensitive)
       // This prevents partial matches or incorrect assignments
       if (username === loginLower) {
-        console.debug(`✅ [GitHub Mapping] Found exact match: ${githubLogin} -> ${pubkey.slice(0, 8)}...`);
+        console.debug(
+          `✅ [GitHub Mapping] Found exact match: ${githubLogin} -> ${pubkey.slice(
+            0,
+            8
+          )}...`
+        );
         return pubkey;
       } else {
         // DEBUG: Log near-matches to diagnose issues
         if (username.includes(loginLower) || loginLower.includes(username)) {
-          console.debug(`⚠️ [GitHub Mapping] Near-match (not using): ${githubLogin} vs ${username} (from ${githubUrlRaw})`);
+          console.debug(
+            `⚠️ [GitHub Mapping] Near-match (not using): ${githubLogin} vs ${username} (from ${githubUrlRaw})`
+          );
         }
       }
     }
-    
+
     // Second, check NIP-39 identity cache (if available)
     if (githubIdentityCache) {
       const cachedPubkey = githubIdentityCache.get(githubLogin.toLowerCase());
       if (cachedPubkey) {
-        console.debug(`✅ [GitHub Mapping] Found NIP-39 mapping: ${githubLogin} -> ${cachedPubkey.slice(0, 8)}...`);
+        console.debug(
+          `✅ [GitHub Mapping] Found NIP-39 mapping: ${githubLogin} -> ${cachedPubkey.slice(
+            0,
+            8
+          )}...`
+        );
         return cachedPubkey;
       }
     }
-    
+
     // DEBUG: Log when no mapping is found
     if (mappingCount > 0 || githubIdentityCache) {
-      console.debug(`❌ [GitHub Mapping] No mapping found for: ${githubLogin} (checked ${mappingCount} localStorage + ${githubIdentityCache ? githubIdentityCache.size : 0} NIP-39)`);
+      console.debug(
+        `❌ [GitHub Mapping] No mapping found for: ${githubLogin} (checked ${mappingCount} localStorage + ${
+          githubIdentityCache ? githubIdentityCache.size : 0
+        } NIP-39)`
+      );
     }
-    
+
     return null;
   } catch (error) {
-    console.error(`❌ [GitHub Mapping] Error in getPubkeyFromGithub for ${githubLogin}:`, error);
+    console.error(
+      `❌ [GitHub Mapping] Error in getPubkeyFromGithub for ${githubLogin}:`,
+      error
+    );
     return null;
   }
 }
@@ -165,29 +208,43 @@ export function mapGithubContributors(
   currentUserPubkey?: string,
   currentUserPicture?: string,
   keepAnonymous: boolean = true, // DEFAULT: Keep all contributors (changed from false)
-  nostrMetadata?: Record<string, { picture?: string; name?: string; display_name?: string }> // Optional: Nostr metadata map for all contributors
-): Array<{pubkey?: string; name?: string; picture?: string; weight: number; githubLogin?: string; role?: "owner" | "maintainer" | "contributor"}> {
+  nostrMetadata?: Record<
+    string,
+    { picture?: string; name?: string; display_name?: string }
+  > // Optional: Nostr metadata map for all contributors
+): Array<{
+  pubkey?: string;
+  name?: string;
+  picture?: string;
+  weight: number;
+  githubLogin?: string;
+  role?: "owner" | "maintainer" | "contributor";
+}> {
   // Filter out invalid entries (missing login) before processing
-  const validContributors = githubContributors.filter((contrib) => 
-    contrib && 
-    typeof contrib === 'object' && 
-    contrib.login && 
-    typeof contrib.login === 'string' &&
-    contrib.login.trim().length > 0
+  const validContributors = githubContributors.filter(
+    (contrib) =>
+      contrib &&
+      typeof contrib === "object" &&
+      contrib.login &&
+      typeof contrib.login === "string" &&
+      contrib.login.trim().length > 0
   );
-  
+
   if (validContributors.length !== githubContributors.length) {
   }
-  
+
   const mapped = validContributors
     .map((contrib) => {
       const pubkey = getPubkeyFromGithub(contrib.login);
-      
+
       // DEBUG: Log pubkey lookup to diagnose issues
-      if (validContributors.indexOf(contrib) < 3) { // Only log first 3 to avoid spam
+      if (validContributors.indexOf(contrib) < 3) {
+        // Only log first 3 to avoid spam
         console.debug("🔎 [GitHub Mapping] Contributor lookup", {
           login: contrib.login,
-          pubkey: pubkey ? `${pubkey.slice(0, 8)}...` : "none (not in mappings)",
+          pubkey: pubkey
+            ? `${pubkey.slice(0, 8)}...`
+            : "none (not in mappings)",
           contributions: contrib.contributions,
         });
       }
@@ -195,7 +252,7 @@ export function mapGithubContributors(
       // For role assignment: owner = 100, maintainer = 50-99, contributor = 1-49
       const contributions = contrib.contributions || 0;
       const weight = Math.min(contributions, 100); // Cap at 100 for role purposes
-      
+
       // Determine role based on contributions (heuristic)
       // Owner is typically the one with most contributions, but we'll let settings override this
       let role: "owner" | "maintainer" | "contributor" | undefined = undefined;
@@ -206,31 +263,37 @@ export function mapGithubContributors(
       } else if (weight > 0) {
         role = "contributor";
       }
-      
+
       // Picture priority:
       // 1. Nostr profile picture (if contributor has claimed identity and metadata is available)
       // 2. Current user's Nostr picture (if this contributor is the current user and no metadata)
       // 3. GitHub/GitLab/Codeberg avatar (always available as fallback)
       let picture: string | undefined = contrib.avatar_url || undefined;
-      
+
       // Get metadata for this contributor if available
-      const contribMetadata = pubkey && nostrMetadata ? nostrMetadata[pubkey] : undefined;
-      
+      const contribMetadata =
+        pubkey && nostrMetadata ? nostrMetadata[pubkey] : undefined;
+
       if (contribMetadata?.picture) {
         // Use Nostr profile picture if available (for any contributor who has claimed identity)
         picture = contribMetadata.picture;
-      } else if (pubkey && pubkey === currentUserPubkey && currentUserPicture && currentUserPicture.trim().length > 0) {
+      } else if (
+        pubkey &&
+        pubkey === currentUserPubkey &&
+        currentUserPicture &&
+        currentUserPicture.trim().length > 0
+      ) {
         // Fallback: Use current user's Nostr picture if no metadata map provided
         picture = currentUserPicture;
       }
-      
+
       // Name priority:
       // 1. Nostr display_name or name
       // 2. GitHub/GitLab/Codeberg login
       const name = contribMetadata
-        ? (contribMetadata.display_name || contribMetadata.name || contrib.login)
+        ? contribMetadata.display_name || contribMetadata.name || contrib.login
         : contrib.login;
-      
+
       return {
         pubkey: pubkey || undefined,
         name,
