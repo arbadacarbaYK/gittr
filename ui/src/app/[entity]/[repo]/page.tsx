@@ -213,7 +213,7 @@ const createMarkdownHeadingComponents = (
         return <Tag {...props}>{children}</Tag>;
       }
 
-      const handleCopy = (event: React.MouseEvent<HTMLElement>) => {
+      const handleCopy = (event: React.MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
         event.stopPropagation();
         if (typeof window === "undefined") return;
@@ -234,8 +234,8 @@ const createMarkdownHeadingComponents = (
             >
               {children}
             </a>
-            <a
-              href={`#${id}`}
+            <button
+              type="button"
               onClick={handleCopy}
               className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-purple-300"
               aria-label={
@@ -244,7 +244,7 @@ const createMarkdownHeadingComponents = (
               title="Copy link to heading"
             >
               <Link2 className="h-3.5 w-3.5" />
-            </a>
+            </button>
           </span>
         </Tag>
       );
