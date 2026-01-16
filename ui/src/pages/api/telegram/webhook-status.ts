@@ -1,13 +1,17 @@
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+
 import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
 
 /**
  * Check Telegram webhook status and configuration
- * 
+ *
  * GET /api/telegram/webhook-status
  * Returns webhook info and test results
  */
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   // Handle OPTIONS request for CORS
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res);
@@ -25,9 +29,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const telegramChatId = process.env.TELEGRAM_CHAT_ID;
 
   if (!telegramBotToken) {
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: "not_configured",
-      message: "TELEGRAM_BOT_TOKEN not configured" 
+      message: "TELEGRAM_BOT_TOKEN not configured",
     });
   }
 
@@ -35,7 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Get webhook info from Telegram
     const webhookInfoUrl = `https://api.telegram.org/bot${telegramBotToken}/getWebhookInfo`;
     const webhookResponse = await fetch(webhookInfoUrl);
-    
+
     if (!webhookResponse.ok) {
       const errorText = await webhookResponse.text();
       return res.status(500).json({
@@ -46,7 +50,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const webhookInfo = await webhookResponse.json();
-    
+
     // Get bot info
     const botInfoUrl = `https://api.telegram.org/bot${telegramBotToken}/getMe`;
     const botInfoResponse = await fetch(botInfoUrl);
@@ -83,17 +87,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         lastErrorMessage: webhookInfo.result?.last_error_message || null,
       },
       recommendations: [
-        !webhookInfo.result?.url && "Webhook is not configured. Set it with: curl -X POST \"https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://yourdomain.com/api/telegram/webhook\"",
-        webhookInfo.result?.last_error_message && `Webhook has errors: ${webhookInfo.result.last_error_message}`,
-        webhookInfo.result?.pending_update_count > 0 && `There are ${webhookInfo.result.pending_update_count} pending updates`,
-        !channelInfo && telegramChatId && "Bot might not have access to the channel. Make sure the bot is added as an admin.",
+        !webhookInfo.result?.url &&
+          'Webhook is not configured. Set it with: curl -X POST "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://yourdomain.com/api/telegram/webhook"',
+        webhookInfo.result?.last_error_message &&
+          `Webhook has errors: ${webhookInfo.result.last_error_message}`,
+        webhookInfo.result?.pending_update_count > 0 &&
+          `There are ${webhookInfo.result.pending_update_count} pending updates`,
+        !channelInfo &&
+          telegramChatId &&
+          "Bot might not have access to the channel. Make sure the bot is added as an admin.",
       ].filter(Boolean),
     });
   } catch (error: any) {
     console.error("Error checking webhook status:", error);
-    return res.status(500).json({ 
-      error: "check_failed", 
-      message: error.message 
+    return res.status(500).json({
+      error: "check_failed",
+      message: error.message,
     });
   }
 }

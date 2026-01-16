@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Edit, Save, X } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+
+import { Edit, Save, X } from "lucide-react";
 
 interface FileDiffViewerProps {
   path: string;
@@ -89,46 +91,86 @@ export function FileDiffViewer({
   // Simple line-by-line diff (basic implementation)
   const calculateDiff = (beforeText: string = "", afterText: string = "") => {
     if (!beforeText && !afterText) return [];
-    
+
     const beforeLines = (beforeText || "").split("\n");
     const afterLines = (afterText || "").split("\n");
-    const diff: Array<{ line: string; type: "removed" | "added" | "unchanged"; lineNumber?: number }> = [];
-    
+    const diff: Array<{
+      line: string;
+      type: "removed" | "added" | "unchanged";
+      lineNumber?: number;
+    }> = [];
+
     let beforeIdx = 0;
     let afterIdx = 0;
-    
+
     while (beforeIdx < beforeLines.length || afterIdx < afterLines.length) {
-      const beforeLine = beforeIdx < beforeLines.length ? beforeLines[beforeIdx] : undefined;
-      const afterLine = afterIdx < afterLines.length ? afterLines[afterIdx] : undefined;
-      
+      const beforeLine =
+        beforeIdx < beforeLines.length ? beforeLines[beforeIdx] : undefined;
+      const afterLine =
+        afterIdx < afterLines.length ? afterLines[afterIdx] : undefined;
+
       if (beforeIdx >= beforeLines.length && afterLine !== undefined) {
         // Only after lines left
         diff.push({ line: afterLine, type: "added", lineNumber: afterIdx + 1 });
         afterIdx++;
       } else if (afterIdx >= afterLines.length && beforeLine !== undefined) {
         // Only before lines left
-        diff.push({ line: beforeLine, type: "removed", lineNumber: beforeIdx + 1 });
+        diff.push({
+          line: beforeLine,
+          type: "removed",
+          lineNumber: beforeIdx + 1,
+        });
         beforeIdx++;
-      } else if (beforeLine !== undefined && afterLine !== undefined && beforeLine === afterLine) {
+      } else if (
+        beforeLine !== undefined &&
+        afterLine !== undefined &&
+        beforeLine === afterLine
+      ) {
         // Unchanged line
-        diff.push({ line: beforeLine, type: "unchanged", lineNumber: beforeIdx + 1 });
+        diff.push({
+          line: beforeLine,
+          type: "unchanged",
+          lineNumber: beforeIdx + 1,
+        });
         beforeIdx++;
         afterIdx++;
       } else if (beforeLine !== undefined && afterLine !== undefined) {
         // Check if line was moved (simple check: next line matches)
-        const nextBefore = beforeIdx + 1 < beforeLines.length ? beforeLines[beforeIdx + 1] : undefined;
-        const nextAfter = afterIdx + 1 < afterLines.length ? afterLines[afterIdx + 1] : undefined;
-        
+        const nextBefore =
+          beforeIdx + 1 < beforeLines.length
+            ? beforeLines[beforeIdx + 1]
+            : undefined;
+        const nextAfter =
+          afterIdx + 1 < afterLines.length
+            ? afterLines[afterIdx + 1]
+            : undefined;
+
         if (nextBefore !== undefined && nextBefore === afterLine) {
-          diff.push({ line: beforeLine, type: "removed", lineNumber: beforeIdx + 1 });
+          diff.push({
+            line: beforeLine,
+            type: "removed",
+            lineNumber: beforeIdx + 1,
+          });
           beforeIdx++;
         } else if (nextAfter !== undefined && beforeLine === nextAfter) {
-          diff.push({ line: afterLine, type: "added", lineNumber: afterIdx + 1 });
+          diff.push({
+            line: afterLine,
+            type: "added",
+            lineNumber: afterIdx + 1,
+          });
           afterIdx++;
         } else {
           // Changed line
-          diff.push({ line: beforeLine, type: "removed", lineNumber: beforeIdx + 1 });
-          diff.push({ line: afterLine, type: "added", lineNumber: afterIdx + 1 });
+          diff.push({
+            line: beforeLine,
+            type: "removed",
+            lineNumber: beforeIdx + 1,
+          });
+          diff.push({
+            line: afterLine,
+            type: "added",
+            lineNumber: afterIdx + 1,
+          });
           beforeIdx++;
           afterIdx++;
         }
@@ -137,11 +179,14 @@ export function FileDiffViewer({
         break;
       }
     }
-    
+
     return diff;
   };
 
-  const diffLines = before !== undefined && after !== undefined ? calculateDiff(before, after) : [];
+  const diffLines =
+    before !== undefined && after !== undefined
+      ? calculateDiff(before, after)
+      : [];
 
   return (
     <div className="border border-gray-700 rounded">
@@ -206,7 +251,8 @@ export function FileDiffViewer({
             rows={20}
           />
           <p className="text-xs text-gray-400 mt-2">
-            Edit the file content. Your changes will be applied when merging the PR.
+            Edit the file content. Your changes will be applied when merging the
+            PR.
           </p>
         </div>
       ) : shouldRenderBinaryPreview ? (
@@ -272,12 +318,20 @@ export function FileDiffViewer({
                       }`}
                     >
                       <td className="w-12 px-2 py-1 text-xs text-gray-500 text-right border-r border-gray-700 select-none">
-                        {line.type === "removed" || line.type === "unchanged" ? line.lineNumber : ""}
+                        {line.type === "removed" || line.type === "unchanged"
+                          ? line.lineNumber
+                          : ""}
                       </td>
                       <td className="w-12 px-2 py-1 text-xs text-gray-500 text-right border-r border-gray-700 select-none">
-                        {line.type === "added" || line.type === "unchanged" ? line.lineNumber : ""}
+                        {line.type === "added" || line.type === "unchanged"
+                          ? line.lineNumber
+                          : ""}
                       </td>
-                      <td className={`px-4 py-1 text-sm ${isMonospace ? "font-mono" : ""} whitespace-pre-wrap`}>
+                      <td
+                        className={`px-4 py-1 text-sm ${
+                          isMonospace ? "font-mono" : ""
+                        } whitespace-pre-wrap`}
+                      >
                         <span
                           className={
                             line.type === "added"
@@ -310,7 +364,11 @@ export function FileDiffViewer({
                   <div className="p-2 bg-[#0E1116] border-r border-gray-700 text-xs text-gray-400 font-semibold">
                     Before
                   </div>
-                  <pre className={`bg-[#0E1116] p-4 overflow-auto text-sm ${isMonospace ? "font-mono" : "font-sans"} whitespace-pre-wrap text-gray-300 border-r border-gray-700 max-h-[40vh]`}>
+                  <pre
+                    className={`bg-[#0E1116] p-4 overflow-auto text-sm ${
+                      isMonospace ? "font-mono" : "font-sans"
+                    } whitespace-pre-wrap text-gray-300 border-r border-gray-700 max-h-[40vh]`}
+                  >
                     {before}
                   </pre>
                 </div>
@@ -320,7 +378,11 @@ export function FileDiffViewer({
                   <div className="p-2 bg-[#0E1116] text-xs text-gray-400 font-semibold">
                     After
                   </div>
-                  <pre className={`bg-[#0E1116] p-4 overflow-auto text-sm ${isMonospace ? "font-mono" : "font-sans"} whitespace-pre-wrap text-gray-100 max-h-[40vh]`}>
+                  <pre
+                    className={`bg-[#0E1116] p-4 overflow-auto text-sm ${
+                      isMonospace ? "font-mono" : "font-sans"
+                    } whitespace-pre-wrap text-gray-100 max-h-[40vh]`}
+                  >
                     {after}
                   </pre>
                 </div>
@@ -332,4 +394,3 @@ export function FileDiffViewer({
     </div>
   );
 }
-

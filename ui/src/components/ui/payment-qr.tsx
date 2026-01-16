@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
-import { getEventHash, signEvent, getPublicKey, nip04 } from "nostr-tools";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+
+import { CheckCircle, Copy, Download, X } from "lucide-react";
+import { getEventHash, getPublicKey, nip04, signEvent } from "nostr-tools";
+import { QRCodeSVG } from "qrcode.react";
+
 // NIP-44 is only available in nostr-tools v2.x+, so we'll import it conditionally at runtime
 // This avoids build errors when nip44 doesn't exist in v1.7.4
 let nip44: any = undefined;
@@ -16,9 +22,6 @@ if (typeof window !== "undefined") {
     // nip44 not available in this version
   }
 }
-import { X, Copy, Download, CheckCircle } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
-import { Button } from "@/components/ui/button";
 
 interface PaymentQRProps {
   invoice: string | null; // Lightning invoice (BOLT11) - null if error
@@ -33,43 +36,62 @@ interface PaymentQRProps {
   error?: string | null; // Optional error message to display
 }
 
-export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdminKey, nwcUri: propNwcUri, onClose, onPaid, extra, error }: PaymentQRProps) {
+export function PaymentQR({
+  invoice,
+  amount,
+  paymentHash,
+  lnbitsUrl,
+  lnbitsAdminKey,
+  nwcUri: propNwcUri,
+  onClose,
+  onPaid,
+  extra,
+  error,
+}: PaymentQRProps) {
   const [copied, setCopied] = useState(false);
   const [nwcUri, setNwcUri] = useState<string | null>(propNwcUri || null);
   const [paid, setPaid] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState<"pending" | "paid" | "checking">("pending");
+  const [paymentStatus, setPaymentStatus] = useState<
+    "pending" | "paid" | "checking"
+  >("pending");
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   const cleanInvoice = (invoice || "").replace(/^lightning:/i, "");
 
   // Get QR style from settings
   const [qrStyle, setQrStyle] = useState("classic");
-  
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const style = localStorage.getItem("gittr_qr_style") || "classic";
     setQrStyle(style);
-    
+
     // Listen for storage changes (when QR style is changed in settings)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === "gittr_qr_style") {
         setQrStyle(e.newValue || "classic");
       }
     };
-    
+
     window.addEventListener("storage", handleStorageChange);
-    
+
     // Also listen for custom events (same-tab changes)
     const handleCustomEvent = () => {
       const style = localStorage.getItem("gittr_qr_style") || "classic";
       setQrStyle(style);
     };
-    
-    window.addEventListener("qr-style-changed", handleCustomEvent as EventListener);
-    
+
+    window.addEventListener(
+      "qr-style-changed",
+      handleCustomEvent as EventListener
+    );
+
     return () => {
       window.removeEventListener("storage", handleStorageChange);
-      window.removeEventListener("qr-style-changed", handleCustomEvent as EventListener);
+      window.removeEventListener(
+        "qr-style-changed",
+        handleCustomEvent as EventListener
+      );
     };
   }, []);
 
@@ -79,14 +101,14 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
     const applyStyles = () => {
       const container = document.getElementById("qr-container");
       if (!container) return false;
-      
+
       const svg = container.querySelector("svg");
       if (!svg) return false;
 
       // Get all rect elements (QR modules)
       const rects = Array.from(svg.querySelectorAll("rect"));
       if (rects.length === 0) return false; // QR not fully rendered yet
-      
+
       if (qrStyle === "rounded") {
         // Apply rounded corners to QR code modules
         svg.style.borderRadius = "8px";
@@ -104,14 +126,17 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
           const width = parseFloat(rect.getAttribute("width") || "1");
           const height = parseFloat(rect.getAttribute("height") || "1");
           const fill = rect.getAttribute("fill") || "black";
-          
+
           // Convert rect to circle
-          const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          const circle = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "circle"
+          );
           circle.setAttribute("cx", String(x + width / 2));
           circle.setAttribute("cy", String(y + height / 2));
           circle.setAttribute("r", String(Math.min(width, height) / 2));
           circle.setAttribute("fill", fill);
-          
+
           rect.parentNode?.insertBefore(circle, rect);
           rect.remove();
         });
@@ -141,9 +166,12 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
       setNwcUri(propNwcUri);
       return;
     }
-    
+
     try {
-      const uri = typeof window !== "undefined" ? localStorage.getItem("gittr_nwc_send") : null;
+      const uri =
+        typeof window !== "undefined"
+          ? localStorage.getItem("gittr_nwc_send")
+          : null;
       if (uri && uri.trim().length > 0) {
         setNwcUri(uri);
       } else {
@@ -159,12 +187,15 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
     return typeof window !== "undefined" && (window as any).webln;
   }, []);
 
-  const fetchNWCInfoEvent = async (relay: string, walletPubkey: string): Promise<any | null> => {
+  const fetchNWCInfoEvent = async (
+    relay: string,
+    walletPubkey: string
+  ): Promise<any | null> => {
     return new Promise((resolve) => {
       const ws = new WebSocket(relay);
       const subId = `nwc-info-${Date.now()}`;
       let resolved = false;
-      
+
       const timeout = setTimeout(() => {
         if (!resolved) {
           resolved = true;
@@ -172,40 +203,48 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
           resolve(null);
         }
       }, 10000); // 10 second timeout
-      
+
       ws.onopen = () => {
-        const subscription = ['REQ', subId, {
-          kinds: [13194],
-          authors: [walletPubkey],
-          limit: 1
-        }];
+        const subscription = [
+          "REQ",
+          subId,
+          {
+            kinds: [13194],
+            authors: [walletPubkey],
+            limit: 1,
+          },
+        ];
         ws.send(JSON.stringify(subscription));
       };
-      
+
       ws.onmessage = (message) => {
         try {
           const data = JSON.parse(message.data);
-          
+
           // Handle EOSE
-          if (Array.isArray(data) && data[0] === 'EOSE' && data[1] === subId) {
+          if (Array.isArray(data) && data[0] === "EOSE" && data[1] === subId) {
             if (!resolved) {
               resolved = true;
               clearTimeout(timeout);
-              ws.send(JSON.stringify(['CLOSE', subId]));
+              ws.send(JSON.stringify(["CLOSE", subId]));
               ws.close();
               resolve(null); // No info event found
             }
             return;
           }
-          
+
           // Handle EVENT
-          if (Array.isArray(data) && data[0] === 'EVENT' && data[1] === subId) {
+          if (Array.isArray(data) && data[0] === "EVENT" && data[1] === subId) {
             const event = data[2];
-            if (event && event.kind === 13194 && event.pubkey === walletPubkey) {
+            if (
+              event &&
+              event.kind === 13194 &&
+              event.pubkey === walletPubkey
+            ) {
               if (!resolved) {
                 resolved = true;
                 clearTimeout(timeout);
-                ws.send(JSON.stringify(['CLOSE', subId]));
+                ws.send(JSON.stringify(["CLOSE", subId]));
                 ws.close();
                 resolve(event);
               }
@@ -215,7 +254,7 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
           // Ignore parse errors
         }
       };
-      
+
       ws.onerror = () => {
         if (!resolved) {
           resolved = true;
@@ -224,7 +263,7 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
           resolve(null);
         }
       };
-      
+
       ws.onclose = () => {
         if (!resolved) {
           resolved = true;
@@ -237,14 +276,17 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
 
   const payWithNwc = async () => {
     // Re-check NWC URI from localStorage (in case it was just configured)
-    const currentNwcUri = typeof window !== "undefined" ? localStorage.getItem("gittr_nwc_send") : null;
-    const uriToUse = currentNwcUri && currentNwcUri.trim().length > 0 ? currentNwcUri : nwcUri;
-    
+    const currentNwcUri =
+      typeof window !== "undefined"
+        ? localStorage.getItem("gittr_nwc_send")
+        : null;
+    const uriToUse =
+      currentNwcUri && currentNwcUri.trim().length > 0 ? currentNwcUri : nwcUri;
+
     if (!uriToUse) {
       alert("NWC not configured. Set NWC Send in Settings → Account.");
       return;
     }
-
 
     try {
       setPaymentStatus("checking");
@@ -267,13 +309,19 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
       }
 
       try {
-        const normalizedUri = uriToUse.replace(/^nostr\+walletconnect:/, "http:");
+        const normalizedUri = uriToUse.replace(
+          /^nostr\+walletconnect:/,
+          "http:"
+        );
         const uri = new URL(normalizedUri);
-        const walletPubkey = uri.hostname || uri.pathname.replace(/^\/+/, "").replace(/\/$/, "");
+        const walletPubkey =
+          uri.hostname || uri.pathname.replace(/^\/+/, "").replace(/\/$/, "");
         const relay = uri.searchParams.get("relay");
         const secret = uri.searchParams.get("secret");
         if (!walletPubkey || !relay || !secret) {
-          throw new Error(`Invalid NWC URI: missing walletPubkey, relay, or secret`);
+          throw new Error(
+            `Invalid NWC URI: missing walletPubkey, relay, or secret`
+          );
         }
 
         const sk = secret;
@@ -281,21 +329,33 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
         setPaymentStatus("checking");
 
         let walletCapabilities: string[] = [];
-        let supportedEncryption: string[] = ['nip04'];
+        let supportedEncryption: string[] = ["nip04"];
         let useNip44 = false;
-        
+
         try {
           const infoEvent = await fetchNWCInfoEvent(relay, walletPubkey);
           if (infoEvent) {
-            walletCapabilities = infoEvent.content.split(/\s+/).filter((c: string) => c.length > 0);
-            const encryptionTag = infoEvent.tags?.find((tag: any) => tag[0] === 'encryption');
+            walletCapabilities = infoEvent.content
+              .split(/\s+/)
+              .filter((c: string) => c.length > 0);
+            const encryptionTag = infoEvent.tags?.find(
+              (tag: any) => tag[0] === "encryption"
+            );
             if (encryptionTag && encryptionTag[1]) {
-              supportedEncryption = encryptionTag[1].split(/\s+/).filter((e: string) => e.length > 0);
+              supportedEncryption = encryptionTag[1]
+                .split(/\s+/)
+                .filter((e: string) => e.length > 0);
             }
-            useNip44 = supportedEncryption.includes('nip44_v2') || supportedEncryption.includes('nip44');
-            
-            if (!walletCapabilities.includes('pay_invoice')) {
-              throw new Error(`Wallet does not support pay_invoice. Supported methods: ${walletCapabilities.join(', ')}`);
+            useNip44 =
+              supportedEncryption.includes("nip44_v2") ||
+              supportedEncryption.includes("nip44");
+
+            if (!walletCapabilities.includes("pay_invoice")) {
+              throw new Error(
+                `Wallet does not support pay_invoice. Supported methods: ${walletCapabilities.join(
+                  ", "
+                )}`
+              );
             }
           }
         } catch (infoError: any) {
@@ -303,16 +363,19 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
         }
 
         const requestPayload = {
-          method: 'pay_invoice',
+          method: "pay_invoice",
           params: {
-            invoice: cleanInvoice
-          }
+            invoice: cleanInvoice,
+          },
         };
-        
+
         let encryptedContent: string;
-        const encryptionScheme = useNip44 ? 'nip44_v2' : 'nip04';
-        const hasNip44 = typeof nip44 !== 'undefined' && nip44 && typeof nip44.encrypt === 'function';
-        
+        const encryptionScheme = useNip44 ? "nip44_v2" : "nip04";
+        const hasNip44 =
+          typeof nip44 !== "undefined" &&
+          nip44 &&
+          typeof nip44.encrypt === "function";
+
         if (useNip44 && hasNip44) {
           try {
             encryptedContent = await nip44.encrypt(
@@ -334,18 +397,18 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
             JSON.stringify(requestPayload)
           );
         }
-        
+
         const paymentEvent: any = {
           kind: 23194,
           content: encryptedContent,
           tags: [
-            ['p', walletPubkey],
-            ['encryption', encryptionScheme],
+            ["p", walletPubkey],
+            ["encryption", encryptionScheme],
           ],
           created_at: Math.floor(Date.now() / 1000),
-          pubkey: clientPubkey
+          pubkey: clientPubkey,
         };
-        
+
         paymentEvent.id = getEventHash(paymentEvent);
         paymentEvent.sig = signEvent(paymentEvent, sk);
 
@@ -353,19 +416,19 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
           const ws = new WebSocket(relay);
           let requestAccepted = false;
           let requestSent = false;
-          
+
           ws.onopen = () => {
-            ws.send(JSON.stringify(['EVENT', paymentEvent]));
+            ws.send(JSON.stringify(["EVENT", paymentEvent]));
             requestSent = true;
           };
-          
+
           ws.onmessage = (message) => {
             try {
               const data = JSON.parse(message.data);
-              if (Array.isArray(data) && data[0] === 'OK') {
+              if (Array.isArray(data) && data[0] === "OK") {
                 const eventId = data[1];
                 const accepted = data[2];
-                
+
                 if (eventId === paymentEvent.id) {
                   requestAccepted = accepted;
                   if (accepted) {
@@ -380,7 +443,9 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
                   } else {
                     const reason = data[3] || "unknown";
                     ws.close();
-                    reject(new Error(`Payment request rejected by relay: ${reason}`));
+                    reject(
+                      new Error(`Payment request rejected by relay: ${reason}`)
+                    );
                   }
                 }
               }
@@ -388,12 +453,12 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
               console.error("NWC: Error parsing message:", error);
             }
           };
-          
+
           ws.onerror = (error) => {
             ws.close();
             reject(new Error(`WebSocket error: ${error}`));
           };
-          
+
           ws.onclose = (event) => {
             if (!requestAccepted && requestSent) {
               setPaymentStatus("checking");
@@ -403,7 +468,7 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
               resolve();
             }
           };
-          
+
           setTimeout(() => {
             if (!requestAccepted && ws.readyState === WebSocket.OPEN) {
               ws.close();
@@ -414,7 +479,11 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
                 }
                 resolve();
               } else {
-                reject(new Error('WebSocket timeout - failed to send payment request'));
+                reject(
+                  new Error(
+                    "WebSocket timeout - failed to send payment request"
+                  )
+                );
               }
             }
           }, 10000);
@@ -427,7 +496,11 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
     } catch (error: any) {
       console.error("NWC payment error:", error);
       setPaymentStatus("pending");
-      alert(`Failed to pay via NWC: ${error.message || "Please try again or scan the QR"}`);
+      alert(
+        `Failed to pay via NWC: ${
+          error.message || "Please try again or scan the QR"
+        }`
+      );
     }
   };
 
@@ -488,7 +561,9 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error("Failed to copy invoice:", err);
-      alert("Failed to copy invoice. Please try manually selecting the QR code.");
+      alert(
+        "Failed to copy invoice. Please try manually selecting the QR code."
+      );
     }
   };
 
@@ -499,15 +574,21 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
-      <div className="theme-bg-primary theme-border border rounded-lg p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+      onClick={handleBackdropClick}
+    >
+      <div
+        className="theme-bg-primary theme-border border rounded-lg p-6 max-w-md w-full"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-xl font-bold">Pay Lightning Invoice</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-white">
             <X className="h-5 w-5" />
           </button>
         </div>
-        
+
         {extra}
 
         {amount && !error && (
@@ -529,12 +610,21 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
         )}
 
         {paymentStatus === "checking" && !paid && !error && (
-          <p className="text-center text-sm text-yellow-500 mb-2">Checking payment status...</p>
+          <p className="text-center text-sm text-yellow-500 mb-2">
+            Checking payment status...
+          </p>
         )}
-        
+
         {invoice && !error && (
           <div className="flex justify-center mb-4">
-            <div className={`bg-white p-4 ${qrStyle === "rounded" || qrStyle === "dots" ? "rounded-2xl" : "rounded-lg"} ${paid ? "opacity-50" : ""}`} id="qr-container">
+            <div
+              className={`bg-white p-4 ${
+                qrStyle === "rounded" || qrStyle === "dots"
+                  ? "rounded-2xl"
+                  : "rounded-lg"
+              } ${paid ? "opacity-50" : ""}`}
+              id="qr-container"
+            >
               <QRCodeSVG
                 key={`qr-${qrStyle}-${cleanInvoice?.substring(0, 20)}`}
                 value={cleanInvoice}
@@ -547,7 +637,7 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
             </div>
           </div>
         )}
-        
+
         {invoice && !error && (
           <div className="space-y-2">
             <div className="flex gap-2">
@@ -564,15 +654,15 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
                   if (!container) return;
                   const svg = container.querySelector("svg");
                   if (!svg) return;
-                  
+
                   const svgData = new XMLSerializer().serializeToString(svg);
                   const canvas = document.createElement("canvas");
                   const ctx = canvas.getContext("2d");
                   const img = new Image();
-                  
+
                   canvas.width = 256;
                   canvas.height = 256;
-                  
+
                   img.onload = () => {
                     ctx?.drawImage(img, 0, 0);
                     canvas.toBlob((blob) => {
@@ -585,7 +675,7 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
                       URL.revokeObjectURL(url);
                     });
                   };
-                  
+
                   img.src = "data:image/svg+xml;base64," + btoa(svgData);
                 }}
                 className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors theme-border border theme-bg-secondary theme-text-primary hover:opacity-80 focus:outline-none focus:ring-0 disabled:opacity-50 disabled:pointer-events-none h-10 py-2 px-4"
@@ -593,13 +683,9 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
                 <Download className="h-4 w-4" />
               </button>
             </div>
-            
+
             {nwcUri && (
-              <Button
-                onClick={payWithNwc}
-                className="w-full"
-                variant="default"
-              >
+              <Button onClick={payWithNwc} className="w-full" variant="default">
                 Pay with NWC
               </Button>
             )}
@@ -614,7 +700,7 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
             >
               Open in Wallet
             </Button>
-            
+
             <p className="text-xs text-gray-400 mt-2 text-center">
               Scan with a Lightning wallet to pay
             </p>
@@ -624,4 +710,3 @@ export function PaymentQR({ invoice, amount, paymentHash, lnbitsUrl, lnbitsAdmin
     </div>
   );
 }
-

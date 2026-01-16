@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -14,11 +14,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
-import { nip19 } from "nostr-tools";
 
 import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { nip19 } from "nostr-tools";
 
 import { MainNav } from "../main-nav";
 
@@ -99,12 +99,12 @@ export function Header() {
   const { signOut, pubkey } = useNostrContext();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  
+
   // Only render client-side content after hydration
   useEffect(() => {
     setMounted(true);
   }, []);
-  
+
   const handleSignOut = useCallback(() => {
     if (signOut) {
       signOut();
@@ -113,15 +113,28 @@ export function Header() {
   }, [router, signOut]);
 
   // Get profile URL - use npub format if available, otherwise use 8-char prefix
-  const profileUrl = pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? `/${nip19.npubEncode(pubkey)}` : (pubkey ? `/${pubkey}` : "/profile");
+  const profileUrl =
+    pubkey && /^[0-9a-f]{64}$/i.test(pubkey)
+      ? `/${nip19.npubEncode(pubkey)}`
+      : pubkey
+      ? `/${pubkey}`
+      : "/profile";
 
   return (
     <header className="flex h-14 w-full items-center justify-between bg-[#171B21] px-8">
       <div className="flex items-center gap-4">
-      <MainNav items={HeaderConfig.mainNav} />
+        <MainNav items={HeaderConfig.mainNav} />
         {mounted && isLoggedIn && (
           <Button variant="outline" className="max-h-8 min-w-max">
-            <a href="/new" onClick={(e) => { e.preventDefault(); router.push("/new"); }}>New</a>
+            <a
+              href="/new"
+              onClick={(e) => {
+                e.preventDefault();
+                router.push("/new");
+              }}
+            >
+              New
+            </a>
           </Button>
         )}
       </div>
@@ -132,12 +145,12 @@ export function Header() {
               <div className="flex items-center cursor-pointer">
                 <Avatar className="w-8 h-8 overflow-hidden shrink-0">
                   {picture && picture.startsWith("http") ? (
-                    <AvatarImage 
-                      src={picture} 
-                      className="w-8 h-8 object-cover max-w-8 max-h-8" 
-                      decoding="async" 
+                    <AvatarImage
+                      src={picture}
+                      className="w-8 h-8 object-cover max-w-8 max-h-8"
+                      decoding="async"
                       loading="lazy"
-                      style={{ maxWidth: '2rem', maxHeight: '2rem' }}
+                      style={{ maxWidth: "2rem", maxHeight: "2rem" }}
                     />
                   ) : null}
                   <AvatarFallback>{initials}</AvatarFallback>
@@ -147,30 +160,49 @@ export function Header() {
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56">
               <DropdownMenuItem asChild>
-                <a href={profileUrl} onClick={(e) => { e.preventDefault(); window.location.href = profileUrl; }}>
-                <DropdownMenuLabel className="cursor-pointer">
-                  {name}
-                </DropdownMenuLabel>
+                <a
+                  href={profileUrl}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.location.href = profileUrl;
+                  }}
+                >
+                  <DropdownMenuLabel className="cursor-pointer">
+                    {name}
+                  </DropdownMenuLabel>
                 </a>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 {PrimaryGitInfo?.map((item) => {
                   // Replace profile href with actual pubkey URL
-                  const href = item.href === "/profile" ? profileUrl : item.href;
+                  const href =
+                    item.href === "/profile" ? profileUrl : item.href;
                   return (
                     <DropdownMenuItem key={item.title} asChild>
-                      <a href={href} onClick={(e) => { e.preventDefault(); window.location.href = href; }}>
+                      <a
+                        href={href}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          window.location.href = href;
+                        }}
+                      >
                         {item.title}
                       </a>
-                      </DropdownMenuItem>
+                    </DropdownMenuItem>
                   );
                 })}
                 <DropdownMenuSeparator />
 
                 {restGitInfo?.map((item) => (
                   <DropdownMenuItem key={item.title} asChild>
-                    <a href={item.href} onClick={(e) => { e.preventDefault(); window.location.href = item.href; }}>
+                    <a
+                      href={item.href}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        window.location.href = item.href;
+                      }}
+                    >
                       {item.title}
                     </a>
                   </DropdownMenuItem>
@@ -191,10 +223,26 @@ export function Header() {
         ) : mounted ? (
           <div className="flex gap-1 items-center">
             <Button variant="ghost" className="mr-2 max-h-8 min-w-max">
-              <a href="/login" onClick={(e) => { e.preventDefault(); router.push("/login"); }}>Sign in</a>
+              <a
+                href="/login"
+                onClick={(e) => {
+                  e.preventDefault();
+                  router.push("/login");
+                }}
+              >
+                Sign in
+              </a>
             </Button>
             <Button variant="outline" className="max-h-8 min-w-max">
-              <a href="/signup" onClick={(e) => { e.preventDefault(); router.push("/signup"); }}>Sign up</a>
+              <a
+                href="/signup"
+                onClick={(e) => {
+                  e.preventDefault();
+                  router.push("/signup");
+                }}
+              >
+                Sign up
+              </a>
             </Button>
           </div>
         ) : (

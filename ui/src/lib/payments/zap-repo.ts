@@ -1,5 +1,8 @@
 // Utilities for repo zap splitting logic
-import { useContributorMetadata, type Metadata } from "@/lib/nostr/useContributorMetadata";
+import {
+  type Metadata,
+  useContributorMetadata,
+} from "@/lib/nostr/useContributorMetadata";
 
 export interface ContributorWithAddress {
   pubkey: string;
@@ -22,13 +25,15 @@ export interface ZapSplitConfig {
  * Returns split percentages that sum to 100%
  * Fees are handled by LNbits backend
  */
-export function calculateSplitWeights(contributors: ContributorWithAddress[]): Array<{pubkey: string; weight: number}> {
+export function calculateSplitWeights(
+  contributors: ContributorWithAddress[]
+): Array<{ pubkey: string; weight: number }> {
   if (contributors.length === 0) return [];
-  
+
   // Equal split: 100% / number of contributors
   const weightPerContributor = Math.floor(100 / contributors.length);
-  const remainder = 100 - (weightPerContributor * contributors.length);
-  
+  const remainder = 100 - weightPerContributor * contributors.length;
+
   return contributors.map((c, idx) => ({
     pubkey: c.pubkey,
     weight: weightPerContributor + (idx === 0 ? remainder : 0), // Give remainder to first contributor
@@ -40,7 +45,12 @@ export function calculateSplitWeights(contributors: ContributorWithAddress[]): A
  * Checks lud16, lnurl, or nwcRecv from Nostr metadata
  */
 export function getContributorsWithAddresses(
-  contributors: Array<{pubkey?: string; name?: string; picture?: string; weight: number}>,
+  contributors: Array<{
+    pubkey?: string;
+    name?: string;
+    picture?: string;
+    weight: number;
+  }>,
   metadataMap: Record<string, Metadata>
 ): ContributorWithAddress[] {
   return contributors
@@ -75,7 +85,7 @@ export function recordAccumulatedZap(
   comment?: string
 ): void {
   if (typeof window === "undefined") return;
-  
+
   try {
     const key = `gittr_accumulated_zaps__${repoId}`;
     const existing = JSON.parse(localStorage.getItem(key) || "[]");
@@ -101,7 +111,7 @@ export function getAccumulatedZaps(repoId: string): Array<{
   status: "received" | "split";
 }> {
   if (typeof window === "undefined") return [];
-  
+
   try {
     const key = `gittr_accumulated_zaps__${repoId}`;
     return JSON.parse(localStorage.getItem(key) || "[]");
@@ -109,4 +119,3 @@ export function getAccumulatedZaps(repoId: string): Array<{
     return [];
   }
 }
-

@@ -1,4 +1,12 @@
-import { type ReactNode, createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import {
   type OnEose,
@@ -6,20 +14,29 @@ import {
   RelayPool,
   type SubscriptionOptions,
 } from "nostr-relaypool";
-import { type Filter, type UnsignedEvent, type Event as NostrEvent } from "nostr-tools";
+import {
+  type Filter,
+  type Event as NostrEvent,
+  type UnsignedEvent,
+} from "nostr-tools";
 import { nip19 } from "nostr-tools";
 
 import useLocalStorage from "../hooks/useLocalStorage";
 
 import { WEB_STORAGE_KEYS } from "./localStorage";
-import { RemoteSignerManager, loadStoredRemoteSignerSession } from "./remoteSigner";
+import {
+  RemoteSignerManager,
+  loadStoredRemoteSignerSession,
+} from "./remoteSigner";
 
 declare global {
   interface Window {
     nostr: {
       getPublicKey(): Promise<string>;
       signEvent(event: NostrEvent | UnsignedEvent): Promise<NostrEvent>;
-      getRelays(): Promise<{ [url: string]: { read: boolean; write: boolean } }>;
+      getRelays(): Promise<{
+        [url: string]: { read: boolean; write: boolean };
+      }>;
       nip04: {
         encrypt(pubkey: string, plaintext: string): Promise<string>;
         decrypt(pubkey: string, ciphertext: string): Promise<string>;
@@ -38,13 +55,14 @@ declare global {
 // If not set, falls back to minimal defaults (should be configured via .env.local)
 const getRelays = (): string[] => {
   const envRelays = process.env.NEXT_PUBLIC_NOSTR_RELAYS;
-  
+
   // NOTE: console.log here runs at BUILD TIME (server-side), not in browser
   // Browser-side logging happens in the Provider component below
-  
+
   if (envRelays && envRelays.trim().length > 0) {
-    const parsed = envRelays.split(",")
-      .map(r => {
+    const parsed = envRelays
+      .split(",")
+      .map((r) => {
         const trimmed = r.trim();
         // Fix common typos (wwss -> wss)
         if (trimmed.startsWith("wwss://")) {
@@ -52,15 +70,15 @@ const getRelays = (): string[] => {
         }
         return trimmed;
       })
-      .filter(r => r.length > 0 && r.startsWith("wss://"))
+      .filter((r) => r.length > 0 && r.startsWith("wss://"))
       // Remove duplicates
       .filter((r, index, self) => self.indexOf(r) === index);
-    
+
     if (parsed.length > 0) {
       return parsed;
     }
   }
-  
+
   // Minimal fallback - should not be used in production (configure via .env.local)
   return [
     "wss://relay.damus.io", // Minimal fallback for development only
@@ -92,26 +110,22 @@ export const useNostrContext = () => {
 };
 
 const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-
   const addRelay = useCallback((url: string) => {
     try {
-    const relay = relayPool.addOrGetRelay(url);
-    // Note: Relays auto-connect when added, but we need to ensure they're tracked
-    // The status will be updated by the relay pool internally (0=closed, 1=connecting, 2=open)
+      const relay = relayPool.addOrGetRelay(url);
+      // Note: Relays auto-connect when added, but we need to ensure they're tracked
+      // The status will be updated by the relay pool internally (0=closed, 1=connecting, 2=open)
       console.log(`[NostrContext] Added relay to pool: ${url}`);
-    return relay;
+      return relay;
     } catch (error) {
       console.error(`[NostrContext] Failed to add relay ${url}:`, error);
       return null;
     }
   }, []);
 
-  const removeRelay = useCallback(
-    (url: string) => {
-      relayPool.removeRelay(url)
-    },
-    []
-  );
+  const removeRelay = useCallback((url: string) => {
+    relayPool.removeRelay(url);
+  }, []);
 
   const relayPoolSubscribe = useCallback(
     (
@@ -217,10 +231,15 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
           // Set pubkey immediately from stored session (before async bootstrap)
           const npub = nip19.npubEncode(storedSession.userPubkey);
           setPubKey(storedSession.userPubkey);
-          console.log("[NostrContext] Restored pubkey from remote signer session");
+          console.log(
+            "[NostrContext] Restored pubkey from remote signer session"
+          );
         }
       } catch (error) {
-        console.warn("[NostrContext] Failed to restore pubkey from remote signer session:", error);
+        console.warn(
+          "[NostrContext] Failed to restore pubkey from remote signer session:",
+          error
+        );
       }
     }
 
@@ -245,7 +264,6 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     [setPubKey]
   );
 
-
   const signOut = useCallback(() => {
     // Disconnect remote signer if connected
     if (remoteSignerRef.current) {
@@ -254,27 +272,29 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     removePubKey();
   }, [removePubKey]);
 
-  const publish = useCallback(
-    (event: any, relays: string[]) => {
-      console.log(`📤 [NostrContext] Publishing event:`, {
-        eventId: event.id,
-        kind: event.kind,
-        pubkey: event.pubkey ? `${event.pubkey.substring(0, 8)}...` : 'none',
-        relays: relays.length,
-        relayList: relays,
-        tagsCount: event.tags?.length || 0,
-        cloneTags: event.tags?.filter((t: any[]) => Array.isArray(t) && t[0] === "clone").map((t: any[]) => t[1]) || [],
-      });
-      try {
+  const publish = useCallback((event: any, relays: string[]) => {
+    console.log(`📤 [NostrContext] Publishing event:`, {
+      eventId: event.id,
+      kind: event.kind,
+      pubkey: event.pubkey ? `${event.pubkey.substring(0, 8)}...` : "none",
+      relays: relays.length,
+      relayList: relays,
+      tagsCount: event.tags?.length || 0,
+      cloneTags:
+        event.tags
+          ?.filter((t: any[]) => Array.isArray(t) && t[0] === "clone")
+          .map((t: any[]) => t[1]) || [],
+    });
+    try {
       relayPool.publish(event, relays);
-        console.log(`✅ [NostrContext] Event published to relayPool (${relays.length} relays)`);
-      } catch (error) {
-        console.error(`❌ [NostrContext] Failed to publish event:`, error);
-        throw error;
-      }
-    },
-    []
-  );
+      console.log(
+        `✅ [NostrContext] Event published to relayPool (${relays.length} relays)`
+      );
+    } catch (error) {
+      console.error(`❌ [NostrContext] Failed to publish event:`, error);
+      throw error;
+    }
+  }, []);
 
   const getRelayStatuses = useCallback(() => {
     return relayPool.getRelayStatuses();
@@ -301,10 +321,10 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 };
 
 // Log relay info when provider mounts (browser-side)
-if (typeof window !== 'undefined') {
-  console.log('🔍 [NostrContext] Provider initialized with relays:', {
+if (typeof window !== "undefined") {
+  console.log("🔍 [NostrContext] Provider initialized with relays:", {
     count: defaultRelays.length,
-    relays: defaultRelays
+    relays: defaultRelays,
   });
 }
 

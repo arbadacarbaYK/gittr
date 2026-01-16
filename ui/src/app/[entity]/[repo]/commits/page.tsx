@@ -1,18 +1,24 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback, use } from "react";
-import { useParams, useSearchParams } from "next/navigation";
-import Link from "next/link";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { GitBranch, GitCommit, History, Search } from "lucide-react";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import {
+  formatDate24h,
+  formatDateTime24h,
+  formatTime24h,
+} from "@/lib/utils/date-format";
+import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { getEntityDisplayName } from "@/lib/utils/entity-resolver";
-import { formatDateTime24h, formatDate24h, formatTime24h } from "@/lib/utils/date-format";
+
+import { GitBranch, GitCommit, History, Search } from "lucide-react";
+import Link from "next/link";
+import { useParams, useSearchParams } from "next/navigation";
 
 interface Commit {
   id: string; // commit hash or ID
@@ -30,7 +36,11 @@ interface Commit {
   prId?: string; // Related PR ID if commit is from a merged PR
 }
 
-export default function CommitsPage({ params }: { params: Promise<{ entity: string; repo: string }> }) {
+export default function CommitsPage({
+  params,
+}: {
+  params: Promise<{ entity: string; repo: string }>;
+}) {
   const resolvedParams = use(params);
   const { entity, repo } = resolvedParams; // Extract primitives to avoid stale closures
   const [mounted, setMounted] = useState(false);
@@ -45,17 +55,19 @@ export default function CommitsPage({ params }: { params: Promise<{ entity: stri
   useEffect(() => {
     setMounted(true);
   }, []);
-  
+
   // Get all unique author pubkeys from commits (only full 64-char pubkeys for metadata lookup)
   const authorPubkeys = useMemo(() => {
-    return Array.from(new Set(
-      commits
-        .map(c => c.author)
-        .filter(Boolean)
-        .filter(author => /^[a-f0-9]{64}$/i.test(author)) // Only full 64-char pubkeys
-    ));
+    return Array.from(
+      new Set(
+        commits
+          .map((c) => c.author)
+          .filter(Boolean)
+          .filter((author) => /^[a-f0-9]{64}$/i.test(author)) // Only full 64-char pubkeys
+      )
+    );
   }, [commits]);
-  
+
   // Fetch Nostr metadata for all commit authors
   const authorMetadata = useContributorMetadata(authorPubkeys);
 
@@ -64,29 +76,37 @@ export default function CommitsPage({ params }: { params: Promise<{ entity: stri
     try {
       // Load commits from localStorage
       const commitsKey = getRepoStorageKey("gittr_commits", entity, repo);
-      const allCommits = JSON.parse(localStorage.getItem(commitsKey) || "[]") as Commit[];
-      
+      const allCommits = JSON.parse(
+        localStorage.getItem(commitsKey) || "[]"
+      ) as Commit[];
+
       // Filter by branch if specified
-      let branchCommits = allCommits.filter(c => !c.branch || c.branch === branch);
-      
+      let branchCommits = allCommits.filter(
+        (c) => !c.branch || c.branch === branch
+      );
+
       // Filter by file if specified (show commits that touched this file)
       if (fileFilter) {
-        branchCommits = branchCommits.filter(c => 
-          c.changedFiles?.some(f => f.path === fileFilter) ||
-          (c as any).prId && (() => {
-            try {
-              const prsKey = getRepoStorageKey("gittr_prs", entity, repo);
-              const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
-              const pr = prs.find((p: any) => p.id === (c as any).prId);
-              return pr?.path === fileFilter;
-            } catch { return false; }
-          })()
+        branchCommits = branchCommits.filter(
+          (c) =>
+            c.changedFiles?.some((f) => f.path === fileFilter) ||
+            ((c as any).prId &&
+              (() => {
+                try {
+                  const prsKey = getRepoStorageKey("gittr_prs", entity, repo);
+                  const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
+                  const pr = prs.find((p: any) => p.id === (c as any).prId);
+                  return pr?.path === fileFilter;
+                } catch {
+                  return false;
+                }
+              })())
         );
       }
-      
+
       // Sort by timestamp (newest first)
       branchCommits.sort((a, b) => b.timestamp - a.timestamp);
-      
+
       setCommits(branchCommits);
       setLoading(false);
     } catch (error) {
@@ -102,20 +122,20 @@ export default function CommitsPage({ params }: { params: Promise<{ entity: stri
   // Listen for new commits
   useEffect(() => {
     const commitsKey = getRepoStorageKey("gittr_commits", entity, repo);
-    
+
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === commitsKey) {
         loadCommits();
       }
     };
-    
+
     const handleCommitCreated = () => {
       loadCommits();
     };
-    
+
     window.addEventListener("storage", handleStorageChange);
     window.addEventListener("gittr:commit-created", handleCommitCreated);
-    
+
     return () => {
       window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener("gittr:commit-created", handleCommitCreated);
@@ -125,15 +145,20 @@ export default function CommitsPage({ params }: { params: Promise<{ entity: stri
   const filteredCommits = useMemo(() => {
     if (!searchQuery.trim()) return commits;
     const query = searchQuery.toLowerCase();
-    return commits.filter(c => 
-      c.message.toLowerCase().includes(query) ||
-      c.author.toLowerCase().includes(query) ||
-      c.id.toLowerCase().includes(query)
+    return commits.filter(
+      (c) =>
+        c.message.toLowerCase().includes(query) ||
+        c.author.toLowerCase().includes(query) ||
+        c.id.toLowerCase().includes(query)
     );
   }, [commits, searchQuery]);
 
   if (loading) {
-    return <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">Loading commits...</div>;
+    return (
+      <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
+        Loading commits...
+      </div>
+    );
   }
 
   return (
@@ -146,7 +171,10 @@ export default function CommitsPage({ params }: { params: Promise<{ entity: stri
             Commits
             {fileFilter && (
               <span className="text-base font-normal text-gray-400 ml-2">
-                for <code className="px-2 py-1 bg-gray-800 rounded text-sm">{fileFilter}</code>
+                for{" "}
+                <code className="px-2 py-1 bg-gray-800 rounded text-sm">
+                  {fileFilter}
+                </code>
               </span>
             )}
           </h1>
@@ -175,7 +203,7 @@ export default function CommitsPage({ params }: { params: Promise<{ entity: stri
           <GitCommit className="h-12 w-12 mx-auto mb-4 text-gray-600" />
           <p className="text-gray-400 mb-2">No commits found</p>
           <p className="text-sm text-gray-500">
-            {commits.length === 0 
+            {commits.length === 0
               ? "Commits will appear here when you merge pull requests or make changes."
               : "No commits match your search."}
           </p>
@@ -186,9 +214,12 @@ export default function CommitsPage({ params }: { params: Promise<{ entity: stri
             {filteredCommits.map((commit, index) => {
               const isFirst = index === 0;
               const isLast = index === filteredCommits.length - 1;
-              
+
               return (
-                <li key={commit.id} className="p-4 hover:bg-gray-800/50 transition-colors">
+                <li
+                  key={commit.id}
+                  className="p-4 hover:bg-gray-800/50 transition-colors"
+                >
                   <div className="flex gap-4">
                     {/* Commit Graph Line */}
                     <div className="flex flex-col items-center w-8">
@@ -220,22 +251,32 @@ export default function CommitsPage({ params }: { params: Promise<{ entity: stri
                                 {(() => {
                                   // Priority: commit.authorPicture > Nostr metadata picture
                                   const meta = authorMetadata[commit.author];
-                                  const picture = commit.authorPicture && commit.authorPicture.startsWith("http")
-                                    ? commit.authorPicture
-                                    : (meta?.picture && meta.picture.startsWith("http"))
+                                  const picture =
+                                    commit.authorPicture &&
+                                    commit.authorPicture.startsWith("http")
+                                      ? commit.authorPicture
+                                      : meta?.picture &&
+                                        meta.picture.startsWith("http")
                                       ? meta.picture
                                       : null;
                                   return picture ? (
-                                  <AvatarImage 
-                                      src={picture} 
-                                    className="object-cover max-w-full max-h-full"
-                                    style={{ maxWidth: '100%', maxHeight: '100%' }}
-                                  />
+                                    <AvatarImage
+                                      src={picture}
+                                      className="object-cover max-w-full max-h-full"
+                                      style={{
+                                        maxWidth: "100%",
+                                        maxHeight: "100%",
+                                      }}
+                                    />
                                   ) : null;
                                 })()}
                                 <AvatarFallback className="bg-purple-600 text-white text-[10px]">
                                   {(() => {
-                                    const name = getEntityDisplayName(commit.author, authorMetadata, commit.author.slice(0, 8));
+                                    const name = getEntityDisplayName(
+                                      commit.author,
+                                      authorMetadata,
+                                      commit.author.slice(0, 8)
+                                    );
                                     return name.slice(0, 2).toUpperCase();
                                   })()}
                                 </AvatarFallback>
@@ -243,8 +284,13 @@ export default function CommitsPage({ params }: { params: Promise<{ entity: stri
                               <span>
                                 {(() => {
                                   const meta = authorMetadata[commit.author];
-                                  return getEntityDisplayName(commit.author, authorMetadata, commit.author.slice(0, 8));
-                                })()}...
+                                  return getEntityDisplayName(
+                                    commit.author,
+                                    authorMetadata,
+                                    commit.author.slice(0, 8)
+                                  );
+                                })()}
+                                ...
                               </span>
                             </Link>
                             <span>•</span>
@@ -261,14 +307,23 @@ export default function CommitsPage({ params }: { params: Promise<{ entity: stri
                         </div>
                         <div className="flex items-center gap-2 text-sm text-gray-400">
                           {commit.filesChanged !== undefined && (
-                            <span>{commit.filesChanged} file{commit.filesChanged !== 1 ? "s" : ""}</span>
+                            <span>
+                              {commit.filesChanged} file
+                              {commit.filesChanged !== 1 ? "s" : ""}
+                            </span>
                           )}
-                          {commit.insertions !== undefined && commit.insertions > 0 && (
-                            <span className="text-green-400">+{commit.insertions}</span>
-                          )}
-                          {commit.deletions !== undefined && commit.deletions > 0 && (
-                            <span className="text-red-400">-{commit.deletions}</span>
-                          )}
+                          {commit.insertions !== undefined &&
+                            commit.insertions > 0 && (
+                              <span className="text-green-400">
+                                +{commit.insertions}
+                              </span>
+                            )}
+                          {commit.deletions !== undefined &&
+                            commit.deletions > 0 && (
+                              <span className="text-red-400">
+                                -{commit.deletions}
+                              </span>
+                            )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -291,10 +346,10 @@ export default function CommitsPage({ params }: { params: Promise<{ entity: stri
       {/* Stats */}
       {filteredCommits.length > 0 && (
         <div className="mt-4 text-sm text-gray-400">
-          Showing {filteredCommits.length} of {commits.length} commit{commits.length !== 1 ? "s" : ""}
+          Showing {filteredCommits.length} of {commits.length} commit
+          {commits.length !== 1 ? "s" : ""}
         </div>
       )}
     </div>
   );
 }
-

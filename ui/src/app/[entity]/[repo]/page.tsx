@@ -129,6 +129,26 @@ import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 
+const normalizeRepoEntityForRoute = (
+  repoEntity: string | undefined,
+  routeEntity: string
+): string | undefined => {
+  if (!repoEntity) return repoEntity;
+  if (repoEntity.startsWith("npub")) return repoEntity;
+  if (!/^[0-9a-f]{64}$/i.test(repoEntity)) return repoEntity;
+  if (!routeEntity || !routeEntity.startsWith("npub")) return repoEntity;
+  try {
+    const decoded = nip19.decode(routeEntity);
+    if (decoded.type === "npub") {
+      const routePubkey = (decoded.data as string).toLowerCase();
+      if (repoEntity.toLowerCase() === routePubkey) {
+        return routeEntity;
+      }
+    }
+  } catch {}
+  return repoEntity;
+};
+
 export default function RepoCodePage() {
   const routeParams = useParams<{ entity?: string; repo?: string }>();
   const resolvedParams = useMemo(
@@ -199,6 +219,7 @@ export default function RepoCodePage() {
   const repoProcessedRef = useRef<string>(""); // Track which repo we've already processed
   const fileFetchInProgressRef = useRef<boolean>(false); // Prevent multiple simultaneous file fetches
   const fileFetchAttemptedRef = useRef<string>(""); // Track which repos we've already attempted to fetch files for
+  const bridgeFetchInProgressRef = useRef<boolean>(false);
   const ownerMetadataRef = useRef<Record<string, Metadata>>({}); // Ref to access latest ownerMetadata without causing re-renders
   const repoDataRef = useRef<StoredRepo | null>(null); // Ref to access latest repoData without causing dependency loops
 
@@ -220,6 +241,19 @@ export default function RepoCodePage() {
   }, [resolvedParams.entity]);
 
   const [repoOwnerPubkey, setRepoOwnerPubkey] = useState<string | null>(null);
+  const [bridgeFiles, setBridgeFiles] = useState<RepoFileEntry[] | null>(null);
+  // CRITICAL: Ensure files is always an array to prevent mobile hydration issues
+  // Prefer repoData files; fall back to bridge-loaded files for view-only repos
+  const safeFiles = useMemo(() => {
+    const repoFiles = repoData?.files;
+    if (Array.isArray(repoFiles) && repoFiles.length > 0) {
+      return repoFiles;
+    }
+    if (Array.isArray(bridgeFiles) && bridgeFiles.length > 0) {
+      return bridgeFiles;
+    }
+    return [];
+  }, [repoData, bridgeFiles]);
 
   useEffect(() => {
     if (
@@ -281,11 +315,7 @@ export default function RepoCodePage() {
 
   const shouldPersistRepoCache = useCallback(() => {
     const currentRepo = repoDataRef.current;
-    return (
-      repoIsOwner ||
-      currentRepo?.hasUnpushedEdits === true ||
-      currentRepo?.status === "local"
-    );
+    return repoIsOwner || currentRepo?.hasUnpushedEdits === true;
   }, [repoIsOwner]);
 
   const persistRepoFiles = useCallback(
@@ -331,7 +361,9 @@ export default function RepoCodePage() {
               }
             }
           } else {
-            const cleanupResult = clearNonLocalReposFromStorage();
+            const cleanupResult = clearNonLocalReposFromStorage({
+              preserveWithMetadata: true,
+            });
             if (cleanupResult.clearedKeys > 0) {
               try {
                 saveRepoFiles(
@@ -374,7 +406,12 @@ export default function RepoCodePage() {
     if (foreignAutoCleanupRef.current || !mounted) return;
     if (repoIsOwner) return;
 
-    const AUTO_CLEANUP_THRESHOLD_BYTES = 2 * 1024 * 1024;
+    const isLikelyMobile =
+      typeof navigator !== "undefined" &&
+      /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const AUTO_CLEANUP_THRESHOLD_BYTES = isLikelyMobile
+      ? 1024 * 1024
+      : 2 * 1024 * 1024;
     const estimatedSize = estimateLocalStorageSize();
     if (estimatedSize < AUTO_CLEANUP_THRESHOLD_BYTES) return;
 
@@ -383,7 +420,7 @@ export default function RepoCodePage() {
           preserveUnpushedEdits: true,
           preserveWithMetadata: true,
         })
-      : clearNonLocalReposFromStorage();
+      : clearNonLocalReposFromStorage({ preserveWithMetadata: true });
     if (cleanupResult.clearedKeys > 0) {
       console.log(
         `🧹 [Storage] Auto-cleared ${cleanupResult.clearedRepos} repo caches and ${cleanupResult.clearedKeys} keys (estimated size: ${estimatedSize})`
@@ -459,6 +496,94 @@ export default function RepoCodePage() {
   const [deletedPaths, setDeletedPaths] = useState<string[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>("");
+  useEffect(() => {
+    let ownerPubkey = repoOwnerPubkey || entityPubkey;
+    if (
+      !ownerPubkey &&
+      resolvedParams.entity &&
+      resolvedParams.entity.startsWith("npub")
+    ) {
+      try {
+        const decoded = nip19.decode(resolvedParams.entity);
+        if (decoded.type === "npub") {
+          ownerPubkey = (decoded.data as string).toLowerCase();
+        }
+      } catch {
+        // ignore decode errors; will exit below if still invalid
+      }
+    }
+    if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) return;
+    if (!resolvedParams.repo) return;
+
+    const branch =
+      selectedBranch || repoDataRef.current?.defaultBranch || "main";
+    const existingFiles = repoDataRef.current?.files;
+    const hasBridgeFiles = Array.isArray(bridgeFiles) && bridgeFiles.length > 0;
+
+    if (
+      existingFiles &&
+      Array.isArray(existingFiles) &&
+      existingFiles.length > 0
+    ) {
+      return;
+    }
+    if (hasBridgeFiles) return;
+    if (bridgeFetchInProgressRef.current) return;
+    bridgeFetchInProgressRef.current = true;
+
+    (async () => {
+      try {
+        const bridgeUrl = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
+          ownerPubkey
+        )}&repo=${encodeURIComponent(
+          resolvedParams.repo
+        )}&branch=${encodeURIComponent(branch)}`;
+        const response = await fetch(bridgeUrl, {
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache",
+            Pragma: "no-cache",
+          },
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!Array.isArray(data.files) || data.files.length === 0) return;
+
+        setBridgeFiles(data.files);
+        setRepoData((prev: any) => {
+          const base =
+            prev ||
+            ({
+              entity: resolvedParams.entity,
+              repo: resolvedParams.repo,
+              readme: "",
+              files: [],
+              name: resolvedParams.repo,
+              description: "",
+              contributors: [],
+              defaultBranch: branch,
+            } as StoredRepo);
+          const updated = { ...base, files: data.files };
+          repoDataRef.current = updated;
+          return updated;
+        });
+
+        // Store files only when repo cache should persist (owner or local edits)
+        persistRepoFiles(data.files, "[Bridge Fetch]");
+      } catch (error) {
+        console.warn("⚠️ [Bridge Fetch] Failed to load files:", error);
+      } finally {
+        bridgeFetchInProgressRef.current = false;
+      }
+    })();
+  }, [
+    repoOwnerPubkey,
+    entityPubkey,
+    resolvedParams.entity,
+    resolvedParams.repo,
+    selectedBranch,
+    bridgeFiles,
+  ]);
   // Live counters synced with localStorage updates from layout actions
   const [liveStarCount, setLiveStarCount] = useState<number>(0);
   const [liveWatchCount, setLiveWatchCount] = useState<number>(0);
@@ -928,18 +1053,25 @@ export default function RepoCodePage() {
       );
 
       // CRITICAL: Check if repo is corrupted BEFORE displaying
+      const normalizedRepoEntity = repo
+        ? normalizeRepoEntityForRoute(repo.entity, resolvedParams.entity)
+        : undefined;
+      const repoForChecks =
+        repo && normalizedRepoEntity && normalizedRepoEntity !== repo.entity
+          ? { ...repo, entity: normalizedRepoEntity }
+          : repo;
       if (
-        repo &&
-        isRepoCorrupted(repo, repo.nostrEventId || repo.lastNostrEventId)
+        repoForChecks &&
+        isRepoCorrupted(
+          repoForChecks,
+          repoForChecks.nostrEventId || repoForChecks.lastNostrEventId
+        )
       ) {
-        console.error("❌ [Repo Page] Blocking corrupted repo from display:", {
+        console.error("❌ [Repo Page] Corrupted repo detected (no redirect):", {
           entity: resolvedParams.entity,
           repo: decodedRepo,
-          ownerPubkey: (repo as any).ownerPubkey?.slice(0, 8),
+          ownerPubkey: (repoForChecks as any).ownerPubkey?.slice(0, 8),
         });
-        // Redirect to 404 or show error
-        router.push("/404");
-        return;
       }
 
       if (repo) {
@@ -1101,6 +1233,14 @@ export default function RepoCodePage() {
     if (!repo) {
       return;
     }
+    const normalizedRepoEntity = normalizeRepoEntityForRoute(
+      repo.entity,
+      resolvedParams.entity
+    );
+    const repoForChecks =
+      normalizedRepoEntity && normalizedRepoEntity !== repo.entity
+        ? { ...repo, entity: normalizedRepoEntity }
+        : repo;
 
     // CRITICAL: For "tides" repos, ALWAYS verify ownership matches entity BEFORE processing
     const checkRepoName = (
@@ -1164,19 +1304,18 @@ export default function RepoCodePage() {
     }
 
     // CRITICAL: Check if repo is corrupted BEFORE processing
-    if (isRepoCorrupted(repo, repo.nostrEventId || repo.lastNostrEventId)) {
-      console.error("❌ [Repo Page] Blocking corrupted repo from processing:", {
+    if (
+      isRepoCorrupted(repoForChecks, repo.nostrEventId || repo.lastNostrEventId)
+    ) {
+      console.error("❌ [Repo Page] Corrupted repo detected:", {
         entity: resolvedParams.entity,
         repo: decodedRepo,
         ownerPubkey: (repo as any).ownerPubkey?.slice(0, 8),
       });
-      // Set repoData to null to prevent rendering
-      setRepoData(null);
-      // CRITICAL: Remove corrupted repo from localStorage
+      // Always drop corrupted cached entry and continue with live fetch
       const updatedRepos = repos.filter((r) => r !== repo);
       saveStoredRepos(updatedRepos);
       console.log("🗑️ [Repo Page] Removed corrupted repo from localStorage");
-      repoProcessedRef.current = repoKey;
       return;
     }
 
@@ -1648,6 +1787,15 @@ export default function RepoCodePage() {
       ""
     ).toLowerCase();
     const verifyIsTides = verifyRepoName === "tides";
+    const normalizedRepoEntityForDisplay = normalizeRepoEntityForRoute(
+      repo.entity,
+      resolvedParams.entity
+    );
+    const repoForDisplayChecks =
+      normalizedRepoEntityForDisplay &&
+      normalizedRepoEntityForDisplay !== repo.entity
+        ? { ...repo, entity: normalizedRepoEntityForDisplay }
+        : repo;
 
     if (
       verifyIsTides &&
@@ -1687,7 +1835,12 @@ export default function RepoCodePage() {
       }
     }
 
-    if (isRepoCorrupted(repo, repo.nostrEventId || repo.lastNostrEventId)) {
+    if (
+      isRepoCorrupted(
+        repoForDisplayChecks,
+        repo.nostrEventId || repo.lastNostrEventId
+      )
+    ) {
       console.error("❌ [Repo Page] Blocking corrupted repo from display:", {
         entity: resolvedParams.entity,
         repo: decodedRepo,
@@ -1723,16 +1876,23 @@ export default function RepoCodePage() {
       // CRITICAL: Default publicRead to true (undefined = public) for repos pushed before public/private changes
       // This ensures old repos without publicRead field are treated as public
       const repoAny = repo as any;
+      const existingFiles = repoDataRef.current?.files;
+      const resolvedFiles =
+        filesArray.length > 0
+          ? filesArray
+          : Array.isArray(existingFiles)
+          ? existingFiles
+          : [];
       const publicRead =
         repoAny.publicRead !== undefined ? repoAny.publicRead : true; // Default to public
       const publicWrite =
         repoAny.publicWrite !== undefined ? repoAny.publicWrite : false; // Default to no public write
 
       setRepoData({
-        entity: repo.entity,
+        entity: normalizedRepoEntityForDisplay || repo.entity,
         repo: repo.repo || resolvedParams.repo,
         readme: repo.readme || "",
-        files: filesArray,
+        files: resolvedFiles,
         sourceUrl: repo.sourceUrl,
         forkedFrom: repo.forkedFrom || repo.sourceUrl,
         entityDisplayName: repo.entityDisplayName,
@@ -1948,12 +2108,24 @@ export default function RepoCodePage() {
 
             contributors = normalizeContributors(contributors);
 
+            const normalizedRepoEntity = normalizeRepoEntityForRoute(
+              repo.entity,
+              resolvedParams.entity
+            );
+            const existingFiles = repoDataRef.current?.files;
+            const resolvedFiles =
+              Array.isArray(d.files) && d.files.length > 0
+                ? (d.files as RepoFileEntry[])
+                : Array.isArray(existingFiles)
+                ? existingFiles
+                : [];
+
             // Now set repoData with all contributors
             setRepoData({
-              entity: repo.entity,
+              entity: normalizedRepoEntity || repo.entity,
               repo: repo.repo || resolvedParams.repo,
               readme: d.readme || "",
-              files: (d.files || []) as RepoFileEntry[], // Ensure files is always an array, never undefined
+              files: resolvedFiles, // Preserve fetched files if localStorage has none
               sourceUrl: repo.sourceUrl,
               forkedFrom: repo.sourceUrl,
               entityDisplayName: repo.entityDisplayName,
@@ -2106,14 +2278,19 @@ export default function RepoCodePage() {
           }
 
           // Update repoData with new files
-          setRepoData((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  files: filesArray,
-                }
-              : null
-          );
+          setRepoData((prev) => {
+            if (!prev) return null;
+            const resolvedFiles =
+              filesArray.length > 0
+                ? filesArray
+                : Array.isArray(prev.files)
+                ? prev.files
+                : [];
+            return {
+              ...prev,
+              files: resolvedFiles,
+            };
+          });
 
           console.log(
             `✅ [Repo Update] Reloaded ${filesArray.length} files after update event`
@@ -8263,13 +8440,7 @@ export default function RepoCodePage() {
       updatingFromURLRef.current = false;
     }, 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    urlBranch,
-    urlFile,
-    urlPath,
-    repoData?.files?.length,
-    repoData?.defaultBranch,
-  ]); // Use specific properties instead of full repoData
+  }, [urlBranch, urlFile, urlPath, safeFiles.length, repoData?.defaultBranch]); // Use specific properties instead of full repoData
 
   // Load README from current folder when path changes
   useEffect(() => {
@@ -8280,7 +8451,7 @@ export default function RepoCodePage() {
     }
 
     // Check if there's a README in the current folder (root or subfolder)
-    if (!repoData?.files) {
+    if (!safeFiles || safeFiles.length === 0) {
       setCurrentFolderReadme(null);
       return;
     }
@@ -8298,7 +8469,7 @@ export default function RepoCodePage() {
       `${folderPrefix}readme`,
     ];
 
-    const readmeFile = repoData.files.find(
+    const readmeFile = safeFiles.find(
       (f: any) => readmeVariants.includes(f.path) && f.type === "file"
     );
 
@@ -8312,7 +8483,7 @@ export default function RepoCodePage() {
     const loadReadme = async () => {
       try {
         const branch = selectedBranch || repoData?.defaultBranch || "main";
-        const sourceUrl = repoData.sourceUrl;
+        const sourceUrl = repoData?.sourceUrl;
 
         if (sourceUrl) {
           // Try API first
@@ -8369,7 +8540,7 @@ export default function RepoCodePage() {
     loadReadme();
   }, [
     currentPath,
-    repoData?.files,
+    safeFiles,
     repoData?.sourceUrl,
     repoData?.defaultBranch,
     selectedBranch,
@@ -8392,10 +8563,7 @@ export default function RepoCodePage() {
     }
 
     // Check if files are loaded - if not, wait for them
-    const hasFiles =
-      repoData?.files &&
-      Array.isArray(repoData.files) &&
-      repoData.files.length > 0;
+    const hasFiles = safeFiles.length > 0;
     const repoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
     const currentBranch = selectedBranch || repoData?.defaultBranch || "main";
     const repoKeyWithBranch = `${repoKey}:${currentBranch}`;
@@ -8442,7 +8610,7 @@ export default function RepoCodePage() {
   }, [
     selectedFile,
     urlFile,
-    repoData?.files?.length,
+    safeFiles.length,
     loadingFile,
     fileContent,
     resolvedParams.entity,
@@ -8866,13 +9034,6 @@ export default function RepoCodePage() {
     () => currentPath.split("/").filter(Boolean),
     [currentPath]
   );
-  // CRITICAL: Ensure files is always an array to prevent mobile hydration issues
-  // Depend on repoData itself (not just repoData?.files) to ensure re-run when repoData changes from null to object
-  const safeFiles = useMemo(() => {
-    if (!repoData || !repoData.files) return [];
-    if (!Array.isArray(repoData.files)) return [];
-    return repoData.files;
-  }, [repoData]);
 
   const items = useMemo(() => {
     // CRITICAL: Defensive check to prevent hook order issues when repoData changes
@@ -9234,7 +9395,7 @@ export default function RepoCodePage() {
         e.preventDefault();
         e.stopPropagation();
         // Only open if we're on the repo page and have files
-        if (repoData?.files && repoData.files.length > 0) {
+        if (safeFiles.length > 0) {
           window.location.href = getRepoLink("find");
         }
       }
@@ -9242,7 +9403,7 @@ export default function RepoCodePage() {
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [repoData?.files]);
+  }, [safeFiles]);
 
   // Helper to get raw GitHub URL for a file path
   function getRawUrl(path: string): string | null {
@@ -9271,13 +9432,13 @@ export default function RepoCodePage() {
     // Strategy 1: Check if file content is embedded in repoData.files array
     // According to the working insights: "Files embedded in Nostr events are always checked first"
     // This handles legacy repos and small files that are stored directly in events
-    if (repoData?.files && Array.isArray(repoData.files)) {
+    if (safeFiles.length > 0) {
       // Normalize paths for comparison (remove leading/trailing slashes, handle relative paths)
       const normalizePath = (p: string) =>
         p.replace(/^\/+/, "").replace(/\/+/g, "/");
       const normalizedPath = normalizePath(path);
 
-      const fileEntry = repoData.files.find((f: any) => {
+      const fileEntry = safeFiles.find((f: any) => {
         const fPath = normalizePath(f.path || "");
         // Try multiple matching strategies
         return (
@@ -9653,7 +9814,7 @@ export default function RepoCodePage() {
                     fullEntry: fileEntry,
                   }
                 : null,
-              allFiles: repoData.files
+              allFiles: safeFiles
                 .slice(0, 5)
                 .map((f: any) => ({ path: f.path, keys: Object.keys(f) })),
             }
@@ -9754,8 +9915,8 @@ export default function RepoCodePage() {
           {
             requestedPath: path,
             normalizedPath: normalizePath(path),
-            filesCount: repoData.files.length,
-            samplePaths: repoData.files.slice(0, 5).map((f: any) => f.path),
+            filesCount: safeFiles.length,
+            samplePaths: safeFiles.slice(0, 5).map((f: any) => f.path),
           }
         );
       }
@@ -11227,8 +11388,15 @@ export default function RepoCodePage() {
 
   // CRITICAL: Check if repo was blocked due to corruption
   // For "tides" repos, ALWAYS check ownership even if not in localStorage
+  const hasLocalChanges = useMemo(() => {
+    const data = repoData as any;
+    return data?.hasUnpushedEdits === true || data?.status === "local";
+  }, [repoData]);
+
   const isCorruptedRepo = useMemo(() => {
     if (!mounted) return false;
+    // Never block view-only or local-changes flows with a corruption screen
+    if (!currentUserPubkey || hasLocalChanges) return false;
 
     // CRITICAL: For "tides" repos, check ownership even if repoData exists
     // This catches repos that were loaded but shouldn't be displayed
@@ -11283,57 +11451,16 @@ export default function RepoCodePage() {
       }
     }
 
-    // For non-tides repos or if repoData exists, check general corruption
-    if (repoData) {
-      return isRepoCorrupted(
-        repoData as any,
-        (repoData as any).nostrEventId || (repoData as any).lastNostrEventId
-      );
-    }
-
-    // Check localStorage
-    try {
-      const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName<StoredRepo>(
-        repos,
-        resolvedParams.entity,
-        decodedRepo
-      );
-      if (repo) {
-        return isRepoCorrupted(
-          repo,
-          repo.nostrEventId || repo.lastNostrEventId
-        );
-      }
-    } catch (e) {
-      return false;
-    }
-
+    // For all other repos, do not show a corruption screen (view-only)
     return false;
-  }, [mounted, repoData, resolvedParams.entity, decodedRepo]);
-
-  if (isCorruptedRepo) {
-    return (
-      <div className="mt-4 p-8 text-center">
-        <h1 className="text-2xl font-bold text-red-400 mb-4">
-          Repository Not Found
-        </h1>
-        <p className="text-gray-400 mb-2">
-          This repository appears to be corrupted or invalid.
-        </p>
-        <p className="text-sm text-gray-500 mb-4">
-          The repository "{decodedRepo}" for entity "{resolvedParams.entity}"
-          could not be displayed.
-        </p>
-        <Link
-          href="/"
-          className="text-purple-400 hover:text-purple-300 underline"
-        >
-          Return to Homepage
-        </Link>
-      </div>
-    );
-  }
+  }, [
+    mounted,
+    repoData,
+    resolvedParams.entity,
+    decodedRepo,
+    currentUserPubkey,
+    hasLocalChanges,
+  ]);
 
   // Check access for private repositories
   const hasAccess = useMemo(() => {
@@ -11360,6 +11487,109 @@ export default function RepoCodePage() {
       maintainers
     );
   }, [mounted, repoData, currentUserPubkey, repoOwnerPubkey]);
+
+  const relayDisplayRelays = useMemo(() => {
+    const repoRelays = (repoData as any)?.relays || [];
+    return [
+      ...(defaultRelays || []),
+      ...repoRelays.filter((r: string) => !defaultRelays.includes(r)),
+    ];
+  }, [defaultRelays, (repoData as any)?.relays]);
+
+  const relayDisplayGraspServers = useMemo(() => {
+    return [];
+  }, []);
+
+  const relayDisplayUserRelays = useMemo(() => {
+    if (!getRelayStatuses) return [];
+    try {
+      const statuses = getRelayStatuses();
+      return statuses
+        .filter((item: any) => {
+          if (Array.isArray(item) && item.length >= 2) {
+            const [, status] = item;
+            return typeof status === "number" && status >= 1;
+          }
+          if (item && typeof item === "object") {
+            const status =
+              item.status !== undefined
+                ? item.status
+                : item.staus !== undefined
+                ? item.staus
+                : undefined;
+            return typeof status === "number" && status >= 1;
+          }
+          return false;
+        })
+        .map((item: any) => {
+          if (Array.isArray(item) && item.length >= 2) {
+            return item[0];
+          }
+          if (item && typeof item === "object") {
+            return item.url || item.relay;
+          }
+          return null;
+        })
+        .filter((url: string | null): url is string => url !== null);
+    } catch {
+      return [];
+    }
+  }, [getRelayStatuses]);
+
+  const relayDisplayGitSourceStatuses = useMemo(() => {
+    return fetchStatuses.filter((status) => {
+      const source = status.source;
+      if (typeof source === "string") {
+        const isGrasp =
+          source.includes("relay.ngit.dev") ||
+          source.includes("ngit.danconwaydev.com") ||
+          source.includes("git.vanderwarker.family");
+        return (
+          !isGrasp &&
+          (source.includes("github.com") ||
+            source.includes("gitlab.com") ||
+            source.includes("codeberg.org") ||
+            source.startsWith("git://"))
+        );
+      }
+      if (source && typeof source === "object" && "type" in source) {
+        const gitSource = source as any;
+        const sourceType = gitSource.type;
+        const sourceUrl = gitSource.url || "";
+        return (
+          sourceType === "github" ||
+          sourceType === "gitlab" ||
+          sourceType === "codeberg" ||
+          sourceUrl.startsWith("git://")
+        );
+      }
+      return false;
+    });
+  }, [fetchStatuses]);
+
+  const shouldShowCorruptionScreen = false;
+  if (shouldShowCorruptionScreen && isCorruptedRepo) {
+    return (
+      <div className="mt-4 p-8 text-center">
+        <h1 className="text-2xl font-bold text-red-400 mb-4">
+          Repository Not Found
+        </h1>
+        <p className="text-gray-400 mb-2">
+          This repository appears to be corrupted or invalid.
+        </p>
+        <p className="text-sm text-gray-500 mb-4">
+          The repository "{decodedRepo}" for entity "{resolvedParams.entity}"
+          could not be displayed.
+        </p>
+        <Link
+          href="/"
+          className="text-purple-400 hover:text-purple-300 underline"
+        >
+          Return to Homepage
+        </Link>
+      </div>
+    );
+  }
 
   // Show access denied for private repos if user doesn't have access
   if (
@@ -11559,7 +11789,7 @@ export default function RepoCodePage() {
                 className="truncate h-8 !border-lightgray bg-dark"
                 variant="outline"
                 onClick={() => {
-                  if (repoData?.files && repoData.files.length > 0) {
+                  if (safeFiles.length > 0) {
                     window.location.href = getRepoLink("find");
                   }
                 }}
@@ -11924,7 +12154,7 @@ export default function RepoCodePage() {
                       } else {
                         // For native repos, create ZIP from files
                         try {
-                          const files = repoData?.files || [];
+                          const files = safeFiles;
                           if (files.length === 0) {
                             const { showToast } = await import(
                               "@/components/ui/toast"
@@ -12344,18 +12574,13 @@ export default function RepoCodePage() {
                 <div className="flex items-center gap-4 text-gray-400 text-xs">
                   <Tooltip
                     content={`Total number of files in this repository: ${
-                      repoData?.files
-                        ? repoData.files.filter((f) => f.type === "file").length
-                        : 0
+                      safeFiles.filter((f) => f.type === "file").length
                     }`}
                   >
                     <span className="hover:text-purple-500 flex items-center gap-1 cursor-help">
                       <History className="h-4 w-4" />
                       <span className="hidden sm:inline">
-                        {repoData?.files
-                          ? repoData.files.filter((f) => f.type === "file")
-                              .length
-                          : 0}{" "}
+                        {safeFiles.filter((f) => f.type === "file").length}{" "}
                         files
                       </span>
                     </span>
@@ -12378,10 +12603,7 @@ export default function RepoCodePage() {
             {fetchStatuses.length > 0 &&
               (() => {
                 // Check if we have files - if so, show success message briefly, then hide
-                const hasFiles =
-                  repoData?.files &&
-                  Array.isArray(repoData.files) &&
-                  repoData.files.length > 0;
+                const hasFiles = safeFiles.length > 0;
                 const hasSuccess = fetchStatuses.some(
                   (s) => s.status === "success"
                 );
@@ -16479,11 +16701,11 @@ export default function RepoCodePage() {
               <GitFork className="mr-2 inline h-4 w-4" />
               <strong>{liveForkCount}</strong> forks
             </li>
-            {repoData?.files && (
+            {safeFiles.length > 0 && (
               <li>
                 <File className="mr-2 inline h-4 w-4" />
                 <strong>
-                  {repoData.files.filter((f) => f.type === "file").length}
+                  {safeFiles.filter((f) => f.type === "file").length}
                 </strong>{" "}
                 files
               </li>
@@ -16581,176 +16803,10 @@ export default function RepoCodePage() {
 
           {/* Display configured relays and Grasp servers */}
           <RelayDisplay
-            relays={useMemo(() => {
-              // Combine default relays (from env: NEXT_PUBLIC_NOSTR_RELAYS) with repo-specific relays from Nostr event
-              // Repo-specific relays come from "relay" or "relays" tags in the repository event
-              const repoRelays = (repoData as any)?.relays || [];
-              const combined = [
-                ...(defaultRelays || []),
-                ...repoRelays.filter((r: string) => !defaultRelays.includes(r)),
-              ];
-              return combined;
-            }, [defaultRelays, (repoData as any)?.relays])}
-            graspServers={useMemo(() => {
-              // CRITICAL: graspServers should be wss:// URLs (Nostr relays that are also git servers)
-              // GRASP servers are automatically extracted from relays by RelayDisplay component
-              // This prop is for additional explicit GRASP servers (currently unused, but kept for future use)
-              // Clone URLs (git:///http:///https://) are NOT passed here - they're git servers, not Nostr relays
-              return [];
-            }, [])}
-            userRelays={useMemo(() => {
-              // Get user-configured relays from relay pool statuses
-              // This shows relays the user has added via addRelay() or that are currently connected
-              if (!getRelayStatuses) return [];
-              try {
-                const statuses = getRelayStatuses();
-                // getRelayStatuses returns [url: string, status: number][] (array of tuples)
-                // Return relays that are connected (status 2) or connecting (status 1)
-                return statuses
-                  .filter((item: any) => {
-                    // Handle tuple format: [url, status]
-                    if (Array.isArray(item) && item.length >= 2) {
-                      const [, status] = item;
-                      return typeof status === "number" && status >= 1;
-                    }
-                    // Fallback: Handle object format
-                    if (item && typeof item === "object") {
-                      const status =
-                        item.status !== undefined
-                          ? item.status
-                          : item.staus !== undefined
-                          ? item.staus
-                          : undefined;
-                      return typeof status === "number" && status >= 1;
-                    }
-                    return false;
-                  })
-                  .map((item: any) => {
-                    // Extract URL from tuple or object
-                    if (Array.isArray(item) && item.length >= 2) {
-                      return item[0];
-                    }
-                    if (item && typeof item === "object") {
-                      return item.url || item.relay;
-                    }
-                    return null;
-                  })
-                  .filter((url: string | null): url is string => url !== null);
-              } catch {
-                return [];
-              }
-            }, [getRelayStatuses])}
-            gitSourceStatuses={useMemo(() => {
-              // Convert fetchStatuses to format expected by RelayDisplay
-              // Only include git sources (GitHub, GitLab, Codeberg, etc.) - exclude Nostr git servers (grasp)
-              // NOTE: fetchStatuses state uses string source, but FetchStatus from git-source-fetcher uses GitSource object
-              // We need to handle both formats for compatibility
-              return fetchStatuses
-                .filter((status) => {
-                  const source = status.source;
-
-                  // Handle string format (from state)
-                  if (typeof source === "string") {
-                    const isGrasp =
-                      source.includes("relay.ngit.dev") ||
-                      source.includes("ngit.danconwaydev.com") ||
-                      source.includes("git.vanderwarker.family");
-                    return (
-                      !isGrasp &&
-                      (source.includes("github.com") ||
-                        source.includes("gitlab.com") ||
-                        source.includes("codeberg.org") ||
-                        source.startsWith("git://"))
-                    );
-                  }
-
-                  // Handle GitSource object format (from FetchStatus)
-                  if (
-                    source &&
-                    typeof source === "object" &&
-                    "type" in source
-                  ) {
-                    const gitSource = source as any;
-                    const sourceType = gitSource.type;
-                    const sourceUrl = gitSource.url || "";
-
-                    // Check if it's a grasp server
-                    const isGrasp =
-                      sourceUrl.includes("relay.ngit.dev") ||
-                      sourceUrl.includes("ngit.danconwaydev.com") ||
-                      sourceUrl.includes("git.vanderwarker.family") ||
-                      sourceType === "nostr-git";
-
-                    // Only show external git sources (not grasp servers)
-                    return (
-                      !isGrasp &&
-                      (sourceType === "github" ||
-                        sourceType === "gitlab" ||
-                        sourceType === "codeberg" ||
-                        (sourceType === "unknown" &&
-                          (sourceUrl.includes("github.com") ||
-                            sourceUrl.includes("gitlab.com") ||
-                            sourceUrl.includes("codeberg.org") ||
-                            sourceUrl.startsWith("git://"))))
-                    );
-                  }
-
-                  return false;
-                })
-                .map((status) => {
-                  const source = status.source;
-                  let sourceUrl: string;
-                  let displayName: string | undefined;
-
-                  // Handle string format
-                  if (typeof source === "string") {
-                    sourceUrl = source;
-                    const urlMatch = sourceUrl.match(
-                      /https?:\/\/([^\/]+)\/([^\/]+)\/([^\/]+)/
-                    );
-                    if (urlMatch) {
-                      displayName =
-                        `${urlMatch[1]}/${urlMatch[2]}/${urlMatch[3]}`.replace(
-                          /\.git$/,
-                          ""
-                        );
-                    } else {
-                      displayName = sourceUrl
-                        .replace(/^https?:\/\//, "")
-                        .replace(/^git:\/\//, "")
-                        .replace(/\.git$/, "");
-                    }
-                  } else if (
-                    source &&
-                    typeof source === "object" &&
-                    "url" in source
-                  ) {
-                    // Handle GitSource object format
-                    const gitSource = source as any;
-                    sourceUrl = gitSource.url || "";
-                    displayName =
-                      gitSource.displayName ||
-                      (gitSource.owner && gitSource.repo
-                        ? `${gitSource.displayName || gitSource.type}/${
-                            gitSource.owner
-                          }/${gitSource.repo}`
-                        : sourceUrl
-                            .replace(/^https?:\/\//, "")
-                            .replace(/^git:\/\//, "")
-                            .replace(/\.git$/, ""));
-                  } else {
-                    sourceUrl = String(source);
-                    displayName = undefined;
-                  }
-
-                  return {
-                    source: sourceUrl,
-                    status: status.status,
-                    error: status.error,
-                    displayName,
-                  };
-                });
-            }, [fetchStatuses])}
+            relays={relayDisplayRelays}
+            graspServers={relayDisplayGraspServers}
+            userRelays={relayDisplayUserRelays}
+            gitSourceStatuses={relayDisplayGitSourceStatuses}
           />
 
           {/* Display last successful Nostr event ID (if available) */}
@@ -16791,9 +16847,9 @@ export default function RepoCodePage() {
         </aside>
 
         {/* Fuzzy File Finder Modal */}
-        {repoData?.files && (
+        {safeFiles.length > 0 && (
           <FuzzyFileFinder
-            files={(repoData.files || []).map((f) => ({
+            files={safeFiles.map((f) => ({
               type: (f?.type === "file" || f?.type === "dir"
                 ? f.type
                 : "file") as "file" | "dir",

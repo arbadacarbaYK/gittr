@@ -1,14 +1,23 @@
 /**
  * Statistics Calculation Functions
  * Calculate top repos, users, etc. from activity data
- * 
+ *
  * CRITICAL: New functions count from Nostr events (network source of truth)
  * Old functions use localStorage (kept for fallback)
  */
-
-import { getActivities, Activity, ActivityType } from "./activity-tracking";
-import { resolveEntityToPubkey, getRepoOwnerPubkey } from "./utils/entity-resolver";
-import { KIND_REPOSITORY_NIP34, KIND_REPOSITORY_STATE, KIND_PULL_REQUEST, KIND_ISSUE, KIND_STATUS_APPLIED, KIND_STATUS_CLOSED } from "./nostr/events";
+import { Activity, ActivityType, getActivities } from "./activity-tracking";
+import {
+  KIND_ISSUE,
+  KIND_PULL_REQUEST,
+  KIND_REPOSITORY_NIP34,
+  KIND_REPOSITORY_STATE,
+  KIND_STATUS_APPLIED,
+  KIND_STATUS_CLOSED,
+} from "./nostr/events";
+import {
+  getRepoOwnerPubkey,
+  resolveEntityToPubkey,
+} from "./utils/entity-resolver";
 
 export interface RepoStats {
   repoId: string;
@@ -36,37 +45,45 @@ export interface UserStats {
  * Helper: Check if repo is deleted
  */
 function isRepoDeleted(entity: string, repo: string): boolean {
-  const deletedRepos = JSON.parse(localStorage.getItem("gittr_deleted_repos") || "[]") as Array<{entity: string; repo: string; deletedAt: number}>;
+  const deletedRepos = JSON.parse(
+    localStorage.getItem("gittr_deleted_repos") || "[]"
+  ) as Array<{ entity: string; repo: string; deletedAt: number }>;
   const repoKey = `${entity}/${repo}`.toLowerCase();
-  return deletedRepos.some(d => `${d.entity}/${d.repo}`.toLowerCase() === repoKey);
+  return deletedRepos.some(
+    (d) => `${d.entity}/${d.repo}`.toLowerCase() === repoKey
+  );
 }
 
 /**
  * Helper: Check if user has access to repo (owner or write access)
  */
-function userHasAccessToRepo(userPubkey: string | null | undefined, repo: any): boolean {
+function userHasAccessToRepo(
+  userPubkey: string | null | undefined,
+  repo: any
+): boolean {
   if (!userPubkey || !repo) return false;
-  
+
   const normalizedPubkey = userPubkey.toLowerCase();
-  
+
   // Check if owner
   if (repo.ownerPubkey && repo.ownerPubkey.toLowerCase() === normalizedPubkey) {
     return true;
   }
-  
+
   // Check contributors for write access (owner, maintainer, or contributor with weight > 0)
   if (repo.contributors && Array.isArray(repo.contributors)) {
-    const contributor = repo.contributors.find((c: any) => 
-      c.pubkey && c.pubkey.toLowerCase() === normalizedPubkey
+    const contributor = repo.contributors.find(
+      (c: any) => c.pubkey && c.pubkey.toLowerCase() === normalizedPubkey
     );
     if (contributor) {
       // Owner or maintainer have write access
-      if (contributor.role === "owner" || contributor.role === "maintainer") return true;
+      if (contributor.role === "owner" || contributor.role === "maintainer")
+        return true;
       // Contributor with weight > 0 has write access
       if (contributor.weight && contributor.weight > 0) return true;
     }
   }
-  
+
   return false;
 }
 
@@ -74,44 +91,51 @@ function userHasAccessToRepo(userPubkey: string | null | undefined, repo: any): 
  * Get top 10 most active repositories
  * @param userPubkey - Optional: filter to repos where user has access (owner or write access)
  */
-export function getTopRepos(count: number = 10, userPubkey?: string | null): RepoStats[] {
+export function getTopRepos(
+  count: number = 10,
+  userPubkey?: string | null
+): RepoStats[] {
   const activities = getActivities();
-  const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
+  const repos = JSON.parse(
+    localStorage.getItem("gittr_repos") || "[]"
+  ) as any[];
   const repoMap = new Map<string, RepoStats>();
-  
+
   let skippedRepoCreated = 0;
   let processedActivities = 0;
-  
-  activities.forEach(activity => {
+
+  activities.forEach((activity) => {
     if (!activity.repo || !activity.entity) return;
-    
+
     // CRITICAL: Don't count repo_created or repo_imported as activity - repos are metadata, not activities
     if (activity.type === "repo_created" || activity.type === "repo_imported") {
       skippedRepoCreated++;
       return;
     }
-    
+
     // Extract entity and repo name from activity.repo (format: "entity/repo")
-    const [activityEntity, activityRepo] = activity.repo.split('/');
+    const [activityEntity, activityRepo] = activity.repo.split("/");
     if (!activityEntity || !activityRepo) return;
-    
+
     // Skip if repo is deleted
     if (isRepoDeleted(activityEntity, activityRepo)) return;
-    
+
     // If userPubkey provided, only include repos where user has access
     if (userPubkey) {
       const repo = repos.find((r: any) => {
         const rEntity = r.entity || "";
         const rRepo = r.repo || r.slug || "";
-        return rEntity.toLowerCase() === activityEntity.toLowerCase() && 
-               rRepo.toLowerCase() === activityRepo.toLowerCase();
+        return (
+          rEntity.toLowerCase() === activityEntity.toLowerCase() &&
+          rRepo.toLowerCase() === activityRepo.toLowerCase()
+        );
       });
-      
+
       if (!repo || !userHasAccessToRepo(userPubkey, repo)) return;
     }
-    
+
     processedActivities++;
-    
+
     const existing = repoMap.get(activity.repo) || {
       repoId: activity.repo,
       repoName: activity.repoName || activityRepo,
@@ -123,10 +147,10 @@ export function getTopRepos(count: number = 10, userPubkey?: string | null): Rep
       zapCount: 0,
       lastActivity: 0,
     };
-    
+
     existing.activityCount++;
     existing.lastActivity = Math.max(existing.lastActivity, activity.timestamp);
-    
+
     if (activity.type === "pr_created" || activity.type === "pr_merged") {
       existing.prCount++;
     }
@@ -139,13 +163,13 @@ export function getTopRepos(count: number = 10, userPubkey?: string | null): Rep
     if (activity.type === "repo_zapped") {
       existing.zapCount++;
     }
-    
+
     repoMap.set(activity.repo, existing);
   });
-  
+
   // Sort by activity count DESCENDING (highest first) - show repos with most activity at top
   const result = Array.from(repoMap.values())
-    .filter(repo => repo.activityCount > 0) // Only repos with at least 1 activity (not just repo_created)
+    .filter((repo) => repo.activityCount > 0) // Only repos with at least 1 activity (not just repo_created)
     .sort((a, b) => {
       // Sort by activity count DESCENDING (highest first)
       if (b.activityCount !== a.activityCount) {
@@ -155,16 +179,24 @@ export function getTopRepos(count: number = 10, userPubkey?: string | null): Rep
       return b.lastActivity - a.lastActivity;
     })
     .slice(0, count);
-  
+
   // Debug logging
   if (result.length === 0 && repoMap.size > 0) {
-    const allCounts = Array.from(repoMap.values()).map(r => r.activityCount);
+    const allCounts = Array.from(repoMap.values()).map((r) => r.activityCount);
     const maxCount = Math.max(...allCounts, 0);
-    console.warn(`⚠️ [getTopRepos] No repos with activities found. Max activity: ${maxCount}, Skipped ${skippedRepoCreated} repo_created, processed ${processedActivities} activities, ${repoMap.size} repos in map`);
+    console.warn(
+      `⚠️ [getTopRepos] No repos with activities found. Max activity: ${maxCount}, Skipped ${skippedRepoCreated} repo_created, processed ${processedActivities} activities, ${repoMap.size} repos in map`
+    );
   } else if (result.length > 0) {
-    console.log(`✅ [getTopRepos] Found ${result.length} repos. Top activity: ${result[0]?.activityCount || 0}, Repos: ${result.map(r => `${r.repoName}(${r.activityCount})`).join(', ')}`);
+    console.log(
+      `✅ [getTopRepos] Found ${result.length} repos. Top activity: ${
+        result[0]?.activityCount || 0
+      }, Repos: ${result
+        .map((r) => `${r.repoName}(${r.activityCount})`)
+        .join(", ")}`
+    );
   }
-  
+
   return result;
 }
 
@@ -174,10 +206,10 @@ export function getTopRepos(count: number = 10, userPubkey?: string | null): Rep
 export function getTopDevsByPRs(count: number = 10): UserStats[] {
   const activities = getActivities();
   const userMap = new Map<string, UserStats>();
-  
-  activities.forEach(activity => {
+
+  activities.forEach((activity) => {
     if (activity.type !== "pr_merged") return;
-    
+
     const existing = userMap.get(activity.user) || {
       pubkey: activity.user,
       activityCount: 0,
@@ -187,14 +219,14 @@ export function getTopDevsByPRs(count: number = 10): UserStats[] {
       reposCreatedCount: 0,
       lastActivity: 0,
     };
-    
+
     existing.prMergedCount++;
     existing.activityCount++;
     existing.lastActivity = Math.max(existing.lastActivity, activity.timestamp);
-    
+
     userMap.set(activity.user, existing);
   });
-  
+
   return Array.from(userMap.values())
     .sort((a, b) => b.prMergedCount - a.prMergedCount)
     .slice(0, count);
@@ -206,10 +238,10 @@ export function getTopDevsByPRs(count: number = 10): UserStats[] {
 export function getTopBountyTakers(count: number = 10): UserStats[] {
   const activities = getActivities();
   const userMap = new Map<string, UserStats>();
-  
-  activities.forEach(activity => {
+
+  activities.forEach((activity) => {
     if (activity.type !== "bounty_claimed") return;
-    
+
     const existing = userMap.get(activity.user) || {
       pubkey: activity.user,
       activityCount: 0,
@@ -219,14 +251,14 @@ export function getTopBountyTakers(count: number = 10): UserStats[] {
       reposCreatedCount: 0,
       lastActivity: 0,
     };
-    
+
     existing.bountyClaimedCount++;
     existing.activityCount++;
     existing.lastActivity = Math.max(existing.lastActivity, activity.timestamp);
-    
+
     userMap.set(activity.user, existing);
   });
-  
+
   return Array.from(userMap.values())
     .sort((a, b) => b.bountyClaimedCount - a.bountyClaimedCount)
     .slice(0, count);
@@ -236,36 +268,43 @@ export function getTopBountyTakers(count: number = 10): UserStats[] {
  * Get most active users (overall activity)
  * @param userPubkey - Optional: only count activities on repos where this user has access
  */
-export function getTopUsers(count: number = 10, userPubkey?: string | null): UserStats[] {
+export function getTopUsers(
+  count: number = 10,
+  userPubkey?: string | null
+): UserStats[] {
   const activities = getActivities();
   const userMap = new Map<string, UserStats>();
-  
+
   // Also get repos to resolve full pubkeys from partial ones and check access
-  const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
-  
-  activities.forEach(activity => {
+  const repos = JSON.parse(
+    localStorage.getItem("gittr_repos") || "[]"
+  ) as any[];
+
+  activities.forEach((activity) => {
     // If userPubkey provided, only count activities on repos where user has access
     if (userPubkey && activity.repo && activity.entity) {
-      const [activityEntity, activityRepo] = activity.repo.split('/');
+      const [activityEntity, activityRepo] = activity.repo.split("/");
       if (activityEntity && activityRepo) {
         // Skip if repo is deleted
         if (isRepoDeleted(activityEntity, activityRepo)) return;
-        
+
         // Check if user has access
         const repo = repos.find((r: any) => {
           const rEntity = r.entity || "";
           const rRepo = r.repo || r.slug || "";
-          return rEntity.toLowerCase() === activityEntity.toLowerCase() && 
-                 rRepo.toLowerCase() === activityRepo.toLowerCase();
+          return (
+            rEntity.toLowerCase() === activityEntity.toLowerCase() &&
+            rRepo.toLowerCase() === activityRepo.toLowerCase()
+          );
         });
-        
+
         if (!repo || !userHasAccessToRepo(userPubkey, repo)) return;
       }
     }
     // Only use full 64-char pubkeys - repos always have full pubkeys
     // If activity has npub, decode it. Otherwise must be full pubkey.
     let activityUserPubkey = activity.user;
-    
+
     // If user is not a full pubkey, try to resolve npub only (no partial pubkeys)
     if (!activityUserPubkey || !/^[0-9a-f]{64}$/i.test(activityUserPubkey)) {
       // Only try to resolve npubs - repos should always have full pubkeys
@@ -278,12 +317,12 @@ export function getTopUsers(count: number = 10, userPubkey?: string | null): Use
         return;
       }
     }
-    
+
     // Skip if still not a valid full pubkey
     if (!activityUserPubkey || !/^[0-9a-f]{64}$/i.test(activityUserPubkey)) {
       return; // Skip invalid activities
     }
-    
+
     const existing = userMap.get(activityUserPubkey) || {
       pubkey: activityUserPubkey,
       activityCount: 0,
@@ -293,10 +332,10 @@ export function getTopUsers(count: number = 10, userPubkey?: string | null): Use
       reposCreatedCount: 0,
       lastActivity: 0,
     };
-    
+
     existing.activityCount++;
     existing.lastActivity = Math.max(existing.lastActivity, activity.timestamp);
-    
+
     if (activity.type === "pr_merged") {
       existing.prMergedCount++;
     }
@@ -309,10 +348,10 @@ export function getTopUsers(count: number = 10, userPubkey?: string | null): Use
     if (activity.type === "repo_created" || activity.type === "repo_imported") {
       existing.reposCreatedCount++;
     }
-    
+
     userMap.set(activityUserPubkey, existing);
   });
-  
+
   return Array.from(userMap.values())
     .sort((a, b) => b.activityCount - a.activityCount)
     .slice(0, count);
@@ -322,7 +361,10 @@ export function getTopUsers(count: number = 10, userPubkey?: string | null): Use
  * Get latest bounties (open issues with highest bounties)
  * Optionally filter by owner pubkey to show only user's own bounties
  */
-export function getLatestBounties(count: number = 5, ownerPubkey?: string | null): Array<{
+export function getLatestBounties(
+  count: number = 5,
+  ownerPubkey?: string | null
+): Array<{
   issueId: string;
   repoId: string;
   repoName: string;
@@ -345,13 +387,17 @@ export function getLatestBounties(count: number = 5, ownerPubkey?: string | null
   }> = [];
 
   repos.forEach((repo: any) => {
-    const entity = repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
-    const repoName = repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
+    const entity =
+      repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
+    const repoName =
+      repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
     if (!entity || !repoName) return;
 
     // If filtering by owner, only include repos owned by that user
     if (ownerPubkey) {
-      const repoOwnerPubkey = repo.ownerPubkey || (repo.contributors?.find((c: any) => c.weight === 100)?.pubkey);
+      const repoOwnerPubkey =
+        repo.ownerPubkey ||
+        repo.contributors?.find((c: any) => c.weight === 100)?.pubkey;
       if (repoOwnerPubkey !== ownerPubkey) return; // Skip repos not owned by user
     }
 
@@ -403,8 +449,10 @@ export function getOpenBounties(count: number = 5): Array<{
   }> = [];
 
   repos.forEach((repo: any) => {
-    const entity = repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
-    const repoName = repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
+    const entity =
+      repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
+    const repoName =
+      repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
     if (!entity || !repoName) return;
 
     const issueKey = `gittr_issues__${entity}__${repoName}`;
@@ -412,7 +460,11 @@ export function getOpenBounties(count: number = 5): Array<{
 
     issues.forEach((issue: any) => {
       // Only include open issues with paid bounties (available to claim)
-      if (issue.status === "open" && issue.bountyAmount && issue.bountyStatus === "paid") {
+      if (
+        issue.status === "open" &&
+        issue.bountyAmount &&
+        issue.bountyStatus === "paid"
+      ) {
         bounties.push({
           issueId: issue.id || issue.number,
           repoId: `${entity}/${repoName}`,
@@ -465,11 +517,15 @@ export function getOwnBountyStats(ownerPubkey: string | null): {
 
   repos.forEach((repo: any) => {
     // Only count repos owned by this user
-    const repoOwnerPubkey = repo.ownerPubkey || (repo.contributors?.find((c: any) => c.weight === 100)?.pubkey);
+    const repoOwnerPubkey =
+      repo.ownerPubkey ||
+      repo.contributors?.find((c: any) => c.weight === 100)?.pubkey;
     if (repoOwnerPubkey !== ownerPubkey) return;
 
-    const entity = repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
-    const repoName = repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
+    const entity =
+      repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
+    const repoName =
+      repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
     if (!entity || !repoName) return;
 
     const issueKey = `gittr_issues__${entity}__${repoName}`;
@@ -508,57 +564,64 @@ export function getOwnBountyStats(ownerPubkey: string | null): {
  * @param count - Number of activities to return
  * @param userPubkey - Optional: filter by specific user's pubkey and only show activities on repos where user has access
  */
-export function getRecentActivity(count: number = 10, userPubkey?: string | null): Activity[] {
+export function getRecentActivity(
+  count: number = 10,
+  userPubkey?: string | null
+): Activity[] {
   const activities = getActivities();
-  const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
+  const repos = JSON.parse(
+    localStorage.getItem("gittr_repos") || "[]"
+  ) as any[];
   let filtered = activities;
-  
+
   // If userPubkey provided, filter by user AND only show activities on repos where user has access
   if (userPubkey) {
     const normalized = userPubkey.toLowerCase();
-    filtered = activities.filter(a => {
+    filtered = activities.filter((a) => {
       if (!a.user || !a.repo || !a.entity) return false;
-      
+
       // Match user pubkey
       const activityUser = a.user.toLowerCase();
-      const userMatches = 
+      const userMatches =
         activityUser === normalized ||
         (normalized.length === 8 && activityUser.startsWith(normalized)) ||
-        (normalized.length === 8 && activityUser.length === 64 && activityUser.startsWith(normalized));
-      
+        (normalized.length === 8 &&
+          activityUser.length === 64 &&
+          activityUser.startsWith(normalized));
+
       if (!userMatches) return false;
-      
+
       // Extract entity and repo from activity.repo
-      const [activityEntity, activityRepo] = a.repo.split('/');
+      const [activityEntity, activityRepo] = a.repo.split("/");
       if (!activityEntity || !activityRepo) return false;
-      
+
       // Skip if repo is deleted
       if (isRepoDeleted(activityEntity, activityRepo)) return false;
-      
+
       // Check if user has access to this repo
       const repo = repos.find((r: any) => {
         const rEntity = r.entity || "";
         const rRepo = r.repo || r.slug || "";
-        return rEntity.toLowerCase() === activityEntity.toLowerCase() && 
-               rRepo.toLowerCase() === activityRepo.toLowerCase();
+        return (
+          rEntity.toLowerCase() === activityEntity.toLowerCase() &&
+          rRepo.toLowerCase() === activityRepo.toLowerCase()
+        );
       });
-      
+
       // Only include if user has access to the repo
       return repo && userHasAccessToRepo(userPubkey, repo);
     });
   } else {
     // Even without userPubkey, filter out deleted repos
-    filtered = activities.filter(a => {
+    filtered = activities.filter((a) => {
       if (!a.repo || !a.entity) return false;
-      const [activityEntity, activityRepo] = a.repo.split('/');
+      const [activityEntity, activityRepo] = a.repo.split("/");
       if (!activityEntity || !activityRepo) return false;
       return !isRepoDeleted(activityEntity, activityRepo);
     });
   }
-  
-  return filtered
-    .sort((a, b) => b.timestamp - a.timestamp)
-    .slice(0, count);
+
+  return filtered.sort((a, b) => b.timestamp - a.timestamp).slice(0, count);
 }
 
 /**
@@ -609,31 +672,36 @@ export function getOpenPRsAndIssues(userPubkey?: string | null): {
   }> = [];
 
   repos.forEach((repo: any) => {
-    const entity = repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
-    const repoName = repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
+    const entity =
+      repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
+    const repoName =
+      repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
     if (!entity || !repoName) return;
-    
+
     // Skip if repo is deleted
     if (isRepoDeleted(entity, repoName)) return;
-    
+
     // If userPubkey provided, only include repos where user has WRITE access (owner or maintainer)
     // This ensures users only see PRs/Issues from repos they can actually manage
     if (userPubkey) {
       const normalizedPubkey = userPubkey.toLowerCase();
-      
+
       // Check if owner
-      const isOwner = repo.ownerPubkey && repo.ownerPubkey.toLowerCase() === normalizedPubkey;
+      const isOwner =
+        repo.ownerPubkey && repo.ownerPubkey.toLowerCase() === normalizedPubkey;
       if (isOwner) {
         // Owner has write access, continue
       } else {
         // Check if maintainer (has write access but not owner)
-        const contributor = repo.contributors?.find((c: any) => 
-          c.pubkey && c.pubkey.toLowerCase() === normalizedPubkey
+        const contributor = repo.contributors?.find(
+          (c: any) => c.pubkey && c.pubkey.toLowerCase() === normalizedPubkey
         );
-        const isMaintainer = contributor && (
-          contributor.role === "maintainer" || 
-          (contributor.weight && contributor.weight >= 50 && contributor.weight < 100)
-        );
+        const isMaintainer =
+          contributor &&
+          (contributor.role === "maintainer" ||
+            (contributor.weight &&
+              contributor.weight >= 50 &&
+              contributor.weight < 100));
         if (!isMaintainer) {
           // User doesn't have write access, skip this repo
           return;
@@ -680,7 +748,9 @@ export function getOpenPRsAndIssues(userPubkey?: string | null): {
     openPRs: allPRs.length,
     openIssues: allIssues.length,
     recentPRs: allPRs.sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
-    recentIssues: allIssues.sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
+    recentIssues: allIssues
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 5),
   };
 }
 
@@ -689,51 +759,66 @@ export function getOpenPRsAndIssues(userPubkey?: string | null): {
  * @param userPubkey - User's pubkey to filter activities
  * @param count - Number of activities to return
  */
-export function getRecentBountyActivities(userPubkey: string | null, count: number = 5): Activity[] {
+export function getRecentBountyActivities(
+  userPubkey: string | null,
+  count: number = 5
+): Activity[] {
   if (!userPubkey) return [];
-  
+
   const activities = getActivities();
-  const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
+  const repos = JSON.parse(
+    localStorage.getItem("gittr_repos") || "[]"
+  ) as any[];
   const normalized = userPubkey.toLowerCase();
-  
+
   // Filter for bounty-related activities by this user
-  const bountyActivities = activities.filter(a => {
+  const bountyActivities = activities.filter((a) => {
     if (!a.user || !a.repo || !a.entity) return false;
-    
+
     // Only bounty_created and bounty_claimed activities
-    if (a.type !== "bounty_created" && a.type !== "bounty_claimed") return false;
-    
+    if (a.type !== "bounty_created" && a.type !== "bounty_claimed")
+      return false;
+
     // Match user pubkey
     const activityUser = a.user.toLowerCase();
-    const userMatches = 
+    const userMatches =
       activityUser === normalized ||
       (normalized.length === 8 && activityUser.startsWith(normalized)) ||
-      (normalized.length === 8 && activityUser.length === 64 && activityUser.startsWith(normalized));
-    
+      (normalized.length === 8 &&
+        activityUser.length === 64 &&
+        activityUser.startsWith(normalized));
+
     if (!userMatches) return false;
-    
+
     // Extract entity and repo from activity.repo
-    const [activityEntity, activityRepo] = a.repo.split('/');
+    const [activityEntity, activityRepo] = a.repo.split("/");
     if (!activityEntity || !activityRepo) return false;
-    
+
     // Skip if repo is deleted
     if (isRepoDeleted(activityEntity, activityRepo)) return false;
-    
+
     // Check if user has access to this repo (for bounty_created, user should be owner)
     const repo = repos.find((r: any) => {
       const rEntity = r.entity || "";
       const rRepo = r.repo || r.slug || "";
-      return rEntity.toLowerCase() === activityEntity.toLowerCase() && 
-             rRepo.toLowerCase() === activityRepo.toLowerCase();
+      return (
+        rEntity.toLowerCase() === activityEntity.toLowerCase() &&
+        rRepo.toLowerCase() === activityRepo.toLowerCase()
+      );
     });
-    
+
     // For bounty_created, user should have access (they created it)
     // For bounty_claimed, user is the claimer, so always include
-    if (a.type === "bounty_created" && repo && !userHasAccessToRepo(userPubkey, repo)) return false;
-    
+    if (
+      a.type === "bounty_created" &&
+      repo &&
+      !userHasAccessToRepo(userPubkey, repo)
+    )
+      return false;
+
     return true;
   });
-  
+
   return bountyActivities
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, count);
@@ -749,28 +834,35 @@ export function getUserBountyActivityStats(userPubkey: string | null): {
   totalClaimedAmount: number;
 } {
   if (!userPubkey) {
-    return { bountiesSetOut: 0, bountiesClaimed: 0, totalSetOutAmount: 0, totalClaimedAmount: 0 };
+    return {
+      bountiesSetOut: 0,
+      bountiesClaimed: 0,
+      totalSetOutAmount: 0,
+      totalClaimedAmount: 0,
+    };
   }
-  
+
   const activities = getActivities();
   const normalized = userPubkey.toLowerCase();
-  
+
   let bountiesSetOut = 0;
   let bountiesClaimed = 0;
   let totalSetOutAmount = 0;
   let totalClaimedAmount = 0;
-  
-  activities.forEach(a => {
+
+  activities.forEach((a) => {
     if (!a.user) return;
-    
+
     const activityUser = a.user.toLowerCase();
-    const userMatches = 
+    const userMatches =
       activityUser === normalized ||
       (normalized.length === 8 && activityUser.startsWith(normalized)) ||
-      (normalized.length === 8 && activityUser.length === 64 && activityUser.startsWith(normalized));
-    
+      (normalized.length === 8 &&
+        activityUser.length === 64 &&
+        activityUser.startsWith(normalized));
+
     if (!userMatches) return;
-    
+
     if (a.type === "bounty_created") {
       bountiesSetOut++;
       totalSetOutAmount += a.metadata?.bountyAmount || 0;
@@ -779,7 +871,7 @@ export function getUserBountyActivityStats(userPubkey: string | null): {
       totalClaimedAmount += a.metadata?.bountyAmount || 0;
     }
   });
-  
+
   return {
     bountiesSetOut,
     bountiesClaimed,
@@ -810,8 +902,10 @@ export function getPlatformBountyStats(): {
   let offlineCount = 0;
 
   repos.forEach((repo: any) => {
-    const entity = repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
-    const repoName = repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
+    const entity =
+      repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
+    const repoName =
+      repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
     if (!entity || !repoName) return;
 
     const issueKey = `gittr_issues__${entity}__${repoName}`;
@@ -821,7 +915,7 @@ export function getPlatformBountyStats(): {
       if (issue.bountyAmount && issue.bountyStatus) {
         const amount = issue.bountyAmount || 0;
         totalBounties++;
-        
+
         if (issue.bountyStatus === "pending") {
           pendingCount++;
           pendingPayment += amount;
@@ -868,14 +962,17 @@ export function countRepoActivitiesFromNostr(
   const { getGraspServers } = require("@/lib/utils/grasp-servers");
   const graspRelays = getGraspServers(relays);
   const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
-  
-  console.log(`🔍 [Nostr Repo Stats] Starting query for all repos using ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`, activeRelays);
-  
+
+  console.log(
+    `🔍 [Nostr Repo Stats] Starting query for all repos using ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`,
+    activeRelays
+  );
+
   return new Promise((resolve) => {
     const repoMap = new Map<string, RepoStats>();
     // REMOVED since filter - count ALL activities from all time, not just last 90 days
     // This ensures we capture all historical activity, not just recent
-    
+
     let eoseCount = 0;
     const expectedEose = activeRelays.length;
     let resolved = false;
@@ -922,7 +1019,9 @@ export function countRepoActivitiesFromNostr(
         // Count repo announcements (kind 30617) - DON'T count as activity, just ensure repo exists
         // Repo announcements are metadata, not activities. Activities are pushes, PRs, issues.
         if (event.kind === KIND_REPOSITORY_NIP34) {
-          const dTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "d");
+          const dTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "d"
+          );
           const repoName = dTag?.[1];
           if (repoName && event.pubkey && typeof repoName === "string") {
             const repoId = `${event.pubkey}/${repoName}`;
@@ -944,7 +1043,9 @@ export function countRepoActivitiesFromNostr(
         }
         // Count repo state events (kind 30618) - indicate pushes
         else if (event.kind === KIND_REPOSITORY_STATE) {
-          const dTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "d");
+          const dTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "d"
+          );
           const repoName = dTag?.[1];
           if (repoName && event.pubkey && typeof repoName === "string") {
             const repoId = `${event.pubkey}/${repoName}`;
@@ -961,13 +1062,18 @@ export function countRepoActivitiesFromNostr(
             };
             existing.commitCount++;
             existing.activityCount++;
-            existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+            existing.lastActivity = Math.max(
+              existing.lastActivity,
+              event.created_at * 1000
+            );
             repoMap.set(repoId, existing);
           }
         }
         // Count PR events (kind 1618)
         else if (event.kind === KIND_PULL_REQUEST) {
-          const aTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "a");
+          const aTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "a"
+          );
           if (aTag && aTag[1]) {
             // Extract repo from "a" tag: "30617:<owner-pubkey>:<repo-name>"
             const aValue = aTag[1] as string;
@@ -988,16 +1094,23 @@ export function countRepoActivitiesFromNostr(
               };
               existing.prCount++;
               existing.activityCount++;
-              existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+              existing.lastActivity = Math.max(
+                existing.lastActivity,
+                event.created_at * 1000
+              );
               repoMap.set(repoId, existing);
             }
           }
         }
         // Count PR merged status (kind 1631)
         else if (event.kind === KIND_STATUS_APPLIED) {
-          const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+          const kTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "k"
+          );
           if (kTag && kTag[1] === "1618") {
-            const aTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "a");
+            const aTag = event.tags?.find(
+              (t: any) => Array.isArray(t) && t[0] === "a"
+            );
             if (aTag && aTag[1]) {
               const aValue = aTag[1] as string;
               const match = aValue.match(/^30617:([0-9a-f]{64}):(.+)$/i);
@@ -1017,7 +1130,10 @@ export function countRepoActivitiesFromNostr(
                 };
                 existing.prCount++;
                 existing.activityCount++;
-                existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+                existing.lastActivity = Math.max(
+                  existing.lastActivity,
+                  event.created_at * 1000
+                );
                 repoMap.set(repoId, existing);
               }
             }
@@ -1025,7 +1141,9 @@ export function countRepoActivitiesFromNostr(
         }
         // Count issue events (kind 1621)
         else if (event.kind === KIND_ISSUE) {
-          const aTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "a");
+          const aTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "a"
+          );
           if (aTag && aTag[1]) {
             const aValue = aTag[1] as string;
             const match = aValue.match(/^30617:([0-9a-f]{64}):(.+)$/i);
@@ -1045,16 +1163,23 @@ export function countRepoActivitiesFromNostr(
               };
               existing.issueCount++;
               existing.activityCount++;
-              existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+              existing.lastActivity = Math.max(
+                existing.lastActivity,
+                event.created_at * 1000
+              );
               repoMap.set(repoId, existing);
             }
           }
         }
         // Count issue closed status (kind 1632)
         else if (event.kind === KIND_STATUS_CLOSED) {
-          const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+          const kTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "k"
+          );
           if (kTag && kTag[1] === "1621") {
-            const aTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "a");
+            const aTag = event.tags?.find(
+              (t: any) => Array.isArray(t) && t[0] === "a"
+            );
             if (aTag && aTag[1]) {
               const aValue = aTag[1] as string;
               const match = aValue.match(/^30617:([0-9a-f]{64}):(.+)$/i);
@@ -1074,7 +1199,10 @@ export function countRepoActivitiesFromNostr(
                 };
                 existing.issueCount++;
                 existing.activityCount++;
-                existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+                existing.lastActivity = Math.max(
+                  existing.lastActivity,
+                  event.created_at * 1000
+                );
                 repoMap.set(repoId, existing);
               }
             }
@@ -1088,7 +1216,9 @@ export function countRepoActivitiesFromNostr(
           resolved = true;
           setTimeout(() => {
             unsub();
-            console.log(`✅ [Nostr Repo Stats] Counted activities for ${repoMap.size} repos from Nostr`);
+            console.log(
+              `✅ [Nostr Repo Stats] Counted activities for ${repoMap.size} repos from Nostr`
+            );
             resolve(repoMap);
           }, 1000);
         }
@@ -1102,9 +1232,22 @@ export function countRepoActivitiesFromNostr(
       if (!resolved) {
         resolved = true;
         unsub();
-        const totalActivities = Array.from(repoMap.values()).reduce((sum, r) => sum + r.activityCount, 0);
-        const reposWithActivity = Array.from(repoMap.values()).filter(r => r.activityCount > 0).length;
-        console.log(`⏱️ [Nostr Repo Stats] Timeout after 12s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`, repoMap.size, 'repos,', reposWithActivity, 'with activity,', totalActivities, 'total activities');
+        const totalActivities = Array.from(repoMap.values()).reduce(
+          (sum, r) => sum + r.activityCount,
+          0
+        );
+        const reposWithActivity = Array.from(repoMap.values()).filter(
+          (r) => r.activityCount > 0
+        ).length;
+        console.log(
+          `⏱️ [Nostr Repo Stats] Timeout after 12s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`,
+          repoMap.size,
+          "repos,",
+          reposWithActivity,
+          "with activity,",
+          totalActivities,
+          "total activities"
+        );
         resolve(repoMap);
       }
     }, 12000);
@@ -1131,14 +1274,19 @@ export function countUserActivitiesFromNostr(
   const { getGraspServers } = require("@/lib/utils/grasp-servers");
   const graspRelays = getGraspServers(relays);
   const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
-  
-  console.log(`🔍 [Nostr User Stats] Starting query for all users using ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`, activeRelays);
-  
+
+  console.log(
+    `🔍 [Nostr User Stats] Starting query for all users using ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`,
+    activeRelays
+  );
+
   return new Promise((resolve) => {
     const userMap = new Map<string, UserStats>();
     const seenRepos = new Map<string, Set<string>>(); // Track unique repos per user (pubkey -> Set<repoId>)
-    const since = Math.floor((Date.now() - sinceDays * 24 * 60 * 60 * 1000) / 1000);
-    
+    const since = Math.floor(
+      (Date.now() - sinceDays * 24 * 60 * 60 * 1000) / 1000
+    );
+
     let eoseCount = 0;
     const expectedEose = activeRelays.length;
     let resolved = false;
@@ -1203,7 +1351,9 @@ export function countUserActivitiesFromNostr(
 
         // Count repo announcements (kind 30617)
         if (event.kind === KIND_REPOSITORY_NIP34) {
-          const dTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "d");
+          const dTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "d"
+          );
           const repoName = dTag?.[1];
           if (repoName) {
             const repoId = `${userPubkey}/${repoName}`;
@@ -1215,40 +1365,62 @@ export function countUserActivitiesFromNostr(
               existing.reposCreatedCount++;
             }
             existing.activityCount++;
-            existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+            existing.lastActivity = Math.max(
+              existing.lastActivity,
+              event.created_at * 1000
+            );
           }
         }
         // Count repo state events (kind 30618) - indicate pushes
         else if (event.kind === KIND_REPOSITORY_STATE) {
           existing.commitCount++;
           existing.activityCount++;
-          existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+          existing.lastActivity = Math.max(
+            existing.lastActivity,
+            event.created_at * 1000
+          );
         }
         // Count PR events (kind 1618)
         else if (event.kind === KIND_PULL_REQUEST) {
           existing.activityCount++;
-          existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+          existing.lastActivity = Math.max(
+            existing.lastActivity,
+            event.created_at * 1000
+          );
         }
         // Count PR merged status (kind 1631)
         else if (event.kind === KIND_STATUS_APPLIED) {
-          const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+          const kTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "k"
+          );
           if (kTag && kTag[1] === "1618") {
             existing.prMergedCount++;
             existing.activityCount++;
-            existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+            existing.lastActivity = Math.max(
+              existing.lastActivity,
+              event.created_at * 1000
+            );
           }
         }
         // Count issue events (kind 1621)
         else if (event.kind === KIND_ISSUE) {
           existing.activityCount++;
-          existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+          existing.lastActivity = Math.max(
+            existing.lastActivity,
+            event.created_at * 1000
+          );
         }
         // Count issue closed status (kind 1632)
         else if (event.kind === KIND_STATUS_CLOSED) {
-          const kTag = event.tags?.find((t: any) => Array.isArray(t) && t[0] === "k");
+          const kTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "k"
+          );
           if (kTag && kTag[1] === "1621") {
             existing.activityCount++;
-            existing.lastActivity = Math.max(existing.lastActivity, event.created_at * 1000);
+            existing.lastActivity = Math.max(
+              existing.lastActivity,
+              event.created_at * 1000
+            );
           }
         }
 
@@ -1261,7 +1433,9 @@ export function countUserActivitiesFromNostr(
           resolved = true;
           setTimeout(() => {
             unsub();
-            console.log(`✅ [Nostr User Stats] Counted activities for ${userMap.size} users from Nostr`);
+            console.log(
+              `✅ [Nostr User Stats] Counted activities for ${userMap.size} users from Nostr`
+            );
             resolve(userMap);
           }, 1000);
         }
@@ -1274,7 +1448,11 @@ export function countUserActivitiesFromNostr(
       if (!resolved) {
         resolved = true;
         unsub();
-        console.log(`⏱️ [Nostr User Stats] Timeout after 5s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`, userMap.size, 'users');
+        console.log(
+          `⏱️ [Nostr User Stats] Timeout after 5s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`,
+          userMap.size,
+          "users"
+        );
         resolve(userMap);
       }
     }, 5000);
@@ -1298,24 +1476,43 @@ export async function getTopReposFromNostr(
   count: number = 10
 ): Promise<RepoStats[]> {
   try {
-    if (!subscribe || typeof subscribe !== 'function') {
-      console.error(`❌ [getTopReposFromNostr] subscribe is not a function:`, typeof subscribe);
+    if (!subscribe || typeof subscribe !== "function") {
+      console.error(
+        `❌ [getTopReposFromNostr] subscribe is not a function:`,
+        typeof subscribe
+      );
       return [];
     }
-    
+
     // CRITICAL: countRepoActivitiesFromNostr already filters to GRASP servers internally
     // Don't filter here again - pass all relays and let countRepoActivitiesFromNostr handle filtering
     // This ensures we don't accidentally filter out relays that might be needed
-    console.log(`🔍 [getTopReposFromNostr] Starting query with ${relays.length} relays (will be filtered to GRASP servers internally)`);
-    const repoMap = await countRepoActivitiesFromNostr(subscribe, relays, 999999); // All time (sinceDays param ignored now, but kept for API compatibility)
-    
+    console.log(
+      `🔍 [getTopReposFromNostr] Starting query with ${relays.length} relays (will be filtered to GRASP servers internally)`
+    );
+    const repoMap = await countRepoActivitiesFromNostr(
+      subscribe,
+      relays,
+      999999
+    ); // All time (sinceDays param ignored now, but kept for API compatibility)
+
     // Debug: Log all repos with activity
-    const allReposWithActivity = Array.from(repoMap.values()).filter(repo => repo.activityCount > 0);
-    console.log(`📊 [getTopReposFromNostr] Total repos in map: ${repoMap.size}, repos with activity: ${allReposWithActivity.length}`);
+    const allReposWithActivity = Array.from(repoMap.values()).filter(
+      (repo) => repo.activityCount > 0
+    );
+    console.log(
+      `📊 [getTopReposFromNostr] Total repos in map: ${repoMap.size}, repos with activity: ${allReposWithActivity.length}`
+    );
     if (allReposWithActivity.length > 0) {
-      console.log(`📋 [getTopReposFromNostr] All repos with activity:`, allReposWithActivity.slice(0, 20).map(r => `${r.repoName}(${r.activityCount})`).join(', '));
+      console.log(
+        `📋 [getTopReposFromNostr] All repos with activity:`,
+        allReposWithActivity
+          .slice(0, 20)
+          .map((r) => `${r.repoName}(${r.activityCount})`)
+          .join(", ")
+      );
     }
-    
+
     const repos = allReposWithActivity
       .sort((a, b) => {
         // Sort by activity count DESCENDING (highest first)
@@ -1326,12 +1523,21 @@ export async function getTopReposFromNostr(
         return b.lastActivity - a.lastActivity;
       })
       .slice(0, count);
-    
-    console.log(`✅ [getTopReposFromNostr] Found ${repos.length} repos from Nostr (${repoMap.size} total in map), top activity: ${repos[0]?.activityCount || 0}`);
+
+    console.log(
+      `✅ [getTopReposFromNostr] Found ${repos.length} repos from Nostr (${
+        repoMap.size
+      } total in map), top activity: ${repos[0]?.activityCount || 0}`
+    );
     if (repos.length > 0) {
-      console.log(`📋 [getTopReposFromNostr] Top repos:`, repos.map(r => `${r.repoName}(${r.activityCount})`).join(', '));
+      console.log(
+        `📋 [getTopReposFromNostr] Top repos:`,
+        repos.map((r) => `${r.repoName}(${r.activityCount})`).join(", ")
+      );
     } else if (allReposWithActivity.length > 0) {
-      console.warn(`⚠️ [getTopReposFromNostr] No repos returned after sorting/slicing, but ${allReposWithActivity.length} repos have activity!`);
+      console.warn(
+        `⚠️ [getTopReposFromNostr] No repos returned after sorting/slicing, but ${allReposWithActivity.length} repos have activity!`
+      );
     }
     return repos;
   } catch (error) {
@@ -1361,11 +1567,17 @@ export async function getTopUsersFromNostr(
   const { getGraspServers } = require("@/lib/utils/grasp-servers");
   const graspRelays = getGraspServers(relays);
   const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
-  
-  console.log(`🔍 [getTopUsersFromNostr] Starting query with ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`, activeRelays);
-  const userMap = await countUserActivitiesFromNostr(subscribe, activeRelays, 90); // Last 90 days
+
+  console.log(
+    `🔍 [getTopUsersFromNostr] Starting query with ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`,
+    activeRelays
+  );
+  const userMap = await countUserActivitiesFromNostr(
+    subscribe,
+    activeRelays,
+    90
+  ); // Last 90 days
   return Array.from(userMap.values())
     .sort((a, b) => b.activityCount - a.activityCount)
     .slice(0, count);
 }
-

@@ -1,16 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  setEncryptionPassword,
-  verifyEncryptionPassword,
   isEncryptionEnabled,
   migrateToEncrypted,
+  setEncryptionPassword,
+  verifyEncryptionPassword,
 } from "@/lib/security/encryption";
-import { AlertCircle, Lock, Shield, CheckCircle } from "lucide-react";
+
+import { AlertCircle, CheckCircle, Lock, Shield } from "lucide-react";
 
 export default function EncryptionSetup() {
   const [password, setPassword] = useState("");
@@ -63,8 +65,14 @@ export default function EncryptionSetup() {
       try {
         const plaintextPrivkey = localStorage.getItem("nostr:privkey");
         if (plaintextPrivkey) {
-          await migrateToEncrypted("nostr:privkey", password, () => plaintextPrivkey);
-          setSuccess("Encryption enabled! Your private keys have been encrypted.");
+          await migrateToEncrypted(
+            "nostr:privkey",
+            password,
+            () => plaintextPrivkey
+          );
+          setSuccess(
+            "Encryption enabled! Your private keys have been encrypted."
+          );
         } else {
           setSuccess("Encryption enabled!");
         }
@@ -121,7 +129,11 @@ export default function EncryptionSetup() {
       const plaintextKey = localStorage.getItem("nostr:privkey");
       // Check if encryption is enabled and there might be encrypted data
       const encryptionEnabled = isEncryptionEnabled();
-      setHasPrivateKey(!!plaintextKey || (encryptionEnabled && !!localStorage.getItem("gittr:encrypted:nostr:privkey")));
+      setHasPrivateKey(
+        !!plaintextKey ||
+          (encryptionEnabled &&
+            !!localStorage.getItem("gittr:encrypted:nostr:privkey"))
+      );
     }
   }, []);
 
@@ -142,9 +154,11 @@ export default function EncryptionSetup() {
           <div className="flex items-start gap-2">
             <CheckCircle className="h-5 w-5 text-green-400 mt-0.5" />
             <div className="flex-1">
-              <h3 className="font-semibold text-green-400 mb-1">No Private Keys Stored</h3>
+              <h3 className="font-semibold text-green-400 mb-1">
+                No Private Keys Stored
+              </h3>
               <p className="text-sm text-gray-300">
-                {usingNip07 
+                {usingNip07
                   ? "You're using NIP-07 extension login. Your private keys stay in the extension and are never stored in localStorage. This is the most secure option."
                   : "No Nostr private keys are currently stored in localStorage. If you use NIP-07 extension login, keys stay in the extension and are never stored here."}
               </p>
@@ -160,13 +174,18 @@ export default function EncryptionSetup() {
         <div className="flex items-start gap-2">
           <AlertCircle className="h-5 w-5 text-yellow-400 mt-0.5" />
           <div className="flex-1">
-            <h3 className="font-semibold text-yellow-400 mb-1">Security Warning</h3>
+            <h3 className="font-semibold text-yellow-400 mb-1">
+              Security Warning
+            </h3>
             <p className="text-sm text-gray-300 mb-3">
-              Your Nostr private keys are currently stored as plaintext in browser localStorage. 
-              This means anyone with access to your browser can see your keys.
+              Your Nostr private keys are currently stored as plaintext in
+              browser localStorage. This means anyone with access to your
+              browser can see your keys.
             </p>
             <p className="text-xs text-yellow-300 mb-3">
-              💡 <strong>Tip:</strong> For better security, use NIP-07 extension login instead. Keys stay in the extension and are never stored in localStorage.
+              💡 <strong>Tip:</strong> For better security, use NIP-07 extension
+              login instead. Keys stay in the extension and are never stored in
+              localStorage.
             </p>
             <Button
               onClick={() => setShowSetup(true)}
@@ -187,10 +206,12 @@ export default function EncryptionSetup() {
         <div className="flex items-start gap-2">
           <Shield className="h-5 w-5 text-purple-400 mt-0.5" />
           <div className="flex-1">
-            <h3 className="font-semibold text-purple-400 mb-1">Enable Data Encryption</h3>
+            <h3 className="font-semibold text-purple-400 mb-1">
+              Enable Data Encryption
+            </h3>
             <p className="text-sm text-gray-300 mb-4">
-              Set a password to encrypt your private keys. You'll need to enter this password 
-              once per browser session to decrypt your keys.
+              Set a password to encrypt your private keys. You'll need to enter
+              this password once per browser session to decrypt your keys.
             </p>
 
             {error && (
@@ -261,9 +282,12 @@ export default function EncryptionSetup() {
         <div className="flex items-start gap-2">
           <Lock className="h-5 w-5 text-purple-400 mt-0.5" />
           <div className="flex-1">
-            <h3 className="font-semibold text-purple-400 mb-1">Unlock Encryption</h3>
+            <h3 className="font-semibold text-purple-400 mb-1">
+              Unlock Encryption
+            </h3>
             <p className="text-sm text-gray-300 mb-4">
-              Enter your encryption password to decrypt your private keys for this session.
+              Enter your encryption password to decrypt your private keys for
+              this session.
             </p>
 
             {error && (
@@ -309,13 +333,15 @@ export default function EncryptionSetup() {
       <div className="flex items-start gap-2">
         <CheckCircle className="h-5 w-5 text-green-400 mt-0.5" />
         <div className="flex-1">
-          <h3 className="font-semibold text-green-400 mb-1">Encryption Active</h3>
+          <h3 className="font-semibold text-green-400 mb-1">
+            Encryption Active
+          </h3>
           <p className="text-sm text-gray-300">
-            Your private keys are encrypted. The encryption password is stored in memory for this session only.
+            Your private keys are encrypted. The encryption password is stored
+            in memory for this session only.
           </p>
         </div>
       </div>
     </div>
   );
 }
-

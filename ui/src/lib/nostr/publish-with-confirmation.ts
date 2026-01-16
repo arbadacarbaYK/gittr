@@ -2,7 +2,6 @@
  * Publish repository event to Nostr and wait for confirmation
  * Stores the event ID in the repository data when confirmed
  */
-
 import { KIND_REPOSITORY } from "./events";
 
 export interface PublishResult {
@@ -41,12 +40,20 @@ export async function publishWithConfirmation(
     let unsub: (() => void) | undefined;
 
     // Publish the event
-    console.log(`📤 [Publish Confirmation] Publishing event ${eventId} to ${relays.length} relay(s):`, relays);
+    console.log(
+      `📤 [Publish Confirmation] Publishing event ${eventId} to ${relays.length} relay(s):`,
+      relays
+    );
     try {
-    publish(event, relays);
-      console.log(`✅ [Publish Confirmation] Event ${eventId} sent to publish function`);
+      publish(event, relays);
+      console.log(
+        `✅ [Publish Confirmation] Event ${eventId} sent to publish function`
+      );
     } catch (error) {
-      console.error(`❌ [Publish Confirmation] Failed to publish event ${eventId}:`, error);
+      console.error(
+        `❌ [Publish Confirmation] Failed to publish event ${eventId}:`,
+        error
+      );
       // Still try to subscribe to see if it was published despite the error
     }
 
@@ -65,13 +72,13 @@ export async function publishWithConfirmation(
           if (relayURL && !confirmedRelays.includes(relayURL)) {
             confirmedRelays.push(relayURL);
           }
-          
+
           // Clean up
           if (unsub) {
             unsub();
             unsub = undefined;
           }
-          
+
           resolve({
             eventId,
             confirmed: true,
@@ -95,7 +102,7 @@ export async function publishWithConfirmation(
         unsub();
         unsub = undefined;
       }
-      
+
       if (!confirmed) {
         resolve({
           eventId,
@@ -119,26 +126,31 @@ export function storeRepoEventId(
   stateEventId?: string
 ): void {
   try {
-    const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
-    const repoIndex = repos.findIndex((r: any) => 
-      (r.slug === repoSlug || r.repo === repoSlug) && r.entity === entity
+    const repos = JSON.parse(
+      localStorage.getItem("gittr_repos") || "[]"
+    ) as any[];
+    const repoIndex = repos.findIndex(
+      (r: any) =>
+        (r.slug === repoSlug || r.repo === repoSlug) && r.entity === entity
     );
-    
+
     if (repoIndex >= 0) {
       const eventCreatedAt = Math.floor(Date.now() / 1000); // Event timestamp
       const existingRepo = repos[repoIndex];
-      
+
       // Ensure repo, slug, and name fields are set (migration should have done this, but be safe)
-      const repoValue = existingRepo.repo || existingRepo.slug || existingRepo.name || repoSlug;
-      
+      const repoValue =
+        existingRepo.repo || existingRepo.slug || existingRepo.name || repoSlug;
+
       // Filter out localhost from clone URLs if they exist
       let filteredClone = existingRepo.clone;
       if (Array.isArray(existingRepo.clone)) {
-        filteredClone = existingRepo.clone.filter((url: string) => 
-          url && !url.includes('localhost') && !url.includes('127.0.0.1')
+        filteredClone = existingRepo.clone.filter(
+          (url: string) =>
+            url && !url.includes("localhost") && !url.includes("127.0.0.1")
         );
       }
-      
+
       repos[repoIndex] = {
         ...existingRepo,
         // Ensure repo/slug/name are set (should already be set by migration, but ensure consistency)
@@ -150,7 +162,9 @@ export function storeRepoEventId(
         lastNostrEventCreatedAt: eventCreatedAt,
         // CRITICAL: Store state event ID separately (kind 30618) - required for full NIP-34 compliance
         // Both announcement (30617) and state (30618) events are required for "live" status
-        ...(stateEventId ? { stateEventId, lastStateEventId: stateEventId } : {}),
+        ...(stateEventId
+          ? { stateEventId, lastStateEventId: stateEventId }
+          : {}),
         status: confirmed ? "live" : existingRepo.status || "local",
         syncedFromNostr: confirmed ? true : existingRepo.syncedFromNostr,
         hasUnpushedEdits: false, // Clear unpushed edits flag after successful push
@@ -166,4 +180,3 @@ export function storeRepoEventId(
     console.error("Failed to store repo event ID:", error);
   }
 }
-

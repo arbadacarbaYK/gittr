@@ -2,12 +2,11 @@
  * Encrypted storage wrapper for sensitive localStorage data
  * Automatically encrypts/decrypts using Web Crypto API
  */
-
 import {
-  getEncryptedItem,
-  setEncryptedItem,
-  removeEncryptedItem,
   isEncryptionEnabled as checkEncryptionEnabled,
+  getEncryptedItem,
+  removeEncryptedItem,
+  setEncryptedItem,
 } from "./encryption";
 
 /**
@@ -26,7 +25,9 @@ export async function setSecureItem(key: string, value: string): Promise<void> {
     const password = getSessionPassword();
     if (!password) {
       // Encryption is enabled but password not in session - prompt user
-      throw new Error("Encryption password required. Please unlock encryption in Settings.");
+      throw new Error(
+        "Encryption password required. Please unlock encryption in Settings."
+      );
     }
     await setEncryptedItem(key, value, password);
   } else {
@@ -108,4 +109,3 @@ export function isEncryptionEnabled(): boolean {
 export function isEncryptionUnlocked(): boolean {
   return !checkEncryptionEnabled() || !!getSessionPassword();
 }
-

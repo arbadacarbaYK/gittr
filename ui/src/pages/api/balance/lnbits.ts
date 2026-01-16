@@ -1,9 +1,16 @@
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import {
+  type LNbitsConfig,
+  getWalletBalance,
+} from "@/lib/payments/lnbits-adapter";
+
 import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
-import { getWalletBalance, type LNbitsConfig } from "@/lib/payments/lnbits-adapter";
 
 // LNbits Balance endpoint - fetches wallet balance
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   // Handle OPTIONS request for CORS (GRASP requirement)
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res);
@@ -20,9 +27,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { lnbitsUrl, lnbitsAdminKey } = req.body || {};
 
   if (!lnbitsUrl || !lnbitsAdminKey) {
-    return res.status(400).json({ 
-      status: "missing_params", 
-      message: "Missing LNbits URL or Admin Key" 
+    return res.status(400).json({
+      status: "missing_params",
+      message: "Missing LNbits URL or Admin Key",
     });
   }
 
@@ -34,7 +41,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Use adapter to get balance (handles both API versions)
     const balance = await getWalletBalance(config);
-    
+
     return res.status(200).json({
       status: "ok",
       balance: balance.balance, // Raw balance in millisats
@@ -44,12 +51,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   } catch (error: any) {
     // Handle network errors, JSON parse errors, etc.
     let errorMessage = error.message || "Failed to connect to LNbits API";
-    
+
     // Try to extract more detailed error message
     if (error.message && error.message.includes("Failed to fetch")) {
-      errorMessage = "Failed to connect to LNbits instance. Please check your LNbits URL and network connection.";
+      errorMessage =
+        "Failed to connect to LNbits instance. Please check your LNbits URL and network connection.";
     } else if (error.message && error.message.includes("No wallets")) {
-      errorMessage = "No wallets found for this admin key. Please check your LNbits admin key.";
+      errorMessage =
+        "No wallets found for this admin key. Please check your LNbits admin key.";
     }
 
     return res.status(500).json({
@@ -59,4 +68,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 }
-

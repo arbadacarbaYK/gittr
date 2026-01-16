@@ -2,9 +2,8 @@
  * Payment settings encryption
  * Encrypts sensitive payment configuration before storing in localStorage
  */
-
 // Use the encryption library functions
-import { encryptData, decryptData } from "./encryption";
+import { decryptData, encryptData } from "./encryption";
 
 const PAYMENT_SETTINGS_KEY = "gittr_payment_settings_encrypted";
 const ENCRYPTION_KEY_DERIVATION = "payment-settings-key";
@@ -22,9 +21,9 @@ async function getPaymentEncryptionKey(password: string): Promise<CryptoKey> {
     false,
     ["deriveBits", "deriveKey"]
   );
-  
+
   const salt = encoder.encode(ENCRYPTION_KEY_DERIVATION);
-  
+
   return crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
@@ -102,9 +101,7 @@ export async function storeEncryptedPaymentSettings(
 /**
  * Load and decrypt payment settings from localStorage
  */
-export async function loadEncryptedPaymentSettings(
-  password: string
-): Promise<{
+export async function loadEncryptedPaymentSettings(password: string): Promise<{
   lnurl?: string;
   lnaddress?: string;
   nwcRecv?: string;
@@ -116,7 +113,7 @@ export async function loadEncryptedPaymentSettings(
   if (!encrypted) {
     return null;
   }
-  
+
   return decryptPaymentSettings(encrypted, password);
 }
 
@@ -133,4 +130,3 @@ export function hasEncryptedPaymentSettings(): boolean {
 export function clearEncryptedPaymentSettings(): void {
   localStorage.removeItem(PAYMENT_SETTINGS_KEY);
 }
-

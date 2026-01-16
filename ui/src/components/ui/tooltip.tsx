@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useState, useEffect, useRef } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 
 interface TooltipProps {
   content: string;
@@ -10,17 +10,22 @@ interface TooltipProps {
   mobileClickable?: boolean;
 }
 
-export function Tooltip({ content, children, className = "", mobileClickable = false }: TooltipProps) {
+export function Tooltip({
+  content,
+  children,
+  className = "",
+  mobileClickable = false,
+}: TooltipProps) {
   const [isVisible, setIsVisible] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
 
   // Clean content: remove extra newlines and trim whitespace
   const cleanedContent = content
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
-    .join(' ')
-    .replace(/\s+/g, ' ')
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join(" ")
+    .replace(/\s+/g, " ")
     .trim();
 
   // Close tooltip when clicking outside
@@ -28,7 +33,10 @@ export function Tooltip({ content, children, className = "", mobileClickable = f
     if (!mobileClickable || !isVisible) return;
 
     const handleClickOutside = (event: MouseEvent | TouchEvent) => {
-      if (tooltipRef.current && !tooltipRef.current.contains(event.target as Node)) {
+      if (
+        tooltipRef.current &&
+        !tooltipRef.current.contains(event.target as Node)
+      ) {
         setIsVisible(false);
       }
     };
@@ -50,25 +58,27 @@ export function Tooltip({ content, children, className = "", mobileClickable = f
   };
 
   return (
-    <div 
+    <div
       className={`group relative inline-block ${className}`}
       onClick={mobileClickable ? handleClick : undefined}
       onTouchStart={mobileClickable ? handleClick : undefined}
     >
       {children}
-      <div 
+      <div
         ref={tooltipRef}
         className={`absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 text-xs text-white bg-[#22262C] border border-[#383B42] rounded shadow-lg transition-opacity duration-200 pointer-events-none z-50 ${
-          mobileClickable 
-            ? (isVisible ? "opacity-100 pointer-events-auto" : "opacity-0")
+          mobileClickable
+            ? isVisible
+              ? "opacity-100 pointer-events-auto"
+              : "opacity-0"
             : "opacity-0 group-hover:opacity-100"
         }`}
         style={{
           // Prevent tooltip from extending beyond viewport on mobile
-          maxWidth: 'min(calc(100vw - 2rem), 24rem)',
-          wordWrap: 'break-word',
-          overflowWrap: 'break-word',
-          whiteSpace: 'normal', // Normal wrapping, don't preserve newlines
+          maxWidth: "min(calc(100vw - 2rem), 24rem)",
+          wordWrap: "break-word",
+          overflowWrap: "break-word",
+          whiteSpace: "normal", // Normal wrapping, don't preserve newlines
         }}
       >
         {cleanedContent}
@@ -77,4 +87,3 @@ export function Tooltip({ content, children, className = "", mobileClickable = f
     </div>
   );
 }
-

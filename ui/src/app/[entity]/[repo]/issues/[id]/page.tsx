@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, useRef, use } from "react";
-import Link from "next/link";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { BountyButton } from "@/components/ui/bounty-button";
+import { Button } from "@/components/ui/button";
+import { CodeSnippetRenderer } from "@/components/ui/code-snippet-renderer";
+import { CopyableCodeBlock } from "@/components/ui/copyable-code-block";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,39 +18,62 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { NostrUserSearch } from "@/components/ui/nostr-user-search";
-import { BountyButton } from "@/components/ui/bounty-button";
-import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
-import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import useSession from "@/lib/nostr/useSession";
+import { Reactions } from "@/components/ui/reactions";
+import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
-import { CopyableCodeBlock } from "@/components/ui/copyable-code-block";
+import {
+  KIND_BOUNTY,
+  KIND_CODE_SNIPPET,
+  KIND_COMMENT,
+  KIND_STATUS_CLOSED,
+  KIND_STATUS_OPEN,
+  createBountyEvent,
+  createCommentEvent,
+  createStatusEvent,
+} from "@/lib/nostr/events";
+import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import useSession from "@/lib/nostr/useSession";
+import {
+  formatNotificationMessage,
+  sendNotification,
+} from "@/lib/notifications";
+import {
+  type StoredContributor,
+  type StoredRepo,
+  loadStoredRepos,
+} from "@/lib/repos/storage";
+import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+import {
+  formatDate24h,
+  formatDateTime24h,
+  formatTime24h,
+} from "@/lib/utils/date-format";
+import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
+import {
+  getEntityDisplayName,
+  getRepoOwnerPubkey,
+  resolveEntityToPubkey,
+} from "@/lib/utils/entity-resolver";
+import { extractMentionedPubkeys } from "@/lib/utils/mention-detection";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+
 import {
   CheckCircle2,
   CircleDot,
+  Coins,
+  GitBranch,
+  Plus,
   Settings,
   User,
   X,
-  Plus,
-  Coins,
-  GitBranch,
 } from "lucide-react";
-import { nip19 } from "nostr-tools";
-import { Reactions } from "@/components/ui/reactions";
-import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
-import { formatDateTime24h, formatDate24h, formatTime24h } from "@/lib/utils/date-format";
-import { sendNotification, formatNotificationMessage } from "@/lib/notifications";
-import { getRepoOwnerPubkey, resolveEntityToPubkey, getEntityDisplayName } from "@/lib/utils/entity-resolver";
-import { createBountyEvent, KIND_BOUNTY, createCommentEvent, KIND_COMMENT, KIND_CODE_SNIPPET, createStatusEvent, KIND_STATUS_OPEN, KIND_STATUS_CLOSED } from "@/lib/nostr/events";
-import { CodeSnippetRenderer } from "@/components/ui/code-snippet-renderer";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
-import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
-import { Textarea } from "@/components/ui/textarea";
 import { Reply } from "lucide-react";
-import { extractMentionedPubkeys } from "@/lib/utils/mention-detection";
-import { loadStoredRepos, type StoredRepo, type StoredContributor } from "@/lib/repos/storage";
+import Link from "next/link";
+import { nip19 } from "nostr-tools";
+import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
+import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import remarkGfm from "remark-gfm";
 
 interface Issue {
   id: string;
@@ -78,10 +104,18 @@ interface Comment {
   nostrEventId?: string; // Nostr event ID if published
 }
 
-export default function IssueDetailPage({ params }: { params: Promise<{ entity: string; repo: string; id: string }> }) {
+export default function IssueDetailPage({
+  params,
+}: {
+  params: Promise<{ entity: string; repo: string; id: string }>;
+}) {
   const resolvedParams = use(params);
   const { entity, repo, id } = resolvedParams; // Extract primitives to avoid stale closures
-  const { pubkey: currentUserPubkey, publish, defaultRelays } = useNostrContext();
+  const {
+    pubkey: currentUserPubkey,
+    publish,
+    defaultRelays,
+  } = useNostrContext();
   const { name: userName } = useSession();
   const [issue, setIssue] = useState<Issue | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,13 +123,23 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
   const [labelSearch, setLabelSearch] = useState("");
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [isOwner, setIsOwner] = useState(false);
-  const [repoContributors, setRepoContributors] = useState<Array<{pubkey: string; name?: string; picture?: string; weight?: number; role?: string}>>([]);
+  const [repoContributors, setRepoContributors] = useState<
+    Array<{
+      pubkey: string;
+      name?: string;
+      picture?: string;
+      weight?: number;
+      role?: string;
+    }>
+  >([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentContent, setCommentContent] = useState("");
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyParentId, setReplyParentId] = useState<string | null>(null);
   const [issueEventId, setIssueEventId] = useState<string | null>(null);
-  const [snippetEvents, setSnippetEvents] = useState<Map<string, any>>(new Map());
+  const [snippetEvents, setSnippetEvents] = useState<Map<string, any>>(
+    new Map()
+  );
   const commentTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Fetch metadata for issue author (only full 64-char pubkeys for metadata lookup)
@@ -109,33 +153,43 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
   // Fetch metadata for assignees (only full 64-char pubkeys for metadata lookup)
   const assigneePubkeys = useMemo(() => {
     if (!issue?.assignees || issue.assignees.length === 0) return [];
-    return issue.assignees.filter(assignee => /^[a-f0-9]{64}$/i.test(assignee));
+    return issue.assignees.filter((assignee) =>
+      /^[a-f0-9]{64}$/i.test(assignee)
+    );
   }, [issue?.assignees]);
   const assigneeMetadata = useContributorMetadata(assigneePubkeys);
 
   // Get repo owner metadata for bounty title and display purposes (not breadcrumbs)
   const [repoOwnerPubkey, setRepoOwnerPubkey] = useState<string | null>(null);
   const repoOwnerPubkeys = useMemo(() => {
-    return repoOwnerPubkey && /^[a-f0-9]{64}$/i.test(repoOwnerPubkey) ? [repoOwnerPubkey] : [];
+    return repoOwnerPubkey && /^[a-f0-9]{64}$/i.test(repoOwnerPubkey)
+      ? [repoOwnerPubkey]
+      : [];
   }, [repoOwnerPubkey]);
   const repoOwnerMetadata = useContributorMetadata(repoOwnerPubkeys);
 
   // Get pubkeys from repo contributors for metadata lookup
   const repoContributorPubkeys = useMemo(() => {
     return repoContributors
-      .map(c => c.pubkey)
-      .filter(pubkey => pubkey && /^[a-f0-9]{64}$/i.test(pubkey));
+      .map((c) => c.pubkey)
+      .filter((pubkey) => pubkey && /^[a-f0-9]{64}$/i.test(pubkey));
   }, [repoContributors]);
-  const repoContributorMetadata = useContributorMetadata(repoContributorPubkeys);
+  const repoContributorMetadata = useContributorMetadata(
+    repoContributorPubkeys
+  );
 
   // Load issue data
   useEffect(() => {
     try {
       const key = getRepoStorageKey("gittr_issues", entity, repo);
       const issuesRaw = localStorage.getItem(key);
-      const issues: Issue[] = issuesRaw ? (JSON.parse(issuesRaw) as Issue[]) : [];
-      const issueData = issues.find((i) => i.id === id || String(issues.indexOf(i) + 1) === id);
-      
+      const issues: Issue[] = issuesRaw
+        ? (JSON.parse(issuesRaw) as Issue[])
+        : [];
+      const issueData = issues.find(
+        (i) => i.id === id || String(issues.indexOf(i) + 1) === id
+      );
+
       if (issueData) {
         setIssue({
           id: issueData.id || id,
@@ -153,27 +207,50 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
           bountyWithdrawUrl: issueData.bountyWithdrawUrl,
           bountyStatus: issueData.bountyStatus,
         });
-        
+
         // Check if current user is owner and get repo owner pubkey for display
         const repos = loadStoredRepos();
-        const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
-        setIsOwner(repoData?.entity === currentUserPubkey || repoData?.ownerPubkey === currentUserPubkey);
-        
+        const repoData = findRepoByEntityAndName<StoredRepo>(
+          repos,
+          entity,
+          repo
+        );
+        setIsOwner(
+          repoData?.entity === currentUserPubkey ||
+            repoData?.ownerPubkey === currentUserPubkey
+        );
+
         // Get owner pubkey for display name
-        if (repoData?.ownerPubkey && /^[a-f0-9]{64}$/i.test(repoData.ownerPubkey)) {
+        if (
+          repoData?.ownerPubkey &&
+          /^[a-f0-9]{64}$/i.test(repoData.ownerPubkey)
+        ) {
           setRepoOwnerPubkey(repoData.ownerPubkey);
         } else if (repoData?.contributors && repoData.contributors.length > 0) {
-          const owner = repoData.contributors.find((c): c is StoredContributor => (c.weight === 100 || !c.weight)) || repoData.contributors[0];
+          const owner =
+            repoData.contributors.find(
+              (c): c is StoredContributor => c.weight === 100 || !c.weight
+            ) || repoData.contributors[0];
           if (owner?.pubkey && /^[a-f0-9]{64}$/i.test(owner.pubkey)) {
             setRepoOwnerPubkey(owner.pubkey);
           }
         }
 
         // Load repo contributors for assignee dropdown
-        if (repoData && repoData.contributors && Array.isArray(repoData.contributors)) {
+        if (
+          repoData &&
+          repoData.contributors &&
+          Array.isArray(repoData.contributors)
+        ) {
           // Filter to only contributors with valid 64-char pubkeys
           const validContributors = repoData.contributors
-            .filter((c): c is StoredContributor & { pubkey: string } => c.pubkey !== undefined && typeof c.pubkey === "string" && c.pubkey.length === 64 && /^[0-9a-f]{64}$/i.test(c.pubkey))
+            .filter(
+              (c): c is StoredContributor & { pubkey: string } =>
+                c.pubkey !== undefined &&
+                typeof c.pubkey === "string" &&
+                c.pubkey.length === 64 &&
+                /^[0-9a-f]{64}$/i.test(c.pubkey)
+            )
             .map((c) => ({
               pubkey: c.pubkey.toLowerCase(),
               name: c.name,
@@ -193,7 +270,9 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
 
         // Load comments from localStorage
         const commentsKey = `gittr_issue_comments_${entity}_${repo}_${issueData.id}`;
-        const storedComments = JSON.parse(localStorage.getItem(commentsKey) || "[]") as Comment[];
+        const storedComments = JSON.parse(
+          localStorage.getItem(commentsKey) || "[]"
+        ) as Comment[];
         setComments(storedComments);
       }
     } catch (error) {
@@ -207,10 +286,20 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
   useEffect(() => {
     try {
       const repos = loadStoredRepos();
-      const repoData: StoredRepo | undefined = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+      const repoData: StoredRepo | undefined =
+        findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
       if (repoData?.topics) {
         const labels = repoData.topics
-          .map((t: string | { name: string }) => typeof t === "string" ? t : (typeof t === "object" && t !== null && "name" in t && typeof (t as { name: string }).name === "string" ? (t as { name: string }).name : null))
+          .map((t: string | { name: string }) =>
+            typeof t === "string"
+              ? t
+              : typeof t === "object" &&
+                t !== null &&
+                "name" in t &&
+                typeof (t as { name: string }).name === "string"
+              ? (t as { name: string }).name
+              : null
+          )
           .filter((t): t is string => typeof t === "string" && t.length > 0);
         setAvailableLabels(labels);
       }
@@ -237,13 +326,18 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
         // Handle code snippets
         if (event.kind === KIND_CODE_SNIPPET) {
           try {
-            const eTags = event.tags.filter((t): t is string[] => Array.isArray(t) && t[0] === "e");
-            const repoTag = event.tags.find((t): t is string[] => Array.isArray(t) && t[0] === "repo");
-            
+            const eTags = event.tags.filter(
+              (t): t is string[] => Array.isArray(t) && t[0] === "e"
+            );
+            const repoTag = event.tags.find(
+              (t): t is string[] => Array.isArray(t) && t[0] === "repo"
+            );
+
             // Verify this snippet is for our issue and repo
             const isForThisIssue = eTags.some((t) => t[1] === issueEventId);
-            const isForThisRepo = repoTag && repoTag[1] === entity && repoTag[2] === repo;
-            
+            const isForThisRepo =
+              repoTag && repoTag[1] === entity && repoTag[2] === repo;
+
             if (isForThisIssue && isForThisRepo) {
               // Store snippet event
               setSnippetEvents((prev) => {
@@ -256,26 +350,33 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
             console.error("Failed to process snippet event:", error);
           }
         }
-        
+
         // Handle comments (kind 1111 per NIP-22, or legacy kind 1)
         if (event.kind === KIND_COMMENT || event.kind === 1) {
           try {
             // Parse comment from event
             // NIP-22 uses uppercase E tags, legacy uses lowercase e tags
-            const eTags = event.tags.filter((t): t is string[] => Array.isArray(t) && (t[0] === "e" || t[0] === "E"));
-            const repoTag = event.tags.find((t): t is string[] => Array.isArray(t) && t[0] === "repo");
-            
+            const eTags = event.tags.filter(
+              (t): t is string[] =>
+                Array.isArray(t) && (t[0] === "e" || t[0] === "E")
+            );
+            const repoTag = event.tags.find(
+              (t): t is string[] => Array.isArray(t) && t[0] === "repo"
+            );
+
             // Verify this comment is for our issue and repo
             // Check both uppercase E (NIP-22) and lowercase e (legacy) tags
             const isForThisIssue = eTags.some((t) => t[1] === issueEventId);
-            const isForThisRepo = repoTag && repoTag[1] === entity && repoTag[2] === repo;
-            
+            const isForThisRepo =
+              repoTag && repoTag[1] === entity && repoTag[2] === repo;
+
             if (isForThisIssue && isForThisRepo) {
               // Find parent comment ID (NIP-10 reply tag)
               const replyTag = eTags.find((t) => t[3] === "reply");
               const rootTag = eTags.find((t) => t[3] === "root");
-              const parentId = replyTag?.[1] !== issueEventId ? replyTag?.[1] : undefined;
-              
+              const parentId =
+                replyTag?.[1] !== issueEventId ? replyTag?.[1] : undefined;
+
               const comment: Comment = {
                 id: event.id,
                 author: event.pubkey,
@@ -287,18 +388,29 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
 
               // Merge with existing comments (avoid duplicates)
               setComments((prev) => {
-                const exists = prev.some((c) => c.id === comment.id || c.nostrEventId === comment.id);
+                const exists = prev.some(
+                  (c) => c.id === comment.id || c.nostrEventId === comment.id
+                );
                 if (exists) return prev;
-                return [...prev, comment].sort((a, b) => a.createdAt - b.createdAt);
+                return [...prev, comment].sort(
+                  (a, b) => a.createdAt - b.createdAt
+                );
               });
 
               // Also save to localStorage
               const commentsKey = `gittr_issue_comments_${entity}_${repo}_${issue.id}`;
-              const storedComments = JSON.parse(localStorage.getItem(commentsKey) || "[]") as Comment[];
-              const exists = storedComments.some((c) => c.id === comment.id || c.nostrEventId === comment.id);
+              const storedComments = JSON.parse(
+                localStorage.getItem(commentsKey) || "[]"
+              ) as Comment[];
+              const exists = storedComments.some(
+                (c) => c.id === comment.id || c.nostrEventId === comment.id
+              );
               if (!exists) {
                 storedComments.push(comment);
-                localStorage.setItem(commentsKey, JSON.stringify(storedComments));
+                localStorage.setItem(
+                  commentsKey,
+                  JSON.stringify(storedComments)
+                );
               }
             }
           } catch (error) {
@@ -315,25 +427,29 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
 
   const handleToggleStatus = useCallback(async () => {
     if (!issue || !isOwner) return;
-    
+
     try {
       const key = getRepoStorageKey("gittr_issues", entity, repo);
       const issuesRaw = localStorage.getItem(key);
-      const issues: Issue[] = issuesRaw ? (JSON.parse(issuesRaw) as Issue[]) : [];
+      const issues: Issue[] = issuesRaw
+        ? (JSON.parse(issuesRaw) as Issue[])
+        : [];
       const newStatus = issue.status === "open" ? "closed" : "open";
-      const updated = issues.map((i) => 
+      const updated = issues.map((i) =>
         i.id === issue.id ? { ...i, status: newStatus } : i
       );
       localStorage.setItem(key, JSON.stringify(updated));
-      
+
       // If closing issue (not reopening) and there's a bounty without a linked PR, delete the bounty
       if (newStatus === "closed" && issue.bountyWithdrawId && !issue.linkedPR) {
         try {
           // Get LNbits config
-          const { getSecureItem } = await import("@/lib/security/encryptedStorage");
+          const { getSecureItem } = await import(
+            "@/lib/security/encryptedStorage"
+          );
           let lnbitsUrl: string | null = null;
           let lnbitsAdminKey: string | null = null;
-          
+
           try {
             lnbitsUrl = await getSecureItem("gittr_lnbits_url");
             lnbitsAdminKey = await getSecureItem("gittr_lnbits_admin_key");
@@ -357,60 +473,77 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
 
             if (deleteResponse.ok) {
               console.log("Bounty withdraw link deleted successfully");
-              
+
               // Remove bounty data from issue
-              const updatedWithoutBounty = updated.map((i) => 
-                i.id === issue.id 
-                  ? { 
-                      ...i, 
+              const updatedWithoutBounty = updated.map((i) =>
+                i.id === issue.id
+                  ? {
+                      ...i,
                       bountyAmount: undefined,
                       bountyWithdrawId: undefined,
                       bountyLnurl: undefined,
                       bountyWithdrawUrl: undefined,
                       bountyStatus: undefined,
                       bountyCreator: undefined,
-                    } 
+                    }
                   : i
               );
               localStorage.setItem(key, JSON.stringify(updatedWithoutBounty));
-              
+
               // Publish bounty cancellation event to Nostr
               try {
                 const privateKey = await getNostrPrivateKey();
-                
-                if (publish && defaultRelays && defaultRelays.length > 0 && privateKey) {
-                  const bountyEvent = createBountyEvent({
-                    issueId: issue.id,
-                    repoEntity: entity,
-                    repoName: repo,
-                    amount: issue.bountyAmount || 0,
-                    status: "pending", // Cancelled bounties are marked as pending (not released)
-                    withdrawId: issue.bountyWithdrawId,
-                    lnurl: issue.bountyLnurl,
-                    withdrawUrl: issue.bountyWithdrawUrl,
-                    creator: issue.bountyCreator || currentUserPubkey || "",
-                    createdAt: issue.createdAt,
-                  }, privateKey);
-                  
+
+                if (
+                  publish &&
+                  defaultRelays &&
+                  defaultRelays.length > 0 &&
+                  privateKey
+                ) {
+                  const bountyEvent = createBountyEvent(
+                    {
+                      issueId: issue.id,
+                      repoEntity: entity,
+                      repoName: repo,
+                      amount: issue.bountyAmount || 0,
+                      status: "pending", // Cancelled bounties are marked as pending (not released)
+                      withdrawId: issue.bountyWithdrawId,
+                      lnurl: issue.bountyLnurl,
+                      withdrawUrl: issue.bountyWithdrawUrl,
+                      creator: issue.bountyCreator || currentUserPubkey || "",
+                      createdAt: issue.createdAt,
+                    },
+                    privateKey
+                  );
+
                   publish(bountyEvent, defaultRelays);
                   console.log("Published bounty cancellation event to Nostr");
                 }
               } catch (nostrError) {
-                console.error("Failed to publish bounty cancellation to Nostr:", nostrError);
+                console.error(
+                  "Failed to publish bounty cancellation to Nostr:",
+                  nostrError
+                );
                 // Don't block issue closure if Nostr publish fails
               }
-              
+
               // Notify bounty creator if different from current user
-              if (issue.bountyCreator && issue.bountyCreator !== currentUserPubkey) {
+              if (
+                issue.bountyCreator &&
+                issue.bountyCreator !== currentUserPubkey
+              ) {
                 try {
-                  const { title, message, url } = formatNotificationMessage("bounty_cancelled", {
-                    repoEntity: entity,
-                    repoName: repo,
-                    issueId: issue.id,
-                    issueTitle: issue.title,
-                    url: `/${entity}/${repo}/issues/${issue.id}`,
-                  });
-                  
+                  const { title, message, url } = formatNotificationMessage(
+                    "bounty_cancelled",
+                    {
+                      repoEntity: entity,
+                      repoName: repo,
+                      issueId: issue.id,
+                      issueTitle: issue.title,
+                      url: `/${entity}/${repo}/issues/${issue.id}`,
+                    }
+                  );
+
                   await sendNotification({
                     recipientPubkey: issue.bountyCreator,
                     eventType: "bounty_cancelled",
@@ -421,12 +554,18 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                     repoName: repo,
                   });
                 } catch (notifError) {
-                  console.error("Failed to send bounty cancellation notification:", notifError);
+                  console.error(
+                    "Failed to send bounty cancellation notification:",
+                    notifError
+                  );
                 }
               }
             } else {
               const errorData = await deleteResponse.json();
-              console.error("Failed to delete bounty withdraw link:", errorData);
+              console.error(
+                "Failed to delete bounty withdraw link:",
+                errorData
+              );
               // Continue with issue closure even if delete fails (user can manually delete later)
             }
           }
@@ -435,266 +574,347 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
           // Continue with issue closure even if bounty deletion fails
         }
       }
-      
+
       setIssue({ ...issue, status: newStatus });
-      
+
       // Dispatch event to update counts
       window.dispatchEvent(new CustomEvent("gittr:issue-updated"));
-      window.dispatchEvent(new CustomEvent("gittr:activity-recorded", { 
-        detail: { 
-          type: newStatus === "closed" ? "issue_closed" : "issue_reopened",
-          repo: `${entity}/${repo}`,
-          entity: entity,
-          repoName: repo
-        } 
-      }));
+      window.dispatchEvent(
+        new CustomEvent("gittr:activity-recorded", {
+          detail: {
+            type: newStatus === "closed" ? "issue_closed" : "issue_reopened",
+            repo: `${entity}/${repo}`,
+            entity: entity,
+            repoName: repo,
+          },
+        })
+      );
     } catch (error) {
       console.error("Failed to update issue status:", error);
     }
-  }, [issue, isOwner, entity, repo, id, currentUserPubkey, publish, defaultRelays]);
+  }, [
+    issue,
+    isOwner,
+    entity,
+    repo,
+    id,
+    currentUserPubkey,
+    publish,
+    defaultRelays,
+  ]);
 
-  const handleAddAssignee = useCallback((input: string) => {
-    if (!issue || !isOwner || !input.trim()) return;
-    
-    try {
-      let pubkey = input.trim();
-      
-      // If it's an npub, decode it
-      if (pubkey.startsWith("npub")) {
-        const decoded = nip19.decode(pubkey);
-        if (decoded.type === "npub") {
-          pubkey = decoded.data as string;
-        }
-      }
-      
-      // Validate pubkey (should be 64 hex chars)
-      if (!/^[a-f0-9]{64}$/i.test(pubkey)) {
-        alert("Invalid npub or pubkey format");
-        return;
-      }
-      
-      if (issue.assignees.includes(pubkey)) {
-        return; // Already assigned
-      }
-      
-      const key = getRepoStorageKey("gittr_issues", entity, repo);
-      const issuesRaw = localStorage.getItem(key);
-      const issues: Issue[] = issuesRaw ? (JSON.parse(issuesRaw) as Issue[]) : [];
-      const updated = issues.map((i) => 
-        i.id === issue.id ? { ...i, assignees: [...(i.assignees || []), pubkey] } : i
-      );
-      localStorage.setItem(key, JSON.stringify(updated));
-      setIssue({ ...issue, assignees: [...issue.assignees, pubkey] });
-      setAssigneeSearch("");
-    } catch (error) {
-      alert(`Failed to add assignee: ${error instanceof Error ? error.message : "Unknown error"}`);
-    }
-  }, [issue, isOwner, entity, repo, id]);
+  const handleAddAssignee = useCallback(
+    (input: string) => {
+      if (!issue || !isOwner || !input.trim()) return;
 
-  const handleRemoveAssignee = useCallback((pubkey: string) => {
-    if (!issue || !isOwner) return;
-    
-    try {
-      const key = getRepoStorageKey("gittr_issues", entity, repo);
-      const issuesRaw = localStorage.getItem(key);
-      const issues: Issue[] = issuesRaw ? (JSON.parse(issuesRaw) as Issue[]) : [];
-      const updated = issues.map((i) => 
-        i.id === issue.id ? { ...i, assignees: (i.assignees || []).filter((a) => a !== pubkey) } : i
-      );
-      localStorage.setItem(key, JSON.stringify(updated));
-      setIssue({ ...issue, assignees: issue.assignees.filter(a => a !== pubkey) });
-    } catch (error) {
-      console.error("Failed to remove assignee:", error);
-    }
-  }, [issue, isOwner, entity, repo, id]);
-
-  const handleToggleLabel = useCallback((label: string) => {
-    if (!issue || !isOwner) return;
-    
-    try {
-      const key = getRepoStorageKey("gittr_issues", entity, repo);
-      const issuesRaw = localStorage.getItem(key);
-      const issues: Issue[] = issuesRaw ? (JSON.parse(issuesRaw) as Issue[]) : [];
-      const updated = issues.map((i) => {
-        const labels = i.labels || [];
-        const newLabels = labels.includes(label)
-          ? labels.filter((l) => l !== label)
-          : [...labels, label];
-        return i.id === issue.id ? { ...i, labels: newLabels } : i;
-      });
-      localStorage.setItem(key, JSON.stringify(updated));
-      setIssue({ ...issue, labels: issue.labels.includes(label) ? issue.labels.filter(l => l !== label) : [...issue.labels, label] });
-    } catch (error) {
-      console.error("Failed to toggle label:", error);
-    }
-  }, [issue, isOwner, entity, repo, id]);
-
-  const handleBountyCreated = useCallback(async (withdrawId: string, lnurl: string, withdrawUrl: string, amount: number) => {
-    // Store bounty info in issue
-    // Note: Withdraw link is already funded when created, so status is "paid"
-    if (!issue) return;
-    
-    try {
-      const key = getRepoStorageKey("gittr_issues", entity, repo);
-      const issuesRaw = localStorage.getItem(key);
-      const issues: Issue[] = issuesRaw ? (JSON.parse(issuesRaw) as Issue[]) : [];
-      const updated = issues.map((i) => 
-        i.id === issue.id 
-          ? { 
-              ...i, 
-              bountyWithdrawId: withdrawId,
-              bountyLnurl: lnurl,
-              bountyWithdrawUrl: withdrawUrl,
-              bountyAmount: amount,
-              bountyStatus: "paid" as const, // Already funded when created
-              bountyCreator: currentUserPubkey || undefined, // Store bounty creator's pubkey
-            } 
-          : i
-      );
-      localStorage.setItem(key, JSON.stringify(updated));
-      
-      // Update issue state
-      setIssue({ ...issue, bountyWithdrawId: withdrawId, bountyLnurl: lnurl, bountyWithdrawUrl: withdrawUrl, bountyAmount: amount, bountyStatus: "paid", bountyCreator: currentUserPubkey || undefined });
-      
-      // Store in user's bounty tracking (bounties they created)
-      if (typeof window !== "undefined") {
-        const bounties = JSON.parse(localStorage.getItem("gittr_user_bounties") || "[]");
-        const existingIndex = bounties.findIndex((b: any) => b.issueId === issue.id);
-        const bountyEntry = {
-          issueId: issue.id,
-          issueTitle: issue.title,
-          repoId: `${entity}/${repo}`,
-          amount: amount,
-          withdrawId: withdrawId,
-          lnurl: lnurl,
-          withdrawUrl: withdrawUrl,
-          status: "paid",
-          createdAt: Date.now(),
-        };
-        if (existingIndex >= 0) {
-          bounties[existingIndex] = bountyEntry;
-        } else {
-          bounties.push(bountyEntry);
-        }
-        localStorage.setItem("gittr_user_bounties", JSON.stringify(bounties));
-      }
-
-      // Send notification to issue owner about bounty being funded
       try {
-        // Get issue owner pubkey (issue author)
-        let issueOwnerPubkey: string | null = null;
-        
-        if (issue.author && /^[0-9a-f]{64}$/i.test(issue.author)) {
-          issueOwnerPubkey = issue.author;
-        } else {
-          // Try to resolve if it's an npub or entity
-          try {
-            issueOwnerPubkey = resolveEntityToPubkey(issue.author);
-          } catch {
-            console.warn("Could not resolve issue author to pubkey:", issue.author);
+        let pubkey = input.trim();
+
+        // If it's an npub, decode it
+        if (pubkey.startsWith("npub")) {
+          const decoded = nip19.decode(pubkey);
+          if (decoded.type === "npub") {
+            pubkey = decoded.data as string;
           }
         }
-        
-        if (issueOwnerPubkey) {
-          const notification = formatNotificationMessage("bounty_funded", {
-            repoEntity: entity,
-            repoName: repo,
-            issueId: issue.id,
-            issueTitle: issue.title,
-            url: typeof window !== "undefined" ? `${window.location.origin}/${entity}/${repo}/issues/${issue.id}` : undefined,
-          });
 
-          await sendNotification({
-            eventType: "bounty_funded",
-            title: notification.title,
-            message: `${notification.message}\n\nAmount: ${amount} sats`,
-            url: notification.url,
-            repoEntity: entity,
-            repoName: repo,
-            recipientPubkey: issueOwnerPubkey,
-          });
-        }
-      } catch (error) {
-        console.error("Failed to send bounty_funded notification:", error);
-        // Don't block bounty creation if notification fails
-      }
-
-      // Publish bounty event to Nostr
-      try {
-        const hasNip07 = typeof window !== "undefined" && window.nostr;
-        const privateKey = await getNostrPrivateKey();
-        
-        if (!currentUserPubkey) {
-          console.warn("Cannot publish bounty: no user pubkey");
+        // Validate pubkey (should be 64 hex chars)
+        if (!/^[a-f0-9]{64}$/i.test(pubkey)) {
+          alert("Invalid npub or pubkey format");
           return;
         }
 
-        let bountyEvent: any;
-        
-        if (hasNip07 && window.nostr) {
-          // Use NIP-07
-          const authorPubkey = await window.nostr.getPublicKey();
-          
-          bountyEvent = {
-            kind: KIND_BOUNTY,
-            created_at: Math.floor(Date.now() / 1000),
-            tags: [
-              ["e", issue.id, "", "issue"],
-              ["repo", entity, repo],
-              ["status", "paid"],
-              ["p", authorPubkey, "creator"],
-            ],
-            content: JSON.stringify({
-              amount: amount,
-              status: "paid",
-              withdrawId: withdrawId,
-              lnurl: lnurl,
-              withdrawUrl: withdrawUrl,
-            }),
-            pubkey: authorPubkey,
-            id: "",
-            sig: "",
-          };
-          
-          bountyEvent.id = getEventHash(bountyEvent);
-          bountyEvent = await window.nostr.signEvent(bountyEvent);
-        } else if (privateKey) {
-          // Use private key
-          bountyEvent = createBountyEvent({
+        if (issue.assignees.includes(pubkey)) {
+          return; // Already assigned
+        }
+
+        const key = getRepoStorageKey("gittr_issues", entity, repo);
+        const issuesRaw = localStorage.getItem(key);
+        const issues: Issue[] = issuesRaw
+          ? (JSON.parse(issuesRaw) as Issue[])
+          : [];
+        const updated = issues.map((i) =>
+          i.id === issue.id
+            ? { ...i, assignees: [...(i.assignees || []), pubkey] }
+            : i
+        );
+        localStorage.setItem(key, JSON.stringify(updated));
+        setIssue({ ...issue, assignees: [...issue.assignees, pubkey] });
+        setAssigneeSearch("");
+      } catch (error) {
+        alert(
+          `Failed to add assignee: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
+        );
+      }
+    },
+    [issue, isOwner, entity, repo, id]
+  );
+
+  const handleRemoveAssignee = useCallback(
+    (pubkey: string) => {
+      if (!issue || !isOwner) return;
+
+      try {
+        const key = getRepoStorageKey("gittr_issues", entity, repo);
+        const issuesRaw = localStorage.getItem(key);
+        const issues: Issue[] = issuesRaw
+          ? (JSON.parse(issuesRaw) as Issue[])
+          : [];
+        const updated = issues.map((i) =>
+          i.id === issue.id
+            ? {
+                ...i,
+                assignees: (i.assignees || []).filter((a) => a !== pubkey),
+              }
+            : i
+        );
+        localStorage.setItem(key, JSON.stringify(updated));
+        setIssue({
+          ...issue,
+          assignees: issue.assignees.filter((a) => a !== pubkey),
+        });
+      } catch (error) {
+        console.error("Failed to remove assignee:", error);
+      }
+    },
+    [issue, isOwner, entity, repo, id]
+  );
+
+  const handleToggleLabel = useCallback(
+    (label: string) => {
+      if (!issue || !isOwner) return;
+
+      try {
+        const key = getRepoStorageKey("gittr_issues", entity, repo);
+        const issuesRaw = localStorage.getItem(key);
+        const issues: Issue[] = issuesRaw
+          ? (JSON.parse(issuesRaw) as Issue[])
+          : [];
+        const updated = issues.map((i) => {
+          const labels = i.labels || [];
+          const newLabels = labels.includes(label)
+            ? labels.filter((l) => l !== label)
+            : [...labels, label];
+          return i.id === issue.id ? { ...i, labels: newLabels } : i;
+        });
+        localStorage.setItem(key, JSON.stringify(updated));
+        setIssue({
+          ...issue,
+          labels: issue.labels.includes(label)
+            ? issue.labels.filter((l) => l !== label)
+            : [...issue.labels, label],
+        });
+      } catch (error) {
+        console.error("Failed to toggle label:", error);
+      }
+    },
+    [issue, isOwner, entity, repo, id]
+  );
+
+  const handleBountyCreated = useCallback(
+    async (
+      withdrawId: string,
+      lnurl: string,
+      withdrawUrl: string,
+      amount: number
+    ) => {
+      // Store bounty info in issue
+      // Note: Withdraw link is already funded when created, so status is "paid"
+      if (!issue) return;
+
+      try {
+        const key = getRepoStorageKey("gittr_issues", entity, repo);
+        const issuesRaw = localStorage.getItem(key);
+        const issues: Issue[] = issuesRaw
+          ? (JSON.parse(issuesRaw) as Issue[])
+          : [];
+        const updated = issues.map((i) =>
+          i.id === issue.id
+            ? {
+                ...i,
+                bountyWithdrawId: withdrawId,
+                bountyLnurl: lnurl,
+                bountyWithdrawUrl: withdrawUrl,
+                bountyAmount: amount,
+                bountyStatus: "paid" as const, // Already funded when created
+                bountyCreator: currentUserPubkey || undefined, // Store bounty creator's pubkey
+              }
+            : i
+        );
+        localStorage.setItem(key, JSON.stringify(updated));
+
+        // Update issue state
+        setIssue({
+          ...issue,
+          bountyWithdrawId: withdrawId,
+          bountyLnurl: lnurl,
+          bountyWithdrawUrl: withdrawUrl,
+          bountyAmount: amount,
+          bountyStatus: "paid",
+          bountyCreator: currentUserPubkey || undefined,
+        });
+
+        // Store in user's bounty tracking (bounties they created)
+        if (typeof window !== "undefined") {
+          const bounties = JSON.parse(
+            localStorage.getItem("gittr_user_bounties") || "[]"
+          );
+          const existingIndex = bounties.findIndex(
+            (b: any) => b.issueId === issue.id
+          );
+          const bountyEntry = {
             issueId: issue.id,
-            repoEntity: entity,
-            repoName: repo,
+            issueTitle: issue.title,
+            repoId: `${entity}/${repo}`,
             amount: amount,
-            status: "paid",
             withdrawId: withdrawId,
             lnurl: lnurl,
             withdrawUrl: withdrawUrl,
-            creator: currentUserPubkey,
+            status: "paid",
             createdAt: Date.now(),
-          }, privateKey);
-        } else {
-          console.warn("Cannot publish bounty: no signing method available");
-          return;
+          };
+          if (existingIndex >= 0) {
+            bounties[existingIndex] = bountyEntry;
+          } else {
+            bounties.push(bountyEntry);
+          }
+          localStorage.setItem("gittr_user_bounties", JSON.stringify(bounties));
         }
 
-        // Publish to Nostr relays
-        if (publish && defaultRelays && defaultRelays.length > 0 && bountyEvent) {
-          try {
-            publish(bountyEvent, defaultRelays);
-            console.log("Published bounty event to Nostr:", bountyEvent.id);
-          } catch (error) {
-            console.error("Failed to publish bounty to Nostr:", error);
-            // Don't block bounty creation if publishing fails
+        // Send notification to issue owner about bounty being funded
+        try {
+          // Get issue owner pubkey (issue author)
+          let issueOwnerPubkey: string | null = null;
+
+          if (issue.author && /^[0-9a-f]{64}$/i.test(issue.author)) {
+            issueOwnerPubkey = issue.author;
+          } else {
+            // Try to resolve if it's an npub or entity
+            try {
+              issueOwnerPubkey = resolveEntityToPubkey(issue.author);
+            } catch {
+              console.warn(
+                "Could not resolve issue author to pubkey:",
+                issue.author
+              );
+            }
           }
+
+          if (issueOwnerPubkey) {
+            const notification = formatNotificationMessage("bounty_funded", {
+              repoEntity: entity,
+              repoName: repo,
+              issueId: issue.id,
+              issueTitle: issue.title,
+              url:
+                typeof window !== "undefined"
+                  ? `${window.location.origin}/${entity}/${repo}/issues/${issue.id}`
+                  : undefined,
+            });
+
+            await sendNotification({
+              eventType: "bounty_funded",
+              title: notification.title,
+              message: `${notification.message}\n\nAmount: ${amount} sats`,
+              url: notification.url,
+              repoEntity: entity,
+              repoName: repo,
+              recipientPubkey: issueOwnerPubkey,
+            });
+          }
+        } catch (error) {
+          console.error("Failed to send bounty_funded notification:", error);
+          // Don't block bounty creation if notification fails
+        }
+
+        // Publish bounty event to Nostr
+        try {
+          const hasNip07 = typeof window !== "undefined" && window.nostr;
+          const privateKey = await getNostrPrivateKey();
+
+          if (!currentUserPubkey) {
+            console.warn("Cannot publish bounty: no user pubkey");
+            return;
+          }
+
+          let bountyEvent: any;
+
+          if (hasNip07 && window.nostr) {
+            // Use NIP-07
+            const authorPubkey = await window.nostr.getPublicKey();
+
+            bountyEvent = {
+              kind: KIND_BOUNTY,
+              created_at: Math.floor(Date.now() / 1000),
+              tags: [
+                ["e", issue.id, "", "issue"],
+                ["repo", entity, repo],
+                ["status", "paid"],
+                ["p", authorPubkey, "creator"],
+              ],
+              content: JSON.stringify({
+                amount: amount,
+                status: "paid",
+                withdrawId: withdrawId,
+                lnurl: lnurl,
+                withdrawUrl: withdrawUrl,
+              }),
+              pubkey: authorPubkey,
+              id: "",
+              sig: "",
+            };
+
+            bountyEvent.id = getEventHash(bountyEvent);
+            bountyEvent = await window.nostr.signEvent(bountyEvent);
+          } else if (privateKey) {
+            // Use private key
+            bountyEvent = createBountyEvent(
+              {
+                issueId: issue.id,
+                repoEntity: entity,
+                repoName: repo,
+                amount: amount,
+                status: "paid",
+                withdrawId: withdrawId,
+                lnurl: lnurl,
+                withdrawUrl: withdrawUrl,
+                creator: currentUserPubkey,
+                createdAt: Date.now(),
+              },
+              privateKey
+            );
+          } else {
+            console.warn("Cannot publish bounty: no signing method available");
+            return;
+          }
+
+          // Publish to Nostr relays
+          if (
+            publish &&
+            defaultRelays &&
+            defaultRelays.length > 0 &&
+            bountyEvent
+          ) {
+            try {
+              publish(bountyEvent, defaultRelays);
+              console.log("Published bounty event to Nostr:", bountyEvent.id);
+            } catch (error) {
+              console.error("Failed to publish bounty to Nostr:", error);
+              // Don't block bounty creation if publishing fails
+            }
+          }
+        } catch (error) {
+          console.error("Failed to publish bounty event:", error);
+          // Don't block bounty creation if publishing fails
         }
       } catch (error) {
-        console.error("Failed to publish bounty event:", error);
-        // Don't block bounty creation if publishing fails
+        console.error("Failed to store bounty:", error);
       }
-    } catch (error) {
-      console.error("Failed to store bounty:", error);
-    }
-  }, [issue, entity, repo, id, currentUserPubkey, publish, defaultRelays]);
+    },
+    [issue, entity, repo, id, currentUserPubkey, publish, defaultRelays]
+  );
 
   // Handle comment creation
   const handleAddComment = useCallback(async () => {
@@ -709,9 +929,11 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
         return;
       }
 
-      const commentId = `comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const commentId = `comment-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
       const now = Date.now();
-      
+
       const newComment: Comment = {
         id: commentId,
         author: currentUserPubkey,
@@ -722,7 +944,9 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
 
       // Save to localStorage first
       const commentsKey = `gittr_issue_comments_${entity}_${repo}_${issue.id}`;
-      const storedComments = JSON.parse(localStorage.getItem(commentsKey) || "[]") as Comment[];
+      const storedComments = JSON.parse(
+        localStorage.getItem(commentsKey) || "[]"
+      ) as Comment[];
       storedComments.push(newComment);
       localStorage.setItem(commentsKey, JSON.stringify(storedComments));
       setComments(storedComments);
@@ -736,7 +960,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
       let commentEvent: any;
       if (hasNip07 && window.nostr) {
         const authorPubkey = await window.nostr.getPublicKey();
-        
+
         const tags: string[][] = [
           ["repo", entity, repo], // Custom extension, not in NIP-22
         ];
@@ -747,7 +971,7 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
         if (issueEventId) {
           tags.push(["E", issueEventId]); // Root event (issue) - uppercase E per NIP-22
         }
-        
+
         if (replyParentId) {
           tags.push(["E", replyParentId]); // Reply target (parent comment) - uppercase E per NIP-22
         }
@@ -790,7 +1014,12 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
       }
 
       // Publish to Nostr relays
-      if (publish && defaultRelays && defaultRelays.length > 0 && commentEvent) {
+      if (
+        publish &&
+        defaultRelays &&
+        defaultRelays.length > 0 &&
+        commentEvent
+      ) {
         try {
           publish(commentEvent, defaultRelays);
           console.log("Published comment to Nostr:", commentEvent.id);
@@ -802,14 +1031,20 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
       // Send notifications
       try {
         // Notify issue author (if not the commenter)
-        if (issue.author && issue.author.toLowerCase() !== currentUserPubkey.toLowerCase()) {
+        if (
+          issue.author &&
+          issue.author.toLowerCase() !== currentUserPubkey.toLowerCase()
+        ) {
           const notification = formatNotificationMessage("issue_commented", {
             repoEntity: entity,
             repoName: repo,
             issueId: issue.id,
             issueTitle: issue.title,
             authorName: userName || "Someone",
-            url: typeof window !== "undefined" ? `${window.location.origin}/${entity}/${repo}/issues/${issue.id}` : undefined,
+            url:
+              typeof window !== "undefined"
+                ? `${window.location.origin}/${entity}/${repo}/issues/${issue.id}`
+                : undefined,
           });
 
           await sendNotification({
@@ -839,7 +1074,10 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
             issueId: issue.id,
             issueTitle: issue.title,
             authorName: userName || "Someone",
-            url: typeof window !== "undefined" ? `${window.location.origin}/${entity}/${repo}/issues/${issue.id}` : undefined,
+            url:
+              typeof window !== "undefined"
+                ? `${window.location.origin}/${entity}/${repo}/issues/${issue.id}`
+                : undefined,
           });
 
           await Promise.all(
@@ -853,7 +1091,13 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                 repoName: repo,
                 recipientPubkey: pubkey,
               }).catch((err) => {
-                console.error(`Failed to send mention notification to ${pubkey.slice(0, 8)}...:`, err);
+                console.error(
+                  `Failed to send mention notification to ${pubkey.slice(
+                    0,
+                    8
+                  )}...:`,
+                  err
+                );
               })
             )
           );
@@ -865,7 +1109,19 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
       console.error("Failed to add comment:", error);
       alert("Failed to add comment: " + (error as Error).message);
     }
-  }, [commentContent, issue, currentUserPubkey, replyParentId, issueEventId, entity, repo, id, publish, defaultRelays, userName]);
+  }, [
+    commentContent,
+    issue,
+    currentUserPubkey,
+    replyParentId,
+    issueEventId,
+    entity,
+    repo,
+    id,
+    publish,
+    defaultRelays,
+    userName,
+  ]);
 
   const startReply = useCallback((parentId?: string, authorPubkey?: string) => {
     setReplyParentId(parentId || null);
@@ -875,70 +1131,92 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
   }, []);
 
   // Build threaded comment tree
-  const buildCommentTree = useCallback((comments: Comment[]): Array<Comment & { depth: number; children: any[] }> => {
-    const commentMap = new Map<string, Comment & { depth: number; children: any[] }>();
-    const rootComments: Array<Comment & { depth: number; children: any[] }> = [];
+  const buildCommentTree = useCallback(
+    (
+      comments: Comment[]
+    ): Array<Comment & { depth: number; children: any[] }> => {
+      const commentMap = new Map<
+        string,
+        Comment & { depth: number; children: any[] }
+      >();
+      const rootComments: Array<Comment & { depth: number; children: any[] }> =
+        [];
 
-    // First pass: create all comment nodes
-    comments.forEach((comment) => {
-      commentMap.set(comment.id, {
-        ...comment,
-        depth: 0,
-        children: [],
+      // First pass: create all comment nodes
+      comments.forEach((comment) => {
+        commentMap.set(comment.id, {
+          ...comment,
+          depth: 0,
+          children: [],
+        });
       });
-    });
 
-    // Second pass: build tree
-    comments.forEach((comment) => {
-      const node = commentMap.get(comment.id)!;
-      if (comment.parentId) {
-        const parent = commentMap.get(comment.parentId);
-        if (parent) {
-          parent.children.push(node);
-          node.depth = parent.depth + 1;
+      // Second pass: build tree
+      comments.forEach((comment) => {
+        const node = commentMap.get(comment.id)!;
+        if (comment.parentId) {
+          const parent = commentMap.get(comment.parentId);
+          if (parent) {
+            parent.children.push(node);
+            node.depth = parent.depth + 1;
+          } else {
+            // Orphan comment - treat as root
+            rootComments.push(node);
+          }
         } else {
-          // Orphan comment - treat as root
           rootComments.push(node);
         }
-      } else {
-        rootComments.push(node);
-      }
-    });
-
-    // Sort each level by creation time
-    const sortTree = (nodes: Array<Comment & { depth: number; children: any[] }>) => {
-      nodes.sort((a, b) => a.createdAt - b.createdAt);
-      nodes.forEach((node) => {
-        if (node.children.length > 0) {
-          sortTree(node.children);
-        }
       });
-    };
 
-    sortTree(rootComments);
-    return rootComments;
-  }, []);
+      // Sort each level by creation time
+      const sortTree = (
+        nodes: Array<Comment & { depth: number; children: any[] }>
+      ) => {
+        nodes.sort((a, b) => a.createdAt - b.createdAt);
+        nodes.forEach((node) => {
+          if (node.children.length > 0) {
+            sortTree(node.children);
+          }
+        });
+      };
+
+      sortTree(rootComments);
+      return rootComments;
+    },
+    []
+  );
 
   // Get all comment author pubkeys for metadata
   const commentAuthorPubkeys = useMemo(() => {
-    return comments.map((c) => c.author).filter((pubkey) => /^[0-9a-f]{64}$/i.test(pubkey));
+    return comments
+      .map((c) => c.author)
+      .filter((pubkey) => /^[0-9a-f]{64}$/i.test(pubkey));
   }, [comments]);
   const commentAuthorMetadata = useContributorMetadata(commentAuthorPubkeys);
 
   const filteredLabels = useMemo(() => {
     if (!labelSearch) return availableLabels;
-    return availableLabels.filter(l => l.toLowerCase().includes(labelSearch.toLowerCase()));
+    return availableLabels.filter((l) =>
+      l.toLowerCase().includes(labelSearch.toLowerCase())
+    );
   }, [availableLabels, labelSearch]);
 
   if (loading) {
-    return <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">Loading issue...</div>;
+    return (
+      <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
+        Loading issue...
+      </div>
+    );
   }
 
   if (!issue) {
     return (
       <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
         <p className="text-gray-400">Issue not found</p>
-        <Link href={`/${entity}/${repo}/issues`} className="text-purple-500 hover:underline">
+        <Link
+          href={`/${entity}/${repo}/issues`}
+          className="text-purple-500 hover:underline"
+        >
           Back to issues
         </Link>
       </div>
@@ -950,10 +1228,18 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
       {/* Breadcrumbs - Match URL format for consistency */}
       <nav className="mb-4 text-sm text-gray-400">
         <Link href={`/${entity}/${repo}`} className="hover:text-purple-400">
-          {repoOwnerPubkey ? getEntityDisplayName(repoOwnerPubkey, repoOwnerMetadata, entity) : (entity.startsWith('npub') ? entity.slice(0, 16) + '...' : entity)}/{repo}
+          {repoOwnerPubkey
+            ? getEntityDisplayName(repoOwnerPubkey, repoOwnerMetadata, entity)
+            : entity.startsWith("npub")
+            ? entity.slice(0, 16) + "..."
+            : entity}
+          /{repo}
         </Link>
         {" / "}
-        <Link href={`/${entity}/${repo}/issues`} className="hover:text-purple-400">
+        <Link
+          href={`/${entity}/${repo}/issues`}
+          className="hover:text-purple-400"
+        >
           Issues
         </Link>
         {" / #"}
@@ -973,11 +1259,19 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
             <Badge className="bg-gray-700">#{id}</Badge>
           </div>
           <div className="text-sm text-gray-400">
-            {issue.status === "open" ? "Opened" : "Closed"} {formatDateTime24h(issue.createdAt)} by{" "}
-            <Link href={`/${issue.author}`} className="hover:text-purple-400 flex items-center gap-1">
+            {issue.status === "open" ? "Opened" : "Closed"}{" "}
+            {formatDateTime24h(issue.createdAt)} by{" "}
+            <Link
+              href={`/${issue.author}`}
+              className="hover:text-purple-400 flex items-center gap-1"
+            >
               {(() => {
                 const meta = authorMetadata[issue.author];
-                return meta?.display_name || meta?.name || issue.author.slice(0, 8) + "...";
+                return (
+                  meta?.display_name ||
+                  meta?.name ||
+                  issue.author.slice(0, 8) + "..."
+                );
               })()}
             </Link>
           </div>
@@ -1003,11 +1297,22 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
                 components={{
-                  code: ({ node, inline, className, children, ...props }: any) => {
+                  code: ({
+                    node,
+                    inline,
+                    className,
+                    children,
+                    ...props
+                  }: any) => {
                     return (
-                      <CopyableCodeBlock 
-                        inline={inline} 
-                        className={inline ? "bg-gray-900 px-1 rounded text-green-400" : className || "bg-gray-900 rounded p-4 overflow-x-auto"}
+                      <CopyableCodeBlock
+                        inline={inline}
+                        className={
+                          inline
+                            ? "bg-gray-900 px-1 rounded text-green-400"
+                            : className ||
+                              "bg-gray-900 rounded p-4 overflow-x-auto"
+                        }
                       >
                         {children}
                       </CopyableCodeBlock>
@@ -1030,31 +1335,36 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
           </div>
 
           {/* Take Bounty / Propose Fix Button */}
-          {issue.bountyAmount && issue.bountyAmount > 0 && issue.bountyStatus === "paid" && issue.status === "open" && (
-            <div className="border border-gray-700 rounded p-4 bg-gradient-to-r from-purple-900/20 to-orange-900/20">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <h3 className="font-semibold mb-1 flex items-center gap-2">
-                    <Coins className="h-5 w-5 text-yellow-400" />
-                    {issue.bountyAmount} sats bounty available
-                  </h3>
-                  <p className="text-sm text-gray-400 mb-3">
-                    {issue.linkedPR 
-                      ? "A PR is already linked to this issue. Work on the existing PR to claim the bounty."
-                      : "Create a pull request fixing this issue to claim the bounty. The bounty will be released when your PR is merged."}
-                  </p>
+          {issue.bountyAmount &&
+            issue.bountyAmount > 0 &&
+            issue.bountyStatus === "paid" &&
+            issue.status === "open" && (
+              <div className="border border-gray-700 rounded p-4 bg-gradient-to-r from-purple-900/20 to-orange-900/20">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <h3 className="font-semibold mb-1 flex items-center gap-2">
+                      <Coins className="h-5 w-5 text-yellow-400" />
+                      {issue.bountyAmount} sats bounty available
+                    </h3>
+                    <p className="text-sm text-gray-400 mb-3">
+                      {issue.linkedPR
+                        ? "A PR is already linked to this issue. Work on the existing PR to claim the bounty."
+                        : "Create a pull request fixing this issue to claim the bounty. The bounty will be released when your PR is merged."}
+                    </p>
+                  </div>
+                  {!issue.linkedPR && (
+                    <Link
+                      href={`/${entity}/${repo}/pulls/new?issue=${issue.id}`}
+                    >
+                      <Button className="bg-gradient-to-r from-purple-600 to-orange-600 hover:from-purple-700 hover:to-orange-700">
+                        <GitBranch className="mr-2 h-4 w-4" />
+                        Propose a Fix
+                      </Button>
+                    </Link>
+                  )}
                 </div>
-                {!issue.linkedPR && (
-                  <Link href={`/${entity}/${repo}/pulls/new?issue=${issue.id}`}>
-                    <Button className="bg-gradient-to-r from-purple-600 to-orange-600 hover:from-purple-700 hover:to-orange-700">
-                      <GitBranch className="mr-2 h-4 w-4" />
-                      Propose a Fix
-                    </Button>
-                  </Link>
-                )}
               </div>
-            </div>
-          )}
+            )}
 
           {/* Comments Section */}
           <div className="border border-gray-700 rounded p-4">
@@ -1078,15 +1388,22 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                     const indent = comment.depth * 32; // 32px per level
 
                     return (
-                      <div key={comment.id} className="mb-4" style={{ marginLeft: `${indent}px` }}>
+                      <div
+                        key={comment.id}
+                        className="mb-4"
+                        style={{ marginLeft: `${indent}px` }}
+                      >
                         <div className="border border-gray-700 rounded p-4 bg-gray-900/50">
                           <div className="flex items-start gap-3">
                             <Avatar className="h-8 w-8 flex-shrink-0">
-                              {authorMeta?.picture && authorMeta.picture.startsWith("http") ? (
+                              {authorMeta?.picture &&
+                              authorMeta.picture.startsWith("http") ? (
                                 <AvatarImage src={authorMeta.picture} />
                               ) : null}
                               <AvatarFallback className="bg-gray-700 text-white text-xs">
-                                {authorMeta?.display_name || authorMeta?.name || comment.author.slice(0, 2).toUpperCase()}
+                                {authorMeta?.display_name ||
+                                  authorMeta?.name ||
+                                  comment.author.slice(0, 2).toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
                             <div className="flex-1 min-w-0">
@@ -1095,13 +1412,17 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                                   href={`/${comment.author}`}
                                   className="font-semibold hover:text-purple-400"
                                 >
-                                  {authorMeta?.display_name || authorMeta?.name || comment.author.slice(0, 8) + "..."}
+                                  {authorMeta?.display_name ||
+                                    authorMeta?.name ||
+                                    comment.author.slice(0, 8) + "..."}
                                 </Link>
                                 <span className="text-xs text-gray-500">
                                   {formatDateTime24h(comment.createdAt)}
                                 </span>
                                 {comment.edited && (
-                                  <span className="text-xs text-gray-500 italic">(edited)</span>
+                                  <span className="text-xs text-gray-500 italic">
+                                    (edited)
+                                  </span>
                                 )}
                               </div>
                               <div className="prose prose-invert max-w-none text-sm mb-3">
@@ -1109,7 +1430,13 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                                   remarkPlugins={[remarkGfm]}
                                   rehypePlugins={[rehypeRaw]}
                                   components={{
-                                    code: ({ node, inline, className, children, ...props }: any) => {
+                                    code: ({
+                                      node,
+                                      inline,
+                                      className,
+                                      children,
+                                      ...props
+                                    }: any) => {
                                       if (inline) {
                                         return (
                                           <code className="bg-gray-900 px-1 py-0.5 rounded text-green-400">
@@ -1118,9 +1445,12 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                                         );
                                       }
                                       return (
-                                        <CopyableCodeBlock 
+                                        <CopyableCodeBlock
                                           inline={false}
-                                          className={className || "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"}
+                                          className={
+                                            className ||
+                                            "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"
+                                          }
                                         >
                                           {children}
                                         </CopyableCodeBlock>
@@ -1134,8 +1464,10 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                                 {(() => {
                                   // Extract snippet event IDs from comment content
                                   // Look for nostr:note1... or just event IDs (64 hex chars)
-                                  const snippetIdPattern = /(?:nostr:)?(note1[a-z0-9]{58}|[0-9a-f]{64})/gi;
-                                  const matches = comment.content.matchAll(snippetIdPattern);
+                                  const snippetIdPattern =
+                                    /(?:nostr:)?(note1[a-z0-9]{58}|[0-9a-f]{64})/gi;
+                                  const matches =
+                                    comment.content.matchAll(snippetIdPattern);
                                   const snippetIds: string[] = [];
                                   for (const match of matches) {
                                     const id = match[1];
@@ -1145,7 +1477,9 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                                       try {
                                         const decoded = nip19.decode(id);
                                         if (decoded.type === "note") {
-                                          snippetIds.push(decoded.data as string);
+                                          snippetIds.push(
+                                            decoded.data as string
+                                          );
                                         }
                                       } catch {
                                         // Invalid bech32, skip
@@ -1154,13 +1488,17 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                                       snippetIds.push(id);
                                     }
                                   }
-                                  
+
                                   return snippetIds.map((snippetId) => {
-                                    const snippetEvent = snippetEvents.get(snippetId);
+                                    const snippetEvent =
+                                      snippetEvents.get(snippetId);
                                     if (!snippetEvent) return null;
                                     return (
                                       <div key={snippetId} className="mt-4">
-                                        <CodeSnippetRenderer event={snippetEvent} showAuthor={false} />
+                                        <CodeSnippetRenderer
+                                          event={snippetEvent}
+                                          showAuthor={false}
+                                        />
                                       </div>
                                     );
                                   });
@@ -1170,7 +1508,9 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => startReply(comment.id, comment.author)}
+                                  onClick={() =>
+                                    startReply(comment.id, comment.author)
+                                  }
                                   className="text-xs h-7"
                                 >
                                   <Reply className="h-3 w-3 mr-1" />
@@ -1186,11 +1526,13 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                             </div>
                           </div>
                         </div>
-                        
+
                         {/* Render nested replies */}
                         {comment.children.length > 0 && (
                           <div className="mt-2">
-                            {comment.children.map((child) => renderComment(child, allComments))}
+                            {comment.children.map((child) =>
+                              renderComment(child, allComments)
+                            )}
                           </div>
                         )}
                       </div>
@@ -1206,7 +1548,10 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
               <div className="border border-gray-700 rounded p-4 bg-gray-900/50">
                 {replyingTo && (
                   <div className="mb-2 text-sm text-gray-400">
-                    Replying to <span className="text-purple-400">{replyingTo.slice(0, 8)}...</span>
+                    Replying to{" "}
+                    <span className="text-purple-400">
+                      {replyingTo.slice(0, 8)}...
+                    </span>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1225,7 +1570,9 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                   ref={commentTextareaRef}
                   value={commentContent}
                   onChange={(e) => setCommentContent(e.target.value)}
-                  placeholder={replyingTo ? "Write a reply..." : "Write a comment..."}
+                  placeholder={
+                    replyingTo ? "Write a reply..." : "Write a comment..."
+                  }
                   className="min-h-24 mb-3"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -1270,12 +1617,15 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                       <Plus className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent 
+                  <DropdownMenuContent
                     className="w-80"
                     onInteractOutside={(e) => {
                       // Don't close when clicking inside the input
                       const target = e.target as HTMLElement;
-                      if (target.closest('input') || target.closest('button[type="button"]')) {
+                      if (
+                        target.closest("input") ||
+                        target.closest('button[type="button"]')
+                      ) {
                         e.preventDefault();
                       }
                     }}
@@ -1326,41 +1676,73 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                         <>
                           <DropdownMenuSeparator />
                           <div className="p-2 space-y-2">
-                            <p className="text-xs text-gray-400 mb-2">Repository Contributors:</p>
+                            <p className="text-xs text-gray-400 mb-2">
+                              Repository Contributors:
+                            </p>
                             <div className="space-y-1 max-h-40 overflow-y-auto">
                               {repoContributors
-                                .filter(c => !issue.assignees.includes(c.pubkey))
+                                .filter(
+                                  (c) => !issue.assignees.includes(c.pubkey)
+                                )
                                 .map((contributor) => {
-                                  const meta = repoContributorMetadata[contributor.pubkey];
-                                  const displayName = meta?.display_name || meta?.name || contributor.name || contributor.pubkey.slice(0, 8) + "...";
+                                  const meta =
+                                    repoContributorMetadata[contributor.pubkey];
+                                  const displayName =
+                                    meta?.display_name ||
+                                    meta?.name ||
+                                    contributor.name ||
+                                    contributor.pubkey.slice(0, 8) + "...";
                                   const npub = (() => {
                                     try {
-                                      return nip19.npubEncode(contributor.pubkey);
+                                      return nip19.npubEncode(
+                                        contributor.pubkey
+                                      );
                                     } catch {
                                       return null;
                                     }
                                   })();
-                                  
+
                                   return (
                                     <button
                                       key={contributor.pubkey}
                                       type="button"
-                                      onClick={() => handleAddAssignee(contributor.pubkey)}
+                                      onClick={() =>
+                                        handleAddAssignee(contributor.pubkey)
+                                      }
                                       className="w-full flex items-center gap-2 text-xs bg-gray-800 hover:bg-gray-700 p-2 rounded transition-colors group"
                                       disabled={issue.assignees.length >= 10}
-                                      title={npub ? `npub: ${npub}` : `pubkey: ${contributor.pubkey}`}
+                                      title={
+                                        npub
+                                          ? `npub: ${npub}`
+                                          : `pubkey: ${contributor.pubkey}`
+                                      }
                                     >
                                       <Avatar className="h-5 w-5 flex-shrink-0">
-                                        {(meta?.picture || contributor.picture) && (meta?.picture || contributor.picture)?.startsWith("http") ? (
-                                          <AvatarImage src={meta?.picture || contributor.picture} />
+                                        {(meta?.picture ||
+                                          contributor.picture) &&
+                                        (
+                                          meta?.picture || contributor.picture
+                                        )?.startsWith("http") ? (
+                                          <AvatarImage
+                                            src={
+                                              meta?.picture ||
+                                              contributor.picture
+                                            }
+                                          />
                                         ) : null}
                                         <AvatarFallback className="bg-gray-700 text-white text-[8px]">
-                                          {displayName.slice(0, 2).toUpperCase()}
+                                          {displayName
+                                            .slice(0, 2)
+                                            .toUpperCase()}
                                         </AvatarFallback>
                                       </Avatar>
-                                      <span className="text-purple-300 flex-1 text-left truncate">{displayName}</span>
+                                      <span className="text-purple-300 flex-1 text-left truncate">
+                                        {displayName}
+                                      </span>
                                       {contributor.role && (
-                                        <span className="text-[10px] text-gray-500 capitalize">{contributor.role}</span>
+                                        <span className="text-[10px] text-gray-500 capitalize">
+                                          {contributor.role}
+                                        </span>
                                       )}
                                       {npub && (
                                         <span className="text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity font-mono truncate max-w-[60px]">
@@ -1383,19 +1765,28 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
               <div className="space-y-2">
                 {issue.assignees.map((pubkey) => {
                   const meta = assigneeMetadata[pubkey];
-                  const displayName = meta?.display_name || meta?.name || pubkey.slice(0, 8) + "...";
-                  const npub = pubkey.length === 64 ? (() => {
-                    try {
-                      return nip19.npubEncode(pubkey);
-                    } catch {
-                      return null;
-                    }
-                  })() : null;
-                  
+                  const displayName =
+                    meta?.display_name ||
+                    meta?.name ||
+                    pubkey.slice(0, 8) + "...";
+                  const npub =
+                    pubkey.length === 64
+                      ? (() => {
+                          try {
+                            return nip19.npubEncode(pubkey);
+                          } catch {
+                            return null;
+                          }
+                        })()
+                      : null;
+
                   return (
-                  <div key={pubkey} className="flex items-center justify-between">
-                      <Link 
-                        href={`/${pubkey}`} 
+                    <div
+                      key={pubkey}
+                      className="flex items-center justify-between"
+                    >
+                      <Link
+                        href={`/${pubkey}`}
                         className="flex items-center gap-2 text-sm hover:text-purple-400 group"
                         title={npub ? `npub: ${npub}` : `pubkey: ${pubkey}`}
                       >
@@ -1413,23 +1804,25 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                             ({npub.slice(0, 16)}...)
                           </span>
                         )}
-                    </Link>
-                    {isOwner && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveAssignee(pubkey)}
-                        className="h-6 w-6 p-0"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
+                      </Link>
+                      {isOwner && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveAssignee(pubkey)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   );
                 })}
               </div>
             ) : (
-              <p className="text-sm text-gray-400">No one yet {isOwner && "– assign yourself"}</p>
+              <p className="text-sm text-gray-400">
+                No one yet {isOwner && "– assign yourself"}
+              </p>
             )}
           </div>
 
@@ -1459,9 +1852,15 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                           <DropdownMenuItem
                             key={label}
                             onClick={() => handleToggleLabel(label)}
-                            className={issue.labels.includes(label) ? "bg-purple-900/50" : ""}
+                            className={
+                              issue.labels.includes(label)
+                                ? "bg-purple-900/50"
+                                : ""
+                            }
                           >
-                            {issue.labels.includes(label) && <CheckCircle2 className="mr-2 h-4 w-4" />}
+                            {issue.labels.includes(label) && (
+                              <CheckCircle2 className="mr-2 h-4 w-4" />
+                            )}
                             {label}
                           </DropdownMenuItem>
                         ))}
@@ -1524,7 +1923,9 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                   {issue.bountyAmount} sats available
                 </div>
                 <p className="text-xs text-gray-500">
-                  Bounty withdraw link created. When a PR fixing this issue is merged, the PR author can claim the bounty using the withdraw link.
+                  Bounty withdraw link created. When a PR fixing this issue is
+                  merged, the PR author can claim the bounty using the withdraw
+                  link.
                 </p>
               </div>
             ) : issue.bountyStatus === "released" && issue.bountyAmount ? (
@@ -1544,7 +1945,11 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
               <div className="space-y-2">
                 <p className="text-sm text-gray-400 mb-2">No bounty yet</p>
                 <p className="text-xs text-gray-500 mb-2">
-                  Add a bounty to incentivize contributors. The bounty amount will be deducted from your LNbits wallet and a withdraw link will be created. Make sure you have sufficient balance. When a PR fixing this issue is merged, the PR author can claim the bounty.
+                  Add a bounty to incentivize contributors. The bounty amount
+                  will be deducted from your LNbits wallet and a withdraw link
+                  will be created. Make sure you have sufficient balance. When a
+                  PR fixing this issue is merged, the PR author can claim the
+                  bounty.
                 </p>
                 {/* Any logged-in user can add a bounty to any issue */}
                 <BountyButton
@@ -1552,9 +1957,12 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
                   issueTitle={issue.title}
                   repoEntity={entity}
                   repoName={repo}
-                  repoOwnerDisplayName={repoOwnerPubkey && repoOwnerMetadata[repoOwnerPubkey] 
-                    ? (repoOwnerMetadata[repoOwnerPubkey]?.display_name || repoOwnerMetadata[repoOwnerPubkey]?.name)
-                    : undefined}
+                  repoOwnerDisplayName={
+                    repoOwnerPubkey && repoOwnerMetadata[repoOwnerPubkey]
+                      ? repoOwnerMetadata[repoOwnerPubkey]?.display_name ||
+                        repoOwnerMetadata[repoOwnerPubkey]?.name
+                      : undefined
+                  }
                   onBountyCreated={handleBountyCreated}
                   size="sm"
                 />
@@ -1563,8 +1971,6 @@ export default function IssueDetailPage({ params }: { params: Promise<{ entity: 
           </div>
         </div>
       </div>
-
     </div>
   );
 }
-

@@ -1,39 +1,52 @@
-import { Metadata } from 'next';
+import { Metadata } from "next";
 
 // Default metadata for the site
 // Next.js App Router will pick this up automatically
 export const metadata: Metadata = {
   title: {
-    default: 'gittr - Decentralized Git Hosting on Nostr',
-    template: '%s | gittr',
+    default: "gittr - Decentralized Git Hosting on Nostr",
+    template: "%s | gittr",
   },
-  description: 'A truly censorship-resistant alternative to GitHub built on Nostr. Host your repositories on a decentralized network.',
-  keywords: ['git', 'nostr', 'decentralized', 'censorship-resistant', 'github alternative', 'git hosting', 'nostr git'],
-  authors: [{ name: 'gittr' }],
-  creator: 'gittr',
-  publisher: 'gittr',
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space'),
+  description:
+    "A truly censorship-resistant alternative to GitHub built on Nostr. Host your repositories on a decentralized network.",
+  keywords: [
+    "git",
+    "nostr",
+    "decentralized",
+    "censorship-resistant",
+    "github alternative",
+    "git hosting",
+    "nostr git",
+  ],
+  authors: [{ name: "gittr" }],
+  creator: "gittr",
+  publisher: "gittr",
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space"
+  ),
   openGraph: {
-    type: 'website',
-    locale: 'en_US',
-    url: process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space',
-    siteName: 'gittr',
-    title: 'gittr - Decentralized Git Hosting on Nostr',
-    description: 'A truly censorship-resistant alternative to GitHub built on Nostr.',
+    type: "website",
+    locale: "en_US",
+    url: process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space",
+    siteName: "gittr",
+    title: "gittr - Decentralized Git Hosting on Nostr",
+    description:
+      "A truly censorship-resistant alternative to GitHub built on Nostr.",
     images: [
       {
-        url: '/logo.svg',
+        url: "/logo.svg",
         width: 1200,
         height: 630,
-        alt: 'gittr logo',
+        alt: "gittr logo",
       },
     ],
   },
   twitter: {
-    card: 'summary_large_image',
-    title: 'gittr - Decentralized Git Hosting on Nostr',
-    description: 'A truly censorship-resistant alternative to GitHub built on Nostr.',
-    images: ['/logo.svg'],
+    card: "summary_large_image",
+    title: "gittr - Decentralized Git Hosting on Nostr",
+    description:
+      "A truly censorship-resistant alternative to GitHub built on Nostr.",
+    images: ["/logo.svg"],
   },
   robots: {
     index: true,
@@ -41,13 +54,12 @@ export const metadata: Metadata = {
     googleBot: {
       index: true,
       follow: true,
-      'max-video-preview': -1,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
     },
   },
   alternates: {
-    canonical: process.env.NEXT_PUBLIC_SITE_URL || 'https://gittr.space',
+    canonical: process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space",
   },
 };
-

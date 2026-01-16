@@ -1,22 +1,37 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { useParams } from "next/navigation";
-import { Folder, Plus, CheckCircle2, Circle, Clock, Calendar, FileText, Edit2, Trash2, X, Save, TrendingUp } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import Link from "next/link";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypeRaw from "rehype-raw";
-import { formatDateTime24h, formatDate24h } from "@/lib/utils/date-format";
-import { hasWriteAccess } from "@/lib/repo-permissions";
-import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { hasWriteAccess } from "@/lib/repo-permissions";
+import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
+import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+import { formatDate24h, formatDateTime24h } from "@/lib/utils/date-format";
+import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { loadStoredRepos, type StoredRepo } from "@/lib/repos/storage";
+
+import {
+  Calendar,
+  CheckCircle2,
+  Circle,
+  Clock,
+  Edit2,
+  FileText,
+  Folder,
+  Plus,
+  Save,
+  Trash2,
+  TrendingUp,
+  X,
+} from "lucide-react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import remarkGfm from "remark-gfm";
 
 interface Project {
   id: string;
@@ -47,16 +62,20 @@ export default function ProjectsPage() {
   const entity = params?.entity as string;
   const repo = params?.repo as string;
   const { pubkey: currentUserPubkey } = useNostrContext();
-  
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [hasWrite, setHasWrite] = useState(false); // Write access (owner or maintainer)
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [editingContent, setEditingContent] = useState("");
-  const [editingEstimatedDays, setEditingEstimatedDays] = useState<number | undefined>(undefined);
+  const [editingEstimatedDays, setEditingEstimatedDays] = useState<
+    number | undefined
+  >(undefined);
   const [editingDueDate, setEditingDueDate] = useState<string>("");
-  const [editingProjectName, setEditingProjectName] = useState<string | null>(null);
+  const [editingProjectName, setEditingProjectName] = useState<string | null>(
+    null
+  );
   const [editingProjectNameValue, setEditingProjectNameValue] = useState("");
   const [draggedItem, setDraggedItem] = useState<ProjectItem | null>(null);
   const [openIssues, setOpenIssues] = useState<any[]>([]);
@@ -64,9 +83,11 @@ export default function ProjectsPage() {
   // Load projects
   useEffect(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem(`gittr_projects_${entity}_${repo}`) || "[]") as Project[];
+      const stored = JSON.parse(
+        localStorage.getItem(`gittr_projects_${entity}_${repo}`) || "[]"
+      ) as Project[];
       // Ensure all projects have view property and items array
-      const normalized: Project[] = stored.map(p => ({
+      const normalized: Project[] = stored.map((p) => ({
         ...p,
         view: (p.view || "kanban") as "kanban" | "roadmap",
         items: p.items || [], // Ensure items array exists
@@ -95,7 +116,11 @@ export default function ProjectsPage() {
       const rec = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
       if (rec && currentUserPubkey) {
         const repoOwnerPubkey = getRepoOwnerPubkey(rec, entity);
-        const userHasWrite = hasWriteAccess(currentUserPubkey, rec.contributors, repoOwnerPubkey);
+        const userHasWrite = hasWriteAccess(
+          currentUserPubkey,
+          rec.contributors,
+          repoOwnerPubkey
+        );
         setHasWrite(userHasWrite);
       } else {
         setHasWrite(false);
@@ -105,12 +130,18 @@ export default function ProjectsPage() {
     }
   }, [entity, repo, currentUserPubkey]);
 
-  const project = projects.find(p => p.id === selectedProject);
+  const project = projects.find((p) => p.id === selectedProject);
 
-  const saveProjects = useCallback((updated: Project[]) => {
-    setProjects(updated);
-    localStorage.setItem(`gittr_projects_${entity}_${repo}`, JSON.stringify(updated));
-  }, [entity, repo]);
+  const saveProjects = useCallback(
+    (updated: Project[]) => {
+      setProjects(updated);
+      localStorage.setItem(
+        `gittr_projects_${entity}_${repo}`,
+        JSON.stringify(updated)
+      );
+    },
+    [entity, repo]
+  );
 
   const handleCreateProject = async () => {
     // CRITICAL: Require write access (owner or maintainer) and signature
@@ -118,21 +149,23 @@ export default function ProjectsPage() {
       alert("Please log in to create projects");
       return;
     }
-    
+
     if (!hasWrite) {
       alert("Only owners and maintainers can create projects");
       return;
     }
-    
+
     // Get private key for signing (required for project creation)
     const privateKey = await getNostrPrivateKey();
     const hasNip07 = typeof window !== "undefined" && window.nostr;
-    
+
     if (!privateKey && !hasNip07) {
-      alert("Creating projects requires signature. Please configure NIP-07 extension or private key in settings.");
+      alert(
+        "Creating projects requires signature. Please configure NIP-07 extension or private key in settings."
+      );
       return;
     }
-    
+
     const newProject: Project = {
       id: `project-${Date.now()}`,
       name: `New Project ${projects.length + 1}`,
@@ -147,14 +180,19 @@ export default function ProjectsPage() {
     setSelectedProject(newProject.id);
   };
 
-  const handleAddItem = (type: "issue" | "pr" | "note", issueId?: string, prId?: string) => {
+  const handleAddItem = (
+    type: "issue" | "pr" | "note",
+    issueId?: string,
+    prId?: string
+  ) => {
     if (!project) return;
-    
+
     const newItem: ProjectItem = {
       id: `item-${Date.now()}`,
-      title: type === "issue" && issueId 
-        ? openIssues.find(i => i.id === issueId)?.title || "New Issue"
-        : type === "note" 
+      title:
+        type === "issue" && issueId
+          ? openIssues.find((i) => i.id === issueId)?.title || "New Issue"
+          : type === "note"
           ? "New Note"
           : "New Item",
       type,
@@ -162,12 +200,12 @@ export default function ProjectsPage() {
       issueId,
       prId,
     };
-    
-    const updated = projects.map(p =>
+
+    const updated = projects.map((p) =>
       p.id === project.id ? { ...p, items: [...p.items, newItem] } : p
     );
     saveProjects(updated);
-    
+
     if (type === "note") {
       setEditingItem(newItem.id);
       setEditingTitle(newItem.title);
@@ -179,20 +217,26 @@ export default function ProjectsPage() {
     setDraggedItem(item);
   };
 
-  const handleDragOver = (e: React.DragEvent, status: "todo" | "in_progress" | "done") => {
+  const handleDragOver = (
+    e: React.DragEvent,
+    status: "todo" | "in_progress" | "done"
+  ) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
   };
 
-  const handleDrop = (e: React.DragEvent, status: "todo" | "in_progress" | "done") => {
+  const handleDrop = (
+    e: React.DragEvent,
+    status: "todo" | "in_progress" | "done"
+  ) => {
     e.preventDefault();
     if (!draggedItem || !project) return;
-    
-    const updated = projects.map(p =>
+
+    const updated = projects.map((p) =>
       p.id === project.id
         ? {
             ...p,
-            items: p.items.map(item =>
+            items: p.items.map((item) =>
               item.id === draggedItem.id ? { ...item, status } : item
             ),
           }
@@ -204,28 +248,32 @@ export default function ProjectsPage() {
 
   const handleDeleteItem = (itemId: string) => {
     if (!project) return;
-    
-    const item = project.items.find(i => i.id === itemId);
+
+    const item = project.items.find((i) => i.id === itemId);
     if (!item) return;
-    
+
     // Build warning message based on item type
     let warningMessage = "Delete this item?\n\n";
-    
+
     if (item.type === "issue") {
-      warningMessage += "⚠️ This will remove the issue from project planning, but the issue in the repository will NOT be deleted.\n\n";
+      warningMessage +=
+        "⚠️ This will remove the issue from project planning, but the issue in the repository will NOT be deleted.\n\n";
     } else if (item.type === "pr") {
-      warningMessage += "⚠️ This will remove the PR from project planning, but the PR in the repository will NOT be deleted.\n\n";
+      warningMessage +=
+        "⚠️ This will remove the PR from project planning, but the PR in the repository will NOT be deleted.\n\n";
     } else if (item.type === "note") {
-      warningMessage += "⚠️ This will permanently delete this note and all its content.\n\n";
+      warningMessage +=
+        "⚠️ This will permanently delete this note and all its content.\n\n";
     }
-    
-    warningMessage += "All planning, notes, and links will be lost. This cannot be undone.";
-    
+
+    warningMessage +=
+      "All planning, notes, and links will be lost. This cannot be undone.";
+
     if (!confirm(warningMessage)) return;
-    
-    const updated = projects.map(p =>
+
+    const updated = projects.map((p) =>
       p.id === project.id
-        ? { ...p, items: p.items.filter(item => item.id !== itemId) }
+        ? { ...p, items: p.items.filter((item) => item.id !== itemId) }
         : p
     );
     saveProjects(updated);
@@ -240,84 +288,103 @@ export default function ProjectsPage() {
       alert("Please log in to delete projects");
       return;
     }
-    
+
     if (!hasWrite) {
       alert("Only owners and maintainers can delete projects");
       return;
     }
-    
+
     // Get private key for signing (required for project deletion)
     const privateKey = await getNostrPrivateKey();
     const hasNip07 = typeof window !== "undefined" && window.nostr;
-    
+
     if (!privateKey && !hasNip07) {
-      alert("Deleting projects requires signature. Please configure NIP-07 extension or private key in settings.");
+      alert(
+        "Deleting projects requires signature. Please configure NIP-07 extension or private key in settings."
+      );
       return;
     }
-    
-    const projectToDelete = projects.find(p => p.id === projectId);
+
+    const projectToDelete = projects.find((p) => p.id === projectId);
     if (!projectToDelete) return;
-    
+
     // Count linked issues and PRs
-    const linkedIssues = projectToDelete.items.filter(item => item.type === "issue" && item.issueId).length;
-    const linkedPRs = projectToDelete.items.filter(item => item.type === "pr" && item.prId).length;
-    const notes = projectToDelete.items.filter(item => item.type === "note").length;
-    
+    const linkedIssues = projectToDelete.items.filter(
+      (item) => item.type === "issue" && item.issueId
+    ).length;
+    const linkedPRs = projectToDelete.items.filter(
+      (item) => item.type === "pr" && item.prId
+    ).length;
+    const notes = projectToDelete.items.filter(
+      (item) => item.type === "note"
+    ).length;
+
     let warningMessage = `⚠️ WARNING: Delete Project "${projectToDelete.name}"?\n\n`;
     warningMessage += "This will permanently delete:\n";
     warningMessage += `• All planning and timeline data\n`;
     warningMessage += `• All notes (${notes} note${notes !== 1 ? "s" : ""})\n`;
-    warningMessage += `• All links to issues (${linkedIssues} issue${linkedIssues !== 1 ? "s" : ""})\n`;
-    warningMessage += `• All links to PRs (${linkedPRs} PR${linkedPRs !== 1 ? "s" : ""})\n\n`;
-    warningMessage += "⚠️ The issues and PRs in your repository will NOT be deleted - only the project planning data.\n\n";
+    warningMessage += `• All links to issues (${linkedIssues} issue${
+      linkedIssues !== 1 ? "s" : ""
+    })\n`;
+    warningMessage += `• All links to PRs (${linkedPRs} PR${
+      linkedPRs !== 1 ? "s" : ""
+    })\n\n`;
+    warningMessage +=
+      "⚠️ The issues and PRs in your repository will NOT be deleted - only the project planning data.\n\n";
     warningMessage += "This action cannot be undone. Are you sure?";
-    
+
     if (!confirm(warningMessage)) return;
-    
-    const updated = projects.filter(p => p.id !== projectId);
+
+    const updated = projects.filter((p) => p.id !== projectId);
     saveProjects(updated);
-    
+
     // If deleted project was selected, select first remaining or null
     if (selectedProject === projectId) {
-      setSelectedProject(updated.length > 0 && updated[0] ? updated[0].id : null);
+      setSelectedProject(
+        updated.length > 0 && updated[0] ? updated[0].id : null
+      );
     }
   };
 
   const handleSaveItem = async (itemId: string) => {
     if (!project || !editingTitle.trim()) return;
-    
+
     // CRITICAL: Require write access (owner or maintainer) and signature for editing
     if (!currentUserPubkey) {
       alert("Please log in to edit project items");
       return;
     }
-    
+
     if (!hasWrite) {
       alert("Only owners and maintainers can edit project items");
       return;
     }
-    
+
     // Get private key for signing (required for project edits)
     const privateKey = await getNostrPrivateKey();
     const hasNip07 = typeof window !== "undefined" && window.nostr;
-    
+
     if (!privateKey && !hasNip07) {
-      alert("Editing projects requires signature. Please configure NIP-07 extension or private key in settings.");
+      alert(
+        "Editing projects requires signature. Please configure NIP-07 extension or private key in settings."
+      );
       return;
     }
-    
-    const updated = projects.map(p =>
+
+    const updated = projects.map((p) =>
       p.id === project.id
         ? {
             ...p,
-            items: p.items.map(item =>
+            items: p.items.map((item) =>
               item.id === itemId
-                ? { 
-                    ...item, 
-                    title: editingTitle, 
+                ? {
+                    ...item,
+                    title: editingTitle,
                     content: editingContent,
                     estimatedDays: editingEstimatedDays || undefined,
-                    dueDate: editingDueDate ? new Date(editingDueDate).getTime() : undefined,
+                    dueDate: editingDueDate
+                      ? new Date(editingDueDate).getTime()
+                      : undefined,
                   }
                 : item
             ),
@@ -333,7 +400,7 @@ export default function ProjectsPage() {
   };
 
   const handleStartEditProjectName = (projectId: string) => {
-    const proj = projects.find(p => p.id === projectId);
+    const proj = projects.find((p) => p.id === projectId);
     if (proj) {
       setEditingProjectName(projectId);
       setEditingProjectNameValue(proj.name);
@@ -345,7 +412,7 @@ export default function ProjectsPage() {
       setEditingProjectName(null);
       return;
     }
-    
+
     // CRITICAL: Require write access (owner or maintainer) and signature for editing project name
     if (!currentUserPubkey) {
       alert("Please log in to edit project names");
@@ -353,26 +420,28 @@ export default function ProjectsPage() {
       setEditingProjectNameValue("");
       return;
     }
-    
+
     if (!hasWrite) {
       alert("Only owners and maintainers can edit project names");
       setEditingProjectName(null);
       setEditingProjectNameValue("");
       return;
     }
-    
+
     // Get private key for signing (required for project edits)
     const privateKey = await getNostrPrivateKey();
     const hasNip07 = typeof window !== "undefined" && window.nostr;
-    
+
     if (!privateKey && !hasNip07) {
-      alert("Editing projects requires signature. Please configure NIP-07 extension or private key in settings.");
+      alert(
+        "Editing projects requires signature. Please configure NIP-07 extension or private key in settings."
+      );
       setEditingProjectName(null);
       setEditingProjectNameValue("");
       return;
     }
-    
-    const updated = projects.map(p =>
+
+    const updated = projects.map((p) =>
       p.id === projectId ? { ...p, name: editingProjectNameValue.trim() } : p
     );
     saveProjects(updated);
@@ -387,9 +456,14 @@ export default function ProjectsPage() {
 
   const handleToggleView = () => {
     if (!project) return;
-    const updated: Project[] = projects.map(p =>
+    const updated: Project[] = projects.map((p) =>
       p.id === project.id
-        ? { ...p, view: (p.view === "kanban" ? "roadmap" : "kanban") as "kanban" | "roadmap" }
+        ? {
+            ...p,
+            view: (p.view === "kanban" ? "roadmap" : "kanban") as
+              | "kanban"
+              | "roadmap",
+          }
         : p
     );
     saveProjects(updated);
@@ -413,18 +487,26 @@ export default function ProjectsPage() {
           />
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-xs text-gray-400 mb-1 block">Estimated Days</label>
+              <label className="text-xs text-gray-400 mb-1 block">
+                Estimated Days
+              </label>
               <Input
                 type="number"
                 min="1"
                 value={editingEstimatedDays || ""}
-                onChange={(e) => setEditingEstimatedDays(e.target.value ? parseInt(e.target.value) : undefined)}
+                onChange={(e) =>
+                  setEditingEstimatedDays(
+                    e.target.value ? parseInt(e.target.value) : undefined
+                  )
+                }
                 placeholder="e.g. 7"
                 className="text-xs"
               />
             </div>
             <div>
-              <label className="text-xs text-gray-400 mb-1 block">Due Date</label>
+              <label className="text-xs text-gray-400 mb-1 block">
+                Due Date
+              </label>
               <Input
                 type="date"
                 value={editingDueDate}
@@ -479,7 +561,11 @@ export default function ProjectsPage() {
             setEditingTitle(item.title);
             setEditingContent(item.content || "");
             setEditingEstimatedDays(item.estimatedDays);
-            setEditingDueDate(item.dueDate ? new Date(item.dueDate).toISOString().split('T')[0] || "" : "");
+            setEditingDueDate(
+              item.dueDate
+                ? new Date(item.dueDate).toISOString().split("T")[0] || ""
+                : ""
+            );
           }
         }}
         className="border border-gray-700 rounded p-3 bg-gray-900 hover:bg-gray-800 cursor-pointer group"
@@ -494,7 +580,12 @@ export default function ProjectsPage() {
                   rehypePlugins={[rehypeRaw]}
                   components={{
                     a: ({ node, ...props }: any) => (
-                      <a {...props} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300" />
+                      <a
+                        {...props}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-purple-400 hover:text-purple-300"
+                      />
                     ),
                   }}
                 >
@@ -577,13 +668,12 @@ export default function ProjectsPage() {
           </div>
           <div className="space-y-2">
             {project.items
-              .filter(item => item.status === "todo")
-              .map(item => (
-                <div key={item.id}>
-                  {renderItem(item)}
-                </div>
+              .filter((item) => item.status === "todo")
+              .map((item) => (
+                <div key={item.id}>{renderItem(item)}</div>
               ))}
-            {project.items.filter(item => item.status === "todo").length === 0 && (
+            {project.items.filter((item) => item.status === "todo").length ===
+              0 && (
               <div className="text-center text-gray-500 text-sm py-8 border border-dashed border-gray-700 rounded">
                 Drop items here
               </div>
@@ -613,13 +703,12 @@ export default function ProjectsPage() {
           </div>
           <div className="space-y-2">
             {project.items
-              .filter(item => item.status === "in_progress")
-              .map(item => (
-                <div key={item.id}>
-                  {renderItem(item)}
-                </div>
+              .filter((item) => item.status === "in_progress")
+              .map((item) => (
+                <div key={item.id}>{renderItem(item)}</div>
               ))}
-            {project.items.filter(item => item.status === "in_progress").length === 0 && (
+            {project.items.filter((item) => item.status === "in_progress")
+              .length === 0 && (
               <div className="text-center text-gray-500 text-sm py-8 border border-dashed border-gray-700 rounded">
                 Drop items here
               </div>
@@ -649,13 +738,12 @@ export default function ProjectsPage() {
           </div>
           <div className="space-y-2">
             {project.items
-              .filter(item => item.status === "done")
-              .map(item => (
-                <div key={item.id}>
-                  {renderItem(item)}
-                </div>
+              .filter((item) => item.status === "done")
+              .map((item) => (
+                <div key={item.id}>{renderItem(item)}</div>
               ))}
-            {project.items.filter(item => item.status === "done").length === 0 && (
+            {project.items.filter((item) => item.status === "done").length ===
+              0 && (
               <div className="text-center text-gray-500 text-sm py-8 border border-dashed border-gray-700 rounded">
                 Drop items here
               </div>
@@ -672,7 +760,7 @@ export default function ProjectsPage() {
     // Auto-estimate based on issue content and type
     const autoEstimate = (item: ProjectItem): number => {
       if (item.estimatedDays) return item.estimatedDays;
-      
+
       // Smart defaults: notes are quick, issues vary by complexity
       if (item.type === "note") return 1;
       if (item.type === "issue") {
@@ -689,13 +777,13 @@ export default function ProjectsPage() {
     };
 
     // Calculate timeline for items with estimated days
-    const allItems = project.items.map(item => ({
+    const allItems = project.items.map((item) => ({
       ...item,
       estimatedDays: autoEstimate(item),
     }));
-    
+
     const sortedItems = [...allItems]
-      .filter(item => item.status !== "done")
+      .filter((item) => item.status !== "done")
       .sort((a, b) => {
         // Sort by priority first, then by due date
         const priorityOrder = { high: 3, medium: 2, low: 1 };
@@ -724,22 +812,26 @@ export default function ProjectsPage() {
             {sortedItems.length > 0 ? (
               sortedItems.map((item) => {
                 const days = item.estimatedDays || 7;
-                const startDate = item.dueDate 
-                  ? new Date(item.dueDate - days * 24 * 60 * 60 * 1000) 
+                const startDate = item.dueDate
+                  ? new Date(item.dueDate - days * 24 * 60 * 60 * 1000)
                   : new Date();
-                const endDate = item.dueDate 
-                  ? new Date(item.dueDate) 
+                const endDate = item.dueDate
+                  ? new Date(item.dueDate)
                   : new Date(Date.now() + days * 24 * 60 * 60 * 1000);
                 const isOverdue = endDate.getTime() < today;
-                const daysUntilDue = item.dueDate 
+                const daysUntilDue = item.dueDate
                   ? Math.ceil((item.dueDate - today) / (1000 * 60 * 60 * 24))
                   : null;
-                
+
                 return (
-                  <div 
-                    key={item.id} 
+                  <div
+                    key={item.id}
                     className={`border rounded p-3 bg-gray-900 ${
-                      isOverdue ? "border-red-700" : item.status === "in_progress" ? "border-purple-500" : "border-gray-700"
+                      isOverdue
+                        ? "border-red-700"
+                        : item.status === "in_progress"
+                        ? "border-purple-500"
+                        : "border-gray-700"
                     }`}
                   >
                     <div className="flex items-start justify-between mb-2">
@@ -747,33 +839,56 @@ export default function ProjectsPage() {
                         <div className="flex items-center gap-2 mb-1">
                           <div className="font-medium">{item.title}</div>
                           {item.priority === "high" && (
-                            <span className="text-xs bg-red-900/50 text-red-300 px-1.5 py-0.5 rounded">High</span>
+                            <span className="text-xs bg-red-900/50 text-red-300 px-1.5 py-0.5 rounded">
+                              High
+                            </span>
                           )}
                           {item.type === "issue" && (
-                            <span className="text-xs bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded">Issue</span>
+                            <span className="text-xs bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded">
+                              Issue
+                            </span>
                           )}
                           {item.type === "note" && (
-                            <span className="text-xs bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded">Note</span>
+                            <span className="text-xs bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded">
+                              Note
+                            </span>
                           )}
                         </div>
                         <div className="flex items-center gap-4 text-xs text-gray-400 mt-1">
-                          <span>Est: {days} day{days !== 1 ? "s" : ""}</span>
+                          <span>
+                            Est: {days} day{days !== 1 ? "s" : ""}
+                          </span>
                           {item.dueDate && (
-                            <span className={isOverdue ? "text-red-400" : daysUntilDue && daysUntilDue < 3 ? "text-yellow-400" : ""}>
-                              {isOverdue ? "Overdue" : daysUntilDue !== null ? `${daysUntilDue} days left` : ""}
+                            <span
+                              className={
+                                isOverdue
+                                  ? "text-red-400"
+                                  : daysUntilDue && daysUntilDue < 3
+                                  ? "text-yellow-400"
+                                  : ""
+                              }
+                            >
+                              {isOverdue
+                                ? "Overdue"
+                                : daysUntilDue !== null
+                                ? `${daysUntilDue} days left`
+                                : ""}
                             </span>
                           )}
                           {!item.dueDate && (
                             <button
                               onClick={() => {
                                 // Auto-set due date: today + estimated days
-                                const newDueDate = Date.now() + (days * 24 * 60 * 60 * 1000);
-                                const updated = projects.map(p =>
+                                const newDueDate =
+                                  Date.now() + days * 24 * 60 * 60 * 1000;
+                                const updated = projects.map((p) =>
                                   p.id === project.id
                                     ? {
                                         ...p,
-                                        items: p.items.map(i =>
-                                          i.id === item.id ? { ...i, dueDate: newDueDate } : i
+                                        items: p.items.map((i) =>
+                                          i.id === item.id
+                                            ? { ...i, dueDate: newDueDate }
+                                            : i
                                         ),
                                       }
                                     : p
@@ -788,34 +903,45 @@ export default function ProjectsPage() {
                         </div>
                       </div>
                       <button
-          onClick={() => {
-            setEditingItem(item.id);
-            setEditingTitle(item.title);
-            setEditingContent(item.content || "");
-            setEditingEstimatedDays(item.estimatedDays);
-            setEditingDueDate(item.dueDate ? new Date(item.dueDate).toISOString().split('T')[0] || "" : "");
-          }}
-          className="text-gray-400 hover:text-gray-300"
-          title="Edit"
-        >
-          <Edit2 className="h-4 w-4" />
-        </button>
+                        onClick={() => {
+                          setEditingItem(item.id);
+                          setEditingTitle(item.title);
+                          setEditingContent(item.content || "");
+                          setEditingEstimatedDays(item.estimatedDays);
+                          setEditingDueDate(
+                            item.dueDate
+                              ? new Date(item.dueDate)
+                                  .toISOString()
+                                  .split("T")[0] || ""
+                              : ""
+                          );
+                        }}
+                        className="text-gray-400 hover:text-gray-300"
+                        title="Edit"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </button>
                     </div>
                     <div className="h-3 bg-gray-800 rounded-full overflow-hidden relative mb-2">
                       <div
                         className={`h-full transition-all ${
-                          isOverdue 
-                            ? "bg-red-600" 
-                            : item.status === "in_progress" 
-                              ? "bg-purple-600" 
-                              : item.status === "done"
-                                ? "bg-green-600"
-                                : "bg-gray-600"
+                          isOverdue
+                            ? "bg-red-600"
+                            : item.status === "in_progress"
+                            ? "bg-purple-600"
+                            : item.status === "done"
+                            ? "bg-green-600"
+                            : "bg-gray-600"
                         }`}
-                        style={{ width: `${Math.min(100, (days / 14) * 100)}%` }}
+                        style={{
+                          width: `${Math.min(100, (days / 14) * 100)}%`,
+                        }}
                       />
                       {item.dueDate && (
-                        <div className="absolute top-0 right-0 h-full w-0.5 bg-yellow-400" title={formatDate(item.dueDate)} />
+                        <div
+                          className="absolute top-0 right-0 h-full w-0.5 bg-yellow-400"
+                          title={formatDate(item.dueDate)}
+                        />
                       )}
                     </div>
                     {item.content && (
@@ -825,11 +951,18 @@ export default function ProjectsPage() {
                           rehypePlugins={[rehypeRaw]}
                           components={{
                             a: ({ node, ...props }: any) => (
-                              <a {...props} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300" />
+                              <a
+                                {...props}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-purple-400 hover:text-purple-300"
+                              />
                             ),
                           }}
                         >
-                          {item.content.length > 150 ? `${item.content.substring(0, 150)}...` : item.content}
+                          {item.content.length > 150
+                            ? `${item.content.substring(0, 150)}...`
+                            : item.content}
                         </ReactMarkdown>
                       </div>
                     )}
@@ -838,22 +971,34 @@ export default function ProjectsPage() {
                       <div className="mt-2 border-t border-gray-700 pt-2 space-y-2">
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="text-xs text-gray-400 mb-1 block">Estimated Days</label>
+                            <label className="text-xs text-gray-400 mb-1 block">
+                              Estimated Days
+                            </label>
                             <Input
                               type="number"
                               min="1"
                               value={editingEstimatedDays || ""}
-                              onChange={(e) => setEditingEstimatedDays(e.target.value ? parseInt(e.target.value) : undefined)}
+                              onChange={(e) =>
+                                setEditingEstimatedDays(
+                                  e.target.value
+                                    ? parseInt(e.target.value)
+                                    : undefined
+                                )
+                              }
                               placeholder="e.g. 7"
                               className="text-xs"
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-gray-400 mb-1 block">Due Date</label>
+                            <label className="text-xs text-gray-400 mb-1 block">
+                              Due Date
+                            </label>
                             <Input
                               type="date"
                               value={editingDueDate}
-                              onChange={(e) => setEditingDueDate(e.target.value)}
+                              onChange={(e) =>
+                                setEditingDueDate(e.target.value)
+                              }
                               className="text-xs"
                             />
                           </div>
@@ -892,7 +1037,13 @@ export default function ProjectsPage() {
                             setEditingTitle(item.title);
                             setEditingContent(item.content || "");
                             setEditingEstimatedDays(item.estimatedDays);
-                            setEditingDueDate(item.dueDate ? new Date(item.dueDate).toISOString().split('T')[0] || "" : "");
+                            setEditingDueDate(
+                              item.dueDate
+                                ? new Date(item.dueDate)
+                                    .toISOString()
+                                    .split("T")[0] || ""
+                                : ""
+                            );
                           }}
                           className="text-xs text-purple-400 hover:text-purple-300"
                         >
@@ -924,7 +1075,9 @@ export default function ProjectsPage() {
             ) : (
               <div className="text-center text-gray-500 py-8">
                 <p>Add items to see timeline</p>
-                <p className="text-xs mt-1">Items auto-estimated based on type and content</p>
+                <p className="text-xs mt-1">
+                  Items auto-estimated based on type and content
+                </p>
                 <Button
                   size="sm"
                   variant="outline"
@@ -944,23 +1097,34 @@ export default function ProjectsPage() {
           <div className="border border-[#383B42] rounded p-4 bg-[#171B21]">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold">Quick Add from Open Issues</h3>
-              <span className="text-xs text-gray-400">{openIssues.length} open</span>
+              <span className="text-xs text-gray-400">
+                {openIssues.length} open
+              </span>
             </div>
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {openIssues.map((issue: any) => {
-                const alreadyAdded = project.items.some(item => item.issueId === issue.id);
+                const alreadyAdded = project.items.some(
+                  (item) => item.issueId === issue.id
+                );
                 // Smart priority detection
                 const title = (issue.title || "").toLowerCase();
-                const isHighPriority = title.includes("urgent") || title.includes("critical") || title.includes("bug");
-                const isLowPriority = title.includes("enhancement") || title.includes("nice to have");
-                
+                const isHighPriority =
+                  title.includes("urgent") ||
+                  title.includes("critical") ||
+                  title.includes("bug");
+                const isLowPriority =
+                  title.includes("enhancement") ||
+                  title.includes("nice to have");
+
                 return (
                   <div
                     key={issue.id}
                     className="flex items-center justify-between p-2 bg-gray-900 rounded border border-gray-700 hover:border-purple-500 transition-colors"
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{issue.title}</div>
+                      <div className="text-sm font-medium truncate">
+                        {issue.title}
+                      </div>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xs text-gray-400">
                           #{issue.id?.slice(0, 8) || "issue"}
@@ -971,10 +1135,14 @@ export default function ProjectsPage() {
                           </span>
                         )}
                         {isHighPriority && (
-                          <span className="text-xs bg-red-900/50 text-red-300 px-1 rounded">High</span>
+                          <span className="text-xs bg-red-900/50 text-red-300 px-1 rounded">
+                            High
+                          </span>
                         )}
                         {isLowPriority && (
-                          <span className="text-xs bg-gray-700 text-gray-400 px-1 rounded">Low</span>
+                          <span className="text-xs bg-gray-700 text-gray-400 px-1 rounded">
+                            Low
+                          </span>
                         )}
                       </div>
                     </div>
@@ -995,7 +1163,7 @@ export default function ProjectsPage() {
             </p>
           </div>
         )}
-        
+
         {/* Auto-planning helper */}
         <div className="border border-purple-500/30 rounded p-4 bg-purple-900/10">
           <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
@@ -1003,7 +1171,10 @@ export default function ProjectsPage() {
             Smart Planning Tips
           </h4>
           <ul className="text-xs text-gray-300 space-y-1 list-disc list-inside">
-            <li>Items are auto-estimated: notes (1 day), bugs (2 days), features (7-10 days)</li>
+            <li>
+              Items are auto-estimated: notes (1 day), bugs (2 days), features
+              (7-10 days)
+            </li>
             <li>Click "Set deadline" to auto-schedule based on estimate</li>
             <li>Mark high-priority items for urgent issues</li>
             <li>Roadmap shows timeline - overdue items highlighted in red</li>
@@ -1023,10 +1194,7 @@ export default function ProjectsPage() {
         </h1>
         <div className="flex gap-2">
           {project && (
-            <Button
-              variant="outline"
-              onClick={handleToggleView}
-            >
+            <Button variant="outline" onClick={handleToggleView}>
               {project.view === "kanban" ? (
                 <>
                   <TrendingUp className="mr-2 h-4 w-4" />
@@ -1075,7 +1243,9 @@ export default function ProjectsPage() {
                     <div className="p-3 space-y-2">
                       <Input
                         value={editingProjectNameValue}
-                        onChange={(e) => setEditingProjectNameValue(e.target.value)}
+                        onChange={(e) =>
+                          setEditingProjectNameValue(e.target.value)
+                        }
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             handleSaveProjectName(p.id);
@@ -1117,7 +1287,8 @@ export default function ProjectsPage() {
                       >
                         <div className="font-semibold">{p.name}</div>
                         <div className="text-xs text-gray-400 mt-1">
-                          {(p.items || []).length} items • {p.view === "kanban" ? "Kanban" : "Roadmap"}
+                          {(p.items || []).length} items •{" "}
+                          {p.view === "kanban" ? "Kanban" : "Roadmap"}
                         </div>
                       </button>
                       <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1159,7 +1330,7 @@ export default function ProjectsPage() {
                   type="text"
                   value={project.name}
                   onChange={(e) => {
-                    const updated = projects.map(p =>
+                    const updated = projects.map((p) =>
                       p.id === project.id ? { ...p, name: e.target.value } : p
                     );
                     saveProjects(updated);
@@ -1175,14 +1346,19 @@ export default function ProjectsPage() {
 
               <div className="mt-4 text-sm text-gray-400 space-y-1">
                 <p>💡 Drag items between columns to update status</p>
-                <p>💡 Click items to edit title and notes (markdown & links supported)</p>
+                <p>
+                  💡 Click items to edit title and notes (markdown & links
+                  supported)
+                </p>
                 <p>💡 Add notes for planning, links to docs, or task details</p>
               </div>
             </div>
           ) : (
             <div className="border border-[#383B42] rounded p-12 text-center bg-[#171B21]">
               <Folder className="h-12 w-12 mx-auto mb-4 text-gray-500" />
-              <h3 className="text-xl font-semibold mb-2">No project selected</h3>
+              <h3 className="text-xl font-semibold mb-2">
+                No project selected
+              </h3>
               <p className="text-gray-400 mb-4">
                 Create a new project to start organizing your work
               </p>

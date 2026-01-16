@@ -150,6 +150,19 @@ export function RepoQRShare({ repoUrl, repoName, onClose }: RepoQRShareProps) {
       text: `📦 ${repoName}\n\nBuilt on Nostr ⚡`,
     });
     const shareUrl = `https://t.me/share/url?${params.toString()}`;
+    const tgShareUrl = `tg://msg_url?${params.toString()}`;
+    const isMobile =
+      typeof navigator !== "undefined" &&
+      /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    if (isMobile) {
+      window.location.href = tgShareUrl;
+      setTimeout(() => {
+        window.location.href = shareUrl;
+      }, 500);
+      return;
+    }
+
     // Use only the url parameter - Telegram will create the link preview automatically
     const popup = window.open(shareUrl, "_blank", "noopener,noreferrer");
     if (!popup) {

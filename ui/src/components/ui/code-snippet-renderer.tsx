@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+
 import { Copy, Download, ExternalLink } from "lucide-react";
 import { nip19 } from "nostr-tools";
 
@@ -15,25 +16,42 @@ interface CodeSnippetRendererProps {
   showAuthor?: boolean;
 }
 
-export function CodeSnippetRenderer({ event, showAuthor = true }: CodeSnippetRendererProps) {
+export function CodeSnippetRenderer({
+  event,
+  showAuthor = true,
+}: CodeSnippetRendererProps) {
   const [copied, setCopied] = useState(false);
 
   // Parse NIP-C0 tags
-  const language = event.tags.find((t) => Array.isArray(t) && t[0] === "l")?.[1];
-  const extension = event.tags.find((t) => Array.isArray(t) && t[0] === "extension")?.[1];
+  const language = event.tags.find(
+    (t) => Array.isArray(t) && t[0] === "l"
+  )?.[1];
+  const extension = event.tags.find(
+    (t) => Array.isArray(t) && t[0] === "extension"
+  )?.[1];
   const name = event.tags.find((t) => Array.isArray(t) && t[0] === "name")?.[1];
-  const description = event.tags.find((t) => Array.isArray(t) && t[0] === "description")?.[1];
-  const runtime = event.tags.find((t) => Array.isArray(t) && t[0] === "runtime")?.[1];
-  const licenses = event.tags.filter((t) => Array.isArray(t) && t[0] === "license").map((t) => t[1]);
-  const dependencies = event.tags.filter((t) => Array.isArray(t) && t[0] === "dep").map((t) => t[1]);
+  const description = event.tags.find(
+    (t) => Array.isArray(t) && t[0] === "description"
+  )?.[1];
+  const runtime = event.tags.find(
+    (t) => Array.isArray(t) && t[0] === "runtime"
+  )?.[1];
+  const licenses = event.tags
+    .filter((t) => Array.isArray(t) && t[0] === "license")
+    .map((t) => t[1]);
+  const dependencies = event.tags
+    .filter((t) => Array.isArray(t) && t[0] === "dep")
+    .map((t) => t[1]);
   const repoTag = event.tags.find((t) => Array.isArray(t) && t[0] === "repo");
   const repo = repoTag?.[1];
   const repoRelay = repoTag?.[2];
 
   // Parse NIP-34 repo reference: "30617:<pubkey>:<d tag>"
-  const parseRepoReference = (ref: string): { pubkey?: string; repoName?: string } | null => {
+  const parseRepoReference = (
+    ref: string
+  ): { pubkey?: string; repoName?: string } | null => {
     if (!ref) return null;
-    
+
     // Check if it's NIP-34 format
     const nip34Match = ref.match(/^30617:([0-9a-f]{64}):(.+)$/i);
     if (nip34Match) {
@@ -42,17 +60,18 @@ export function CodeSnippetRenderer({ event, showAuthor = true }: CodeSnippetRen
         repoName: nip34Match[2],
       };
     }
-    
+
     // Otherwise it's a URL
     return null;
   };
 
   const repoRef = repo ? parseRepoReference(repo) : null;
-  const repoUrl = repoRef && repoRef.pubkey && repoRef.repoName
-    ? `/${nip19.npubEncode(repoRef.pubkey)}/${repoRef.repoName}`
-    : repo && (repo.startsWith("http://") || repo.startsWith("https://"))
-    ? repo
-    : null;
+  const repoUrl =
+    repoRef && repoRef.pubkey && repoRef.repoName
+      ? `/${nip19.npubEncode(repoRef.pubkey)}/${repoRef.repoName}`
+      : repo && (repo.startsWith("http://") || repo.startsWith("https://"))
+      ? repo
+      : null;
 
   const handleCopy = async () => {
     try {
@@ -98,7 +117,9 @@ export function CodeSnippetRenderer({ event, showAuthor = true }: CodeSnippetRen
           <div className="flex flex-wrap gap-2 text-xs text-gray-400">
             {runtime && <span>Runtime: {runtime}</span>}
             {licenses.length > 0 && <span>License: {licenses.join(", ")}</span>}
-            {dependencies.length > 0 && <span>Deps: {dependencies.length}</span>}
+            {dependencies.length > 0 && (
+              <span>Deps: {dependencies.length}</span>
+            )}
           </div>
         </div>
         <div className="flex gap-2">
@@ -107,7 +128,11 @@ export function CodeSnippetRenderer({ event, showAuthor = true }: CodeSnippetRen
             className="p-1.5 hover:bg-gray-700 rounded transition-colors"
             title="Copy code"
           >
-            <Copy className={`h-4 w-4 ${copied ? "text-green-400" : "text-gray-400"}`} />
+            <Copy
+              className={`h-4 w-4 ${
+                copied ? "text-green-400" : "text-gray-400"
+              }`}
+            />
           </button>
           <button
             onClick={handleDownload}
@@ -155,4 +180,3 @@ export function CodeSnippetRenderer({ event, showAuthor = true }: CodeSnippetRen
     </div>
   );
 }
-

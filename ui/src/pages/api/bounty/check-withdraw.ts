@@ -1,11 +1,15 @@
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+
 import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
 
 /**
  * Check if a withdraw link has been used/redeemed
  * Uses the LNbits invoice key to read withdraw link status
  */
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   // Handle OPTIONS request for CORS (GRASP requirement)
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res);
@@ -23,18 +27,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { lnbitsUrl, lnbitsInvoiceKey } = req.query;
 
   if (!withdrawId || typeof withdrawId !== "string") {
-    return res.status(400).json({ status: "missing_withdraw_id", message: "Missing withdrawId" });
+    return res
+      .status(400)
+      .json({ status: "missing_withdraw_id", message: "Missing withdrawId" });
   }
 
-  const finalLnbitsUrl = (lnbitsUrl as string) || process.env.LNBITS_URL || "https://bitcoindelta.club";
-  const finalLnbitsInvoiceKey = (lnbitsInvoiceKey as string) || process.env.LNBITS_INVOICE_KEY || "";
+  const finalLnbitsUrl =
+    (lnbitsUrl as string) ||
+    process.env.LNBITS_URL ||
+    "https://bitcoindelta.club";
+  const finalLnbitsInvoiceKey =
+    (lnbitsInvoiceKey as string) || process.env.LNBITS_INVOICE_KEY || "";
 
   // If invoice key not provided, try to get from request body (for POST) or return error
   // For GET requests, we need it in query params
   if (!finalLnbitsInvoiceKey) {
-    return res.status(400).json({ 
-      status: "missing_invoice_key", 
-      message: "LNbits invoice key required to check withdraw status. Please provide it in query params or set it in Settings → Account." 
+    return res.status(400).json({
+      status: "missing_invoice_key",
+      message:
+        "LNbits invoice key required to check withdraw status. Please provide it in query params or set it in Settings → Account.",
     });
   }
 
@@ -59,7 +70,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const linkData = await linkResponse.json();
-    
+
     // Check if link is used (used > 0 means it's been claimed)
     const isUsed = linkData.used > 0 || linkData.usescsv !== "0";
 
@@ -77,4 +88,3 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     });
   }
 }
-

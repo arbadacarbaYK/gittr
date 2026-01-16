@@ -1,5 +1,6 @@
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+
 import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
 
 // Note: SSH keys are stored in Nostr relays as KIND_SSH_KEY events
 // This endpoint would need to query Nostr relays, but for MVP we'll return
@@ -28,13 +29,13 @@ export default async function handler(
     // For now, return empty list - client-side will fetch from Nostr
     return res.status(200).json({
       keys: [],
-      message: "SSH keys are stored in Nostr. Use client-side Nostr queries to fetch them.",
+      message:
+        "SSH keys are stored in Nostr. Use client-side Nostr queries to fetch them.",
     });
   } catch (error: any) {
     console.error("Error listing SSH keys:", error);
-    return res.status(500).json({ 
-      error: error.message || "Failed to list SSH keys" 
+    return res.status(500).json({
+      error: error.message || "Failed to list SSH keys",
     });
   }
 }
-

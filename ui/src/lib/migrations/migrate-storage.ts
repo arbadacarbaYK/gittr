@@ -45,7 +45,9 @@ export function migrateLegacyLocalStorage() {
       "ngit:encrypted:nostr:privkey": "gittr:encrypted:nostr:privkey",
     };
 
-    Object.entries(exactMappings).forEach(([oldKey, newKey]) => renameKey(oldKey, newKey));
+    Object.entries(exactMappings).forEach(([oldKey, newKey]) =>
+      renameKey(oldKey, newKey)
+    );
 
     // Generic prefix migrations
     renamePrefix("ngit_", "gittr_");
@@ -56,4 +58,3 @@ export function migrateLegacyLocalStorage() {
     console.error("Failed to migrate legacy storage keys:", error);
   }
 }
-

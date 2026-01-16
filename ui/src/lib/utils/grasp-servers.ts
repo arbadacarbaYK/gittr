@@ -1,9 +1,9 @@
 /**
  * Centralized list of known GRASP (Git-Nostr-Bridge) server domains
- * 
+ *
  * GRASP servers are BOTH Nostr relays (wss://) AND git servers (git:///http:///https://)
  * They support the NIP-34 protocol for git repositories on Nostr.
- * 
+ *
  * This list is used across the application to:
  * - Identify GRASP servers vs regular Nostr relays
  * - Prioritize GRASP servers for repository operations (they have the most repos)
@@ -12,47 +12,47 @@
 
 /**
  * KNOWN_GRASP_DOMAINS: List of actual GRASP git servers (NOT regular Nostr relays)
- * 
+ *
  * GRASP servers are BOTH Nostr relays AND git servers that support NIP-34.
  * They serve git repositories via HTTPS/SSH and can be cloned with standard git commands.
- * 
+ *
  * Regular Nostr relays (like relay.damus.io, nos.lol) are NOT GRASP servers
  * and should NOT be included in clone URLs.
- * 
+ *
  * This list includes ALL known GRASP servers (for reading/fetching repos).
  */
 export const KNOWN_GRASP_DOMAINS = [
   // Actual GRASP git servers (verified to serve git repos)
-  'relay.ngit.dev',
-  'ngit-relay.nostrver.se',
-  'gitnostr.com',
-  'ngit.danconwaydev.com',
-  'git.shakespeare.diy',
-  'git-01.uid.ovh',
-  'git-02.uid.ovh',
-  'git.jb55.com', // Read-only: jb55 hosts repos but only their own, not a public GRASP server for pushing
+  "relay.ngit.dev",
+  "ngit-relay.nostrver.se",
+  "gitnostr.com",
+  "ngit.danconwaydev.com",
+  "git.shakespeare.diy",
+  "git-01.uid.ovh",
+  "git-02.uid.ovh",
+  "git.jb55.com", // Read-only: jb55 hosts repos but only their own, not a public GRASP server for pushing
   // gittr.space GRASP server (our own server)
-  'git.gittr.space',
+  "git.gittr.space",
 ] as const;
 
 /**
  * GRASP_SERVERS_FOR_PUSHING: List of GRASP servers that accept repos from ANY user
- * 
+ *
  * These servers will have clone URLs automatically added when pushing new repos.
  * Excludes servers that only host their own repos (like git.jb55.com).
  */
 export const GRASP_SERVERS_FOR_PUSHING = [
   // GRASP servers that accept repos from any user
-  'relay.ngit.dev',
-  'ngit-relay.nostrver.se',
-  'gitnostr.com',
-  'ngit.danconwaydev.com',
-  'git.shakespeare.diy',
-  'git-01.uid.ovh',
-  'git-02.uid.ovh',
+  "relay.ngit.dev",
+  "ngit-relay.nostrver.se",
+  "gitnostr.com",
+  "ngit.danconwaydev.com",
+  "git.shakespeare.diy",
+  "git-01.uid.ovh",
+  "git-02.uid.ovh",
   // 'git.jb55.com', // EXCLUDED: jb55 only hosts their own repos, not a public GRASP server
   // gittr.space GRASP server (our own server)
-  'git.gittr.space',
+  "git.gittr.space",
 ] as const;
 
 /**
@@ -62,35 +62,41 @@ export const GRASP_SERVERS_FOR_PUSHING = [
  */
 export function isGraspServer(url: string): boolean {
   if (!url) return false;
-  
+
   // Extract domain from URL (remove protocol and path)
-  const domain = url
-    .replace(/^wss?:\/\//, '')
-    .replace(/^https?:\/\//, '')
-    .replace(/^git:\/\//, '')
-    .split('/')[0]
-    ?.toLowerCase() || '';
-  
+  const domain =
+    url
+      .replace(/^wss?:\/\//, "")
+      .replace(/^https?:\/\//, "")
+      .replace(/^git:\/\//, "")
+      .split("/")[0]
+      ?.toLowerCase() || "";
+
   // Check against known GRASP domains
-  if (domain && KNOWN_GRASP_DOMAINS.some(grasp => {
-    const graspDomain = grasp.toLowerCase();
-    return domain === graspDomain || 
-           domain.includes(graspDomain) || 
-           graspDomain.includes(domain);
-  })) {
+  if (
+    domain &&
+    KNOWN_GRASP_DOMAINS.some((grasp) => {
+      const graspDomain = grasp.toLowerCase();
+      return (
+        domain === graspDomain ||
+        domain.includes(graspDomain) ||
+        graspDomain.includes(domain)
+      );
+    })
+  ) {
     return true;
   }
-  
+
   // Pattern matching: Any relay with "git." in domain is likely GRASP
-  if (domain.includes('git.')) {
+  if (domain.includes("git.")) {
     return true;
   }
-  
+
   // Pattern matching: git-01., git-02., etc.
   if (domain.match(/git-\d+\./)) {
     return true;
   }
-  
+
   return false;
 }
 
@@ -109,6 +115,5 @@ export function getGraspServers(relays: string[]): string[] {
  * @returns Array of regular relay URLs
  */
 export function getRegularRelays(relays: string[]): string[] {
-  return relays.filter(r => !isGraspServer(r));
+  return relays.filter((r) => !isGraspServer(r));
 }
-

@@ -1,5 +1,7 @@
 "use client";
+
 import { useEffect, useState } from "react";
+
 import SettingsHero from "@/components/settings-hero";
 
 const THEMES = [
@@ -54,18 +56,21 @@ export default function AppearancePage() {
   return (
     <div className="p-6">
       <SettingsHero title="Appearance" />
-      
+
       <div className="mt-6 space-y-6">
         <div>
           <h3 className="text-lg font-semibold mb-3">Theme</h3>
           <div className="space-y-2">
-            {THEMES.map(t => (
-              <label key={t.id} className="flex gap-2 items-center cursor-pointer">
-                <input 
-                  type="radio" 
-                  name="theme" 
-                  checked={theme===t.id} 
-                  onChange={()=>applyTheme(t.id)} 
+            {THEMES.map((t) => (
+              <label
+                key={t.id}
+                className="flex gap-2 items-center cursor-pointer"
+              >
+                <input
+                  type="radio"
+                  name="theme"
+                  checked={theme === t.id}
+                  onChange={() => applyTheme(t.id)}
                   className="cursor-pointer"
                 />
                 <span>{t.label}</span>
@@ -77,13 +82,16 @@ export default function AppearancePage() {
         <div>
           <h3 className="text-lg font-semibold mb-3">QR Code Style</h3>
           <div className="space-y-2">
-            {QR_STYLES.map(s => (
-              <label key={s.id} className="flex gap-2 items-center cursor-pointer">
-                <input 
-                  type="radio" 
-                  name="qrStyle" 
-                  checked={qrStyle===s.id} 
-                  onChange={()=>applyQrStyle(s.id)} 
+            {QR_STYLES.map((s) => (
+              <label
+                key={s.id}
+                className="flex gap-2 items-center cursor-pointer"
+              >
+                <input
+                  type="radio"
+                  name="qrStyle"
+                  checked={qrStyle === s.id}
+                  onChange={() => applyQrStyle(s.id)}
                   className="cursor-pointer"
                 />
                 <span>{s.label}</span>
@@ -91,7 +99,8 @@ export default function AppearancePage() {
             ))}
           </div>
           <p className="text-xs text-gray-400 mt-2">
-            Choose how QR codes appear when paying invoices or sharing repositories.
+            Choose how QR codes appear when paying invoices or sharing
+            repositories.
           </p>
         </div>
       </div>

@@ -1,7 +1,7 @@
 // Repository subscription from Nostr relays
 // Subscribes to repository events and syncs local storage
-
 import { useEffect } from "react";
+
 import { useNostrContext } from "./NostrContext";
 import { KIND_REPOSITORY } from "./events";
 
@@ -31,18 +31,22 @@ export function useRepoSubscription(options: RepoSubscriptionOptions = {}) {
         if (!isAfterEose && event.kind === KIND_REPOSITORY) {
           try {
             const repoData = JSON.parse(event.content);
-            
+
             // Store repo in local storage
-            const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
-            const repoId = `${event.pubkey}/${repoData.repositoryName}`;
-            
-            const existingIndex = repos.findIndex((r: any) => 
-              r.entity === event.pubkey && r.repo === repoData.repositoryName
+            const repos = JSON.parse(
+              localStorage.getItem("gittr_repos") || "[]"
             );
-            
+            const repoId = `${event.pubkey}/${repoData.repositoryName}`;
+
+            const existingIndex = repos.findIndex(
+              (r: any) =>
+                r.entity === event.pubkey && r.repo === repoData.repositoryName
+            );
+
             // Merge with existing data if it exists, preserving local-only data like logoUrl
-            const existingRepo = existingIndex >= 0 ? repos[existingIndex] : undefined;
-            
+            const existingRepo =
+              existingIndex >= 0 ? repos[existingIndex] : undefined;
+
             const repo = {
               slug: repoData.repositoryName,
               entity: event.pubkey,
@@ -58,27 +62,34 @@ export function useRepoSubscription(options: RepoSubscriptionOptions = {}) {
               forkedFrom: repoData.forkedFrom || existingRepo?.forkedFrom,
               readme: repoData.readme || existingRepo?.readme,
               files: repoData.files || existingRepo?.files,
-              stars: repoData.stars !== undefined ? repoData.stars : existingRepo?.stars,
-              forks: repoData.forks !== undefined ? repoData.forks : existingRepo?.forks,
+              stars:
+                repoData.stars !== undefined
+                  ? repoData.stars
+                  : existingRepo?.stars,
+              forks:
+                repoData.forks !== undefined
+                  ? repoData.forks
+                  : existingRepo?.forks,
               languages: repoData.languages || existingRepo?.languages,
               topics: repoData.topics || existingRepo?.topics,
               contributors: repoData.contributors || existingRepo?.contributors,
-              defaultBranch: repoData.defaultBranch || existingRepo?.defaultBranch,
+              defaultBranch:
+                repoData.defaultBranch || existingRepo?.defaultBranch,
               branches: repoData.branches || existingRepo?.branches,
               releases: repoData.releases || existingRepo?.releases,
               logoUrl: existingRepo?.logoUrl, // Preserve local-only data
-              createdAt: existingRepo?.createdAt || (event.created_at * 1000),
+              createdAt: existingRepo?.createdAt || event.created_at * 1000,
               updatedAt: event.created_at * 1000,
             };
-            
+
             if (existingIndex >= 0) {
               repos[existingIndex] = { ...existingRepo, ...repo };
             } else {
               repos.push(repo);
             }
-            
+
             localStorage.setItem("gittr_repos", JSON.stringify(repos));
-            
+
             if (options.onRepoReceived) {
               options.onRepoReceived(repo);
             }
@@ -96,4 +107,3 @@ export function useRepoSubscription(options: RepoSubscriptionOptions = {}) {
     };
   }, [subscribe, defaultRelays, options.onRepoReceived, options.onError]);
 }
-

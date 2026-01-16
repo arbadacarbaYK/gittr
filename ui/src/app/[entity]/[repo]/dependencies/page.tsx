@@ -1,13 +1,36 @@
 "use client";
 
-import { useEffect, useState, useRef, use } from "react";
-import { useSearchParams } from "next/navigation";
-import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { resolveEntityToPubkey, getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
-import { parseDependencies, resolveImportPath, Dependency } from "@/lib/utils/dependency-parser";
-import { Loader2, GitBranch, AlertCircle, RefreshCw, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import { use, useEffect, useRef, useState } from "react";
+
 import { Button } from "@/components/ui/button";
-import { loadStoredRepos, loadRepoFiles, loadRepoOverrides, type StoredRepo, type RepoFileEntry } from "@/lib/repos/storage";
+import {
+  type RepoFileEntry,
+  type StoredRepo,
+  loadRepoFiles,
+  loadRepoOverrides,
+  loadStoredRepos,
+} from "@/lib/repos/storage";
+import {
+  Dependency,
+  parseDependencies,
+  resolveImportPath,
+} from "@/lib/utils/dependency-parser";
+import {
+  getRepoOwnerPubkey,
+  resolveEntityToPubkey,
+} from "@/lib/utils/entity-resolver";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+
+import {
+  AlertCircle,
+  GitBranch,
+  Loader2,
+  Maximize2,
+  RefreshCw,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 interface GraphNode {
   data: {
@@ -53,7 +76,7 @@ export default function DependenciesPage({
   const resolvedParams = use(params);
   const searchParams = useSearchParams();
   const branch = searchParams?.get("branch") || "main";
-  
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dependencies, setDependencies] = useState<Dependency[]>([]);
@@ -192,7 +215,8 @@ export default function DependenciesPage({
 
   // Render Cytoscape graph when graphData is ready
   useEffect(() => {
-    if (!graphData || !cytoscapeRef.current || graphData.nodes.length === 0) return;
+    if (!graphData || !cytoscapeRef.current || graphData.nodes.length === 0)
+      return;
 
     // Dynamically import Cytoscape (client-side only)
     import("cytoscape").then((cytoscape) => {
@@ -208,8 +232,8 @@ export default function DependenciesPage({
             container: cytoscapeRef.current,
             elements: [...graphData.nodes, ...graphData.edges],
             style: cytoscapeStylesheet,
-            layout: { 
-              name: "dagre", 
+            layout: {
+              name: "dagre",
               padding: 40,
               nodeSep: 60,
               rankSep: 100,
@@ -239,10 +263,10 @@ export default function DependenciesPage({
           cy.on("grab", "node", (evt: any) => {
             const node = evt.target;
             draggedNode = node;
-            
+
             // Get all edges connected to this node
             const connectedEdges = node.connectedEdges();
-            
+
             // Store original styles and highlight edges
             highlightedEdges = [];
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -254,41 +278,42 @@ export default function DependenciesPage({
                   lineColor: edge.style("line-color"),
                   targetArrowColor: edge.style("target-arrow-color"),
                   opacity: edge.style("opacity"),
-                }
+                },
               });
-              
+
               // Highlight with theme color (purple)
               edge.style({
-                "width": 4,
+                width: 4,
                 "line-color": "#8b5cf6",
                 "target-arrow-color": "#8b5cf6",
-                "opacity": 1,
+                opacity: 1,
               });
             });
-            
+
             // Also highlight the node itself
             node.style({
               "border-width": 3,
               "border-color": "#8b5cf6",
-              "background-color": node.data("type") === "file" ? "#8b5cf6" : "#7c3aed",
+              "background-color":
+                node.data("type") === "file" ? "#8b5cf6" : "#7c3aed",
             });
           });
 
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           cy.on("dragfree", "node", (evt: any) => {
             const node = evt.target;
-            
+
             // Reset all highlighted edges to original styles
             highlightedEdges.forEach(({ edge, originalStyle }) => {
               edge.style({
-                "width": originalStyle.width,
+                width: originalStyle.width,
                 "line-color": originalStyle.lineColor,
                 "target-arrow-color": originalStyle.targetArrowColor,
-                "opacity": originalStyle.opacity,
+                opacity: originalStyle.opacity,
               });
             });
             highlightedEdges = [];
-            
+
             // Reset node style
             const nodeType = node.data("type");
             if (nodeType === "file") {
@@ -316,7 +341,7 @@ export default function DependenciesPage({
                 "background-color": "#1e293b",
               });
             }
-            
+
             draggedNode = null;
           });
 
@@ -353,7 +378,11 @@ export default function DependenciesPage({
       const repos = loadStoredRepos();
 
       // Get repo data
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
+      const repo = findRepoByEntityAndName<StoredRepo>(
+        repos,
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
       if (!repo) {
         throw new Error("Repository not found");
       }
@@ -361,12 +390,12 @@ export default function DependenciesPage({
       setStatus("Resolving repository owner...");
       // getRepoOwnerPubkey expects (repo, entity) not (entity, repoName)
       let ownerPubkey = getRepoOwnerPubkey(repo, resolvedParams.entity);
-      
+
       // If not found in repo, try to resolve from entity directly
       if (!ownerPubkey) {
         ownerPubkey = resolveEntityToPubkey(resolvedParams.entity, repo);
       }
-      
+
       if (!ownerPubkey) {
         throw new Error("Could not resolve repository owner");
       }
@@ -374,19 +403,31 @@ export default function DependenciesPage({
       // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
       // Priority: repositoryName > repo > slug > name > resolvedParams.repo
       const repoDataAny = repo as any; // Type assertion for dynamic fields
-      let actualRepoName = repoDataAny?.repositoryName || repoDataAny?.repo || repoDataAny?.slug || repoDataAny?.name || resolvedParams.repo;
-      
+      let actualRepoName =
+        repoDataAny?.repositoryName ||
+        repoDataAny?.repo ||
+        repoDataAny?.slug ||
+        repoDataAny?.name ||
+        resolvedParams.repo;
+
       // Extract repo name (handle paths like "gitnostr.com/gitworkshop")
-      if (actualRepoName.includes('/')) {
-        const parts = actualRepoName.split('/');
+      if (actualRepoName.includes("/")) {
+        const parts = actualRepoName.split("/");
         actualRepoName = parts[parts.length - 1] || actualRepoName;
       }
-      actualRepoName = actualRepoName.replace(/\.git$/, '');
+      actualRepoName = actualRepoName.replace(/\.git$/, "");
 
       setStatus("Fetching file list...");
-      const files = await fetchFileList(ownerPubkey, actualRepoName, branch, repo);
+      const files = await fetchFileList(
+        ownerPubkey,
+        actualRepoName,
+        branch,
+        repo
+      );
       if (!files || files.length === 0) {
-        throw new Error("No files found in repository. The repository may be empty or not yet cloned by git-nostr-bridge.");
+        throw new Error(
+          "No files found in repository. The repository may be empty or not yet cloned by git-nostr-bridge."
+        );
       }
 
       setStatus(`Analyzing ${files.length} files for dependencies...`);
@@ -410,7 +451,7 @@ export default function DependenciesPage({
       for (let i = 0; i < codeFiles.length; i++) {
         const file = codeFiles[i];
         if (!file) continue;
-        
+
         setStatus(`Processing ${i + 1}/${codeFiles.length}: ${file.path}`);
 
         try {
@@ -424,8 +465,11 @@ export default function DependenciesPage({
 
           if (content) {
             const deps = parseDependencies(file.path, content);
-            console.log(`📦 [Dependencies] Parsed ${deps.length} dependencies from ${file.path}`, deps);
-            
+            console.log(
+              `📦 [Dependencies] Parsed ${deps.length} dependencies from ${file.path}`,
+              deps
+            );
+
             // Resolve import paths
             const resolvedDeps = deps.map((dep) => {
               const resolved = resolveImportPath(dep.to, dep.from, filePaths);
@@ -434,39 +478,56 @@ export default function DependenciesPage({
                 to: resolved || dep.to,
               };
             });
-            
+
             if (resolvedDeps.length > 0) {
-              console.log(`✅ [Dependencies] Adding ${resolvedDeps.length} resolved dependencies from ${file.path}`);
+              console.log(
+                `✅ [Dependencies] Adding ${resolvedDeps.length} resolved dependencies from ${file.path}`
+              );
             }
-            
+
             allDeps.push(...resolvedDeps);
           } else {
-            console.warn(`⚠️ [Dependencies] No content fetched for ${file.path}`);
+            console.warn(
+              `⚠️ [Dependencies] No content fetched for ${file.path}`
+            );
           }
         } catch (err) {
           console.warn(`Failed to parse ${file.path}:`, err);
         }
       }
 
-      console.log(`✅ [Dependencies] Total dependencies found: ${allDeps.length}`, allDeps);
+      console.log(
+        `✅ [Dependencies] Total dependencies found: ${allDeps.length}`,
+        allDeps
+      );
       setDependencies(allDeps);
       setStatus("Building dependency graph with folder structure...");
 
       // Build graph data for Cytoscape (includes folder structure even if no deps)
       const graph = buildGraph(allDeps, filePaths);
-      console.log(`📊 [Dependencies] Graph built: ${graph.nodes.length} nodes, ${graph.edges.length} edges`);
+      console.log(
+        `📊 [Dependencies] Graph built: ${graph.nodes.length} nodes, ${graph.edges.length} edges`
+      );
       setGraphData(graph);
       setFilesFetched(true);
-      
-      const depEdges = graph.edges.filter((e) => e.data.type !== "folder").length;
+
+      const depEdges = graph.edges.filter(
+        (e) => e.data.type !== "folder"
+      ).length;
       if (depEdges > 0) {
-        setStatus(`Found ${allDeps.length} dependencies across ${codeFiles.length} files`);
+        setStatus(
+          `Found ${allDeps.length} dependencies across ${codeFiles.length} files`
+        );
       } else {
-        setStatus(`Showing folder structure for ${filePaths.length} files (no dependencies found)`);
+        setStatus(
+          `Showing folder structure for ${filePaths.length} files (no dependencies found)`
+        );
       }
     } catch (err) {
       console.error("Failed to load dependencies:", err);
-      setError(err instanceof Error ? err.message : "Failed to load dependencies");
+      setError(
+        err instanceof Error ? err.message : "Failed to load dependencies"
+      );
     } finally {
       setLoading(false);
     }
@@ -504,7 +565,7 @@ export default function DependenciesPage({
       const id = `folder_${folderPath.replace(/[^a-zA-Z0-9]/g, "_")}`;
       const label = folderPath.split("/").pop() || folderPath;
       const parentPath = folderPath.split("/").slice(0, -1).join("/");
-      
+
       nodes.set(`folder:${folderPath}`, {
         data: { id, label, path: folderPath, type: "folder" },
       });
@@ -538,7 +599,7 @@ export default function DependenciesPage({
       const id = path.replace(/[^a-zA-Z0-9]/g, "_");
       const label = path.split("/").pop() || path;
       const parentPath = path.split("/").slice(0, -1).join("/");
-      
+
       nodes.set(path, {
         data: { id, label, path, type: "file" },
       });
@@ -571,7 +632,7 @@ export default function DependenciesPage({
     deps.forEach((dep) => {
       const fromId = dep.from.replace(/[^a-zA-Z0-9]/g, "_");
       const toId = dep.to.replace(/[^a-zA-Z0-9]/g, "_");
-      
+
       // Ensure source file node exists
       if (!nodes.has(dep.from)) {
         const label = dep.from.split("/").pop() || dep.from;
@@ -582,7 +643,7 @@ export default function DependenciesPage({
 
       // Check if target is an internal file or external package
       const isInternal = nodes.has(dep.to);
-      
+
       if (!isInternal) {
         // External package - create a node for it
         const label = dep.to.split("/").pop()?.split(".")[0] || dep.to;
@@ -618,34 +679,57 @@ export default function DependenciesPage({
     // Priority 1: Check if repo has files in localStorage (from Nostr events or GitHub import)
     // CRITICAL: Use files immediately if available - don't wait for all relays
     if (repo?.files && Array.isArray(repo.files) && repo.files.length > 0) {
-      console.log(`✅ [Dependencies] Using ${repo.files.length} files from repo data (immediate)`);
+      console.log(
+        `✅ [Dependencies] Using ${repo.files.length} files from repo data (immediate)`
+      );
       return repo.files;
     }
-    
+
     // Also check localStorage directly in case repo object is stale
     try {
       const allRepos = loadStoredRepos();
       const matchingRepo = allRepos.find((r) => {
         const repoEntity = r.entity || r.ownerPubkey;
-        const normalizedEntity = resolvedParams.entity.startsWith("npub") 
-          ? resolvedParams.entity 
-          : (repoEntity && /^[0-9a-f]{64}$/i.test(repoEntity) ? repoEntity : resolvedParams.entity);
-        return (normalizedEntity === resolvedParams.entity || repoEntity === resolvedParams.entity) && 
-               (r.repo === resolvedParams.repo || r.name === resolvedParams.repo || r.slug === resolvedParams.repo);
+        const normalizedEntity = resolvedParams.entity.startsWith("npub")
+          ? resolvedParams.entity
+          : repoEntity && /^[0-9a-f]{64}$/i.test(repoEntity)
+          ? repoEntity
+          : resolvedParams.entity;
+        return (
+          (normalizedEntity === resolvedParams.entity ||
+            repoEntity === resolvedParams.entity) &&
+          (r.repo === resolvedParams.repo ||
+            r.name === resolvedParams.repo ||
+            r.slug === resolvedParams.repo)
+        );
       });
-      
-      if (matchingRepo?.files && Array.isArray(matchingRepo.files) && matchingRepo.files.length > 0) {
-        console.log(`✅ [Dependencies] Using ${matchingRepo.files.length} files from localStorage (immediate)`);
+
+      if (
+        matchingRepo?.files &&
+        Array.isArray(matchingRepo.files) &&
+        matchingRepo.files.length > 0
+      ) {
+        console.log(
+          `✅ [Dependencies] Using ${matchingRepo.files.length} files from localStorage (immediate)`
+        );
         return matchingRepo.files;
       }
-      
+
       // CRITICAL: Check separate files storage key (for optimized storage)
       if (matchingRepo) {
         try {
-          const storedFiles = loadRepoFiles(resolvedParams.entity, resolvedParams.repo);
+          const storedFiles = loadRepoFiles(
+            resolvedParams.entity,
+            resolvedParams.repo
+          );
           if (storedFiles && storedFiles.length > 0) {
-            console.log(`✅ [Dependencies] Using ${storedFiles.length} files from separate storage key`);
-            return storedFiles.map((f: RepoFileEntry) => ({ type: f.type, path: f.path }));
+            console.log(
+              `✅ [Dependencies] Using ${storedFiles.length} files from separate storage key`
+            );
+            return storedFiles.map((f: RepoFileEntry) => ({
+              type: f.type,
+              path: f.path,
+            }));
           }
         } catch (e) {
           console.warn("Failed to check separate files storage:", e);
@@ -658,23 +742,38 @@ export default function DependenciesPage({
     // Priority 2: Try GitHub API if sourceUrl is available
     if (repo?.sourceUrl) {
       try {
-        const githubMatch = repo.sourceUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+        const githubMatch = repo.sourceUrl.match(
+          /github\.com\/([^\/]+)\/([^\/]+)/
+        );
         if (githubMatch) {
           const [, owner, repoName] = githubMatch;
           const response = await fetch(
-            `https://api.github.com/repos/${owner}/${repoName}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
-            { headers: { "User-Agent": "gittr-space", Accept: "application/vnd.github.v3+json" } }
+            `https://api.github.com/repos/${owner}/${repoName}/git/trees/${encodeURIComponent(
+              branch
+            )}?recursive=1`,
+            {
+              headers: {
+                "User-Agent": "gittr-space",
+                Accept: "application/vnd.github.v3+json",
+              },
+            }
           );
           if (response.ok) {
-            const data = await response.json() as { tree?: GitHubTreeItem[] };
+            const data = (await response.json()) as { tree?: GitHubTreeItem[] };
             if (data.tree && Array.isArray(data.tree)) {
               const files = data.tree
                 .filter((n): n is GitHubTreeItem => n.type === "blob")
-                .map((n) => ({ type: "file" as const, path: n.path, size: n.size }));
+                .map((n) => ({
+                  type: "file" as const,
+                  path: n.path,
+                  size: n.size,
+                }));
               const dirs = data.tree
                 .filter((n): n is GitHubTreeItem => n.type === "tree")
                 .map((n) => ({ type: "dir" as const, path: n.path }));
-              console.log(`✅ [Dependencies] Fetched ${files.length} files from GitHub`);
+              console.log(
+                `✅ [Dependencies] Fetched ${files.length} files from GitHub`
+              );
               return [...dirs, ...files];
             }
           }
@@ -687,12 +786,18 @@ export default function DependenciesPage({
     // Priority 3: Try git-nostr-bridge API (for cloned repos)
     try {
       const response = await fetch(
-        `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(branch)}`
+        `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
+          ownerPubkey
+        )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
+          branch
+        )}`
       );
       if (response.ok) {
         const data = await response.json();
         if (data.files && Array.isArray(data.files) && data.files.length > 0) {
-          console.log(`✅ [Dependencies] Fetched ${data.files.length} files from git-nostr-bridge`);
+          console.log(
+            `✅ [Dependencies] Fetched ${data.files.length} files from git-nostr-bridge`
+          );
           return data.files;
         }
       } else {
@@ -714,7 +819,10 @@ export default function DependenciesPage({
     sourceUrl?: string
   ): Promise<string | null> {
     // Check localStorage overrides first
-    const overrides = loadRepoOverrides(resolvedParams.entity, resolvedParams.repo);
+    const overrides = loadRepoOverrides(
+      resolvedParams.entity,
+      resolvedParams.repo
+    );
     if (overrides[filePath]) {
       return overrides[filePath];
     }
@@ -726,7 +834,9 @@ export default function DependenciesPage({
         if (githubMatch) {
           const [, owner, repo] = githubMatch;
           const response = await fetch(
-            `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/${filePath}`,
+            `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
+              branch
+            )}/${filePath}`,
             { headers: { "User-Agent": "gittr-space" } }
           );
           if (response.ok) {
@@ -741,7 +851,11 @@ export default function DependenciesPage({
     // Try git-nostr-bridge API
     try {
       const response = await fetch(
-        `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(filePath)}&branch=${encodeURIComponent(branch)}`
+        `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+          ownerPubkey
+        )}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(
+          filePath
+        )}&branch=${encodeURIComponent(branch)}`
       );
       if (response.ok) {
         const data = await response.json();
@@ -797,8 +911,11 @@ export default function DependenciesPage({
 
       {graphData && graphData.nodes.length > 0 && (
         <div className="border border-[#383B42] rounded-md overflow-hidden bg-[#0f172a] relative">
-          <div ref={cytoscapeRef} className="w-full h-[600px] cursor-grab active:cursor-grabbing" />
-          
+          <div
+            ref={cytoscapeRef}
+            className="w-full h-[600px] cursor-grab active:cursor-grabbing"
+          />
+
           {/* Zoom Controls */}
           <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
             <Button
@@ -841,13 +958,20 @@ export default function DependenciesPage({
               <Maximize2 className="h-4 w-4" />
             </Button>
           </div>
-          
-          {graphData.nodes.length > 0 && graphData.edges.filter((e: any) => e.data.type !== "folder").length === 0 && (
-            <div className="absolute top-4 left-4 bg-[#1e293b] border border-[#383B42] rounded-md px-3 py-2 text-xs text-gray-400 max-w-xs">
-              <p>💡 Showing folder structure. No dependencies found between files.</p>
-              <p className="mt-1 text-gray-500">Files are connected to their parent folders.</p>
-            </div>
-          )}
+
+          {graphData.nodes.length > 0 &&
+            graphData.edges.filter((e: any) => e.data.type !== "folder")
+              .length === 0 && (
+              <div className="absolute top-4 left-4 bg-[#1e293b] border border-[#383B42] rounded-md px-3 py-2 text-xs text-gray-400 max-w-xs">
+                <p>
+                  💡 Showing folder structure. No dependencies found between
+                  files.
+                </p>
+                <p className="mt-1 text-gray-500">
+                  Files are connected to their parent folders.
+                </p>
+              </div>
+            )}
         </div>
       )}
 
@@ -871,7 +995,9 @@ export default function DependenciesPage({
                   {" → "}
                   <span className="text-blue-400">{dep.to}</span>
                   {dep.line && (
-                    <span className="text-gray-500 ml-2">(line {dep.line})</span>
+                    <span className="text-gray-500 ml-2">
+                      (line {dep.line})
+                    </span>
                   )}
                 </li>
               ))}
@@ -887,4 +1013,3 @@ export default function DependenciesPage({
     </div>
   );
 }
-

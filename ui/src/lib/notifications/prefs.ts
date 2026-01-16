@@ -65,7 +65,9 @@ export function loadNotificationPrefs(pubkey?: string): NotificationPrefs {
 /**
  * Check if a specific event type should trigger notifications
  */
-export function shouldNotify(eventType: EventKey, prefs: NotificationPrefs): boolean {
+export function shouldNotify(
+  eventType: EventKey,
+  prefs: NotificationPrefs
+): boolean {
   return prefs.events[eventType] === true;
 }
-

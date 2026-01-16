@@ -1,15 +1,26 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Zap } from "lucide-react";
+import { useEffect, useState } from "react";
+
 import { Button } from "@/components/ui/button";
-import { createNWCZap, createLNbitsZap, type ZapRequest, type ZapSplit } from "@/lib/payments/zap";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { recordZap } from "@/lib/payments/zap-tracker";
-import { PaymentQR } from "./payment-qr";
-import { nip19 } from "nostr-tools";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
-import { formatPaymentMessage, getPaymentSenderName } from "@/lib/payments/payment-message";
+import {
+  formatPaymentMessage,
+  getPaymentSenderName,
+} from "@/lib/payments/payment-message";
+import {
+  type ZapRequest,
+  type ZapSplit,
+  createLNbitsZap,
+  createNWCZap,
+} from "@/lib/payments/zap";
+import { recordZap } from "@/lib/payments/zap-tracker";
+
+import { Zap } from "lucide-react";
+import { nip19 } from "nostr-tools";
+
+import { PaymentQR } from "./payment-qr";
 
 interface ZapButtonProps {
   recipient: string; // npub or pubkey
@@ -24,10 +35,10 @@ interface ZapButtonProps {
   label?: string; // Custom button label (defaults to "{amount} sats")
 }
 
-export function ZapButton({ 
-  recipient, 
-  amount = 10, // Use 2-10 sats for testing (LNbits ~300 sats, NWC ~84 sats) 
-  comment, 
+export function ZapButton({
+  recipient,
+  amount = 10, // Use 2-10 sats for testing (LNbits ~300 sats, NWC ~84 sats)
+  comment,
   splits,
   variant = "outline",
   size = "sm",
@@ -44,14 +55,17 @@ export function ZapButton({
   const [paymentInvoice, setPaymentInvoice] = useState<string | null>(null);
   const [paymentHash, setPaymentHash] = useState<string | undefined>(undefined);
   const [paymentAmount, setPaymentAmount] = useState<number>(amount);
-  const [recipientMetadata, setRecipientMetadata] = useState<{ lud16?: string; lnurl?: string } | null>(null);
+  const [recipientMetadata, setRecipientMetadata] = useState<{
+    lud16?: string;
+    lnurl?: string;
+  } | null>(null);
   const { pubkey, subscribe, defaultRelays } = useNostrContext();
-  
-  
+
   // Get current user's metadata for payment message
-  const currentUserPubkeys = pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? [pubkey] : [];
+  const currentUserPubkeys =
+    pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? [pubkey] : [];
   const currentUserMetadata = useContributorMetadata(currentUserPubkeys);
-  
+
   // Fetch recipient's Lightning address from Nostr profile (only if not provided)
   useEffect(() => {
     // If metadata is already provided (e.g., from repo config), use it
@@ -59,9 +73,9 @@ export function ZapButton({
       setRecipientMetadata(providedMetadata);
       return;
     }
-    
+
     if (!recipient || !subscribe) return;
-    
+
     const fetchRecipientMetadata = async () => {
       try {
         // Decode npub to pubkey if needed
@@ -70,7 +84,7 @@ export function ZapButton({
           const decoded = nip19.decode(recipient);
           recipientPubkey = decoded.data as string;
         }
-        
+
         // Subscribe to recipient's profile (kind 0)
         const events = await new Promise<any[]>((resolve) => {
           const timeout = setTimeout(() => resolve([]), 5000);
@@ -79,7 +93,7 @@ export function ZapButton({
               {
                 kinds: [0],
                 authors: [recipientPubkey],
-              }
+              },
             ],
             defaultRelays,
             (event) => {
@@ -93,7 +107,7 @@ export function ZapButton({
             }
           );
         });
-        
+
         if (events.length > 0) {
           const profile = JSON.parse(events[0].content || "{}");
           setRecipientMetadata({
@@ -105,7 +119,7 @@ export function ZapButton({
         console.warn("Failed to fetch recipient metadata:", error);
       }
     };
-    
+
     fetchRecipientMetadata();
   }, [recipient, subscribe, defaultRelays, providedMetadata]);
 
@@ -124,13 +138,16 @@ export function ZapButton({
     setError(null);
 
     try {
-      
       // Format payment message: username + "via gittr.space ⚡⚡"
       // If not logged in, paymentMessage will default to "Anonymous via gittr.space ⚡⚡"
-      const senderName = pubkey ? getPaymentSenderName(pubkey, currentUserMetadata) : null;
+      const senderName = pubkey
+        ? getPaymentSenderName(pubkey, currentUserMetadata)
+        : null;
       const paymentMessage = formatPaymentMessage(senderName);
-      
-      const zapRequest: ZapRequest & { recipientMetadata?: { lud16?: string; lnurl?: string } } = {
+
+      const zapRequest: ZapRequest & {
+        recipientMetadata?: { lud16?: string; lnurl?: string };
+      } = {
         amount: zapAmount,
         recipient,
         comment: paymentMessage, // Always use formatted payment message
@@ -141,8 +158,14 @@ export function ZapButton({
       let paymentResult: { invoice: string; paymentHash: string } | null = null;
 
       // Check if LNbits is configured (for fallback or splits)
-      const lnbitsUrl = typeof window !== "undefined" ? localStorage.getItem("gittr_lnbits_url") || undefined : undefined;
-      const lnbitsAdminKey = typeof window !== "undefined" ? localStorage.getItem("gittr_lnbits_admin_key") || undefined : undefined;
+      const lnbitsUrl =
+        typeof window !== "undefined"
+          ? localStorage.getItem("gittr_lnbits_url") || undefined
+          : undefined;
+      const lnbitsAdminKey =
+        typeof window !== "undefined"
+          ? localStorage.getItem("gittr_lnbits_admin_key") || undefined
+          : undefined;
       const hasLnbits = lnbitsUrl && lnbitsAdminKey;
 
       if (splits && splits.length > 0) {
@@ -150,8 +173,8 @@ export function ZapButton({
         // Creates invoice from SOURCE wallet (owner's LNbits wallet)
         // SplitPayments extension must be pre-configured in LNbits wallet
         // When invoice is paid, LNbits automatically splits to configured targets
-        paymentResult = await createLNbitsZap({ 
-          ...zapRequest, 
+        paymentResult = await createLNbitsZap({
+          ...zapRequest,
           splits,
           // For splits, we don't need recipient metadata - invoice comes from source wallet
         });
@@ -159,11 +182,13 @@ export function ZapButton({
         // Create invoice from recipient's Lightning address (LNURL/LUD-16)
         // Show QR modal first - NWC payment happens only when user clicks "Pay via NWC" button
         if (!recipientMetadata?.lud16 && !recipientMetadata?.lnurl) {
-          setError("Recipient's Lightning address not found. The recipient needs to set a lud16 or lnurl in their Nostr profile.");
+          setError(
+            "Recipient's Lightning address not found. The recipient needs to set a lud16 or lnurl in their Nostr profile."
+          );
           setPaymentInvoice(null);
           return;
         }
-        
+
         try {
           const response = await fetch("/api/zap/create-invoice", {
             method: "POST",
@@ -178,20 +203,24 @@ export function ZapButton({
           });
 
           if (!response.ok) {
-            const error = await response.json().catch(() => ({ message: "Unknown error" }));
+            const error = await response
+              .json()
+              .catch(() => ({ message: "Unknown error" }));
             throw new Error(error.message || "Failed to create invoice");
           }
 
           const data = await response.json();
           const invoice = data.paymentRequest;
-          
+
           if (!invoice || invoice.length < 50) {
             throw new Error("Received invalid invoice");
           }
-          
+
           paymentResult = { invoice, paymentHash: "" };
         } catch (error: any) {
-          setError(error.message || "Failed to create invoice. Please try again.");
+          setError(
+            error.message || "Failed to create invoice. Please try again."
+          );
           setPaymentInvoice(null);
           setLoading(false);
           return;
@@ -210,7 +239,9 @@ export function ZapButton({
 
       // Verify invoice is complete
       if (paymentRequest.length < 50 || paymentRequest.includes("...")) {
-        throw new Error(`Received truncated invoice (length: ${paymentRequest.length}). Full: ${paymentRequest}`);
+        throw new Error(
+          `Received truncated invoice (length: ${paymentRequest.length}). Full: ${paymentRequest}`
+        );
       }
 
       recordZap({
@@ -246,7 +277,7 @@ export function ZapButton({
         className={className}
       >
         <Zap className="mr-2 h-4 w-4" />
-        {showAmountInput ? "Zap" : (label || `${amount} sats`)}
+        {showAmountInput ? "Zap" : label || `${amount} sats`}
       </Button>
       {showAmountInput && (
         <div className="absolute top-full left-0 mt-2 p-3 bg-gray-900 border border-gray-700 rounded shadow-lg z-50 min-w-[250px]">
@@ -280,9 +311,7 @@ export function ZapButton({
                 Cancel
               </Button>
             </div>
-            {error && (
-              <p className="text-red-400 text-sm">{error}</p>
-            )}
+            {error && <p className="text-red-400 text-sm">{error}</p>}
           </div>
         </div>
       )}
@@ -291,17 +320,36 @@ export function ZapButton({
           invoice={paymentInvoice}
           amount={paymentAmount}
           paymentHash={paymentHash}
-          lnbitsUrl={typeof window !== "undefined" ? localStorage.getItem("gittr_lnbits_url") || undefined : undefined}
-          lnbitsAdminKey={typeof window !== "undefined" ? localStorage.getItem("gittr_lnbits_admin_key") || undefined : undefined}
-          nwcUri={typeof window !== "undefined" ? localStorage.getItem("gittr_nwc_send") || undefined : undefined}
+          lnbitsUrl={
+            typeof window !== "undefined"
+              ? localStorage.getItem("gittr_lnbits_url") || undefined
+              : undefined
+          }
+          lnbitsAdminKey={
+            typeof window !== "undefined"
+              ? localStorage.getItem("gittr_lnbits_admin_key") || undefined
+              : undefined
+          }
+          nwcUri={
+            typeof window !== "undefined"
+              ? localStorage.getItem("gittr_nwc_send") || undefined
+              : undefined
+          }
           extra={modalExtra}
           error={error}
           onPaid={async () => {
             // Only record accumulated zap when payment is confirmed
             const repoId = comment?.match(/Zap for (.+)/)?.[1];
             if (repoId && typeof window !== "undefined") {
-              const { recordAccumulatedZap } = await import("@/lib/payments/zap-repo");
-              recordAccumulatedZap(repoId, paymentAmount, paymentHash || "", comment);
+              const { recordAccumulatedZap } = await import(
+                "@/lib/payments/zap-repo"
+              );
+              recordAccumulatedZap(
+                repoId,
+                paymentAmount,
+                paymentHash || "",
+                comment
+              );
             }
           }}
           onClose={() => {

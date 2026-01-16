@@ -1,18 +1,28 @@
 "use client";
 
-import { useState, useEffect, useMemo, use } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { addPendingUpload } from "@/lib/pending-changes";
+import { use, useEffect, useMemo, useState } from "react";
+
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
-import { loadStoredRepos, addFilesToRepo, normalizeFilePath } from "@/lib/repos/storage";
+import { addPendingUpload } from "@/lib/pending-changes";
 import { isOwner } from "@/lib/repo-permissions";
+import {
+  addFilesToRepo,
+  loadStoredRepos,
+  normalizeFilePath,
+} from "@/lib/repos/storage";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { nip19 } from "nostr-tools";
 
-export default function NewFilePage({ params }: { params: Promise<{ entity: string; repo: string }> }) {
+export default function NewFilePage({
+  params,
+}: {
+  params: Promise<{ entity: string; repo: string }>;
+}) {
   const resolvedParams = use(params);
   const [path, setPath] = useState("");
   const [content, setContent] = useState("");
@@ -31,7 +41,11 @@ export default function NewFilePage({ params }: { params: Promise<{ entity: stri
 
     try {
       const repos = loadStoredRepos();
-      const repo = findRepoByEntityAndName(repos, resolvedParams.entity, resolvedParams.repo);
+      const repo = findRepoByEntityAndName(
+        repos,
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
 
       const entityMatchesCurrentUser = (() => {
         if (!pubkey) return false;
@@ -60,7 +74,7 @@ export default function NewFilePage({ params }: { params: Promise<{ entity: stri
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!isLoggedIn || !pubkey) {
       setStatus("Error: You must be logged in to create files");
       return;
@@ -81,10 +95,13 @@ export default function NewFilePage({ params }: { params: Promise<{ entity: stri
     try {
       // If user is owner, add file directly to repo (immediate display)
       if (isOwnerUser) {
-        const success = addFilesToRepo(resolvedParams.entity, resolvedParams.repo, [
-          { path: normalizedPath, content, type: "file" }
-        ], pubkey);
-        
+        const success = addFilesToRepo(
+          resolvedParams.entity,
+          resolvedParams.repo,
+          [{ path: normalizedPath, content, type: "file" }],
+          pubkey
+        );
+
         if (success) {
           setStatus("File created! Redirecting to repository...");
           setTimeout(() => {
@@ -95,16 +112,18 @@ export default function NewFilePage({ params }: { params: Promise<{ entity: stri
         }
       } else {
         // Non-owners: Add as pending upload (requires PR)
-        addPendingUpload(resolvedParams.entity, resolvedParams.repo, pubkey, { 
-          path: normalizedPath, 
-          content, 
-          timestamp: Date.now() 
+        addPendingUpload(resolvedParams.entity, resolvedParams.repo, pubkey, {
+          path: normalizedPath,
+          content,
+          timestamp: Date.now(),
         });
-      
-      setStatus("File added! Redirecting to create pull request...");
-      setTimeout(() => {
-        router.push(`/${resolvedParams.entity}/${resolvedParams.repo}/pulls/new`);
-      }, 1000);
+
+        setStatus("File added! Redirecting to create pull request...");
+        setTimeout(() => {
+          router.push(
+            `/${resolvedParams.entity}/${resolvedParams.repo}/pulls/new`
+          );
+        }, 1000);
       }
     } catch (error: any) {
       setStatus(`Error: ${error.message}`);
@@ -114,13 +133,16 @@ export default function NewFilePage({ params }: { params: Promise<{ entity: stri
   return (
     <div className="container mx-auto max-w-4xl p-6">
       <div className="mb-4">
-        <Link href={`/${resolvedParams.entity}/${resolvedParams.repo}`} className="text-purple-500 hover:underline">
+        <Link
+          href={`/${resolvedParams.entity}/${resolvedParams.repo}`}
+          className="text-purple-500 hover:underline"
+        >
           ← Back to repository
         </Link>
       </div>
-      
+
       <h1 className="text-2xl font-bold mb-4">Create new file</h1>
-      
+
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block mb-2">File path</label>
@@ -133,7 +155,8 @@ export default function NewFilePage({ params }: { params: Promise<{ entity: stri
             required
           />
           <p className="text-sm text-gray-400 mt-1">
-            Use forward slashes (/) to create directories. Example: src/components/Button.tsx
+            Use forward slashes (/) to create directories. Example:
+            src/components/Button.tsx
             {isOwnerUser && (
               <span className="block mt-1 text-green-400">
                 ✓ You are the owner - file will be added directly (no PR needed)
@@ -174,7 +197,11 @@ export default function NewFilePage({ params }: { params: Promise<{ entity: stri
         </div>
 
         {status && (
-          <div className={`p-3 rounded ${status.includes("Error") ? "bg-red-900" : "bg-green-900"}`}>
+          <div
+            className={`p-3 rounded ${
+              status.includes("Error") ? "bg-red-900" : "bg-green-900"
+            }`}
+          >
             {status}
           </div>
         )}

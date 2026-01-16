@@ -1,15 +1,17 @@
 "use client";
-import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
-import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { loadStoredRepos, type StoredRepo } from "@/lib/repos/storage";
 
-import { useEffect, useState, use } from "react";
-import { useParams, useSearchParams } from "next/navigation";
-import Link from "next/link";
+import { use, useEffect, useState } from "react";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { GitBranch, GitCommit, FileDiff, ArrowRight } from "lucide-react";
+import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
+import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+
+import { ArrowRight, FileDiff, GitBranch, GitCommit } from "lucide-react";
+import Link from "next/link";
+import { useParams, useSearchParams } from "next/navigation";
 
 interface DiffFile {
   path: string;
@@ -20,12 +22,20 @@ interface DiffFile {
   after?: string;
 }
 
-export default function ComparePage({ params }: { params: Promise<{ entity: string; repo: string }> }) {
+export default function ComparePage({
+  params,
+}: {
+  params: Promise<{ entity: string; repo: string }>;
+}) {
   const resolvedParams = use(params);
   const { entity, repo } = resolvedParams; // Extract primitives to avoid stale closures
   const searchParams = useSearchParams();
-  const [baseRef, setBaseRef] = useState<string>(searchParams?.get("base") || "main");
-  const [compareRef, setCompareRef] = useState<string>(searchParams?.get("compare") || "");
+  const [baseRef, setBaseRef] = useState<string>(
+    searchParams?.get("base") || "main"
+  );
+  const [compareRef, setCompareRef] = useState<string>(
+    searchParams?.get("compare") || ""
+  );
   const [diffFiles, setDiffFiles] = useState<DiffFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
@@ -36,7 +46,11 @@ export default function ComparePage({ params }: { params: Promise<{ entity: stri
       const repos = loadStoredRepos();
       const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
       setBranches((repoData?.branches as string[] | undefined) || ["main"]);
-      setTags((repoData?.tags as string[] | undefined)?.map((t: string | { name: string }) => typeof t === "string" ? t : t.name) || []);
+      setTags(
+        (repoData?.tags as string[] | undefined)?.map(
+          (t: string | { name: string }) => (typeof t === "string" ? t : t.name)
+        ) || []
+      );
     } catch {}
   }, [entity, repo]);
 
@@ -51,23 +65,25 @@ export default function ComparePage({ params }: { params: Promise<{ entity: stri
       // Load commits for both refs
       const commitsKey = getRepoStorageKey("gittr_commits", entity, repo);
       const allCommits = JSON.parse(localStorage.getItem(commitsKey) || "[]");
-      
+
       // Find commits in base branch/tag
-      const baseCommits = allCommits.filter((c: any) => 
+      const baseCommits = allCommits.filter((c: any) =>
         !baseRef.includes("commit-") ? c.branch === baseRef : c.id === baseRef
       );
-      
+
       // Find commits in compare branch/tag
-      const compareCommits = allCommits.filter((c: any) => 
-        !compareRef.includes("commit-") ? c.branch === compareRef : c.id === compareRef
+      const compareCommits = allCommits.filter((c: any) =>
+        !compareRef.includes("commit-")
+          ? c.branch === compareRef
+          : c.id === compareRef
       );
-      
+
       // Get unique files changed in compare but not in base (simplified diff)
       const baseFiles = new Set<string>();
       baseCommits.forEach((c: any) => {
         c.changedFiles?.forEach((f: any) => baseFiles.add(f.path));
       });
-      
+
       const compareFiles = new Map<string, DiffFile>();
       compareCommits.forEach((c: any) => {
         c.changedFiles?.forEach((f: any) => {
@@ -77,7 +93,7 @@ export default function ComparePage({ params }: { params: Promise<{ entity: stri
               path: f.path,
               status: f.status || "modified",
             });
-            
+
             // Try to get file content from PR
             if (c.prId) {
               try {
@@ -96,12 +112,14 @@ export default function ComparePage({ params }: { params: Promise<{ entity: stri
           }
         });
       });
-      
+
       // Files in base but not in compare (deleted)
       baseFiles.forEach((path) => {
         if (!compareFiles.has(path)) {
           const inCompare = compareCommits.some((c: any) =>
-            c.changedFiles?.some((f: any) => f.path === path && f.status === "deleted")
+            c.changedFiles?.some(
+              (f: any) => f.path === path && f.status === "deleted"
+            )
           );
           if (inCompare) {
             compareFiles.set(path, {
@@ -111,7 +129,7 @@ export default function ComparePage({ params }: { params: Promise<{ entity: stri
           }
         }
       });
-      
+
       setDiffFiles(Array.from(compareFiles.values()));
     } catch (error) {
       console.error("Failed to compare:", error);
@@ -120,8 +138,14 @@ export default function ComparePage({ params }: { params: Promise<{ entity: stri
     }
   };
 
-  const totalAdditions = diffFiles.reduce((sum, f) => sum + (f.additions || 0), 0);
-  const totalDeletions = diffFiles.reduce((sum, f) => sum + (f.deletions || 0), 0);
+  const totalAdditions = diffFiles.reduce(
+    (sum, f) => sum + (f.additions || 0),
+    0
+  );
+  const totalDeletions = diffFiles.reduce(
+    (sum, f) => sum + (f.deletions || 0),
+    0
+  );
 
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
@@ -204,7 +228,9 @@ export default function ComparePage({ params }: { params: Promise<{ entity: stri
             {diffFiles.length > 0 && (
               <Button
                 onClick={() => {
-                  window.location.href = `/${entity}/${repo}/pulls/new?base=${encodeURIComponent(baseRef)}&compare=${encodeURIComponent(compareRef)}`;
+                  window.location.href = `/${entity}/${repo}/pulls/new?base=${encodeURIComponent(
+                    baseRef
+                  )}&compare=${encodeURIComponent(compareRef)}`;
                 }}
                 variant="default"
                 className="bg-green-600 hover:bg-green-700"
@@ -253,19 +279,23 @@ export default function ComparePage({ params }: { params: Promise<{ entity: stri
                       {file.status}
                     </Badge>
                     <Link
-                      href={`/${entity}/${repo}?file=${encodeURIComponent(file.path)}`}
+                      href={`/${entity}/${repo}?file=${encodeURIComponent(
+                        file.path
+                      )}`}
                       className="text-purple-400 hover:text-purple-300 font-mono text-sm"
                     >
                       {file.path}
                     </Link>
                   </div>
-                  {file.additions !== undefined && file.deletions !== undefined && (
-                    <div className="text-sm text-gray-400">
-                      <span className="text-green-400">+{file.additions}</span>
-                      {" "}
-                      <span className="text-red-400">-{file.deletions}</span>
-                    </div>
-                  )}
+                  {file.additions !== undefined &&
+                    file.deletions !== undefined && (
+                      <div className="text-sm text-gray-400">
+                        <span className="text-green-400">
+                          +{file.additions}
+                        </span>{" "}
+                        <span className="text-red-400">-{file.deletions}</span>
+                      </div>
+                    )}
                 </div>
               </div>
 
@@ -325,4 +355,3 @@ export default function ComparePage({ params }: { params: Promise<{ entity: stri
     </div>
   );
 }
-

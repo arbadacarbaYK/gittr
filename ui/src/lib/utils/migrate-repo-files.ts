@@ -1,7 +1,7 @@
 /**
  * Migration utility to re-fetch files for repositories that were imported
  * before file fetching was properly implemented.
- * 
+ *
  * This function checks localStorage for repos without files and triggers
  * a re-fetch from either Nostr events or git-nostr-bridge.
  */
@@ -15,7 +15,7 @@ export interface MigrationResult {
 
 /**
  * Migrates repository files by re-fetching them from Nostr or git-nostr-bridge.
- * 
+ *
  * @param subscribe - Nostr subscribe function
  * @param defaultRelays - Array of default relay URLs
  * @param onProgress - Optional progress callback
@@ -44,7 +44,9 @@ export async function migrateRepoFiles(
     });
 
     result.reposWithoutFiles = reposWithoutFiles.length;
-    onProgress?.(`Found ${reposWithoutFiles.length} repos without files to migrate`);
+    onProgress?.(
+      `Found ${reposWithoutFiles.length} repos without files to migrate`
+    );
 
     // For each repo without files, try to fetch from Nostr first, then git-nostr-bridge
     for (const repo of reposWithoutFiles) {
@@ -90,13 +92,13 @@ export async function migrateRepoFiles(
                 kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
                 authors: [ownerPubkey],
                 "#d": [repoName],
-                limit: 1
+                limit: 1,
               },
               {
                 kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
                 authors: [ownerPubkey],
-                limit: 10
-              }
+                limit: 10,
+              },
             ],
             defaultRelays,
             (event: any, isAfterEose: boolean, relayURL: string) => {
@@ -108,7 +110,11 @@ export async function migrateRepoFiles(
                   eventRepoData = { repositoryName: "" };
                   if (event.tags && Array.isArray(event.tags)) {
                     for (const tag of event.tags) {
-                      if (Array.isArray(tag) && tag.length >= 2 && tag[0] === "d") {
+                      if (
+                        Array.isArray(tag) &&
+                        tag.length >= 2 &&
+                        tag[0] === "d"
+                      ) {
                         eventRepoData.repositoryName = tag[1];
                       }
                     }
@@ -116,19 +122,28 @@ export async function migrateRepoFiles(
                   if (event.content) {
                     try {
                       const contentData = JSON.parse(event.content);
-                      if (contentData.files) eventRepoData.files = contentData.files;
+                      if (contentData.files)
+                        eventRepoData.files = contentData.files;
                     } catch {}
                   }
                 } else {
                   eventRepoData = JSON.parse(event.content);
                 }
 
-                const repoNameMatches = eventRepoData.repositoryName && 
-                  (eventRepoData.repositoryName.toLowerCase() === repoName.toLowerCase() ||
-                   eventRepoData.repositoryName === repoName);
-                const pubkeyMatches = event.pubkey.toLowerCase() === ownerPubkey.toLowerCase();
+                const repoNameMatches =
+                  eventRepoData.repositoryName &&
+                  (eventRepoData.repositoryName.toLowerCase() ===
+                    repoName.toLowerCase() ||
+                    eventRepoData.repositoryName === repoName);
+                const pubkeyMatches =
+                  event.pubkey.toLowerCase() === ownerPubkey.toLowerCase();
 
-                if ((repoNameMatches || pubkeyMatches) && eventRepoData.files && Array.isArray(eventRepoData.files) && eventRepoData.files.length > 0) {
+                if (
+                  (repoNameMatches || pubkeyMatches) &&
+                  eventRepoData.files &&
+                  Array.isArray(eventRepoData.files) &&
+                  eventRepoData.files.length > 0
+                ) {
                   foundFiles = true;
                   if (unsub) unsub();
                   if (timeout) clearTimeout(timeout);
@@ -159,41 +174,71 @@ export async function migrateRepoFiles(
         if (filesFromNostr && filesFromNostr.length > 0) {
           // Update the repo in localStorage
           const updated = repos.map((r: any) => {
-            if (r === repo || (r.entity === entity && (r.repo === repoName || r.slug === repoName))) {
+            if (
+              r === repo ||
+              (r.entity === entity &&
+                (r.repo === repoName || r.slug === repoName))
+            ) {
               return { ...r, files: filesFromNostr };
             }
             return r;
           });
           localStorage.setItem("gittr_repos", JSON.stringify(updated));
           result.reposMigrated++;
-          onProgress?.(`✅ Migrated ${entity}/${repoName} from Nostr: ${filesFromNostr.length} files`);
+          onProgress?.(
+            `✅ Migrated ${entity}/${repoName} from Nostr: ${filesFromNostr.length} files`
+          );
           continue; // Skip git-nostr-bridge if we got files from Nostr
         }
 
         // SECOND: Try to fetch from git-nostr-bridge API
         const branch = repo.defaultBranch || "main";
-        const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(branch)}`;
+        const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
+          ownerPubkey
+        )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
+          branch
+        )}`;
 
         const response = await fetch(url);
         const data = await response.json();
 
-        if (response.ok && data.files && Array.isArray(data.files) && data.files.length > 0) {
+        if (
+          response.ok &&
+          data.files &&
+          Array.isArray(data.files) &&
+          data.files.length > 0
+        ) {
           // Update the repo in localStorage
           const updated = repos.map((r: any) => {
-            if (r === repo || (r.entity === entity && (r.repo === repoName || r.slug === repoName))) {
+            if (
+              r === repo ||
+              (r.entity === entity &&
+                (r.repo === repoName || r.slug === repoName))
+            ) {
               return { ...r, files: data.files };
             }
             return r;
           });
           localStorage.setItem("gittr_repos", JSON.stringify(updated));
           result.reposMigrated++;
-          onProgress?.(`✅ Migrated ${entity}/${repoName} from git-nostr-bridge: ${data.files.length} files`);
+          onProgress?.(
+            `✅ Migrated ${entity}/${repoName} from git-nostr-bridge: ${data.files.length} files`
+          );
         } else {
           result.errors.push({
             repo: `${entity}/${repoName}`,
-            error: response.status === 404 ? "Repository not found in git-nostr-bridge (empty bare repo)" : "No files returned",
+            error:
+              response.status === 404
+                ? "Repository not found in git-nostr-bridge (empty bare repo)"
+                : "No files returned",
           });
-          onProgress?.(`⚠️ Could not migrate ${entity}/${repoName}: ${response.status === 404 ? "repo exists but is empty (no commits pushed yet)" : "no files"}`);
+          onProgress?.(
+            `⚠️ Could not migrate ${entity}/${repoName}: ${
+              response.status === 404
+                ? "repo exists but is empty (no commits pushed yet)"
+                : "no files"
+            }`
+          );
         }
       } catch (error: any) {
         result.errors.push({
@@ -203,11 +248,12 @@ export async function migrateRepoFiles(
       }
     }
 
-    onProgress?.(`Migration complete: ${result.reposMigrated}/${result.reposWithoutFiles} repos migrated`);
+    onProgress?.(
+      `Migration complete: ${result.reposMigrated}/${result.reposWithoutFiles} repos migrated`
+    );
     return result;
   } catch (error: any) {
     console.error("❌ [Migration] Error during file migration:", error);
     return result;
   }
 }
-

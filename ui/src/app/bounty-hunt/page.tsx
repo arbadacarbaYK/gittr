@@ -1,13 +1,32 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
-import Link from "next/link";
-import { Search, Coins, CircleDot, GitPullRequest, TrendingUp, Clock, DollarSign, Filter, ArrowUpDown, CheckCircle2, Tag, AlertCircle } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { formatDateTime24h, formatDate24h, formatTime24h } from "@/lib/utils/date-format";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import {
+  formatDate24h,
+  formatDateTime24h,
+  formatTime24h,
+} from "@/lib/utils/date-format";
+
+import {
+  AlertCircle,
+  ArrowUpDown,
+  CheckCircle2,
+  CircleDot,
+  Clock,
+  Coins,
+  DollarSign,
+  Filter,
+  GitPullRequest,
+  Search,
+  Tag,
+  TrendingUp,
+} from "lucide-react";
+import Link from "next/link";
 
 interface BountyIssue {
   id: string;
@@ -31,7 +50,9 @@ type SortOption = "amount" | "date" | "repo";
 export default function BountyHuntPage() {
   const [search, setSearch] = useState("");
   const [bountyIssues, setBountyIssues] = useState<BountyIssue[]>([]);
-  const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "paid" | "released" | "offline">("all");
+  const [filterStatus, setFilterStatus] = useState<
+    "all" | "pending" | "paid" | "released" | "offline"
+  >("all");
   const [sortBy, setSortBy] = useState<SortOption>("amount");
 
   const loadBountyIssues = useCallback(() => {
@@ -51,17 +72,20 @@ export default function BountyHuntPage() {
 
         // Load linked PRs for this repo
         const prKey = `gittr_prs__${entity}__${repoName}`;
-        const repoPRs = JSON.parse(localStorage.getItem(prKey) || "[]") as any[];
-        
+        const repoPRs = JSON.parse(
+          localStorage.getItem(prKey) || "[]"
+        ) as any[];
+
         issues.forEach((issue: any) => {
           if (issue.bountyAmount || issue.bountyStatus) {
             // Find PR linked to this issue
-            const linkedPR = repoPRs.find((pr: any) => 
-              pr.linkedIssueId === issue.id || 
-              pr.issueId === issue.id ||
-              pr.linkedIssue === issue.id
+            const linkedPR = repoPRs.find(
+              (pr: any) =>
+                pr.linkedIssueId === issue.id ||
+                pr.issueId === issue.id ||
+                pr.linkedIssue === issue.id
             );
-            
+
             allIssues.push({
               id: issue.id || issue.number,
               title: issue.title,
@@ -74,7 +98,7 @@ export default function BountyHuntPage() {
               status: issue.status || "open",
               createdAt: issue.createdAt || Date.now(),
               labels: issue.labels || [],
-              linkedPR: linkedPR ? (linkedPR.id || linkedPR.number) : undefined,
+              linkedPR: linkedPR ? linkedPR.id || linkedPR.number : undefined,
               linkedPRTitle: linkedPR?.title,
               linkedPRAuthor: linkedPR?.author,
             });
@@ -85,11 +109,19 @@ export default function BountyHuntPage() {
       // Initial sort - will be re-sorted based on sortBy state
       // Sort by bounty amount (highest first), then by status (paid > pending > released)
       allIssues.sort((a, b) => {
-        const statusOrder: Record<string, number> = { paid: 0, pending: 1, released: 2, offline: 3 };
+        const statusOrder: Record<string, number> = {
+          paid: 0,
+          pending: 1,
+          released: 2,
+          offline: 3,
+        };
         if (a.bountyAmount !== b.bountyAmount) {
           return b.bountyAmount - a.bountyAmount;
         }
-        return (statusOrder[a.bountyStatus] || 999) - (statusOrder[b.bountyStatus] || 999);
+        return (
+          (statusOrder[a.bountyStatus] || 999) -
+          (statusOrder[b.bountyStatus] || 999)
+        );
       });
 
       setBountyIssues(allIssues);
@@ -130,9 +162,11 @@ export default function BountyHuntPage() {
   // Get all unique author pubkeys (including linked PR authors, only full 64-char pubkeys for metadata lookup)
   const authorPubkeys = useMemo(() => {
     const pubkeys = new Set<string>();
-    bountyIssues.forEach(issue => {
-      if (issue.author && /^[a-f0-9]{64}$/i.test(issue.author)) pubkeys.add(issue.author);
-      if (issue.linkedPRAuthor && /^[a-f0-9]{64}$/i.test(issue.linkedPRAuthor)) pubkeys.add(issue.linkedPRAuthor);
+    bountyIssues.forEach((issue) => {
+      if (issue.author && /^[a-f0-9]{64}$/i.test(issue.author))
+        pubkeys.add(issue.author);
+      if (issue.linkedPRAuthor && /^[a-f0-9]{64}$/i.test(issue.linkedPRAuthor))
+        pubkeys.add(issue.linkedPRAuthor);
     });
     return Array.from(pubkeys);
   }, [bountyIssues]);
@@ -145,19 +179,21 @@ export default function BountyHuntPage() {
 
     // Filter by status
     if (filterStatus !== "all") {
-      filtered = filtered.filter(issue => issue.bountyStatus === filterStatus);
+      filtered = filtered.filter(
+        (issue) => issue.bountyStatus === filterStatus
+      );
     }
 
     // Filter by search query
     if (search.trim()) {
       const query = search.toLowerCase();
-      filtered = filtered.filter(issue => {
+      filtered = filtered.filter((issue) => {
         return (
           issue.title.toLowerCase().includes(query) ||
           `${issue.entity}/${issue.repo}`.toLowerCase().includes(query) ||
           issue.author.toLowerCase().includes(query) ||
           issue.number.toLowerCase().includes(query) ||
-          issue.labels?.some(label => label.toLowerCase().includes(query))
+          issue.labels?.some((label) => label.toLowerCase().includes(query))
         );
       });
     }
@@ -166,11 +202,19 @@ export default function BountyHuntPage() {
     filtered.sort((a, b) => {
       if (sortBy === "amount") {
         // Highest amount first, then by status
-        const statusOrder: Record<string, number> = { paid: 0, pending: 1, released: 2, offline: 3 };
+        const statusOrder: Record<string, number> = {
+          paid: 0,
+          pending: 1,
+          released: 2,
+          offline: 3,
+        };
         if (a.bountyAmount !== b.bountyAmount) {
           return b.bountyAmount - a.bountyAmount;
         }
-        return (statusOrder[a.bountyStatus] || 999) - (statusOrder[b.bountyStatus] || 999);
+        return (
+          (statusOrder[a.bountyStatus] || 999) -
+          (statusOrder[b.bountyStatus] || 999)
+        );
       } else if (sortBy === "date") {
         // Newest first
         return b.createdAt - a.createdAt;
@@ -187,15 +231,19 @@ export default function BountyHuntPage() {
   }, [bountyIssues, filterStatus, search, sortBy]);
 
   const totalBounties = useMemo(() => {
-    return filteredAndSortedIssues.reduce((sum, issue) => sum + issue.bountyAmount, 0);
+    return filteredAndSortedIssues.reduce(
+      (sum, issue) => sum + issue.bountyAmount,
+      0
+    );
   }, [filteredAndSortedIssues]);
 
   const statusCounts = useMemo(() => {
     return {
-      pending: bountyIssues.filter(i => i.bountyStatus === "pending").length,
-      paid: bountyIssues.filter(i => i.bountyStatus === "paid").length,
-      released: bountyIssues.filter(i => i.bountyStatus === "released").length,
-      offline: bountyIssues.filter(i => i.bountyStatus === "offline").length,
+      pending: bountyIssues.filter((i) => i.bountyStatus === "pending").length,
+      paid: bountyIssues.filter((i) => i.bountyStatus === "paid").length,
+      released: bountyIssues.filter((i) => i.bountyStatus === "released")
+        .length,
+      offline: bountyIssues.filter((i) => i.bountyStatus === "offline").length,
     };
   }, [bountyIssues]);
 
@@ -207,24 +255,33 @@ export default function BountyHuntPage() {
           Bounty Hunt
         </h1>
         <p className="text-gray-400">
-          Find and claim bounties on open issues. Earn sats for solving problems!
+          Find and claim bounties on open issues. Earn sats for solving
+          problems!
         </p>
       </div>
 
       <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="border border-[#383B42] rounded p-4 bg-[#171B21]">
           <div className="text-sm text-gray-400 mb-1">Total Available</div>
-          <div className="text-2xl font-bold text-green-400">{totalBounties.toLocaleString()} sats</div>
+          <div className="text-2xl font-bold text-green-400">
+            {totalBounties.toLocaleString()} sats
+          </div>
         </div>
         <div className="border border-[#383B42] rounded p-4 bg-[#171B21]">
           <div className="text-sm text-gray-400 mb-1">Pending Payment</div>
           <div className="text-2xl font-bold text-yellow-400">
-            {bountyIssues.filter(i => i.bountyStatus === "pending").reduce((sum, i) => sum + i.bountyAmount, 0).toLocaleString()} sats
+            {bountyIssues
+              .filter((i) => i.bountyStatus === "pending")
+              .reduce((sum, i) => sum + i.bountyAmount, 0)
+              .toLocaleString()}{" "}
+            sats
           </div>
         </div>
         <div className="border border-[#383B42] rounded p-4 bg-[#171B21]">
           <div className="text-sm text-gray-400 mb-1">Available Bounties</div>
-          <div className="text-2xl font-bold text-purple-400">{statusCounts.paid}</div>
+          <div className="text-2xl font-bold text-purple-400">
+            {statusCounts.paid}
+          </div>
         </div>
         <div className="border border-[#383B42] rounded p-4 bg-[#171B21]">
           <div className="text-sm text-gray-400 mb-1">Total Bounties</div>
@@ -260,7 +317,7 @@ export default function BountyHuntPage() {
             </select>
           </div>
         </div>
-        
+
         {/* Filter Buttons */}
         <div className="flex flex-wrap gap-2">
           <button
@@ -327,7 +384,9 @@ export default function BountyHuntPage() {
         <div className="border border-[#383B42] rounded p-12 text-center">
           <Coins className="h-16 w-16 mx-auto mb-4 text-gray-500" />
           <h3 className="text-xl font-semibold mb-2 text-white">
-            {search.trim() ? "No bounties match your search" : "No bounties found"}
+            {search.trim()
+              ? "No bounties match your search"
+              : "No bounties found"}
           </h3>
           <p className="text-gray-400">
             {search.trim()
@@ -340,7 +399,7 @@ export default function BountyHuntPage() {
           {filteredAndSortedIssues.map((issue) => {
             const isHighValue = issue.bountyAmount >= 10000; // Highlight 10k+ sats
             const isAvailable = issue.bountyStatus === "paid";
-            
+
             return (
               <Link
                 key={`${issue.entity}/${issue.repo}/${issue.id}`}
@@ -357,7 +416,9 @@ export default function BountyHuntPage() {
                     <div className="flex items-center gap-2 mb-1">
                       <CircleDot
                         className={`h-4 w-4 ${
-                          issue.status === "open" ? "text-green-500" : "text-purple-500"
+                          issue.status === "open"
+                            ? "text-green-500"
+                            : "text-purple-500"
                         }`}
                       />
                       <Link
@@ -367,7 +428,9 @@ export default function BountyHuntPage() {
                       >
                         {issue.entity}/{issue.repo}
                       </Link>
-                      <span className="text-gray-500 text-sm">#{issue.number}</span>
+                      <span className="text-gray-500 text-sm">
+                        #{issue.number}
+                      </span>
                     </div>
                   </div>
                   <Badge
@@ -400,13 +463,20 @@ export default function BountyHuntPage() {
                 {issue.labels && issue.labels.length > 0 && (
                   <div className="flex flex-wrap gap-1 mb-3">
                     {issue.labels.slice(0, 3).map((label, idx) => (
-                      <Badge key={idx} variant="outline" className="text-xs border-purple-700 text-purple-400">
+                      <Badge
+                        key={idx}
+                        variant="outline"
+                        className="text-xs border-purple-700 text-purple-400"
+                      >
                         <Tag className="h-3 w-3 mr-1" />
                         {label}
                       </Badge>
                     ))}
                     {issue.labels.length > 3 && (
-                      <Badge variant="outline" className="text-xs border-gray-700 text-gray-400">
+                      <Badge
+                        variant="outline"
+                        className="text-xs border-gray-700 text-gray-400"
+                      >
                         +{issue.labels.length - 3}
                       </Badge>
                     )}
@@ -426,13 +496,18 @@ export default function BountyHuntPage() {
                         PR #{issue.linkedPR}
                       </Link>
                       {issue.linkedPRTitle && (
-                        <span className="text-gray-400">- {issue.linkedPRTitle}</span>
+                        <span className="text-gray-400">
+                          - {issue.linkedPRTitle}
+                        </span>
                       )}
                     </div>
                     {issue.linkedPRAuthor && (
                       <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                         By{" "}
-                        <Link href={`/${issue.linkedPRAuthor}`} className="hover:text-purple-400 flex items-center gap-1">
+                        <Link
+                          href={`/${issue.linkedPRAuthor}`}
+                          className="hover:text-purple-400 flex items-center gap-1"
+                        >
                           <Avatar className="h-3 w-3">
                             {(() => {
                               const meta = authorMetadata[issue.linkedPRAuthor];
@@ -443,8 +518,12 @@ export default function BountyHuntPage() {
                             })()}
                             <AvatarFallback className="bg-purple-600 text-white text-[8px]">
                               {(() => {
-                                const meta = authorMetadata[issue.linkedPRAuthor];
-                                const name = meta?.display_name || meta?.name || issue.linkedPRAuthor.slice(0, 8);
+                                const meta =
+                                  authorMetadata[issue.linkedPRAuthor];
+                                const name =
+                                  meta?.display_name ||
+                                  meta?.name ||
+                                  issue.linkedPRAuthor.slice(0, 8);
                                 return name.slice(0, 2).toUpperCase();
                               })()}
                             </AvatarFallback>
@@ -452,7 +531,11 @@ export default function BountyHuntPage() {
                           <span>
                             {(() => {
                               const meta = authorMetadata[issue.linkedPRAuthor];
-                              return meta?.display_name || meta?.name || issue.linkedPRAuthor.slice(0, 8) + "...";
+                              return (
+                                meta?.display_name ||
+                                meta?.name ||
+                                issue.linkedPRAuthor.slice(0, 8) + "..."
+                              );
                             })()}
                           </span>
                         </Link>
@@ -464,9 +547,11 @@ export default function BountyHuntPage() {
                 {/* Footer with amount and metadata */}
                 <div className="flex items-center justify-between pt-3 border-t border-[#383B42]">
                   <div className="flex items-center gap-3">
-                    <div className={`text-2xl font-bold ${
-                      isHighValue ? "text-yellow-400" : "text-green-400"
-                    }`}>
+                    <div
+                      className={`text-2xl font-bold ${
+                        isHighValue ? "text-yellow-400" : "text-green-400"
+                      }`}
+                    >
                       💰 {issue.bountyAmount.toLocaleString()}
                     </div>
                     <span className="text-xs text-gray-500">sats</span>
@@ -474,7 +559,10 @@ export default function BountyHuntPage() {
                   <div className="text-xs text-gray-400 text-right">
                     <div>{formatDate24h(issue.createdAt)}</div>
                     <div className="text-gray-500 flex items-center gap-1 justify-end">
-                      <Link href={`/${issue.author}`} className="hover:text-purple-400 flex items-center gap-1">
+                      <Link
+                        href={`/${issue.author}`}
+                        className="hover:text-purple-400 flex items-center gap-1"
+                      >
                         <Avatar className="h-3 w-3">
                           {(() => {
                             const meta = authorMetadata[issue.author];
@@ -486,7 +574,10 @@ export default function BountyHuntPage() {
                           <AvatarFallback className="bg-purple-600 text-white text-[8px]">
                             {(() => {
                               const meta = authorMetadata[issue.author];
-                              const name = meta?.display_name || meta?.name || issue.author.slice(0, 8);
+                              const name =
+                                meta?.display_name ||
+                                meta?.name ||
+                                issue.author.slice(0, 8);
                               return name.slice(0, 2).toUpperCase();
                             })()}
                           </AvatarFallback>
@@ -494,7 +585,11 @@ export default function BountyHuntPage() {
                         <span>
                           {(() => {
                             const meta = authorMetadata[issue.author];
-                            return meta?.display_name || meta?.name || issue.author.slice(0, 8) + "...";
+                            return (
+                              meta?.display_name ||
+                              meta?.name ||
+                              issue.author.slice(0, 8) + "..."
+                            );
                           })()}
                         </span>
                       </Link>
@@ -509,4 +604,3 @@ export default function BountyHuntPage() {
     </div>
   );
 }
-

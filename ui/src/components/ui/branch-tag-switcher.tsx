@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { GitBranch, Tag, Plus, Search, X } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,6 +11,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+
+import { GitBranch, Plus, Search, Tag, X } from "lucide-react";
 
 interface BranchTagSwitcherProps {
   branches: string[];
@@ -38,20 +40,24 @@ export function BranchTagSwitcher({
   const [newBranchName, setNewBranchName] = useState("");
 
   // Normalize branches and tags to strings
-  const normalizedBranches = branches.map(b => String(b || "")).filter(Boolean);
-  const normalizedTags = tags.map(t => {
-    if (typeof t === "string") return t;
-    if (typeof t === "object" && t !== null) {
-      const obj = t as { name?: string; tag?: string; [key: string]: any };
-      return obj.name || obj.tag || String(t);
-    }
-    return String(t);
-  }).filter(Boolean);
-  
-  const filteredBranches = normalizedBranches.filter(b =>
+  const normalizedBranches = branches
+    .map((b) => String(b || ""))
+    .filter(Boolean);
+  const normalizedTags = tags
+    .map((t) => {
+      if (typeof t === "string") return t;
+      if (typeof t === "object" && t !== null) {
+        const obj = t as { name?: string; tag?: string; [key: string]: any };
+        return obj.name || obj.tag || String(t);
+      }
+      return String(t);
+    })
+    .filter(Boolean);
+
+  const filteredBranches = normalizedBranches.filter((b) =>
     b.toLowerCase().includes(searchQuery.toLowerCase())
   );
-  const filteredTags = normalizedTags.filter(t =>
+  const filteredTags = normalizedTags.filter((t) =>
     t.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -134,7 +140,9 @@ export function BranchTagSwitcher({
                     <GitBranch className="h-3 w-3 text-gray-400" />
                     <span>{branch}</span>
                     {branch === defaultBranch && (
-                      <span className="text-[10px] text-purple-400">default</span>
+                      <span className="text-[10px] text-purple-400">
+                        default
+                      </span>
                     )}
                   </div>
                   {branch === selectedBranch && (
@@ -242,4 +250,3 @@ export function BranchTagSwitcher({
     </DropdownMenu>
   );
 }
-

@@ -1,12 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 
 import { MobileNav } from "@/components/mobile-nav";
 import { cn } from "@/lib/utils";
 
 import { Menu, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import Logo from "./logo";
 import SearchBar from "./search-bar";
@@ -36,7 +36,11 @@ export function MainNav({ items, children }: MainNavProps) {
     setShowMobileMenu(!showMobileMenu);
   };
 
-  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string, disabled?: boolean) => {
+  const handleNavClick = (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    href: string,
+    disabled?: boolean
+  ) => {
     if (disabled || href === "#") {
       e.preventDefault();
       return;

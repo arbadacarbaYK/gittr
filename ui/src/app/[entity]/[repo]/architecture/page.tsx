@@ -1,17 +1,27 @@
 "use client";
 
-import { useEffect, useState, useRef, use } from "react";
-import { useSearchParams } from "next/navigation";
-import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { getRepoOwnerPubkey, resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
+import { use, useEffect, useRef, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import {
+  type RepoFileEntry,
+  type StoredRepo,
+  loadRepoFiles,
+  loadStoredRepos,
+} from "@/lib/repos/storage";
 import {
   analyzeArchitecture,
-  generateMermaidDiagram,
   generateLayeredArchitecture,
+  generateMermaidDiagram,
 } from "@/lib/utils/architecture-generator";
-import { Loader2, Layers, AlertCircle, RefreshCw } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { loadStoredRepos, loadRepoFiles, type StoredRepo, type RepoFileEntry } from "@/lib/repos/storage";
+import {
+  getRepoOwnerPubkey,
+  resolveEntityToPubkey,
+} from "@/lib/utils/entity-resolver";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+
+import { AlertCircle, Layers, Loader2, RefreshCw } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 export default function ArchitecturePage({
   params,
@@ -26,7 +36,9 @@ export default function ArchitecturePage({
   const [error, setError] = useState<string | null>(null);
   const [mermaidDiagram, setMermaidDiagram] = useState<string>("");
   const [status, setStatus] = useState<string>("");
-  const [diagramType, setDiagramType] = useState<"structure" | "layered">("layered");
+  const [diagramType, setDiagramType] = useState<"structure" | "layered">(
+    "layered"
+  );
   const [filesFetched, setFilesFetched] = useState(false);
   const fetchedRef = useRef(false);
   const mermaidRef = useRef<any>(null);
@@ -39,220 +51,249 @@ export default function ArchitecturePage({
 
   // Render Mermaid diagram when ready
   useEffect(() => {
-    if (!mermaidDiagram || !mermaidRef.current || typeof window === "undefined") return;
+    if (!mermaidDiagram || !mermaidRef.current || typeof window === "undefined")
+      return;
 
     let isMounted = true;
 
     // Dynamically import Mermaid (client-side only)
-    import("mermaid").then((mermaidModule) => {
-      if (!isMounted || !mermaidRef.current) return;
-      
-      const mermaid = mermaidModule.default;
-      
-      // Initialize Mermaid with theme settings (only once)
-      if (!(window as any).__mermaidInitialized) {
-        mermaid.initialize({
-          startOnLoad: true,
-          theme: "dark",
-          themeVariables: {
-            primaryColor: "#8b5cf6",
-            primaryTextColor: "#fff",
-            primaryBorderColor: "#7c3aed",
-            primaryBorderWidth: "2px",
-            lineColor: "#64748b",
-            secondaryColor: "#1e293b",
-            tertiaryColor: "#0f172a",
-            background: "#0f172a",
-            mainBkg: "#1e293b",
-            secondBkg: "#22262C",
-            tertiaryBkg: "#0f172a",
-            textColor: "#fff",
-            clusterBkg: "#1e293b",
-            clusterBorder: "#7c3aed",
-            defaultLinkColor: "#64748b",
-            titleColor: "#fff",
-            edgeLabelBackground: "#1e293b",
-            nodeBkg: "#1e293b",
-            nodeBorder: "#7c3aed",
-            nodeTextColor: "#fff",
-          },
-          securityLevel: "loose",
-          flowchart: {
-            useMaxWidth: false, // Don't constrain width - let it fill
-            htmlLabels: true,
-            curve: "basis",
-            padding: 20,
-          },
-        });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (window as any).__mermaidInitialized = true;
-      }
+    import("mermaid")
+      .then((mermaidModule) => {
+        if (!isMounted || !mermaidRef.current) return;
 
-      if (!mermaidRef.current) return;
+        const mermaid = mermaidModule.default;
 
-      // Clear previous content
-      mermaidRef.current.innerHTML = "";
-
-      // Create a unique ID for this diagram
-      const diagramId = `mermaid-${Date.now()}`;
-      
-      // Create element with mermaid class and diagram content
-      const mermaidDiv = document.createElement("div");
-      mermaidDiv.id = diagramId;
-      mermaidDiv.className = "mermaid";
-      mermaidDiv.textContent = mermaidDiagram;
-      
-      mermaidRef.current.appendChild(mermaidDiv);
-      
-      // Add zoom and pan functionality after SVG is rendered
-      const setupZoomPan = () => {
-        const container = mermaidRef.current;
-        if (!container) return;
-        
-        const svg = container.querySelector("svg");
-        if (!svg) {
-          // SVG not ready yet, try again
-          setTimeout(setupZoomPan, 100);
-          return;
+        // Initialize Mermaid with theme settings (only once)
+        if (!(window as any).__mermaidInitialized) {
+          mermaid.initialize({
+            startOnLoad: true,
+            theme: "dark",
+            themeVariables: {
+              primaryColor: "#8b5cf6",
+              primaryTextColor: "#fff",
+              primaryBorderColor: "#7c3aed",
+              primaryBorderWidth: "2px",
+              lineColor: "#64748b",
+              secondaryColor: "#1e293b",
+              tertiaryColor: "#0f172a",
+              background: "#0f172a",
+              mainBkg: "#1e293b",
+              secondBkg: "#22262C",
+              tertiaryBkg: "#0f172a",
+              textColor: "#fff",
+              clusterBkg: "#1e293b",
+              clusterBorder: "#7c3aed",
+              defaultLinkColor: "#64748b",
+              titleColor: "#fff",
+              edgeLabelBackground: "#1e293b",
+              nodeBkg: "#1e293b",
+              nodeBorder: "#7c3aed",
+              nodeTextColor: "#fff",
+            },
+            securityLevel: "loose",
+            flowchart: {
+              useMaxWidth: false, // Don't constrain width - let it fill
+              htmlLabels: true,
+              curve: "basis",
+              padding: 20,
+            },
+          });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (window as any).__mermaidInitialized = true;
         }
-        
-        let scale = 1;
-        let panX = 0;
-        let panY = 0;
-        let isDragging = false;
-        let startX = 0;
-        let startY = 0;
-        
-        // Wrap SVG in a group for transform
-        const wrapper = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        wrapper.setAttribute("id", "mermaid-zoom-pan-wrapper");
-        while (svg.firstChild) {
-          wrapper.appendChild(svg.firstChild);
-        }
-        svg.appendChild(wrapper);
-        
-        // Center the diagram initially (wait for SVG to be fully rendered)
-        const centerDiagram = () => {
-          const svgRect = svg.getBoundingClientRect();
-          const containerRect = container.getBoundingClientRect();
-          
-          // Only center if SVG is smaller than container
-          if (svgRect.width > 0 && svgRect.width < containerRect.width) {
-            panX = (containerRect.width - svgRect.width) / 2;
-          }
-          if (svgRect.height > 0 && svgRect.height < containerRect.height) {
-            panY = (containerRect.height - svgRect.height) / 2;
-          }
-          
-          wrapper.setAttribute("transform", `translate(${panX}, ${panY}) scale(${scale})`);
-        };
-        
-        // Try to center immediately, then retry after a short delay
-        centerDiagram();
-        setTimeout(centerDiagram, 300);
-        
-        // Mouse wheel zoom
-        container.addEventListener("wheel", (e: WheelEvent) => {
-          e.preventDefault();
-          const delta = e.deltaY > 0 ? 0.9 : 1.1;
-          scale = Math.max(0.5, Math.min(3, scale * delta));
-          
-          wrapper.setAttribute("transform", `translate(${panX}, ${panY}) scale(${scale})`);
-        }, { passive: false });
-        
-        // Mouse drag pan
-        container.addEventListener("mousedown", (e: MouseEvent) => {
-          if (e.button === 0) { // Left mouse button
-            isDragging = true;
-            startX = e.clientX - panX;
-            startY = e.clientY - panY;
-            container.style.cursor = "grabbing";
-          }
-        });
-        
-        container.addEventListener("mousemove", (e: MouseEvent) => {
-          if (isDragging) {
-            panX = e.clientX - startX;
-            panY = e.clientY - startY;
-            wrapper.setAttribute("transform", `translate(${panX}, ${panY}) scale(${scale})`);
-          }
-        });
-        
-        container.addEventListener("mouseup", () => {
-          isDragging = false;
-          container.style.cursor = "grab";
-        });
-        
-        container.addEventListener("mouseleave", () => {
-          isDragging = false;
-          container.style.cursor = "grab";
-        });
-        
-        // Click on nodes
-        container.addEventListener("click", (e: MouseEvent) => {
-          const target = e.target as HTMLElement;
-          if (target.tagName === "text" || target.closest("g.node")) {
-            console.log("Node clicked:", target.textContent || target.getAttribute("data-label"));
-          }
-        });
-      };
 
-      // Render using mermaid.run() - check if it exists and handle both sync and async cases
-      try {
-        setTimeout(() => {
-          if (!isMounted || !mermaidRef.current) return;
-          
-          const element = document.getElementById(diagramId);
-          if (!element) {
-            console.error("Mermaid element not found");
+        if (!mermaidRef.current) return;
+
+        // Clear previous content
+        mermaidRef.current.innerHTML = "";
+
+        // Create a unique ID for this diagram
+        const diagramId = `mermaid-${Date.now()}`;
+
+        // Create element with mermaid class and diagram content
+        const mermaidDiv = document.createElement("div");
+        mermaidDiv.id = diagramId;
+        mermaidDiv.className = "mermaid";
+        mermaidDiv.textContent = mermaidDiagram;
+
+        mermaidRef.current.appendChild(mermaidDiv);
+
+        // Add zoom and pan functionality after SVG is rendered
+        const setupZoomPan = () => {
+          const container = mermaidRef.current;
+          if (!container) return;
+
+          const svg = container.querySelector("svg");
+          if (!svg) {
+            // SVG not ready yet, try again
+            setTimeout(setupZoomPan, 100);
             return;
           }
 
-          // Try mermaid.run() if available (Mermaid 11.x)
-          if (typeof mermaid.run === "function") {
-            try {
-              const result = mermaid.run({
-                querySelector: `#${diagramId}`,
-              });
-              
-              if (result && typeof result.then === "function") {
-                result.then(() => {
-                  if (!isMounted || !mermaidRef.current) return;
-                  console.log("✅ Mermaid diagram rendered via run()");
-                  // Setup zoom/pan after rendering
-                  setTimeout(setupZoomPan, 100);
-                }).catch((err) => {
-                  console.error("Mermaid run error:", err);
-                  setTimeout(setupZoomPan, 500);
+          let scale = 1;
+          let panX = 0;
+          let panY = 0;
+          let isDragging = false;
+          let startX = 0;
+          let startY = 0;
+
+          // Wrap SVG in a group for transform
+          const wrapper = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "g"
+          );
+          wrapper.setAttribute("id", "mermaid-zoom-pan-wrapper");
+          while (svg.firstChild) {
+            wrapper.appendChild(svg.firstChild);
+          }
+          svg.appendChild(wrapper);
+
+          // Center the diagram initially (wait for SVG to be fully rendered)
+          const centerDiagram = () => {
+            const svgRect = svg.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+
+            // Only center if SVG is smaller than container
+            if (svgRect.width > 0 && svgRect.width < containerRect.width) {
+              panX = (containerRect.width - svgRect.width) / 2;
+            }
+            if (svgRect.height > 0 && svgRect.height < containerRect.height) {
+              panY = (containerRect.height - svgRect.height) / 2;
+            }
+
+            wrapper.setAttribute(
+              "transform",
+              `translate(${panX}, ${panY}) scale(${scale})`
+            );
+          };
+
+          // Try to center immediately, then retry after a short delay
+          centerDiagram();
+          setTimeout(centerDiagram, 300);
+
+          // Mouse wheel zoom
+          container.addEventListener(
+            "wheel",
+            (e: WheelEvent) => {
+              e.preventDefault();
+              const delta = e.deltaY > 0 ? 0.9 : 1.1;
+              scale = Math.max(0.5, Math.min(3, scale * delta));
+
+              wrapper.setAttribute(
+                "transform",
+                `translate(${panX}, ${panY}) scale(${scale})`
+              );
+            },
+            { passive: false }
+          );
+
+          // Mouse drag pan
+          container.addEventListener("mousedown", (e: MouseEvent) => {
+            if (e.button === 0) {
+              // Left mouse button
+              isDragging = true;
+              startX = e.clientX - panX;
+              startY = e.clientY - panY;
+              container.style.cursor = "grabbing";
+            }
+          });
+
+          container.addEventListener("mousemove", (e: MouseEvent) => {
+            if (isDragging) {
+              panX = e.clientX - startX;
+              panY = e.clientY - startY;
+              wrapper.setAttribute(
+                "transform",
+                `translate(${panX}, ${panY}) scale(${scale})`
+              );
+            }
+          });
+
+          container.addEventListener("mouseup", () => {
+            isDragging = false;
+            container.style.cursor = "grab";
+          });
+
+          container.addEventListener("mouseleave", () => {
+            isDragging = false;
+            container.style.cursor = "grab";
+          });
+
+          // Click on nodes
+          container.addEventListener("click", (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            if (target.tagName === "text" || target.closest("g.node")) {
+              console.log(
+                "Node clicked:",
+                target.textContent || target.getAttribute("data-label")
+              );
+            }
+          });
+        };
+
+        // Render using mermaid.run() - check if it exists and handle both sync and async cases
+        try {
+          setTimeout(() => {
+            if (!isMounted || !mermaidRef.current) return;
+
+            const element = document.getElementById(diagramId);
+            if (!element) {
+              console.error("Mermaid element not found");
+              return;
+            }
+
+            // Try mermaid.run() if available (Mermaid 11.x)
+            if (typeof mermaid.run === "function") {
+              try {
+                const result = mermaid.run({
+                  querySelector: `#${diagramId}`,
                 });
-              } else {
-                // run() completed synchronously
-                console.log("✅ Mermaid diagram rendered via run() (sync)");
-                setTimeout(setupZoomPan, 100);
+
+                if (result && typeof result.then === "function") {
+                  result
+                    .then(() => {
+                      if (!isMounted || !mermaidRef.current) return;
+                      console.log("✅ Mermaid diagram rendered via run()");
+                      // Setup zoom/pan after rendering
+                      setTimeout(setupZoomPan, 100);
+                    })
+                    .catch((err) => {
+                      console.error("Mermaid run error:", err);
+                      setTimeout(setupZoomPan, 500);
+                    });
+                } else {
+                  // run() completed synchronously
+                  console.log("✅ Mermaid diagram rendered via run() (sync)");
+                  setTimeout(setupZoomPan, 100);
+                }
+              } catch (runErr) {
+                console.warn(
+                  "mermaid.run() failed, trying contentLoaded:",
+                  runErr
+                );
+                setTimeout(setupZoomPan, 500);
               }
-            } catch (runErr) {
-              console.warn("mermaid.run() failed, trying contentLoaded:", runErr);
+            } else {
+              // Older API - just let startOnLoad handle it
+              console.log("Using startOnLoad for Mermaid rendering");
               setTimeout(setupZoomPan, 500);
             }
-          } else {
-            // Older API - just let startOnLoad handle it
-            console.log("Using startOnLoad for Mermaid rendering");
-            setTimeout(setupZoomPan, 500);
+          }, 150);
+        } catch (err) {
+          console.error("Mermaid render error:", err);
+          if (mermaidRef.current && isMounted) {
+            const errorMessage =
+              err instanceof Error ? err.message : String(err);
+            mermaidRef.current.innerHTML = `<div class="text-red-400 p-4">Failed to render diagram: ${errorMessage}</div>`;
           }
-        }, 150);
-      } catch (err) {
-        console.error("Mermaid render error:", err);
-        if (mermaidRef.current && isMounted) {
-          const errorMessage = err instanceof Error ? err.message : String(err);
-          mermaidRef.current.innerHTML = `<div class="text-red-400 p-4">Failed to render diagram: ${errorMessage}</div>`;
         }
-      }
-    }).catch((err) => {
-      console.error("Failed to load Mermaid:", err);
-      if (mermaidRef.current && isMounted) {
-        mermaidRef.current.innerHTML = `<div class="text-red-400 p-4">Failed to load Mermaid library</div>`;
-      }
-    });
+      })
+      .catch((err) => {
+        console.error("Failed to load Mermaid:", err);
+        if (mermaidRef.current && isMounted) {
+          mermaidRef.current.innerHTML = `<div class="text-red-400 p-4">Failed to load Mermaid library</div>`;
+        }
+      });
 
     return () => {
       isMounted = false;
@@ -269,7 +310,11 @@ export default function ArchitecturePage({
       const repos = loadStoredRepos();
 
       // Get repo data
-      const repo = findRepoByEntityAndName<StoredRepo>(repos, resolvedParams.entity, resolvedParams.repo);
+      const repo = findRepoByEntityAndName<StoredRepo>(
+        repos,
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
       if (!repo) {
         throw new Error("Repository not found");
       }
@@ -277,20 +322,27 @@ export default function ArchitecturePage({
       setStatus("Resolving repository owner...");
       // getRepoOwnerPubkey expects (repo, entity) not (entity, repoName)
       let ownerPubkey = getRepoOwnerPubkey(repo, resolvedParams.entity);
-      
+
       // If not found in repo, try to resolve from entity directly
       if (!ownerPubkey) {
         ownerPubkey = resolveEntityToPubkey(resolvedParams.entity, repo);
       }
-      
+
       if (!ownerPubkey) {
         throw new Error("Could not resolve repository owner");
       }
 
       setStatus("Fetching file list...");
-      const files = await fetchFileList(ownerPubkey, resolvedParams.repo, branch, repo);
+      const files = await fetchFileList(
+        ownerPubkey,
+        resolvedParams.repo,
+        branch,
+        repo
+      );
       if (!files || files.length === 0) {
-        throw new Error("No files found in repository. The repository may be empty or not yet cloned by git-nostr-bridge.");
+        throw new Error(
+          "No files found in repository. The repository may be empty or not yet cloned by git-nostr-bridge."
+        );
       }
 
       setStatus(`Analyzing ${files.length} files for architecture...`);
@@ -311,7 +363,9 @@ export default function ArchitecturePage({
       setStatus("Architecture diagram generated");
     } catch (err: any) {
       console.error("Failed to load architecture:", err);
-      setError(err instanceof Error ? err.message : "Failed to load architecture");
+      setError(
+        err instanceof Error ? err.message : "Failed to load architecture"
+      );
     } finally {
       setLoading(false);
     }
@@ -326,34 +380,57 @@ export default function ArchitecturePage({
     // Priority 1: Check if repo has files in localStorage (from Nostr events or GitHub import)
     // CRITICAL: Use files immediately if available - don't wait for all relays
     if (repo?.files && Array.isArray(repo.files) && repo.files.length > 0) {
-      console.log(`✅ [Architecture] Using ${repo.files.length} files from repo data (immediate)`);
+      console.log(
+        `✅ [Architecture] Using ${repo.files.length} files from repo data (immediate)`
+      );
       return repo.files;
     }
-    
+
     // Also check localStorage directly in case repo object is stale
     try {
       const allRepos = loadStoredRepos();
       const matchingRepo = allRepos.find((r) => {
         const repoEntity = r.entity || r.ownerPubkey;
-        const normalizedEntity = resolvedParams.entity.startsWith("npub") 
-          ? resolvedParams.entity 
-          : (repoEntity && /^[0-9a-f]{64}$/i.test(repoEntity) ? repoEntity : resolvedParams.entity);
-        return (normalizedEntity === resolvedParams.entity || repoEntity === resolvedParams.entity) && 
-               (r.repo === resolvedParams.repo || r.name === resolvedParams.repo || r.slug === resolvedParams.repo);
+        const normalizedEntity = resolvedParams.entity.startsWith("npub")
+          ? resolvedParams.entity
+          : repoEntity && /^[0-9a-f]{64}$/i.test(repoEntity)
+          ? repoEntity
+          : resolvedParams.entity;
+        return (
+          (normalizedEntity === resolvedParams.entity ||
+            repoEntity === resolvedParams.entity) &&
+          (r.repo === resolvedParams.repo ||
+            r.name === resolvedParams.repo ||
+            r.slug === resolvedParams.repo)
+        );
       });
-      
-      if (matchingRepo?.files && Array.isArray(matchingRepo.files) && matchingRepo.files.length > 0) {
-        console.log(`✅ [Architecture] Using ${matchingRepo.files.length} files from localStorage (immediate)`);
+
+      if (
+        matchingRepo?.files &&
+        Array.isArray(matchingRepo.files) &&
+        matchingRepo.files.length > 0
+      ) {
+        console.log(
+          `✅ [Architecture] Using ${matchingRepo.files.length} files from localStorage (immediate)`
+        );
         return matchingRepo.files;
       }
-      
+
       // CRITICAL: Check separate files storage key (for optimized storage)
       if (matchingRepo) {
         try {
-          const storedFiles = loadRepoFiles(resolvedParams.entity, resolvedParams.repo);
+          const storedFiles = loadRepoFiles(
+            resolvedParams.entity,
+            resolvedParams.repo
+          );
           if (storedFiles && storedFiles.length > 0) {
-            console.log(`✅ [Architecture] Using ${storedFiles.length} files from separate storage key`);
-            return storedFiles.map((f: RepoFileEntry) => ({ type: f.type, path: f.path }));
+            console.log(
+              `✅ [Architecture] Using ${storedFiles.length} files from separate storage key`
+            );
+            return storedFiles.map((f: RepoFileEntry) => ({
+              type: f.type,
+              path: f.path,
+            }));
           }
         } catch (e) {
           console.warn("Failed to check separate files storage:", e);
@@ -366,23 +443,38 @@ export default function ArchitecturePage({
     // Priority 2: Try GitHub API if sourceUrl is available
     if (repo?.sourceUrl) {
       try {
-        const githubMatch = repo.sourceUrl.match(/github\.com\/([^\/]+)\/([^\/]+)/);
+        const githubMatch = repo.sourceUrl.match(
+          /github\.com\/([^\/]+)\/([^\/]+)/
+        );
         if (githubMatch) {
           const [, owner, repoName] = githubMatch;
           const response = await fetch(
-            `https://api.github.com/repos/${owner}/${repoName}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
-            { headers: { "User-Agent": "gittr-space", Accept: "application/vnd.github.v3+json" } }
+            `https://api.github.com/repos/${owner}/${repoName}/git/trees/${encodeURIComponent(
+              branch
+            )}?recursive=1`,
+            {
+              headers: {
+                "User-Agent": "gittr-space",
+                Accept: "application/vnd.github.v3+json",
+              },
+            }
           );
           if (response.ok) {
             const data = await response.json();
             if (data.tree) {
               const files = data.tree
                 .filter((n: any) => n.type === "blob")
-                .map((n: any) => ({ type: "file", path: n.path, size: n.size }));
+                .map((n: any) => ({
+                  type: "file",
+                  path: n.path,
+                  size: n.size,
+                }));
               const dirs = data.tree
                 .filter((n: any) => n.type === "tree")
                 .map((n: any) => ({ type: "dir", path: n.path }));
-              console.log(`✅ [Architecture] Fetched ${files.length} files from GitHub`);
+              console.log(
+                `✅ [Architecture] Fetched ${files.length} files from GitHub`
+              );
               return [...dirs, ...files];
             }
           }
@@ -395,12 +487,18 @@ export default function ArchitecturePage({
     // Priority 3: Try git-nostr-bridge API (for cloned repos)
     try {
       const response = await fetch(
-        `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(branch)}`
+        `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
+          ownerPubkey
+        )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
+          branch
+        )}`
       );
       if (response.ok) {
         const data = await response.json();
         if (data.files && Array.isArray(data.files) && data.files.length > 0) {
-          console.log(`✅ [Architecture] Fetched ${data.files.length} files from git-nostr-bridge`);
+          console.log(
+            `✅ [Architecture] Fetched ${data.files.length} files from git-nostr-bridge`
+          );
           return data.files;
         }
       } else {
@@ -527,11 +625,14 @@ export default function ArchitecturePage({
               overflow-y: auto;
             }
           `}</style>
-          <div className="mermaid-architecture-wrapper border border-[#383B42] rounded-md bg-[#0f172a]" style={{ height: "800px", position: "relative" }}>
-            <div 
-              ref={mermaidRef} 
+          <div
+            className="mermaid-architecture-wrapper border border-[#383B42] rounded-md bg-[#0f172a]"
+            style={{ height: "800px", position: "relative" }}
+          >
+            <div
+              ref={mermaidRef}
               className="mermaid-architecture-container w-full h-full overflow-auto cursor-grab active:cursor-grabbing"
-              style={{ 
+              style={{
                 minHeight: "800px",
                 scrollbarWidth: "thin",
                 scrollbarColor: "#4b5563 transparent",
@@ -540,7 +641,7 @@ export default function ArchitecturePage({
                 zIndex: 1,
                 padding: "20px",
                 width: "100%",
-                height: "100%"
+                height: "100%",
               }}
             />
           </div>
@@ -556,4 +657,3 @@ export default function ArchitecturePage({
     </div>
   );
 }
-

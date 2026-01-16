@@ -1,9 +1,20 @@
 "use client";
 
-import { useEffect, useState, useRef, useMemo, useCallback } from "react";
-import { Search, File, Folder, FileText, Code, Image, FileJson, FileType } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+
+import {
+  Code,
+  File,
+  FileJson,
+  FileText,
+  FileType,
+  Folder,
+  Image,
+  Search,
+} from "lucide-react";
 
 interface FileItem {
   type: "file" | "dir";
@@ -24,16 +35,16 @@ function fuzzyScore(path: string, query: string | undefined): number {
   if (!query || !query.trim()) return 0;
   const lowerPath = path.toLowerCase();
   const lowerQuery = query.toLowerCase().trim();
-  
+
   // Exact match gets highest score
   if (lowerPath === lowerQuery) return 1000;
-  
+
   // Starts with query
   if (lowerPath.startsWith(lowerQuery)) return 500;
-  
+
   // Contains query
   if (lowerPath.includes(lowerQuery)) return 100;
-  
+
   // Fuzzy match: check if all query characters appear in order
   let pathIndex = 0;
   let score = 0;
@@ -43,14 +54,14 @@ function fuzzyScore(path: string, query: string | undefined): number {
     const foundIndex = lowerPath.indexOf(char, pathIndex);
     if (foundIndex === -1) return 0; // Not a match
     // Prefer matches that are close together
-    score += (foundIndex - pathIndex === 0 ? 10 : 5);
+    score += foundIndex - pathIndex === 0 ? 10 : 5;
     pathIndex = foundIndex + 1;
   }
-  
+
   // Bonus for filename match vs path match
   const fileName = path.split("/").pop() || "";
   if (fileName.toLowerCase().includes(lowerQuery)) score += 20;
-  
+
   return score;
 }
 
@@ -58,37 +69,55 @@ function fuzzyScore(path: string, query: string | undefined): number {
 function getFileIcon(path: string) {
   const ext = path.split(".").pop()?.toLowerCase() || "";
   const fileName = path.split("/").pop()?.toLowerCase() || "";
-  
+
   if (fileName === "readme.md" || fileName.endsWith(".md")) {
     return FileText;
   }
-  
-  const codeExts = ["js", "jsx", "ts", "tsx", "py", "rb", "go", "rs", "java", "cpp", "c", "h", "hpp"];
+
+  const codeExts = [
+    "js",
+    "jsx",
+    "ts",
+    "tsx",
+    "py",
+    "rb",
+    "go",
+    "rs",
+    "java",
+    "cpp",
+    "c",
+    "h",
+    "hpp",
+  ];
   if (codeExts.includes(ext)) {
     return Code;
   }
-  
+
   const imageExts = ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"];
   if (imageExts.includes(ext)) {
     return Image;
   }
-  
-  if (ext === "json" || fileName === "package.json" || fileName === "tsconfig.json") {
+
+  if (
+    ext === "json" ||
+    fileName === "package.json" ||
+    fileName === "tsconfig.json"
+  ) {
     return FileJson;
   }
-  
+
   return File;
 }
 
 // Highlight matching text in path
 function highlightMatch(path: string, query: string): JSX.Element {
   if (!query) return <span>{path}</span>;
-  
+
   const lowerPath = path.toLowerCase();
   const lowerQuery = query.toLowerCase();
   const parts: (string | JSX.Element)[] = [];
   let lastIndex = 0;
-  
+
   // Find all matches (case-insensitive)
   let index = lowerPath.indexOf(lowerQuery, lastIndex);
   while (index !== -1) {
@@ -98,19 +127,22 @@ function highlightMatch(path: string, query: string): JSX.Element {
     }
     // Add highlighted match
     parts.push(
-      <span key={index} className="bg-yellow-500/30 text-yellow-200 font-semibold">
+      <span
+        key={index}
+        className="bg-yellow-500/30 text-yellow-200 font-semibold"
+      >
         {path.substring(index, index + query.length)}
       </span>
     );
     lastIndex = index + query.length;
     index = lowerPath.indexOf(lowerQuery, lastIndex);
   }
-  
+
   // Add remaining text
   if (lastIndex < path.length) {
     parts.push(path.substring(lastIndex));
   }
-  
+
   return <>{parts}</>;
 }
 
@@ -128,12 +160,12 @@ export function FuzzyFileFinder({
 
   // Get all file paths (filter out directories or include them as clickable)
   const allFiles = useMemo(() => {
-    return files.filter(f => f.type === "file").map(f => f.path);
+    return files.filter((f) => f.type === "file").map((f) => f.path);
   }, [files]);
 
   // Load recent files from localStorage
   const recentFiles = useMemo(() => {
-    if (typeof window === 'undefined') return [] as string[];
+    if (typeof window === "undefined") return [] as string[];
     try {
       const stored = localStorage.getItem(`gittr_recent_files_${currentPath}`);
       if (stored) {
@@ -149,8 +181,8 @@ export function FuzzyFileFinder({
     if (!query.trim()) {
       // Show recent files when query is empty
       return recentFiles
-        .map(path => ({ path, score: 999 }))
-        .filter(item => allFiles.includes(item.path))
+        .map((path) => ({ path, score: 999 }))
+        .filter((item) => allFiles.includes(item.path))
         .slice(0, 20);
     }
 
@@ -160,7 +192,12 @@ export function FuzzyFileFinder({
         score: fuzzyScore(path, query),
       }))
       .filter((item: { path: string; score: number }) => item.score > 0)
-      .sort((a: { path: string; score: number }, b: { path: string; score: number }) => b.score - a.score)
+      .sort(
+        (
+          a: { path: string; score: number },
+          b: { path: string; score: number }
+        ) => b.score - a.score
+      )
       .slice(0, 50);
   }, [query, allFiles, recentFiles]);
 
@@ -170,24 +207,30 @@ export function FuzzyFileFinder({
   }, [query, filteredFiles.length]);
 
   // Save file to recent files
-  const saveToRecent = useCallback((path: string) => {
-    if (typeof window === 'undefined') return;
-    try {
-      const key = `gittr_recent_files_${currentPath}`;
-      const stored = localStorage.getItem(key);
-      const recent = stored ? JSON.parse(stored) : [];
-      const updated = recent.filter((p: string) => p !== path);
-      updated.unshift(path); // Add to front
-      localStorage.setItem(key, JSON.stringify(updated.slice(0, 20))); // Keep last 20
-    } catch {}
-  }, [currentPath]);
+  const saveToRecent = useCallback(
+    (path: string) => {
+      if (typeof window === "undefined") return;
+      try {
+        const key = `gittr_recent_files_${currentPath}`;
+        const stored = localStorage.getItem(key);
+        const recent = stored ? JSON.parse(stored) : [];
+        const updated = recent.filter((p: string) => p !== path);
+        updated.unshift(path); // Add to front
+        localStorage.setItem(key, JSON.stringify(updated.slice(0, 20))); // Keep last 20
+      } catch {}
+    },
+    [currentPath]
+  );
 
-  const handleSelectFile = useCallback((path: string) => {
-    saveToRecent(path);
-    onSelectFile(path);
-    onClose();
-    setQuery("");
-  }, [onSelectFile, onClose, saveToRecent]);
+  const handleSelectFile = useCallback(
+    (path: string) => {
+      saveToRecent(path);
+      onSelectFile(path);
+      onClose();
+      setQuery("");
+    },
+    [onSelectFile, onClose, saveToRecent]
+  );
 
   // Focus input when modal opens
   useEffect(() => {
@@ -212,7 +255,7 @@ export function FuzzyFileFinder({
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setSelectedIndex((prev) => 
+        setSelectedIndex((prev) =>
           prev < filteredFiles.length - 1 ? prev + 1 : prev
         );
         return;
@@ -244,9 +287,14 @@ export function FuzzyFileFinder({
   // Scroll selected item into view
   useEffect(() => {
     if (resultsRef.current && filteredFiles.length > 0) {
-      const selectedElement = resultsRef.current.children[selectedIndex] as HTMLElement;
+      const selectedElement = resultsRef.current.children[
+        selectedIndex
+      ] as HTMLElement;
       if (selectedElement) {
-        selectedElement.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        selectedElement.scrollIntoView({
+          block: "nearest",
+          behavior: "smooth",
+        });
       }
     }
   }, [selectedIndex, filteredFiles.length]);
@@ -281,49 +329,51 @@ export function FuzzyFileFinder({
         </div>
 
         {/* Results */}
-        <div
-          ref={resultsRef}
-          className="max-h-[60vh] overflow-y-auto"
-        >
+        <div ref={resultsRef} className="max-h-[60vh] overflow-y-auto">
           {filteredFiles.length === 0 ? (
             <div className="px-4 py-8 text-center text-gray-400">
-              {query.trim() ? "No files found" : "Start typing to search files..."}
+              {query.trim()
+                ? "No files found"
+                : "Start typing to search files..."}
             </div>
           ) : (
             <ul className="py-2">
-              {filteredFiles.map((item: { path: string; score: number }, index: number) => {
-                const Icon = getFileIcon(item.path);
-                const fileName = item.path.split("/").pop() || "";
-                const dirPath = item.path.split("/").slice(0, -1).join("/");
-                
-                return (
-                  <li
-                    key={item.path}
-                    className={cn(
-                      "flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-white/5",
-                      index === selectedIndex && "bg-purple-900/30 border-l-2 border-purple-500"
-                    )}
-                    onClick={() => handleSelectFile(item.path)}
-                  >
-                    <Icon className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-white font-medium truncate">
-                        {highlightMatch(fileName, query)}
-                      </div>
-                      {dirPath && (
-                        <div className="text-xs text-gray-500 truncate">
-                          {dirPath}
-                        </div>
+              {filteredFiles.map(
+                (item: { path: string; score: number }, index: number) => {
+                  const Icon = getFileIcon(item.path);
+                  const fileName = item.path.split("/").pop() || "";
+                  const dirPath = item.path.split("/").slice(0, -1).join("/");
+
+                  return (
+                    <li
+                      key={item.path}
+                      className={cn(
+                        "flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-white/5",
+                        index === selectedIndex &&
+                          "bg-purple-900/30 border-l-2 border-purple-500"
                       )}
-                    </div>
-                    {index < 10 && !query.trim() && (
-                      <span className="text-xs text-gray-500">
-                        {index + 1}
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
+                      onClick={() => handleSelectFile(item.path)}
+                    >
+                      <Icon className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white font-medium truncate">
+                          {highlightMatch(fileName, query)}
+                        </div>
+                        {dirPath && (
+                          <div className="text-xs text-gray-500 truncate">
+                            {dirPath}
+                          </div>
+                        )}
+                      </div>
+                      {index < 10 && !query.trim() && (
+                        <span className="text-xs text-gray-500">
+                          {index + 1}
+                        </span>
+                      )}
+                    </li>
+                  );
+                }
+              )}
             </ul>
           )}
         </div>
@@ -335,10 +385,12 @@ export function FuzzyFileFinder({
             <span>↵ Open</span>
             <span>Esc Close</span>
           </div>
-          <span>{filteredFiles.length} {filteredFiles.length === 1 ? "file" : "files"}</span>
+          <span>
+            {filteredFiles.length}{" "}
+            {filteredFiles.length === 1 ? "file" : "files"}
+          </span>
         </div>
       </div>
     </div>
   );
 }
-

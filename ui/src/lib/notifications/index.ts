@@ -1,8 +1,8 @@
 // Main notification service - dispatches notifications to enabled channels
-import { loadNotificationPrefs, shouldNotify, type EventKey } from "./prefs";
-import { sendNostrDM, type NotificationData } from "./nostr-dm";
-import { sendTelegramDM } from "./telegram-dm";
+import { type NotificationData, sendNostrDM } from "./nostr-dm";
+import { type EventKey, loadNotificationPrefs, shouldNotify } from "./prefs";
 import { sendTelegramChannelAnnouncement } from "./telegram-channel";
+import { sendTelegramDM } from "./telegram-dm";
 
 export interface NotificationEventData {
   eventType: EventKey;
@@ -18,7 +18,9 @@ export interface NotificationEventData {
  * Send notifications to a user based on their preferences
  * @param data - Notification event data
  */
-export async function sendNotification(data: NotificationEventData): Promise<void> {
+export async function sendNotification(
+  data: NotificationEventData
+): Promise<void> {
   try {
     // Load user's notification preferences
     const prefs = loadNotificationPrefs(data.recipientPubkey);
@@ -52,7 +54,10 @@ export async function sendNotification(data: NotificationEventData): Promise<voi
 
     // Send public channel announcement for bounties (in addition to DM if enabled)
     // Bounties are public events that should be announced to the community
-    if (data.eventType === "bounty_funded" || data.eventType === "bounty_released") {
+    if (
+      data.eventType === "bounty_funded" ||
+      data.eventType === "bounty_released"
+    ) {
       await sendTelegramChannelAnnouncement(notificationData);
     }
   } catch (error) {
@@ -77,9 +82,10 @@ export function formatNotificationMessage(
     url?: string;
   }
 ): { title: string; message: string; url?: string } {
-  const repo = context.repoEntity && context.repoName 
-    ? `${context.repoEntity}/${context.repoName}`
-    : "repository";
+  const repo =
+    context.repoEntity && context.repoName
+      ? `${context.repoEntity}/${context.repoName}`
+      : "repository";
 
   switch (eventType) {
     case "issue_opened":
@@ -113,7 +119,9 @@ export function formatNotificationMessage(
     case "pr_merged":
       return {
         title: `Pull request merged in ${repo}`,
-        message: `Your pull request "${context.prTitle || ""}" has been merged!`,
+        message: `Your pull request "${
+          context.prTitle || ""
+        }" has been merged!`,
         url: context.url,
       };
 
@@ -134,14 +142,22 @@ export function formatNotificationMessage(
     case "bounty_cancelled":
       return {
         title: `Bounty cancelled on issue #${context.issueId}`,
-        message: `The bounty on "${context.issueTitle || "the issue"}" in ${repo} was cancelled because the issue was closed without a PR`,
+        message: `The bounty on "${
+          context.issueTitle || "the issue"
+        }" in ${repo} was cancelled because the issue was closed without a PR`,
         url: context.url,
       };
 
     case "mention":
       return {
         title: `You were mentioned in ${repo}`,
-        message: `${context.authorName || "Someone"} mentioned you in ${context.issueId ? `issue #${context.issueId}` : context.prId ? `PR #${context.prId}` : "a post"}`,
+        message: `${context.authorName || "Someone"} mentioned you in ${
+          context.issueId
+            ? `issue #${context.issueId}`
+            : context.prId
+            ? `PR #${context.prId}`
+            : "a post"
+        }`,
         url: context.url,
       };
 
@@ -153,4 +169,3 @@ export function formatNotificationMessage(
       };
   }
 }
-

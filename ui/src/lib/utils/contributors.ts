@@ -49,33 +49,47 @@ export function sanitizeContributors<T extends ContributorLike>(
     const clone: T = { ...entry };
 
     // Normalize strings
-    const rawPubkey = typeof clone.pubkey === "string" ? clone.pubkey.trim() : "";
-    const pubkey = rawPubkey && HEX_64_REGEX.test(rawPubkey) ? rawPubkey.toLowerCase() : undefined;
+    const rawPubkey =
+      typeof clone.pubkey === "string" ? clone.pubkey.trim() : "";
+    const pubkey =
+      rawPubkey && HEX_64_REGEX.test(rawPubkey)
+        ? rawPubkey.toLowerCase()
+        : undefined;
     clone.pubkey = pubkey || undefined;
 
-    const rawLogin = typeof clone.githubLogin === "string" ? clone.githubLogin.trim() : "";
+    const rawLogin =
+      typeof clone.githubLogin === "string" ? clone.githubLogin.trim() : "";
     const githubLogin = rawLogin ? rawLogin.toLowerCase() : undefined;
     clone.githubLogin = githubLogin || undefined;
 
     const name = typeof clone.name === "string" ? clone.name.trim() : "";
     clone.name = name || undefined;
 
-    const picture = typeof clone.picture === "string" ? clone.picture.trim() : "";
+    const picture =
+      typeof clone.picture === "string" ? clone.picture.trim() : "";
     clone.picture = picture || undefined;
 
-    const weight = typeof clone.weight === "number" && !Number.isNaN(clone.weight) ? clone.weight : undefined;
+    const weight =
+      typeof clone.weight === "number" && !Number.isNaN(clone.weight)
+        ? clone.weight
+        : undefined;
     clone.weight = weight !== undefined ? Math.max(0, weight) : undefined;
 
     if (clone.role) {
       const roleLower = clone.role.toLowerCase();
-      if (roleLower === "owner" || roleLower === "maintainer" || roleLower === "contributor") {
+      if (
+        roleLower === "owner" ||
+        roleLower === "maintainer" ||
+        roleLower === "contributor"
+      ) {
         clone.role = roleLower as ContributorRole;
       } else {
         clone.role = undefined;
       }
     }
 
-    const hasIdentity = !!clone.pubkey || !!clone.githubLogin || (!!clone.name && keepNameOnly);
+    const hasIdentity =
+      !!clone.pubkey || !!clone.githubLogin || (!!clone.name && keepNameOnly);
     if (!hasIdentity) {
       continue;
     }
@@ -97,5 +111,3 @@ export function sanitizeContributors<T extends ContributorLike>(
 
   return sanitized;
 }
-
-

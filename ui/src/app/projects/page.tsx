@@ -1,11 +1,21 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { Folder, Plus, CheckCircle2, Circle, Clock, TrendingUp, Calendar } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
-import useSession from "@/lib/nostr/useSession";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import useSession from "@/lib/nostr/useSession";
+
+import {
+  Calendar,
+  CheckCircle2,
+  Circle,
+  Clock,
+  Folder,
+  Plus,
+  TrendingUp,
+} from "lucide-react";
+import Link from "next/link";
 
 interface AggregatedProject {
   repoId: string; // entity/repo
@@ -24,7 +34,9 @@ export default function UserProjectsPage() {
   const { isLoggedIn } = useSession();
   const { pubkey } = useNostrContext();
   const [allProjects, setAllProjects] = useState<AggregatedProject[]>([]);
-  const [selectedView, setSelectedView] = useState<"all" | "active" | "overdue">("all");
+  const [selectedView, setSelectedView] = useState<
+    "all" | "active" | "overdue"
+  >("all");
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
 
@@ -41,15 +53,17 @@ export default function UserProjectsPage() {
     try {
       // Get all repos the user owns or has access to
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
-      
+
       // Aggregate all projects from all repos
       const aggregated: AggregatedProject[] = [];
-      
+
       repos.forEach((repo: any) => {
         try {
-          const projectKey = `gittr_projects_${repo.entity}_${repo.repo || repo.slug}`;
+          const projectKey = `gittr_projects_${repo.entity}_${
+            repo.repo || repo.slug
+          }`;
           const projects = JSON.parse(localStorage.getItem(projectKey) || "[]");
-          
+
           projects.forEach((project: any) => {
             if (project.status === "active" && project.items.length > 0) {
               aggregated.push({
@@ -68,7 +82,7 @@ export default function UserProjectsPage() {
           });
         } catch {}
       });
-      
+
       setAllProjects(aggregated);
     } catch (error) {
       console.error("Failed to load aggregated projects:", error);
@@ -79,27 +93,45 @@ export default function UserProjectsPage() {
 
   const filteredProjects = useMemo(() => {
     if (selectedView === "all") return allProjects;
-    
+
     // Filter by status
-    return allProjects.map(proj => ({
-      ...proj,
-      items: proj.items.filter(item => {
-        if (selectedView === "active") {
-          return item.status !== "done";
-        }
-        // overdue would need dueDate tracking
-        return true;
-      }),
-    })).filter(proj => proj.items.length > 0);
+    return allProjects
+      .map((proj) => ({
+        ...proj,
+        items: proj.items.filter((item) => {
+          if (selectedView === "active") {
+            return item.status !== "done";
+          }
+          // overdue would need dueDate tracking
+          return true;
+        }),
+      }))
+      .filter((proj) => proj.items.length > 0);
   }, [allProjects, selectedView]);
 
   const stats = useMemo(() => {
     const total = allProjects.reduce((sum, p) => sum + p.items.length, 0);
-    const done = allProjects.reduce((sum, p) => sum + p.items.filter(i => i.status === "done").length, 0);
-    const inProgress = allProjects.reduce((sum, p) => sum + p.items.filter(i => i.status === "in_progress").length, 0);
-    const todo = allProjects.reduce((sum, p) => sum + p.items.filter(i => i.status === "todo").length, 0);
-    
-    return { total, done, inProgress, todo, progress: total > 0 ? Math.round((done / total) * 100) : 0 };
+    const done = allProjects.reduce(
+      (sum, p) => sum + p.items.filter((i) => i.status === "done").length,
+      0
+    );
+    const inProgress = allProjects.reduce(
+      (sum, p) =>
+        sum + p.items.filter((i) => i.status === "in_progress").length,
+      0
+    );
+    const todo = allProjects.reduce(
+      (sum, p) => sum + p.items.filter((i) => i.status === "todo").length,
+      0
+    );
+
+    return {
+      total,
+      done,
+      inProgress,
+      todo,
+      progress: total > 0 ? Math.round((done / total) * 100) : 0,
+    };
   }, [allProjects]);
 
   if (!mounted) {
@@ -119,7 +151,9 @@ export default function UserProjectsPage() {
         <div className="border border-[#383B42] rounded p-12 text-center bg-[#171B21]">
           <Folder className="h-12 w-12 mx-auto mb-4 text-gray-500" />
           <h2 className="text-xl font-semibold mb-2">Sign in required</h2>
-          <p className="text-gray-400 mb-4">Please sign in to view your aggregated projects</p>
+          <p className="text-gray-400 mb-4">
+            Please sign in to view your aggregated projects
+          </p>
           <Link href="/login">
             <Button>Sign In</Button>
           </Link>
@@ -176,12 +210,16 @@ export default function UserProjectsPage() {
         </div>
         <div className="border border-[#383B42] rounded p-4 bg-[#171B21]">
           <div className="text-sm text-gray-400 mb-1">In Progress</div>
-          <div className="text-2xl font-bold text-purple-400">{stats.inProgress}</div>
+          <div className="text-2xl font-bold text-purple-400">
+            {stats.inProgress}
+          </div>
         </div>
         <div className="border border-[#383B42] rounded p-4 bg-[#171B21]">
           <div className="text-sm text-gray-400 mb-1">Done</div>
           <div className="text-2xl font-bold text-green-400">{stats.done}</div>
-          <div className="text-xs text-gray-500 mt-1">{stats.progress}% complete</div>
+          <div className="text-xs text-gray-500 mt-1">
+            {stats.progress}% complete
+          </div>
         </div>
       </div>
 
@@ -201,12 +239,19 @@ export default function UserProjectsPage() {
         <div className="space-y-4">
           {filteredProjects.map((proj) => {
             const [entity, repo] = proj.repoId.split("/");
-            const todoCount = proj.items.filter(i => i.status === "todo").length;
-            const inProgressCount = proj.items.filter(i => i.status === "in_progress").length;
-            const doneCount = proj.items.filter(i => i.status === "done").length;
-            const progress = proj.items.length > 0 
-              ? Math.round((doneCount / proj.items.length) * 100) 
-              : 0;
+            const todoCount = proj.items.filter(
+              (i) => i.status === "todo"
+            ).length;
+            const inProgressCount = proj.items.filter(
+              (i) => i.status === "in_progress"
+            ).length;
+            const doneCount = proj.items.filter(
+              (i) => i.status === "done"
+            ).length;
+            const progress =
+              proj.items.length > 0
+                ? Math.round((doneCount / proj.items.length) * 100)
+                : 0;
 
             return (
               <div
@@ -266,4 +311,3 @@ export default function UserProjectsPage() {
     </div>
   );
 }
-

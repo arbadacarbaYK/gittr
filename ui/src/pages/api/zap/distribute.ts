@@ -1,6 +1,7 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import { setCorsHeaders, handleOptionsRequest } from "@/lib/api/cors";
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
+import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+
+import type { NextApiRequest, NextApiResponse } from "next";
 
 interface Recipient {
   pubkey?: string;
@@ -17,7 +18,10 @@ interface DistributeRequest {
   lnbitsAdminKey?: string;
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   // Handle OPTIONS request for CORS (GRASP requirement)
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res);
@@ -26,7 +30,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Set CORS headers (GRASP requirement)
   setCorsHeaders(res);
-  
+
   // Rate limiting for payment endpoints
   const rateLimitResult = await rateLimiters.payment(req as any);
   if (rateLimitResult) {
@@ -37,7 +41,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "method_not_allowed" });
   }
 
-  const { recipients, feeMode, lnbitsUrl, lnbitsAdminKey } = (req.body || {}) as DistributeRequest;
+  const { recipients, feeMode, lnbitsUrl, lnbitsAdminKey } = (req.body ||
+    {}) as DistributeRequest;
 
   if (!Array.isArray(recipients) || recipients.length === 0) {
     return res.status(400).json({ error: "no_recipients" });
@@ -46,7 +51,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "missing_lnbits_config" });
   }
 
-  const results: Array<{ idx: number; status: string; error?: string; checking_id?: string }> = [];
+  const results: Array<{
+    idx: number;
+    status: string;
+    error?: string;
+    checking_id?: string;
+  }> = [];
 
   for (let i = 0; i < recipients.length; i++) {
     const r = recipients[i];
@@ -59,26 +69,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       // Pay via lnurl endpoint
-      const payResp = await fetch(`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api/pay/lnurl`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          destination,
-          amount: r.amount,
-          comment: r.comment,
-          lnbitsUrl,
-          lnbitsAdminKey,
-        }),
-      });
+      const payResp = await fetch(
+        `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api/pay/lnurl`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            destination,
+            amount: r.amount,
+            comment: r.comment,
+            lnbitsUrl,
+            lnbitsAdminKey,
+          }),
+        }
+      );
 
       const payJson = await payResp.json();
       if (!payResp.ok || payJson.error) {
-        results.push({ idx: i, status: "failed", error: payJson.error || "payment_failed" });
+        results.push({
+          idx: i,
+          status: "failed",
+          error: payJson.error || "payment_failed",
+        });
       } else {
-        results.push({ idx: i, status: "ok", checking_id: payJson.checking_id });
+        results.push({
+          idx: i,
+          status: "ok",
+          checking_id: payJson.checking_id,
+        });
       }
     } catch (e: any) {
-      results.push({ idx: i, status: "failed", error: e.message || "payment_failed" });
+      results.push({
+        idx: i,
+        status: "failed",
+        error: e.message || "payment_failed",
+      });
     }
   }
 

@@ -1,14 +1,9 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import useSession from "@/lib/nostr/useSession";
-import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { createDiscussionEvent, KIND_DISCUSSION } from "@/lib/nostr/events";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,10 +12,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { type Discussion, appendDiscussion } from "@/lib/discussions/storage";
+import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { KIND_DISCUSSION, createDiscussionEvent } from "@/lib/nostr/events";
+import useSession from "@/lib/nostr/useSession";
+import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+
 import { X } from "lucide-react";
 import Link from "next/link";
-import { appendDiscussion, type Discussion } from "@/lib/discussions/storage";
+import { useParams, useRouter } from "next/navigation";
 import type { Event, UnsignedEvent } from "nostr-tools";
 
 const DISCUSSION_CATEGORIES = [
@@ -42,7 +44,11 @@ export default function NewDiscussionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const { initials, isLoggedIn } = useSession();
-  const { publish, defaultRelays, pubkey: currentUserPubkey } = useNostrContext();
+  const {
+    publish,
+    defaultRelays,
+    pubkey: currentUserPubkey,
+  } = useNostrContext();
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent<HTMLFormElement>) => {
@@ -79,8 +85,10 @@ export default function NewDiscussionPage() {
 
       try {
         // Generate a unique ID for the discussion
-        const discussionId = `discussion-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-        
+        const discussionId = `discussion-${Date.now()}-${Math.random()
+          .toString(36)
+          .substring(2, 9)}`;
+
         // Create discussion object
         const newDiscussion: Discussion = {
           id: discussionId,
@@ -100,11 +108,15 @@ export default function NewDiscussionPage() {
         // Store locally
         try {
           appendDiscussion(entity, repo, newDiscussion);
-          
+
           console.log("Discussion saved locally:", newDiscussion);
-          
+
           // Dispatch event to notify discussions page
-          window.dispatchEvent(new CustomEvent("gittr:discussion-created", { detail: newDiscussion }));
+          window.dispatchEvent(
+            new CustomEvent("gittr:discussion-created", {
+              detail: newDiscussion,
+            })
+          );
         } catch (err) {
           console.error("Failed to save discussion locally:", err);
           const message = err instanceof Error ? err.message : String(err);
@@ -119,13 +131,13 @@ export default function NewDiscussionPage() {
             const privateKey = await getNostrPrivateKey();
             const hasNip07 = typeof window !== "undefined" && window.nostr;
             const { getPublicKey } = await import("nostr-tools");
-            
+
             let discussionEvent: Event | null = null;
             const nip07 = hasNip07 ? window.nostr : undefined;
             const authorPubkey = privateKey
               ? getPublicKey(privateKey)
               : (await nip07?.getPublicKey()) ?? currentUserPubkey;
-            
+
             if (nip07) {
               const unsignedEvent = {
                 kind: KIND_DISCUSSION,
@@ -144,7 +156,7 @@ export default function NewDiscussionPage() {
                 }),
                 pubkey: authorPubkey,
               } as unknown as UnsignedEvent;
-              
+
               discussionEvent = await nip07.signEvent(unsignedEvent);
             } else if (privateKey) {
               discussionEvent = createDiscussionEvent(
@@ -159,10 +171,13 @@ export default function NewDiscussionPage() {
                 privateKey
               );
             }
-            
+
             if (discussionEvent && publish) {
               publish(discussionEvent, defaultRelays);
-              console.log("✅ Published discussion to Nostr:", discussionEvent.id);
+              console.log(
+                "✅ Published discussion to Nostr:",
+                discussionEvent.id
+              );
             }
           } catch (err) {
             console.error("Failed to publish discussion to Nostr:", err);
@@ -171,12 +186,15 @@ export default function NewDiscussionPage() {
         }
 
         setSubmitting(false);
-        
+
         // Navigate to discussions page
         router.push(`/${entity}/${repo}/discussions`);
       } catch (error) {
         console.error("Error creating discussion:", error);
-        const message = error instanceof Error ? error.message : "Failed to create discussion";
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to create discussion";
         setErrorMsg(message);
         setSubmitting(false);
       }
@@ -234,7 +252,9 @@ export default function NewDiscussionPage() {
                 {DISCUSSION_CATEGORIES.map((cat) => (
                   <DropdownMenuItem
                     key={cat}
-                    onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
+                    onClick={() =>
+                      setSelectedCategory(selectedCategory === cat ? null : cat)
+                    }
                   >
                     {cat}
                   </DropdownMenuItem>
@@ -300,4 +320,3 @@ export default function NewDiscussionPage() {
     </div>
   );
 }
-

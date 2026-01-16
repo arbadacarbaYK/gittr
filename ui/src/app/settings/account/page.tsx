@@ -1,12 +1,20 @@
 "use client";
+
 import { useEffect, useState } from "react";
+
 import SettingsHero from "@/components/settings-hero";
+import { Button } from "@/components/ui/button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useMetadata from "@/lib/nostr/useMetadata";
-import { CheckCircle2, XCircle, AlertCircle, Lock, Shield } from "lucide-react";
+import {
+  getSecureItem,
+  isEncryptionEnabled,
+  isEncryptionUnlocked,
+  setSecureItem,
+} from "@/lib/security/encryptedStorage";
 import { normalizeUrlOnBlur } from "@/lib/utils/url-normalize";
-import { getSecureItem, setSecureItem, isEncryptionUnlocked, isEncryptionEnabled } from "@/lib/security/encryptedStorage";
-import { Button } from "@/components/ui/button";
+
+import { AlertCircle, CheckCircle2, Lock, Shield, XCircle } from "lucide-react";
 import Link from "next/link";
 
 export default function AccountSettingsPage() {
@@ -23,14 +31,30 @@ export default function AccountSettingsPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [validation, setValidation] = useState<Record<string, boolean>>({});
   const [showValidation, setShowValidation] = useState(false); // Only show errors after save attempt
-  const [lnbitsBalance, setLnbitsBalance] = useState<{ loading?: boolean; balance?: number; error?: string } | null>(null);
-  const [nwcBalance, setNwcBalance] = useState<{ loading?: boolean; connected?: boolean; balance?: number; error?: string } | null>(null);
-  const [nwcRecvBalance, setNwcRecvBalance] = useState<{ loading?: boolean; connected?: boolean; balance?: number; error?: string } | null>(null);
-  
+  const [lnbitsBalance, setLnbitsBalance] = useState<{
+    loading?: boolean;
+    balance?: number;
+    error?: string;
+  } | null>(null);
+  const [nwcBalance, setNwcBalance] = useState<{
+    loading?: boolean;
+    connected?: boolean;
+    balance?: number;
+    error?: string;
+  } | null>(null);
+  const [nwcRecvBalance, setNwcRecvBalance] = useState<{
+    loading?: boolean;
+    connected?: boolean;
+    balance?: number;
+    error?: string;
+  } | null>(null);
+
   // Check if user has NIP-05 verification
   const hasNip05 = !!metadata.nip05;
-  const encryptionEnabled = typeof window !== "undefined" ? isEncryptionEnabled() : false;
-  const encryptionUnlocked = typeof window !== "undefined" ? isEncryptionUnlocked() : false;
+  const encryptionEnabled =
+    typeof window !== "undefined" ? isEncryptionEnabled() : false;
+  const encryptionUnlocked =
+    typeof window !== "undefined" ? isEncryptionUnlocked() : false;
 
   useEffect(() => {
     // Load wallet data using secure storage (encrypted if encryption is enabled)
@@ -42,8 +66,10 @@ export default function AccountSettingsPage() {
         const nwcSend = await getSecureItem("gittr_nwc_send");
         const lnbitsUrl = await getSecureItem("gittr_lnbits_url");
         const lnbitsAdminKey = await getSecureItem("gittr_lnbits_admin_key");
-        const lnbitsInvoiceKey = await getSecureItem("gittr_lnbits_invoice_key");
-        
+        const lnbitsInvoiceKey = await getSecureItem(
+          "gittr_lnbits_invoice_key"
+        );
+
         setLnurl(lnurl || "");
         setLud16(lud16 || "");
         setNwcRecv(nwcRecv || "");
@@ -51,12 +77,15 @@ export default function AccountSettingsPage() {
         setLnbitsUrl(lnbitsUrl || "");
         setLnbitsAdminKey(lnbitsAdminKey || "");
         setLnbitsInvoiceKey(lnbitsInvoiceKey || "");
-        
+
         // Debug: Verify NWC string was loaded correctly (don't log full string for security)
         if (nwcSend) {
           console.log("NWC Load: NWC string loaded successfully");
           console.log("NWC Load: Length:", nwcSend.length);
-          console.log("NWC Load: Starts with nostr+walletconnect:", nwcSend.startsWith("nostr+walletconnect:"));
+          console.log(
+            "NWC Load: Starts with nostr+walletconnect:",
+            nwcSend.startsWith("nostr+walletconnect:")
+          );
         }
       } catch (error) {
         console.error("Failed to load wallet data:", error);
@@ -67,10 +96,12 @@ export default function AccountSettingsPage() {
         setNwcSend(localStorage.getItem("gittr_nwc_send") || "");
         setLnbitsUrl(localStorage.getItem("gittr_lnbits_url") || "");
         setLnbitsAdminKey(localStorage.getItem("gittr_lnbits_admin_key") || "");
-        setLnbitsInvoiceKey(localStorage.getItem("gittr_lnbits_invoice_key") || "");
+        setLnbitsInvoiceKey(
+          localStorage.getItem("gittr_lnbits_invoice_key") || ""
+        );
       }
     };
-    
+
     loadWalletData();
     // Don't validate on initial load
   }, []);
@@ -89,7 +120,7 @@ export default function AccountSettingsPage() {
   function validateLUD16(value: string): string | null {
     if (!value) return null;
     // Only validate if user has typed something that looks complete
-    // Don't block partial input like "name@" 
+    // Don't block partial input like "name@"
     if (!value.includes("@")) {
       return null; // Allow typing before @
     }
@@ -127,7 +158,6 @@ export default function AccountSettingsPage() {
     return null;
   }
 
-
   function validateAll(): Record<string, string> {
     const newErrors: Record<string, string> = {};
     const newValidation: Record<string, boolean> = {};
@@ -156,15 +186,19 @@ export default function AccountSettingsPage() {
 
     // LNbits admin key validation (should be hex string, 32+ chars) - only if field has value
     if (lnbitsAdminKey && !lnbitsAdminKey.match(/^[a-f0-9]{32,}$/i)) {
-      newErrors.lnbitsAdminKey = "LNbits admin key must be a valid hex string (32+ characters)";
+      newErrors.lnbitsAdminKey =
+        "LNbits admin key must be a valid hex string (32+ characters)";
     }
-    newValidation.lnbitsAdminKey = !newErrors.lnbitsAdminKey && lnbitsAdminKey.length > 0;
+    newValidation.lnbitsAdminKey =
+      !newErrors.lnbitsAdminKey && lnbitsAdminKey.length > 0;
 
     // LNbits invoice key validation (should be hex string, 32+ chars) - only if field has value
     if (lnbitsInvoiceKey && !lnbitsInvoiceKey.match(/^[a-f0-9]{32,}$/i)) {
-      newErrors.lnbitsInvoiceKey = "LNbits invoice key must be a valid hex string (32+ characters)";
+      newErrors.lnbitsInvoiceKey =
+        "LNbits invoice key must be a valid hex string (32+ characters)";
     }
-    newValidation.lnbitsInvoiceKey = !newErrors.lnbitsInvoiceKey && lnbitsInvoiceKey.length > 0;
+    newValidation.lnbitsInvoiceKey =
+      !newErrors.lnbitsInvoiceKey && lnbitsInvoiceKey.length > 0;
 
     // Only update state if validation should be shown (after save attempt)
     // This prevents re-renders during typing
@@ -179,14 +213,14 @@ export default function AccountSettingsPage() {
     // Validate before saving
     setShowValidation(true); // Show validation errors after save attempt
     const validationErrors = validateAll();
-    
+
     // Check for errors
     if (Object.keys(validationErrors).length > 0) {
       setSaved("Please fix errors before saving");
       setTimeout(() => setSaved(""), 3000);
       return;
     }
-    
+
     try {
       // Save wallet data using secure storage (encrypted if encryption is enabled)
       await setSecureItem("gittr_lnurl", lnurl);
@@ -196,10 +230,10 @@ export default function AccountSettingsPage() {
       await setSecureItem("gittr_lnbits_url", lnbitsUrl);
       await setSecureItem("gittr_lnbits_admin_key", lnbitsAdminKey);
       await setSecureItem("gittr_lnbits_invoice_key", lnbitsInvoiceKey);
-      
+
       setSaved("Saved successfully!");
       setTimeout(() => setSaved(""), 2000);
-      
+
       // Test payment options after saving
       if (lnbitsUrl && lnbitsAdminKey) {
         testLnbitsBalance();
@@ -213,7 +247,9 @@ export default function AccountSettingsPage() {
     } catch (error: any) {
       console.error("Failed to save wallet data:", error);
       if (error.message?.includes("Encryption password required")) {
-        setSaved("Encryption is enabled. Please unlock encryption to view/edit settings.");
+        setSaved(
+          "Encryption is enabled. Please unlock encryption to view/edit settings."
+        );
         setTimeout(() => setSaved(""), 5000);
       } else {
         setSaved(`Failed to save: ${error.message || "Unknown error"}`);
@@ -222,165 +258,204 @@ export default function AccountSettingsPage() {
     }
   }
 
-  
   async function testLnbitsBalance() {
     if (!lnbitsUrl || !lnbitsAdminKey) return;
-    
+
     setLnbitsBalance({ loading: true });
-    
+
     try {
       const response = await fetch("/api/balance/lnbits", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lnbitsUrl, lnbitsAdminKey }),
       });
-      
+
       const data = await response.json();
-      
+
       if (data.status === "ok") {
-        setLnbitsBalance({ 
+        setLnbitsBalance({
           balance: data.balanceSats,
-          loading: false 
+          loading: false,
         });
       } else {
-        setLnbitsBalance({ 
+        setLnbitsBalance({
           error: data.message || "Failed to fetch balance",
-          loading: false 
+          loading: false,
         });
       }
     } catch (error: any) {
-      setLnbitsBalance({ 
+      setLnbitsBalance({
         error: error.message || "Failed to connect to LNbits",
-        loading: false 
+        loading: false,
       });
     }
   }
-  
+
   async function testNwcConnection() {
     if (!nwcSend) return;
-    
+
     setNwcBalance({ loading: true });
-    
+
     // Debug: Verify NWC string format (don't log full string for security)
-    console.log("NWC Test (Send): Testing connection - NWC string length:", nwcSend.length);
-    console.log("NWC Test (Send): Starts with nostr+walletconnect:", nwcSend.startsWith("nostr+walletconnect:"));
-    
+    console.log(
+      "NWC Test (Send): Testing connection - NWC string length:",
+      nwcSend.length
+    );
+    console.log(
+      "NWC Test (Send): Starts with nostr+walletconnect:",
+      nwcSend.startsWith("nostr+walletconnect:")
+    );
+
     try {
       // Use simpler connection test instead of balance check
-      const { testNWCConnection } = await import("@/lib/payments/nwc-connection-test");
+      const { testNWCConnection } = await import(
+        "@/lib/payments/nwc-connection-test"
+      );
       const result = await testNWCConnection(nwcSend);
-      
+
       if (result.connected && result.relayReachable) {
         if (result.requestAccepted) {
           // Full success - connection works and wallet responded
-          setNwcBalance({ 
+          setNwcBalance({
             connected: true,
             loading: false,
             // Try to get balance if connection works
-            balance: undefined // Will be set if get_balance works
+            balance: undefined, // Will be set if get_balance works
           });
-          
+
           // Optionally try to get balance now that we know connection works
           try {
-            const { getNWCBalance } = await import("@/lib/payments/nwc-balance");
+            const { getNWCBalance } = await import(
+              "@/lib/payments/nwc-balance"
+            );
             const balanceResult = await getNWCBalance(nwcSend);
-            setNwcBalance(prev => prev ? { ...prev, balance: balanceResult.balanceSats } : prev);
+            setNwcBalance((prev) =>
+              prev ? { ...prev, balance: balanceResult.balanceSats } : prev
+            );
           } catch (balanceError) {
             // Balance check failed but connection works - that's OK
-            console.log("NWC (Send): Connection works but balance check not supported");
+            console.log(
+              "NWC (Send): Connection works but balance check not supported"
+            );
           }
         } else {
           // Connection works but method not supported
-          setNwcBalance({ 
+          setNwcBalance({
             connected: true,
             loading: false,
-            error: result.error || "Connection verified. Wallet may not support balance queries, but payments will work."
+            error:
+              result.error ||
+              "Connection verified. Wallet may not support balance queries, but payments will work.",
           });
         }
       } else {
         // Connection failed
-        setNwcBalance({ 
+        setNwcBalance({
           connected: false,
           loading: false,
-          error: result.error || "Failed to connect to relay. Check your NWC URI and relay URL."
+          error:
+            result.error ||
+            "Failed to connect to relay. Check your NWC URI and relay URL.",
         });
       }
     } catch (error: any) {
       console.error("NWC (Send) connection test error:", error);
-      setNwcBalance({ 
+      setNwcBalance({
         connected: false,
-        error: error.message || "Failed to test NWC connection. Check your NWC URI format.",
-        loading: false 
+        error:
+          error.message ||
+          "Failed to test NWC connection. Check your NWC URI format.",
+        loading: false,
       });
     }
   }
-  
+
   async function testNwcRecvConnection() {
     if (!nwcRecv) return;
-    
+
     setNwcRecvBalance({ loading: true });
-    
+
     // Debug: Verify NWC string format (don't log full string for security)
-    console.log("NWC Test (Receive): Testing connection - NWC string length:", nwcRecv.length);
-    console.log("NWC Test (Receive): Starts with nostr+walletconnect:", nwcRecv.startsWith("nostr+walletconnect:"));
-    
+    console.log(
+      "NWC Test (Receive): Testing connection - NWC string length:",
+      nwcRecv.length
+    );
+    console.log(
+      "NWC Test (Receive): Starts with nostr+walletconnect:",
+      nwcRecv.startsWith("nostr+walletconnect:")
+    );
+
     try {
       // Use simpler connection test instead of balance check
-      const { testNWCConnection } = await import("@/lib/payments/nwc-connection-test");
+      const { testNWCConnection } = await import(
+        "@/lib/payments/nwc-connection-test"
+      );
       const result = await testNWCConnection(nwcRecv);
-      
+
       if (result.connected && result.relayReachable) {
         if (result.requestAccepted) {
           // Full success - connection works and wallet responded
-          setNwcRecvBalance({ 
+          setNwcRecvBalance({
             connected: true,
             loading: false,
             // Try to get balance if connection works
-            balance: undefined // Will be set if get_balance works
+            balance: undefined, // Will be set if get_balance works
           });
-          
+
           // Optionally try to get balance now that we know connection works
           try {
-            const { getNWCBalance } = await import("@/lib/payments/nwc-balance");
+            const { getNWCBalance } = await import(
+              "@/lib/payments/nwc-balance"
+            );
             const balanceResult = await getNWCBalance(nwcRecv);
-            setNwcRecvBalance(prev => prev ? { ...prev, balance: balanceResult.balanceSats } : prev);
+            setNwcRecvBalance((prev) =>
+              prev ? { ...prev, balance: balanceResult.balanceSats } : prev
+            );
           } catch (balanceError) {
             // Balance check failed but connection works - that's OK
-            console.log("NWC (Receive): Connection works but balance check not supported");
+            console.log(
+              "NWC (Receive): Connection works but balance check not supported"
+            );
           }
         } else {
           // Connection works but method not supported
-          setNwcRecvBalance({ 
+          setNwcRecvBalance({
             connected: true,
             loading: false,
-            error: result.error || "Connection verified. Wallet may not support balance queries, but payments will work."
+            error:
+              result.error ||
+              "Connection verified. Wallet may not support balance queries, but payments will work.",
           });
         }
       } else {
         // Connection failed
-        setNwcRecvBalance({ 
+        setNwcRecvBalance({
           connected: false,
           loading: false,
-          error: result.error || "Failed to connect to relay. Check your NWC URI and relay URL."
+          error:
+            result.error ||
+            "Failed to connect to relay. Check your NWC URI and relay URL.",
         });
       }
     } catch (error: any) {
       console.error("NWC (Receive) connection test error:", error);
-      setNwcRecvBalance({ 
+      setNwcRecvBalance({
         connected: false,
-        error: error.message || "Failed to test NWC connection. Check your NWC URI format.",
-        loading: false 
+        error:
+          error.message ||
+          "Failed to test NWC connection. Check your NWC URI format.",
+        loading: false,
       });
     }
   }
-  
+
   // Test balances when values change (with debounce)
   // Only test after save or on blur, not on every keystroke
   useEffect(() => {
     // Don't auto-test on every keystroke - only after save
     // This prevents blocking input
   }, []);
-  
+
   useEffect(() => {
     // Don't auto-test on every keystroke - only after save
     // This prevents blocking input
@@ -407,17 +482,29 @@ export default function AccountSettingsPage() {
   }) {
     const displayError = showError && error;
     // Generate a unique id from the label
-    const fieldId = `input-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
-    const fieldName = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const fieldId = `input-${label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")}`;
+    const fieldName = label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
     return (
       <div className="space-y-1">
-        <label htmlFor={fieldId} className="block text-sm font-medium">{label}</label>
+        <label htmlFor={fieldId} className="block text-sm font-medium">
+          {label}
+        </label>
         <div className="relative">
           <input
             id={fieldId}
             name={fieldName}
             className={`w-full border p-2 text-black rounded ${
-              displayError ? "border-red-500" : isValid ? "border-green-500" : "border-gray-300"
+              displayError
+                ? "border-red-500"
+                : isValid
+                ? "border-green-500"
+                : "border-gray-300"
             }`}
             value={value}
             onChange={(e) => {
@@ -448,7 +535,9 @@ export default function AccountSettingsPage() {
           )}
         </div>
         {displayError && <p className="text-red-500 text-xs">{error}</p>}
-        {!displayError && helpText && <p className="text-gray-500 text-xs">{helpText}</p>}
+        {!displayError && helpText && (
+          <p className="text-gray-500 text-xs">{helpText}</p>
+        )}
       </div>
     );
   }
@@ -456,35 +545,52 @@ export default function AccountSettingsPage() {
   return (
     <div className="p-6">
       <SettingsHero title="Account" />
-      
+
       {/* Security & Privacy Notice */}
       <div className="mt-6 mb-6 p-4 bg-blue-900/30 border border-blue-700 rounded-lg">
         <div className="flex items-start gap-3">
           <Shield className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
           <div className="flex-1">
-            <h3 className="font-semibold text-blue-400 mb-2">🔒 Privacy & Security</h3>
+            <h3 className="font-semibold text-blue-400 mb-2">
+              🔒 Privacy & Security
+            </h3>
             <ul className="text-sm text-gray-300 space-y-1">
               <li className="flex items-start gap-2">
                 <Lock className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
-                <span><strong>Encrypted Storage:</strong> All wallet credentials (NWC secrets, LNbits admin keys) are encrypted with your password and stored in your browser's localStorage only.</span>
+                <span>
+                  <strong>Encrypted Storage:</strong> All wallet credentials
+                  (NWC secrets, LNbits admin keys) are encrypted with your
+                  password and stored in your browser's localStorage only.
+                </span>
               </li>
               <li className="flex items-start gap-2">
                 <Shield className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
-                <span><strong>Client-Side Only:</strong> Secret keys NEVER leave your browser. All encryption/decryption happens locally using Web Crypto API.</span>
+                <span>
+                  <strong>Client-Side Only:</strong> Secret keys NEVER leave
+                  your browser. All encryption/decryption happens locally using
+                  Web Crypto API.
+                </span>
               </li>
               <li className="flex items-start gap-2">
                 <Shield className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
-                <span><strong>No Server Access:</strong> Your server never receives your wallet credentials. NWC connections go directly to Nostr relays, bypassing the server entirely.</span>
+                <span>
+                  <strong>No Server Access:</strong> Your server never receives
+                  your wallet credentials. NWC connections go directly to Nostr
+                  relays, bypassing the server entirely.
+                </span>
               </li>
             </ul>
             {hasNip05 ? (
               <p className="text-xs text-green-400 mt-3">
-                ✓ Your account is verified with NIP-05: <strong>{metadata.nip05}</strong>
+                ✓ Your account is verified with NIP-05:{" "}
+                <strong>{metadata.nip05}</strong>
               </p>
             ) : (
               <div className="mt-3 space-y-2">
                 <p className="text-xs text-gray-400">
-                  💡 <strong>Secure your wallet data:</strong> Add a NIP-05 identifier to your profile, or enable encryption to protect your sensitive data with a password.
+                  💡 <strong>Secure your wallet data:</strong> Add a NIP-05
+                  identifier to your profile, or enable encryption to protect
+                  your sensitive data with a password.
                 </p>
                 {!encryptionEnabled && (
                   <Link href="/settings/security">
@@ -496,7 +602,8 @@ export default function AccountSettingsPage() {
                 )}
                 {encryptionEnabled && !encryptionUnlocked && (
                   <p className="text-xs text-yellow-400">
-                    ⚠️ Encryption is enabled but not unlocked. Please unlock encryption to view/edit settings.
+                    ⚠️ Encryption is enabled but not unlocked. Please unlock
+                    encryption to view/edit settings.
                   </p>
                 )}
               </div>
@@ -504,12 +611,13 @@ export default function AccountSettingsPage() {
           </div>
         </div>
       </div>
-      
+
       <div className="space-y-6">
         <section>
           <h2 className="text-xl font-bold mb-4">Payments - Receiving</h2>
           <p className="text-sm text-gray-400 mb-4">
-            Configure how you receive payments. These will be used when someone zaps your repository or sends you a bounty payment.
+            Configure how you receive payments. These will be used when someone
+            zaps your repository or sends you a bounty payment.
           </p>
           <div className="space-y-4">
             <InputField
@@ -544,15 +652,17 @@ export default function AccountSettingsPage() {
             />
             {/* Connection status display for receive wallet */}
             {nwcRecvBalance && (
-              <div className={`mt-2 p-2 rounded text-sm ${
-                nwcRecvBalance.error && !nwcRecvBalance.connected
-                  ? "bg-red-900/30 border border-red-700 text-red-400"
-                  : nwcRecvBalance.loading
-                  ? "bg-yellow-900/30 border border-yellow-700 text-yellow-400"
-                  : nwcRecvBalance.connected
-                  ? "bg-green-900/30 border border-green-700 text-green-400"
-                  : "bg-blue-900/30 border border-blue-700 text-blue-400"
-              }`}>
+              <div
+                className={`mt-2 p-2 rounded text-sm ${
+                  nwcRecvBalance.error && !nwcRecvBalance.connected
+                    ? "bg-red-900/30 border border-red-700 text-red-400"
+                    : nwcRecvBalance.loading
+                    ? "bg-yellow-900/30 border border-yellow-700 text-yellow-400"
+                    : nwcRecvBalance.connected
+                    ? "bg-green-900/30 border border-green-700 text-green-400"
+                    : "bg-blue-900/30 border border-blue-700 text-blue-400"
+                }`}
+              >
                 {nwcRecvBalance.loading && "Testing connection..."}
                 {nwcRecvBalance.error && (
                   <div>
@@ -563,15 +673,20 @@ export default function AccountSettingsPage() {
                     )}
                   </div>
                 )}
-                {!nwcRecvBalance.loading && !nwcRecvBalance.error && nwcRecvBalance.connected && (
-                  <div>
-                    {nwcRecvBalance.balance !== undefined ? (
-                      <span>✓ NWC (Receive) connection verified - Balance: {nwcRecvBalance.balance} sats</span>
-                    ) : (
-                      <span>✓ NWC (Receive) connection verified</span>
-                    )}
-                  </div>
-                )}
+                {!nwcRecvBalance.loading &&
+                  !nwcRecvBalance.error &&
+                  nwcRecvBalance.connected && (
+                    <div>
+                      {nwcRecvBalance.balance !== undefined ? (
+                        <span>
+                          ✓ NWC (Receive) connection verified - Balance:{" "}
+                          {nwcRecvBalance.balance} sats
+                        </span>
+                      ) : (
+                        <span>✓ NWC (Receive) connection verified</span>
+                      )}
+                    </div>
+                  )}
               </div>
             )}
           </div>
@@ -580,7 +695,8 @@ export default function AccountSettingsPage() {
         <section>
           <h2 className="text-xl font-bold mb-4">Payments - Sending</h2>
           <p className="text-sm text-gray-400 mb-4">
-            Configure how you send payments when you zap repositories or contributors.
+            Configure how you send payments when you zap repositories or
+            contributors.
           </p>
           <div className="space-y-4">
             <InputField
@@ -595,15 +711,17 @@ export default function AccountSettingsPage() {
             />
             {/* Connection status display */}
             {nwcBalance && (
-              <div className={`mt-2 p-2 rounded text-sm ${
-                nwcBalance.error && !nwcBalance.connected
-                  ? "bg-red-900/30 border border-red-700 text-red-400"
-                  : nwcBalance.loading
-                  ? "bg-yellow-900/30 border border-yellow-700 text-yellow-400"
-                  : nwcBalance.connected
-                  ? "bg-green-900/30 border border-green-700 text-green-400"
-                  : "bg-blue-900/30 border border-blue-700 text-blue-400"
-              }`}>
+              <div
+                className={`mt-2 p-2 rounded text-sm ${
+                  nwcBalance.error && !nwcBalance.connected
+                    ? "bg-red-900/30 border border-red-700 text-red-400"
+                    : nwcBalance.loading
+                    ? "bg-yellow-900/30 border border-yellow-700 text-yellow-400"
+                    : nwcBalance.connected
+                    ? "bg-green-900/30 border border-green-700 text-green-400"
+                    : "bg-blue-900/30 border border-blue-700 text-blue-400"
+                }`}
+              >
                 {nwcBalance.loading && "Testing connection..."}
                 {nwcBalance.error && (
                   <div>
@@ -614,15 +732,20 @@ export default function AccountSettingsPage() {
                     )}
                   </div>
                 )}
-                {!nwcBalance.loading && !nwcBalance.error && nwcBalance.connected && (
-                  <div>
-                    {nwcBalance.balance !== undefined ? (
-                      <span>✓ NWC (Sending) connection verified - Balance: {nwcBalance.balance} sats</span>
-                    ) : (
-                      <span>✓ NWC (Sending) connection verified</span>
-                    )}
-                  </div>
-                )}
+                {!nwcBalance.loading &&
+                  !nwcBalance.error &&
+                  nwcBalance.connected && (
+                    <div>
+                      {nwcBalance.balance !== undefined ? (
+                        <span>
+                          ✓ NWC (Sending) connection verified - Balance:{" "}
+                          {nwcBalance.balance} sats
+                        </span>
+                      ) : (
+                        <span>✓ NWC (Sending) connection verified</span>
+                      )}
+                    </div>
+                  )}
               </div>
             )}
           </div>
@@ -631,7 +754,9 @@ export default function AccountSettingsPage() {
         <section>
           <h2 className="text-xl font-bold mb-4">LNbits Configuration</h2>
           <p className="text-sm text-gray-400 mb-4">
-            Configure LNbits for split payments (repo zaps to multiple contributors) and bounties. If not set, defaults from environment will be used.
+            Configure LNbits for split payments (repo zaps to multiple
+            contributors) and bounties. If not set, defaults from environment
+            will be used.
           </p>
           <div className="space-y-4">
             <InputField
@@ -666,18 +791,22 @@ export default function AccountSettingsPage() {
             />
             {/* Balance display */}
             {lnbitsBalance && (
-              <div className={`mt-2 p-2 rounded text-sm ${
-                lnbitsBalance.error 
-                  ? "bg-red-900/30 border border-red-700 text-red-400"
-                  : lnbitsBalance.loading
-                  ? "bg-yellow-900/30 border border-yellow-700 text-yellow-400"
-                  : "bg-green-900/30 border border-green-700 text-green-400"
-              }`}>
+              <div
+                className={`mt-2 p-2 rounded text-sm ${
+                  lnbitsBalance.error
+                    ? "bg-red-900/30 border border-red-700 text-red-400"
+                    : lnbitsBalance.loading
+                    ? "bg-yellow-900/30 border border-yellow-700 text-yellow-400"
+                    : "bg-green-900/30 border border-green-700 text-green-400"
+                }`}
+              >
                 {lnbitsBalance.loading && "Testing connection..."}
                 {lnbitsBalance.error && `Error: ${lnbitsBalance.error}`}
-                {!lnbitsBalance.loading && !lnbitsBalance.error && lnbitsBalance.balance !== undefined && (
-                  <span>✓ Balance: {lnbitsBalance.balance} sats</span>
-                )}
+                {!lnbitsBalance.loading &&
+                  !lnbitsBalance.error &&
+                  lnbitsBalance.balance !== undefined && (
+                    <span>✓ Balance: {lnbitsBalance.balance} sats</span>
+                  )}
               </div>
             )}
           </div>
@@ -696,7 +825,13 @@ export default function AccountSettingsPage() {
             Save All Settings
           </button>
           {saved && (
-            <span className={`${saved.includes("error") || saved.includes("fix") ? "text-red-400" : "text-green-400"}`}>
+            <span
+              className={`${
+                saved.includes("error") || saved.includes("fix")
+                  ? "text-red-400"
+                  : "text-green-400"
+              }`}
+            >
               {saved}
             </span>
           )}
@@ -706,7 +841,8 @@ export default function AccountSettingsPage() {
           <div className="mt-4 p-3 bg-yellow-900/30 border border-yellow-700 rounded flex items-start gap-2">
             <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
             <p className="text-sm text-yellow-400">
-              Please fix {Object.keys(errors).length} error{Object.keys(errors).length > 1 ? "s" : ""} before saving.
+              Please fix {Object.keys(errors).length} error
+              {Object.keys(errors).length > 1 ? "s" : ""} before saving.
             </p>
           </div>
         )}

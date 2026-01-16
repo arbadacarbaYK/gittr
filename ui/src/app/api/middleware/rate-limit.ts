@@ -25,42 +25,47 @@ function getClientIP(req: Request | any): string {
   }
 
   // Check if it's a Next.js API Request (Pages Router)
-  if (typeof req.headers === 'object' && !req.headers.get) {
+  if (typeof req.headers === "object" && !req.headers.get) {
     // Pages Router: headers is an object
     try {
-      const headers = req.headers as Record<string, string | string[] | undefined>;
+      const headers = req.headers as Record<
+        string,
+        string | string[] | undefined
+      >;
       let ip: string | undefined;
-      
+
       // Try x-forwarded-for first
-      const forwardedFor = headers['x-forwarded-for'];
+      const forwardedFor = headers["x-forwarded-for"];
       if (forwardedFor) {
         if (Array.isArray(forwardedFor) && forwardedFor.length > 0) {
           ip = forwardedFor[0];
-        } else if (typeof forwardedFor === 'string') {
+        } else if (typeof forwardedFor === "string") {
           ip = forwardedFor;
         }
       }
-      
+
       // Fallback to x-real-ip
       if (!ip) {
-        const realIP = headers['x-real-ip'];
+        const realIP = headers["x-real-ip"];
         if (realIP) {
           if (Array.isArray(realIP) && realIP.length > 0) {
             ip = realIP[0];
-          } else if (typeof realIP === 'string') {
+          } else if (typeof realIP === "string") {
             ip = realIP;
           }
         }
       }
-      
+
       // Clean up IP (remove port, handle multiple IPs)
-      if (ip && typeof ip === 'string' && ip.length > 0) {
-        const parts = ip.split(',');
+      if (ip && typeof ip === "string" && ip.length > 0) {
+        const parts = ip.split(",");
         if (parts.length > 0 && parts[0]) {
           const cleaned = parts[0].trim();
-          if (cleaned.includes(':')) {
-            const portParts = cleaned.split(':');
-            return (portParts.length > 0 && portParts[0]) ? portParts[0] : cleaned;
+          if (cleaned.includes(":")) {
+            const portParts = cleaned.split(":");
+            return portParts.length > 0 && portParts[0]
+              ? portParts[0]
+              : cleaned;
           }
           return cleaned;
         }
@@ -69,19 +74,21 @@ function getClientIP(req: Request | any): string {
       console.error("Error extracting IP from headers:", error);
     }
   }
-  
+
   // App Router: headers is a Headers object with .get() method
-  if (typeof req.headers.get === 'function') {
+  if (typeof req.headers.get === "function") {
     try {
-      const ip = req.headers.get("x-forwarded-for") || 
-                 req.headers.get("x-real-ip");
-      if (ip && typeof ip === 'string') {
-        const parts = ip.split(',');
+      const ip =
+        req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip");
+      if (ip && typeof ip === "string") {
+        const parts = ip.split(",");
         if (parts.length > 0 && parts[0]) {
           const cleaned = parts[0].trim();
-          if (cleaned.includes(':')) {
-            const portParts = cleaned.split(':');
-            return (portParts.length > 0 && portParts[0]) ? portParts[0] : cleaned;
+          if (cleaned.includes(":")) {
+            const portParts = cleaned.split(":");
+            return portParts.length > 0 && portParts[0]
+              ? portParts[0]
+              : cleaned;
           }
           return cleaned;
         }
@@ -90,7 +97,7 @@ function getClientIP(req: Request | any): string {
       console.error("Error extracting IP from Headers object:", error);
     }
   }
-  
+
   return "unknown";
 }
 
@@ -120,7 +127,9 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
   }
 
   return async (req: Request | any): Promise<Response | null> => {
-    const key = keyGenerator ? keyGenerator(req) : defaultConfig.keyGenerator!(req);
+    const key = keyGenerator
+      ? keyGenerator(req)
+      : defaultConfig.keyGenerator!(req);
     const now = Date.now();
 
     // Get store (guaranteed to exist due to initialization above)
@@ -132,7 +141,7 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
 
     // Get or initialize request history for this key
     let requests = currentStore[key] || [];
-    
+
     // Remove old requests outside the window
     requests = requests.filter((time) => now - time < windowMs);
 
@@ -161,7 +170,8 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
     currentStore[key] = requests;
 
     // Clean up old entries periodically (every 10 minutes)
-    if (Math.random() < 0.01) { // 1% chance
+    if (Math.random() < 0.01) {
+      // 1% chance
       const cutoff = now - windowMs;
       for (const k in currentStore) {
         const entry = currentStore[k];
@@ -213,4 +223,3 @@ export const rateLimiters = {
     windowMs: 60000, // 1 minute
   }),
 };
-

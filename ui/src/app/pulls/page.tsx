@@ -1,18 +1,25 @@
 "use client";
 
 import * as React from "react";
-import { useCallback, useEffect, useState, useMemo } from "react";
-import Link from "next/link";
-import useSession from "@/lib/nostr/useSession";
-import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { nip19 } from "nostr-tools";
+import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_PULL_REQUEST } from "@/lib/nostr/events";
-import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
-import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import useSession from "@/lib/nostr/useSession";
 import { loadStoredRepos } from "@/lib/repos/storage";
-import { getEntityDisplayName, resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
+import {
+  formatDate24h,
+  formatDateTime24h,
+  formatTime24h,
+} from "@/lib/utils/date-format";
+import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
+import {
+  getEntityDisplayName,
+  resolveEntityToPubkey,
+} from "@/lib/utils/entity-resolver";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { clsx } from "clsx";
 import {
@@ -25,7 +32,8 @@ import {
   MessageSquare,
   Search,
 } from "lucide-react";
-import { formatDateTime24h, formatDate24h, formatTime24h } from "@/lib/utils/date-format";
+import Link from "next/link";
+import { nip19 } from "nostr-tools";
 
 interface IPullRequestData {
   id: string;
@@ -53,10 +61,14 @@ interface IPullRequestData {
 }
 
 export default function PullsPage({}) {
-  const { pubkey: currentUserPubkey, subscribe, defaultRelays } = useNostrContext();
-  const [prType, setPrType] = useState<
-    "created" | "assigned" | "mentioned"
-  >("created");
+  const {
+    pubkey: currentUserPubkey,
+    subscribe,
+    defaultRelays,
+  } = useNostrContext();
+  const [prType, setPrType] = useState<"created" | "assigned" | "mentioned">(
+    "created"
+  );
 
   const [search, setSearch] = useState<string>("");
   const [allPRs, setAllPRs] = useState<IPullRequestData[]>([]);
@@ -66,35 +78,53 @@ export default function PullsPage({}) {
   useEffect(() => {
     try {
       const allPRsData: IPullRequestData[] = [];
-      
+
       // Get all repos from localStorage
-      const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[];
-      
+      const repos = JSON.parse(
+        localStorage.getItem("gittr_repos") || "[]"
+      ) as any[];
+
       // Filter to only repos owned by the logged-in user
       const userRepos = repos.filter((repo: any) => {
         if (!currentUserPubkey) return false;
         // Check if user owns this repo
-        const ownerPubkey = repo.ownerPubkey || 
-          (repo.contributors?.find((c: any) => c.weight === 100)?.pubkey) ||
-          (repo.entity && /^[0-9a-f]{64}$/i.test(repo.entity) ? repo.entity : null);
+        const ownerPubkey =
+          repo.ownerPubkey ||
+          repo.contributors?.find((c: any) => c.weight === 100)?.pubkey ||
+          (repo.entity && /^[0-9a-f]{64}$/i.test(repo.entity)
+            ? repo.entity
+            : null);
         if (!ownerPubkey) return false;
         // Match by full pubkey or 8-char prefix
-        return ownerPubkey === currentUserPubkey || 
-          (ownerPubkey.length === 64 && ownerPubkey.toLowerCase().startsWith(currentUserPubkey.slice(0, 8).toLowerCase())) ||
-          (currentUserPubkey.length === 64 && currentUserPubkey.toLowerCase().startsWith(ownerPubkey.slice(0, 8).toLowerCase())) ||
-          (repo.entity && repo.entity === currentUserPubkey.slice(0, 8).toLowerCase());
+        return (
+          ownerPubkey === currentUserPubkey ||
+          (ownerPubkey.length === 64 &&
+            ownerPubkey
+              .toLowerCase()
+              .startsWith(currentUserPubkey.slice(0, 8).toLowerCase())) ||
+          (currentUserPubkey.length === 64 &&
+            currentUserPubkey
+              .toLowerCase()
+              .startsWith(ownerPubkey.slice(0, 8).toLowerCase())) ||
+          (repo.entity &&
+            repo.entity === currentUserPubkey.slice(0, 8).toLowerCase())
+        );
       });
-      
+
       // Load PRs from each repo owned by user
       userRepos.forEach((repo: any) => {
         // Support multiple repo formats
-        const entity = repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
-        const repoName = repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
+        const entity =
+          repo.entity ||
+          repo.slug?.split("/")[0] ||
+          repo.ownerPubkey?.slice(0, 8);
+        const repoName =
+          repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
         if (!entity || !repoName) {
           console.warn("[PullsPage] Skipping repo without entity/repo:", repo);
           return;
         }
-        
+
         // Try both possible key formats
         const prKey1 = `gittr_prs__${entity}__${repoName}`;
         const prKey2 = `gittr_prs__${repo.slug || entity}_${repoName}`;
@@ -102,9 +132,12 @@ export default function PullsPage({}) {
         if (repoPRs.length === 0) {
           repoPRs = JSON.parse(localStorage.getItem(prKey2) || "[]") as any[];
         }
-        
-        console.log(`[PullsPage] Loading PRs from ${entity}/${repoName}:`, repoPRs.length);
-        
+
+        console.log(
+          `[PullsPage] Loading PRs from ${entity}/${repoName}:`,
+          repoPRs.length
+        );
+
         repoPRs.forEach((pr: any, idx: number) => {
           // Get entity display name - never use shortened pubkey
           let entityDisplay = repo.entityDisplayName;
@@ -115,7 +148,8 @@ export default function PullsPage({}) {
             } else if (/^[0-9a-f]{64}$/i.test(entity)) {
               // If full pubkey, convert to npub
               try {
-                entityDisplay = nip19.npubEncode(entity).substring(0, 16) + "...";
+                entityDisplay =
+                  nip19.npubEncode(entity).substring(0, 16) + "...";
               } catch {
                 entityDisplay = entity.substring(0, 16) + "...";
               }
@@ -123,28 +157,44 @@ export default function PullsPage({}) {
               entityDisplay = entity;
             }
           }
-          
+
           // Determine status - merged PRs count as closed
-          const status = pr.status === "merged" ? "closed" : (pr.status || "open");
-          
+          const status =
+            pr.status === "merged" ? "closed" : pr.status || "open";
+
           // Get linked issue bounty info if PR is linked to an issue
           let linkedIssueBountyAmount: number | undefined;
-          let linkedIssueBountyStatus: "pending" | "paid" | "released" | undefined;
-          
+          let linkedIssueBountyStatus:
+            | "pending"
+            | "paid"
+            | "released"
+            | undefined;
+
           if (pr.linkedIssueId || pr.issueId || pr.linkedIssue) {
             try {
               const issueKey1 = `gittr_issues__${entity}__${repoName}`;
-              const issueKey2 = `gittr_issues__${repo.slug || entity}_${repoName}`;
-              let repoIssues = JSON.parse(localStorage.getItem(issueKey1) || "[]") as any[];
+              const issueKey2 = `gittr_issues__${
+                repo.slug || entity
+              }_${repoName}`;
+              let repoIssues = JSON.parse(
+                localStorage.getItem(issueKey1) || "[]"
+              ) as any[];
               if (repoIssues.length === 0) {
-                repoIssues = JSON.parse(localStorage.getItem(issueKey2) || "[]") as any[];
+                repoIssues = JSON.parse(
+                  localStorage.getItem(issueKey2) || "[]"
+                ) as any[];
               }
-              const linkedIssue = repoIssues.find((i: any) => 
-                i.id === (pr.linkedIssueId || pr.issueId || pr.linkedIssue) || 
-                i.number === (pr.linkedIssueId || pr.issueId || pr.linkedIssue)
+              const linkedIssue = repoIssues.find(
+                (i: any) =>
+                  i.id === (pr.linkedIssueId || pr.issueId || pr.linkedIssue) ||
+                  i.number ===
+                    (pr.linkedIssueId || pr.issueId || pr.linkedIssue)
               );
-              
-              if (linkedIssue && (linkedIssue.bountyAmount || linkedIssue.bountyStatus)) {
+
+              if (
+                linkedIssue &&
+                (linkedIssue.bountyAmount || linkedIssue.bountyStatus)
+              ) {
                 linkedIssueBountyAmount = linkedIssue.bountyAmount;
                 linkedIssueBountyStatus = linkedIssue.bountyStatus;
               }
@@ -156,20 +206,28 @@ export default function PullsPage({}) {
           let reviewChangeRequests = 0;
           let requiredApprovals = 1;
           try {
-            const reviewKey = `gittr_pr_reviews__${entity}__${repoName}__${pr.id || idx}`;
+            const reviewKey = `gittr_pr_reviews__${entity}__${repoName}__${
+              pr.id || idx
+            }`;
             const reviews = JSON.parse(localStorage.getItem(reviewKey) || "[]");
-            reviewApprovals = reviews.filter((r: any) => r.state === "APPROVED").length;
-            reviewChangeRequests = reviews.filter((r: any) => r.state === "CHANGES_REQUESTED").length;
+            reviewApprovals = reviews.filter(
+              (r: any) => r.state === "APPROVED"
+            ).length;
+            reviewChangeRequests = reviews.filter(
+              (r: any) => r.state === "CHANGES_REQUESTED"
+            ).length;
             requiredApprovals = repo.requiredApprovals || 1;
           } catch {}
-          
+
           allPRsData.push({
             id: pr.id || `${entity}_${repoName}_${idx}`,
             entity: entity,
             repo: repoName,
             title: pr.title || `PR ${idx + 1}`,
             number: String(idx + 1),
-            date: pr.createdAt ? formatDateTime24h(pr.createdAt) : formatDateTime24h(Date.now()),
+            date: pr.createdAt
+              ? formatDateTime24h(pr.createdAt)
+              : formatDateTime24h(Date.now()),
             author: pr.author || "unknown",
             tags: [],
             taskTotal: null,
@@ -188,14 +246,19 @@ export default function PullsPage({}) {
           });
         });
       });
-      
+
       // Sort by createdAt (newest first)
       allPRsData.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-      
+
       console.log("[PullsPage] Total PRs loaded:", allPRsData.length);
       console.log("[PullsPage] Current user pubkey:", currentUserPubkey);
-      console.log("[PullsPage] PRs (first 3):", allPRsData.slice(0, 3).map(p => ({ id: p.id, title: p.title, author: p.author })));
-      
+      console.log(
+        "[PullsPage] PRs (first 3):",
+        allPRsData
+          .slice(0, 3)
+          .map((p) => ({ id: p.id, title: p.title, author: p.author }))
+      );
+
       setAllPRs(allPRsData);
     } catch (error) {
       console.error("Failed to load PRs:", error);
@@ -206,40 +269,63 @@ export default function PullsPage({}) {
   // Fetch PRs from GitHub API for repos with sourceUrl (on-demand, no polling)
   useEffect(() => {
     if (!currentUserPubkey) return;
-    
+
     const fetchFromGitHub = async () => {
       try {
         const repos = loadStoredRepos();
         const userRepos = repos.filter((repo: any) => {
-          const ownerPubkey = repo.ownerPubkey || 
-            (repo.contributors?.find((c: any) => c.weight === 100)?.pubkey) ||
-            (repo.entity && /^[0-9a-f]{64}$/i.test(repo.entity) ? repo.entity : null);
+          const ownerPubkey =
+            repo.ownerPubkey ||
+            repo.contributors?.find((c: any) => c.weight === 100)?.pubkey ||
+            (repo.entity && /^[0-9a-f]{64}$/i.test(repo.entity)
+              ? repo.entity
+              : null);
           if (!ownerPubkey) return false;
-          return ownerPubkey === currentUserPubkey || 
-            (ownerPubkey.length === 64 && ownerPubkey.toLowerCase().startsWith(currentUserPubkey.slice(0, 8).toLowerCase())) ||
-            (currentUserPubkey.length === 64 && currentUserPubkey.toLowerCase().startsWith(ownerPubkey.slice(0, 8).toLowerCase())) ||
-            (repo.entity && repo.entity === currentUserPubkey.slice(0, 8).toLowerCase());
+          return (
+            ownerPubkey === currentUserPubkey ||
+            (ownerPubkey.length === 64 &&
+              ownerPubkey
+                .toLowerCase()
+                .startsWith(currentUserPubkey.slice(0, 8).toLowerCase())) ||
+            (currentUserPubkey.length === 64 &&
+              currentUserPubkey
+                .toLowerCase()
+                .startsWith(ownerPubkey.slice(0, 8).toLowerCase())) ||
+            (repo.entity &&
+              repo.entity === currentUserPubkey.slice(0, 8).toLowerCase())
+          );
         });
 
         // Fetch from GitHub for repos with sourceUrl
         for (const repo of userRepos) {
-          if (!repo.sourceUrl || !repo.sourceUrl.includes("github.com")) continue;
-          
-          const entity = repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
-          const repoName = repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
+          if (!repo.sourceUrl || !repo.sourceUrl.includes("github.com"))
+            continue;
+
+          const entity =
+            repo.entity ||
+            repo.slug?.split("/")[0] ||
+            repo.ownerPubkey?.slice(0, 8);
+          const repoName =
+            repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
           if (!entity || !repoName) continue;
-          
+
           try {
             const url = new URL(repo.sourceUrl);
-            const pathParts = url.pathname.replace(/\.git$/, "").split("/").filter(Boolean);
-            if (pathParts.length < 2 || !pathParts[0] || !pathParts[1]) continue;
-            
+            const pathParts = url.pathname
+              .replace(/\.git$/, "")
+              .split("/")
+              .filter(Boolean);
+            if (pathParts.length < 2 || !pathParts[0] || !pathParts[1])
+              continue;
+
             const owner = pathParts[0];
             const repoNameFromUrl = pathParts[1];
-            
-            const proxyUrl = `/api/github/proxy?endpoint=${encodeURIComponent(`/repos/${owner}/${repoNameFromUrl}/pulls?state=all&per_page=100&sort=updated`)}`;
+
+            const proxyUrl = `/api/github/proxy?endpoint=${encodeURIComponent(
+              `/repos/${owner}/${repoNameFromUrl}/pulls?state=all&per_page=100&sort=updated`
+            )}`;
             const response = await fetch(proxyUrl);
-            
+
             if (response.ok) {
               const githubList: any[] = await response.json();
               const githubPRs = githubList.map((item: any) => ({
@@ -248,62 +334,84 @@ export default function PullsPage({}) {
                 repo: repoName,
                 title: item.title || "",
                 number: String(item.number || ""),
-                status: item.merged_at ? "merged" : (item.state === "closed" ? "closed" : "open"),
+                status: item.merged_at
+                  ? "merged"
+                  : item.state === "closed"
+                  ? "closed"
+                  : "open",
                 author: item.user?.login || "",
                 labels: item.labels?.map((l: any) => l.name || l) || [],
                 assignees: [],
-                createdAt: item.created_at ? new Date(item.created_at).getTime() : Date.now(),
+                createdAt: item.created_at
+                  ? new Date(item.created_at).getTime()
+                  : Date.now(),
                 body: item.body || "",
                 html_url: item.html_url || "",
                 merged_at: item.merged_at || null,
                 head: item.head?.ref || null,
                 base: item.base?.ref || null,
               }));
-              
+
               const key = getRepoStorageKey("gittr_prs", entity, repoName);
-              const existingPRs = JSON.parse(localStorage.getItem(key) || "[]") as any[];
-              
+              const existingPRs = JSON.parse(
+                localStorage.getItem(key) || "[]"
+              ) as any[];
+
               // Merge GitHub PRs with existing Nostr PRs
               const mergedPRsMap = new Map<string, any>();
-              existingPRs.forEach(pr => {
+              existingPRs.forEach((pr) => {
                 mergedPRsMap.set(pr.id, pr);
               });
-              githubPRs.forEach(pr => {
+              githubPRs.forEach((pr) => {
                 mergedPRsMap.set(pr.id, pr);
               });
-              
+
               const finalPRs = Array.from(mergedPRsMap.values());
               localStorage.setItem(key, JSON.stringify(finalPRs));
-              console.log(`✅ [PRs Aggregated] Fetched and merged ${githubPRs.length} GitHub PRs for ${entity}/${repoName}`);
+              console.log(
+                `✅ [PRs Aggregated] Fetched and merged ${githubPRs.length} GitHub PRs for ${entity}/${repoName}`
+              );
             }
           } catch (error) {
-            console.error(`Failed to fetch PRs from GitHub for ${entity}/${repoName}:`, error);
+            console.error(
+              `Failed to fetch PRs from GitHub for ${entity}/${repoName}:`,
+              error
+            );
           }
         }
-        
+
         // Reload PRs after GitHub fetch
         const allPRsData: IPullRequestData[] = [];
         userRepos.forEach((repo: any) => {
-          const entity = repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
-          const repoName = repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
+          const entity =
+            repo.entity ||
+            repo.slug?.split("/")[0] ||
+            repo.ownerPubkey?.slice(0, 8);
+          const repoName =
+            repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
           if (!entity || !repoName) return;
-          
+
           const prKey1 = `gittr_prs__${entity}__${repoName}`;
           const prKey2 = `gittr_prs__${repo.slug || entity}_${repoName}`;
-          let repoPRs = JSON.parse(localStorage.getItem(prKey1) || "[]") as any[];
+          let repoPRs = JSON.parse(
+            localStorage.getItem(prKey1) || "[]"
+          ) as any[];
           if (repoPRs.length === 0) {
             repoPRs = JSON.parse(localStorage.getItem(prKey2) || "[]") as any[];
           }
-          
+
           repoPRs.forEach((pr: any, idx: number) => {
-            const status = pr.status === "merged" ? "closed" : (pr.status || "open");
+            const status =
+              pr.status === "merged" ? "closed" : pr.status || "open";
             allPRsData.push({
               id: pr.id || `${entity}_${repoName}_${idx}`,
               entity: entity,
               repo: repoName,
               title: pr.title || `PR ${idx + 1}`,
               number: pr.number || String(idx + 1),
-              date: pr.createdAt ? formatDateTime24h(pr.createdAt) : formatDateTime24h(Date.now()),
+              date: pr.createdAt
+                ? formatDateTime24h(pr.createdAt)
+                : formatDateTime24h(Date.now()),
               author: pr.author || "unknown",
               tags: pr.labels || [],
               taskTotal: null,
@@ -317,53 +425,76 @@ export default function PullsPage({}) {
             });
           });
         });
-        
+
         allPRsData.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         setAllPRs(allPRsData);
       } catch (error) {
         console.error("Failed to fetch PRs from GitHub:", error);
       }
     };
-    
+
     fetchFromGitHub();
   }, [currentUserPubkey]);
 
   // Subscribe to PRs from Nostr relays (kind 9804) for all user repos - handles PRs from any Nostr client
   useEffect(() => {
-    if (!subscribe || !defaultRelays || defaultRelays.length === 0 || !currentUserPubkey) return;
-    
+    if (
+      !subscribe ||
+      !defaultRelays ||
+      defaultRelays.length === 0 ||
+      !currentUserPubkey
+    )
+      return;
+
     const repos = loadStoredRepos();
     const userRepos = repos.filter((repo: any) => {
-      const ownerPubkey = repo.ownerPubkey || 
-        (repo.contributors?.find((c: any) => c.weight === 100)?.pubkey) ||
-        (repo.entity && /^[0-9a-f]{64}$/i.test(repo.entity) ? repo.entity : null);
+      const ownerPubkey =
+        repo.ownerPubkey ||
+        repo.contributors?.find((c: any) => c.weight === 100)?.pubkey ||
+        (repo.entity && /^[0-9a-f]{64}$/i.test(repo.entity)
+          ? repo.entity
+          : null);
       if (!ownerPubkey) return false;
-      return ownerPubkey === currentUserPubkey || 
-        (ownerPubkey.length === 64 && ownerPubkey.toLowerCase().startsWith(currentUserPubkey.slice(0, 8).toLowerCase())) ||
-        (currentUserPubkey.length === 64 && currentUserPubkey.toLowerCase().startsWith(ownerPubkey.slice(0, 8).toLowerCase())) ||
-        (repo.entity && repo.entity === currentUserPubkey.slice(0, 8).toLowerCase());
+      return (
+        ownerPubkey === currentUserPubkey ||
+        (ownerPubkey.length === 64 &&
+          ownerPubkey
+            .toLowerCase()
+            .startsWith(currentUserPubkey.slice(0, 8).toLowerCase())) ||
+        (currentUserPubkey.length === 64 &&
+          currentUserPubkey
+            .toLowerCase()
+            .startsWith(ownerPubkey.slice(0, 8).toLowerCase())) ||
+        (repo.entity &&
+          repo.entity === currentUserPubkey.slice(0, 8).toLowerCase())
+      );
     });
-    
+
     if (userRepos.length === 0) return;
-    
+
     // Build filters for all user repos - subscribe to PRs for each repo
     // NIP-34: Use "#a" tag for discovery, also include old "#repo" tag for backward compatibility
     const filters: any[] = [];
     userRepos.forEach((repo: any) => {
-      const entity = repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
-      const repoName = repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
+      const entity =
+        repo.entity ||
+        repo.slug?.split("/")[0] ||
+        repo.ownerPubkey?.slice(0, 8);
+      const repoName =
+        repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
       if (!entity || !repoName) return;
-      
-      const ownerPubkey = repo.ownerPubkey || 
-        (repo.contributors?.find((c: any) => c.weight === 100)?.pubkey) ||
+
+      const ownerPubkey =
+        repo.ownerPubkey ||
+        repo.contributors?.find((c: any) => c.weight === 100)?.pubkey ||
         (entity && /^[0-9a-f]{64}$/i.test(entity) ? entity : null);
-      
+
       // Old format filter
       filters.push({
         kinds: [KIND_PULL_REQUEST],
         "#repo": [entity, repoName],
       });
-      
+
       // NIP-34 format filter (if we have owner pubkey)
       if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
         filters.push({
@@ -372,25 +503,27 @@ export default function PullsPage({}) {
         });
       }
     });
-    
+
     if (filters.length === 0) return;
-    
+
     let cancelled = false;
     const unsub = subscribe(
       filters,
       defaultRelays,
       (event, isAfterEose, relayURL) => {
         if (cancelled || event.kind !== KIND_PULL_REQUEST) return;
-        
+
         try {
           // NIP-34: Parse from tags and markdown content, but also support old JSON format
           const aTag = event.tags.find((t: string[]) => t[0] === "a");
-          const subjectTag = event.tags.find((t: string[]) => t[0] === "subject");
+          const subjectTag = event.tags.find(
+            (t: string[]) => t[0] === "subject"
+          );
           const repoTag = event.tags.find((t: string[]) => t[0] === "repo");
-          
+
           let entity: string | undefined;
           let repoName: string | undefined;
-          
+
           // Try NIP-34 "a" tag first: "30617:<owner-pubkey>:<repo-id>"
           if (aTag && aTag[1]) {
             const aParts = aTag[1].split(":");
@@ -399,7 +532,7 @@ export default function PullsPage({}) {
               repoName = aParts[2]; // Repo ID
             }
           }
-          
+
           // Fallback to old "repo" tag format
           if (!entity || !repoName) {
             if (repoTag && repoTag.length >= 3) {
@@ -409,32 +542,34 @@ export default function PullsPage({}) {
               return; // Can't determine repo
             }
           }
-          
+
           if (!entity || !repoName) return;
-          
+
           // Verify this repo belongs to the user
           const repo = findRepoByEntityAndName(userRepos, entity, repoName);
           if (!repo) return;
-          
+
           const key = getRepoStorageKey("gittr_prs", entity, repoName);
           const existingPRs = JSON.parse(localStorage.getItem(key) || "[]");
-          
+
           // Check if PR already exists
-          const existingIndex = existingPRs.findIndex((pr: any) => pr.id === event.id);
-          
+          const existingIndex = existingPRs.findIndex(
+            (pr: any) => pr.id === event.id
+          );
+
           // Find next available number (avoid conflicts with GitHub PRs)
           const maxNumber = existingPRs.reduce((max: number, pr: any) => {
             const num = parseInt(pr.number || "0", 10);
             return num > max ? num : max;
           }, 0);
           const nextNumber = maxNumber + 1;
-          
+
           // NIP-34: Title from "subject" tag, description from markdown content
           // Old format: Both from JSON
           let title = subjectTag ? subjectTag[1] : "";
           let body = event.content || "";
           let changedFiles: any[] = [];
-          
+
           // Try to parse old JSON format for backward compatibility
           if (!title && event.content) {
             try {
@@ -446,18 +581,27 @@ export default function PullsPage({}) {
               // Not JSON, use as-is (NIP-34 markdown)
             }
           }
-          
+
           // Extract branch info from "branch-name" tag (NIP-34) or "branch" tag (old format)
-          const branchNameTag = event.tags.find((t: string[]) => t[0] === "branch-name");
+          const branchNameTag = event.tags.find(
+            (t: string[]) => t[0] === "branch-name"
+          );
           const branchTag = event.tags.find((t: string[]) => t[0] === "branch");
-          const baseBranch = branchNameTag ? branchNameTag[1] : (branchTag ? branchTag[1] : "main");
+          const baseBranch = branchNameTag
+            ? branchNameTag[1]
+            : branchTag
+            ? branchTag[1]
+            : "main";
           const headBranch = branchTag ? branchTag[2] : undefined;
-          
-          const linkedIssueTag = event.tags.find((t: string[]) => t[0] === "e" && (t[3] === "linked" || t[3] === "root"));
+
+          const linkedIssueTag = event.tags.find(
+            (t: string[]) =>
+              t[0] === "e" && (t[3] === "linked" || t[3] === "root")
+          );
           // Status: Default to "open" - will be updated by status events (kinds 1630-1633)
           // NIP-34: Status comes from separate status events, not tags
           const status = "open"; // Default, will be updated by status event subscription
-          
+
           const pr = {
             id: event.id,
             entity: entity,
@@ -474,38 +618,44 @@ export default function PullsPage({}) {
             number: String(nextNumber),
             linkedIssue: linkedIssueTag ? linkedIssueTag[1] : undefined,
           };
-          
+
           if (existingIndex >= 0) {
-            existingPRs[existingIndex] = { ...existingPRs[existingIndex], ...pr };
+            existingPRs[existingIndex] = {
+              ...existingPRs[existingIndex],
+              ...pr,
+            };
           } else {
             existingPRs.push(pr);
           }
-          
+
           localStorage.setItem(key, JSON.stringify(existingPRs));
-          
+
           // Reload PRs
           const allPRsData: IPullRequestData[] = [];
           userRepos.forEach((r: any) => {
-            const e = r.entity || r.slug?.split("/")[0] || r.ownerPubkey?.slice(0, 8);
+            const e =
+              r.entity || r.slug?.split("/")[0] || r.ownerPubkey?.slice(0, 8);
             const rn = r.repo || r.slug?.split("/")[1] || r.name || r.slug;
             if (!e || !rn) return;
-            
+
             const k1 = `gittr_prs__${e}__${rn}`;
             const k2 = `gittr_prs__${r.slug || e}_${rn}`;
             let rprs = JSON.parse(localStorage.getItem(k1) || "[]") as any[];
             if (rprs.length === 0) {
               rprs = JSON.parse(localStorage.getItem(k2) || "[]") as any[];
             }
-            
+
             rprs.forEach((p: any, idx: number) => {
-              const s = p.status === "merged" ? "closed" : (p.status || "open");
+              const s = p.status === "merged" ? "closed" : p.status || "open";
               allPRsData.push({
                 id: p.id || `${e}_${rn}_${idx}`,
                 entity: e,
                 repo: rn,
                 title: p.title || `PR ${idx + 1}`,
                 number: p.number || String(idx + 1),
-                date: p.createdAt ? formatDateTime24h(p.createdAt) : formatDateTime24h(Date.now()),
+                date: p.createdAt
+                  ? formatDateTime24h(p.createdAt)
+                  : formatDateTime24h(Date.now()),
                 author: p.author || "unknown",
                 tags: p.labels || [],
                 taskTotal: null,
@@ -519,7 +669,7 @@ export default function PullsPage({}) {
               });
             });
           });
-          
+
           allPRsData.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
           setAllPRs(allPRsData);
         } catch (error: any) {
@@ -527,7 +677,7 @@ export default function PullsPage({}) {
         }
       }
     );
-    
+
     return () => {
       cancelled = true;
       if (unsub) unsub();
@@ -536,12 +686,14 @@ export default function PullsPage({}) {
 
   // Get all unique author pubkeys (only full 64-char pubkeys for metadata lookup)
   const authorPubkeys = useMemo(() => {
-    return Array.from(new Set(
-      allPRs
-        .map(p => p.author)
-        .filter(Boolean)
-        .filter(author => /^[a-f0-9]{64}$/i.test(author)) // Only full 64-char pubkeys
-    ));
+    return Array.from(
+      new Set(
+        allPRs
+          .map((p) => p.author)
+          .filter(Boolean)
+          .filter((author) => /^[a-f0-9]{64}$/i.test(author)) // Only full 64-char pubkeys
+      )
+    );
   }, [allPRs]);
 
   // Fetch Nostr metadata for all authors
@@ -554,81 +706,104 @@ export default function PullsPage({}) {
   );
 
   const handlePRStatusOpen = useCallback(() => setPrStatus("open"), []);
-  const handlePRStatusClosed = useCallback(
-    () => setPrStatus("closed"),
-    []
-  );
+  const handlePRStatusClosed = useCallback(() => setPrStatus("closed"), []);
 
   const handlePRTypeCreated = useCallback(() => setPrType("created"), []);
-  const handlePRTypeAssigned = useCallback(
-    () => setPrType("assigned"),
-    []
-  );
-  const handlePRTypeMentioned = useCallback(
-    () => setPrType("mentioned"),
-    []
-  );
+  const handlePRTypeAssigned = useCallback(() => setPrType("assigned"), []);
+  const handlePRTypeMentioned = useCallback(() => setPrType("mentioned"), []);
 
   // Filter and sort PRs based on search, status, and type
   const filteredPRs = useMemo(() => {
     let filtered = [...allPRs];
-    
+
     // Filter by status
-    filtered = filtered.filter(pr => {
+    filtered = filtered.filter((pr) => {
       const status = pr.status || "open";
-      return prStatus === "open" ? status === "open" : (status === "closed" || status === "merged");
+      return prStatus === "open"
+        ? status === "open"
+        : status === "closed" || status === "merged";
     });
-    
+
     // Filter by type (created/assigned/mentioned)
     if (currentUserPubkey) {
       if (prType === "created") {
         // Match by full pubkey or by prefix (8-char entity display)
-        filtered = filtered.filter(pr => {
+        filtered = filtered.filter((pr) => {
           const authorPubkey = pr.author || "";
           const userPubkey = currentUserPubkey || "";
           // Direct match
           if (authorPubkey === userPubkey) return true;
           // Match if either starts with the other's 8-char prefix
-          if (authorPubkey.toLowerCase().startsWith(userPubkey.slice(0, 8).toLowerCase())) return true;
-          if (userPubkey.toLowerCase().startsWith(authorPubkey.slice(0, 8).toLowerCase())) return true;
+          if (
+            authorPubkey
+              .toLowerCase()
+              .startsWith(userPubkey.slice(0, 8).toLowerCase())
+          )
+            return true;
+          if (
+            userPubkey
+              .toLowerCase()
+              .startsWith(authorPubkey.slice(0, 8).toLowerCase())
+          )
+            return true;
           return false;
         });
       } else if (prType === "assigned") {
-        filtered = filtered.filter(pr => {
+        filtered = filtered.filter((pr) => {
           const assignees = pr.assignees || [];
           return assignees.some((a: string) => {
             if (!a || !currentUserPubkey) return false;
             // Direct match
             if (a === currentUserPubkey) return true;
             // Prefix match
-            if (a.toLowerCase().startsWith(currentUserPubkey.slice(0, 8).toLowerCase())) return true;
-            if (currentUserPubkey.toLowerCase().startsWith(a.slice(0, 8).toLowerCase())) return true;
+            if (
+              a
+                .toLowerCase()
+                .startsWith(currentUserPubkey.slice(0, 8).toLowerCase())
+            )
+              return true;
+            if (
+              currentUserPubkey
+                .toLowerCase()
+                .startsWith(a.slice(0, 8).toLowerCase())
+            )
+              return true;
             return false;
           });
         });
       } else if (prType === "mentioned") {
         // Filter PRs where current user is mentioned in title or description
         if (currentUserPubkey) {
-          const { extractMentionedPubkeys } = require("@/lib/utils/mention-detection");
-          filtered = filtered.filter(pr => {
+          const {
+            extractMentionedPubkeys,
+          } = require("@/lib/utils/mention-detection");
+          filtered = filtered.filter((pr) => {
             const titleMentions = extractMentionedPubkeys(pr.title || "");
             const descMentions = extractMentionedPubkeys(pr.description || "");
             const allMentions = [...titleMentions, ...descMentions];
-            return allMentions.some(pubkey => pubkey.toLowerCase() === currentUserPubkey.toLowerCase());
+            return allMentions.some(
+              (pubkey) =>
+                pubkey.toLowerCase() === currentUserPubkey.toLowerCase()
+            );
           });
         }
       }
     }
-    
+
     // Filter by search query
     if (search.trim()) {
       const query = search.toLowerCase();
-      filtered = filtered.filter(pr => {
+      filtered = filtered.filter((pr) => {
         // Get entity display name - never use shortened pubkey
         let entityDisplay = pr.entity || "";
-        if (entityDisplay && !entityDisplay.startsWith("npub") && /^[0-9a-f]{64}$/i.test(entityDisplay)) {
+        if (
+          entityDisplay &&
+          !entityDisplay.startsWith("npub") &&
+          /^[0-9a-f]{64}$/i.test(entityDisplay)
+        ) {
           try {
-            entityDisplay = nip19.npubEncode(entityDisplay).substring(0, 16) + "...";
+            entityDisplay =
+              nip19.npubEncode(entityDisplay).substring(0, 16) + "...";
           } catch {
             entityDisplay = entityDisplay.substring(0, 16) + "...";
           }
@@ -639,24 +814,30 @@ export default function PullsPage({}) {
           pr.title.toLowerCase().includes(query) ||
           `${entityDisplay}/${pr.repo || ""}`.toLowerCase().includes(query) ||
           (pr.author || "").toLowerCase().includes(query) ||
-          (pr.tags || []).some(tag => tag.toLowerCase().includes(query))
+          (pr.tags || []).some((tag) => tag.toLowerCase().includes(query))
         );
       });
     }
-    
+
     // Sort by createdAt (newest first)
     filtered.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    
+
     return filtered;
   }, [allPRs, prStatus, prType, search, currentUserPubkey]);
 
-  const openCount = useMemo(() => allPRs.filter(pr => (pr.status || "open") === "open").length, [allPRs]);
-  const closedCount = useMemo(() => allPRs.filter(pr => (pr.status || "open") !== "open").length, [allPRs]);
+  const openCount = useMemo(
+    () => allPRs.filter((pr) => (pr.status || "open") === "open").length,
+    [allPRs]
+  );
+  const closedCount = useMemo(
+    () => allPRs.filter((pr) => (pr.status || "open") !== "open").length,
+    [allPRs]
+  );
 
   // Collect all unique entity pubkeys for metadata fetching
   const entityPubkeys = useMemo(() => {
     const pubkeys = new Set<string>();
-    allPRs.forEach(pr => {
+    allPRs.forEach((pr) => {
       const pubkey = resolveEntityToPubkey(pr.entity);
       if (pubkey) {
         pubkeys.add(pubkey);
@@ -736,7 +917,8 @@ export default function PullsPage({}) {
                   })}
                   onClick={handlePRStatusOpen}
                 >
-                  <GitPullRequest className="h-5 w-5 mr-2 mt-0.5" /> {openCount} Open
+                  <GitPullRequest className="h-5 w-5 mr-2 mt-0.5" /> {openCount}{" "}
+                  Open
                 </button>
                 <button
                   className={clsx("flex text-zinc-400 hover:text-zinc-200", {
@@ -744,7 +926,8 @@ export default function PullsPage({}) {
                   })}
                   onClick={handlePRStatusClosed}
                 >
-                  <GitMerge className="h-5 w-5 mr-2 mt-0.5" /> {closedCount} Closed
+                  <GitMerge className="h-5 w-5 mr-2 mt-0.5" /> {closedCount}{" "}
+                  Closed
                 </button>
               </div>
               <div className="mt-2 flex text-gray-400 lg:mt-0 space-x-6">
@@ -764,7 +947,7 @@ export default function PullsPage({}) {
             <ul className="divide-y dark:divide-lightgray">
               {filteredPRs.length === 0 ? (
                 <li className="p-4 text-center text-zinc-400">
-                  {allPRs.length === 0 
+                  {allPRs.length === 0
                     ? "No pull requests yet. Create a pull request in a repository to get started."
                     : search.trim()
                     ? "No pull requests match your search."
@@ -791,8 +974,14 @@ export default function PullsPage({}) {
                             href={`/${item.entity}/${item.repo}`}
                           >
                             {(() => {
-                              const entityPubkey = resolveEntityToPubkey(item.entity);
-                              const displayName = getEntityDisplayName(entityPubkey, entityMetadata, item.entity);
+                              const entityPubkey = resolveEntityToPubkey(
+                                item.entity
+                              );
+                              const displayName = getEntityDisplayName(
+                                entityPubkey,
+                                entityMetadata,
+                                item.entity
+                              );
                               return `${displayName}/${item.repo}`;
                             })()}
                           </Link>
@@ -800,28 +989,50 @@ export default function PullsPage({}) {
 
                         <Link
                           className="text-zinc-200 hover:text-purple-500 pl-7 sm:pl-3"
-                          href={`/${item.entity}/${item.repo}/pulls/${item.id?.startsWith("pr-") ? item.number : item.id}`}
+                          href={`/${item.entity}/${item.repo}/pulls/${
+                            item.id?.startsWith("pr-") ? item.number : item.id
+                          }`}
                         >
                           {item.title}
                         </Link>
                         {/* Review Status Badge */}
-                        {item.status === "open" && (item.reviewApprovals || item.reviewChangeRequests || item.requiredApprovals) && (
-                          <span className={`ml-2 px-2 py-0.5 rounded text-xs font-medium flex items-center gap-1 ${
-                            (item.reviewChangeRequests ?? 0) > 0
-                              ? "bg-red-900/40 text-red-400"
-                              : (item.reviewApprovals ?? 0) >= (item.requiredApprovals || 1)
-                              ? "bg-green-900/40 text-green-400"
-                              : "bg-yellow-900/40 text-yellow-400"
-                          }`}>
-                            {(item.reviewChangeRequests ?? 0) > 0 ? (
-                              <>⚠️ {item.reviewChangeRequests} change {(item.reviewChangeRequests ?? 0) === 1 ? "request" : "requests"}</>
-                            ) : (item.reviewApprovals ?? 0) > 0 ? (
-                              <>✓ {item.reviewApprovals}/{item.requiredApprovals || 1} approved</>
-                            ) : (
-                              <>⏳ {item.requiredApprovals || 1} approval{(item.requiredApprovals || 1) === 1 ? "" : "s"} required</>
-                            )}
-                          </span>
-                        )}
+                        {item.status === "open" &&
+                          (item.reviewApprovals ||
+                            item.reviewChangeRequests ||
+                            item.requiredApprovals) && (
+                            <span
+                              className={`ml-2 px-2 py-0.5 rounded text-xs font-medium flex items-center gap-1 ${
+                                (item.reviewChangeRequests ?? 0) > 0
+                                  ? "bg-red-900/40 text-red-400"
+                                  : (item.reviewApprovals ?? 0) >=
+                                    (item.requiredApprovals || 1)
+                                  ? "bg-green-900/40 text-green-400"
+                                  : "bg-yellow-900/40 text-yellow-400"
+                              }`}
+                            >
+                              {(item.reviewChangeRequests ?? 0) > 0 ? (
+                                <>
+                                  ⚠️ {item.reviewChangeRequests} change{" "}
+                                  {(item.reviewChangeRequests ?? 0) === 1
+                                    ? "request"
+                                    : "requests"}
+                                </>
+                              ) : (item.reviewApprovals ?? 0) > 0 ? (
+                                <>
+                                  ✓ {item.reviewApprovals}/
+                                  {item.requiredApprovals || 1} approved
+                                </>
+                              ) : (
+                                <>
+                                  ⏳ {item.requiredApprovals || 1} approval
+                                  {(item.requiredApprovals || 1) === 1
+                                    ? ""
+                                    : "s"}{" "}
+                                  required
+                                </>
+                              )}
+                            </span>
+                          )}
                         {/* Bounty Badge - Show if linked issue has bounty */}
                         {item.linkedIssueBountyAmount && (
                           <span className="ml-2 px-2 py-0.5 bg-yellow-900/40 text-yellow-400 rounded text-xs font-medium flex items-center gap-1">
@@ -837,8 +1048,8 @@ export default function PullsPage({}) {
                       </div>
                       <div className="ml-7 text-zinc-400 flex items-center gap-2">
                         #{item.number} opened {item.date} by{" "}
-                        <Link 
-                          className="hover:text-purple-500 flex items-center gap-1 group" 
+                        <Link
+                          className="hover:text-purple-500 flex items-center gap-1 group"
                           href={`/${item.author}`}
                           title={(() => {
                             if (item.author && item.author.length === 64) {
@@ -863,7 +1074,10 @@ export default function PullsPage({}) {
                             <AvatarFallback className="bg-gray-700 text-white text-[10px]">
                               {(() => {
                                 const meta = authorMetadata[item.author];
-                                const name = meta?.display_name || meta?.name || item.author.slice(0, 8);
+                                const name =
+                                  meta?.display_name ||
+                                  meta?.name ||
+                                  item.author.slice(0, 8);
                                 return name.slice(0, 2).toUpperCase();
                               })()}
                             </AvatarFallback>
@@ -871,21 +1085,27 @@ export default function PullsPage({}) {
                           <span>
                             {(() => {
                               const meta = authorMetadata[item.author];
-                              return meta?.display_name || meta?.name || item.author.slice(0, 8) + "...";
+                              return (
+                                meta?.display_name ||
+                                meta?.name ||
+                                item.author.slice(0, 8) + "..."
+                              );
                             })()}
                           </span>
-                          {item.author && item.author.length === 64 && (() => {
-                            try {
-                              const npub = nip19.npubEncode(item.author);
-                              return (
-                                <span className="text-xs text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity font-mono ml-1">
-                                  ({npub.slice(0, 16)}...)
-                                </span>
-                              );
-                            } catch {
-                              return null;
-                            }
-                          })()}
+                          {item.author &&
+                            item.author.length === 64 &&
+                            (() => {
+                              try {
+                                const npub = nip19.npubEncode(item.author);
+                                return (
+                                  <span className="text-xs text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity font-mono ml-1">
+                                    ({npub.slice(0, 16)}...)
+                                  </span>
+                                );
+                              } catch {
+                                return null;
+                              }
+                            })()}
                         </Link>
                       </div>
                     </div>

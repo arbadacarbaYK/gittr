@@ -71,7 +71,7 @@ function parseJavaScriptDependencies(
         line: index + 1,
       });
     }
-    
+
     // Also match: import 'module' (side-effect imports)
     const sideEffectImportMatch = trimmed.match(/^import\s+['"]([^'"]+)['"]/);
     if (sideEffectImportMatch && sideEffectImportMatch[1] && !importMatch) {
@@ -123,7 +123,9 @@ function parsePythonDependencies(
 
     // import x
     // from x import y
-    const importMatch = trimmed.match(/^(?:from\s+)?([\w.]+)\s+import|import\s+([\w.]+)/);
+    const importMatch = trimmed.match(
+      /^(?:from\s+)?([\w.]+)\s+import|import\s+([\w.]+)/
+    );
     if (importMatch) {
       const module = importMatch[1] || importMatch[2] || "";
       if (module && !module.startsWith(".")) {
@@ -246,10 +248,7 @@ function parseJavaDependencies(
 /**
  * Parse PHP imports
  */
-function parsePhpDependencies(
-  filePath: string,
-  lines: string[]
-): Dependency[] {
+function parsePhpDependencies(filePath: string, lines: string[]): Dependency[] {
   const deps: Dependency[] = [];
 
   lines.forEach((line, index) => {
@@ -258,7 +257,9 @@ function parsePhpDependencies(
     // require 'file.php'
     // include 'file.php'
     // use Namespace\Class
-    const requireMatch = trimmed.match(/(?:require|include)(?:_once)?\s+['"]([^'"]+)['"]/);
+    const requireMatch = trimmed.match(
+      /(?:require|include)(?:_once)?\s+['"]([^'"]+)['"]/
+    );
     if (requireMatch) {
       deps.push({
         from: filePath,
@@ -296,7 +297,9 @@ function parseRubyDependencies(
 
     // require 'gem'
     // require_relative 'file'
-    const requireMatch = trimmed.match(/^require(?:_relative)?\s+['"]([^'"]+)['"]/);
+    const requireMatch = trimmed.match(
+      /^require(?:_relative)?\s+['"]([^'"]+)['"]/
+    );
     if (requireMatch) {
       deps.push({
         from: filePath,
@@ -322,7 +325,11 @@ export function resolveImportPath(
   if (importPath.startsWith("/") || !importPath.startsWith(".")) {
     // Try to find matching file
     const matches = allFiles.filter((f) => {
-      const baseName = f.split("/").pop()?.replace(/\.[^.]+$/, "") || "";
+      const baseName =
+        f
+          .split("/")
+          .pop()
+          ?.replace(/\.[^.]+$/, "") || "";
       return f.includes(importPath) || baseName === importPath;
     });
     return matches[0] || null;
@@ -356,4 +363,3 @@ export function resolveImportPath(
 
   return null;
 }
-
