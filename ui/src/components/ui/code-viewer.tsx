@@ -57,9 +57,12 @@ export function CodeViewer({
   useEffect(() => {
     // Get current file from URL to detect file changes
     const currentFileFromUrl = searchParams?.get("file") || "";
-    const fileChanged = filePath !== lastFilePathRef.current && filePath;
+    const previousFileFromUrl = lastFileFromUrlRef.current;
+    const previousFilePath = lastFilePathRef.current;
+    const fileChanged = filePath !== previousFilePath && filePath;
     const urlFileChanged =
-      currentFileFromUrl !== lastFileFromUrlRef.current && currentFileFromUrl;
+      currentFileFromUrl !== previousFileFromUrl && currentFileFromUrl;
+    const hadPreviousFile = Boolean(previousFileFromUrl || previousFilePath);
 
     if (fileChanged || urlFileChanged) {
       // File changed - clear all selection state IMMEDIATELY and synchronously
@@ -74,8 +77,8 @@ export function CodeViewer({
         lastFileFromUrlRef.current = currentFileFromUrl;
       }
 
-      // Clear hash synchronously if it contains line numbers (from previous file)
-      if (typeof window !== "undefined") {
+      // Clear hash only when switching away from a previously known URL file
+      if (previousFileFromUrl && typeof window !== "undefined") {
         const hash = window.location.hash;
         if (hash && hash.match(/#L\d/)) {
           // Clear hash immediately - this must happen before hash parsing effect runs
@@ -95,6 +98,13 @@ export function CodeViewer({
       // Reset the flag after a delay to allow hash parsing to skip
       setTimeout(() => {
         fileJustChangedRef.current = false;
+        if (typeof window !== "undefined") {
+          const hash = window.location.hash;
+          if (hash && hash.match(/#L\d/)) {
+            lastHashRef.current = "";
+            setCurrentHash(`${hash}:${Date.now()}`);
+          }
+        }
       }, 500); // Increased delay to ensure hash parsing doesn't run
     }
   }, [filePath, searchParams]);
@@ -127,20 +137,6 @@ export function CodeViewer({
 
     const hash = window.location.hash;
 
-    // Skip if we've already processed this hash (unless it's a user selection)
-    if (hash === lastHashRef.current && !isUserSelectionRef.current) {
-      return;
-    }
-
-    // If hash exists but we just switched files, don't apply it
-    if (hash && hash.match(/#L\d/) && fileJustChangedRef.current) {
-      return;
-    }
-
-    // Reset user selection flag after processing
-    isUserSelectionRef.current = false;
-    lastHashRef.current = hash;
-
     const match = hash.match(/#L(\d+)(?:-L(\d+))?/);
 
     if (!match || !match[1]) {
@@ -168,22 +164,40 @@ export function CodeViewer({
       return;
     }
 
-    // Set selection (React will handle re-render optimization)
-    setSelectedLines({ start, end });
+    const selectionAlreadyMatches =
+      selectedLines?.start === start && selectedLines?.end === end;
 
-    // Scroll to action bar after DOM is ready
-    setTimeout(() => {
-      scrollToActionBar();
-    }, 200);
+    // Skip if we've already processed this hash and selection matches
+    if (
+      selectionAlreadyMatches &&
+      hash === lastHashRef.current &&
+      !isUserSelectionRef.current
+    ) {
+      return;
+    }
+
+    // Reset user selection flag after processing
+    isUserSelectionRef.current = false;
+    lastHashRef.current = hash;
+
+    // Set selection (React will handle re-render optimization)
+    if (!selectionAlreadyMatches) {
+      setSelectedLines({ start, end });
+    }
 
     // Scroll to line after DOM is ready
     requestAnimationFrame(() => {
-      setTimeout(() => {
+      const attemptScroll = (triesLeft: number) => {
         const lineElement = document.getElementById(`line-${start}`);
         if (lineElement) {
           lineElement.scrollIntoView({ behavior: "smooth", block: "center" });
+          return;
         }
-      }, 100);
+        if (triesLeft > 0) {
+          setTimeout(() => attemptScroll(triesLeft - 1), 100);
+        }
+      };
+      setTimeout(() => attemptScroll(6), 100);
     });
   }, [content, currentHash, filePath]); // Depend on currentHash to trigger on hash changes, and filePath to prevent applying old hash to new file
 
@@ -895,10 +909,10 @@ export function CodeViewer({
               setSelectedLines(null);
             }
           }}
-          className={`px-4 py-2 rounded text-sm font-medium touch-manipulation transition-colors ${
+          className={`px-4 py-2 rounded text-sm font-semibold touch-manipulation transition-colors shadow-sm ${
             rangeMode
-              ? "bg-red-600 hover:bg-red-700 text-white"
-              : "bg-blue-600 hover:bg-blue-700 text-white"
+              ? "bg-red-700 hover:bg-red-800 text-white"
+              : "bg-blue-700 hover:bg-blue-800 text-white"
           }`}
         >
           {rangeMode ? "✕ Cancel Selection" : "📏 Select Range"}

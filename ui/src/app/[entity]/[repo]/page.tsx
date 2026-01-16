@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type ReactNode,
   startTransition,
   useCallback,
   useEffect,
@@ -107,6 +108,7 @@ import {
   GitFork,
   HelpCircle,
   History,
+  Link2,
   List,
   Lock,
   MoreHorizontal,
@@ -128,6 +130,106 @@ import { nip19 } from "nostr-tools";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
+
+const normalizeHeadingText = (value: string): string => {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+};
+
+const extractHeadingText = (node: ReactNode): string => {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+  if (Array.isArray(node)) {
+    return node.map(extractHeadingText).join("");
+  }
+  if (node && typeof node === "object" && "props" in node) {
+    const props = node.props as { children?: ReactNode };
+    if (props.children) {
+      return extractHeadingText(props.children);
+    }
+  }
+  return "";
+};
+
+const createHeadingIdFactory = () => {
+  const counts = new Map<string, number>();
+  return (text: string): string => {
+    const base = normalizeHeadingText(text);
+    if (!base) return "";
+    const count = counts.get(base) ?? 0;
+    counts.set(base, count + 1);
+    return count ? `${base}-${count + 1}` : base;
+  };
+};
+
+const createMarkdownHeadingComponents = (
+  getHeadingId: (text: string) => string
+) => {
+  const buildHeading = (level: 1 | 2 | 3 | 4 | 5 | 6) => {
+    const Heading = ({ children, ...props }: { children?: ReactNode }) => {
+      const text = extractHeadingText(children ?? "");
+      const id = getHeadingId(text);
+      const Tag = `h${level}` as keyof JSX.IntrinsicElements;
+
+      if (!id) {
+        return <Tag {...props}>{children}</Tag>;
+      }
+
+      const handleCopy = (event: React.MouseEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof window === "undefined") return;
+        const url = new URL(window.location.href);
+        url.hash = id;
+        window.history.replaceState(null, "", url.toString());
+        if (navigator?.clipboard?.writeText) {
+          navigator.clipboard.writeText(url.toString()).catch(() => {});
+        }
+      };
+
+      return (
+        <Tag id={id} className="group scroll-mt-24" {...props}>
+          <span className="inline-flex items-center gap-2">
+            <a
+              href={`#${id}`}
+              className="no-underline text-inherit hover:text-purple-300"
+            >
+              {children}
+            </a>
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-purple-300"
+              aria-label={
+                text ? `Copy link to ${text}` : "Copy link to heading"
+              }
+              title="Copy link to heading"
+            >
+              <Link2 className="h-3.5 w-3.5" />
+            </button>
+          </span>
+        </Tag>
+      );
+    };
+
+    return Heading;
+  };
+
+  return {
+    h1: buildHeading(1),
+    h2: buildHeading(2),
+    h3: buildHeading(3),
+    h4: buildHeading(4),
+    h5: buildHeading(5),
+    h6: buildHeading(6),
+  };
+};
 
 const normalizeRepoEntityForRoute = (
   repoEntity: string | undefined,
@@ -215,6 +317,11 @@ export default function RepoCodePage() {
   );
   const [loadingFolderReadme, setLoadingFolderReadme] =
     useState<boolean>(false);
+  const [initialHash] = useState(() =>
+    typeof window !== "undefined" ? window.location.hash : ""
+  );
+  const markdownPreviewRef = useRef<HTMLDivElement | null>(null);
+  const readmePreviewRef = useRef<HTMLDivElement | null>(null);
   const fileViewerRef = useRef<HTMLDivElement | null>(null);
   const repoProcessedRef = useRef<string>(""); // Track which repo we've already processed
   const fileFetchInProgressRef = useRef<boolean>(false); // Prevent multiple simultaneous file fetches
@@ -496,6 +603,12 @@ export default function RepoCodePage() {
   const [deletedPaths, setDeletedPaths] = useState<string[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>("");
+  const readmeHeadingComponents = createMarkdownHeadingComponents(
+    createHeadingIdFactory()
+  );
+  const fileHeadingComponents = createMarkdownHeadingComponents(
+    createHeadingIdFactory()
+  );
   useEffect(() => {
     let ownerPubkey = repoOwnerPubkey || entityPubkey;
     if (
@@ -980,6 +1093,23 @@ export default function RepoCodePage() {
   // Ref to prevent infinite loops when opening files from URL
   const openingFromURLRef = useRef(false);
   const failedFilesRef = useRef<Set<string>>(new Set());
+  const initialHashRef = useRef<string>("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const applyHash = () => {
+      if (window.location.hash) {
+        initialHashRef.current = window.location.hash;
+      }
+    };
+    applyHash();
+    window.addEventListener("hashchange", applyHash);
+    window.addEventListener("popstate", applyHash);
+    return () => {
+      window.removeEventListener("hashchange", applyHash);
+      window.removeEventListener("popstate", applyHash);
+    };
+  }, []);
 
   // Clear failed files when repo changes
   useEffect(() => {
@@ -1017,7 +1147,9 @@ export default function RepoCodePage() {
       const query = currentParams.toString();
       // Preserve hash (e.g., #L5-L17 for code line selection) when updating URL
       const currentHash =
-        typeof window !== "undefined" ? window.location.hash : "";
+        typeof window !== "undefined"
+          ? window.location.hash || initialHash || initialHashRef.current
+          : "";
       const newUrl = `/${resolvedParams.entity}/${resolvedParams.repo}${
         query ? `?${query}` : ""
       }${currentHash}`;
@@ -11219,6 +11351,129 @@ export default function RepoCodePage() {
   const [markdownViewMode, setMarkdownViewMode] = useState<"preview" | "code">(
     "preview"
   );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (fileType !== "markdown") return;
+    const rawHash = window.location.hash;
+    if (!rawHash) return;
+    const id = decodeURIComponent(rawHash.slice(1));
+    if (!id || id.startsWith("L")) return;
+    if (markdownViewMode !== "preview") {
+      setMarkdownViewMode("preview");
+    }
+  }, [fileType, markdownViewMode, selectedFile]);
+  const scrollToHeadingHash = useCallback(() => {
+    if (typeof window === "undefined") return false;
+    const rawHash = window.location.hash;
+    if (!rawHash || rawHash.length < 2) return false;
+    const decodedHash = decodeURIComponent(rawHash.slice(1));
+    if (!decodedHash || decodedHash.startsWith("L")) return false;
+    const normalizedHash = normalizeHeadingText(decodedHash);
+
+    const tryContainer = (container: HTMLElement | null) => {
+      if (!container) return null;
+      const directTarget = container.querySelector<HTMLElement>(
+        `#${CSS.escape(decodedHash)}`
+      );
+      if (directTarget) return directTarget;
+      if (normalizedHash) {
+        const normalizedTarget = container.querySelector<HTMLElement>(
+          `#${CSS.escape(normalizedHash)}`
+        );
+        if (normalizedTarget) return normalizedTarget;
+      }
+      const headings = Array.from(
+        container.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6")
+      );
+      if (!normalizedHash) return null;
+      return (
+        headings.find((heading) => {
+          const text = heading.textContent || "";
+          return normalizeHeadingText(text) === normalizedHash;
+        }) || null
+      );
+    };
+
+    const findGlobalTarget = () => {
+      if (typeof document === "undefined") return null;
+      const safeSelect = (selector: string) => {
+        try {
+          return document.querySelector<HTMLElement>(selector);
+        } catch {
+          return null;
+        }
+      };
+
+      const directById = document.getElementById(decodedHash);
+      if (directById) return directById;
+
+      if (normalizedHash) {
+        const normalizedById = document.getElementById(normalizedHash);
+        if (normalizedById) return normalizedById;
+      }
+
+      const escapedDecoded =
+        typeof CSS !== "undefined" && "escape" in CSS
+          ? CSS.escape(decodedHash)
+          : decodedHash;
+      const directBySelector = safeSelect(`#${escapedDecoded}`);
+      if (directBySelector) return directBySelector;
+
+      if (normalizedHash) {
+        const escapedNormalized =
+          typeof CSS !== "undefined" && "escape" in CSS
+            ? CSS.escape(normalizedHash)
+            : normalizedHash;
+        const normalizedBySelector = safeSelect(`#${escapedNormalized}`);
+        if (normalizedBySelector) return normalizedBySelector;
+      }
+
+      const headings = Array.from(
+        document.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6")
+      );
+      if (!normalizedHash) return null;
+      return (
+        headings.find((heading) => {
+          const id = heading.id || "";
+          if (id === decodedHash) return true;
+          if (id === normalizedHash) return true;
+          if (id.startsWith(`${normalizedHash}-`)) return true;
+          const text = heading.textContent || "";
+          return normalizeHeadingText(text) === normalizedHash;
+        }) || null
+      );
+    };
+
+    const target =
+      tryContainer(markdownPreviewRef.current) ||
+      tryContainer(readmePreviewRef.current) ||
+      findGlobalTarget();
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      return true;
+    }
+    return false;
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !mounted) return;
+    requestAnimationFrame(() => {
+      const attemptScroll = (triesLeft: number) => {
+        if (scrollToHeadingHash()) return;
+        if (triesLeft > 0) {
+          setTimeout(() => attemptScroll(triesLeft - 1), 120);
+        }
+      };
+      setTimeout(() => attemptScroll(8), 50);
+    });
+  }, [
+    mounted,
+    currentFolderReadme,
+    fileContent,
+    selectedFile,
+    markdownViewMode,
+    scrollToHeadingHash,
+  ]);
 
   const cloneUrlGroups = useMemo(() => {
     const rawCloneList = Array.isArray((repoData as any)?.clone)
@@ -11367,6 +11622,9 @@ export default function RepoCodePage() {
   // Auto-scroll to file viewer when a file is opened and content is ready
   useEffect(() => {
     if (selectedFile && !loadingFile && fileViewerRef.current) {
+      if (typeof window !== "undefined" && window.location.hash) {
+        return;
+      }
       try {
         fileViewerRef.current.scrollIntoView({
           behavior: "smooth",
@@ -12998,12 +13256,14 @@ export default function RepoCodePage() {
                 </div>
                 <article
                   id="readme"
+                  ref={readmePreviewRef}
                   className="prose prose-invert max-w-full p-4 text-white prose-headings:text-white prose-p:text-gray-300 prose-a:text-purple-500 prose-strong:text-white prose-code:text-green-400 prose-pre:bg-gray-900 prose-code:bg-gray-900 prose-code:px-1 prose-code:rounded"
                 >
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     rehypePlugins={[rehypeRaw]}
                     components={{
+                      ...readmeHeadingComponents,
                       img: ({ node, ...props }) => {
                         // Transform relative image paths to absolute URLs
                         let imageSrc = props.src || "";
@@ -13673,11 +13933,15 @@ export default function RepoCodePage() {
                     // Markdown files: Toggle between preview (rendered) and code view
                     markdownViewMode === "preview" ? (
                       // Preview mode: Render as markdown
-                      <div className="prose prose-invert max-w-none p-4 prose-code:before:content-none prose-code:after:content-none prose-pre:my-2 prose-code:bg-gray-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:inline prose-code:not-prose">
+                      <div
+                        ref={markdownPreviewRef}
+                        className="prose prose-invert max-w-none p-4 prose-code:before:content-none prose-code:after:content-none prose-pre:my-2 prose-code:bg-gray-900 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:inline prose-code:not-prose"
+                      >
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           rehypePlugins={[rehypeRaw]}
                           components={{
+                            ...fileHeadingComponents,
                             p: ({ node, children, ...props }: any) => {
                               // CRITICAL: Check if paragraph contains code elements that will render as blocks
                               // ReactMarkdown wraps code blocks in paragraphs, but CopyableCodeBlock renders as div/pre

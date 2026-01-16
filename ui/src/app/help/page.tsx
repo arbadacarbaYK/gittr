@@ -1092,6 +1092,11 @@ export default function HelpPage() {
               to copy a permalink or share as a snippet.
             </p>
             <p className="text-sm text-gray-400">
+              <strong>Markdown anchors:</strong> In Markdown preview, headings
+              show a link icon on hover. Click it to copy a direct heading link
+              and update the URL hash for easy sharing.
+            </p>
+            <p className="text-sm text-gray-400">
               <strong>Mobile-friendly:</strong> Line numbers are hidden on
               mobile devices to avoid alignment issues, but all functionality is
               preserved. Code lines remain fully clickable for selection.
