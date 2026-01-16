@@ -227,7 +227,6 @@ const createMarkdownHeadingComponents = (
 
       return (
         <Tag id={id} className="group scroll-mt-24" {...props}>
-          <a name={id} aria-hidden="true" />
           <span className="inline-flex items-center gap-2">
             <a
               href={`#${id}`}
