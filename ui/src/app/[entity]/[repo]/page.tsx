@@ -169,13 +169,45 @@ const createHeadingIdFactory = () => {
 };
 
 const createMarkdownHeadingComponents = (
-  getHeadingId: (text: string) => string
+  getHeadingId: (text: string) => string,
+  scrollTrackerRef?: React.MutableRefObject<string>
 ) => {
   const buildHeading = (level: 1 | 2 | 3 | 4 | 5 | 6) => {
     const Heading = ({ children, ...props }: { children?: ReactNode }) => {
       const text = extractHeadingText(children ?? "");
       const id = getHeadingId(text);
       const Tag = `h${level}` as keyof JSX.IntrinsicElements;
+      useLayoutEffect(() => {
+        if (typeof window === "undefined") return;
+        if (!id || !text) return;
+        const rawHash = window.location.hash;
+        if (!rawHash || rawHash.length < 2) return;
+        const decodedHash = decodeURIComponent(rawHash.slice(1));
+        if (!decodedHash || decodedHash.startsWith("L")) return;
+        const normalizedHash = normalizeHeadingText(decodedHash);
+        const normalizedBase = normalizedHash.replace(/-\d+$/, "");
+        const normalizedText = normalizeHeadingText(text);
+        const matchesHash =
+          decodedHash === id ||
+          normalizedHash === id ||
+          normalizedBase === id ||
+          (normalizedHash && id.startsWith(`${normalizedHash}-`)) ||
+          (normalizedBase && id.startsWith(`${normalizedBase}-`)) ||
+          normalizedText === normalizedHash ||
+          normalizedText === normalizedBase;
+        if (!matchesHash) return;
+        const scrollKey = `${id}|${rawHash}`;
+        if (scrollTrackerRef?.current === scrollKey) return;
+        if (scrollTrackerRef) {
+          scrollTrackerRef.current = scrollKey;
+        }
+        requestAnimationFrame(() => {
+          const target = document.getElementById(id);
+          if (target) {
+            target.scrollIntoView({ behavior: "auto", block: "start" });
+          }
+        });
+      }, [id, text]);
 
       if (!id) {
         return <Tag {...props}>{children}</Tag>;
@@ -195,6 +227,7 @@ const createMarkdownHeadingComponents = (
 
       return (
         <Tag id={id} className="group scroll-mt-24" {...props}>
+          <a name={id} aria-hidden="true" />
           <span className="inline-flex items-center gap-2">
             <a
               href={`#${id}`}
@@ -603,11 +636,14 @@ export default function RepoCodePage() {
   const [deletedPaths, setDeletedPaths] = useState<string[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>("");
+  const headingScrollRef = useRef<string>("");
   const readmeHeadingComponents = createMarkdownHeadingComponents(
-    createHeadingIdFactory()
+    createHeadingIdFactory(),
+    headingScrollRef
   );
   const fileHeadingComponents = createMarkdownHeadingComponents(
-    createHeadingIdFactory()
+    createHeadingIdFactory(),
+    headingScrollRef
   );
   useEffect(() => {
     let ownerPubkey = repoOwnerPubkey || entityPubkey;
@@ -11362,34 +11398,39 @@ export default function RepoCodePage() {
       setMarkdownViewMode("preview");
     }
   }, [fileType, markdownViewMode, selectedFile]);
-  const scrollToHeadingHash = useCallback(() => {
+  const findHeadingTarget = useCallback(() => {
     if (typeof window === "undefined") return false;
     const rawHash = window.location.hash;
     if (!rawHash || rawHash.length < 2) return false;
     const decodedHash = decodeURIComponent(rawHash.slice(1));
     if (!decodedHash || decodedHash.startsWith("L")) return false;
     const normalizedHash = normalizeHeadingText(decodedHash);
+    const normalizedBase = normalizedHash
+      ? normalizedHash.replace(/-\d+$/, "")
+      : "";
+    const hashCandidates = Array.from(
+      new Set([decodedHash, normalizedHash, normalizedBase].filter(Boolean))
+    );
 
     const tryContainer = (container: HTMLElement | null) => {
       if (!container) return null;
-      const directTarget = container.querySelector<HTMLElement>(
-        `#${CSS.escape(decodedHash)}`
-      );
-      if (directTarget) return directTarget;
-      if (normalizedHash) {
-        const normalizedTarget = container.querySelector<HTMLElement>(
-          `#${CSS.escape(normalizedHash)}`
+      for (const candidate of hashCandidates) {
+        const directTarget = container.querySelector<HTMLElement>(
+          `#${CSS.escape(candidate)}`
         );
-        if (normalizedTarget) return normalizedTarget;
+        if (directTarget) return directTarget;
       }
       const headings = Array.from(
         container.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6")
       );
-      if (!normalizedHash) return null;
+      if (!normalizedHash && !normalizedBase) return null;
       return (
         headings.find((heading) => {
           const text = heading.textContent || "";
-          return normalizeHeadingText(text) === normalizedHash;
+          const normalizedText = normalizeHeadingText(text);
+          return (
+            normalizedText === normalizedHash || normalizedText === normalizedBase
+          );
         }) || null
       );
     };
@@ -11404,42 +11445,35 @@ export default function RepoCodePage() {
         }
       };
 
-      const directById = document.getElementById(decodedHash);
-      if (directById) return directById;
-
-      if (normalizedHash) {
-        const normalizedById = document.getElementById(normalizedHash);
-        if (normalizedById) return normalizedById;
+      for (const candidate of hashCandidates) {
+        const directById = document.getElementById(candidate);
+        if (directById) return directById;
       }
 
-      const escapedDecoded =
-        typeof CSS !== "undefined" && "escape" in CSS
-          ? CSS.escape(decodedHash)
-          : decodedHash;
-      const directBySelector = safeSelect(`#${escapedDecoded}`);
-      if (directBySelector) return directBySelector;
-
-      if (normalizedHash) {
-        const escapedNormalized =
+      for (const candidate of hashCandidates) {
+        const escaped =
           typeof CSS !== "undefined" && "escape" in CSS
-            ? CSS.escape(normalizedHash)
-            : normalizedHash;
-        const normalizedBySelector = safeSelect(`#${escapedNormalized}`);
-        if (normalizedBySelector) return normalizedBySelector;
+            ? CSS.escape(candidate)
+            : candidate;
+        const directBySelector = safeSelect(`#${escaped}`);
+        if (directBySelector) return directBySelector;
       }
 
       const headings = Array.from(
         document.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6")
       );
-      if (!normalizedHash) return null;
+      if (!normalizedHash && !normalizedBase) return null;
       return (
         headings.find((heading) => {
           const id = heading.id || "";
-          if (id === decodedHash) return true;
-          if (id === normalizedHash) return true;
-          if (id.startsWith(`${normalizedHash}-`)) return true;
+          if (hashCandidates.includes(id)) return true;
+          if (normalizedHash && id.startsWith(`${normalizedHash}-`)) return true;
+          if (normalizedBase && id.startsWith(`${normalizedBase}-`)) return true;
           const text = heading.textContent || "";
-          return normalizeHeadingText(text) === normalizedHash;
+          const normalizedText = normalizeHeadingText(text);
+          return (
+            normalizedText === normalizedHash || normalizedText === normalizedBase
+          );
         }) || null
       );
     };
@@ -11448,15 +11482,19 @@ export default function RepoCodePage() {
       tryContainer(markdownPreviewRef.current) ||
       tryContainer(readmePreviewRef.current) ||
       findGlobalTarget();
+    return target;
+  }, []);
+  const scrollToHeadingHash = useCallback(() => {
+    const target = findHeadingTarget();
     if (target) {
       target.scrollIntoView({ behavior: "smooth", block: "start" });
       return true;
     }
     return false;
-  }, []);
+  }, [findHeadingTarget]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !mounted) return;
+    if (typeof window === "undefined") return;
     requestAnimationFrame(() => {
       const attemptScroll = (triesLeft: number) => {
         if (scrollToHeadingHash()) return;
@@ -11467,12 +11505,137 @@ export default function RepoCodePage() {
       setTimeout(() => attemptScroll(8), 50);
     });
   }, [
-    mounted,
     currentFolderReadme,
     fileContent,
     selectedFile,
     markdownViewMode,
     scrollToHeadingHash,
+  ]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const rawHash = window.location.hash;
+    if (!rawHash || rawHash.length < 2) return;
+    const decoded = decodeURIComponent(rawHash.slice(1));
+    if (!decoded || decoded.startsWith("L")) return;
+
+    let observer: MutationObserver | null = null;
+    let timeoutId: number | null = null;
+
+    const cleanup = () => {
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    const startObserver = () => {
+      const target = findHeadingTarget();
+      if (target) {
+        const rect = target.getBoundingClientRect();
+        if (rect.top < 0 || rect.top > window.innerHeight) {
+          target.scrollIntoView({ behavior: "auto", block: "start" });
+        }
+        return;
+      }
+      const targetRoots: Array<HTMLElement | null> = [
+        markdownPreviewRef.current,
+        readmePreviewRef.current,
+        document.body,
+      ];
+      observer = new MutationObserver(() => {
+        const updatedTarget = findHeadingTarget();
+        if (updatedTarget) {
+          updatedTarget.scrollIntoView({ behavior: "auto", block: "start" });
+          cleanup();
+        }
+      });
+      targetRoots.forEach((root) => {
+        if (root) {
+          observer?.observe(root, { childList: true, subtree: true });
+        }
+      });
+    };
+
+    startObserver();
+    timeoutId = window.setTimeout(() => cleanup(), 4000);
+
+    return cleanup;
+  }, [
+    currentFolderReadme,
+    fileContent,
+    selectedFile,
+    markdownViewMode,
+    findHeadingTarget,
+  ]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const rawHash = window.location.hash;
+    if (!rawHash || rawHash.length < 2) return;
+    const decoded = decodeURIComponent(rawHash.slice(1));
+    if (!decoded || decoded.startsWith("L")) return;
+
+    const timeouts: number[] = [];
+    const scheduleScroll = (delayMs: number) => {
+      const timeoutId = window.setTimeout(() => {
+        const target = findHeadingTarget();
+        if (!target) return;
+        const rect = target.getBoundingClientRect();
+        if (rect.top < 0 || rect.top > window.innerHeight) {
+          target.scrollIntoView({ behavior: "auto", block: "start" });
+        }
+      }, delayMs);
+      timeouts.push(timeoutId);
+    };
+    [700, 2000, 3500].forEach(scheduleScroll);
+
+    return () => {
+      timeouts.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    };
+  }, [
+    currentFolderReadme,
+    fileContent,
+    selectedFile,
+    markdownViewMode,
+    findHeadingTarget,
+  ]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const rawHash = window.location.hash;
+    if (!rawHash || rawHash.length < 2) return;
+    const decoded = decodeURIComponent(rawHash.slice(1));
+    if (!decoded || decoded.startsWith("L")) return;
+
+    let attempts = 0;
+    const maxAttempts = 20;
+    const intervalId = window.setInterval(() => {
+      attempts += 1;
+      const target = findHeadingTarget();
+      if (target) {
+        const rect = target.getBoundingClientRect();
+        if (rect.top < 0 || rect.top > window.innerHeight) {
+          target.scrollIntoView({ behavior: "auto", block: "start" });
+        } else {
+          window.clearInterval(intervalId);
+        }
+      }
+      if (attempts >= maxAttempts) {
+        window.clearInterval(intervalId);
+      }
+    }, 200);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [
+    currentFolderReadme,
+    fileContent,
+    selectedFile,
+    markdownViewMode,
+    findHeadingTarget,
   ]);
 
   const cloneUrlGroups = useMemo(() => {
