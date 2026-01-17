@@ -519,7 +519,8 @@ export default function HelpPage() {
               <ul className="list-disc list-inside space-y-1 ml-4">
                 <li>Open gittr in Chrome or Brave.</li>
                 <li>
-                  Tap the menu → <strong className="text-white">Install app</strong>.
+                  Tap the menu →{" "}
+                  <strong className="text-white">Install app</strong>.
                 </li>
               </ul>
             </div>
