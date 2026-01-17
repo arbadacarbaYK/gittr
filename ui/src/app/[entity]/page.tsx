@@ -429,7 +429,6 @@ export default function EntityPage({
   // Ensure public profiles can load repos even when anonymous storage was cleaned
   useEffect(() => {
     if (isLoggedIn) return;
-    if (userRepos.length > 0) return;
     if (!subscribe || !defaultRelays || defaultRelays.length === 0) return;
 
     const targetPubkey =
@@ -441,6 +440,56 @@ export default function EntityPage({
         : null);
 
     if (!targetPubkey) return;
+    const normalizedTarget = targetPubkey.toLowerCase();
+    const targetPrefix = normalizedTarget.slice(0, 8);
+    const hasReposForProfile = userRepos.some((repo) => {
+      if (!repo) return false;
+
+      const ownerPubkey = repo.ownerPubkey;
+      if (
+        ownerPubkey &&
+        /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
+        ownerPubkey.toLowerCase() === normalizedTarget
+      ) {
+        return true;
+      }
+
+      if (repo.contributors && Array.isArray(repo.contributors)) {
+        const matchingContributor = repo.contributors.find(
+          (c: any) =>
+            c.pubkey &&
+            /^[0-9a-f]{64}$/i.test(c.pubkey) &&
+            c.pubkey.toLowerCase() === normalizedTarget
+        );
+        if (matchingContributor) return true;
+      }
+
+      if (repo.entity) {
+        if (repo.entity.startsWith("npub")) {
+          try {
+            const decoded = nip19.decode(repo.entity);
+            if (decoded.type === "npub") {
+              const decodedPubkey = (decoded.data as string).toLowerCase();
+              if (decodedPubkey === normalizedTarget) return true;
+            }
+          } catch {
+            return false;
+          }
+        }
+
+        if (/^[0-9a-f]{64}$/i.test(repo.entity)) {
+          if (repo.entity.toLowerCase() === normalizedTarget) return true;
+        }
+
+        if (/^[0-9a-f]{8}$/i.test(repo.entity)) {
+          if (repo.entity.toLowerCase() === targetPrefix) return true;
+        }
+      }
+
+      return false;
+    });
+
+    if (hasReposForProfile) return;
     if (anonRepoSyncRef.current) return;
 
     if (typeof window !== "undefined") {
