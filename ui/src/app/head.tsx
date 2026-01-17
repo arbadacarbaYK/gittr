@@ -28,6 +28,14 @@ export default function Head() {
       <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#181b20" />
       <meta name="msapplication-TileColor" content="#181b20" />
       <meta name="theme-color" content="#181b20" />
+      <meta name="application-name" content="gittr" />
+      <meta name="apple-mobile-web-app-capable" content="yes" />
+      <meta
+        name="apple-mobile-web-app-status-bar-style"
+        content="black-translucent"
+      />
+      <meta name="apple-mobile-web-app-title" content="gittr" />
+      <meta name="mobile-web-app-capable" content="yes" />
     </>
   );
 }

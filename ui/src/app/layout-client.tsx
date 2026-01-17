@@ -223,6 +223,24 @@ export default function ClientLayout({
     } catch {}
   }, []);
 
+  // Register service worker for PWA support
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (process.env.NODE_ENV !== "production") return;
+    if (!("serviceWorker" in navigator)) return;
+
+    const onLoad = () => {
+      navigator.serviceWorker
+        .register("/sw.js")
+        .catch((error) =>
+          console.warn("Service worker registration failed", error)
+        );
+    };
+
+    window.addEventListener("load", onLoad);
+    return () => window.removeEventListener("load", onLoad);
+  }, []);
+
   return (
     <NostrProvider>
       <div className="dark min-h-screen theme-bg-primary theme-text-primary">

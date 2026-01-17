@@ -12,10 +12,10 @@ export default async function handler(
   res: NextApiResponse
 ) {
   if (req.method === "OPTIONS") {
-    return handleOptionsRequest(res);
+    return handleOptionsRequest(res, req);
   }
 
-  setCorsHeaders(res);
+  setCorsHeaders(res, req);
 
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });

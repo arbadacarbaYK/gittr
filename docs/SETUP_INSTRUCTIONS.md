@@ -73,6 +73,8 @@ cp .env.example .env.local
 
 Edit `ui/.env.local` with your values. All configuration is in this file - domain, relays, Blossom URL, GitHub Platform Token (optional), etc. are already set with working defaults.
 
+If you run backend/bridge services from the repo root, there is also a root `.env.example` that mirrors the optional server-side variables.
+
 **GitHub OAuth Setup (Optional, for private repository access):**
 
 If you want users to be able to import and view files from private GitHub repositories, you need to set up GitHub OAuth:
@@ -105,6 +107,14 @@ cd ui
 yarn build
 # Or: npm run build (works but yarn is preferred)
 ```
+
+### Step 4.5: PWA Install (Optional)
+
+gittr includes a PWA manifest and service worker for installable app support.
+
+- **Local dev**: PWA install requires HTTPS, but `http://localhost:3000` still loads the manifest.
+- **Production**: Install from the browser menu ("Install app") once served over HTTPS.
+- **Files**: `ui/public/site.webmanifest`, `ui/public/sw.js`, `ui/public/offline.html`
 
 ### Step 5: Install Go (for building git-nostr-bridge) OR Use Docker
 

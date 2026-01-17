@@ -91,12 +91,12 @@ export default async function handler(
 ) {
   // Handle OPTIONS request for CORS
   if (req.method === "OPTIONS") {
-    handleOptionsRequest(res);
+    handleOptionsRequest(res, req);
     return;
   }
 
   // Set CORS headers
-  setCorsHeaders(res);
+  setCorsHeaders(res, req);
 
   // Rate limiting for API endpoints
   const rateLimitResult = await rateLimiters.api(req as any);

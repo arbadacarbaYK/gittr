@@ -15,12 +15,12 @@ export default async function handler(
 ) {
   // Handle OPTIONS request for CORS (GRASP requirement)
   if (req.method === "OPTIONS") {
-    handleOptionsRequest(res);
+    handleOptionsRequest(res, req);
     return;
   }
 
   // Set CORS headers (GRASP requirement)
-  setCorsHeaders(res);
+  setCorsHeaders(res, req);
 
   // Rate limiting for payment endpoints
   const rateLimitResult = await rateLimiters.payment(req as any);
