@@ -74,7 +74,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning data-theme="arcade80s">
+    <html lang="en" suppressHydrationWarning data-theme="bitcoin">
       <head>
         <meta name="gittr-build" content={DEV_CACHE_BUST} />
         {/* Apply theme before React hydrates to prevent flash */}
@@ -83,11 +83,11 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
-                  // CRITICAL: Always default to arcade80s, migrate classic if present
+                  // CRITICAL: Always default to bitcoin, migrate classic if present
                   // This MUST run before any React rendering to prevent flash
                   let theme = localStorage.getItem('gittr_theme');
                   if (!theme || theme === 'classic' || theme === 'null' || theme === 'undefined') {
-                    theme = 'arcade80s';
+                    theme = 'bitcoin';
                     try {
                       localStorage.setItem('gittr_theme', theme);
                     } catch (e) {
@@ -102,28 +102,28 @@ export default function RootLayout({
                     document.body.setAttribute('data-theme', theme);
                   }
                 } catch (e) {
-                  // If anything fails, force arcade80s
+                  // If anything fails, force bitcoin
                   try {
-                    document.documentElement.setAttribute('data-theme', 'arcade80s');
+                    document.documentElement.setAttribute('data-theme', 'bitcoin');
                     document.documentElement.classList.add('dark');
                     if (document.body) {
-                      document.body.setAttribute('data-theme', 'arcade80s');
+                      document.body.setAttribute('data-theme', 'bitcoin');
                     }
                   } catch (e2) {}
                 }
                 
                 // CRITICAL: Double-check theme is set correctly (in case localStorage was empty/null)
-                // This ensures arcade80s is always the default, even for first-time visitors
+                // This ensures bitcoin is always the default, even for first-time visitors
                 const currentThemeAttr = document.documentElement.getAttribute('data-theme');
                 if (!currentThemeAttr || currentThemeAttr === 'classic' || currentThemeAttr === 'null' || currentThemeAttr === 'undefined') {
-                  document.documentElement.setAttribute('data-theme', 'arcade80s');
+                  document.documentElement.setAttribute('data-theme', 'bitcoin');
                   document.documentElement.classList.add('dark');
                   if (document.body) {
-                    document.body.setAttribute('data-theme', 'arcade80s');
+                    document.body.setAttribute('data-theme', 'bitcoin');
                   }
                   // Also update localStorage to persist
                   try {
-                    localStorage.setItem('gittr_theme', 'arcade80s');
+                    localStorage.setItem('gittr_theme', 'bitcoin');
                 } catch (e) {}
                 }
                 

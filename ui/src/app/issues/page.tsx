@@ -804,7 +804,7 @@ export default function IssuesPage({}) {
           <button
             type="button"
             className={clsx(
-              "relative w-full rounded-l-md py-1.5 font-semibold text-zinc-300 ring-1 ring-inset ring-gray focus:z-10",
+              "relative w-full rounded-l-md py-1.5 font-semibold text-zinc-300 border border-purple-500/50 focus:z-10",
               {
                 "bg-purple-600 text-zinc-50": issueType === `created`,
               }
@@ -816,7 +816,7 @@ export default function IssuesPage({}) {
           <button
             type="button"
             className={clsx(
-              "relative -ml-px w-full py-1.5 font-semibold text-zinc-300 ring-1 ring-inset ring-gray focus:z-10",
+              "relative -ml-px w-full py-1.5 font-semibold text-zinc-300 border border-purple-500/50 focus:z-10",
               {
                 "bg-purple-600 text-zinc-50": issueType === `assigned`,
               }
@@ -828,7 +828,7 @@ export default function IssuesPage({}) {
           <button
             type="button"
             className={clsx(
-              "relative -ml-px w-full py-1.5 font-semibold rounded-r-md md:rounded-none text-zinc-300 ring-1 ring-inset ring-gray focus:z-10",
+              "relative -ml-px w-full py-1.5 font-semibold rounded-r-md md:rounded-none text-zinc-300 border border-purple-500/50 focus:z-10",
               {
                 "bg-purple-600 text-zinc-50": issueType === `mentioned`,
               }

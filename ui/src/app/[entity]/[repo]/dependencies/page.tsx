@@ -99,20 +99,27 @@ export default function DependenciesPage({
       selector: "node[type='file']",
       style: {
         label: "data(label)",
-        width: 45,
-        height: 45,
-        backgroundColor: "#64748b",
-        color: "#fff",
+        width: 46,
+        height: 46,
+        backgroundColor: "#1e293b",
+        color: "#e5e7eb",
         textValign: "center",
         textHalign: "center",
         fontSize: 10,
-        fontWeight: "500",
+        fontWeight: "600",
         shape: "ellipse",
-        borderWidth: 1,
-        borderColor: "#94a3b8",
+        borderWidth: 2,
+        borderColor: "#475569",
         textWrap: "wrap",
-        textMaxWidth: 80,
+        textMaxWidth: 90,
         textOverflowWrap: "ellipsis",
+        textOutlineColor: "#0f172a",
+        textOutlineWidth: 2,
+        shadowBlur: 8,
+        shadowColor: "#1e293b",
+        shadowOpacity: 0.2,
+        shadowOffsetX: 0,
+        shadowOffsetY: 2,
       },
     },
     {
@@ -121,47 +128,61 @@ export default function DependenciesPage({
         label: "data(label)",
         width: "label",
         height: "label",
-        minWidth: 35,
-        minHeight: 20,
-        padding: "5px",
+        minWidth: 36,
+        minHeight: 22,
+        padding: "6px",
         backgroundColor: "#8b5cf6",
-        color: "#fff",
+        color: "#0f172a",
         textValign: "center",
         textHalign: "center",
         fontSize: 10,
-        fontWeight: "500",
-        shape: "ellipse",
-        borderWidth: 1,
+        fontWeight: "700",
+        shape: "round-rectangle",
+        borderWidth: 2,
         borderColor: "#7c3aed",
         textWrap: "wrap",
-        textMaxWidth: 100,
+        textMaxWidth: 120,
         textOverflowWrap: "ellipsis",
+        textOutlineColor: "#ddd6fe",
+        textOutlineWidth: 0,
+        shadowBlur: 8,
+        shadowColor: "#7c3aed",
+        shadowOpacity: 0.25,
+        shadowOffsetX: 0,
+        shadowOffsetY: 2,
       },
     },
     {
       selector: "node[type='root']",
       style: {
         label: "data(label)",
-        width: 60,
-        height: 60,
-        backgroundColor: "#8b5cf6",
-        color: "#fff",
+        width: 68,
+        height: 68,
+        backgroundColor: "#7c3aed",
+        color: "#f5f3ff",
         textValign: "center",
         textHalign: "center",
         fontSize: 16,
         fontWeight: "700",
         shape: "ellipse",
         borderWidth: 3,
-        borderColor: "#7c3aed",
+        borderColor: "#a78bfa",
+        textOutlineColor: "#1e1b4b",
+        textOutlineWidth: 2,
+        shadowBlur: 12,
+        shadowColor: "#7c3aed",
+        shadowOpacity: 0.3,
+        shadowOffsetX: 0,
+        shadowOffsetY: 4,
       },
     },
     {
       selector: "node[type='folder']",
       style: {
         label: "data(label)",
-        width: 50,
-        height: 50,
-        backgroundColor: "#1e293b",
+        width: 54,
+        height: 54,
+        backgroundColor: "#0f172a",
         color: "#94a3b8",
         textValign: "center",
         textHalign: "center",
@@ -171,20 +192,25 @@ export default function DependenciesPage({
         borderWidth: 2,
         borderColor: "#475569",
         textWrap: "wrap",
-        textMaxWidth: 100,
+        textMaxWidth: 110,
+        shadowBlur: 6,
+        shadowColor: "#0f172a",
+        shadowOpacity: 0.25,
+        shadowOffsetX: 0,
+        shadowOffsetY: 2,
       },
     },
     {
       selector: "edge[isExternal='true']",
       style: {
-        width: 1.5,
-        lineColor: "#8b5cf6",
-        targetArrowColor: "#8b5cf6",
+        width: 2,
+        lineColor: "#a78bfa",
+        targetArrowColor: "#a78bfa",
         targetArrowShape: "triangle",
-        targetArrowSize: 8,
+        targetArrowSize: 9,
         curveStyle: "bezier",
         lineStyle: "dashed",
-        opacity: 0.6,
+        opacity: 0.7,
       },
     },
     {
@@ -196,7 +222,7 @@ export default function DependenciesPage({
         targetArrowShape: "triangle",
         targetArrowSize: 10,
         curveStyle: "bezier",
-        opacity: 0.8,
+        opacity: 0.85,
       },
     },
     {
@@ -869,7 +895,7 @@ export default function DependenciesPage({
   }
 
   return (
-    <div className="mt-4">
+    <div className="mt-4 w-screen max-w-none relative left-1/2 right-1/2 -translate-x-1/2 px-3 sm:px-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <GitBranch className="h-5 w-5 text-purple-500" />
@@ -910,10 +936,17 @@ export default function DependenciesPage({
       )}
 
       {graphData && graphData.nodes.length > 0 && (
-        <div className="border border-[#383B42] rounded-md overflow-hidden bg-[#0f172a] relative">
+        <div
+          className="border border-[#383B42] rounded-md overflow-hidden bg-[#0f172a] relative h-[70vh] min-h-[520px] md:h-[700px]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(139,92,246,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(139,92,246,0.12) 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+          }}
+        >
           <div
             ref={cytoscapeRef}
-            className="w-full h-[600px] cursor-grab active:cursor-grabbing"
+            className="w-full h-full cursor-grab active:cursor-grabbing"
           />
 
           {/* Zoom Controls */}
