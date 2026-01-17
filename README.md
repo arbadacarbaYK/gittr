@@ -37,7 +37,7 @@ A decentralized Git platform built on Nostr with native Bitcoin/Lightning paymen
 - ✅ URL parameters for branch/file/path
 - ✅ Clone URLs (HTTPS/SSH) with SSH/Git help guide
 - ✅ SSH key management (Settings → SSH Keys)
-- ✅ Multiple themes (Classic, Cypherpunk, Girly, 80s Arcade)
+- ✅ Multiple themes (Bitcoin, Classic, Cypherpunk, Girly, 80s Arcade)
 - ✅ Installable PWA (manifest + service worker)
 
 ### Discovery & Social
@@ -242,7 +242,8 @@ Next.js API routes hard-cap responses at ~4 MB. When importing from GitHub/Cod
 ## 🎨 Themes
 
 gittr.space supports multiple themes:
-- **Classic**: Default dark theme with violet accents
+- **Bitcoin**: Default dark theme with orange/grey accents
+- **Classic**: Dark theme with violet accents
 - **Cypherpunk**: Neon green on black (terminal aesthetic)
 - **Girly**: Pink pastels on dark purple
 - **80s Arcade**: Neon cyan/magenta with retro vibes

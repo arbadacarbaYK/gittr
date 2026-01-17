@@ -513,7 +513,7 @@ export default function ArchitecturePage({
   }
 
   return (
-    <div className="mt-4">
+    <div className="mt-4 w-screen max-w-none relative left-1/2 right-1/2 -translate-x-1/2 px-3 sm:px-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Layers className="h-5 w-5 text-purple-500" />
@@ -625,15 +625,11 @@ export default function ArchitecturePage({
               overflow-y: auto;
             }
           `}</style>
-          <div
-            className="mermaid-architecture-wrapper border border-[#383B42] rounded-md bg-[#0f172a]"
-            style={{ height: "800px", position: "relative" }}
-          >
+          <div className="mermaid-architecture-wrapper border border-[#383B42] rounded-md bg-[#0f172a] relative h-[70vh] min-h-[520px] md:h-[800px]">
             <div
               ref={mermaidRef}
               className="mermaid-architecture-container w-full h-full overflow-auto cursor-grab active:cursor-grabbing"
               style={{
-                minHeight: "800px",
                 scrollbarWidth: "thin",
                 scrollbarColor: "#4b5563 transparent",
                 boxSizing: "border-box",

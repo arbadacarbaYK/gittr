@@ -12121,67 +12121,6 @@ export default function RepoCodePage() {
 
   return (
     <div className="mt-4">
-      {/* Navigation Tabs */}
-      <div className="border-b border-[#383B42] mb-4">
-        <nav className="flex gap-1 overflow-x-auto">
-          <Link
-            href={getRepoLink()}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-              activeTab === "code"
-                ? "border-purple-500 text-purple-400"
-                : "border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-600"
-            }`}
-          >
-            <Code className="inline h-4 w-4 mr-1" />
-            Code
-          </Link>
-          <Link
-            href={getRepoLink("pulls")}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-              activeTab === "pulls"
-                ? "border-purple-500 text-purple-400"
-                : "border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-600"
-            }`}
-          >
-            <GitBranch className="inline h-4 w-4 mr-1" />
-            Pulls
-          </Link>
-          <Link
-            href={getRepoLink("issues")}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-              activeTab === "issues"
-                ? "border-purple-500 text-purple-400"
-                : "border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-600"
-            }`}
-          >
-            <CircleDot className="inline h-4 w-4 mr-1" />
-            Issues
-          </Link>
-          <Link
-            href={getRepoLink("commits")}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-              activeTab === "commits"
-                ? "border-purple-500 text-purple-400"
-                : "border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-600"
-            }`}
-          >
-            <History className="inline h-4 w-4 mr-1" />
-            Commits
-          </Link>
-          <Link
-            href={getRepoLink("releases")}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-              activeTab === "releases"
-                ? "border-purple-500 text-purple-400"
-                : "border-transparent text-gray-400 hover:text-gray-300 hover:border-gray-600"
-            }`}
-          >
-            <Tag className="inline h-4 w-4 mr-1" />
-            Releases
-          </Link>
-        </nav>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-5 xl:grid-cols-6 gap-6">
         <div className="col-span-1 lg:col-span-4 xl:col-span-5">
           <div className="flex justify-between flex-row">

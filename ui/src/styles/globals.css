@@ -62,19 +62,19 @@
 
 /* CSS Custom Properties for Theming */
 :root {
-  /* Default (Arcade80s) theme colors - changed from classic to arcade80s */
-  --color-bg-primary: #000011; /* Deep blue-black */
-  --color-bg-secondary: #0a0a1a;
-  --color-bg-dark: #000008;
-  --color-text-primary: #00ffff; /* Neon cyan */
-  --color-text-secondary: #ff00ff; /* Neon magenta */
-  --color-accent-primary: #ff00ff; /* Neon magenta */
-  --color-accent-hover: #00ffff; /* Neon cyan */
-  --color-accent-secondary: #ffff00; /* Neon yellow */
-  --color-border: #ff00ff40; /* Magenta with transparency */
-  --color-link: #ff00ff;
-  --color-link-hover: #00ffff;
-  --font-family: 'Impact', 'Arial Black', sans-serif;
+  /* Default (Bitcoin) theme colors */
+  --color-bg-primary: #0b0f14;
+  --color-bg-secondary: #141a22;
+  --color-bg-dark: #0a0d12;
+  --color-text-primary: #f2f4f8;
+  --color-text-secondary: #c2c7d0;
+  --color-accent-primary: #f7931a; /* Bitcoin orange */
+  --color-accent-hover: #ffb347; /* Lighter orange */
+  --color-accent-secondary: #9ca3af; /* Grey highlight */
+  --color-border: #39404a;
+  --color-link: #f7931a;
+  --color-link-hover: #ffb347;
+  --font-family: system-ui, -apple-system, sans-serif;
 }
 
 /* Cypherpunk - Monospace font, neon green text on black, terminal aesthetic */
@@ -125,6 +125,22 @@
   --font-family: system-ui, -apple-system, sans-serif;
 }
 
+/* Bitcoin - Dark mode with orange/grey highlights */
+:root[data-theme="bitcoin"] {
+  --color-bg-primary: #0b0f14;
+  --color-bg-secondary: #141a22;
+  --color-bg-dark: #0a0d12;
+  --color-text-primary: #f2f4f8;
+  --color-text-secondary: #c2c7d0;
+  --color-accent-primary: #f7931a; /* Bitcoin orange */
+  --color-accent-hover: #ffb347; /* Lighter orange */
+  --color-accent-secondary: #9ca3af; /* Grey highlight */
+  --color-border: #39404a;
+  --color-link: #f7931a;
+  --color-link-hover: #ffb347;
+  --font-family: system-ui, -apple-system, sans-serif;
+}
+
 /* 80s Arcade - Neon cyan/magenta, retro gaming */
 :root[data-theme="arcade80s"] {
   --color-bg-primary: #000011; /* Deep blue-black */
@@ -150,6 +166,10 @@ body {
 
 /* Theme-specific font family application */
 :root[data-theme="classic"] * {
+  font-family: var(--font-family);
+}
+
+:root[data-theme="bitcoin"] * {
   font-family: var(--font-family);
 }
 
@@ -217,12 +237,14 @@ a:hover {
   color: var(--color-link-hover);
 }
 
+:root[data-theme="bitcoin"] a,
 :root[data-theme="cypherpunk"] a,
 :root[data-theme="girly"] a,
 :root[data-theme="arcade80s"] a {
   color: var(--color-link) !important;
 }
 
+:root[data-theme="bitcoin"] a:hover,
 :root[data-theme="cypherpunk"] a:hover,
 :root[data-theme="girly"] a:hover,
 :root[data-theme="arcade80s"] a:hover {
@@ -230,6 +252,8 @@ a:hover {
 }
 
 /* Text colors */
+:root[data-theme="bitcoin"] .text-purple-500,
+:root[data-theme="bitcoin"] .text-purple-400,
 :root[data-theme="cypherpunk"] .text-purple-500,
 :root[data-theme="cypherpunk"] .text-purple-400,
 :root[data-theme="girly"] .text-purple-500,
@@ -239,6 +263,8 @@ a:hover {
   color: var(--color-accent-primary) !important;
 }
 
+:root[data-theme="bitcoin"] .hover\:text-purple-500:hover,
+:root[data-theme="bitcoin"] .hover\:text-purple-400:hover,
 :root[data-theme="cypherpunk"] .hover\:text-purple-500:hover,
 :root[data-theme="cypherpunk"] .hover\:text-purple-400:hover,
 :root[data-theme="girly"] .hover\:text-purple-500:hover,
@@ -249,16 +275,44 @@ a:hover {
 }
 
 /* Borders */
+:root[data-theme="bitcoin"] .border-purple-500,
 :root[data-theme="cypherpunk"] .border-purple-500,
 :root[data-theme="girly"] .border-purple-500,
 :root[data-theme="arcade80s"] .border-purple-500 {
   border-color: var(--color-accent-primary) !important;
 }
 
+:root[data-theme="bitcoin"] .border-gray-700,
 :root[data-theme="cypherpunk"] .border-gray-700,
 :root[data-theme="girly"] .border-gray-700,
 :root[data-theme="arcade80s"] .border-gray-700 {
   border-color: var(--color-border) !important;
+}
+
+/* Ring (focus/outline) colors */
+:root[data-theme="bitcoin"] .ring-purple-500,
+:root[data-theme="cypherpunk"] .ring-purple-500,
+:root[data-theme="girly"] .ring-purple-500,
+:root[data-theme="arcade80s"] .ring-purple-500 {
+  --tw-ring-color: var(--color-accent-primary) !important;
+}
+
+:root[data-theme="bitcoin"] .ring-purple-400,
+:root[data-theme="cypherpunk"] .ring-purple-400,
+:root[data-theme="girly"] .ring-purple-400,
+:root[data-theme="arcade80s"] .ring-purple-400 {
+  --tw-ring-color: var(--color-accent-primary) !important;
+}
+
+:root[data-theme="bitcoin"] .focus\:ring-purple-500:focus,
+:root[data-theme="cypherpunk"] .focus\:ring-purple-500:focus,
+:root[data-theme="girly"] .focus\:ring-purple-500:focus,
+:root[data-theme="arcade80s"] .focus\:ring-purple-500:focus,
+:root[data-theme="bitcoin"] .focus\:ring-purple-400:focus,
+:root[data-theme="cypherpunk"] .focus\:ring-purple-400:focus,
+:root[data-theme="girly"] .focus\:ring-purple-400:focus,
+:root[data-theme="arcade80s"] .focus\:ring-purple-400:focus {
+  --tw-ring-color: var(--color-accent-primary) !important;
 }
 
 /* Buttons */
@@ -275,6 +329,10 @@ a:hover {
 }
 
 /* Keep outline buttons theme-colored for girly/arcade, but cypherpunk uses green */
+:root[data-theme="bitcoin"] button.border-purple-500.text-purple-400,
+:root[data-theme="bitcoin"] .border-purple-500.text-purple-400,
+:root[data-theme="bitcoin"] button.border-purple-500.hover\:text-purple-400:hover,
+:root[data-theme="bitcoin"] .border-purple-500.hover\:text-purple-400:hover,
 :root[data-theme="girly"] button.border-purple-500.text-purple-400,
 :root[data-theme="girly"] .border-purple-500.text-purple-400,
 :root[data-theme="girly"] button.border-purple-500.hover\:text-purple-400:hover,
@@ -288,12 +346,14 @@ a:hover {
 }
 
 /* Background colors */
+:root[data-theme="bitcoin"] .bg-purple-600,
 :root[data-theme="cypherpunk"] .bg-purple-600,
 :root[data-theme="girly"] .bg-purple-600,
 :root[data-theme="arcade80s"] .bg-purple-600 {
   background-color: var(--color-accent-primary) !important;
 }
 
+:root[data-theme="bitcoin"] .bg-purple-600:hover,
 :root[data-theme="cypherpunk"] .bg-purple-600:hover,
 :root[data-theme="girly"] .bg-purple-600:hover,
 :root[data-theme="arcade80s"] .bg-purple-600:hover {
@@ -301,18 +361,21 @@ a:hover {
 }
 
 /* Background colors with opacity - theme-aware */
+:root[data-theme="bitcoin"] .bg-purple-500\/20,
 :root[data-theme="cypherpunk"] .bg-purple-500\/20,
 :root[data-theme="girly"] .bg-purple-500\/20,
 :root[data-theme="arcade80s"] .bg-purple-500\/20 {
   background-color: color-mix(in srgb, var(--color-accent-primary) 20%, transparent) !important;
 }
 
+:root[data-theme="bitcoin"] .bg-purple-900\/20,
 :root[data-theme="cypherpunk"] .bg-purple-900\/20,
 :root[data-theme="girly"] .bg-purple-900\/20,
 :root[data-theme="arcade80s"] .bg-purple-900\/20 {
   background-color: color-mix(in srgb, var(--color-accent-primary) 20%, transparent) !important;
 }
 
+:root[data-theme="bitcoin"] .bg-purple-900\/30,
 :root[data-theme="cypherpunk"] .bg-purple-900\/30,
 :root[data-theme="girly"] .bg-purple-900\/30,
 :root[data-theme="arcade80s"] .bg-purple-900\/30 {
@@ -320,6 +383,7 @@ a:hover {
 }
 
 /* Border colors with opacity - theme-aware */
+:root[data-theme="bitcoin"] .border-purple-500\/50,
 :root[data-theme="cypherpunk"] .border-purple-500\/50,
 :root[data-theme="girly"] .border-purple-500\/50,
 :root[data-theme="arcade80s"] .border-purple-500\/50 {
@@ -327,6 +391,7 @@ a:hover {
 }
 
 /* Text colors - theme-aware */
+:root[data-theme="bitcoin"] .text-purple-300,
 :root[data-theme="cypherpunk"] .text-purple-300,
 :root[data-theme="girly"] .text-purple-300,
 :root[data-theme="arcade80s"] .text-purple-300 {
@@ -341,24 +406,28 @@ a:hover {
 }
 
 /* Background utilities */
+:root[data-theme="bitcoin"] .bg-dark,
 :root[data-theme="cypherpunk"] .bg-dark,
 :root[data-theme="girly"] .bg-dark,
 :root[data-theme="arcade80s"] .bg-dark {
   background-color: var(--color-bg-dark) !important;
 }
 
+:root[data-theme="bitcoin"] .bg-\[#0E1116\],
 :root[data-theme="cypherpunk"] .bg-\[#0E1116\],
 :root[data-theme="girly"] .bg-\[#0E1116\],
 :root[data-theme="arcade80s"] .bg-\[#0E1116\] {
   background-color: var(--color-bg-primary) !important;
 }
 
+:root[data-theme="bitcoin"] .bg-\[#171B21\],
 :root[data-theme="cypherpunk"] .bg-\[#171B21\],
 :root[data-theme="girly"] .bg-\[#171B21\],
 :root[data-theme="arcade80s"] .bg-\[#171B21\] {
   background-color: var(--color-bg-secondary) !important;
 }
 
+:root[data-theme="bitcoin"] .bg-\[#22262C\],
 :root[data-theme="cypherpunk"] .bg-\[#22262C\],
 :root[data-theme="girly"] .bg-\[#22262C\],
 :root[data-theme="arcade80s"] .bg-\[#22262C\] {
@@ -366,12 +435,14 @@ a:hover {
 }
 
 /* Text colors */
+:root[data-theme="bitcoin"] .text-white,
 :root[data-theme="cypherpunk"] .text-white,
 :root[data-theme="girly"] .text-white,
 :root[data-theme="arcade80s"] .text-white {
   color: var(--color-text-primary) !important;
 }
 
+:root[data-theme="bitcoin"] .text-gray-400,
 :root[data-theme="cypherpunk"] .text-gray-400,
 :root[data-theme="girly"] .text-gray-400,
 :root[data-theme="arcade80s"] .text-gray-400 {
@@ -381,7 +452,7 @@ a:hover {
 /* Radio buttons and checkboxes - NO BLUE, use theme colors */
 input[type="radio"],
 input[type="checkbox"] {
-  appearance: none;
+  appearance: none !important;
   -webkit-appearance: none;
   -moz-appearance: none;
   width: 1rem;
@@ -401,7 +472,7 @@ input[type="checkbox"] {
 /* Radio button selected state */
 input[type="radio"]:checked {
   border-color: var(--color-accent-primary);
-  background-color: transparent;
+  background-color: var(--color-accent-primary);
 }
 
 input[type="radio"]:checked::before {
@@ -410,10 +481,15 @@ input[type="radio"]:checked::before {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 0.5rem;
-  height: 0.5rem;
+  width: 0.35rem;
+  height: 0.35rem;
   border-radius: 50%;
-  background-color: var(--color-accent-primary);
+  background-color: var(--color-bg-primary);
+}
+
+/* Highlight checked radio labels with theme accent */
+label input[type="radio"]:checked + span {
+  color: var(--color-accent-primary);
 }
 
 /* Checkbox selected state */

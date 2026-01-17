@@ -735,8 +735,8 @@ function NewRepoPageContent() {
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
       <h1 className="text-2xl font-bold mb-4">Create repository</h1>
 
-      <div className="mb-6 p-4 bg-blue-900/20 border border-blue-500/50 rounded">
-        <h2 className="font-semibold text-blue-400 mb-2">
+      <div className="mb-6 p-4 bg-purple-900/20 border border-purple-500/50 rounded">
+        <h2 className="font-semibold text-purple-400 mb-2">
           📥 Option 1: Import single repository
         </h2>
         <p className="text-sm text-gray-300 mb-3">
@@ -791,7 +791,7 @@ function NewRepoPageContent() {
           </code>
         </p>
         <button
-          className="mt-3 border border-blue-500 bg-blue-600 hover:bg-blue-700 px-4 py-2 text-white rounded"
+          className="mt-3 border border-purple-500 bg-purple-600 hover:bg-purple-600 px-4 py-2 text-white rounded"
           onClick={submit}
           disabled={!url.trim()}
         >
