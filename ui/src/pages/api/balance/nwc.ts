@@ -11,12 +11,12 @@ export default async function handler(
   if (req.method !== "POST") {
     // Handle OPTIONS request for CORS (GRASP requirement)
     if (req.method === "OPTIONS") {
-      handleOptionsRequest(res);
+      handleOptionsRequest(res, req);
       return;
     }
 
     // Set CORS headers (GRASP requirement)
-    setCorsHeaders(res);
+    setCorsHeaders(res, req);
     return res.status(405).json({ status: "method_not_allowed" });
   }
 

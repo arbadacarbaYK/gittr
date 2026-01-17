@@ -85,11 +85,11 @@ export default async function handler(
   res: NextApiResponse
 ) {
   if (req.method === "OPTIONS") {
-    handleOptionsRequest(res);
+    handleOptionsRequest(res, req);
     return;
   }
 
-  setCorsHeaders(res);
+  setCorsHeaders(res, req);
 
   const rateLimitResult = await rateLimiters.api(req as any);
   if (rateLimitResult) {

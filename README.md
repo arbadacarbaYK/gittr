@@ -38,6 +38,7 @@ A decentralized Git platform built on Nostr with native Bitcoin/Lightning paymen
 - ✅ Clone URLs (HTTPS/SSH) with SSH/Git help guide
 - ✅ SSH key management (Settings → SSH Keys)
 - ✅ Multiple themes (Classic, Cypherpunk, Girly, 80s Arcade)
+- ✅ Installable PWA (manifest + service worker)
 
 ### Discovery & Social
 - ✅ Explore page (repos and users)

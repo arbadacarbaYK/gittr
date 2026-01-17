@@ -173,6 +173,15 @@ export default function HelpPage() {
                 Notifications
               </Link>
             </li>
+            <li>
+              •{" "}
+              <Link
+                href="#pwa-install"
+                className="text-purple-400 hover:text-purple-300"
+              >
+                Install as App (PWA)
+              </Link>
+            </li>
           </ul>
         </div>
 
@@ -464,6 +473,61 @@ export default function HelpPage() {
                 receiving zaps and bounties.
               </p>
             </div>
+          </div>
+        </section>
+
+        {/* PWA Install */}
+        <section
+          id="pwa-install"
+          className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]"
+        >
+          <h2 className="text-2xl font-semibold mb-4">
+            Install gittr as an App (PWA)
+          </h2>
+          <div className="space-y-4 text-gray-300">
+            <p>
+              gittr is installable as a Progressive Web App (PWA) on modern
+              browsers. This gives you an app icon, standalone window, and
+              offline fallback page.
+            </p>
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold text-white mb-2">
+                Desktop (Chrome/Edge/Brave)
+              </h3>
+              <ul className="list-disc list-inside space-y-1 ml-4">
+                <li>Open gittr in your browser (HTTPS required).</li>
+                <li>
+                  Click the install icon in the address bar, or go to the menu →
+                  <strong className="text-white"> Install app</strong>.
+                </li>
+                <li>Confirm to add gittr to your desktop/app launcher.</li>
+              </ul>
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold text-white mb-2">
+                iOS (Safari)
+              </h3>
+              <ul className="list-disc list-inside space-y-1 ml-4">
+                <li>Open gittr in Safari.</li>
+                <li>Tap Share → Add to Home Screen.</li>
+              </ul>
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold text-white mb-2">
+                Android (Chrome/Brave)
+              </h3>
+              <ul className="list-disc list-inside space-y-1 ml-4">
+                <li>Open gittr in Chrome or Brave.</li>
+                <li>
+                  Tap the menu → <strong className="text-white">Install app</strong>.
+                </li>
+              </ul>
+            </div>
+            <p className="text-sm text-gray-400">
+              Note: In-app browsers (Telegram/Twitter, etc.) often block PWA
+              install. Open in the system browser. Offline mode only shows a
+              fallback screen and does not replace full online functionality.
+            </p>
           </div>
         </section>
 

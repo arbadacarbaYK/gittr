@@ -11,7 +11,7 @@ export default function NotFound() {
       <FileQuestion className="h-12 w-12 text-gray-400 mb-4" />
       <h2 className="text-2xl font-bold mb-2">Repository not found</h2>
       <p className="text-gray-400 mb-4 text-center max-w-md">
-        The repository you're looking for doesn't exist or has been moved.
+        The repository you&apos;re looking for doesn&apos;t exist or has been moved.
       </p>
       <div className="flex gap-4">
         <Link href="/">

@@ -11428,7 +11428,8 @@ export default function RepoCodePage() {
           const text = heading.textContent || "";
           const normalizedText = normalizeHeadingText(text);
           return (
-            normalizedText === normalizedHash || normalizedText === normalizedBase
+            normalizedText === normalizedHash ||
+            normalizedText === normalizedBase
           );
         }) || null
       );
@@ -11466,12 +11467,15 @@ export default function RepoCodePage() {
         headings.find((heading) => {
           const id = heading.id || "";
           if (hashCandidates.includes(id)) return true;
-          if (normalizedHash && id.startsWith(`${normalizedHash}-`)) return true;
-          if (normalizedBase && id.startsWith(`${normalizedBase}-`)) return true;
+          if (normalizedHash && id.startsWith(`${normalizedHash}-`))
+            return true;
+          if (normalizedBase && id.startsWith(`${normalizedBase}-`))
+            return true;
           const text = heading.textContent || "";
           const normalizedText = normalizeHeadingText(text);
           return (
-            normalizedText === normalizedHash || normalizedText === normalizedBase
+            normalizedText === normalizedHash ||
+            normalizedText === normalizedBase
           );
         }) || null
       );

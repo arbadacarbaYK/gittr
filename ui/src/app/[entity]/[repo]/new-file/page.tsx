@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useState } from "react";
 
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
@@ -72,7 +72,7 @@ export default function NewFilePage({
     }
   }, [pubkey, resolvedParams.entity, resolvedParams.repo]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!isLoggedIn || !pubkey) {
@@ -125,8 +125,10 @@ export default function NewFilePage({
           );
         }, 1000);
       }
-    } catch (error: any) {
-      setStatus(`Error: ${error.message}`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown error occurred";
+      setStatus(`Error: ${message}`);
     }
   };
 
