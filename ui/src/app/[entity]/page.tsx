@@ -94,6 +94,21 @@ export default function EntityPage({
   } = useNostrContext();
   const { isLoggedIn } = useSession();
 
+  const isLowMemoryDevice = useMemo(() => {
+    if (typeof navigator === "undefined") return false;
+    const memory = (navigator as any).deviceMemory as number | undefined;
+    const cores = navigator.hardwareConcurrency ?? 0;
+    const ua = navigator.userAgent || "";
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(ua);
+    return (
+      isMobile ||
+      (typeof memory === "number" && memory > 0 && memory <= 4) ||
+      (cores > 0 && cores <= 4)
+    );
+  }, []);
+  const shouldLogProfileDebug =
+    process.env.NODE_ENV !== "production" && !isLowMemoryDevice;
+
   // For metadata lookup, use full pubkey if we resolved one, otherwise use entity
   // CRITICAL: Handle npub format entities by decoding them first
   // Don't access localStorage in useState initializer to prevent hydration errors
@@ -278,11 +293,13 @@ export default function EntityPage({
 
   // CRITICAL: This hook returns the FULL metadataMap from cache, not just the pubkeys passed to it
   // The hook loads all cached metadata on initialization, so we should have access to all 15+ entries
-  console.log(`🔍 [Profile] Calling useContributorMetadata with pubkeys:`, {
-    pubkeysForMetadata,
-    pubkeysLength: pubkeysForMetadata.length,
-    pubkeysFirst8: pubkeysForMetadata.map((p) => p.slice(0, 8)),
-  });
+  if (shouldLogProfileDebug) {
+    console.log(`🔍 [Profile] Calling useContributorMetadata with pubkeys:`, {
+      pubkeysForMetadata,
+      pubkeysLength: pubkeysForMetadata.length,
+      pubkeysFirst8: pubkeysForMetadata.map((p) => p.slice(0, 8)),
+    });
+  }
   const metadataMap = useContributorMetadata(pubkeysForMetadata);
 
   // CRITICAL: Use the same pattern as settings/profile page - determine pubkey first, then call getUserMetadata directly
@@ -356,6 +373,7 @@ export default function EntityPage({
 
   // Debug: Log metadata state and check for identities
   useEffect(() => {
+    if (!shouldLogProfileDebug) return;
     if (pubkeyForMetadata) {
       const normalized = pubkeyForMetadata.toLowerCase();
       const meta = metadataMap[normalized];
@@ -443,6 +461,7 @@ export default function EntityPage({
     metadataMap,
     resolvedParams.entity,
     fullPubkeyForMeta,
+    shouldLogProfileDebug,
   ]);
 
   // Check if entity is a pubkey (user profile) or repo slug
@@ -1366,6 +1385,10 @@ export default function EntityPage({
           // We just add any additional PRs/issues from Nostr that might not be in localStorage yet
           // CRITICAL: subscribe and defaultRelays should always be available from NostrContext
           // Even when not logged in, we can still query Nostr (read-only)
+          if (isLowMemoryDevice) {
+            setLoadingNostrCounts(false);
+            return;
+          }
           if (subscribe && defaultRelays && defaultRelays.length > 0) {
             setLoadingNostrCounts(true);
 
@@ -1619,7 +1642,9 @@ export default function EntityPage({
             console.log(
               "🔄 [Profile] Running backfill to ensure all repos have activities..."
             );
-            backfillActivities();
+            if (!isLowMemoryDevice) {
+              backfillActivities();
+            }
           }
 
           // Sync commits from bridge (every 5 minutes)
@@ -1629,6 +1654,9 @@ export default function EntityPage({
 
           if (!lastSync || now - parseInt(lastSync, 10) > SYNC_INTERVAL) {
             // Sync commits from bridge in background (don't block UI)
+            if (isLowMemoryDevice) {
+              return;
+            }
             syncUserCommitsFromBridge(fullPubkey)
               .then((syncedCount) => {
                 // Also sync issues/PRs from Nostr
@@ -1673,6 +1701,9 @@ export default function EntityPage({
               });
           } else {
             // Even if commits are synced, check for new issues/PRs (they update more frequently)
+            if (isLowMemoryDevice) {
+              return;
+            }
             const issuesPRsSynced = syncIssuesAndPRsFromNostr(fullPubkey);
             if (issuesPRsSynced > 0) {
               const updatedActivities = getUserActivities(fullPubkey);
