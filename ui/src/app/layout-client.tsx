@@ -229,7 +229,7 @@ export default function ClientLayout({
     if (process.env.NODE_ENV !== "production") return;
     if (!("serviceWorker" in navigator)) return;
 
-    const onLoad = () => {
+    const registerServiceWorker = () => {
       navigator.serviceWorker
         .register("/sw.js")
         .catch((error) =>
@@ -237,8 +237,13 @@ export default function ClientLayout({
         );
     };
 
-    window.addEventListener("load", onLoad);
-    return () => window.removeEventListener("load", onLoad);
+    if (document.readyState === "complete") {
+      registerServiceWorker();
+      return;
+    }
+
+    window.addEventListener("load", registerServiceWorker);
+    return () => window.removeEventListener("load", registerServiceWorker);
   }, []);
 
   return (

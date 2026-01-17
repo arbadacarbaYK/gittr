@@ -89,16 +89,30 @@ export interface StoredRepo {
   tags?: string[];
   lastNostrEventId?: string;
   nostrEventId?: string;
+  stateEventId?: string;
+  lastStateEventId?: string;
   deleted?: boolean;
   hasUnpushedEdits?: boolean;
   status?: string;
   syncedFromNostr?: boolean;
+  fromNostr?: boolean;
   publicRead?: boolean; // NIP-34: Repository privacy (read access)
   publicWrite?: boolean; // NIP-34: Repository privacy (write access)
 }
 
 const hasLocalChanges = (repo: StoredRepo): boolean =>
   repo.hasUnpushedEdits === true || repo.status === "local";
+
+const isNostrSyncedRepo = (repo: StoredRepo): boolean => {
+  return !!(
+    repo.syncedFromNostr ||
+    repo.fromNostr ||
+    repo.nostrEventId ||
+    repo.lastNostrEventId ||
+    repo.stateEventId ||
+    repo.lastStateEventId
+  );
+};
 
 export const isRepoOwnedByPubkey = (
   repo: StoredRepo,
@@ -233,6 +247,7 @@ export const clearNonLocalReposFromStorage = (options?: {
 
   const keptRepos = allRepos.filter((repo) => {
     if (hasLocalChanges(repo)) return true;
+    if (isNostrSyncedRepo(repo)) return true;
     if (preserveWithMetadata) {
       const entity = repo.entity || repo.slug?.split("/")[0] || "";
       const repoName =

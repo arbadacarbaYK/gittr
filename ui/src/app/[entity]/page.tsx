@@ -18,6 +18,8 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   KIND_ISSUE,
   KIND_PULL_REQUEST,
+  KIND_REPOSITORY,
+  KIND_REPOSITORY_NIP34,
   KIND_STATUS_APPLIED,
   KIND_STATUS_CLOSED,
 } from "@/lib/nostr/events";
@@ -62,6 +64,58 @@ function isValidPubkey(str: string): boolean {
   return /^[0-9a-f]{64}$/i.test(str);
 }
 
+// Parse NIP-34 repository announcement format (minimal fields needed for lists)
+function parseNIP34Repository(event: any): any {
+  const repoData: any = {
+    repositoryName: "",
+    name: "",
+    description: "",
+    clone: [],
+    relays: [],
+    topics: [],
+  };
+
+  if (!event.tags || !Array.isArray(event.tags)) {
+    return repoData;
+  }
+
+  for (const tag of event.tags) {
+    if (!Array.isArray(tag) || tag.length < 2) continue;
+
+    const tagName = tag[0];
+    const tagValue = tag[1];
+
+    switch (tagName) {
+      case "d":
+        repoData.repositoryName = tagValue;
+        break;
+      case "name":
+        repoData.name = tagValue;
+        break;
+      case "description":
+        repoData.description = tagValue;
+        break;
+      case "clone":
+        if (tagValue) repoData.clone.push(tagValue);
+        break;
+      case "relays":
+        if (tagValue) repoData.relays.push(tagValue);
+        break;
+      case "t":
+        if (tagValue) repoData.topics.push(tagValue);
+        break;
+      default:
+        break;
+    }
+  }
+
+  if (!repoData.repositoryName && repoData.name) {
+    repoData.repositoryName = repoData.name;
+  }
+
+  return repoData;
+}
+
 export default function EntityPage({
   params,
 }: {
@@ -71,6 +125,7 @@ export default function EntityPage({
   // CRITICAL: All hooks must be called at the top level, before any conditional returns
   const router = useRouter();
   const redirectedRef = useRef(false);
+  const anonRepoSyncRef = useRef(false);
   const [isPubkey, setIsPubkey] = useState(false);
   const [userRepos, setUserRepos] = useState<any[]>([]);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
@@ -370,6 +425,162 @@ export default function EntityPage({
 
     return {};
   }, [pubkeyForMetadata, currentUserPubkey, fullPubkeyForMeta, metadataMap]);
+
+  // Ensure public profiles can load repos even when anonymous storage was cleaned
+  useEffect(() => {
+    if (isLoggedIn) return;
+    if (userRepos.length > 0) return;
+    if (!subscribe || !defaultRelays || defaultRelays.length === 0) return;
+
+    const targetPubkey =
+      (pubkeyForMetadata && /^[0-9a-f]{64}$/i.test(pubkeyForMetadata)
+        ? pubkeyForMetadata
+        : null) ||
+      (fullPubkeyForMeta && /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)
+        ? fullPubkeyForMeta
+        : null);
+
+    if (!targetPubkey) return;
+    if (anonRepoSyncRef.current) return;
+
+    if (typeof window !== "undefined") {
+      const cacheKey = `gittr_profile_repo_sync_${targetPubkey}`;
+      const lastSync = sessionStorage.getItem(cacheKey);
+      if (lastSync && Date.now() - Number(lastSync) < 2 * 60 * 1000) {
+        return;
+      }
+      sessionStorage.setItem(cacheKey, Date.now().toString());
+    }
+
+    anonRepoSyncRef.current = true;
+    const graspRelays = getGraspServers(defaultRelays);
+    const activeRelays = graspRelays.length > 0 ? graspRelays : defaultRelays;
+
+    const upsertRepo = (event: any, repoData: any) => {
+      const existingRepos = JSON.parse(
+        localStorage.getItem("gittr_repos") || "[]"
+      ) as any[];
+      const repoName = repoData.repositoryName || repoData.name || "";
+      const ownerPubkey = event.pubkey;
+
+      if (!repoName || !ownerPubkey) return;
+
+      const existingIndex = existingRepos.findIndex((r: any) => {
+        const rOwner =
+          r.ownerPubkey ||
+          (r.entity
+            ? (() => {
+                try {
+                  const decoded = nip19.decode(r.entity);
+                  return decoded.type === "npub" ? decoded.data : null;
+                } catch {
+                  return null;
+                }
+              })()
+            : null);
+        return (
+          rOwner &&
+          rOwner.toLowerCase() === ownerPubkey.toLowerCase() &&
+          (r.repo === repoName ||
+            r.slug === repoName ||
+            r.slug === `${r.entity}/${repoName}`)
+        );
+      });
+
+      const repoEntry: any = {
+        slug: repoName,
+        entity: ownerPubkey
+          ? (() => {
+              try {
+                return nip19.npubEncode(ownerPubkey);
+              } catch {
+                return ownerPubkey.slice(0, 8);
+              }
+            })()
+          : undefined,
+        repo: repoName,
+        name: repoData.name || repoName,
+        description: repoData.description || "",
+        createdAt: event.created_at * 1000,
+        updatedAt: Date.now(),
+        ownerPubkey: ownerPubkey,
+        lastNostrEventId: event.id,
+        lastNostrEventCreatedAt: event.created_at,
+        syncedFromNostr: true,
+        clone: repoData.clone || [],
+        relays: repoData.relays || [],
+        topics: repoData.topics || [],
+      };
+
+      if (existingIndex >= 0) {
+        const existing = existingRepos[existingIndex];
+        const existingLatest = (existing as any).lastNostrEventCreatedAt || 0;
+        if (event.created_at > existingLatest) {
+          existingRepos[existingIndex] = {
+            ...existing,
+            ...repoEntry,
+          };
+          localStorage.setItem("gittr_repos", JSON.stringify(existingRepos));
+          window.dispatchEvent(new CustomEvent("storage"));
+        }
+      } else {
+        existingRepos.push(repoEntry);
+        localStorage.setItem("gittr_repos", JSON.stringify(existingRepos));
+        window.dispatchEvent(new CustomEvent("storage"));
+      }
+    };
+
+    const unsub = subscribe(
+      [
+        {
+          kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
+          authors: [targetPubkey],
+          limit: 5000,
+        },
+      ],
+      activeRelays,
+      (event: any) => {
+        try {
+          let repoData: any;
+          if (event.kind === KIND_REPOSITORY_NIP34) {
+            repoData = parseNIP34Repository(event);
+          } else {
+            try {
+              repoData = JSON.parse(event.content);
+            } catch (parseError) {
+              console.warn(
+                `[Profile] Failed to parse repo event content as JSON:`,
+                parseError
+              );
+              return;
+            }
+          }
+
+          if (!repoData) return;
+          upsertRepo(event, repoData);
+        } catch (err) {
+          console.error("❌ [Profile] Failed to sync repos from Nostr:", err);
+        }
+      }
+    );
+
+    const resetTimer = setTimeout(() => {
+      anonRepoSyncRef.current = false;
+    }, 8000);
+
+    return () => {
+      anonRepoSyncRef.current = false;
+      clearTimeout(resetTimer);
+      if (unsub) unsub();
+    };
+  }, [
+    isLoggedIn,
+    userRepos.length,
+    subscribe,
+    defaultRelays,
+    pubkeyForMetadata,
+    fullPubkeyForMeta,
+  ]);
 
   // Debug: Log metadata state and check for identities
   useEffect(() => {
