@@ -353,13 +353,6 @@ a:hover {
   background-color: var(--color-accent-primary) !important;
 }
 
-:root[data-theme="bitcoin"] .bg-purple-700,
-:root[data-theme="cypherpunk"] .bg-purple-700,
-:root[data-theme="girly"] .bg-purple-700,
-:root[data-theme="arcade80s"] .bg-purple-700 {
-  background-color: var(--color-accent-primary) !important;
-}
-
 :root[data-theme="bitcoin"] .bg-purple-600:hover,
 :root[data-theme="cypherpunk"] .bg-purple-600:hover,
 :root[data-theme="girly"] .bg-purple-600:hover,
@@ -367,10 +360,10 @@ a:hover {
   background-color: var(--color-accent-hover) !important;
 }
 
-:root[data-theme="bitcoin"] .bg-purple-700:hover,
-:root[data-theme="cypherpunk"] .bg-purple-700:hover,
-:root[data-theme="girly"] .bg-purple-700:hover,
-:root[data-theme="arcade80s"] .bg-purple-700:hover {
+:root[data-theme="bitcoin"] .hover\:bg-purple-700:hover,
+:root[data-theme="cypherpunk"] .hover\:bg-purple-700:hover,
+:root[data-theme="girly"] .hover\:bg-purple-700:hover,
+:root[data-theme="arcade80s"] .hover\:bg-purple-700:hover {
   background-color: var(--color-accent-hover) !important;
 }
 
