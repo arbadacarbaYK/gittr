@@ -791,7 +791,7 @@ function NewRepoPageContent() {
           </code>
         </p>
         <button
-          className="mt-3 border border-purple-500 bg-purple-600 hover:bg-purple-600 px-4 py-2 text-white rounded"
+          className="mt-3 border border-purple-500 bg-purple-600 hover:bg-purple-700 px-4 py-2 text-white rounded"
           onClick={submit}
           disabled={!url.trim()}
         >
