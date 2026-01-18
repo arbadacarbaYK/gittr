@@ -55,3 +55,7 @@ yarn-error.log*
 
 # gitnostr (backend)
 bin
+
+# development server logs
+devserver.log
+*.log
