@@ -25,6 +25,7 @@ import {
   KIND_BOUNTY,
   KIND_CODE_SNIPPET,
   KIND_COMMENT,
+  KIND_ISSUE,
   KIND_STATUS_CLOSED,
   KIND_STATUS_OPEN,
   createBountyEvent,
@@ -356,26 +357,40 @@ export default function IssueDetailPage({
           try {
             // Parse comment from event
             // NIP-22 uses uppercase E tags, legacy uses lowercase e tags
-            const eTags = event.tags.filter(
+            const eTagsAll = event.tags.filter(
               (t): t is string[] =>
                 Array.isArray(t) && (t[0] === "e" || t[0] === "E")
             );
+            const eTags = event.tags.filter(
+              (t): t is string[] => Array.isArray(t) && t[0] === "e"
+            );
+            const rootTag = event.tags.find(
+              (t): t is string[] => Array.isArray(t) && t[0] === "E"
+            );
+            const rootEventId = rootTag?.[1] || issueEventId || undefined;
             const repoTag = event.tags.find(
               (t): t is string[] => Array.isArray(t) && t[0] === "repo"
             );
 
             // Verify this comment is for our issue and repo
             // Check both uppercase E (NIP-22) and lowercase e (legacy) tags
-            const isForThisIssue = eTags.some((t) => t[1] === issueEventId);
+            const isForThisIssue = eTagsAll.some((t) => t[1] === issueEventId);
             const isForThisRepo =
               repoTag && repoTag[1] === entity && repoTag[2] === repo;
 
             if (isForThisIssue && isForThisRepo) {
-              // Find parent comment ID (NIP-10 reply tag)
-              const replyTag = eTags.find((t) => t[3] === "reply");
-              const rootTag = eTags.find((t) => t[3] === "root");
-              const parentId =
-                replyTag?.[1] !== issueEventId ? replyTag?.[1] : undefined;
+              // NIP-22 parent: lowercase e tag points to parent (root for top-level)
+              // Fallback to legacy NIP-10 reply marker if present
+              let parentId: string | undefined;
+              const parentTag = eTags.find((t) => t[1] && t[1] !== rootEventId);
+              if (parentTag?.[1]) {
+                parentId = parentTag[1];
+              } else {
+                const replyTag = eTagsAll.find((t) => t[3] === "reply");
+                if (replyTag?.[1] && replyTag[1] !== rootEventId) {
+                  parentId = replyTag[1];
+                }
+              }
 
               const comment: Comment = {
                 id: event.id,
@@ -961,21 +976,41 @@ export default function IssueDetailPage({
       if (hasNip07 && window.nostr) {
         const authorPubkey = await window.nostr.getPublicKey();
 
-        const tags: string[][] = [
-          ["repo", entity, repo], // Custom extension, not in NIP-22
-        ];
+        const tags: string[][] = [["repo", entity, repo]]; // Custom extension, not in NIP-22
+        const rootEventId = issueEventId || issue.id;
+        const rootPubkey =
+          issue.author && /^[0-9a-f]{64}$/i.test(issue.author)
+            ? issue.author
+            : undefined;
+        const parentEventId = replyParentId || rootEventId;
+        const parentComment = replyParentId
+          ? comments.find(
+              (c) => c.nostrEventId === replyParentId || c.id === replyParentId
+            )
+          : undefined;
+        const parentPubkey =
+          replyParentId && parentComment?.author
+            ? parentComment.author
+            : rootPubkey;
+        const parentKind = replyParentId ? KIND_COMMENT : KIND_ISSUE;
 
-        // NIP-22 threading: Uses uppercase E tags (not lowercase e tags)
-        // - E: Event ID (root or reply)
-        // - First E tag is the root event (issue), additional E tags are reply targets
-        if (issueEventId) {
-          tags.push(["E", issueEventId]); // Root event (issue) - uppercase E per NIP-22
+        // NIP-22 root tags
+        if (rootEventId) {
+          tags.push(["E", rootEventId]);
+          tags.push(["K", String(KIND_ISSUE)]);
+          if (rootPubkey) {
+            tags.push(["P", rootPubkey]);
+          }
         }
 
-        if (replyParentId) {
-          tags.push(["E", replyParentId]); // Reply target (parent comment) - uppercase E per NIP-22
+        // NIP-22 parent tags (lowercase)
+        if (parentEventId) {
+          tags.push(["e", parentEventId]);
+          tags.push(["k", String(parentKind)]);
+          if (parentPubkey && /^[0-9a-f]{64}$/i.test(parentPubkey)) {
+            tags.push(["p", parentPubkey]);
+          }
         }
-        // Note: For direct replies to issue, we only need the root E tag
 
         commentEvent = {
           kind: KIND_COMMENT, // NIP-22: kind 1111
@@ -996,7 +1031,20 @@ export default function IssueDetailPage({
             replyTo: replyParentId || issueEventId || undefined,
             repoEntity: entity,
             repoName: repo,
-            issueId: issue.id,
+            issueId: issueEventId || issue.id,
+            rootKind: KIND_ISSUE,
+            rootPubkey:
+              issue.author && /^[0-9a-f]{64}$/i.test(issue.author)
+                ? issue.author
+                : undefined,
+            parentKind: replyParentId ? KIND_COMMENT : KIND_ISSUE,
+            parentPubkey:
+              replyParentId && comments
+                ? comments.find(
+                    (c) =>
+                      c.nostrEventId === replyParentId || c.id === replyParentId
+                  )?.author
+                : issue.author,
             content: commentContent.trim(),
           },
           privateKey
@@ -1185,6 +1233,103 @@ export default function IssueDetailPage({
     },
     []
   );
+
+  const urlRegex = /(https?:\/\/[^\s<>()]+)/g;
+
+  const extractUrls = (text: string): string[] => {
+    const urls = new Set<string>();
+    const matches = text.match(urlRegex) || [];
+    matches.forEach((raw) => {
+      const cleaned = raw.replace(/[),.;!?]+$/, "");
+      if (cleaned.startsWith("http")) {
+        urls.add(cleaned);
+      }
+    });
+    return Array.from(urls);
+  };
+
+  const splitTrailingPunctuation = (url: string) => {
+    const match = url.match(/^(https?:\/\/[^\s<>()]+?)([),.;!?]*)$/);
+    if (!match) return { url, trailing: "" };
+    return { url: match[1] || url, trailing: match[2] || "" };
+  };
+
+  const getMediaType = (url: string) => {
+    try {
+      const pathname = new URL(url).pathname.toLowerCase();
+      if (/\.(png|jpe?g|gif|webp|svg)$/.test(pathname)) return "image";
+      if (/\.(mp4|webm|mov)$/.test(pathname)) return "video";
+      if (/\.(mp3|wav|ogg|m4a)$/.test(pathname)) return "audio";
+    } catch {}
+    return "link";
+  };
+
+  const renderPlaintextWithEmbeds = (text: string) => {
+    const parts = text.split(urlRegex);
+    const urls = extractUrls(text);
+    const mediaUrls = urls.filter((url) => getMediaType(url) !== "link");
+
+    return (
+      <div className="text-sm text-gray-200 whitespace-pre-wrap break-words">
+        <div>
+          {parts.map((part, idx) => {
+            if (!part) return null;
+            if (part.startsWith("http")) {
+              const { url, trailing } = splitTrailingPunctuation(part);
+              return (
+                <span key={`link-${idx}`}>
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-400 hover:text-blue-300 underline underline-offset-2"
+                  >
+                    {url}
+                  </a>
+                  {trailing}
+                </span>
+              );
+            }
+            return <span key={`text-${idx}`}>{part}</span>;
+          })}
+        </div>
+        {mediaUrls.length > 0 && (
+          <div className="mt-3 space-y-3">
+            {mediaUrls.slice(0, 3).map((url) => {
+              const mediaType = getMediaType(url);
+              if (mediaType === "image") {
+                return (
+                  <img
+                    key={url}
+                    src={url}
+                    alt="comment attachment"
+                    className="max-w-full rounded border border-gray-700"
+                    loading="lazy"
+                  />
+                );
+              }
+              if (mediaType === "video") {
+                return (
+                  <video
+                    key={url}
+                    src={url}
+                    controls
+                    className="max-w-full rounded border border-gray-700"
+                  />
+                );
+              }
+              if (mediaType === "audio") {
+                return (
+                  <audio key={url} src={url} controls className="w-full" />
+                );
+              }
+              return null;
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // Get all comment author pubkeys for metadata
   const commentAuthorPubkeys = useMemo(() => {
@@ -1425,41 +1570,8 @@ export default function IssueDetailPage({
                                   </span>
                                 )}
                               </div>
-                              <div className="prose prose-invert max-w-none text-sm mb-3">
-                                <ReactMarkdown
-                                  remarkPlugins={[remarkGfm]}
-                                  rehypePlugins={[rehypeRaw]}
-                                  components={{
-                                    code: ({
-                                      node,
-                                      inline,
-                                      className,
-                                      children,
-                                      ...props
-                                    }: any) => {
-                                      if (inline) {
-                                        return (
-                                          <code className="bg-gray-900 px-1 py-0.5 rounded text-green-400">
-                                            {children}
-                                          </code>
-                                        );
-                                      }
-                                      return (
-                                        <CopyableCodeBlock
-                                          inline={false}
-                                          className={
-                                            className ||
-                                            "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"
-                                          }
-                                        >
-                                          {children}
-                                        </CopyableCodeBlock>
-                                      );
-                                    },
-                                  }}
-                                >
-                                  {comment.content}
-                                </ReactMarkdown>
+                              <div className="mb-3">
+                                {renderPlaintextWithEmbeds(comment.content)}
                                 {/* Render snippets referenced in comment */}
                                 {(() => {
                                   // Extract snippet event IDs from comment content

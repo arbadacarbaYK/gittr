@@ -195,10 +195,14 @@ This document lists all Nostr Improvement Proposals (NIPs) and event kinds used 
 - **Purpose**: Comments on issues, PRs, discussions
 - **Usage**: Issue/PR comments, discussion replies
 - **Tags**: 
-  - `E`: Event ID (root or reply) - REQUIRED (uppercase E per NIP-22)
-  - `P`: Pubkey (author of root event or reply target) - optional
+  - `E`: Root event ID - REQUIRED (uppercase E per NIP-22)
+  - `K`: Root event kind - REQUIRED
+  - `P`: Root event author pubkey - REQUIRED when available
+  - `e`: Parent event ID - REQUIRED (lowercase for parent scope)
+  - `k`: Parent event kind - REQUIRED
+  - `p`: Parent event author pubkey - REQUIRED when available
   - `repo`: Repository context (custom extension, not in NIP-22)
-- **Note**: Migrated from kind 1 (NIP-01) to kind 1111 (NIP-22) for proper threading support. Legacy kind 1 comments are still supported for backward compatibility.
+
 
 ## Relay Configuration
 

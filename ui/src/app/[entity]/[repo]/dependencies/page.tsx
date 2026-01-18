@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -29,16 +29,26 @@ import {
   RefreshCw,
   ZoomIn,
   ZoomOut,
+  Search,
+  X,
+  Settings,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+
+// CodeFlow-style dependency visualization
 
 interface GraphNode {
   data: {
     id: string;
     label: string;
+    displayLabel?: string;
     type: string;
     filePath?: string;
     path?: string;
+    size?: number;
+    depth?: number;
+    color?: string;
+    borderColor?: string;
   };
 }
 
@@ -49,17 +59,14 @@ interface GraphEdge {
     target: string;
     type: string;
     isExternal?: boolean;
+    weight?: number;
+    hidden?: boolean;
   };
 }
 
 interface GraphData {
   nodes: GraphNode[];
   edges: GraphEdge[];
-}
-
-interface CytoscapeStylesheet {
-  selector: string;
-  style: Record<string, string | number>;
 }
 
 interface GitHubTreeItem {
@@ -84,9 +91,37 @@ export default function DependenciesPage({
   const [status, setStatus] = useState<string>("");
   const [filesFetched, setFilesFetched] = useState(false);
   const fetchedRef = useRef(false);
-  const cytoscapeRef = useRef<HTMLDivElement>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cyRef = useRef<any>(null); // Cytoscape instance type is complex, using any for now
+  const layoutInitRef = useRef(false);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const zoomRef = useRef<any>(null);
+  const [showFolders, setShowFolders] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"file" | "folder">("file");
+  const [showExternal, setShowExternal] = useState(true);
+  const [folderGraphData, setFolderGraphData] = useState<GraphData | null>(
+    null
+  );
+  const [edgeWeightThreshold, setEdgeWeightThreshold] = useState(1);
+  const [minFolderSize, setMinFolderSize] = useState(1);
+  const selectFileRef = useRef<((id: string) => void) | null>(null);
+  const [blastRadius, setBlastRadius] = useState<{ affected: string[] } | null>(
+    null
+  );
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  
+  // CodeFlow-style graph configuration
+  const [graphConfig, setGraphConfig] = useState({
+    viewMode: "force" as "force" | "radial" | "hierarchical" | "grid" | "metro",
+    spacing: 200,
+    linkDist: 70,
+    showLabels: true,
+    curvedLinks: false,
+  });
+  const graphConfigRef = useRef(graphConfig);
+  graphConfigRef.current = graphConfig; // Keep ref in sync
+  const [showGraphConfig, setShowGraphConfig] = useState(false);
 
   useEffect(() => {
     if (fetchedRef.current) return;
@@ -94,305 +129,798 @@ export default function DependenciesPage({
     loadDependencies();
   }, [resolvedParams.entity, resolvedParams.repo, branch]);
 
-  const cytoscapeStylesheet: CytoscapeStylesheet[] = [
-    {
-      selector: "node[type='file']",
-      style: {
-        label: "data(label)",
-        width: 46,
-        height: 46,
-        backgroundColor: "#1e293b",
-        color: "#e5e7eb",
-        textValign: "center",
-        textHalign: "center",
-        fontSize: 10,
-        fontWeight: "600",
-        shape: "ellipse",
-        borderWidth: 2,
-        borderColor: "#475569",
-        textWrap: "wrap",
-        textMaxWidth: 90,
-        textOverflowWrap: "ellipsis",
-        textOutlineColor: "#0f172a",
-        textOutlineWidth: 2,
-        shadowBlur: 8,
-        shadowColor: "#1e293b",
-        shadowOpacity: 0.2,
-        shadowOffsetX: 0,
-        shadowOffsetY: 2,
-      },
-    },
-    {
-      selector: "node[type='package']",
-      style: {
-        label: "data(label)",
-        width: "label",
-        height: "label",
-        minWidth: 36,
-        minHeight: 22,
-        padding: "6px",
-        backgroundColor: "#8b5cf6",
-        color: "#0f172a",
-        textValign: "center",
-        textHalign: "center",
-        fontSize: 10,
-        fontWeight: "700",
-        shape: "round-rectangle",
-        borderWidth: 2,
-        borderColor: "#7c3aed",
-        textWrap: "wrap",
-        textMaxWidth: 120,
-        textOverflowWrap: "ellipsis",
-        textOutlineColor: "#ddd6fe",
-        textOutlineWidth: 0,
-        shadowBlur: 8,
-        shadowColor: "#7c3aed",
-        shadowOpacity: 0.25,
-        shadowOffsetX: 0,
-        shadowOffsetY: 2,
-      },
-    },
-    {
-      selector: "node[type='root']",
-      style: {
-        label: "data(label)",
-        width: 68,
-        height: 68,
-        backgroundColor: "#7c3aed",
-        color: "#f5f3ff",
-        textValign: "center",
-        textHalign: "center",
-        fontSize: 16,
-        fontWeight: "700",
-        shape: "ellipse",
-        borderWidth: 3,
-        borderColor: "#a78bfa",
-        textOutlineColor: "#1e1b4b",
-        textOutlineWidth: 2,
-        shadowBlur: 12,
-        shadowColor: "#7c3aed",
-        shadowOpacity: 0.3,
-        shadowOffsetX: 0,
-        shadowOffsetY: 4,
-      },
-    },
-    {
-      selector: "node[type='folder']",
-      style: {
-        label: "data(label)",
-        width: 54,
-        height: 54,
-        backgroundColor: "#0f172a",
-        color: "#94a3b8",
-        textValign: "center",
-        textHalign: "center",
-        fontSize: 11,
-        fontWeight: "600",
-        shape: "ellipse",
-        borderWidth: 2,
-        borderColor: "#475569",
-        textWrap: "wrap",
-        textMaxWidth: 110,
-        shadowBlur: 6,
-        shadowColor: "#0f172a",
-        shadowOpacity: 0.25,
-        shadowOffsetX: 0,
-        shadowOffsetY: 2,
-      },
-    },
-    {
-      selector: "edge[isExternal='true']",
-      style: {
-        width: 2,
-        lineColor: "#a78bfa",
-        targetArrowColor: "#a78bfa",
-        targetArrowShape: "triangle",
-        targetArrowSize: 9,
-        curveStyle: "bezier",
-        lineStyle: "dashed",
-        opacity: 0.7,
-      },
-    },
-    {
-      selector: "edge[isExternal='false']",
-      style: {
-        width: 2,
-        lineColor: "#64748b",
-        targetArrowColor: "#64748b",
-        targetArrowShape: "triangle",
-        targetArrowSize: 10,
-        curveStyle: "bezier",
-        opacity: 0.85,
-      },
-    },
-    {
-      selector: "edge[type='folder']",
-      style: {
-        width: 1,
-        lineColor: "#475569",
-        targetArrowColor: "#475569",
-        targetArrowShape: "none",
-        curveStyle: "straight",
-        opacity: 0.4,
-        lineStyle: "dotted",
-      },
-    },
-  ];
-
-  // Render Cytoscape graph when graphData is ready
   useEffect(() => {
-    if (!graphData || !cytoscapeRef.current || graphData.nodes.length === 0)
+    setFocusedNodeId(null);
+  }, [viewMode]);
+
+  const graphPalette = useMemo(
+    () => ({
+      background: "#0b0f1a",
+      text: "#f8fafc",
+      dim: "rgba(248,250,252,0.15)",
+      edge: "#d1d5db",
+      edgeExternal: "#f59e0b",
+    }),
+    []
+  );
+
+  const activeGraphData = viewMode === "folder" ? folderGraphData : graphData;
+  const hasFolderDependencyEdges =
+    activeGraphData?.edges.some((edge) => edge.data.type !== "folder") ?? false;
+
+  const buildElements = (options?: {
+    minSize?: number;
+    minWeight?: number;
+    includeExternal?: boolean;
+  }) => {
+    if (!activeGraphData) return { nodes: [], edges: [] };
+    const {
+      minSize = minFolderSize,
+      minWeight = edgeWeightThreshold,
+      includeExternal = showExternal,
+    } = options || {};
+    const allowedNodeIds = new Set<string>();
+
+    const nodes = activeGraphData.nodes.filter((node) => {
+      if (viewMode === "folder") {
+        if (node.data.type === "root") {
+          allowedNodeIds.add(node.data.id);
+          return true;
+        }
+        const size = node.data.size || 1;
+        if (node.data.type === "folder" && size < minSize) {
+          return false;
+        }
+        if (node.data.type === "package" && size < minSize) {
+          return false;
+        }
+        allowedNodeIds.add(node.data.id);
+        return true;
+      }
+      const allowed =
+        showFolders ||
+        (node.data.type !== "folder" && node.data.type !== "root");
+      if (allowed) {
+        allowedNodeIds.add(node.data.id);
+      }
+      return allowed;
+    });
+
+    const hasDependencyEdges = activeGraphData.edges.some(
+      (edge) => edge.data.type !== "folder"
+    );
+
+    const edges = activeGraphData.edges.filter((edge) => {
+      if (!includeExternal && edge.data.isExternal) return false;
+      if (
+        allowedNodeIds.size > 0 &&
+        (!allowedNodeIds.has(edge.data.source) ||
+          !allowedNodeIds.has(edge.data.target))
+      ) {
+        return false;
+      }
+      if (viewMode === "folder") {
+        if (hasDependencyEdges && edge.data.type === "folder") {
+          return false;
+        }
+        return (edge.data.weight || 1) >= minWeight;
+      }
+      return showFolders ? true : edge.data.type !== "folder";
+    });
+
+    return { nodes, edges };
+  };
+
+  const primaryElements = buildElements();
+  const visibleDependencyEdges = primaryElements.edges.filter(
+    (edge) => edge.data.type !== "folder"
+  ).length;
+  const fallbackElements =
+    viewMode === "folder" && !showExternal && visibleDependencyEdges === 0
+      ? buildElements({ minSize: 1, minWeight: 1, includeExternal: true })
+      : primaryElements;
+
+  const elementsToRender = activeGraphData
+    ? fallbackElements.nodes.length === 0
+      ? [...activeGraphData.nodes, ...activeGraphData.edges]
+      : [...fallbackElements.nodes, ...fallbackElements.edges]
+    : [];
+
+  // Render CodeFlow-style dependency graph
+  const simRef = useRef<any>(null);
+  const nodesRef = useRef<any>(null);
+  const linksRef = useRef<any>(null);
+  const lastNodeCountRef = useRef<number>(0);
+  const isInitialRenderRef = useRef<boolean>(true);
+  const handleKeyDownRef = useRef<((e: KeyboardEvent) => void) | null>(null);
+  
+  useEffect(() => {
+    if (!activeGraphData || !svgRef.current || elementsToRender.length === 0) {
       return;
+    }
 
-    // Dynamically import Cytoscape (client-side only)
-    import("cytoscape").then((cytoscape) => {
-      import("cytoscape-dagre").then((dagre) => {
-        import("dagre").then(() => {
-          cytoscape.default.use(dagre.default);
+    let cleanup: (() => void) | null = null;
+    import("d3").then((d3) => {
+      const svg = d3.select(svgRef.current);
+      const currentNodeCount = elementsToRender.filter(e => (e as GraphNode).data?.id).length;
+      
+      // Only recreate SVG structure on first render
+      const shouldRecreate = !simRef.current || isInitialRenderRef.current;
+      
+      if (shouldRecreate) {
+        svg.selectAll("*").remove();
+        isInitialRenderRef.current = false;
+      }
+      
+      // Always update - we'll update the existing simulation
 
-          if (cyRef.current) {
-            cyRef.current.destroy();
+      const width = svgRef.current?.clientWidth || 800;
+      const height = svgRef.current?.clientHeight || 600;
+
+      const nodeEntries = elementsToRender.filter(
+        (entry) => (entry as GraphNode).data?.id
+      ) as GraphNode[];
+      const edgeEntries = elementsToRender.filter(
+        (entry) => (entry as GraphEdge).data?.source
+      ) as GraphEdge[];
+      // Always include ALL nodes (folders, files, packages) for consistent rendering
+      const nodeEntriesForLayout = nodeEntries;
+      const nodeIdSet = new Set(
+        nodeEntriesForLayout.map((node) => node.data.id)
+      );
+      const allEdges = edgeEntries.filter(
+        (edge) =>
+          nodeIdSet.has(edge.data.source) && nodeIdSet.has(edge.data.target)
+      );
+      const dependencyEdges = allEdges.filter(
+        (edge) => edge.data.type !== "folder"
+      );
+      const folderEdges = allEdges.filter(
+        (edge) => edge.data.type === "folder"
+      );
+
+      // CodeFlow-style: Nodes with folder grouping
+      const COLORS = [
+        "#4d9fff",
+        "#a78bfa",
+        "#22d3ee",
+        "#00ff9d",
+        "#ff9f43",
+        "#ec4899",
+        "#ff5f5f",
+        "#84cc16",
+      ];
+      const folders = new Set<string>();
+      const nodes = nodeEntriesForLayout.map((node) => {
+        const size = node.data.size || 1;
+        const path = node.data.path || node.data.filePath || "";
+        const folder = path.split("/").slice(0, -1).join("/") || "root";
+        folders.add(folder);
+
+        const base =
+          node.data.type === "folder"
+            ? 8
+            : node.data.type === "root"
+            ? 12
+            : node.data.type === "package"
+            ? 10
+            : 8;
+        const radius = Math.min(24, base + Math.sqrt(size) * 2);
+        return {
+          id: node.data.id,
+          label: node.data.displayLabel || node.data.label,
+          name: node.data.displayLabel || node.data.label,
+          type: node.data.type,
+          radius,
+          folder,
+          color:
+            node.data.color ||
+            COLORS[Array.from(folders).indexOf(folder) % COLORS.length],
+          borderColor: node.data.borderColor || "#a78bfa",
+          isExternal: node.data.type === "package",
+          path,
+          fnCount: 0, // Will be set from dependencies
+        };
+      });
+
+      // Calculate folder centers (CodeFlow style)
+      const folderList = Array.from(folders);
+      const folderGroups = new Map<string, typeof nodes>();
+      nodes.forEach((node) => {
+        if (!folderGroups.has(node.folder)) folderGroups.set(node.folder, []);
+        folderGroups.get(node.folder)!.push(node);
+      });
+
+      const cols = Math.max(2, Math.ceil(Math.sqrt(folderList.length)));
+      const cellW = width / (cols + 1);
+      const cellH = height / (Math.ceil(folderList.length / cols) + 1);
+      const centers: Record<string, { x: number; y: number }> = {};
+      folderList.forEach((folder, i) => {
+        centers[folder] = {
+          x: ((i % cols) + 1) * cellW,
+          y: (Math.floor(i / cols) + 1) * cellH,
+        };
+      });
+
+      // CodeFlow exact: Don't pre-position nodes, let force simulation handle it
+
+      // Create node map for quick lookup
+      const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+
+      // CodeFlow-style: Links must reference node objects, not IDs
+      const links = allEdges
+        .map((edge) => {
+          const sourceNode = nodeMap.get(edge.data.source);
+          const targetNode = nodeMap.get(edge.data.target);
+          if (!sourceNode || !targetNode) return null;
+          return {
+            source: sourceNode,
+            target: targetNode,
+            type: edge.data.type,
+            isExternal: edge.data.isExternal || false,
+            weight: edge.data.weight || 1,
+          };
+        })
+        .filter((link): link is NonNullable<typeof link> => link !== null);
+
+      console.log("📁 Folders:", folderList.length, folderList.slice(0, 10));
+      console.log("📊 Nodes:", nodes.length);
+      console.log("🔗 Links:", links.length);
+      console.log("📍 Centers:", Object.keys(centers).length);
+
+      // Build adjacency for focus/highlight
+      const adjacency = new Map<string, Set<string>>();
+      links.forEach((link) => {
+        const source = link.source.id;
+        const target = link.target.id;
+        if (!adjacency.has(source)) adjacency.set(source, new Set());
+        if (!adjacency.has(target)) adjacency.set(target, new Set());
+        adjacency.get(source)!.add(target);
+        adjacency.get(target)!.add(source);
+      });
+
+      const defs = svg.append("defs");
+      // Arrow marker for links
+      defs
+        .append("marker")
+        .attr("id", "arr")
+        .attr("viewBox", "0 -5 10 10")
+        .attr("refX", 14)
+        .attr("refY", 0)
+        .attr("markerWidth", 4)
+        .attr("markerHeight", 4)
+        .attr("orient", "auto")
+        .append("path")
+        .attr("d", "M0,-4L10,0L0,4")
+        .attr("fill", graphPalette.edge);
+
+      const container = svg.append("g");
+
+      const zoom = d3
+        .zoom<SVGSVGElement, unknown>()
+        .scaleExtent([0.2, 5])
+        .on("zoom", (event) => {
+          container.attr("transform", event.transform);
+        });
+      svg.call(zoom as any);
+      zoomRef.current = zoom;
+      
+      // Enable keyboard zoom (Ctrl/Cmd + Plus/Minus/0)
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if ((e.ctrlKey || e.metaKey) && svgRef.current && zoomRef.current) {
+          if (e.key === "=" || e.key === "+") {
+            e.preventDefault();
+            d3.select(svgRef.current).transition().duration(200).call(zoomRef.current.scaleBy as any, 1.4);
+          } else if (e.key === "-") {
+            e.preventDefault();
+            d3.select(svgRef.current).transition().duration(200).call(zoomRef.current.scaleBy as any, 0.7);
+          } else if (e.key === "0") {
+            e.preventDefault();
+            d3.select(svgRef.current).transition().duration(300).call(zoomRef.current.transform as any, d3.zoomIdentity);
           }
+        }
+      };
+      handleKeyDownRef.current = handleKeyDown; // Store in ref for cleanup
+      if (typeof window !== "undefined") {
+        window.addEventListener("keydown", handleKeyDown);
+      }
 
-          const cy = cytoscape.default({
-            container: cytoscapeRef.current,
-            elements: [...graphData.nodes, ...graphData.edges],
-            style: cytoscapeStylesheet,
-            layout: {
-              name: "dagre",
-              padding: 40,
-              nodeSep: 60,
-              rankSep: 100,
-              rankDir: "TB", // Top to bottom (hierarchical tree)
-              spacingFactor: 1.5,
-              edgesep: 20,
-            } as any,
-            minZoom: 0.1,
-            maxZoom: 5,
-            wheelSensitivity: 0.5, // Increased from 0.2 for faster zoom
+      const linkLayer = container.append("g").attr("stroke-linecap", "round");
+      const hullLayer = container.append("g"); // For folder hulls
+      const nodeLayer = container.append("g");
+      const labelLayer = container.append("g");
+
+      // CodeFlow EXACT: Link styling - use join() for updates
+      const link = linkLayer
+        .selectAll("path")
+        .data(links, (d: any) => `${d.source.id}-${d.target.id}`)
+        .join(
+          (enter) => enter
+            .append("path")
+            .attr("fill", "none")
+            .attr("stroke", graphPalette.edge)
+            .attr("stroke-width", (d) =>
+              Math.max(1, Math.min(2, Math.sqrt(d.weight || 1) * 0.3))
+            )
+            .attr("stroke-opacity", 0.4)
+            .attr("marker-end", "url(#arr)"),
+          (update) => update,
+          (exit) => exit.remove()
+        );
+
+      // CodeFlow EXACT: Node styling - use join() for updates
+      const node = nodeLayer
+        .selectAll("g.node")
+        .data(nodes, (d: any) => d.id)
+        .join(
+          (enter) => {
+            const nodeEnter = enter
+              .append("g")
+              .attr("class", "node")
+              .style("cursor", "pointer");
+            
+            nodeEnter.append("circle").attr("class", "nc");
+            nodeEnter.append("text");
+            
+            return nodeEnter;
+          },
+          (update) => update,
+          (exit) => exit.remove()
+        );
+
+      // Update circle attributes for all nodes (existing + new)
+      node
+        .select("circle.nc")
+        .attr("r", (d: any) => {
+          // CodeFlow exact: getR function
+          return Math.max(8, Math.min(24, 5 + (d.fnCount || 0) * 0.8));
+        })
+        .attr("fill", (d: any) => {
+          if (d.type === "package") return "#f59e0b";
+          if (d.type === "folder") return graphPalette.background;
+          return d.color || COLORS[0] || "#8b5cf6";
+        })
+        .attr("stroke", (d: any) => {
+          if (d.type === "package") return "#fbbf24";
+          const color = d.color || COLORS[0];
+          const c = d3.color(color);
+          return c ? c.brighter(0.3).toString() : "#fff";
+        })
+        .attr("stroke-width", 1.5);
+
+      // Update text attributes for all nodes (existing + new)
+      node
+        .select("text")
+        .attr("text-anchor", "middle")
+        .attr("dy", 0)
+        .attr("fill", graphPalette.text)
+        .attr(
+          "font-size",
+          (d: any) => Math.max(6, Math.min(10, d.radius * 0.6)) + "px"
+        )
+        .attr("font-family", "JetBrains Mono, monospace")
+        .attr("font-weight", 500)
+        .attr("pointer-events", "none")
+        .attr("opacity", graphConfigRef.current.showLabels ? 1 : 0) // Use graphConfigRef for latest value
+        .text((d) => {
+          const n = d.name.replace(/\.[^.]+$/, "");
+          const maxLen = Math.max(4, Math.floor(d.radius / 2));
+          return n.length > maxLen + 1 ? n.slice(0, maxLen) + "…" : n;
+        });
+
+      // CodeFlow EXACT implementation - all view modes
+      const getR = (d: any) => Math.max(8, Math.min(24, 5 + (d.fnCount || 0) * 0.8));
+      
+      // Reuse existing simulation or create new one
+      let simulation = simRef.current;
+      const existingNodes = simulation ? (simulation.nodes() as any[]) : [];
+      const existingNodeMap = new Map(existingNodes.map((n: any) => [n.id, n]));
+      
+      // Preserve positions of existing nodes, initialize new ones
+      nodes.forEach((node: any) => {
+        const existing = existingNodeMap.get(node.id);
+        if (existing && existing.x != null && existing.y != null && 
+            isFinite(existing.x) && isFinite(existing.y) &&
+            existing.x !== 0 && existing.y !== 0) {
+          // Preserve existing position
+          node.x = existing.x;
+          node.y = existing.y;
+          node.vx = existing.vx;
+          node.vy = existing.vy;
+        } else {
+          // Initialize new node near folder center
+          const center = centers[node.folder];
+          if (center) {
+            node.x = center.x + (Math.random() - 0.5) * 50;
+            node.y = center.y + (Math.random() - 0.5) * 50;
+          } else {
+            node.x = width / 2 + (Math.random() - 0.5) * 100;
+            node.y = height / 2 + (Math.random() - 0.5) * 100;
+          }
+        }
+      });
+      
+      if (!simulation) {
+        simulation = d3.forceSimulation(nodes as any);
+        simRef.current = simulation;
+      } else {
+        // Update existing simulation with new nodes
+        simulation.nodes(nodes as any);
+      }
+      
+      // CodeFlow EXACT: Different force configurations for each view mode
+      const config = graphConfigRef.current; // Use ref for latest config
+      if (config.viewMode === "force") {
+        simulation
+          .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.3))
+          .force("charge", d3.forceManyBody().strength(-config.spacing).distanceMax(400))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 12))
+          .force("x", d3.forceX((d: any) => {
+            const center = centers[d.folder];
+            return center ? center.x : width / 2;
+          }).strength(0.15))
+          .force("y", d3.forceY((d: any) => {
+            const center = centers[d.folder];
+            return center ? center.y : height / 2;
+          }).strength(0.15));
+      } else if (config.viewMode === "radial") {
+        const r = Math.min(width, height) * 0.35;
+        nodes.forEach((n: any, i: number) => {
+          n.angle = (i / nodes.length) * 2 * Math.PI;
+          n.targetX = width / 2 + Math.cos(n.angle) * r;
+          n.targetY = height / 2 + Math.sin(n.angle) * r;
+        });
+        simulation
+          .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 0.5).strength(0.05))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.3))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 8))
+          .force("x", d3.forceX((d: any) => (d as any).targetX).strength(0.8))
+          .force("y", d3.forceY((d: any) => (d as any).targetY).strength(0.8));
+      } else if (config.viewMode === "hierarchical") {
+        // Group by folder for hierarchical layout
+        const layerGroups: { [key: string]: any[] } = {};
+        nodes.forEach((n: any) => {
+          const l = n.folder || "root";
+          if (!layerGroups[l]) layerGroups[l] = [];
+          layerGroups[l].push(n);
+        });
+        const sortedLayers = Object.keys(layerGroups).sort();
+        sortedLayers.forEach((l, li) => {
+          const g = layerGroups[l];
+          if (!g) return;
+          const colW = width / (sortedLayers.length + 1);
+          g.forEach((n: any, ni: number) => {
+            n.targetX = (li + 1) * colW;
+            n.targetY = ((ni + 1) * height) / (g.length + 1);
           });
-
-          // Add pan and zoom controls
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          cy.on("tap", "node", (evt: any) => {
-            const node = evt.target;
-            console.log("Node clicked:", node.data());
-          });
-
-          // Highlight dependencies when node is dragged
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          let highlightedEdges: any[] = [];
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          let draggedNode: any = null;
-
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          cy.on("grab", "node", (evt: any) => {
-            const node = evt.target;
-            draggedNode = node;
-
-            // Get all edges connected to this node
-            const connectedEdges = node.connectedEdges();
-
-            // Store original styles and highlight edges
-            highlightedEdges = [];
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            connectedEdges.forEach((edge: any) => {
-              highlightedEdges.push({
-                edge,
-                originalStyle: {
-                  width: edge.style("width"),
-                  lineColor: edge.style("line-color"),
-                  targetArrowColor: edge.style("target-arrow-color"),
-                  opacity: edge.style("opacity"),
-                },
-              });
-
-              // Highlight with theme color (purple)
-              edge.style({
-                width: 4,
-                "line-color": "#8b5cf6",
-                "target-arrow-color": "#8b5cf6",
-                opacity: 1,
-              });
-            });
-
-            // Also highlight the node itself
-            node.style({
-              "border-width": 3,
-              "border-color": "#8b5cf6",
-              "background-color":
-                node.data("type") === "file" ? "#8b5cf6" : "#7c3aed",
-            });
-          });
-
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          cy.on("dragfree", "node", (evt: any) => {
-            const node = evt.target;
-
-            // Reset all highlighted edges to original styles
-            highlightedEdges.forEach(({ edge, originalStyle }) => {
-              edge.style({
-                width: originalStyle.width,
-                "line-color": originalStyle.lineColor,
-                "target-arrow-color": originalStyle.targetArrowColor,
-                opacity: originalStyle.opacity,
-              });
-            });
-            highlightedEdges = [];
-
-            // Reset node style
-            const nodeType = node.data("type");
-            if (nodeType === "file") {
-              node.style({
-                "border-width": 1,
-                "border-color": "#94a3b8",
-                "background-color": "#64748b",
-              });
-            } else if (nodeType === "package") {
-              node.style({
-                "border-width": 1,
-                "border-color": "#7c3aed",
-                "background-color": "#8b5cf6",
-              });
-            } else if (nodeType === "root") {
-              node.style({
-                "border-width": 3,
-                "border-color": "#7c3aed",
-                "background-color": "#8b5cf6",
-              });
-            } else {
-              node.style({
-                "border-width": 2,
-                "border-color": "#475569",
-                "background-color": "#1e293b",
+        });
+        simulation
+          .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.1))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.5).distanceMax(200))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10))
+          .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.9))
+          .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.3));
+      } else if (config.viewMode === "grid") {
+        const gridCols = Math.ceil(Math.sqrt(nodes.length));
+        const cellW = width / (gridCols + 1);
+        const cellH = height / (Math.ceil(nodes.length / gridCols) + 1);
+        nodes.forEach((n: any, i: number) => {
+          n.targetX = ((i % gridCols) + 1) * cellW;
+          n.targetY = (Math.floor(i / gridCols) + 1) * cellH;
+        });
+        simulation
+          .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 1.5).strength(0.02))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 15))
+          .force("x", d3.forceX((d: any) => (d as any).targetX).strength(1))
+          .force("y", d3.forceY((d: any) => (d as any).targetY).strength(1));
+      } else if (config.viewMode === "metro") {
+        // Metro layout: find root nodes (no incoming edges) and arrange in lines
+        const roots = nodes.filter((n: any) => 
+          !links.some((l: any) => {
+            const targetId = typeof l.target === "object" ? l.target.id : l.target;
+            return targetId === n.id;
+          })
+        );
+        const actualRoots = roots.length > 0 ? roots : [nodes[0]];
+        const lineY = 80;
+        const lineSpacing = Math.min(120, (height - 160) / Math.max(1, actualRoots.length));
+        actualRoots.forEach((root: any, li: number) => {
+          const visited = new Set<string>();
+          const queue = [root.id];
+          let x = 80;
+          while (queue.length > 0) {
+            const id = queue.shift()!;
+            if (visited.has(id)) continue;
+            visited.add(id);
+            const node = nodes.find((n: any) => n.id === id);
+            if (node) {
+              (node as any).targetX = x;
+              (node as any).targetY = lineY + li * lineSpacing;
+              (node as any).metroLine = li;
+              x += config.spacing * 0.8;
+              links.forEach((l: any) => {
+                const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+                const targetId = typeof l.target === "object" ? l.target.id : l.target;
+                if (sourceId === id && !visited.has(targetId)) {
+                  queue.push(targetId);
+                }
               });
             }
-
-            draggedNode = null;
-          });
-
-          // Also handle drag end (when user releases mouse)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          cy.on("drag", "node", (evt: any) => {
-            // Keep highlighting during drag
-            // The highlighting is already set in "grab" event
-          });
-
-          // Fit the graph nicely
-          cy.fit(undefined, 50);
-
-          cyRef.current = cy;
+          }
         });
+        nodes.filter((n: any) => !(n as any).targetX).forEach((n: any, i: number) => {
+          n.targetX = 80 + i * 50;
+          n.targetY = height - 80;
+          (n as any).metroLine = actualRoots.length;
+        });
+        simulation
+          .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.05))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 12))
+          .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.95))
+          .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.95));
+      }
+      
+      // Update forces when spacing/linkDist change - use graphConfigRef for latest values
+      const linkForce = simulation.force("link") as any;
+      if (linkForce) {
+        linkForce.distance(config.linkDist);
+      }
+      const chargeForce = simulation.force("charge") as any;
+      if (chargeForce && config.viewMode === "force") {
+        chargeForce.strength(-config.spacing);
+      }
+      
+      simulation
+        .velocityDecay(0.6)
+        .alphaDecay(0.05)
+        .alpha(1) // Full alpha when view mode or config changes - restart simulation
+        .restart();
+      
+      // Attach drag handlers to all nodes (existing + new) - after simulation is created
+      node.call(
+        d3
+          .drag<SVGGElement, any>()
+          .on("start", (event, d) => {
+            if (!event.active && simulation) simulation.alphaTarget(0.1).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+          })
+          .on("drag", (event, d) => {
+            d.fx = event.x;
+            d.fy = event.y;
+          })
+          .on("end", (event, d) => {
+            if (!event.active && simulation) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+          }) as any
+      );
+      
+      // Attach click handlers to all nodes (existing + new)
+      node.on("click", (e, d) => {
+        e.stopPropagation();
+        if (selectFileRef.current) selectFileRef.current(d.id);
       });
+
+      // CodeFlow EXACT: Update positions on simulation tick
+      // Remove old tick handler if exists, then add new one
+      simulation.on("tick", null);
+      simulation.on("tick", () => {
+        // Use graphConfigRef to always get latest config values
+        const config = graphConfigRef.current;
+        
+        // Update link paths (curved or straight based on config.curvedLinks)
+        if (config.curvedLinks) {
+          link.attr("d", (d: any) => {
+            const source = typeof d.source === "object" ? d.source : d.source;
+            const target = typeof d.target === "object" ? d.target : d.target;
+            if (!source || !target || source.x == null || source.y == null || target.x == null || target.y == null) {
+              return "M0,0L0,0";
+            }
+            const dx = target.x - source.x;
+            const dy = target.y - source.y;
+            const dr = Math.sqrt(dx * dx + dy * dy);
+            return `M${source.x},${source.y}A${dr},${dr} 0 0,1 ${target.x},${target.y}`;
+              });
+            } else {
+          link.attr("d", (d: any) => {
+            const source = typeof d.source === "object" ? d.source : d.source;
+            const target = typeof d.target === "object" ? d.target : d.target;
+            if (!source || !target || source.x == null || source.y == null || target.x == null || target.y == null) {
+              return "M0,0L0,0";
+            }
+            return `M${source.x},${source.y}L${target.x},${target.y}`;
+          });
+        }
+        
+        // Update node positions
+        node.attr("transform", (d: any) => {
+          if (d.x == null || d.y == null || !isFinite(d.x) || !isFinite(d.y)) {
+            return "translate(0,0)";
+          }
+          return `translate(${d.x},${d.y})`;
+        });
+        
+        // Update text opacity based on config.showLabels
+        node.selectAll("text").attr("opacity", config.showLabels ? 1 : 0);
+        
+        // Update hulls
+        updateHulls();
+      });
+
+      // CodeFlow-style: Update hulls (folder groupings)
+      const updateHulls = () => {
+        hullLayer.selectAll("*").remove();
+        folderList.forEach((folder) => {
+          const folderNodes = nodes.filter((n) => n.folder === folder);
+          if (folderNodes.length < 1) return;
+          const pad = 30;
+          const pts: [number, number][] = [];
+          folderNodes.forEach((n: any) => {
+            if (n.x != null && n.y != null && isFinite(n.x) && isFinite(n.y)) {
+              pts.push(
+                [n.x - pad, n.y - pad],
+                [n.x + pad, n.y - pad],
+                [n.x - pad, n.y + pad],
+                [n.x + pad, n.y + pad]
+              );
+            }
+          });
+          if (pts.length < 3) return;
+          const hull = d3.polygonHull(pts);
+          if (hull) {
+            const color =
+              COLORS[folderList.indexOf(folder) % COLORS.length] ||
+              COLORS[0] ||
+              "#4d9fff";
+            hullLayer
+              .append("path")
+              .attr("d", "M" + hull.join("L") + "Z")
+              .attr("fill", color)
+              .attr("fill-opacity", 0.04)
+              .attr("stroke", color)
+              .attr("stroke-width", 2)
+              .attr("stroke-opacity", 0.25);
+            const cx = d3.mean(folderNodes, (n: any) => n.x) || 0;
+            const cy = (d3.min(folderNodes, (n: any) => n.y) || 0) - pad - 8;
+            hullLayer
+              .append("text")
+              .attr("x", cx)
+              .attr("y", cy)
+              .attr("text-anchor", "middle")
+              .attr("fill", color)
+              .attr("font-size", "10px")
+              .attr("font-family", "JetBrains Mono, monospace")
+              .attr("font-weight", 600)
+              .attr("opacity", 0.7)
+              .text(folder || "root");
+          }
+        });
+      };
+
+      selectFileRef.current = (id: string) => {
+        const selectedNode = nodes.find((n) => n.id === id);
+        if (selectedNode) {
+          setFocusedNodeId(id);
+          // Calculate blast radius (affected files)
+          const affected = new Set<string>();
+          const visited = new Set<string>();
+          const queue = [id];
+          visited.add(id);
+          while (queue.length > 0 && affected.size < 50) {
+            const current = queue.shift()!;
+            const neighbors = adjacency.get(current) || new Set();
+            neighbors.forEach((neighbor) => {
+              if (!visited.has(neighbor)) {
+                visited.add(neighbor);
+                affected.add(neighbor);
+                queue.push(neighbor);
+              }
+            });
+          }
+          setBlastRadius({ affected: Array.from(affected) });
+        }
+      };
+
+      // Click handlers are already attached above
+
+      svg.on("click", (e) => {
+        if (e.target === svg.node()) {
+          setFocusedNodeId(null);
+          setBlastRadius(null);
+          link.attr("stroke", graphPalette.edge).attr("stroke-opacity", 0.4);
+          node
+            .selectAll(".nc")
+            .attr("opacity", 1)
+            .attr("fill", (d: any) => {
+              if (d.type === "package") return "#f59e0b";
+              if (d.type === "folder") return graphPalette.background;
+              return d.color || COLORS[0];
+            });
+        }
+      });
+
+      const fitToView = () => {
+        if (!svgRef.current || !zoomRef.current) return;
+        const validNodes = nodes.filter(
+          (n: any) =>
+            n.x != null && n.y != null && isFinite(n.x) && isFinite(n.y)
+        );
+        if (validNodes.length === 0) return;
+        const xs = validNodes.map((n: any) => n.x);
+        const ys = validNodes.map((n: any) => n.y);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        if (
+          !isFinite(minX) ||
+          !isFinite(maxX) ||
+          !isFinite(minY) ||
+          !isFinite(maxY)
+        )
+          return;
+        const pad = 100;
+        const boundsW = Math.max(200, maxX - minX + pad * 2);
+        const boundsH = Math.max(200, maxY - minY + pad * 2);
+        const scale = Math.min(width / boundsW, height / boundsH, 1);
+        const tx = (width - scale * (minX + maxX)) / 2;
+        const ty = (height - scale * (minY + maxY)) / 2;
+        if (!isFinite(scale) || !isFinite(tx) || !isFinite(ty)) return;
+        d3.select(svgRef.current)
+          .transition()
+          .duration(500)
+          .call(
+            zoomRef.current.transform,
+            d3.zoomIdentity.translate(tx, ty).scale(scale)
+          );
+      };
+
+      // Store refs for updates
+      nodesRef.current = node;
+      linksRef.current = link;
+      
+
+      simulation.on("end", null);
+      simulation.on("end", () => {
+        // Only fit to view if nodes have valid positions
+        const validNodes = nodes.filter(
+          (n: any) =>
+            n.x != null && n.y != null && isFinite(n.x) && isFinite(n.y) && 
+            n.x !== 0 && n.y !== 0 && 
+            Math.abs(n.x) < width * 10 && Math.abs(n.y) < height * 10
+        );
+        if (validNodes.length > nodes.length * 0.5) {
+          setTimeout(() => fitToView(), 200);
+        }
+      });
+
+      cleanup = () => {
+        if (simRef.current) simRef.current.stop();
+        if (typeof window !== "undefined" && handleKeyDownRef.current) {
+          window.removeEventListener("keydown", handleKeyDownRef.current);
+          handleKeyDownRef.current = null;
+        }
+        svg.selectAll("*").remove();
+      };
     });
 
     return () => {
-      if (cyRef.current) {
-        cyRef.current.destroy();
-        cyRef.current = null;
-      }
+      if (cleanup) cleanup();
     };
-  }, [graphData]);
+  }, [
+    activeGraphData,
+    elementsToRender,
+    showFolders,
+    viewMode,
+    showExternal,
+    edgeWeightThreshold,
+    focusMode,
+    graphPalette,
+    focusedNodeId,
+    graphConfig, // Add graphConfig so simulation updates when config changes
+  ]);
+
 
   async function loadDependencies() {
     setLoading(true);
@@ -469,9 +997,15 @@ export default function DependenciesPage({
         return;
       }
 
+      const filePaths = codeFiles.map((f) => f.path);
+      const initialGraph = buildGraph([], filePaths);
+      const initialFolderGraph = buildFolderOverview([], filePaths);
+      setGraphData(initialGraph);
+      setFolderGraphData(initialFolderGraph);
+      setFilesFetched(true);
+
       setStatus(`Parsing dependencies from ${codeFiles.length} code files...`);
       const allDeps: Dependency[] = [];
-      const filePaths = codeFiles.map((f) => f.path);
 
       // Fetch and parse each code file
       for (let i = 0; i < codeFiles.length; i++) {
@@ -512,6 +1046,13 @@ export default function DependenciesPage({
             }
 
             allDeps.push(...resolvedDeps);
+
+            // Update graph progressively as files are scanned (like Gource)
+            const currentGraph = buildGraph(allDeps, filePaths);
+            const currentFolderGraph = buildFolderOverview(allDeps, filePaths);
+            setGraphData(currentGraph);
+            setFolderGraphData(currentFolderGraph);
+            setDependencies([...allDeps]);
           } else {
             console.warn(
               `⚠️ [Dependencies] No content fetched for ${file.path}`
@@ -527,18 +1068,19 @@ export default function DependenciesPage({
         allDeps
       );
       setDependencies(allDeps);
-      setStatus("Building dependency graph with folder structure...");
+      if (!layoutInitRef.current) {
+        setShowFolders(false);
+        setFocusMode(false);
+        setViewMode("folder");
+        setEdgeWeightThreshold(1);
+        setShowExternal(true);
+        setMinFolderSize(1);
+        layoutInitRef.current = true;
+      }
 
-      // Build graph data for Cytoscape (includes folder structure even if no deps)
-      const graph = buildGraph(allDeps, filePaths);
-      console.log(
-        `📊 [Dependencies] Graph built: ${graph.nodes.length} nodes, ${graph.edges.length} edges`
-      );
-      setGraphData(graph);
-      setFilesFetched(true);
-
-      const depEdges = graph.edges.filter(
-        (e) => e.data.type !== "folder"
+      const finalGraph = buildGraph(allDeps, filePaths);
+      const depEdges = finalGraph.edges.filter(
+        (e: any) => e.data.type !== "folder"
       ).length;
       if (depEdges > 0) {
         setStatus(
@@ -559,10 +1101,49 @@ export default function DependenciesPage({
     }
   }
 
+  const toDisplayLabel = (label: string) => {
+    if (label.length <= 18) return label;
+    return `${label.slice(0, 8)}...${label.slice(-6)}`;
+  };
+
   function buildGraph(deps: Dependency[], filePaths: string[]): GraphData {
     const nodes = new Map<string, GraphNode>();
     const edges: GraphEdge[] = [];
     const folders = new Set<string>();
+    const defaultColor = { fill: "#8b5cf6", border: "#a78bfa" };
+    const palette: Array<{ fill: string; border: string }> = [
+      { fill: "#8b5cf6", border: "#a78bfa" },
+      { fill: "#f59e0b", border: "#fbbf24" },
+      { fill: "#22c55e", border: "#4ade80" },
+      { fill: "#06b6d4", border: "#22d3ee" },
+      { fill: "#ec4899", border: "#f472b6" },
+      { fill: "#3b82f6", border: "#60a5fa" },
+      { fill: "#f97316", border: "#fb923c" },
+      { fill: "#14b8a6", border: "#2dd4bf" },
+    ];
+    const folderColors = new Map<string, { fill: string; border: string }>();
+
+    const getFolderColor = (folderKey: string) => {
+      const existing = folderColors.get(folderKey);
+      if (existing) return existing;
+      const color = palette[folderColors.size % palette.length] || defaultColor;
+      folderColors.set(folderKey, color);
+      return color;
+    };
+
+    const calcNodeSize = (label: string, min: number, max: number) => {
+      const length = Math.max(label.length, 3);
+      const size = length * 7.5 + 8;
+      return Math.min(Math.max(size, min), max);
+    };
+
+    const getPackageKey = (modulePath: string) => {
+      if (modulePath.startsWith("@")) {
+        const parts = modulePath.split("/");
+        return parts.slice(0, 2).join("/");
+      }
+      return modulePath.split("/")[0] || modulePath;
+    };
 
     // Extract folder structure from file paths
     filePaths.forEach((path) => {
@@ -591,9 +1172,13 @@ export default function DependenciesPage({
       const id = `folder_${folderPath.replace(/[^a-zA-Z0-9]/g, "_")}`;
       const label = folderPath.split("/").pop() || folderPath;
       const parentPath = folderPath.split("/").slice(0, -1).join("/");
-
       nodes.set(`folder:${folderPath}`, {
-        data: { id, label, path: folderPath, type: "folder" },
+        data: {
+          id,
+          label,
+          path: folderPath,
+          type: "folder",
+        },
       });
 
       // Create folder hierarchy edges - connect to parent folder or root
@@ -624,10 +1209,22 @@ export default function DependenciesPage({
     filePaths.forEach((path) => {
       const id = path.replace(/[^a-zA-Z0-9]/g, "_");
       const label = path.split("/").pop() || path;
+      const displayLabel = toDisplayLabel(label);
       const parentPath = path.split("/").slice(0, -1).join("/");
 
+      const folderKey = path.split("/")[0] || "root";
+      const folderColor = getFolderColor(folderKey);
       nodes.set(path, {
-        data: { id, label, path, type: "file" },
+        data: {
+          id,
+          label,
+          displayLabel,
+          path,
+          type: "file",
+          color: folderColor.fill,
+          borderColor: folderColor.border,
+          size: calcNodeSize(displayLabel, 26, 90),
+        },
       });
 
       // Connect file to its parent folder or root
@@ -657,24 +1254,46 @@ export default function DependenciesPage({
     // Create edges for dependencies (both internal and external)
     deps.forEach((dep) => {
       const fromId = dep.from.replace(/[^a-zA-Z0-9]/g, "_");
-      const toId = dep.to.replace(/[^a-zA-Z0-9]/g, "_");
 
       // Ensure source file node exists
       if (!nodes.has(dep.from)) {
         const label = dep.from.split("/").pop() || dep.from;
+        const displayLabel = toDisplayLabel(label);
+        const fromFolderKey = dep.from.split("/")[0] || "root";
+        const fromColor = getFolderColor(fromFolderKey);
         nodes.set(dep.from, {
-          data: { id: fromId, label, path: dep.from, type: "file" },
+          data: {
+            id: fromId,
+            label,
+            displayLabel,
+            path: dep.from,
+            type: "file",
+            color: fromColor.fill,
+            borderColor: fromColor.border,
+            size: calcNodeSize(displayLabel, 26, 90),
+          },
         });
       }
 
       // Check if target is an internal file or external package
       const isInternal = nodes.has(dep.to);
+      const packageKey = getPackageKey(dep.to);
+      const toKey = isInternal ? dep.to : packageKey;
+      const toId = toKey.replace(/[^a-zA-Z0-9]/g, "_");
 
       if (!isInternal) {
         // External package - create a node for it
-        const label = dep.to.split("/").pop()?.split(".")[0] || dep.to;
-        nodes.set(dep.to, {
-          data: { id: toId, label, path: dep.to, type: "package" },
+        const label = packageKey;
+        const displayLabel = toDisplayLabel(label);
+        nodes.set(toKey, {
+          data: {
+            id: toId,
+            label,
+            displayLabel,
+            path: toKey,
+            type: "package",
+            size: calcNodeSize(displayLabel, 26, 90),
+          },
         });
       }
 
@@ -686,6 +1305,223 @@ export default function DependenciesPage({
           target: toId,
           type: dep.type,
           isExternal: !isInternal,
+          weight: 1,
+        },
+      });
+    });
+
+    const maxNodes = 300;
+    if (nodes.size > maxNodes) {
+      const limitedNodes = new Map<string, GraphNode>();
+      const keep = new Set<string>();
+      const addNode = (key: string) => {
+        if (limitedNodes.size >= maxNodes) return;
+        const node = nodes.get(key);
+        if (node && !limitedNodes.has(key)) {
+          limitedNodes.set(key, node);
+          keep.add(node.data.id);
+        }
+      };
+      addNode(rootId);
+      // Keep top-level folders first
+      Array.from(nodes.keys())
+        .filter((key) => key.startsWith("folder:"))
+        .slice(0, Math.max(20, Math.floor(maxNodes / 5)))
+        .forEach(addNode);
+      // Keep most connected files/packages
+      const degree = new Map<string, number>();
+      edges.forEach((edge) => {
+        degree.set(edge.data.source, (degree.get(edge.data.source) || 0) + 1);
+        degree.set(edge.data.target, (degree.get(edge.data.target) || 0) + 1);
+      });
+      const byDegree = Array.from(nodes.values())
+        .filter((node) => node.data.type !== "folder")
+        .sort(
+          (a, b) => (degree.get(b.data.id) || 0) - (degree.get(a.data.id) || 0)
+        );
+      byDegree.forEach((node) => addNode(node.data.path || node.data.id));
+      const limitedEdges = edges.filter(
+        (edge) => keep.has(edge.data.source) && keep.has(edge.data.target)
+      );
+      return {
+        nodes: Array.from(limitedNodes.values()),
+        edges: limitedEdges,
+      };
+    }
+
+    return {
+      nodes: Array.from(nodes.values()),
+      edges,
+    };
+  }
+
+  function buildFolderOverview(
+    deps: Dependency[],
+    filePaths: string[]
+  ): GraphData {
+    const nodes = new Map<string, GraphNode>();
+    const edges: GraphEdge[] = [];
+    const folders = new Set<string>();
+    const fileSet = new Set(filePaths);
+    const folderStats = new Map<string, { files: number; deps: number }>();
+    const packageStats = new Map<string, number>();
+
+    filePaths.forEach((path) => {
+      const parts = path.split("/");
+      for (let i = 1; i < parts.length; i++) {
+        const folderPath = parts.slice(0, i).join("/");
+        folders.add(folderPath);
+      }
+    });
+
+    const rootFolderId = "folder_root";
+    nodes.set("folder:/", {
+      data: {
+        id: rootFolderId,
+        label: "/",
+        displayLabel: "/",
+        path: "/",
+        type: "folder",
+        size: 1,
+        depth: 0,
+      },
+    });
+
+    const sortedFolders = Array.from(folders).sort((a, b) => {
+      const aDepth = a.split("/").length;
+      const bDepth = b.split("/").length;
+      return aDepth - bDepth;
+    });
+
+    sortedFolders.forEach((folderPath) => {
+      const id = `folder_${folderPath.replace(/[^a-zA-Z0-9]/g, "_")}`;
+      const label = folderPath.split("/").pop() || folderPath;
+      const displayLabel = toDisplayLabel(label);
+      const depth = folderPath.split("/").length;
+      nodes.set(`folder:${folderPath}`, {
+        data: {
+          id,
+          label,
+          displayLabel,
+          path: folderPath,
+          type: "folder",
+          size: 1,
+          depth,
+        },
+      });
+    });
+
+    // Folder hierarchy edges (root -> folder -> subfolder)
+    sortedFolders.forEach((folderPath) => {
+      const id = `folder_${folderPath.replace(/[^a-zA-Z0-9]/g, "_")}`;
+      const parentPath = folderPath.split("/").slice(0, -1).join("/");
+      const parentId = parentPath
+        ? `folder_${parentPath.replace(/[^a-zA-Z0-9]/g, "_")}`
+        : rootFolderId;
+
+      edges.push({
+        data: {
+          id: `${parentId}_${id}`,
+          source: parentId,
+          target: id,
+          type: "folder",
+          isExternal: false,
+          weight: 1,
+        },
+      });
+    });
+
+    const folderIdForPath = (path: string) => {
+      const parentPath = path.split("/").slice(0, -1).join("/");
+      if (!parentPath) return rootFolderId;
+      return `folder_${parentPath.replace(/[^a-zA-Z0-9]/g, "_")}`;
+    };
+
+    const edgeCounts = new Map<string, number>();
+    const getPackageKey = (modulePath: string) => {
+      if (modulePath.startsWith("@")) {
+        const parts = modulePath.split("/");
+        return parts.slice(0, 2).join("/");
+      }
+      return modulePath.split("/")[0] || modulePath;
+    };
+
+    filePaths.forEach((path) => {
+      const parentPath = path.split("/").slice(0, -1).join("/");
+      if (!parentPath) return;
+      const stat = folderStats.get(parentPath) || { files: 0, deps: 0 };
+      stat.files += 1;
+      folderStats.set(parentPath, stat);
+    });
+
+    deps.forEach((dep) => {
+      const fromFolderId = folderIdForPath(dep.from);
+      const isInternal = fileSet.has(dep.to);
+      const packageKey = getPackageKey(dep.to);
+      const toFolderId = isInternal
+        ? folderIdForPath(dep.to)
+        : packageKey.replace(/[^a-zA-Z0-9]/g, "_");
+
+      if (fromFolderId === toFolderId) {
+        return;
+      }
+
+      if (!isInternal && !nodes.has(packageKey)) {
+        const label = packageKey;
+        const displayLabel = toDisplayLabel(label);
+        nodes.set(packageKey, {
+          data: {
+            id: toFolderId,
+            label,
+            displayLabel,
+            path: packageKey,
+            type: "package",
+            size: 1,
+            depth: 99,
+          },
+        });
+      }
+
+      const edgeKey = `${fromFolderId}|${toFolderId}`;
+      edgeCounts.set(edgeKey, (edgeCounts.get(edgeKey) || 0) + 1);
+
+      if (!isInternal) {
+        packageStats.set(packageKey, (packageStats.get(packageKey) || 0) + 1);
+      } else {
+        const targetPath = dep.to.split("/").slice(0, -1).join("/");
+        if (targetPath) {
+          const stat = folderStats.get(targetPath) || { files: 0, deps: 0 };
+          stat.deps += 1;
+          folderStats.set(targetPath, stat);
+        }
+      }
+    });
+
+    nodes.forEach((node, key) => {
+      if (node.data.type === "folder") {
+        const folderPath = key.startsWith("folder:")
+          ? key.replace("folder:", "")
+          : "";
+        const stat = folderStats.get(folderPath) || { files: 0, deps: 0 };
+        node.data.size = Math.max(1, stat.files + stat.deps);
+      }
+      if (node.data.type === "package") {
+        const stat = packageStats.get(node.data.path || "") || 1;
+        node.data.size = Math.max(1, stat);
+      }
+    });
+
+    edgeCounts.forEach((weight, edgeKey) => {
+      const [source, target] = edgeKey.split("|");
+      if (!source || !target) return;
+      edges.push({
+        data: {
+          id: edgeKey,
+          source,
+          target,
+          type: "depends",
+          isExternal: target.startsWith("folder_") ? false : true,
+          weight,
         },
       });
     });
@@ -816,7 +1652,7 @@ export default function DependenciesPage({
           ownerPubkey
         )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
           branch
-        )}`
+        )}&includeSizes=1`
       );
       if (response.ok) {
         const data = await response.json();
@@ -894,27 +1730,310 @@ export default function DependenciesPage({
     return null;
   }
 
+  // Search functionality - find matching nodes
+  const matchingNodes = useMemo(() => {
+    if (!searchQuery.trim() || !activeGraphData) return new Set<string>();
+    const query = searchQuery.toLowerCase().trim();
+    const matches = new Set<string>();
+    activeGraphData.nodes.forEach((node) => {
+      const label = (node.data.label || node.data.displayLabel || "").toLowerCase();
+      const path = (node.data.path || node.data.filePath || "").toLowerCase();
+      const folder = path.split("/").slice(0, -1).join("/").toLowerCase();
+      if (
+        label.includes(query) ||
+        path.includes(query) ||
+        folder.includes(query) ||
+        node.data.id.toLowerCase().includes(query)
+      ) {
+        matches.add(node.data.id);
+      }
+    });
+    return matches;
+  }, [searchQuery, activeGraphData]);
+
+  // Auto-select first match when search changes
+  useEffect(() => {
+    if (matchingNodes.size > 0 && !highlightedNodeId) {
+      const firstMatch = Array.from(matchingNodes)[0];
+      if (firstMatch) {
+        setHighlightedNodeId(firstMatch);
+        if (selectFileRef.current) {
+          selectFileRef.current(firstMatch);
+        }
+      }
+    } else if (matchingNodes.size === 0) {
+      setHighlightedNodeId(null);
+    }
+  }, [matchingNodes, highlightedNodeId]);
+
+  // Highlight search matches
+  useEffect(() => {
+    if (!nodesRef.current || !linksRef.current || !activeGraphData) return;
+    
+    import("d3").then((d3) => {
+      const node = nodesRef.current;
+      const link = linksRef.current;
+      const COLORS = [
+        "#4d9fff",
+        "#a78bfa",
+        "#22d3ee",
+        "#00ff9d",
+        "#ff9f43",
+        "#ec4899",
+        "#ff5f5f",
+        "#84cc16",
+      ];
+      
+      if (searchQuery.trim() && matchingNodes.size > 0) {
+        // Highlight matching nodes
+        node.selectAll(".nc")
+          .transition()
+          .duration(200)
+          .attr("opacity", (d: any) => {
+            if (matchingNodes.has(d.id)) return 1;
+            if (highlightedNodeId === d.id) return 1;
+            return 0.2;
+          })
+          .attr("fill", (d: any) => {
+            if (highlightedNodeId === d.id) return "#ff5f5f"; // Red for selected
+            if (matchingNodes.has(d.id)) return "#00ff9d"; // Green for matches
+            if (d.type === "package") return "#f59e0b";
+            if (d.type === "folder") return graphPalette.background;
+            return d.color || COLORS[0];
+          })
+          .attr("stroke", (d: any) => {
+            if (highlightedNodeId === d.id || matchingNodes.has(d.id)) return "#00ff9d";
+            if (d.type === "package") return "#fbbf24";
+            const color = d.color || COLORS[0];
+            const c = d3.color(color);
+            return c ? c.brighter(0.3).toString() : "#fff";
+          })
+          .attr("stroke-width", (d: any) => {
+            if (highlightedNodeId === d.id || matchingNodes.has(d.id)) return 3;
+            return 1.5;
+          });
+        
+        // Highlight links to/from matching nodes
+        link
+          .transition()
+          .duration(200)
+          .attr("stroke-opacity", (d: any) => {
+            const sourceId = typeof d.source === "object" ? d.source.id : d.source;
+            const targetId = typeof d.target === "object" ? d.target.id : d.target;
+            if (matchingNodes.has(sourceId) || matchingNodes.has(targetId)) return 0.8;
+            return 0.1;
+          })
+          .attr("stroke", (d: any) => {
+            const sourceId = typeof d.source === "object" ? d.source.id : d.source;
+            const targetId = typeof d.target === "object" ? d.target.id : d.target;
+            if (matchingNodes.has(sourceId) || matchingNodes.has(targetId)) return "#00ff9d";
+            return graphPalette.edge;
+          });
+        
+        // Zoom to highlighted node if one is selected
+        if (highlightedNodeId && svgRef.current && zoomRef.current && simRef.current) {
+          const nodes = simRef.current.nodes() as any[];
+          const highlightedNode = nodes.find((n: any) => n.id === highlightedNodeId);
+          if (highlightedNode && highlightedNode.x != null && highlightedNode.y != null) {
+            const width = svgRef.current?.clientWidth || 800;
+            const height = svgRef.current?.clientHeight || 600;
+            d3.select(svgRef.current)
+              .transition()
+              .duration(500)
+              .call(
+                zoomRef.current.transform,
+                d3.zoomIdentity
+                  .translate(width / 2 - highlightedNode.x * 1.5, height / 2 - highlightedNode.y * 1.5)
+                  .scale(1.5)
+              );
+          }
+        }
+      } else {
+        // Reset highlighting when search is cleared
+        node.selectAll(".nc")
+          .transition()
+          .duration(200)
+          .attr("opacity", 1)
+          .attr("fill", (d: any) => {
+            if (d.type === "package") return "#f59e0b";
+            if (d.type === "folder") return graphPalette.background;
+            return d.color || COLORS[0];
+          })
+          .attr("stroke", (d: any) => {
+            if (d.type === "package") return "#fbbf24";
+            const color = d.color || COLORS[0];
+            const c = d3.color(color);
+            return c ? c.brighter(0.3).toString() : "#fff";
+          })
+          .attr("stroke-width", 1.5);
+        
+        link
+          .transition()
+          .duration(200)
+          .attr("stroke-opacity", 0.4)
+          .attr("stroke", graphPalette.edge);
+      }
+    });
+  }, [searchQuery, matchingNodes, highlightedNodeId, graphPalette, activeGraphData]);
+
   return (
     <div className="mt-4 w-screen max-w-none relative left-1/2 right-1/2 -translate-x-1/2 px-3 sm:px-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
           <GitBranch className="h-5 w-5 text-purple-500" />
           <h2 className="text-xl font-semibold">Dependency Graph</h2>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Search Input - CodeFlow style */}
+          <div className="relative flex items-center">
+            <Search className="absolute left-2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search files/folders..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setHighlightedNodeId(null);
+              }}
+              className="pl-8 pr-8 py-1.5 text-sm bg-[#1e293b] border border-[#383B42] rounded-md text-gray-200 placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 w-48"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => {
+                  setSearchQuery("");
+                  setHighlightedNodeId(null);
+                }}
+                className="absolute right-2 text-gray-400 hover:text-gray-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+            {matchingNodes.size > 0 && (
+              <span className="absolute -right-8 text-xs text-gray-400">
+                {matchingNodes.size}
+              </span>
+            )}
+        </div>
         <Button
-          onClick={loadDependencies}
-          disabled={loading}
-          variant="outline"
+            onClick={() => setViewMode("folder")}
+            disabled={!folderGraphData}
+            variant={viewMode === "folder" ? "default" : "outline"}
           size="sm"
         >
-          {loading ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4 mr-2" />
-          )}
-          Refresh
+            Folder overview
+          </Button>
+          <Button
+            onClick={() => setViewMode("file")}
+            disabled={!graphData}
+            variant={viewMode === "file" ? "default" : "outline"}
+            size="sm"
+          >
+            File detail
+          </Button>
+          <Button
+            onClick={() => setShowExternal((prev) => !prev)}
+            disabled={!activeGraphData}
+            variant={showExternal ? "default" : "outline"}
+            size="sm"
+          >
+            {showExternal ? "External on" : "External off"}
+          </Button>
+          <Button
+            onClick={() => setShowGraphConfig(!showGraphConfig)}
+            variant={showGraphConfig ? "default" : "outline"}
+            size="sm"
+          >
+            <Settings className="h-4 w-4 mr-2" />
+            Config
         </Button>
+        </div>
       </div>
+
+      {/* CodeFlow-style Graph Config Panel */}
+      {showGraphConfig && (
+        <div className="mb-4 p-4 bg-[#1e293b] border border-[#383B42] rounded-md">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Layout</h4>
+              <div className="flex flex-wrap gap-2">
+                {(["force", "radial", "hierarchical", "grid", "metro"] as const).map((mode) => (
+                  <Button
+                    key={mode}
+                    onClick={() => setGraphConfig({ ...graphConfig, viewMode: mode })}
+                    variant={graphConfig.viewMode === mode ? "default" : "outline"}
+                    size="sm"
+                    className="text-xs font-mono"
+                  >
+                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Spacing</h4>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <label className="text-xs text-gray-300 w-16 font-mono">Spread:</label>
+                  <input
+                    type="range"
+                    min="50"
+                    max="500"
+                    step="10"
+                    value={graphConfig.spacing}
+                    onChange={(e) =>
+                      setGraphConfig({ ...graphConfig, spacing: parseInt(e.target.value) })
+                    }
+                    className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
+                  />
+                  <span className="text-xs text-gray-400 w-12 font-mono text-right">{graphConfig.spacing}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="text-xs text-gray-300 w-16 font-mono">Links:</label>
+                  <input
+                    type="range"
+                    min="30"
+                    max="200"
+                    step="5"
+                    value={graphConfig.linkDist}
+                    onChange={(e) =>
+                      setGraphConfig({ ...graphConfig, linkDist: parseInt(e.target.value) })
+                    }
+                    className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
+                  />
+                  <span className="text-xs text-gray-400 w-12 font-mono text-right">{graphConfig.linkDist}</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Display</h4>
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-gray-200">
+                  <input
+                    type="checkbox"
+                    checked={graphConfig.showLabels}
+                    onChange={(e) =>
+                      setGraphConfig({ ...graphConfig, showLabels: e.target.checked })
+                    }
+                    className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
+                  />
+                  <span className="font-mono">Show labels</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-gray-200">
+                  <input
+                    type="checkbox"
+                    checked={graphConfig.curvedLinks}
+                    onChange={(e) =>
+                      setGraphConfig({ ...graphConfig, curvedLinks: e.target.checked })
+                    }
+                    className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
+                  />
+                  <span className="font-mono">Curved links</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {status && (
         <div className="mb-4 p-3 bg-[#22262C] border border-[#383B42] rounded-md text-sm text-gray-400">
@@ -929,13 +2048,13 @@ export default function DependenciesPage({
         </div>
       )}
 
-      {loading && !graphData && (
+      {loading && !activeGraphData && (
         <div className="flex items-center justify-center h-96">
           <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
         </div>
       )}
 
-      {graphData && graphData.nodes.length > 0 && (
+      {activeGraphData && activeGraphData.nodes.length > 0 && (
         <div
           className="border border-[#383B42] rounded-md overflow-hidden bg-[#0f172a] relative h-[70vh] min-h-[520px] md:h-[700px]"
           style={{
@@ -944,8 +2063,8 @@ export default function DependenciesPage({
             backgroundSize: "24px 24px",
           }}
         >
-          <div
-            ref={cytoscapeRef}
+          <svg
+            ref={svgRef}
             className="w-full h-full cursor-grab active:cursor-grabbing"
           />
 
@@ -956,9 +2075,13 @@ export default function DependenciesPage({
               size="sm"
               className="bg-[#1e293b] border-[#383B42] hover:bg-[#22262C] hover:border-purple-500/50 h-8 w-8 p-0"
               onClick={() => {
-                if (cyRef.current) {
-                  cyRef.current.zoom(cyRef.current.zoom() * 1.3);
-                }
+                if (!svgRef.current || !zoomRef.current) return;
+                import("d3").then((d3) => {
+                  d3.select(svgRef.current)
+                    .transition()
+                    .duration(200)
+                    .call(zoomRef.current.scaleBy as any, 1.4);
+                });
               }}
               title="Zoom In"
             >
@@ -969,9 +2092,13 @@ export default function DependenciesPage({
               size="sm"
               className="bg-[#1e293b] border-[#383B42] hover:bg-[#22262C] hover:border-purple-500/50 h-8 w-8 p-0"
               onClick={() => {
-                if (cyRef.current) {
-                  cyRef.current.zoom(cyRef.current.zoom() * 0.7);
-                }
+                if (!svgRef.current || !zoomRef.current) return;
+                import("d3").then((d3) => {
+                  d3.select(svgRef.current)
+                    .transition()
+                    .duration(200)
+                    .call(zoomRef.current.scaleBy as any, 0.7);
+                });
               }}
               title="Zoom Out"
             >
@@ -982,9 +2109,36 @@ export default function DependenciesPage({
               size="sm"
               className="bg-[#1e293b] border-[#383B42] hover:bg-[#22262C] hover:border-purple-500/50 h-8 w-8 p-0"
               onClick={() => {
-                if (cyRef.current) {
-                  cyRef.current.fit(undefined, 50);
-                }
+                if (!svgRef.current || !zoomRef.current || !simRef.current) return;
+                import("d3").then((d3) => {
+                  const zoom = zoomRef.current;
+                  const sim = simRef.current;
+                  if (zoom && sim) {
+                    const nodes = sim.nodes() as any[];
+                    if (!nodes.length) return;
+                    const xs = nodes.map((n: any) => n.x).filter((x: any) => x != null && isFinite(x));
+                    const ys = nodes.map((n: any) => n.y).filter((y: any) => y != null && isFinite(y));
+                    if (xs.length === 0 || ys.length === 0) return;
+                    const minX = Math.min(...xs);
+                    const maxX = Math.max(...xs);
+                    const minY = Math.min(...ys);
+                    const maxY = Math.max(...ys);
+                    if (!svgRef.current) return;
+                    const w = svgRef.current.clientWidth;
+                    const h = svgRef.current.clientHeight;
+                    const pad = 60;
+                    const scale = 0.8 / Math.max((maxX - minX + pad * 2) / w, (maxY - minY + pad * 2) / h);
+                    d3.select(svgRef.current)
+                      .transition()
+                      .duration(400)
+                      .call(
+                        zoom.transform,
+                        d3.zoomIdentity
+                          .translate(w / 2 - scale * (minX + maxX) / 2, h / 2 - scale * (minY + maxY) / 2)
+                          .scale(Math.min(scale, 2))
+                      );
+                  }
+                });
               }}
               title="Fit to View"
             >
@@ -992,8 +2146,8 @@ export default function DependenciesPage({
             </Button>
           </div>
 
-          {graphData.nodes.length > 0 &&
-            graphData.edges.filter((e: any) => e.data.type !== "folder")
+          {activeGraphData.nodes.length > 0 &&
+            activeGraphData.edges.filter((e: any) => e.data.type !== "folder")
               .length === 0 && (
               <div className="absolute top-4 left-4 bg-[#1e293b] border border-[#383B42] rounded-md px-3 py-2 text-xs text-gray-400 max-w-xs">
                 <p>

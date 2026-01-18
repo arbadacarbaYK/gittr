@@ -14,6 +14,7 @@ import {
   createPullRequestEvent,
   createStatusEvent,
 } from "@/lib/nostr/events";
+import { pushPrRef } from "@/lib/nostr/push-pr-ref";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import {
@@ -696,6 +697,26 @@ export default function NewPullRequestPage({
         // Hash event
         prEvent.id = getEventHash(prEvent);
 
+        // Best-effort: push PR ref to refs/nostr/<event-id> before signing
+        if (prEvent.id && finalOwnerPubkey && actualRepositoryName) {
+          const refResult = await pushPrRef({
+            ownerPubkey: finalOwnerPubkey,
+            repo: actualRepositoryName,
+            eventId: prEvent.id,
+            commitId: /^[0-9a-f]{40,64}$/i.test(currentCommitId)
+              ? currentCommitId
+              : undefined,
+            sourceRef: headBranch || baseBranch,
+          });
+          if (!refResult.success) {
+            showToast(
+              `⚠️ PR ref push failed (non-blocking): ${
+                refResult.error || "unknown error"
+              }`
+            );
+          }
+        }
+
         // Sign with NIP-07
         const signedEvent = await window.nostr.signEvent(prEvent);
         prEvent = signedEvent;
@@ -722,6 +743,26 @@ export default function NewPullRequestPage({
           privateKey
         );
         authorPubkey = prEvent.pubkey;
+
+        // Best-effort: push PR ref to refs/nostr/<event-id> (after signing for privkey flow)
+        if (prEvent.id && finalOwnerPubkey && actualRepositoryName) {
+          const refResult = await pushPrRef({
+            ownerPubkey: finalOwnerPubkey,
+            repo: actualRepositoryName,
+            eventId: prEvent.id,
+            commitId: /^[0-9a-f]{40,64}$/i.test(currentCommitId)
+              ? currentCommitId
+              : undefined,
+            sourceRef: headBranch || baseBranch,
+          });
+          if (!refResult.success) {
+            showToast(
+              `⚠️ PR ref push failed (non-blocking): ${
+                refResult.error || "unknown error"
+              }`
+            );
+          }
+        }
       } else {
         throw new Error("No signing method available");
       }

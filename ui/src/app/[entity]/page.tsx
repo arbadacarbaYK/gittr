@@ -349,11 +349,11 @@ export default function EntityPage({
   // CRITICAL: This hook returns the FULL metadataMap from cache, not just the pubkeys passed to it
   // The hook loads all cached metadata on initialization, so we should have access to all 15+ entries
   if (shouldLogProfileDebug) {
-    console.log(`🔍 [Profile] Calling useContributorMetadata with pubkeys:`, {
-      pubkeysForMetadata,
-      pubkeysLength: pubkeysForMetadata.length,
-      pubkeysFirst8: pubkeysForMetadata.map((p) => p.slice(0, 8)),
-    });
+  console.log(`🔍 [Profile] Calling useContributorMetadata with pubkeys:`, {
+    pubkeysForMetadata,
+    pubkeysLength: pubkeysForMetadata.length,
+    pubkeysFirst8: pubkeysForMetadata.map((p) => p.slice(0, 8)),
+  });
   }
   const metadataMap = useContributorMetadata(pubkeysForMetadata);
 
@@ -1903,7 +1903,7 @@ export default function EntityPage({
               "🔄 [Profile] Running backfill to ensure all repos have activities..."
             );
             if (!isLowMemoryDevice) {
-              backfillActivities();
+            backfillActivities();
             }
           }
 
