@@ -38,4 +38,6 @@ LOCALSTORAGE_QUOTA_FIX.md
 CLEAR_FOREIGN_REPOS_FIX.md
 
 log*.txt
+*.log
+devserver.log
 Nip34*.md
