@@ -110,6 +110,9 @@ export default function DependenciesPage({
   );
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const searchQueryRef = useRef<string>("");
+  const highlightedNodeIdRef = useRef<string | null>(null);
+  const matchingNodesRef = useRef<Set<string>>(new Set());
   const dragStateRef = useRef<{
     draggedNodeId: string | null;
     initialX: number;
@@ -1057,6 +1060,12 @@ export default function DependenciesPage({
         // Use graphConfigRef to always get latest config values
         const config = graphConfigRef.current;
         
+        // Get current search state from refs (always latest values)
+        const currentSearchQuery = searchQueryRef.current;
+        const currentMatchingNodes = matchingNodesRef.current;
+        const currentHighlightedNodeId = highlightedNodeIdRef.current;
+        const hasSearch = currentSearchQuery.trim() && currentMatchingNodes.size > 0;
+        
         // Update link paths (curved or straight based on config.curvedLinks)
         if (config.curvedLinks) {
           link.attr("d", (d: any) => {
@@ -1081,6 +1090,26 @@ export default function DependenciesPage({
           });
         }
         
+        // Preserve search highlighting in tick handler (so it persists during zoom/pan)
+        if (hasSearch) {
+          link.each(function(l: any) {
+            const path = d3.select(this);
+            const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+            const targetId = typeof l.target === "object" ? l.target.id : l.target;
+            const isHighlighted = currentMatchingNodes.has(sourceId) || currentMatchingNodes.has(targetId);
+            
+            // Green for highlighted links, greyish for others
+            path
+              .attr("stroke", isHighlighted ? "#00ff9d" : "#666666") // More greyish for non-highlighted
+              .attr("stroke-opacity", isHighlighted ? 0.8 : 0.15); // Dimmer for non-highlighted
+          });
+        } else {
+          // Default link styling when no search - more greyish
+          const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
+          link.attr("stroke", theme === "light" ? "#999999" : "#666666") // More greyish
+            .attr("stroke-opacity", 0.4);
+        }
+        
         // Clamp node positions to viewport bounds to prevent nodes going outside
         const padding = 50;
         nodes.forEach((d: any) => {
@@ -1098,6 +1127,34 @@ export default function DependenciesPage({
           }
           return `translate(${d.x},${d.y})`;
         });
+        
+        // Preserve search highlighting for nodes in tick handler (so it persists during zoom/pan)
+        if (hasSearch) {
+          node.selectAll("circle.nc").each(function(n: any) {
+            const circle = d3.select(this);
+            const isMatch = currentMatchingNodes.has(n.id);
+            const isHighlighted = currentHighlightedNodeId === n.id;
+            
+            circle
+              .attr("opacity", isMatch || isHighlighted ? 1 : 0.2)
+              .attr("fill", isHighlighted ? "#ff5f5f" : isMatch ? "#00ff9d" : getC(n))
+              .attr("stroke", isMatch || isHighlighted ? "#00ff9d" : (() => {
+                const c = d3.color(getC(n));
+                return c ? c.brighter(0.3).toString() : "#fff";
+              })())
+              .attr("stroke-width", isMatch || isHighlighted ? 3 : 1.5);
+          });
+        } else {
+          // Default node styling when no search
+          node.selectAll("circle.nc")
+            .attr("opacity", 1)
+            .attr("fill", getC)
+            .attr("stroke", (d: any) => {
+              const c = d3.color(getC(d));
+              return c ? c.brighter(0.3).toString() : "#fff";
+            })
+            .attr("stroke-width", 1.5);
+        }
         
         // Update text opacity and ensure it's centered inside circle
         node.selectAll("text")
@@ -2122,6 +2179,13 @@ export default function DependenciesPage({
     return matches;
   }, [searchQuery, activeGraphData]);
 
+  // Keep refs in sync with state (so tick handler always has latest values)
+  useEffect(() => {
+    searchQueryRef.current = searchQuery;
+    highlightedNodeIdRef.current = highlightedNodeId;
+    matchingNodesRef.current = matchingNodes;
+  }, [searchQuery, highlightedNodeId, matchingNodes]);
+
   // Auto-select first match when search changes
   useEffect(() => {
     if (matchingNodes.size > 0 && !highlightedNodeId) {
@@ -2192,13 +2256,13 @@ export default function DependenciesPage({
             const sourceId = typeof d.source === "object" ? d.source.id : d.source;
             const targetId = typeof d.target === "object" ? d.target.id : d.target;
             if (matchingNodes.has(sourceId) || matchingNodes.has(targetId)) return 0.8;
-            return 0.1;
+            return 0.15; // More visible greyish for non-highlighted
           })
           .attr("stroke", (d: any) => {
             const sourceId = typeof d.source === "object" ? d.source.id : d.source;
             const targetId = typeof d.target === "object" ? d.target.id : d.target;
-            if (matchingNodes.has(sourceId) || matchingNodes.has(targetId)) return "#00ff9d";
-            return graphPalette.edge;
+            if (matchingNodes.has(sourceId) || matchingNodes.has(targetId)) return "#00ff9d"; // Green for highlighted
+            return "#666666"; // More greyish for non-highlighted links
           });
         
         // Zoom to highlighted node if one is selected
@@ -2242,7 +2306,10 @@ export default function DependenciesPage({
           .transition()
           .duration(200)
           .attr("stroke-opacity", 0.4)
-          .attr("stroke", graphPalette.edge);
+          .attr("stroke", (() => {
+            const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
+            return theme === "light" ? "#999999" : "#666666"; // More greyish
+          })());
       }
     });
   }, [searchQuery, matchingNodes, highlightedNodeId, graphPalette, activeGraphData]);
