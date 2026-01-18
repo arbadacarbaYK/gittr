@@ -28,7 +28,13 @@
    - Code: `ui/src/lib/nostr/events.ts:588-641`
    - Need to verify if it's actually being called when PRs are updated
 
-5. **Status events (1630-1633)** ✅
+5. **PR refs pushed to `refs/nostr/<event-id>`** ✅
+   - **Status**: IMPLEMENTED (best-effort)
+   - On PR creation, we attempt to push the PR tip to `refs/nostr/<event-id>` on the bridge repo
+   - Uses commit id when available, otherwise resolves from branch ref
+   - Code: `ui/src/app/[entity]/[repo]/pulls/new/page.tsx`, `ui/src/pages/api/nostr/repo/push-ref.ts`
+
+6. **Status events (1630-1633)** ✅
    - **Status**: IMPLEMENTED AND USED
    - We have `createStatusEvent` function and are actively using it
    - Code: `ui/src/lib/nostr/events.ts:643-733`
@@ -55,9 +61,9 @@
 8. **Comments migrated to kind 1111 (NIP-22)** ✅
    - **Status**: FIXED
    - Migrated from `KIND_COMMENT = 1` to `KIND_COMMENT = 1111` (NIP-22)
-   - Updated to use uppercase E tags per NIP-22 specification
-   - Added backward compatibility for legacy kind 1 comments
-   - Code: `ui/src/lib/nostr/events.ts:19, 776-833`, `ui/src/app/[entity]/[repo]/issues/[id]/page.tsx:225-261`
+   - Updated to include required root/parent tags: `E/K/P` (root) and `e/k/p` (parent)
+   - Added backward compatibility for legacy kind 1 comments and NIP-10 reply markers
+   - Code: `ui/src/lib/nostr/events.ts` (createCommentEvent), `ui/src/app/[entity]/[repo]/issues/[id]/page.tsx`
 
 9. **Patches (1617) implemented** ✅
    - **Status**: FULLY IMPLEMENTED

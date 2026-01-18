@@ -1,0 +1,2159 @@
+
+> landing-no-prisma@0.2.0 dev
+> next dev
+
+   ▲ Next.js 15.5.7
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.0.196:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 4.5s
+ ○ Compiling /api/nostr/repo/files ...
+ ✓ Compiled /api/nostr/repo/files in 1233ms (137 modules)
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+🔍 Fetching file tree for branch: main
+✅ Git ls-tree succeeded, parsing files...
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 200 in 8916ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 60ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 51ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 47ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 56ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 53ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 58ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 41ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 49ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 86ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 91ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 61ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 63ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 58ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 61ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 66ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 56ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 42ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 53ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 49ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main 304 in 48ms
+ ○ Compiling / ...
+ ✓ Compiled / in 10.3s (1358 modules)
+📋 [Home] Computing recent repos: { reposCount: 0, sample: [] }
+🔑 [Home] allPubkeys computed: { userPubkeys: 0, recentRepoOwnerPubkeys: 0, total: 0, sample: [] }
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://nostr-relay.wlvs.space
+wss://relay.nostrich.land reconnecting after 2s
+wss://relay.current.fyi reconnecting after 2s
+wss://relay.nostr.bg reconnecting after 2s
+wss://relay.nostrgraph.net reconnecting after 2s
+wss://nostr-relay.wlvs.space reconnecting after 2s
+ GET / 200 in 11803ms
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://nostr-relay.wlvs.space
+Error connecting relay  wss://relay.nostr.info
+Error connecting relay  wss://git-02.uid.ovh
+Error connecting relay  wss://nostr.fmt.wiz.biz
+wss://relay.nostr.info reconnecting after 2s
+wss://git-02.uid.ovh reconnecting after 2s
+wss://nostr.fmt.wiz.biz reconnecting after 2s
+Error connecting relay  wss://nostrue.com
+wss://nostrue.com reconnecting after 2s
+Error connecting relay  wss://relay.nostr.info
+Error connecting relay  wss://git-02.uid.ovh
+Error connecting relay  wss://nostr.fmt.wiz.biz
+Error connecting relay  wss://nostrue.com
+wss://relay.nostrich.land reconnecting after 6s
+wss://relay.current.fyi reconnecting after 6s
+wss://relay.nostr.bg reconnecting after 6s
+wss://relay.nostrgraph.net reconnecting after 6s
+wss://nostr-relay.wlvs.space reconnecting after 6s
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://nostr-relay.wlvs.space
+wss://relay.nostr.info reconnecting after 6s
+wss://git-02.uid.ovh reconnecting after 6s
+ ○ Compiling /[entity]/[repo]/dependencies ...
+wss://nostr.fmt.wiz.biz reconnecting after 6s
+Error connecting relay  wss://relay.nostr.info
+Error connecting relay  wss://git-02.uid.ovh
+wss://nostrue.com reconnecting after 6s
+Error connecting relay  wss://nostr.fmt.wiz.biz
+Error connecting relay  wss://nostrue.com
+wss://relay.nostrich.land reconnecting after 18s
+wss://relay.current.fyi reconnecting after 18s
+wss://relay.nostr.bg reconnecting after 18s
+wss://relay.nostrgraph.net reconnecting after 18s
+wss://nostr-relay.wlvs.space reconnecting after 18s
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://nostr-relay.wlvs.space
+wss://relay.nostr.info reconnecting after 18s
+wss://git-02.uid.ovh reconnecting after 18s
+Error connecting relay  wss://relay.nostr.info
+wss://nostr.fmt.wiz.biz reconnecting after 18s
+Error connecting relay  wss://git-02.uid.ovh
+Error connecting relay  wss://nostr.fmt.wiz.biz
+wss://nostrue.com reconnecting after 18s
+Error connecting relay  wss://nostrue.com
+ ✓ Compiled /[entity]/[repo]/dependencies in 10.9s (2637 modules)
+[Metadata] ===== generateMetadata for [entity] CALLED =====
+[Metadata] ===== generateMetadata for [entity]/[repo] CALLED =====
+[Metadata] Entity: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8
+[Metadata] Generating metadata for: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8 pathos
+Accessing element.ref was removed in React 19. ref is now a regular prop. It will be removed from the JSX Element type in a future release.
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://nostr-relay.wlvs.space
+Error connecting relay  wss://relay.nostrgraph.net
+wss://relay.nostrich.land reconnecting after 2s
+wss://relay.current.fyi reconnecting after 2s
+wss://relay.nostr.bg reconnecting after 2s
+wss://nostr-relay.wlvs.space reconnecting after 2s
+wss://relay.nostrgraph.net reconnecting after 2s
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://nostr-relay.wlvs.space
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://nostr.fmt.wiz.biz
+Error connecting relay  wss://relay.nostr.info
+Error connecting relay  wss://ngit-relay.nostrver.se
+Error connecting relay  wss://git-02.uid.ovh
+wss://nostr.fmt.wiz.biz reconnecting after 2s
+wss://relay.nostr.info reconnecting after 2s
+wss://ngit-relay.nostrver.se reconnecting after 2s
+wss://git-02.uid.ovh reconnecting after 2s
+[Metadata] User metadata fetched: yes
+[Metadata] Using user picture from metadata: https://media.ditto.pub/4e8489e648325c36dd09b1ced7
+[Metadata] Final metadata: {
+  title: 'chad',
+  description: 'Boo.',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced7'
+}
+[Metadata] Owner display name: chad
+Error connecting relay  wss://relay.nostr.info
+Error connecting relay  wss://ngit-relay.nostrver.se
+Error connecting relay  wss://nostr.fmt.wiz.biz
+Error connecting relay  wss://nostrue.com
+wss://nostrue.com reconnecting after 2s
+Error connecting relay  wss://git-02.uid.ovh
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+Error connecting relay  wss://relay.azzamo.net
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+[Metadata] Using owner profile picture: https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba21
+[Metadata] Final metadata: {
+  title: 'chad/pathos',
+  description: 'Repository chad/pathos on gittr - Decentralized Gi',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba211f4d716eefd567a070a475611647.png'
+}
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 15118ms
+Error connecting relay  wss://nostrue.com
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+🔍 Fetching file tree for branch: main
+wss://relay.nostrich.land reconnecting after 6s
+wss://relay.current.fyi reconnecting after 6s
+wss://relay.nostr.bg reconnecting after 6s
+wss://nostr-relay.wlvs.space reconnecting after 6s
+wss://relay.nostrgraph.net reconnecting after 6s
+✅ Git ls-tree succeeded, parsing files...
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://nostr-relay.wlvs.space
+Error connecting relay  wss://relay.nostr.band
+wss://relay.nostr.band reconnecting after 2s
+wss://relay.nostr.band reconnecting after 2s
+wss://relay.nostr.info reconnecting after 6s
+wss://ngit-relay.nostrver.se reconnecting after 6s
+wss://nostr.fmt.wiz.biz reconnecting after 6s
+wss://git-02.uid.ovh reconnecting after 6s
+wss://nostrue.com reconnecting after 6s
+Error connecting relay  wss://nostr.fmt.wiz.biz
+Error connecting relay  wss://relay.nostr.band
+Error connecting relay  wss://relay.nostr.band
+Error connecting relay  wss://relay.nostr.info
+Error connecting relay  wss://ngit-relay.nostrver.se
+Error connecting relay  wss://git-02.uid.ovh
+Error connecting relay  wss://nostrue.com
+wss://relay.nostr.band reconnecting after 6s
+wss://relay.nostr.band reconnecting after 6s
+Error connecting relay  wss://relay.nostr.band
+Error connecting relay  wss://relay.nostr.band
+wss://relay.nostrich.land reconnecting after 18s
+wss://relay.current.fyi reconnecting after 18s
+wss://relay.nostr.bg reconnecting after 18s
+wss://relay.nostrgraph.net reconnecting after 18s
+wss://nostr-relay.wlvs.space reconnecting after 18s
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://nostr-relay.wlvs.space
+wss://nostr.fmt.wiz.biz reconnecting after 18s
+wss://relay.nostrich.land reconnecting after 54s
+wss://relay.current.fyi reconnecting after 54s
+wss://relay.nostr.bg reconnecting after 54s
+wss://relay.nostrgraph.net reconnecting after 54s
+wss://nostr-relay.wlvs.space reconnecting after 54s
+wss://relay.nostr.info reconnecting after 18s
+wss://ngit-relay.nostrver.se reconnecting after 18s
+Error connecting relay  wss://nostr.fmt.wiz.biz
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://nostr-relay.wlvs.space
+wss://git-02.uid.ovh reconnecting after 18s
+wss://nostrue.com reconnecting after 18s
+Error connecting relay  wss://relay.nostr.info
+Error connecting relay  wss://ngit-relay.nostrver.se
+Error connecting relay  wss://git-02.uid.ovh
+Error connecting relay  wss://nostrue.com
+wss://relay.nostr.info reconnecting after 54s
+wss://git-02.uid.ovh reconnecting after 54s
+wss://nostr.fmt.wiz.biz reconnecting after 54s
+Error connecting relay  wss://relay.nostr.info
+Error connecting relay  wss://git-02.uid.ovh
+Error connecting relay  wss://nostr.fmt.wiz.biz
+wss://nostrue.com reconnecting after 54s
+wss://relay.nostr.band reconnecting after 18s
+wss://relay.nostr.band reconnecting after 18s
+Error connecting relay  wss://nostrue.com
+Error connecting relay  wss://relay.nostr.band
+Error connecting relay  wss://relay.nostr.band
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main&includeSizes=1 304 in 16430ms
+ ○ Compiling /api/nostr/repo/file-content ...
+ ✓ Compiled /api/nostr/repo/file-content in 603ms (1424 modules)
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Findex.js&branch=main 304 in 731ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Fno-inline-script.js&branch=main 304 in 96ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Fno-placeholder-comments.js&branch=main 304 in 95ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Frequire-webmanifest.js&branch=main 304 in 111ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint.config.js&branch=main 304 in 104ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=postcss.config.js&branch=main 304 in 115ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2FApp.test.tsx&branch=main 304 in 102ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2FApp.tsx&branch=main 304 in 103ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2FAppRouter.tsx&branch=main 304 in 105ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FAppProvider.tsx&branch=main 304 in 105ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FAccountSwitcher.tsx&branch=main 304 in 95ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FLoginArea.tsx&branch=main 304 in 97ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FLoginDialog.tsx&branch=main 304 in 93ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FSignupDialog.tsx&branch=main 304 in 99ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FChallengeCard.tsx&branch=main 304 in 95ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FChallengeList.tsx&branch=main 304 in 92ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fcomments%2FComment.tsx&branch=main 304 in 94ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fcomments%2FCommentForm.tsx&branch=main 304 in 103ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fcomments%2FCommentsSection.tsx&branch=main 304 in 113ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FCreateChallengeDialog.tsx&branch=main 304 in 110ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FEditProfileForm.tsx&branch=main 304 in 89ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FErrorBoundary.tsx&branch=main 304 in 90ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FHashtagFeed.tsx&branch=main 304 in 102ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FHeader.tsx&branch=main 304 in 100ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNostrProvider.tsx&branch=main 304 in 87ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNostrSync.tsx&branch=main 304 in 84ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNoteContent.test.tsx&branch=main 304 in 88ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNoteContent.tsx&branch=main 304 in 102ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FRelayListManager.tsx&branch=main 304 in 85ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FScrollToTop.tsx&branch=main 304 in 96ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FSubmissionCard.tsx&branch=main 304 in 89ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FSubmissionGrid.tsx&branch=main 304 in 84ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FSubmitPhotoDialog.tsx&branch=main 304 in 116ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Faccordion.tsx&branch=main 304 in 88ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Falert-dialog.tsx&branch=main 304 in 87ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Falert.tsx&branch=main 304 in 86ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Faspect-ratio.tsx&branch=main 304 in 86ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Favatar.tsx&branch=main 304 in 103ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbadge-variants.ts&branch=main 304 in 100ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbadge.tsx&branch=main 304 in 88ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbreadcrumb.tsx&branch=main 304 in 87ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbutton-variants.ts&branch=main 304 in 90ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbutton.tsx&branch=main 304 in 82ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcalendar.tsx&branch=main 304 in 78ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcard.tsx&branch=main 304 in 88ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcarousel.tsx&branch=main 304 in 83ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fchart.tsx&branch=main 304 in 86ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcheckbox.tsx&branch=main 304 in 81ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+wss://relay.nostrich.land reconnecting after 54s
+wss://relay.current.fyi reconnecting after 54s
+wss://relay.nostr.bg reconnecting after 54s
+wss://relay.nostrgraph.net reconnecting after 54s
+wss://nostr-relay.wlvs.space reconnecting after 54s
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcollapsible.tsx&branch=main 304 in 90ms
+Error connecting relay  wss://relay.current.fyi
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://nostr-relay.wlvs.space
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcommand.tsx&branch=main 304 in 84ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcontext-menu.tsx&branch=main 304 in 97ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fdialog.tsx&branch=main 304 in 92ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fdrawer.tsx&branch=main 304 in 89ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fdropdown-menu.tsx&branch=main 304 in 80ms
+wss://nostr.fmt.wiz.biz reconnecting after 54s
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fform-utils.ts&branch=main 304 in 87ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+Error connecting relay  wss://nostr.fmt.wiz.biz
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fform.tsx&branch=main 304 in 130ms
+wss://relay.nostr.info reconnecting after 54s
+wss://ngit-relay.nostrver.se reconnecting after 54s
+Error connecting relay  wss://relay.nostr.info
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fhover-card.tsx&branch=main 304 in 87ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Finput-otp.tsx&branch=main 304 in 89ms
+wss://git-02.uid.ovh reconnecting after 54s
+wss://nostrue.com reconnecting after 54s
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Finput.tsx&branch=main 304 in 82ms
+Error connecting relay  wss://git-02.uid.ovh
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+Error connecting relay  wss://nostrue.com
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Flabel.tsx&branch=main 304 in 83ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fmenubar.tsx&branch=main 304 in 92ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fnavigation-menu-variants.ts&branch=main 304 in 89ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fnavigation-menu.tsx&branch=main 304 in 89ms
+Error connecting relay  wss://ngit-relay.nostrver.se
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fpagination.tsx&branch=main 304 in 94ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fpopover.tsx&branch=main 304 in 90ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fprogress.tsx&branch=main 304 in 82ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fradio-group.tsx&branch=main 304 in 84ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fresizable.tsx&branch=main 304 in 87ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fscroll-area.tsx&branch=main 304 in 80ms
+wss://relay.nostr.band reconnecting after 54s
+wss://relay.nostr.band reconnecting after 54s
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fselect.tsx&branch=main 304 in 93ms
+Error connecting relay  wss://relay.nostr.band
+Error connecting relay  wss://relay.nostr.band
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fseparator.tsx&branch=main 304 in 86ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fsheet.tsx&branch=main 304 in 89ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fsidebar-utils.ts&branch=main 304 in 101ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fsidebar.tsx&branch=main 304 in 94ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fskeleton.tsx&branch=main 304 in 91ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fslider.tsx&branch=main 304 in 96ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fswitch.tsx&branch=main 304 in 87ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftable.tsx&branch=main 304 in 88ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftabs.tsx&branch=main 304 in 88ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftextarea.tsx&branch=main 304 in 94ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoast.tsx&branch=main 304 in 102ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoaster.tsx&branch=main 304 in 91ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoggle-group.tsx&branch=main 304 in 89ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoggle-variants.ts&branch=main 304 in 85ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoggle.tsx&branch=main 304 in 88ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftooltip.tsx&branch=main 304 in 101ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FWalletModal.tsx&branch=main 304 in 97ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FZapButton.tsx&branch=main 304 in 94ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FZapDialog.tsx&branch=main 304 in 108ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcontexts%2FAppContext.ts&branch=main 304 in 123ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcontexts%2FNWCContext.tsx&branch=main 304 in 85ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseAppContext.ts&branch=main 304 in 98ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseAuthor.ts&branch=main 304 in 81ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseChallenges.ts&branch=main 304 in 86ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseComments.ts&branch=main 304 in 90ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseCreateChallenge.ts&branch=main 304 in 84ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseCurrentUser.ts&branch=main 304 in 82ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseDeleteChallenge.ts&branch=main 304 in 91ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseIsMobile.tsx&branch=main 304 in 84ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseLocalStorage.ts&branch=main 304 in 96ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseLoggedInAccounts.ts&branch=main 304 in 83ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseLoginActions.ts&branch=main 304 in 93ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNostr.ts&branch=main 304 in 95ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNostrPublish.ts&branch=main 304 in 94ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNWC.ts&branch=main 304 in 98ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNWCContext.ts&branch=main 304 in 81ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FusePostComment.ts&branch=main 304 in 92ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseSubmissions.ts&branch=main 304 in 102ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseTheme.ts&branch=main 304 in 89ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseToast.ts&branch=main 304 in 83ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseUploadFile.ts&branch=main 304 in 86ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseWallet.ts&branch=main 304 in 92ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseZaps.ts&branch=main 304 in 82ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2FgenUserName.test.ts&branch=main 304 in 92ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2FgenUserName.ts&branch=main 304 in 91ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2Fpolyfills.ts&branch=main 304 in 91ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2Ftypes.ts&branch=main 304 in 95ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2Futils.ts&branch=main 304 in 107ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fmain.tsx&branch=main 304 in 88ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FChallengePage.tsx&branch=main 304 in 94ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FIndex.tsx&branch=main 304 in 133ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FNIP19Page.tsx&branch=main 304 in 87ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FNotFound.tsx&branch=main 304 in 95ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Ftest%2FErrorBoundary.test.tsx&branch=main 304 in 97ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Ftest%2Fsetup.ts&branch=main 304 in 81ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Ftest%2FTestApp.tsx&branch=main 304 in 87ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fvite-env.d.ts&branch=main 304 in 105ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=tailwind.config.ts&branch=main 304 in 85ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=vite.config.ts&branch=main 304 in 91ms
+wss://relay.nostrich.land reconnecting after 162s
+wss://relay.current.fyi reconnecting after 162s
+wss://relay.nostr.bg reconnecting after 162s
+wss://relay.nostrgraph.net reconnecting after 162s
+wss://nostr-relay.wlvs.space reconnecting after 162s
+Error connecting relay  wss://relay.current.fyi
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://nostr-relay.wlvs.space
+wss://relay.nostr.info reconnecting after 162s
+Error connecting relay  wss://relay.nostr.info
+wss://git-02.uid.ovh reconnecting after 162s
+wss://nostr.fmt.wiz.biz reconnecting after 162s
+Error connecting relay  wss://git-02.uid.ovh
+Error connecting relay  wss://nostr.fmt.wiz.biz
+wss://nostrue.com reconnecting after 162s
+Error connecting relay  wss://nostrue.com
+wss://relay.current.fyi reconnecting after 162s
+wss://relay.nostrich.land reconnecting after 162s
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+wss://relay.nostr.bg reconnecting after 162s
+wss://relay.nostrgraph.net reconnecting after 162s
+wss://nostr-relay.wlvs.space reconnecting after 162s
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://nostr-relay.wlvs.space
+wss://nostr.fmt.wiz.biz reconnecting after 162s
+wss://relay.nostr.info reconnecting after 162s
+Error connecting relay  wss://nostr.fmt.wiz.biz
+Error connecting relay  wss://relay.nostr.info
+wss://git-02.uid.ovh reconnecting after 162s
+Error connecting relay  wss://git-02.uid.ovh
+wss://nostrue.com reconnecting after 162s
+Error connecting relay  wss://nostrue.com
+wss://ngit-relay.nostrver.se reconnecting after 162s
+Error connecting relay  wss://ngit-relay.nostrver.se
+wss://relay.nostr.band reconnecting after 162s
+wss://relay.nostr.band reconnecting after 162s
+Error connecting relay  wss://relay.nostr.band
+Error connecting relay  wss://relay.nostr.band
+wss://relay.current.fyi reconnecting after 486s
+wss://relay.nostrich.land reconnecting after 486s
+wss://relay.nostrgraph.net reconnecting after 486s
+wss://relay.nostr.bg reconnecting after 486s
+Error connecting relay  wss://relay.current.fyi
+wss://nostr-relay.wlvs.space reconnecting after 486s
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://nostr-relay.wlvs.space
+wss://relay.nostr.info reconnecting after 486s
+Error connecting relay  wss://relay.nostr.info
+wss://git-02.uid.ovh reconnecting after 486s
+wss://nostr.fmt.wiz.biz reconnecting after 486s
+Error connecting relay  wss://git-02.uid.ovh
+Error connecting relay  wss://nostr.fmt.wiz.biz
+wss://nostrue.com reconnecting after 486s
+Error connecting relay  wss://nostrue.com
+wss://relay.nostrich.land reconnecting after 486s
+wss://relay.current.fyi reconnecting after 486s
+wss://relay.nostr.bg reconnecting after 486s
+Error connecting relay  wss://relay.nostrich.land
+wss://relay.nostrgraph.net reconnecting after 486s
+Error connecting relay  wss://relay.current.fyi
+wss://nostr-relay.wlvs.space reconnecting after 486s
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://nostr-relay.wlvs.space
+wss://nostr.fmt.wiz.biz reconnecting after 486s
+wss://relay.nostr.info reconnecting after 486s
+Error connecting relay  wss://relay.nostr.info
+Error connecting relay  wss://nostr.fmt.wiz.biz
+wss://git-02.uid.ovh reconnecting after 486s
+Error connecting relay  wss://git-02.uid.ovh
+wss://nostrue.com reconnecting after 486s
+wss://ngit-relay.nostrver.se reconnecting after 486s
+Error connecting relay  wss://nostrue.com
+wss://relay.nostr.band reconnecting after 486s
+wss://relay.nostr.band reconnecting after 486s
+ ✓ Compiled /api/nostr/repo/files in 4.8s (2591 modules)
+ ✓ Compiled in 1ms (1405 modules)
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+🔍 Fetching file tree for branch: main
+✅ Git ls-tree succeeded, parsing files...
+[Metadata] ===== generateMetadata for [entity] CALLED =====
+[Metadata] ===== generateMetadata for [entity]/[repo] CALLED =====
+[Metadata] Entity: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8
+[Metadata] Generating metadata for: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8 pathos
+[Metadata] Owner display name: chad
+[Metadata] User metadata fetched: yes
+[Metadata] Using user picture from metadata: https://media.ditto.pub/4e8489e648325c36dd09b1ced7
+[Metadata] Final metadata: {
+  title: 'chad',
+  description: 'Boo.',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced7'
+}
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+Error connecting relay  wss://relay.azzamo.net
+[Metadata] Using owner profile picture: https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba21
+[Metadata] Final metadata: {
+  title: 'chad/pathos',
+  description: 'Repository chad/pathos on gittr - Decentralized Gi',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba211f4d716eefd567a070a475611647.png'
+}
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 5030ms
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main&includeSizes=1 304 in 21606ms
+ ○ Compiling /api/nostr/repo/file-content ...
+ ✓ Compiled /api/nostr/repo/file-content in 685ms (1407 modules)
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Findex.js&branch=main 304 in 886ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Fno-inline-script.js&branch=main 304 in 247ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Fno-placeholder-comments.js&branch=main 304 in 213ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Frequire-webmanifest.js&branch=main 304 in 160ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint.config.js&branch=main 304 in 121ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=postcss.config.js&branch=main 304 in 134ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2FApp.test.tsx&branch=main 304 in 141ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2FApp.tsx&branch=main 304 in 124ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2FAppRouter.tsx&branch=main 304 in 119ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FAppProvider.tsx&branch=main 304 in 112ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FAccountSwitcher.tsx&branch=main 304 in 145ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FLoginArea.tsx&branch=main 304 in 109ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FLoginDialog.tsx&branch=main 304 in 140ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FSignupDialog.tsx&branch=main 304 in 115ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FChallengeCard.tsx&branch=main 304 in 167ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FChallengeList.tsx&branch=main 304 in 195ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fcomments%2FComment.tsx&branch=main 304 in 154ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fcomments%2FCommentForm.tsx&branch=main 304 in 127ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fcomments%2FCommentsSection.tsx&branch=main 304 in 130ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FCreateChallengeDialog.tsx&branch=main 304 in 133ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FEditProfileForm.tsx&branch=main 304 in 136ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FErrorBoundary.tsx&branch=main 304 in 127ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FHashtagFeed.tsx&branch=main 304 in 135ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FHeader.tsx&branch=main 304 in 145ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNostrProvider.tsx&branch=main 304 in 135ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNostrSync.tsx&branch=main 304 in 128ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNoteContent.test.tsx&branch=main 304 in 137ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNoteContent.tsx&branch=main 304 in 114ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FRelayListManager.tsx&branch=main 304 in 138ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FScrollToTop.tsx&branch=main 304 in 135ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FSubmissionCard.tsx&branch=main 304 in 139ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FSubmissionGrid.tsx&branch=main 304 in 126ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FSubmitPhotoDialog.tsx&branch=main 304 in 137ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Faccordion.tsx&branch=main 304 in 137ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Falert-dialog.tsx&branch=main 304 in 138ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Falert.tsx&branch=main 304 in 146ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Faspect-ratio.tsx&branch=main 304 in 147ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Favatar.tsx&branch=main 304 in 115ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbadge-variants.ts&branch=main 304 in 114ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbadge.tsx&branch=main 304 in 125ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbreadcrumb.tsx&branch=main 304 in 107ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbutton-variants.ts&branch=main 304 in 95ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbutton.tsx&branch=main 304 in 95ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcalendar.tsx&branch=main 304 in 304ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcard.tsx&branch=main 304 in 144ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcarousel.tsx&branch=main 304 in 157ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fchart.tsx&branch=main 304 in 186ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcheckbox.tsx&branch=main 304 in 106ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcollapsible.tsx&branch=main 304 in 109ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcommand.tsx&branch=main 304 in 107ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcontext-menu.tsx&branch=main 304 in 87ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fdialog.tsx&branch=main 304 in 102ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fdrawer.tsx&branch=main 304 in 91ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fdropdown-menu.tsx&branch=main 304 in 91ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fform-utils.ts&branch=main 304 in 101ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fform.tsx&branch=main 304 in 100ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fhover-card.tsx&branch=main 304 in 127ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Finput-otp.tsx&branch=main 304 in 143ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Finput.tsx&branch=main 304 in 119ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Flabel.tsx&branch=main 304 in 107ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fmenubar.tsx&branch=main 304 in 128ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fnavigation-menu-variants.ts&branch=main 304 in 175ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fnavigation-menu.tsx&branch=main 304 in 407ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fpagination.tsx&branch=main 304 in 171ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fpopover.tsx&branch=main 304 in 514ms
+ ✓ Compiled in 2.8s (2622 modules)
+ ✓ Compiled in 3ms (1407 modules)
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fprogress.tsx&branch=main 304 in 1666ms
+ ✓ Compiled in 2ms (1407 modules)
+ ✓ Compiled in 2ms (1407 modules)
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fradio-group.tsx&branch=main 304 in 1755ms
+ ✓ Compiled in 2ms (1407 modules)
+[Metadata] ===== generateMetadata for [entity] CALLED =====
+[Metadata] ===== generateMetadata for [entity]/[repo] CALLED =====
+[Metadata] Entity: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8
+[Metadata] Generating metadata for: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8 pathos
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+[Metadata] User metadata fetched: yes
+[Metadata] Using user picture from metadata: https://media.ditto.pub/4e8489e648325c36dd09b1ced7
+[Metadata] Final metadata: {
+  title: 'chad',
+  description: 'Boo.',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced7'
+}
+[Metadata] Owner display name: chad
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+Error connecting relay  wss://nos.lol
+Error connecting relay  wss://relay.azzamo.net
+Error connecting relay  wss://relay.damus.io
+[Metadata] Using owner profile picture: https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba21
+[Metadata] Final metadata: {
+  title: 'chad/pathos',
+  description: 'Repository chad/pathos on gittr - Decentralized Gi',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba211f4d716eefd567a070a475611647.png'
+}
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 4465ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fresizable.tsx&branch=main 304 in 2375ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fscroll-area.tsx&branch=main 304 in 112ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fselect.tsx&branch=main 304 in 123ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fseparator.tsx&branch=main 304 in 118ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fsheet.tsx&branch=main 304 in 126ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fsidebar-utils.ts&branch=main 304 in 117ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fsidebar.tsx&branch=main 304 in 136ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fskeleton.tsx&branch=main 304 in 209ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fslider.tsx&branch=main 304 in 137ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fswitch.tsx&branch=main 304 in 286ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftable.tsx&branch=main 304 in 210ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftabs.tsx&branch=main 304 in 199ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftextarea.tsx&branch=main 304 in 119ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoast.tsx&branch=main 304 in 143ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoaster.tsx&branch=main 304 in 95ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoggle-group.tsx&branch=main 304 in 99ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoggle-variants.ts&branch=main 304 in 117ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoggle.tsx&branch=main 304 in 104ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftooltip.tsx&branch=main 304 in 109ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FWalletModal.tsx&branch=main 304 in 125ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FZapButton.tsx&branch=main 304 in 104ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FZapDialog.tsx&branch=main 304 in 197ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcontexts%2FAppContext.ts&branch=main 304 in 140ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcontexts%2FNWCContext.tsx&branch=main 304 in 158ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseAppContext.ts&branch=main 304 in 163ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseAuthor.ts&branch=main 304 in 135ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseChallenges.ts&branch=main 304 in 121ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseComments.ts&branch=main 304 in 127ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseCreateChallenge.ts&branch=main 304 in 169ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseCurrentUser.ts&branch=main 304 in 131ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseDeleteChallenge.ts&branch=main 304 in 126ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseIsMobile.tsx&branch=main 304 in 101ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseLocalStorage.ts&branch=main 304 in 137ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseLoggedInAccounts.ts&branch=main 304 in 126ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseLoginActions.ts&branch=main 304 in 142ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNostr.ts&branch=main 304 in 344ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNostrPublish.ts&branch=main 304 in 257ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNWC.ts&branch=main 304 in 132ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNWCContext.ts&branch=main 304 in 149ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FusePostComment.ts&branch=main 304 in 123ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseSubmissions.ts&branch=main 304 in 136ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseTheme.ts&branch=main 304 in 110ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseToast.ts&branch=main 304 in 129ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseUploadFile.ts&branch=main 304 in 141ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseWallet.ts&branch=main 304 in 141ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseZaps.ts&branch=main 304 in 128ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2FgenUserName.test.ts&branch=main 304 in 141ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2FgenUserName.ts&branch=main 304 in 232ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2Fpolyfills.ts&branch=main 304 in 175ms
+ ✓ Compiled in 3.1s (2622 modules)
+ ✓ Compiled in 1ms (1407 modules)
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2Ftypes.ts&branch=main 304 in 1498ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2Futils.ts&branch=main 304 in 300ms
+[Metadata] ===== generateMetadata for [entity] CALLED =====
+[Metadata] ===== generateMetadata for [entity]/[repo] CALLED =====
+[Metadata] Entity: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8
+[Metadata] Generating metadata for: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8 pathos
+Error connecting relay  wss://relay.damus.io
+[Metadata] User metadata fetched: yes
+[Metadata] Using user picture from metadata: https://media.ditto.pub/4e8489e648325c36dd09b1ced7
+[Metadata] Final metadata: {
+  title: 'chad',
+  description: 'Boo.',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced7'
+}
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fmain.tsx&branch=main 304 in 500ms
+[Metadata] Owner display name: chad
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.azzamo.net
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FChallengePage.tsx&branch=main 304 in 264ms
+Error connecting relay  wss://relay.damus.io
+[Metadata] Using owner profile picture: https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba21
+[Metadata] Final metadata: {
+  title: 'chad/pathos',
+  description: 'Repository chad/pathos on gittr - Decentralized Gi',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba211f4d716eefd567a070a475611647.png'
+}
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 3357ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FIndex.tsx&branch=main 304 in 184ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FNIP19Page.tsx&branch=main 304 in 99ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FNotFound.tsx&branch=main 304 in 107ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Ftest%2FErrorBoundary.test.tsx&branch=main 304 in 112ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Ftest%2Fsetup.ts&branch=main 304 in 101ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Ftest%2FTestApp.tsx&branch=main 304 in 99ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fvite-env.d.ts&branch=main 304 in 144ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=tailwind.config.ts&branch=main 304 in 166ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=vite.config.ts&branch=main 304 in 133ms
+ ✓ Compiled in 1599ms (2620 modules)
+[Metadata] ===== generateMetadata for [entity] CALLED =====
+[Metadata] ===== generateMetadata for [entity]/[repo] CALLED =====
+[Metadata] Entity: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8
+[Metadata] Generating metadata for: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8 pathos
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+[Metadata] Owner display name: chad
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+[Metadata] User metadata fetched: yes
+[Metadata] Using user picture from metadata: https://media.ditto.pub/4e8489e648325c36dd09b1ced7
+[Metadata] Final metadata: {
+  title: 'chad',
+  description: 'Boo.',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced7'
+}
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+[Metadata] Using owner profile picture: https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba21
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.azzamo.net
+[Metadata] Final metadata: {
+  title: 'chad/pathos',
+  description: 'Repository chad/pathos on gittr - Decentralized Gi',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba211f4d716eefd567a070a475611647.png'
+}
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 803ms
+ ✓ Compiled in 3s (2591 modules)
+[Metadata] ===== generateMetadata for [entity] CALLED =====
+[Metadata] ===== generateMetadata for [entity]/[repo] CALLED =====
+[Metadata] Entity: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8
+[Metadata] Generating metadata for: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8 pathos
+Error connecting relay  wss://relay.damus.io
+[Metadata] User metadata fetched: yes
+[Metadata] Using user picture from metadata: https://media.ditto.pub/4e8489e648325c36dd09b1ced7
+[Metadata] Final metadata: {
+  title: 'chad',
+  description: 'Boo.',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced7'
+}
+[Metadata] Owner display name: chad
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+Error connecting relay  wss://relay.azzamo.net
+Error connecting relay  wss://relay.damus.io
+[Metadata] Using owner profile picture: https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba21
+[Metadata] Final metadata: {
+  title: 'chad/pathos',
+  description: 'Repository chad/pathos on gittr - Decentralized Gi',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba211f4d716eefd567a070a475611647.png'
+}
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 1643ms
+ ⨯ ./src/app/[entity]/[repo]/dependencies/page.tsx
+Error:   [31mx[0m Expected '=>', got '.'
+     ,-[[36;1;4m/home/homie/Downloads/actual/ngit/ui/src/app/[entity]/[repo]/dependencies/page.tsx[0m:626:1]
+ [2m623[0m |           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 1.5).strength(0.02))
+ [2m624[0m |           .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 15))
+ [2m625[0m |           .force("x", d3.forceX((d: any) => (d as any).targetX).strength(1))
+ [2m626[0m |           .force("y", d3.forceY((d: any) => (d: any).targetY).strength(1));
+     : [35;1m                                                    ^[0m
+ [2m627[0m |       } else if (config.viewMode === "metro") {
+ [2m628[0m |         // Metro layout: find root nodes (no incoming edges) and arrange in lines
+ [2m629[0m |         const roots = nodes.filter((n: any) => 
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./src/app/[entity]/[repo]/dependencies/page.tsx
+ ○ Compiling /_error ...
+ ⨯ ./src/app/[entity]/[repo]/dependencies/page.tsx
+Error:   [31mx[0m Expected '=>', got '.'
+     ,-[[36;1;4m/home/homie/Downloads/actual/ngit/ui/src/app/[entity]/[repo]/dependencies/page.tsx[0m:626:1]
+ [2m623[0m |           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 1.5).strength(0.02))
+ [2m624[0m |           .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 15))
+ [2m625[0m |           .force("x", d3.forceX((d: any) => (d as any).targetX).strength(1))
+ [2m626[0m |           .force("y", d3.forceY((d: any) => (d: any).targetY).strength(1));
+     : [35;1m                                                    ^[0m
+ [2m627[0m |       } else if (config.viewMode === "metro") {
+ [2m628[0m |         // Metro layout: find root nodes (no incoming edges) and arrange in lines
+ [2m629[0m |         const roots = nodes.filter((n: any) => 
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./src/app/[entity]/[repo]/dependencies/page.tsx
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 500 in 3204ms
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 500 in 51ms
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 500 in 532ms
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ⨯ ./src/app/[entity]/[repo]/dependencies/page.tsx
+Error:   [31mx[0m Expected '=>', got '.'
+     ,-[[36;1;4m/home/homie/Downloads/actual/ngit/ui/src/app/[entity]/[repo]/dependencies/page.tsx[0m:626:1]
+ [2m623[0m |           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 1.5).strength(0.02))
+ [2m624[0m |           .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 15))
+ [2m625[0m |           .force("x", d3.forceX((d: any) => (d as any).targetX).strength(1))
+ [2m626[0m |           .force("y", d3.forceY((d: any) => (d: any).targetY).strength(1));
+     : [35;1m                                                    ^[0m
+ [2m627[0m |       } else if (config.viewMode === "metro") {
+ [2m628[0m |         // Metro layout: find root nodes (no incoming edges) and arrange in lines
+ [2m629[0m |         const roots = nodes.filter((n: any) => 
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./src/app/[entity]/[repo]/dependencies/page.tsx
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 527ms
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 500 in 150ms
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 500 in 428ms
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ⨯ ./src/app/[entity]/[repo]/dependencies/page.tsx
+Error:   [31mx[0m Expected '=>', got '.'
+     ,-[[36;1;4m/home/homie/Downloads/actual/ngit/ui/src/app/[entity]/[repo]/dependencies/page.tsx[0m:626:1]
+ [2m623[0m |           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 1.5).strength(0.02))
+ [2m624[0m |           .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 15))
+ [2m625[0m |           .force("x", d3.forceX((d: any) => (d as any).targetX).strength(1))
+ [2m626[0m |           .force("y", d3.forceY((d: any) => (d: any).targetY).strength(1));
+     : [35;1m                                                    ^[0m
+ [2m627[0m |       } else if (config.viewMode === "metro") {
+ [2m628[0m |         // Metro layout: find root nodes (no incoming edges) and arrange in lines
+ [2m629[0m |         const roots = nodes.filter((n: any) => 
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./src/app/[entity]/[repo]/dependencies/page.tsx
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 240ms
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 500 in 77ms
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 500 in 802ms
+ ✓ Compiled /_error in 13.9s (2672 modules)
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 13094ms
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+[Metadata] ===== generateMetadata for [entity] CALLED =====
+[Metadata] ===== generateMetadata for [entity]/[repo] CALLED =====
+[Metadata] Entity: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8
+[Metadata] Generating metadata for: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8 pathos
+Error connecting relay  wss://relay.nostrich.land
+wss://relay.nostrich.land reconnecting after 2s
+Error connecting relay  wss://relay.current.fyi
+wss://relay.current.fyi reconnecting after 2s
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://nostr-relay.wlvs.space
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://relay.nostr.info
+wss://relay.nostr.bg reconnecting after 2s
+wss://nostr-relay.wlvs.space reconnecting after 2s
+wss://relay.nostrgraph.net reconnecting after 2s
+wss://relay.nostr.info reconnecting after 2s
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+Error connecting relay  wss://git-02.uid.ovh
+wss://git-02.uid.ovh reconnecting after 2s
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://nostr-relay.wlvs.space
+Error connecting relay  wss://relay.damus.io
+[Metadata] Owner display name: chad
+Error connecting relay  wss://nostr.fmt.wiz.biz
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://relay.nostr.band
+wss://nostr.fmt.wiz.biz reconnecting after 2s
+[Metadata] User metadata fetched: yes
+[Metadata] Using user picture from metadata: https://media.ditto.pub/4e8489e648325c36dd09b1ced7
+[Metadata] Final metadata: {
+  title: 'chad',
+  description: 'Boo.',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced7'
+}
+wss://relay.nostr.band reconnecting after 2s
+[Metadata] ===== generateMetadata for [entity] CALLED =====
+[Metadata] ===== generateMetadata for [entity]/[repo] CALLED =====
+[Metadata] Entity: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8
+[Metadata] Generating metadata for: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8 pathos
+Error connecting relay  wss://relay.nostr.info
+Error connecting relay  wss://nostr.fmt.wiz.biz
+Error connecting relay  wss://git-02.uid.ovh
+Error connecting relay  wss://nostrue.com
+wss://nostrue.com reconnecting after 2s
+Error connecting relay  wss://gitnostr.com
+[Metadata] Using owner profile picture: https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba21
+[Metadata] Final metadata: {
+  title: 'chad/pathos',
+  description: 'Repository chad/pathos on gittr - Decentralized Gi',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba211f4d716eefd567a070a475611647.png'
+}
+Error connecting relay  wss://relay.nostr.band
+[Metadata] ===== generateMetadata for [entity] CALLED =====
+[Metadata] ===== generateMetadata for [entity]/[repo] CALLED =====
+[Metadata] Entity: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8
+[Metadata] Generating metadata for: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8 pathos
+[Metadata] Owner display name: chad
+[Metadata] User metadata fetched: yes
+[Metadata] Using user picture from metadata: https://media.ditto.pub/4e8489e648325c36dd09b1ced7
+[Metadata] Final metadata: {
+  title: 'chad',
+  description: 'Boo.',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced7'
+}
+Error connecting relay  wss://nostrue.com
+Error connecting relay  wss://relay.damus.io
+[Metadata] User metadata fetched: yes
+[Metadata] Using user picture from metadata: https://media.ditto.pub/4e8489e648325c36dd09b1ced7
+[Metadata] Final metadata: {
+  title: 'chad',
+  description: 'Boo.',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced7'
+}
+Error connecting relay  wss://relay.damus.io
+[Metadata] Owner display name: chad
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.damus.io
+[Metadata] Using repo logo: https://gittr.space/api/nostr/repo/file-content?ownerPubkey=
+[Metadata] Final metadata: {
+  title: 'chad/pathos',
+  description: 'Repository chad/pathos on gittr - Decentralized Gi',
+  iconUrl: 'https://gittr.space/api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=logo.png&branch=main'
+}
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.azzamo.net
+Error connecting relay  wss://relay.damus.io
+[Metadata] Using owner profile picture: https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba21
+[Metadata] Final metadata: {
+  title: 'chad/pathos',
+  description: 'Repository chad/pathos on gittr - Decentralized Gi',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba211f4d716eefd567a070a475611647.png'
+}
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 3090ms
+wss://relay.nostrich.land reconnecting after 6s
+wss://relay.current.fyi reconnecting after 6s
+wss://relay.nostr.bg reconnecting after 6s
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+wss://nostr-relay.wlvs.space reconnecting after 6s
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://nostr-relay.wlvs.space
+wss://relay.nostrgraph.net reconnecting after 6s
+Error connecting relay  wss://relay.nostrgraph.net
+wss://relay.nostr.info reconnecting after 6s
+Error connecting relay  wss://relay.nostr.info
+wss://nostr.fmt.wiz.biz reconnecting after 6s
+wss://git-02.uid.ovh reconnecting after 6s
+wss://relay.nostr.band reconnecting after 6s
+Error connecting relay  wss://git-02.uid.ovh
+Error connecting relay  wss://nostr.fmt.wiz.biz
+Error connecting relay  wss://relay.nostr.band
+wss://nostrue.com reconnecting after 6s
+ ○ Compiling /api/nostr/repo/files ...
+Error connecting relay  wss://nostrue.com
+ ✓ Compiled /api/nostr/repo/files in 2.4s (1499 modules)
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+🔍 Fetching file tree for branch: main
+✅ Git ls-tree succeeded, parsing files...
+wss://relay.nostrich.land reconnecting after 18s
+wss://relay.current.fyi reconnecting after 18s
+wss://relay.nostr.bg reconnecting after 18s
+wss://nostr-relay.wlvs.space reconnecting after 18s
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+wss://relay.nostrgraph.net reconnecting after 18s
+Error connecting relay  wss://nostr-relay.wlvs.space
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://relay.nostrgraph.net
+wss://relay.nostr.info reconnecting after 18s
+wss://git-02.uid.ovh reconnecting after 18s
+wss://nostr.fmt.wiz.biz reconnecting after 18s
+wss://relay.nostr.band reconnecting after 18s
+Error connecting relay  wss://relay.nostr.info
+Error connecting relay  wss://nostr.fmt.wiz.biz
+Error connecting relay  wss://git-02.uid.ovh
+Error connecting relay  wss://relay.nostr.band
+wss://nostrue.com reconnecting after 18s
+Error connecting relay  wss://nostrue.com
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main&includeSizes=1 304 in 19471ms
+ ✓ Compiled /api/nostr/repo/file-content in 365ms (1501 modules)
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Findex.js&branch=main 304 in 502ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Fno-inline-script.js&branch=main 304 in 141ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Fno-placeholder-comments.js&branch=main 304 in 147ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Frequire-webmanifest.js&branch=main 304 in 140ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint.config.js&branch=main 304 in 156ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=postcss.config.js&branch=main 304 in 135ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2FApp.test.tsx&branch=main 304 in 123ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2FApp.tsx&branch=main 304 in 117ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2FAppRouter.tsx&branch=main 304 in 114ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FAppProvider.tsx&branch=main 304 in 134ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FAccountSwitcher.tsx&branch=main 304 in 123ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FLoginArea.tsx&branch=main 304 in 123ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FLoginDialog.tsx&branch=main 304 in 198ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FSignupDialog.tsx&branch=main 304 in 354ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FChallengeCard.tsx&branch=main 304 in 142ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FChallengeList.tsx&branch=main 304 in 142ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fcomments%2FComment.tsx&branch=main 304 in 121ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fcomments%2FCommentForm.tsx&branch=main 304 in 129ms
+wss://relay.nostrich.land reconnecting after 54s
+wss://relay.current.fyi reconnecting after 54s
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+wss://nostr-relay.wlvs.space reconnecting after 54s
+wss://relay.nostr.bg reconnecting after 54s
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fcomments%2FCommentsSection.tsx&branch=main 304 in 199ms
+Error connecting relay  wss://nostr-relay.wlvs.space
+Error connecting relay  wss://relay.nostr.bg
+wss://relay.nostrgraph.net reconnecting after 54s
+Error connecting relay  wss://relay.nostrgraph.net
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FCreateChallengeDialog.tsx&branch=main 304 in 174ms
+wss://relay.nostr.info reconnecting after 54s
+wss://nostr.fmt.wiz.biz reconnecting after 54s
+wss://git-02.uid.ovh reconnecting after 54s
+wss://relay.nostr.band reconnecting after 54s
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FEditProfileForm.tsx&branch=main 304 in 1202ms
+Error connecting relay  wss://nostr.fmt.wiz.biz
+Error connecting relay  wss://relay.nostr.info
+Error connecting relay  wss://relay.nostr.band
+Error connecting relay  wss://git-02.uid.ovh
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FErrorBoundary.tsx&branch=main 304 in 626ms
+wss://nostrue.com reconnecting after 54s
+Error connecting relay  wss://nostrue.com
+ ✓ Compiled in 3.3s (2717 modules)
+ ✓ Compiled in 4ms (1501 modules)
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FHashtagFeed.tsx&branch=main 304 in 2164ms
+ ✓ Compiled in 1ms (1501 modules)
+ ✓ Compiled in 1ms (1501 modules)
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FHeader.tsx&branch=main 304 in 1189ms
+ ✓ Compiled in 0ms (1501 modules)
+[Metadata] ===== generateMetadata for [entity] CALLED =====
+[Metadata] ===== generateMetadata for [entity]/[repo] CALLED =====
+[Metadata] Entity: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8
+[Metadata] Generating metadata for: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8 pathos
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+[Metadata] Owner display name: chad
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+[Metadata] User metadata fetched: yes
+[Metadata] Using user picture from metadata: https://media.ditto.pub/4e8489e648325c36dd09b1ced7
+[Metadata] Final metadata: {
+  title: 'chad',
+  description: 'Boo.',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced7'
+}
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+Error connecting relay  wss://relay.azzamo.net
+Error connecting relay  wss://relay.damus.io
+[Metadata] Using owner profile picture: https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba21
+[Metadata] Final metadata: {
+  title: 'chad/pathos',
+  description: 'Repository chad/pathos on gittr - Decentralized Gi',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba211f4d716eefd567a070a475611647.png'
+}
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 3560ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNostrProvider.tsx&branch=main 304 in 1867ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNostrSync.tsx&branch=main 304 in 118ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNoteContent.test.tsx&branch=main 304 in 113ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNoteContent.tsx&branch=main 304 in 126ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FRelayListManager.tsx&branch=main 304 in 106ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FScrollToTop.tsx&branch=main 304 in 107ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FSubmissionCard.tsx&branch=main 304 in 102ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FSubmissionGrid.tsx&branch=main 304 in 111ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FSubmitPhotoDialog.tsx&branch=main 304 in 119ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Faccordion.tsx&branch=main 304 in 125ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Falert-dialog.tsx&branch=main 304 in 117ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Falert.tsx&branch=main 304 in 108ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Faspect-ratio.tsx&branch=main 304 in 120ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Favatar.tsx&branch=main 304 in 124ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbadge-variants.ts&branch=main 304 in 99ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbadge.tsx&branch=main 304 in 113ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbreadcrumb.tsx&branch=main 304 in 103ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbutton-variants.ts&branch=main 304 in 111ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbutton.tsx&branch=main 304 in 110ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcalendar.tsx&branch=main 304 in 114ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcard.tsx&branch=main 304 in 113ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcarousel.tsx&branch=main 304 in 144ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fchart.tsx&branch=main 304 in 231ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcheckbox.tsx&branch=main 304 in 287ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcollapsible.tsx&branch=main 304 in 160ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcommand.tsx&branch=main 304 in 112ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcontext-menu.tsx&branch=main 304 in 133ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fdialog.tsx&branch=main 304 in 134ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fdrawer.tsx&branch=main 304 in 110ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fdropdown-menu.tsx&branch=main 304 in 130ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fform-utils.ts&branch=main 304 in 117ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fform.tsx&branch=main 304 in 124ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fhover-card.tsx&branch=main 304 in 115ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Finput-otp.tsx&branch=main 304 in 126ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Finput.tsx&branch=main 304 in 143ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Flabel.tsx&branch=main 304 in 117ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fmenubar.tsx&branch=main 304 in 129ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fnavigation-menu-variants.ts&branch=main 304 in 129ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fnavigation-menu.tsx&branch=main 304 in 123ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fpagination.tsx&branch=main 304 in 122ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fpopover.tsx&branch=main 304 in 135ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fprogress.tsx&branch=main 304 in 119ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fradio-group.tsx&branch=main 304 in 107ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fresizable.tsx&branch=main 304 in 120ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fscroll-area.tsx&branch=main 304 in 114ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fselect.tsx&branch=main 304 in 112ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fseparator.tsx&branch=main 304 in 126ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fsheet.tsx&branch=main 304 in 113ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fsidebar-utils.ts&branch=main 304 in 130ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fsidebar.tsx&branch=main 304 in 131ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fskeleton.tsx&branch=main 304 in 110ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fslider.tsx&branch=main 304 in 137ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fswitch.tsx&branch=main 304 in 125ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftable.tsx&branch=main 304 in 131ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftabs.tsx&branch=main 304 in 141ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftextarea.tsx&branch=main 304 in 154ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoast.tsx&branch=main 304 in 121ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoaster.tsx&branch=main 304 in 127ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoggle-group.tsx&branch=main 304 in 159ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoggle-variants.ts&branch=main 304 in 175ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoggle.tsx&branch=main 304 in 159ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftooltip.tsx&branch=main 304 in 127ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FWalletModal.tsx&branch=main 304 in 122ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FZapButton.tsx&branch=main 304 in 140ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FZapDialog.tsx&branch=main 304 in 135ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcontexts%2FAppContext.ts&branch=main 304 in 151ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcontexts%2FNWCContext.tsx&branch=main 304 in 238ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseAppContext.ts&branch=main 304 in 279ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseAuthor.ts&branch=main 304 in 163ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseChallenges.ts&branch=main 304 in 157ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseComments.ts&branch=main 304 in 128ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseCreateChallenge.ts&branch=main 304 in 132ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseCurrentUser.ts&branch=main 304 in 133ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseDeleteChallenge.ts&branch=main 304 in 113ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseIsMobile.tsx&branch=main 304 in 120ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseLocalStorage.ts&branch=main 304 in 129ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseLoggedInAccounts.ts&branch=main 304 in 132ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseLoginActions.ts&branch=main 304 in 105ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNostr.ts&branch=main 304 in 121ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNostrPublish.ts&branch=main 304 in 124ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNWC.ts&branch=main 304 in 120ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNWCContext.ts&branch=main 304 in 129ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FusePostComment.ts&branch=main 304 in 115ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseSubmissions.ts&branch=main 304 in 131ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseTheme.ts&branch=main 304 in 119ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseToast.ts&branch=main 304 in 128ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseUploadFile.ts&branch=main 304 in 125ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseWallet.ts&branch=main 304 in 128ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseZaps.ts&branch=main 304 in 131ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2FgenUserName.test.ts&branch=main 304 in 125ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2FgenUserName.ts&branch=main 304 in 127ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2Fpolyfills.ts&branch=main 304 in 127ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2Ftypes.ts&branch=main 304 in 168ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2Futils.ts&branch=main 304 in 140ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fmain.tsx&branch=main 304 in 139ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FChallengePage.tsx&branch=main 304 in 136ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FIndex.tsx&branch=main 304 in 111ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FNIP19Page.tsx&branch=main 304 in 159ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FNotFound.tsx&branch=main 304 in 138ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Ftest%2FErrorBoundary.test.tsx&branch=main 304 in 139ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Ftest%2Fsetup.ts&branch=main 304 in 145ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Ftest%2FTestApp.tsx&branch=main 304 in 136ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fvite-env.d.ts&branch=main 304 in 216ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=tailwind.config.ts&branch=main 304 in 229ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=vite.config.ts&branch=main 304 in 126ms
+wss://relay.current.fyi reconnecting after 1458s
+wss://relay.nostrich.land reconnecting after 1458s
+wss://relay.nostrgraph.net reconnecting after 1458s
+Error connecting relay  wss://relay.current.fyi
+wss://relay.nostr.bg reconnecting after 1458s
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.nostrgraph.net
+Error connecting relay  wss://relay.nostr.bg
+wss://nostr-relay.wlvs.space reconnecting after 1458s
+Error connecting relay  wss://nostr-relay.wlvs.space
+wss://relay.nostr.info reconnecting after 1458s
+Error connecting relay  wss://relay.nostr.info
+wss://git-02.uid.ovh reconnecting after 1458s
+Error connecting relay  wss://git-02.uid.ovh
+wss://nostr.fmt.wiz.biz reconnecting after 1458s
+Error connecting relay  wss://nostr.fmt.wiz.biz
+wss://nostrue.com reconnecting after 1458s
+Error connecting relay  wss://nostrue.com
+wss://relay.nostrich.land reconnecting after 162s
+wss://relay.current.fyi reconnecting after 162s
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+wss://nostr-relay.wlvs.space reconnecting after 162s
+wss://relay.nostr.bg reconnecting after 162s
+Error connecting relay  wss://nostr-relay.wlvs.space
+Error connecting relay  wss://relay.nostr.bg
+wss://relay.nostrgraph.net reconnecting after 162s
+Error connecting relay  wss://relay.nostrgraph.net
+wss://nostr.fmt.wiz.biz reconnecting after 162s
+wss://relay.nostr.info reconnecting after 162s
+wss://relay.nostr.band reconnecting after 162s
+Error connecting relay  wss://relay.nostr.info
+wss://git-02.uid.ovh reconnecting after 162s
+Error connecting relay  wss://nostr.fmt.wiz.biz
+Error connecting relay  wss://git-02.uid.ovh
+wss://nostrue.com reconnecting after 162s
+Error connecting relay  wss://nostrue.com
+Error connecting relay  wss://relay.nostr.band
+wss://relay.nostrich.land reconnecting after 1458s
+wss://relay.current.fyi reconnecting after 1458s
+Error connecting relay  wss://relay.nostrich.land
+wss://relay.nostr.bg reconnecting after 1458s
+wss://relay.nostrgraph.net reconnecting after 1458s
+wss://nostr-relay.wlvs.space reconnecting after 1458s
+Error connecting relay  wss://relay.current.fyi
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://nostr-relay.wlvs.space
+Error connecting relay  wss://relay.nostrgraph.net
+wss://relay.nostr.info reconnecting after 1458s
+Error connecting relay  wss://relay.nostr.info
+wss://nostr.fmt.wiz.biz reconnecting after 1458s
+Error connecting relay  wss://nostr.fmt.wiz.biz
+wss://git-02.uid.ovh reconnecting after 1458s
+Error connecting relay  wss://git-02.uid.ovh
+wss://nostrue.com reconnecting after 1458s
+Error connecting relay  wss://nostrue.com
+ ✓ Compiled in 3.7s (2715 modules)
+[Metadata] ===== generateMetadata for [entity] CALLED =====
+[Metadata] ===== generateMetadata for [entity]/[repo] CALLED =====
+[Metadata] Entity: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8
+[Metadata] Generating metadata for: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8 pathos
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+[Metadata] User metadata fetched: yes
+[Metadata] Using user picture from metadata: https://media.ditto.pub/4e8489e648325c36dd09b1ced7
+[Metadata] Final metadata: {
+  title: 'chad',
+  description: 'Boo.',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced7'
+}
+Error connecting relay  wss://relay.damus.io
+[Metadata] Owner display name: chad
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+Error connecting relay  wss://relay.azzamo.net
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+[Metadata] Using owner profile picture: https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba21
+[Metadata] Final metadata: {
+  title: 'chad/pathos',
+  description: 'Repository chad/pathos on gittr - Decentralized Gi',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba211f4d716eefd567a070a475611647.png'
+}
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 1203ms
+ ✓ Compiled in 1737ms (2715 modules)
+[Metadata] ===== generateMetadata for [entity] CALLED =====
+[Metadata] ===== generateMetadata for [entity]/[repo] CALLED =====
+[Metadata] Entity: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8
+[Metadata] Generating metadata for: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8 pathos
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+[Metadata] Owner display name: chad
+Error connecting relay  wss://relay.damus.io
+[Metadata] User metadata fetched: yes
+[Metadata] Using user picture from metadata: https://media.ditto.pub/4e8489e648325c36dd09b1ced7
+[Metadata] Final metadata: {
+  title: 'chad',
+  description: 'Boo.',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced7'
+}
+Error connecting relay  wss://relay.damus.io
+[Metadata] Using owner profile picture: https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba21
+Error connecting relay  wss://relay.damus.io
+[Metadata] Final metadata: {
+  title: 'chad/pathos',
+  description: 'Repository chad/pathos on gittr - Decentralized Gi',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba211f4d716eefd567a070a475611647.png'
+}
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 1460ms
+wss://relay.nostr.band reconnecting after 1458s
+wss://relay.nostr.band reconnecting after 1458s
+ ✓ Compiled /api/nostr/repo/files in 3.6s (2686 modules)
+ ✓ Compiled in 1ms (1499 modules)
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+🔍 Checking repository path: /home/homie/git-nostr-repositories/86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47/pathos.git
+🔍 Repository directory exists: true
+🔍 Owner directory exists: true
+✅ Repository found, checking if it has commits...
+✅ Repository has branches: 1
+🔍 Fetching file tree for branch: main
+✅ Git ls-tree succeeded, parsing files...
+[Metadata] ===== generateMetadata for [entity] CALLED =====
+[Metadata] ===== generateMetadata for [entity]/[repo] CALLED =====
+[Metadata] Entity: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8
+[Metadata] Generating metadata for: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8 pathos
+[Metadata] User metadata fetched: yes
+[Metadata] Using user picture from metadata: https://media.ditto.pub/4e8489e648325c36dd09b1ced7
+[Metadata] Final metadata: {
+  title: 'chad',
+  description: 'Boo.',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced7'
+}
+[Metadata] Owner display name: chad
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.azzamo.net
+[Metadata] Using owner profile picture: https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba21
+[Metadata] Final metadata: {
+  title: 'chad/pathos',
+  description: 'Repository chad/pathos on gittr - Decentralized Gi',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba211f4d716eefd567a070a475611647.png'
+}
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 4410ms
+ GET /api/nostr/repo/files?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&branch=main&includeSizes=1 304 in 20879ms
+ ✓ Compiled /api/nostr/repo/file-content in 4.9s (2715 modules)
+ ✓ Compiled in 1ms (1501 modules)
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Findex.js&branch=main 304 in 1632ms
+[Metadata] ===== generateMetadata for [entity] CALLED =====
+[Metadata] ===== generateMetadata for [entity]/[repo] CALLED =====
+[Metadata] Entity: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8
+[Metadata] Generating metadata for: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8 pathos
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Fno-inline-script.js&branch=main 304 in 138ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+Error connecting relay  wss://relay.damus.io
+[Metadata] User metadata fetched: yes
+[Metadata] Using user picture from metadata: https://media.ditto.pub/4e8489e648325c36dd09b1ced7
+[Metadata] Final metadata: {
+  title: 'chad',
+  description: 'Boo.',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced7'
+}
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Fno-placeholder-comments.js&branch=main 304 in 188ms
+[Metadata] Owner display name: chad
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint-rules%2Frequire-webmanifest.js&branch=main 304 in 131ms
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+Error connecting relay  wss://relay.azzamo.net
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=eslint.config.js&branch=main 304 in 133ms
+Error connecting relay  wss://relay.damus.io
+[Metadata] Using owner profile picture: https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba21
+[Metadata] Final metadata: {
+  title: 'chad/pathos',
+  description: 'Repository chad/pathos on gittr - Decentralized Gi',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba211f4d716eefd567a070a475611647.png'
+}
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 2407ms
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=postcss.config.js&branch=main 304 in 115ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2FApp.test.tsx&branch=main 304 in 122ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2FApp.tsx&branch=main 304 in 109ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2FAppRouter.tsx&branch=main 304 in 134ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FAppProvider.tsx&branch=main 304 in 159ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FAccountSwitcher.tsx&branch=main 304 in 132ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FLoginArea.tsx&branch=main 304 in 112ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FLoginDialog.tsx&branch=main 304 in 109ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fauth%2FSignupDialog.tsx&branch=main 304 in 123ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FChallengeCard.tsx&branch=main 304 in 202ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FChallengeList.tsx&branch=main 304 in 261ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fcomments%2FComment.tsx&branch=main 304 in 293ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fcomments%2FCommentForm.tsx&branch=main 304 in 144ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fcomments%2FCommentsSection.tsx&branch=main 304 in 186ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FCreateChallengeDialog.tsx&branch=main 304 in 146ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FEditProfileForm.tsx&branch=main 304 in 154ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FErrorBoundary.tsx&branch=main 304 in 106ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FHashtagFeed.tsx&branch=main 304 in 110ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FHeader.tsx&branch=main 304 in 119ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNostrProvider.tsx&branch=main 304 in 116ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNostrSync.tsx&branch=main 304 in 121ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNoteContent.test.tsx&branch=main 304 in 114ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FNoteContent.tsx&branch=main 304 in 117ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FRelayListManager.tsx&branch=main 304 in 114ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FScrollToTop.tsx&branch=main 304 in 148ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FSubmissionCard.tsx&branch=main 304 in 114ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FSubmissionGrid.tsx&branch=main 304 in 120ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FSubmitPhotoDialog.tsx&branch=main 304 in 101ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Faccordion.tsx&branch=main 304 in 120ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Falert-dialog.tsx&branch=main 304 in 105ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Falert.tsx&branch=main 304 in 123ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Faspect-ratio.tsx&branch=main 304 in 103ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Favatar.tsx&branch=main 304 in 112ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbadge-variants.ts&branch=main 304 in 109ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbadge.tsx&branch=main 304 in 110ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbreadcrumb.tsx&branch=main 304 in 118ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbutton-variants.ts&branch=main 304 in 99ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fbutton.tsx&branch=main 304 in 135ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcalendar.tsx&branch=main 304 in 142ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcard.tsx&branch=main 304 in 125ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcarousel.tsx&branch=main 304 in 112ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fchart.tsx&branch=main 304 in 106ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcheckbox.tsx&branch=main 304 in 129ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcollapsible.tsx&branch=main 304 in 220ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcommand.tsx&branch=main 304 in 126ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fcontext-menu.tsx&branch=main 304 in 100ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fdialog.tsx&branch=main 304 in 150ms
+ ✓ Compiled in 1508ms (2717 modules)
+ ✓ Compiled in 0ms (1501 modules)
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fdrawer.tsx&branch=main 304 in 900ms
+ ✓ Compiled in 0ms (1501 modules)
+ ✓ Compiled in 0ms (1501 modules)
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fdropdown-menu.tsx&branch=main 304 in 892ms
+ ✓ Compiled in 1ms (1501 modules)
+[Metadata] ===== generateMetadata for [entity] CALLED =====
+[Metadata] ===== generateMetadata for [entity]/[repo] CALLED =====
+[Metadata] Entity: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8
+[Metadata] Generating metadata for: npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8 pathos
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.noderunners.network
+[Metadata] User metadata fetched: yes
+[Metadata] Using user picture from metadata: https://media.ditto.pub/4e8489e648325c36dd09b1ced7
+[Metadata] Final metadata: {
+  title: 'chad',
+  description: 'Boo.',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced7'
+}
+Error connecting relay  wss://relay.damus.io
+[Metadata] Owner display name: chad
+Error connecting relay  wss://relay.damus.io
+Error connecting relay  wss://relay.damus.io
+[Metadata] Using owner profile picture: https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba21
+[Metadata] Final metadata: {
+  title: 'chad/pathos',
+  description: 'Repository chad/pathos on gittr - Decentralized Gi',
+  iconUrl: 'https://media.ditto.pub/4e8489e648325c36dd09b1ced74f1c49ba211f4d716eefd567a070a475611647.png'
+}
+ GET /npub1scvyzz02ayma34hesz62pdrd5nhsmxp74hjq8msmfs9khh3r3drsnw68d8/pathos/dependencies 200 in 3699ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fform-utils.ts&branch=main 304 in 2729ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fform.tsx&branch=main 304 in 227ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fhover-card.tsx&branch=main 304 in 234ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Finput-otp.tsx&branch=main 304 in 182ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Finput.tsx&branch=main 304 in 178ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Flabel.tsx&branch=main 304 in 189ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fmenubar.tsx&branch=main 304 in 217ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fnavigation-menu-variants.ts&branch=main 304 in 416ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fnavigation-menu.tsx&branch=main 304 in 358ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fpagination.tsx&branch=main 304 in 291ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fpopover.tsx&branch=main 304 in 193ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fprogress.tsx&branch=main 304 in 261ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fradio-group.tsx&branch=main 304 in 220ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fresizable.tsx&branch=main 304 in 202ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fscroll-area.tsx&branch=main 304 in 277ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fselect.tsx&branch=main 304 in 336ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fseparator.tsx&branch=main 304 in 331ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fsheet.tsx&branch=main 304 in 393ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fsidebar-utils.ts&branch=main 304 in 201ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fsidebar.tsx&branch=main 304 in 240ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fskeleton.tsx&branch=main 304 in 217ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fslider.tsx&branch=main 304 in 218ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Fswitch.tsx&branch=main 304 in 183ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftable.tsx&branch=main 304 in 172ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftabs.tsx&branch=main 304 in 156ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftextarea.tsx&branch=main 304 in 175ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoast.tsx&branch=main 304 in 151ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoaster.tsx&branch=main 304 in 161ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoggle-group.tsx&branch=main 304 in 183ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoggle-variants.ts&branch=main 304 in 160ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftoggle.tsx&branch=main 304 in 159ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2Fui%2Ftooltip.tsx&branch=main 304 in 156ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FWalletModal.tsx&branch=main 304 in 176ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FZapButton.tsx&branch=main 304 in 149ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcomponents%2FZapDialog.tsx&branch=main 304 in 170ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcontexts%2FAppContext.ts&branch=main 304 in 160ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fcontexts%2FNWCContext.tsx&branch=main 304 in 183ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseAppContext.ts&branch=main 304 in 164ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseAuthor.ts&branch=main 304 in 167ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseChallenges.ts&branch=main 304 in 152ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseComments.ts&branch=main 304 in 140ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseCreateChallenge.ts&branch=main 304 in 202ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseCurrentUser.ts&branch=main 304 in 245ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseDeleteChallenge.ts&branch=main 304 in 155ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseIsMobile.tsx&branch=main 304 in 154ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseLocalStorage.ts&branch=main 304 in 141ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseLoggedInAccounts.ts&branch=main 304 in 177ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseLoginActions.ts&branch=main 304 in 154ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNostr.ts&branch=main 304 in 160ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNostrPublish.ts&branch=main 304 in 178ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNWC.ts&branch=main 304 in 220ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseNWCContext.ts&branch=main 304 in 160ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FusePostComment.ts&branch=main 304 in 168ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseSubmissions.ts&branch=main 304 in 157ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseTheme.ts&branch=main 304 in 159ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseToast.ts&branch=main 304 in 153ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseUploadFile.ts&branch=main 304 in 411ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseWallet.ts&branch=main 304 in 183ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fhooks%2FuseZaps.ts&branch=main 304 in 145ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2FgenUserName.test.ts&branch=main 304 in 141ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2FgenUserName.ts&branch=main 304 in 140ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2Fpolyfills.ts&branch=main 304 in 154ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2Ftypes.ts&branch=main 304 in 140ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Flib%2Futils.ts&branch=main 304 in 172ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fmain.tsx&branch=main 304 in 150ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FChallengePage.tsx&branch=main 304 in 157ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FIndex.tsx&branch=main 304 in 149ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FNIP19Page.tsx&branch=main 304 in 176ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fpages%2FNotFound.tsx&branch=main 304 in 175ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Ftest%2FErrorBoundary.test.tsx&branch=main 304 in 151ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Ftest%2Fsetup.ts&branch=main 304 in 116ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Ftest%2FTestApp.tsx&branch=main 304 in 122ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=src%2Fvite-env.d.ts&branch=main 304 in 150ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=tailwind.config.ts&branch=main 304 in 124ms
+📁 Using repositoryDir from config: /home/homie/git-nostr-repositories
+ GET /api/nostr/repo/file-content?ownerPubkey=86184109eae937d8d6f980b4a0b46da4ef0d983eade403ee1b4c0b6bde238b47&repo=pathos&path=vite.config.ts&branch=main 304 in 130ms
+wss://relay.nostrich.land reconnecting after 486s
+wss://relay.current.fyi reconnecting after 486s
+Error connecting relay  wss://relay.nostrich.land
+Error connecting relay  wss://relay.current.fyi
+wss://nostr-relay.wlvs.space reconnecting after 486s
+wss://relay.nostr.bg reconnecting after 486s
+Error connecting relay  wss://relay.nostr.bg
+Error connecting relay  wss://nostr-relay.wlvs.space
+wss://relay.nostrgraph.net reconnecting after 486s
+Error connecting relay  wss://relay.nostrgraph.net
+wss://relay.nostr.info reconnecting after 486s
+wss://nostr.fmt.wiz.biz reconnecting after 486s
+Error connecting relay  wss://relay.nostr.info
+wss://git-02.uid.ovh reconnecting after 486s
+Error connecting relay  wss://nostr.fmt.wiz.biz
+Error connecting relay  wss://git-02.uid.ovh
+wss://nostrue.com reconnecting after 486s
+Error connecting relay  wss://nostrue.com
+wss://relay.nostr.band reconnecting after 486s

@@ -9,6 +9,21 @@ import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
+const filesCache = new Map<
+  string,
+  { timestamp: number; payload: { files: any[]; branch: string } }
+>();
+const CACHE_TTL_MS = 30_000;
+
+const shouldIncludeSizes = (raw: string | string[] | undefined) => {
+  if (raw === undefined) {
+    return true;
+  }
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (!value) return false;
+  return !["0", "false", "no"].includes(value.toLowerCase());
+};
+
 /**
  * Resolves an entity (npub, NIP-05, or hex pubkey) to a full 64-char hex pubkey
  * This allows bridge API endpoints to accept NIP-05 format (e.g., geek@primal.net)
@@ -106,6 +121,7 @@ export default async function handler(
     ownerPubkey: ownerPubkeyInput,
     repo: repoName,
     branch = "main",
+    includeSizes: includeSizesRaw,
   } = req.query;
 
   // Validate inputs
@@ -135,6 +151,7 @@ export default async function handler(
   }
 
   const ownerPubkey = resolved.pubkey;
+  const includeSizes = shouldIncludeSizes(includeSizesRaw);
 
   // Get repository directory from environment or git-nostr-bridge config file
   // Priority: env vars > config file > defaults
@@ -233,17 +250,28 @@ export default async function handler(
       // Continue anyway - might still have files
     }
 
+    const branchStr: string = Array.isArray(branch)
+      ? branch[0] || "main"
+      : typeof branch === "string"
+      ? branch
+      : "main";
+    const cacheKey = `${repoPath}:${branchStr}:sizes=${includeSizes}`;
+    const cached = filesCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return res.status(200).json(cached.payload);
+    }
+
     // Use git ls-tree to get file tree (respects deletions - only shows current files)
     // This gets the actual files in the repository, not from Nostr events
     console.log(`🔍 Fetching file tree for branch: ${branch}`);
     let stdout: string, stderr: string;
     let branchNotFound = false;
-    let actualBranch = branch; // Track which branch was actually used
+    let actualBranch = branchStr; // Track which branch was actually used
 
     try {
       // CRITICAL: Explicitly set UTF-8 encoding for git ls-tree to handle non-ASCII filenames (Cyrillic, Chinese, etc.)
       const result = await execAsync(
-        `git --git-dir="${repoPath}" ls-tree -r --name-only ${branch}`,
+        `git --git-dir="${repoPath}" ls-tree -r --name-only ${branchStr}`,
         { timeout: 10000, encoding: "utf8" } // CRITICAL: UTF-8 encoding for international filenames
       );
       stdout = result.stdout;
@@ -286,9 +314,9 @@ export default async function handler(
 
       // Try common branch names: main, master
       const fallbackBranches =
-        branch === "main"
+        branchStr === "main"
           ? ["master"]
-          : branch === "master"
+          : branchStr === "master"
           ? ["main"]
           : ["main", "master"];
 
@@ -322,6 +350,10 @@ export default async function handler(
               const parts = filePath.split("/");
               for (let i = 1; i < parts.length; i++) {
                 dirs.add(parts.slice(0, i).join("/"));
+              }
+              if (!includeSizes) {
+                files.push({ type: "file", path: filePath });
+                continue;
               }
 
               // Get file size
@@ -360,7 +392,9 @@ export default async function handler(
               return a.path.localeCompare(b.path);
             });
 
-            return res.status(200).json({ files, branch: fallbackBranch });
+            const payload = { files, branch: fallbackBranch };
+            filesCache.set(cacheKey, { timestamp: Date.now(), payload });
+            return res.status(200).json(payload);
           }
         } catch (fallbackError: any) {
           console.warn(
@@ -398,16 +432,15 @@ export default async function handler(
       for (let i = 1; i < parts.length; i++) {
         dirs.add(parts.slice(0, i).join("/"));
       }
+      if (!includeSizes) {
+        files.push({ type: "file", path: filePath });
+        continue;
+      }
 
       // Get file size using git cat-file
       // CRITICAL: Properly escape file path for git command to handle UTF-8 and special characters
       try {
         const escapedFilePath = filePath.replace(/"/g, '\\"');
-        const branchStr: string = Array.isArray(branch)
-          ? branch[0] || "main"
-          : typeof branch === "string"
-          ? branch
-          : "main";
         const escapedBranch = branchStr.replace(/"/g, '\\"');
         const { stdout: sizeOutput } = await execAsync(
           `git --git-dir="${repoPath}" cat-file -s "${escapedBranch}:${escapedFilePath}"`,
@@ -439,7 +472,9 @@ export default async function handler(
     });
 
     // CRITICAL: Always return the branch used (may be different from requested branch due to fallback)
-    return res.status(200).json({ files, branch: actualBranch || branch });
+    const payload = { files, branch: actualBranch || branchStr };
+    filesCache.set(cacheKey, { timestamp: Date.now(), payload });
+    return res.status(200).json(payload);
   } catch (error: any) {
     console.error("Error fetching repository files:", error);
 

@@ -160,6 +160,10 @@ export interface CommentEvent {
   issueId?: string;
   prId?: string;
   patchId?: string; // Patch event ID (for NIP-22 comments on patches)
+  rootKind?: number; // NIP-22 root kind (stringified in tags)
+  rootPubkey?: string; // NIP-22 root author pubkey (P tag)
+  parentKind?: number; // NIP-22 parent kind (stringified in tags)
+  parentPubkey?: string; // NIP-22 parent author pubkey (p tag)
   content: string;
 }
 
@@ -947,43 +951,56 @@ export function createCommentEvent(
     tags.push(["repo", comment.repoEntity, comment.repoName]);
   }
 
-  // NIP-22 threading: Uses uppercase E and P tags
-  // - E: Event ID (root or reply)
-  // - P: Pubkey (author of root event or reply target)
-  // - Lowercase e/p tags are deprecated in NIP-22
-  if (comment.issueId) {
-    // Issue is the root - use uppercase E tag per NIP-22
-    tags.push(["E", comment.issueId]);
+  // NIP-22 threading:
+  // - Root scope uses uppercase tags (E/K/P)
+  // - Parent scope uses lowercase tags (e/k/p)
+  // - Comments MUST include K/k tags for root/parent kinds when known
+  const rootEventId =
+    comment.issueId || comment.prId || comment.patchId || comment.replyTo;
+  const rootKind =
+    comment.rootKind ??
+    (comment.issueId
+      ? KIND_ISSUE
+      : comment.prId
+      ? KIND_PULL_REQUEST
+      : comment.patchId
+      ? KIND_PATCH
+      : undefined);
 
-    // If replyTo is set and different from issueId, it's a reply to a comment
-    if (comment.replyTo && comment.replyTo !== comment.issueId) {
-      // Reply to comment - add reply event ID
-      tags.push(["E", comment.replyTo]);
+  if (rootEventId) {
+    tags.push(["E", rootEventId]);
+    if (rootKind !== undefined) {
+      tags.push(["K", String(rootKind)]);
     }
-    // Note: For direct replies to issue, we only need the root E tag
-  } else if (comment.prId) {
-    // PR is the root - use uppercase E tag per NIP-22
-    tags.push(["E", comment.prId]);
+    if (comment.rootPubkey && /^[0-9a-f]{64}$/i.test(comment.rootPubkey)) {
+      tags.push(["P", comment.rootPubkey]);
+    }
+  }
 
-    // If replyTo is set and different from prId, it's a reply to a comment
-    if (comment.replyTo && comment.replyTo !== comment.prId) {
-      // Reply to comment - add reply event ID
-      tags.push(["E", comment.replyTo]);
-    }
-    // Note: For direct replies to PR, we only need the root E tag
-  } else if (comment.patchId) {
-    // Patch is the root - use uppercase E tag per NIP-22
-    tags.push(["E", comment.patchId]);
+  const parentEventId =
+    comment.replyTo && rootEventId && comment.replyTo !== rootEventId
+      ? comment.replyTo
+      : rootEventId || comment.replyTo;
+  const parentKind =
+    comment.parentKind ??
+    (comment.replyTo && rootEventId && comment.replyTo !== rootEventId
+      ? KIND_COMMENT
+      : rootKind);
+  const parentPubkey =
+    comment.parentPubkey && /^[0-9a-f]{64}$/i.test(comment.parentPubkey)
+      ? comment.parentPubkey
+      : comment.replyTo && rootEventId && comment.replyTo !== rootEventId
+      ? undefined
+      : comment.rootPubkey;
 
-    // If replyTo is set and different from patchId, it's a reply to a comment
-    if (comment.replyTo && comment.replyTo !== comment.patchId) {
-      // Reply to comment - add reply event ID
-      tags.push(["E", comment.replyTo]);
+  if (parentEventId) {
+    tags.push(["e", parentEventId]);
+    if (parentKind !== undefined) {
+      tags.push(["k", String(parentKind)]);
     }
-    // Note: For direct replies to patch, we only need the root E tag
-  } else if (comment.replyTo) {
-    // Fallback: if only replyTo is set, treat as root
-    tags.push(["E", comment.replyTo]);
+    if (parentPubkey && /^[0-9a-f]{64}$/i.test(parentPubkey)) {
+      tags.push(["p", parentPubkey]);
+    }
   }
 
   const event = {

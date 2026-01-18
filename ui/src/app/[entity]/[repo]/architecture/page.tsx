@@ -491,7 +491,7 @@ export default function ArchitecturePage({
           ownerPubkey
         )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
           branch
-        )}`
+        )}&includeSizes=1`
       );
       if (response.ok) {
         const data = await response.json();

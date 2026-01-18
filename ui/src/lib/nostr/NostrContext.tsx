@@ -79,10 +79,13 @@ const getRelays = (): string[] => {
     }
   }
 
+  // In dev, avoid default relays unless explicitly configured to reduce noise/lag
+  if (process.env.NODE_ENV === "development") {
+    return [];
+  }
+
   // Minimal fallback - should not be used in production (configure via .env.local)
-  return [
-    "wss://relay.damus.io", // Minimal fallback for development only
-  ];
+  return ["wss://relay.damus.io"];
 };
 
 const defaultRelays = getRelays();
