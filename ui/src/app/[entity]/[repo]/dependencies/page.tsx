@@ -830,48 +830,66 @@ export default function DependenciesPage({
             d.fx = d.x;
             d.fy = d.y;
             
-            // Highlight affected nodes (blast radius)
+            // Find all dependent nodes (nodes this node connects to)
             const affected = new Set<string>();
-            const visited = new Set<string>();
-            const queue = [d.id];
-            visited.add(d.id);
-            
-            // Find all nodes reachable from this node (dependents)
-            while (queue.length > 0 && affected.size < 100) {
-              const current = queue.shift()!;
-              links.forEach((l: any) => {
-                const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-                const targetId = typeof l.target === "object" ? l.target.id : l.target;
-                if (sourceId === current && !visited.has(targetId)) {
-                  visited.add(targetId);
-                  affected.add(targetId);
-                  queue.push(targetId);
-                }
-              });
-            }
-            
-            // Update visual highlighting
-            node.selectAll(".nc")
-              .attr("opacity", (n: any) => {
-                if (n.id === d.id) return 1;
-                return affected.has(n.id) ? 0.7 : 0.3;
-              })
-              .attr("stroke-width", (n: any) => {
-                if (n.id === d.id) return 3;
-                return affected.has(n.id) ? 2 : 1.5;
-              });
-            
-            link.attr("stroke-opacity", (l: any) => {
+            links.forEach((l: any) => {
               const sourceId = typeof l.source === "object" ? l.source.id : l.source;
               const targetId = typeof l.target === "object" ? l.target.id : l.target;
-              if (sourceId === d.id || targetId === d.id) return 0.9;
-              if (affected.has(sourceId) || affected.has(targetId)) return 0.6;
-              return 0.2;
+              if (sourceId === d.id) {
+                affected.add(targetId);
+              }
+            });
+            
+            // Also find nodes that connect to this node (dependencies)
+            const dependencies = new Set<string>();
+            links.forEach((l: any) => {
+              const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+              const targetId = typeof l.target === "object" ? l.target.id : l.target;
+              if (targetId === d.id) {
+                dependencies.add(sourceId);
+              }
+            });
+            
+            // Combine all related nodes
+            const allRelated = new Set([...affected, ...dependencies]);
+            
+            // Update visual highlighting - highlight all nodes using nodeLayer
+            // Select all node groups, then update their circles
+            nodeLayer.selectAll("g.node").each(function(n: any) {
+              const nodeGroup = d3.select(this);
+              const circle = nodeGroup.select("circle.nc");
+              const isSelected = n.id === d.id;
+              const isRelated = allRelated.has(n.id);
+              
+              circle
+                .attr("opacity", isSelected ? 1 : isRelated ? 0.8 : 0.2)
+                .attr("fill", isSelected ? "#ff5f5f" : isRelated ? "#ff9f43" : getC(n))
+                .attr("stroke-width", isSelected ? 3 : isRelated ? 2.5 : 1.5)
+                .attr("stroke", isSelected ? "#ff5f5f" : isRelated ? "#ff9f43" : (() => {
+                  const c = d3.color(getC(n));
+                  return c ? c.brighter(0.3).toString() : "#fff";
+                })());
+            });
+            
+            // Highlight links connecting to/from this node
+            linkLayer.selectAll("path").each(function(l: any) {
+              const path = d3.select(this);
+              const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+              const targetId = typeof l.target === "object" ? l.target.id : l.target;
+              const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
+              const isConnected = sourceId === d.id || targetId === d.id;
+              const isRelatedLink = allRelated.has(sourceId) && allRelated.has(targetId);
+              
+              path
+                .attr("stroke-opacity", isConnected ? 0.95 : isRelatedLink ? 0.7 : 0.15)
+                .attr("stroke", isConnected ? "#ff5f5f" : isRelatedLink ? "#ff9f43" : (theme === "light" ? "#ccc" : "#333"))
+                .attr("stroke-width", isConnected ? 3 : isRelatedLink ? 2 : Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
             });
           })
           .on("drag", (event, d) => {
             d.fx = event.x;
             d.fy = event.y;
+            // Keep highlighting during drag
           })
           .on("end", (event, d) => {
             if (!event.active && simulation) simulation.alphaTarget(0);
@@ -879,10 +897,25 @@ export default function DependenciesPage({
             d.fy = null;
             
             // Reset highlighting
-            node.selectAll(".nc")
-              .attr("opacity", 1)
-              .attr("stroke-width", 1.5);
-            link.attr("stroke-opacity", 0.4);
+            const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
+            nodeLayer.selectAll("g.node").each(function(n: any) {
+              const nodeGroup = d3.select(this);
+              const circle = nodeGroup.select("circle.nc");
+              const c = d3.color(getC(n));
+              circle
+                .attr("opacity", 1)
+                .attr("fill", getC(n))
+                .attr("stroke-width", 1.5)
+                .attr("stroke", c ? c.brighter(0.3).toString() : "#fff");
+            });
+            
+            linkLayer.selectAll("path").each(function(l: any) {
+              const path = d3.select(this);
+              path
+                .attr("stroke-opacity", 0.4)
+                .attr("stroke", theme === "light" ? "#ccc" : "#333")
+                .attr("stroke-width", Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
+            });
           }) as any
       );
       
