@@ -99,6 +99,10 @@ export default function DependenciesPage({
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"file" | "folder">("file");
   const [showExternal, setShowExternal] = useState(true);
+  const [colorMode, setColorMode] = useState<"folder" | "layer" | "churn">("folder");
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [rightPanelWidth, setRightPanelWidth] = useState(360);
+  const [rightTab, setRightTab] = useState<"details" | "functions" | "connections">("details");
   const [folderGraphData, setFolderGraphData] = useState<GraphData | null>(
     null
   );
@@ -505,9 +509,43 @@ export default function DependenciesPage({
 
       // CodeFlow EXACT: Helper functions for node rendering
       const getR = (d: any) => Math.max(8, Math.min(24, 5 + (d.fnCount || 0) * 0.8));
+      // CodeFlow-style: Color function based on colorMode
       const getC = (d: any) => {
-        // CodeFlow-style: Color by folder
-        return d.color || COLORS[Array.from(folders).indexOf(d.folder) % COLORS.length] || COLORS[0];
+        if (colorMode === 'folder') {
+          // Color by folder/directory
+          return d.color || COLORS[Array.from(folders).indexOf(d.folder) % COLORS.length] || COLORS[0];
+        } else if (colorMode === 'layer') {
+          // Color by architectural layer (heuristic based on folder patterns)
+          const path = d.path || d.id || '';
+          if (path.includes('/ui/') || path.includes('/components/') || path.includes('/pages/')) {
+            return '#4d9fff'; // Blue for UI/Frontend layer
+          } else if (path.includes('/api/') || path.includes('/server/') || path.includes('/backend/')) {
+            return '#00ff9d'; // Green for API/Backend layer
+          } else if (path.includes('/lib/') || path.includes('/utils/') || path.includes('/helpers/')) {
+            return '#a78bfa'; // Purple for Library/Utils layer
+          } else if (path.includes('/db/') || path.includes('/models/') || path.includes('/schema/')) {
+            return '#ff9f43'; // Orange for Data layer
+          } else if (path.includes('/test/') || path.includes('/__tests__/') || path.includes('spec.')) {
+            return '#ec4899'; // Pink for Test layer
+          } else if (path.includes('/config/') || path.includes('/.')) {
+            return '#84cc16'; // Lime for Config layer
+          } else {
+            return '#8b5cf6'; // Default purple
+          }
+        } else if (colorMode === 'churn') {
+          // Color by file churn (change frequency)
+          // For now, use a placeholder heuristic based on file size or depth
+          // In a real implementation, this would use git history data
+          const pathDepth = (d.path || d.id || '').split('/').length;
+          if (pathDepth <= 2) {
+            return '#ff5f5f'; // Red for high-churn (root/shallow files change often)
+          } else if (pathDepth <= 4) {
+            return '#ff9f43'; // Orange for medium-churn
+          } else {
+            return '#4d9fff'; // Blue for low-churn (deep files change less)
+          }
+        }
+        return d.color || COLORS[0];
       };
 
       // Update circle attributes for all nodes (existing + new)
@@ -1347,6 +1385,7 @@ export default function DependenciesPage({
     graphPalette,
     focusedNodeId,
     graphConfig, // Add graphConfig so simulation updates when config changes
+    colorMode, // Add colorMode so graph re-colors when color mode changes
   ]);
 
 
@@ -2314,26 +2353,37 @@ export default function DependenciesPage({
     });
   }, [searchQuery, matchingNodes, highlightedNodeId, graphPalette, activeGraphData]);
 
+  // Calculate stats for sidebar
+  const totalFiles = activeGraphData?.nodes.filter(n => n.data.type === 'file').length || 0;
+  const totalDependencies = activeGraphData?.edges.filter(e => e.data?.type !== 'folder').length || 0;
+  const healthScore = totalFiles > 0 ? Math.min(100, Math.max(0, 100 - (totalDependencies / totalFiles * 10))) : 0;
+
   return (
-    <div className="mt-4 w-screen max-w-none relative left-1/2 right-1/2 -translate-x-1/2 px-3 sm:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-2">
-          <GitBranch className="h-5 w-5 text-purple-500" />
-          <h2 className="text-xl font-semibold">Dependency Graph</h2>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Search Input - CodeFlow style */}
-          <div className="relative flex items-center">
-            <Search className="absolute left-2 h-4 w-4 text-gray-400" />
+    <div className="fixed inset-0 flex bg-[#0f172a] overflow-hidden" style={{ marginTop: 0, paddingTop: 0 }}>
+      {/* Left Sidebar - CodeFlow style */}
+      <div 
+        className="flex-shrink-0 bg-[#1a1f2e] border-r border-[#383B42] flex flex-col overflow-hidden"
+        style={{ width: `${sidebarWidth}px` }}
+      >
+        {/* Sidebar Header */}
+        <div className="p-4 border-b border-[#383B42]">
+          <div className="flex items-center gap-2 mb-4">
+            <GitBranch className="h-5 w-5 text-orange-500" />
+            <h2 className="text-lg font-semibold text-gray-200">Dependencies</h2>
+          </div>
+          
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
             <input
               type="text"
-              placeholder="Search files/folders..."
+              placeholder="Search files..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
                 setHighlightedNodeId(null);
               }}
-              className="pl-8 pr-8 py-1.5 text-sm bg-[#1e293b] border border-[#383B42] rounded-md text-gray-200 placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 w-48"
+              className="w-full pl-9 pr-9 py-2 text-sm bg-[#0f172a] border border-[#383B42] rounded-md text-gray-200 placeholder-gray-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
             />
             {searchQuery && (
               <button
@@ -2341,41 +2391,113 @@ export default function DependenciesPage({
                   setSearchQuery("");
                   setHighlightedNodeId(null);
                 }}
-                className="absolute right-2 text-gray-400 hover:text-gray-200"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
               >
                 <X className="h-4 w-4" />
               </button>
             )}
-            {matchingNodes.size > 0 && (
-              <span className="absolute -right-8 text-xs text-gray-400">
-                {matchingNodes.size}
-              </span>
-            )}
+          </div>
+          {matchingNodes.size > 0 && (
+            <div className="mt-2 text-xs text-gray-500">
+              {matchingNodes.size} match{matchingNodes.size !== 1 ? 'es' : ''}
+            </div>
+          )}
         </div>
-        <Button
-            onClick={() => {
-              // Toggle folder view - if already in folder view, switch to file view (dependencies)
-              setViewMode(viewMode === "folder" ? "file" : "folder");
-            }}
+
+        {/* Health Score */}
+        <div className="p-4 border-b border-[#383B42]">
+          <div className="text-xs text-gray-500 uppercase tracking-wider mb-2">Health Score</div>
+          <div className="flex items-end gap-3">
+            <div className="text-4xl font-bold text-orange-500">{Math.round(healthScore)}</div>
+            <div className="text-sm text-gray-400 mb-1">/ 100</div>
+          </div>
+          <div className="mt-3 h-2 bg-[#0f172a] rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-gradient-to-r from-orange-500 to-orange-400 transition-all duration-500"
+              style={{ width: `${healthScore}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="p-4 border-b border-[#383B42] grid grid-cols-2 gap-3">
+          <div className="bg-[#0f172a] rounded-lg p-3">
+            <div className="text-xs text-gray-500 mb-1">Files</div>
+            <div className="text-2xl font-semibold text-gray-200">{totalFiles}</div>
+          </div>
+          <div className="bg-[#0f172a] rounded-lg p-3">
+            <div className="text-xs text-gray-500 mb-1">Dependencies</div>
+            <div className="text-2xl font-semibold text-gray-200">{totalDependencies}</div>
+          </div>
+        </div>
+
+        {/* Color Mode Selector */}
+        <div className="p-4 border-b border-[#383B42]">
+          <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Color By</div>
+          <div className="space-y-2">
+            {(['folder', 'layer', 'churn'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setColorMode(mode)}
+                className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  colorMode === mode
+                    ? 'bg-orange-500/20 text-orange-400 border border-orange-500/50'
+                    : 'bg-[#0f172a] text-gray-400 border border-transparent hover:bg-[#1e293b] hover:text-gray-300'
+                }`}
+              >
+                {mode.charAt(0).toUpperCase() + mode.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* File Explorer / Status */}
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Status</div>
+          {status && (
+            <div className="text-xs text-gray-400 bg-[#0f172a] rounded-lg p-3 mb-3">
+              {status}
+            </div>
+          )}
+          {error && (
+            <div className="bg-red-900/20 border border-red-500/50 rounded-md p-3 flex items-start gap-2 text-red-400 text-xs">
+              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+          {loading && !activeGraphData && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Center Canvas */}
+      <div className="flex-1 flex flex-col overflow-hidden relative bg-[#0f172a]"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(245,158,11,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(245,158,11,0.08) 1px, transparent 1px)",
+          backgroundSize: "24px 24px",
+        }}
+      >
+        {/* Canvas Toolbar - absolutely positioned on canvas */}
+        <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
+          <Button
+            onClick={() => setViewMode(viewMode === "folder" ? "file" : "folder")}
             disabled={!folderGraphData}
             variant={viewMode === "folder" ? "default" : "outline"}
-          size="sm"
-        >
-            {viewMode === "folder" ? "Folder view" : "Dependencies"}
-          </Button>
-          <Button
-            onClick={() => setViewMode("file")}
-            disabled={!graphData}
-            variant={viewMode === "file" ? "default" : "outline"}
             size="sm"
+            className="bg-[#1a1f2e]/90 backdrop-blur-sm border-[#383B42] hover:bg-[#22262C] hover:border-orange-500/50 text-xs"
           >
-            File dependencies
+            {viewMode === "folder" ? "Folder view" : "File dependencies"}
           </Button>
           <Button
             onClick={() => setShowExternal((prev) => !prev)}
             disabled={!activeGraphData}
             variant={showExternal ? "default" : "outline"}
             size="sm"
+            className="bg-[#1a1f2e]/90 backdrop-blur-sm border-[#383B42] hover:bg-[#22262C] hover:border-orange-500/50 text-xs"
           >
             {showExternal ? "External on" : "External off"}
           </Button>
@@ -2383,138 +2505,119 @@ export default function DependenciesPage({
             onClick={() => setShowGraphConfig(!showGraphConfig)}
             variant={showGraphConfig ? "default" : "outline"}
             size="sm"
+            className="bg-[#1a1f2e]/90 backdrop-blur-sm border-[#383B42] hover:bg-[#22262C] hover:border-orange-500/50 text-xs"
           >
-            <Settings className="h-4 w-4 mr-2" />
+            <Settings className="h-4 w-4 mr-1.5" />
             Config
-        </Button>
+          </Button>
         </div>
-      </div>
 
-      {/* CodeFlow-style Graph Config Panel */}
-      {showGraphConfig && (
-        <div className="mb-4 p-4 bg-[#1e293b] border border-[#383B42] rounded-md">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Layout</h4>
-              <div className="flex flex-wrap gap-2">
-                {(["force", "radial", "hierarchical", "grid", "metro"] as const).map((mode) => (
-                  <Button
-                    key={mode}
-                    onClick={() => setGraphConfig({ ...graphConfig, viewMode: mode })}
-                    variant={graphConfig.viewMode === mode ? "default" : "outline"}
-                    size="sm"
-                    className="text-xs font-mono"
-                  >
-                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Spacing</h4>
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <label className="text-xs text-gray-300 w-16 font-mono">Spread:</label>
-                  <input
-                    type="range"
-                    min="50"
-                    max="500"
-                    step="10"
-                    value={graphConfig.spacing}
-                    onChange={(e) =>
-                      setGraphConfig({ ...graphConfig, spacing: parseInt(e.target.value) })
-                    }
-                    className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
-                  />
-                  <span className="text-xs text-gray-400 w-12 font-mono text-right">{graphConfig.spacing}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <label className="text-xs text-gray-300 w-16 font-mono">Links:</label>
-                  <input
-                    type="range"
-                    min="30"
-                    max="200"
-                    step="5"
-                    value={graphConfig.linkDist}
-                    onChange={(e) =>
-                      setGraphConfig({ ...graphConfig, linkDist: parseInt(e.target.value) })
-                    }
-                    className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
-                  />
-                  <span className="text-xs text-gray-400 w-12 font-mono text-right">{graphConfig.linkDist}</span>
+        {/* Graph Config Panel - absolutely positioned on canvas */}
+        {showGraphConfig && activeGraphData && (
+          <div className="absolute top-16 left-4 z-20 w-96 max-w-[calc(100%-2rem)] bg-[#1a1f2e]/95 backdrop-blur-sm border border-[#383B42] rounded-lg shadow-xl">
+            <div className="p-4 space-y-4">
+              {/* Layout */}
+              <div>
+                <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Layout</h4>
+                <div className="flex flex-wrap gap-2">
+                  {(["force", "radial", "hierarchical", "grid", "metro"] as const).map((mode) => (
+                    <Button
+                      key={mode}
+                      onClick={() => setGraphConfig({ ...graphConfig, viewMode: mode })}
+                      variant={graphConfig.viewMode === mode ? "default" : "outline"}
+                      size="sm"
+                      className="text-xs font-mono bg-[#0f172a] border-[#383B42] hover:bg-[#22262C] hover:border-orange-500/50"
+                    >
+                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    </Button>
+                  ))}
                 </div>
               </div>
-            </div>
-            <div>
-              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Display</h4>
-              <div className="space-y-3">
-                <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-gray-200">
-                  <input
-                    type="checkbox"
-                    checked={graphConfig.showLabels}
-                    onChange={(e) =>
-                      setGraphConfig({ ...graphConfig, showLabels: e.target.checked })
-                    }
-                    className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
-                  />
-                  <span className="font-mono">Show labels</span>
-                </label>
-                <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-gray-200">
-                  <input
-                    type="checkbox"
-                    checked={graphConfig.curvedLinks}
-                    onChange={(e) =>
-                      setGraphConfig({ ...graphConfig, curvedLinks: e.target.checked })
-                    }
-                    className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
-                  />
-                  <span className="font-mono">Curved links</span>
-                </label>
+              
+              {/* Spacing */}
+              <div>
+                <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Spacing</h4>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs text-gray-300 w-16 font-mono">Spread:</label>
+                    <input
+                      type="range"
+                      min="50"
+                      max="500"
+                      step="10"
+                      value={graphConfig.spacing}
+                      onChange={(e) =>
+                        setGraphConfig({ ...graphConfig, spacing: parseInt(e.target.value) })
+                      }
+                      className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
+                    />
+                    <span className="text-xs text-gray-400 w-12 font-mono text-right">{graphConfig.spacing}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs text-gray-300 w-16 font-mono">Links:</label>
+                    <input
+                      type="range"
+                      min="30"
+                      max="200"
+                      step="5"
+                      value={graphConfig.linkDist}
+                      onChange={(e) =>
+                        setGraphConfig({ ...graphConfig, linkDist: parseInt(e.target.value) })
+                      }
+                      className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
+                    />
+                    <span className="text-xs text-gray-400 w-12 font-mono text-right">{graphConfig.linkDist}</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Display */}
+              <div>
+                <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Display</h4>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-gray-200">
+                    <input
+                      type="checkbox"
+                      checked={graphConfig.showLabels}
+                      onChange={(e) =>
+                        setGraphConfig({ ...graphConfig, showLabels: e.target.checked })
+                      }
+                      className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
+                    />
+                    <span className="font-mono text-xs">Show labels</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-gray-200">
+                    <input
+                      type="checkbox"
+                      checked={graphConfig.curvedLinks}
+                      onChange={(e) =>
+                        setGraphConfig({ ...graphConfig, curvedLinks: e.target.checked })
+                      }
+                      className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
+                    />
+                    <span className="font-mono text-xs">Curved links</span>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {status && (
-        <div className="mb-4 p-3 bg-[#22262C] border border-[#383B42] rounded-md text-sm text-gray-400">
-          {status}
-        </div>
-      )}
-
-      {error && (
-        <div className="mb-4 p-4 bg-red-900/20 border border-red-500/50 rounded-md flex items-center gap-2 text-red-400">
-          <AlertCircle className="h-5 w-5" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {loading && !activeGraphData && (
-        <div className="flex items-center justify-center h-96">
-          <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
-        </div>
-      )}
-
-      {activeGraphData && activeGraphData.nodes.length > 0 && (
-        <div
-          className="border border-[#383B42] rounded-md overflow-hidden bg-[#0f172a] relative h-[70vh] min-h-[520px] md:h-[700px]"
-          style={{
-            backgroundImage:
-              "linear-gradient(rgba(139,92,246,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(139,92,246,0.12) 1px, transparent 1px)",
-            backgroundSize: "24px 24px",
-          }}
-        >
+        {/* SVG Canvas */}
+        {activeGraphData && activeGraphData.nodes.length > 0 && (
           <svg
             ref={svgRef}
             className="w-full h-full cursor-grab active:cursor-grabbing"
           />
+        )}
 
-          {/* Zoom Controls */}
-          <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
+        {/* Zoom Controls - absolutely positioned on canvas */}
+        {activeGraphData && activeGraphData.nodes.length > 0 && (
+          <div className="absolute bottom-4 right-4 flex flex-col gap-2 z-20">
             <Button
               variant="outline"
               size="sm"
-              className="bg-[#1e293b] border-[#383B42] hover:bg-[#22262C] hover:border-purple-500/50 h-8 w-8 p-0"
+              className="bg-[#1a1f2e]/90 backdrop-blur-sm border-[#383B42] hover:bg-[#22262C] hover:border-orange-500/50 h-9 w-9 p-0"
               onClick={() => {
                 if (!svgRef.current || !zoomRef.current) return;
                 import("d3").then((d3) => {
@@ -2533,7 +2636,7 @@ export default function DependenciesPage({
             <Button
               variant="outline"
               size="sm"
-              className="bg-[#1e293b] border-[#383B42] hover:bg-[#22262C] hover:border-purple-500/50 h-8 w-8 p-0"
+              className="bg-[#1a1f2e]/90 backdrop-blur-sm border-[#383B42] hover:bg-[#22262C] hover:border-orange-500/50 h-9 w-9 p-0"
               onClick={() => {
                 if (!svgRef.current || !zoomRef.current) return;
                 import("d3").then((d3) => {
@@ -2552,7 +2655,7 @@ export default function DependenciesPage({
             <Button
               variant="outline"
               size="sm"
-              className="bg-[#1e293b] border-[#383B42] hover:bg-[#22262C] hover:border-purple-500/50 h-8 w-8 p-0"
+              className="bg-[#1a1f2e]/90 backdrop-blur-sm border-[#383B42] hover:bg-[#22262C] hover:border-orange-500/50 h-9 w-9 p-0"
               onClick={() => {
                 if (!svgRef.current || !zoomRef.current || !simRef.current) return;
                 import("d3").then((d3) => {
@@ -2590,58 +2693,139 @@ export default function DependenciesPage({
               <Maximize2 className="h-4 w-4" />
             </Button>
           </div>
+        )}
 
-          {activeGraphData.nodes.length > 0 &&
-            activeGraphData.edges.filter((e: any) => e.data.type !== "folder")
-              .length === 0 && (
-              <div className="absolute top-4 left-4 bg-[#1e293b] border border-[#383B42] rounded-md px-3 py-2 text-xs text-gray-400 max-w-xs">
-                <p>
-                  💡 Showing folder structure. No dependencies found between
-                  files.
-                </p>
-                <p className="mt-1 text-gray-500">
-                  Files are connected to their parent folders.
-                </p>
-              </div>
-            )}
-        </div>
-      )}
+        {/* Info Notice - only when no dependencies */}
+        {activeGraphData && activeGraphData.nodes.length > 0 &&
+          activeGraphData.edges.filter((e: any) => e.data?.type !== "folder").length === 0 && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#1a1f2e]/95 backdrop-blur-sm border border-[#383B42] rounded-md px-4 py-2 text-xs text-gray-400 max-w-md z-10">
+              <p>
+                💡 Showing folder structure. No dependencies found between files.
+              </p>
+            </div>
+          )}
 
-      {!loading && !error && filesFetched && dependencies.length === 0 && (
-        <div className="text-center py-12 text-gray-400">
-          <GitBranch className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p>No dependencies found in this repository</p>
-        </div>
-      )}
-
-      {dependencies.length > 0 && (
-        <div className="mt-4">
-          <h3 className="text-sm font-semibold mb-2 text-gray-400">
-            Dependency List ({dependencies.length})
-          </h3>
-          <div className="bg-[#22262C] border border-[#383B42] rounded-md p-4 max-h-64 overflow-y-auto">
-            <ul className="space-y-1 text-sm">
-              {dependencies.slice(0, 50).map((dep, idx) => (
-                <li key={idx} className="text-gray-300">
-                  <span className="text-purple-400">{dep.from}</span>
-                  {" → "}
-                  <span className="text-blue-400">{dep.to}</span>
-                  {dep.line && (
-                    <span className="text-gray-500 ml-2">
-                      (line {dep.line})
-                    </span>
-                  )}
-                </li>
-              ))}
-              {dependencies.length > 50 && (
-                <li className="text-gray-500 italic">
-                  ... and {dependencies.length - 50} more
-                </li>
-              )}
-            </ul>
+        {/* Empty state */}
+        {!loading && !error && filesFetched && !activeGraphData && dependencies.length === 0 && (
+          <div className="flex items-center justify-center h-full text-gray-500">
+            <div className="text-center">
+              <GitBranch className="h-16 w-16 mx-auto mb-4 opacity-30" />
+              <p className="text-sm">No dependencies found in this repository</p>
+            </div>
           </div>
+        )}
+      </div>
+
+      {/* Right Panel - CodeFlow style */}
+      <div 
+        className="flex-shrink-0 bg-[#1a1f2e] border-l border-[#383B42] flex flex-col overflow-hidden"
+        style={{ width: `${rightPanelWidth}px` }}
+      >
+        {/* Tab Header */}
+        <div className="flex border-b border-[#383B42]">
+          {(['details', 'functions', 'connections'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setRightTab(tab)}
+              className={`flex-1 px-4 py-3 text-xs font-medium uppercase tracking-wider transition-colors ${
+                rightTab === tab
+                  ? 'text-orange-400 bg-[#0f172a] border-b-2 border-orange-500'
+                  : 'text-gray-500 hover:text-gray-300 hover:bg-[#1e293b]'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
         </div>
-      )}
+
+        {/* Tab Content */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {rightTab === 'details' && (
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-xs font-semibold text-gray-400 uppercase mb-3 tracking-wider">Graph Info</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Total Files:</span>
+                    <span className="text-gray-200 font-mono">{totalFiles}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Dependencies:</span>
+                    <span className="text-gray-200 font-mono">{totalDependencies}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Avg per File:</span>
+                    <span className="text-gray-200 font-mono">
+                      {totalFiles > 0 ? (totalDependencies / totalFiles).toFixed(1) : '0'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {focusedNodeId && activeGraphData && (
+                <div className="pt-4 border-t border-[#383B42]">
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase mb-3 tracking-wider">Selected Node</h3>
+                  <div className="space-y-2 text-sm">
+                    <div>
+                      <span className="text-gray-500 text-xs">ID:</span>
+                      <p className="text-gray-200 font-mono text-xs mt-1 break-all">{focusedNodeId}</p>
+                    </div>
+                    {blastRadius && (
+                      <div>
+                        <span className="text-gray-500 text-xs">Blast Radius:</span>
+                        <p className="text-orange-400 font-mono text-sm mt-1">{blastRadius.affected.length} files</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {rightTab === 'functions' && (
+            <div className="space-y-4">
+              <div className="text-sm text-gray-500">
+                <p>Function analysis coming soon...</p>
+              </div>
+            </div>
+          )}
+
+          {rightTab === 'connections' && (
+            <div className="space-y-4">
+              {dependencies.length > 0 ? (
+                <>
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    All Dependencies ({dependencies.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {dependencies.slice(0, 100).map((dep, idx) => (
+                      <div key={idx} className="text-xs bg-[#0f172a] rounded p-2">
+                        <div className="text-orange-400 font-mono break-all">{dep.from}</div>
+                        <div className="text-gray-500 my-1">↓</div>
+                        <div className="text-blue-400 font-mono break-all">{dep.to}</div>
+                        {dep.line && (
+                          <div className="text-gray-600 text-[10px] mt-1">
+                            Line {dep.line}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {dependencies.length > 100 && (
+                      <div className="text-xs text-gray-500 italic text-center pt-2">
+                        ... and {dependencies.length - 100} more
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm text-gray-500">
+                  <p>No dependencies found</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
