@@ -111,13 +111,13 @@ export default function DependenciesPage({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   
-  // CodeFlow-style graph configuration
+  // CodeFlow-style graph configuration - defaults match user's preferred settings
   const [graphConfig, setGraphConfig] = useState({
-    viewMode: "force" as "force" | "radial" | "hierarchical" | "grid" | "metro",
-    spacing: 200,
-    linkDist: 70,
+    viewMode: "metro" as "force" | "radial" | "hierarchical" | "grid" | "metro",
+    spacing: 500, // Maximum spread for better visualization
+    linkDist: 195, // High link distance for better spread
     showLabels: true,
-    curvedLinks: false,
+    curvedLinks: true, // Curved links enabled by default
   });
   const graphConfigRef = useRef(graphConfig);
   graphConfigRef.current = graphConfig; // Keep ref in sync
