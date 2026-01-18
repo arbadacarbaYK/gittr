@@ -588,19 +588,97 @@ export default function DependenciesPage({
         if (d.y > height - padding - r) d.y = height - padding - r;
       };
       
+      // Store hubNodes for use in simulation.on("end")
+      let hubNodes: any[] = [];
+      
       if (config.viewMode === "force") {
+        // Hub-based layout: Identify hub nodes (nodes with many outgoing edges)
+        const outDegree = new Map<string, number>();
+        links.forEach((l: any) => {
+          const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+          outDegree.set(sourceId, (outDegree.get(sourceId) || 0) + 1);
+        });
+        
+        // Sort nodes by out-degree to find hubs
+        const sortedNodes = [...nodes].sort((a: any, b: any) => 
+          (outDegree.get(b.id) || 0) - (outDegree.get(a.id) || 0)
+        );
+        
+        // Position hub nodes in a horizontal spine
+        hubNodes = sortedNodes.slice(0, Math.min(20, Math.floor(nodes.length * 0.3))) as any[];
+        const hubSpacing = width / (hubNodes.length + 1);
+        const hubY = height / 2;
+        hubNodes.forEach((hub: any, i: number) => {
+          hub.isHub = true;
+          hub.hubIndex = i;
+          hub.hubX = (i + 1) * hubSpacing;
+          hub.hubY = hubY;
+        });
+        
+        // Position dependent nodes in orbits around their hub parents
+        const dependentsByHub = new Map<string, any[]>();
+        links.forEach((l: any) => {
+          const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+          const targetId = typeof l.target === "object" ? l.target.id : l.target;
+          const hub = hubNodes.find((h: any) => h.id === sourceId);
+          if (hub) {
+            const target = nodes.find((n: any) => n.id === targetId);
+            if (target && !(target as any).isHub) {
+              if (!dependentsByHub.has(hub.id)) {
+                dependentsByHub.set(hub.id, []);
+              }
+              dependentsByHub.get(hub.id)!.push(target);
+            }
+          }
+        });
+        
+        // Calculate orbit positions for dependents
+        dependentsByHub.forEach((deps, hubId) => {
+          const hub = hubNodes.find((h: any) => h.id === hubId);
+          if (!hub) return;
+          
+          const ringBase = 80;
+          const ringStep = 32;
+          let currentRing = 0;
+          let currentAngle = 0;
+          const perRing = 8;
+          
+          deps.forEach((dep: any, i: number) => {
+            if (i > 0 && i % perRing === 0) {
+              currentRing++;
+              currentAngle = 0;
+            }
+            const angle = (currentAngle / perRing) * 2 * Math.PI;
+            const radius = ringBase + currentRing * ringStep;
+            dep.orbitHub = hub.id;
+            dep.orbitAngle = angle;
+            dep.orbitRadius = radius;
+            currentAngle++;
+          });
+        });
+        
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.3))
           .force("charge", d3.forceManyBody().strength(-config.spacing * 1.5).distanceMax(400))
           .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
           .force("x", d3.forceX((d: any) => {
+            if ((d as any).isHub) return (d as any).hubX;
+            if ((d as any).orbitHub) {
+              const hub = hubNodes.find((h: any) => h.id === (d as any).orbitHub);
+              if (hub) return hub.hubX + Math.cos((d as any).orbitAngle) * (d as any).orbitRadius;
+            }
             const center = centers[d.folder];
             return center ? center.x : width / 2;
-          }).strength(0.15))
+          }).strength(0.8))
           .force("y", d3.forceY((d: any) => {
+            if ((d as any).isHub) return (d as any).hubY;
+            if ((d as any).orbitHub) {
+              const hub = hubNodes.find((h: any) => h.id === (d as any).orbitHub);
+              if (hub) return hub.hubY + Math.sin((d as any).orbitAngle) * (d as any).orbitRadius;
+            }
             const center = centers[d.folder];
             return center ? center.y : height / 2;
-          }).strength(0.15))
+          }).strength(0.8))
           .force("boundary", () => {
             nodes.forEach(boundaryForce);
           });
@@ -743,7 +821,7 @@ export default function DependenciesPage({
         .alpha(1) // Full alpha when view mode or config changes - restart simulation
         .restart();
       
-      // Attach drag handlers to all nodes (existing + new) - after simulation is created
+      // Attach drag handlers with highlighting of affected nodes
       node.call(
         d3
           .drag<SVGGElement, any>()
@@ -751,6 +829,45 @@ export default function DependenciesPage({
             if (!event.active && simulation) simulation.alphaTarget(0.1).restart();
             d.fx = d.x;
             d.fy = d.y;
+            
+            // Highlight affected nodes (blast radius)
+            const affected = new Set<string>();
+            const visited = new Set<string>();
+            const queue = [d.id];
+            visited.add(d.id);
+            
+            // Find all nodes reachable from this node (dependents)
+            while (queue.length > 0 && affected.size < 100) {
+              const current = queue.shift()!;
+              links.forEach((l: any) => {
+                const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+                const targetId = typeof l.target === "object" ? l.target.id : l.target;
+                if (sourceId === current && !visited.has(targetId)) {
+                  visited.add(targetId);
+                  affected.add(targetId);
+                  queue.push(targetId);
+                }
+              });
+            }
+            
+            // Update visual highlighting
+            node.selectAll(".nc")
+              .attr("opacity", (n: any) => {
+                if (n.id === d.id) return 1;
+                return affected.has(n.id) ? 0.7 : 0.3;
+              })
+              .attr("stroke-width", (n: any) => {
+                if (n.id === d.id) return 3;
+                return affected.has(n.id) ? 2 : 1.5;
+              });
+            
+            link.attr("stroke-opacity", (l: any) => {
+              const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+              const targetId = typeof l.target === "object" ? l.target.id : l.target;
+              if (sourceId === d.id || targetId === d.id) return 0.9;
+              if (affected.has(sourceId) || affected.has(targetId)) return 0.6;
+              return 0.2;
+            });
           })
           .on("drag", (event, d) => {
             d.fx = event.x;
@@ -760,6 +877,12 @@ export default function DependenciesPage({
             if (!event.active && simulation) simulation.alphaTarget(0);
             d.fx = null;
             d.fy = null;
+            
+            // Reset highlighting
+            node.selectAll(".nc")
+              .attr("opacity", 1)
+              .attr("stroke-width", 1.5);
+            link.attr("stroke-opacity", 0.4);
           }) as any
       );
       
@@ -829,8 +952,10 @@ export default function DependenciesPage({
 
       // CodeFlow-style: Update hulls (folder groupings)
       const updateHulls = () => {
+        // Hide folder hulls in dependency view - only show in folder view
         hullLayer.selectAll("*").remove();
-        folderList.forEach((folder) => {
+        if (viewMode === "folder") {
+          folderList.forEach((folder) => {
           const folderNodes = nodes.filter((n) => n.folder === folder);
           if (folderNodes.length < 1) return;
           const pad = 30;
@@ -875,6 +1000,8 @@ export default function DependenciesPage({
               .text(folder || "root");
           }
         });
+        }
+        // In dependency view, hulls are hidden
       };
 
       selectFileRef.current = (id: string) => {
@@ -969,6 +1096,15 @@ export default function DependenciesPage({
         );
         if (validNodes.length > nodes.length * 0.5) {
           setTimeout(() => fitToView(), 200);
+        }
+        // Prevent graph from collapsing - maintain hub positions (only in force mode)
+        if (config.viewMode === "force" && hubNodes.length > 0) {
+          hubNodes.forEach((hub: any) => {
+            if (hub.x != null && hub.y != null && hub.hubX != null && hub.hubY != null) {
+              hub.fx = hub.hubX;
+              hub.fy = hub.hubY;
+            }
+          });
         }
       });
 
