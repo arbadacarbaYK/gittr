@@ -161,37 +161,37 @@ export default function DependenciesPage({
     } = options || {};
     const allowedNodeIds = new Set<string>();
 
+    // CodeFlow-style: Only show files and packages as nodes (not folders)
+    // Folders are only used for positioning/coloring, not as graph nodes
     const nodes = activeGraphData.nodes.filter((node) => {
-      if (viewMode === "folder") {
-        if (node.data.type === "root") {
-          allowedNodeIds.add(node.data.id);
-          return true;
-        }
-        const size = node.data.size || 1;
-        if (node.data.type === "folder" && size < minSize) {
-          return false;
-        }
-        if (node.data.type === "package" && size < minSize) {
-          return false;
-        }
+      // Always exclude folder and root nodes - they're not part of dependency graph
+      if (node.data.type === "folder" || node.data.type === "root") {
+        return false;
+      }
+      // Only include files and packages
+      if (node.data.type === "file" || node.data.type === "package") {
         allowedNodeIds.add(node.data.id);
         return true;
       }
-      const allowed =
-        showFolders ||
-        (node.data.type !== "folder" && node.data.type !== "root");
-      if (allowed) {
-        allowedNodeIds.add(node.data.id);
-      }
-      return allowed;
+      return false;
     });
 
     const hasDependencyEdges = activeGraphData.edges.some(
       (edge) => edge.data.type !== "folder"
     );
 
+    // CodeFlow-style: Only show dependency edges (actual file-to-file dependencies)
+    // Folder edges are never shown in the dependency graph
     const edges = activeGraphData.edges.filter((edge) => {
+      // Always exclude folder hierarchy edges
+      if (edge.data.type === "folder") {
+        return false;
+      }
+      // Filter by external/internal based on config
       if (!includeExternal && edge.data.isExternal) return false;
+      // Filter by weight threshold
+      if ((edge.data.weight || 1) < minWeight) return false;
+      // Ensure both source and target nodes are in the allowed set
       if (
         allowedNodeIds.size > 0 &&
         (!allowedNodeIds.has(edge.data.source) ||
@@ -199,13 +199,7 @@ export default function DependenciesPage({
       ) {
         return false;
       }
-      if (viewMode === "folder") {
-        if (hasDependencyEdges && edge.data.type === "folder") {
-          return false;
-        }
-        return (edge.data.weight || 1) >= minWeight;
-      }
-      return showFolders ? true : edge.data.type !== "folder";
+      return true;
     });
 
     return { nodes, edges };
@@ -263,20 +257,23 @@ export default function DependenciesPage({
       const edgeEntries = elementsToRender.filter(
         (entry) => (entry as GraphEdge).data?.source
       ) as GraphEdge[];
-      // Always include ALL nodes (folders, files, packages) for consistent rendering
-      const nodeEntriesForLayout = nodeEntries;
+      
+      // CodeFlow-style: Only show files and packages as nodes (not folders)
+      // Folders are only used for positioning and coloring
+      const nodeEntriesForLayout = nodeEntries.filter(
+        (node) => node.data.type === "file" || node.data.type === "package"
+      );
       const nodeIdSet = new Set(
         nodeEntriesForLayout.map((node) => node.data.id)
       );
+      
+      // CodeFlow-style: Only show dependency edges (actual file-to-file dependencies)
+      // Folder edges are not shown in the dependency graph
       const allEdges = edgeEntries.filter(
         (edge) =>
-          nodeIdSet.has(edge.data.source) && nodeIdSet.has(edge.data.target)
-      );
-      const dependencyEdges = allEdges.filter(
-        (edge) => edge.data.type !== "folder"
-      );
-      const folderEdges = allEdges.filter(
-        (edge) => edge.data.type === "folder"
+          edge.data.type !== "folder" && // Exclude folder hierarchy edges
+          nodeIdSet.has(edge.data.source) && 
+          nodeIdSet.has(edge.data.target)
       );
 
       // CodeFlow-style: Nodes with folder grouping
@@ -290,6 +287,7 @@ export default function DependenciesPage({
         "#ff5f5f",
         "#84cc16",
       ];
+      // CodeFlow-style: Extract folders from file paths for positioning/coloring
       const folders = new Set<string>();
       const nodes = nodeEntriesForLayout.map((node) => {
         const size = node.data.size || 1;
@@ -297,15 +295,10 @@ export default function DependenciesPage({
         const folder = path.split("/").slice(0, -1).join("/") || "root";
         folders.add(folder);
 
-        const base =
-          node.data.type === "folder"
-            ? 8
-            : node.data.type === "root"
-            ? 12
-            : node.data.type === "package"
-            ? 10
-            : 8;
-        const radius = Math.min(24, base + Math.sqrt(size) * 2);
+        // CodeFlow-style: Node radius based on function count (we'll use size as proxy)
+        const base = node.data.type === "package" ? 10 : 8;
+        const radius = Math.max(8, Math.min(24, 5 + Math.sqrt(size) * 0.8));
+        
         return {
           id: node.data.id,
           label: node.data.displayLabel || node.data.label,
@@ -319,7 +312,7 @@ export default function DependenciesPage({
           borderColor: node.data.borderColor || "#a78bfa",
           isExternal: node.data.type === "package",
           path,
-          fnCount: 0, // Will be set from dependencies
+          fnCount: Math.floor(Math.sqrt(size)), // Approximate function count from size
         };
       });
 
@@ -348,20 +341,25 @@ export default function DependenciesPage({
       const nodeMap = new Map(nodes.map((n) => [n.id, n]));
 
       // CodeFlow-style: Links must reference node objects, not IDs
-      const links = allEdges
-        .map((edge) => {
-          const sourceNode = nodeMap.get(edge.data.source);
-          const targetNode = nodeMap.get(edge.data.target);
-          if (!sourceNode || !targetNode) return null;
-          return {
+      // Aggregate multiple edges between same nodes (like CodeFlow's linkMap)
+      const linkMap = new Map<string, { source: any; target: any; count: number; isExternal: boolean }>();
+      allEdges.forEach((edge) => {
+        const sourceNode = nodeMap.get(edge.data.source);
+        const targetNode = nodeMap.get(edge.data.target);
+        if (!sourceNode || !targetNode) return;
+        
+        const key = `${edge.data.source}|${edge.data.target}`;
+        if (!linkMap.has(key)) {
+          linkMap.set(key, {
             source: sourceNode,
             target: targetNode,
-            type: edge.data.type,
+            count: 0,
             isExternal: edge.data.isExternal || false,
-            weight: edge.data.weight || 1,
-          };
-        })
-        .filter((link): link is NonNullable<typeof link> => link !== null);
+          });
+        }
+        linkMap.get(key)!.count += edge.data.weight || 1;
+      });
+      const links = Array.from(linkMap.values());
 
       console.log("📁 Folders:", folderList.length, folderList.slice(0, 10));
       console.log("📊 Nodes:", nodes.length);
@@ -396,27 +394,44 @@ export default function DependenciesPage({
 
       const container = svg.append("g");
 
+      // Create zoom behavior - D3's zoom handles mouse wheel automatically
       const zoom = d3
         .zoom<SVGSVGElement, unknown>()
         .scaleExtent([0.2, 5])
         .on("zoom", (event) => {
-          container.attr("transform", event.transform);
+          // Apply zoom transform to container
+          container.attr("transform", event.transform.toString());
         });
+      
+      // Apply zoom to SVG - this enables mouse wheel zoom automatically
       svg.call(zoom as any);
       zoomRef.current = zoom;
       
       // Enable keyboard zoom (Ctrl/Cmd + Plus/Minus/0)
       const handleKeyDown = (e: KeyboardEvent) => {
         if ((e.ctrlKey || e.metaKey) && svgRef.current && zoomRef.current) {
+          const zoom = zoomRef.current;
+          const svgSelection = d3.select(svgRef.current);
           if (e.key === "=" || e.key === "+") {
             e.preventDefault();
-            d3.select(svgRef.current).transition().duration(200).call(zoomRef.current.scaleBy as any, 1.4);
+            const center = [svgRef.current.clientWidth / 2, svgRef.current.clientHeight / 2];
+            svgSelection
+              .transition()
+              .duration(200)
+              .call(zoom.scaleBy as any, 1.4, center);
           } else if (e.key === "-") {
             e.preventDefault();
-            d3.select(svgRef.current).transition().duration(200).call(zoomRef.current.scaleBy as any, 0.7);
+            const center = [svgRef.current.clientWidth / 2, svgRef.current.clientHeight / 2];
+            svgSelection
+              .transition()
+              .duration(200)
+              .call(zoom.scaleBy as any, 0.7, center);
           } else if (e.key === "0") {
             e.preventDefault();
-            d3.select(svgRef.current).transition().duration(300).call(zoomRef.current.transform as any, d3.zoomIdentity);
+            svgSelection
+              .transition()
+              .duration(300)
+              .call(zoom.transform as any, d3.zoomIdentity);
           }
         }
       };
@@ -438,11 +453,15 @@ export default function DependenciesPage({
           (enter) => enter
             .append("path")
             .attr("fill", "none")
-            .attr("stroke", graphPalette.edge)
-            .attr("stroke-width", (d) =>
-              Math.max(1, Math.min(2, Math.sqrt(d.weight || 1) * 0.3))
+            .attr("stroke", (d: any) => {
+              const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
+              return theme === "light" ? "#ccc" : "#333";
+            })
+            .attr("stroke-width", (d: any) =>
+              Math.max(1, Math.min(2, Math.sqrt((d.count || 1)) * 0.3))
             )
             .attr("stroke-opacity", 0.4)
+            .attr("marker-end", "url(#arr)")
             .attr("marker-end", "url(#arr)"),
           (update) => update,
           (exit) => exit.remove()
@@ -468,35 +487,42 @@ export default function DependenciesPage({
           (exit) => exit.remove()
         );
 
+      // CodeFlow EXACT: Helper functions for node rendering
+      const getR = (d: any) => Math.max(8, Math.min(24, 5 + (d.fnCount || 0) * 0.8));
+      const getC = (d: any) => {
+        // CodeFlow-style: Color by folder
+        return d.color || COLORS[Array.from(folders).indexOf(d.folder) % COLORS.length] || COLORS[0];
+      };
+
       // Update circle attributes for all nodes (existing + new)
       node
         .select("circle.nc")
-        .attr("r", (d: any) => {
-          // CodeFlow exact: getR function
-          return Math.max(8, Math.min(24, 5 + (d.fnCount || 0) * 0.8));
-        })
-        .attr("fill", (d: any) => {
-          if (d.type === "package") return "#f59e0b";
-          if (d.type === "folder") return graphPalette.background;
-          return d.color || COLORS[0] || "#8b5cf6";
-        })
+        .attr("r", getR)
+        .attr("fill", getC)
         .attr("stroke", (d: any) => {
-          if (d.type === "package") return "#fbbf24";
-          const color = d.color || COLORS[0];
-          const c = d3.color(color);
+          const c = d3.color(getC(d));
           return c ? c.brighter(0.3).toString() : "#fff";
         })
         .attr("stroke-width", 1.5);
 
       // Update text attributes for all nodes (existing + new)
+      // Ensure text is readable inside circles with proper sizing
       node
         .select("text")
         .attr("text-anchor", "middle")
-        .attr("dy", 0)
-        .attr("fill", graphPalette.text)
+        .attr("dy", "0.35em") // Better vertical centering inside circle
+            .attr("fill", (d: any) => {
+              const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
+              return theme === "light" ? "#333" : "#eee";
+            })
         .attr(
           "font-size",
-          (d: any) => Math.max(6, Math.min(10, d.radius * 0.6)) + "px"
+          (d: any) => {
+            const r = getR(d);
+            // Calculate font size based on circle radius, ensuring it fits inside
+            const fontSize = Math.max(8, Math.min(12, r * 0.4));
+            return fontSize + "px";
+          }
         )
         .attr("font-family", "JetBrains Mono, monospace")
         .attr("font-weight", 500)
@@ -504,13 +530,14 @@ export default function DependenciesPage({
         .attr("opacity", graphConfigRef.current.showLabels ? 1 : 0) // Use graphConfigRef for latest value
         .text((d) => {
           const n = d.name.replace(/\.[^.]+$/, "");
-          const maxLen = Math.max(4, Math.floor(d.radius / 2));
-          return n.length > maxLen + 1 ? n.slice(0, maxLen) + "…" : n;
+          const r = getR(d);
+          // Calculate max characters that fit inside circle (circumference / font width)
+          // Approximate: each character is ~0.6 * font size wide
+          const fontSize = Math.max(8, Math.min(12, r * 0.4));
+          const maxChars = Math.max(3, Math.floor((r * 2 * Math.PI) / (fontSize * 0.6)) - 1);
+          return n.length > maxChars ? n.slice(0, maxChars) + "…" : n;
         });
 
-      // CodeFlow EXACT implementation - all view modes
-      const getR = (d: any) => Math.max(8, Math.min(24, 5 + (d.fnCount || 0) * 0.8));
-      
       // Reuse existing simulation or create new one
       let simulation = simRef.current;
       const existingNodes = simulation ? (simulation.nodes() as any[]) : [];
@@ -550,11 +577,22 @@ export default function DependenciesPage({
       
       // CodeFlow EXACT: Different force configurations for each view mode
       const config = graphConfigRef.current; // Use ref for latest config
+      
+      // Add boundary forces to keep nodes within viewport
+      const padding = 50;
+      const boundaryForce = (d: any) => {
+        const r = getR(d);
+        if (d.x < padding + r) d.x = padding + r;
+        if (d.x > width - padding - r) d.x = width - padding - r;
+        if (d.y < padding + r) d.y = padding + r;
+        if (d.y > height - padding - r) d.y = height - padding - r;
+      };
+      
       if (config.viewMode === "force") {
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.3))
-          .force("charge", d3.forceManyBody().strength(-config.spacing).distanceMax(400))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 12))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 1.5).distanceMax(400))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
           .force("x", d3.forceX((d: any) => {
             const center = centers[d.folder];
             return center ? center.x : width / 2;
@@ -562,7 +600,10 @@ export default function DependenciesPage({
           .force("y", d3.forceY((d: any) => {
             const center = centers[d.folder];
             return center ? center.y : height / 2;
-          }).strength(0.15));
+          }).strength(0.15))
+          .force("boundary", () => {
+            nodes.forEach(boundaryForce);
+          });
       } else if (config.viewMode === "radial") {
         const r = Math.min(width, height) * 0.35;
         nodes.forEach((n: any, i: number) => {
@@ -572,10 +613,13 @@ export default function DependenciesPage({
         });
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 0.5).strength(0.05))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.3))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 8))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.5))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
           .force("x", d3.forceX((d: any) => (d as any).targetX).strength(0.8))
-          .force("y", d3.forceY((d: any) => (d as any).targetY).strength(0.8));
+          .force("y", d3.forceY((d: any) => (d as any).targetY).strength(0.8))
+          .force("boundary", () => {
+            nodes.forEach(boundaryForce);
+          });
       } else if (config.viewMode === "hierarchical") {
         // Group by folder for hierarchical layout
         const layerGroups: { [key: string]: any[] } = {};
@@ -596,10 +640,13 @@ export default function DependenciesPage({
         });
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.1))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.5).distanceMax(200))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.8).distanceMax(200))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
           .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.9))
-          .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.3));
+          .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.3))
+          .force("boundary", () => {
+            nodes.forEach(boundaryForce);
+          });
       } else if (config.viewMode === "grid") {
         const gridCols = Math.ceil(Math.sqrt(nodes.length));
         const cellW = width / (gridCols + 1);
@@ -610,9 +657,13 @@ export default function DependenciesPage({
         });
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 1.5).strength(0.02))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 15))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.3))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
           .force("x", d3.forceX((d: any) => (d as any).targetX).strength(1))
-          .force("y", d3.forceY((d: any) => (d as any).targetY).strength(1));
+          .force("y", d3.forceY((d: any) => (d as any).targetY).strength(1))
+          .force("boundary", () => {
+            nodes.forEach(boundaryForce);
+          });
       } else if (config.viewMode === "metro") {
         // Metro layout: find root nodes (no incoming edges) and arrange in lines
         const roots = nodes.filter((n: any) => 
@@ -655,9 +706,13 @@ export default function DependenciesPage({
         });
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.05))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 12))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.4))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
           .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.95))
-          .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.95));
+          .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.95))
+          .force("boundary", () => {
+            nodes.forEach(boundaryForce);
+          });
       }
       
       // Update forces when spacing/linkDist change - use graphConfigRef for latest values
@@ -666,10 +721,22 @@ export default function DependenciesPage({
         linkForce.distance(config.linkDist);
       }
       const chargeForce = simulation.force("charge") as any;
-      if (chargeForce && config.viewMode === "force") {
-        chargeForce.strength(-config.spacing);
+      if (chargeForce) {
+        // Update charge strength based on view mode
+        if (config.viewMode === "force") {
+          chargeForce.strength(-config.spacing * 1.5);
+        } else if (config.viewMode === "radial") {
+          chargeForce.strength(-config.spacing * 0.5);
+        } else if (config.viewMode === "hierarchical") {
+          chargeForce.strength(-config.spacing * 0.8);
+        } else if (config.viewMode === "grid") {
+          chargeForce.strength(-config.spacing * 0.3);
+        } else if (config.viewMode === "metro") {
+          chargeForce.strength(-config.spacing * 0.4);
+        }
       }
       
+      // Always restart simulation when config changes to apply new forces
       simulation
         .velocityDecay(0.6)
         .alphaDecay(0.05)
@@ -733,6 +800,16 @@ export default function DependenciesPage({
           });
         }
         
+        // Clamp node positions to viewport bounds to prevent nodes going outside
+        const padding = 50;
+        nodes.forEach((d: any) => {
+          const r = getR(d);
+          if (d.x != null && d.y != null && isFinite(d.x) && isFinite(d.y)) {
+            d.x = Math.max(padding + r, Math.min(width - padding - r, d.x));
+            d.y = Math.max(padding + r, Math.min(height - padding - r, d.y));
+          }
+        });
+        
         // Update node positions
         node.attr("transform", (d: any) => {
           if (d.x == null || d.y == null || !isFinite(d.x) || !isFinite(d.y)) {
@@ -741,8 +818,10 @@ export default function DependenciesPage({
           return `translate(${d.x},${d.y})`;
         });
         
-        // Update text opacity based on config.showLabels
-        node.selectAll("text").attr("opacity", config.showLabels ? 1 : 0);
+        // Update text opacity and ensure it's centered inside circle
+        node.selectAll("text")
+          .attr("opacity", config.showLabels ? 1 : 0)
+          .attr("dy", "0.35em"); // Better vertical centering inside circle
         
         // Update hulls
         updateHulls();
@@ -828,15 +907,12 @@ export default function DependenciesPage({
         if (e.target === svg.node()) {
           setFocusedNodeId(null);
           setBlastRadius(null);
-          link.attr("stroke", graphPalette.edge).attr("stroke-opacity", 0.4);
+          const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
+          link.attr("stroke", theme === "light" ? "#ccc" : "#333").attr("stroke-opacity", 0.4);
           node
             .selectAll(".nc")
             .attr("opacity", 1)
-            .attr("fill", (d: any) => {
-              if (d.type === "package") return "#f59e0b";
-              if (d.type === "folder") return graphPalette.background;
-              return d.color || COLORS[0];
-            });
+            .attr("fill", getC);
         }
       });
 
@@ -867,11 +943,12 @@ export default function DependenciesPage({
         const tx = (width - scale * (minX + maxX)) / 2;
         const ty = (height - scale * (minY + maxY)) / 2;
         if (!isFinite(scale) || !isFinite(tx) || !isFinite(ty)) return;
+        const zoom = zoomRef.current;
         d3.select(svgRef.current)
           .transition()
           .duration(500)
           .call(
-            zoomRef.current.transform,
+            zoom.transform as any,
             d3.zoomIdentity.translate(tx, ty).scale(scale)
           );
       };
@@ -1841,7 +1918,7 @@ export default function DependenciesPage({
               .transition()
               .duration(500)
               .call(
-                zoomRef.current.transform,
+                zoomRef.current.transform as any,
                 d3.zoomIdentity
                   .translate(width / 2 - highlightedNode.x * 1.5, height / 2 - highlightedNode.y * 1.5)
                   .scale(1.5)
@@ -1915,12 +1992,15 @@ export default function DependenciesPage({
             )}
         </div>
         <Button
-            onClick={() => setViewMode("folder")}
+            onClick={() => {
+              // Toggle folder view - if already in folder view, switch to file view (dependencies)
+              setViewMode(viewMode === "folder" ? "file" : "folder");
+            }}
             disabled={!folderGraphData}
             variant={viewMode === "folder" ? "default" : "outline"}
           size="sm"
         >
-            Folder overview
+            {viewMode === "folder" ? "Folder view" : "Dependencies"}
           </Button>
           <Button
             onClick={() => setViewMode("file")}
@@ -1928,7 +2008,7 @@ export default function DependenciesPage({
             variant={viewMode === "file" ? "default" : "outline"}
             size="sm"
           >
-            File detail
+            File dependencies
           </Button>
           <Button
             onClick={() => setShowExternal((prev) => !prev)}
@@ -2077,10 +2157,12 @@ export default function DependenciesPage({
               onClick={() => {
                 if (!svgRef.current || !zoomRef.current) return;
                 import("d3").then((d3) => {
+                  const zoom = zoomRef.current;
+                  const center = [svgRef.current!.clientWidth / 2, svgRef.current!.clientHeight / 2];
                   d3.select(svgRef.current)
                     .transition()
                     .duration(200)
-                    .call(zoomRef.current.scaleBy as any, 1.4);
+                    .call(zoom.scaleBy as any, 1.4, center);
                 });
               }}
               title="Zoom In"
@@ -2094,10 +2176,12 @@ export default function DependenciesPage({
               onClick={() => {
                 if (!svgRef.current || !zoomRef.current) return;
                 import("d3").then((d3) => {
+                  const zoom = zoomRef.current;
+                  const center = [svgRef.current!.clientWidth / 2, svgRef.current!.clientHeight / 2];
                   d3.select(svgRef.current)
                     .transition()
                     .duration(200)
-                    .call(zoomRef.current.scaleBy as any, 0.7);
+                    .call(zoom.scaleBy as any, 0.7, center);
                 });
               }}
               title="Zoom Out"
@@ -2132,7 +2216,7 @@ export default function DependenciesPage({
                       .transition()
                       .duration(400)
                       .call(
-                        zoom.transform,
+                        zoom.transform as any,
                         d3.zoomIdentity
                           .translate(w / 2 - scale * (minX + maxX) / 2, h / 2 - scale * (minY + maxY) / 2)
                           .scale(Math.min(scale, 2))
