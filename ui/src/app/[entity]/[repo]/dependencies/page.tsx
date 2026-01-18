@@ -110,6 +110,19 @@ export default function DependenciesPage({
   );
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const dragStateRef = useRef<{
+    draggedNodeId: string | null;
+    initialX: number;
+    initialY: number;
+    dependents: Set<string>;
+    dependencies: Set<string>;
+  }>({
+    draggedNodeId: null,
+    initialX: 0,
+    initialY: 0,
+    dependents: new Set(),
+    dependencies: new Set(),
+  });
   
   // CodeFlow-style graph configuration - defaults match user's preferred settings
   const [graphConfig, setGraphConfig] = useState({
@@ -121,7 +134,7 @@ export default function DependenciesPage({
   });
   const graphConfigRef = useRef(graphConfig);
   graphConfigRef.current = graphConfig; // Keep ref in sync
-  const [showGraphConfig, setShowGraphConfig] = useState(false);
+  const [showGraphConfig, setShowGraphConfig] = useState(true); // Default: config panel open
 
   useEffect(() => {
     if (fetchedRef.current) return;
@@ -505,6 +518,26 @@ export default function DependenciesPage({
         })
         .attr("stroke-width", 1.5);
 
+      // Create tooltip div if it doesn't exist
+      let tooltip: any = d3.select("body").select(".dependency-tooltip");
+      if (tooltip.empty()) {
+        tooltip = d3.select("body")
+          .append("div")
+          .attr("class", "dependency-tooltip")
+          .style("position", "absolute")
+          .style("padding", "8px 12px")
+          .style("background", "rgba(0, 0, 0, 0.9)")
+          .style("color", "#fff")
+          .style("border-radius", "4px")
+          .style("font-size", "12px")
+          .style("font-family", "JetBrains Mono, monospace")
+          .style("pointer-events", "none")
+          .style("opacity", 0)
+          .style("z-index", "10000")
+          .style("max-width", "300px")
+          .style("word-wrap", "break-word");
+      }
+
       // Update text attributes for all nodes (existing + new)
       // Ensure text is readable inside circles with proper sizing
       node
@@ -536,6 +569,24 @@ export default function DependenciesPage({
           const fontSize = Math.max(8, Math.min(12, r * 0.4));
           const maxChars = Math.max(3, Math.floor((r * 2 * Math.PI) / (fontSize * 0.6)) - 1);
           return n.length > maxChars ? n.slice(0, maxChars) + "…" : n;
+        });
+
+      // Add mouseover/mouseout handlers for tooltip
+      node
+        .on("mouseover", function(event, d: any) {
+          const fullName = d.name.replace(/\.[^.]+$/, "");
+          const displayName = d.name;
+          tooltip
+            .style("opacity", 1)
+            .html(`<div><strong>${fullName}</strong></div><div style="font-size: 10px; color: #aaa; margin-top: 4px;">${displayName}</div>`);
+        })
+        .on("mousemove", function(event) {
+          tooltip
+            .style("left", (event.pageX + 10) + "px")
+            .style("top", (event.pageY - 10) + "px");
+        })
+        .on("mouseout", function() {
+          tooltip.style("opacity", 0);
         });
 
       // Reuse existing simulation or create new one
@@ -654,8 +705,8 @@ export default function DependenciesPage({
             dep.orbitAngle = angle;
             dep.orbitRadius = radius;
             currentAngle++;
-          });
-        });
+              });
+            });
         
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.3))
@@ -821,12 +872,18 @@ export default function DependenciesPage({
         .alpha(1) // Full alpha when view mode or config changes - restart simulation
         .restart();
       
-      // Attach drag handlers with highlighting of affected nodes
+      // Attach drag handlers with highlighting and dependent node movement
       node.call(
         d3
           .drag<SVGGElement, any>()
           .on("start", (event, d) => {
             if (!event.active && simulation) simulation.alphaTarget(0.1).restart();
+            
+            // Store initial position
+            dragStateRef.current.draggedNodeId = d.id;
+            dragStateRef.current.initialX = d.x || 0;
+            dragStateRef.current.initialY = d.y || 0;
+            
             d.fx = d.x;
             d.fy = d.y;
             
@@ -849,6 +906,10 @@ export default function DependenciesPage({
                 dependencies.add(sourceId);
               }
             });
+            
+            // Store for drag handler
+            dragStateRef.current.dependents = affected;
+            dragStateRef.current.dependencies = dependencies;
             
             // Combine all related nodes
             const allRelated = new Set([...affected, ...dependencies]);
@@ -889,12 +950,76 @@ export default function DependenciesPage({
           .on("drag", (event, d) => {
             d.fx = event.x;
             d.fy = event.y;
+            
+            // Calculate movement vector from initial position
+            const dx = event.x - dragStateRef.current.initialX;
+            const dy = event.y - dragStateRef.current.initialY;
+            
+            // Move dependent nodes in the same direction and orbit around dragged node
+            nodes.forEach((n: any) => {
+              if (n.id === d.id) return; // Skip the dragged node itself
+              
+              const isDependent = dragStateRef.current.dependents.has(n.id);
+              const isDependency = dragStateRef.current.dependencies.has(n.id);
+              
+              if (isDependent || isDependency) {
+                // Get the node's position relative to the initial dragged node position
+                const initialRelX = (n.x || 0) - dragStateRef.current.initialX;
+                const initialRelY = (n.y || 0) - dragStateRef.current.initialY;
+                const initialRelDistance = Math.sqrt(initialRelX * initialRelX + initialRelY * initialRelY);
+                
+                // Calculate target position: follow the dragged node's movement while maintaining relative position
+                // Use a follow strength to make them move smoothly
+                const followStrength = 0.7; // How much to follow (0-1)
+                const orbitRadius = Math.max(100, initialRelDistance); // Maintain orbit distance
+                
+                // Normalize the relative vector
+                const normX = initialRelDistance > 0 ? initialRelX / initialRelDistance : 0;
+                const normY = initialRelDistance > 0 ? initialRelY / initialRelDistance : 0;
+                
+                // Calculate target position: dragged node position + relative offset
+                const targetX = event.x + normX * orbitRadius * followStrength;
+                const targetY = event.y + normY * orbitRadius * followStrength;
+                
+                // Apply velocity to move towards target (smooth following)
+                const currentX = n.x || 0;
+                const currentY = n.y || 0;
+                const deltaX = targetX - currentX;
+                const deltaY = targetY - currentY;
+                
+                // Apply velocity with damping for smooth movement
+                n.vx = (n.vx || 0) * 0.4 + deltaX * 0.2;
+                n.vy = (n.vy || 0) * 0.4 + deltaY * 0.2;
+              }
+            });
+            
+            // Restart simulation to apply velocities
+            if (simulation) {
+              simulation.alphaTarget(0.3).restart();
+            }
+            
             // Keep highlighting during drag
           })
           .on("end", (event, d) => {
             if (!event.active && simulation) simulation.alphaTarget(0);
             d.fx = null;
             d.fy = null;
+            
+            // Release dependent nodes (let them settle naturally)
+            nodes.forEach((n: any) => {
+              if (dragStateRef.current.dependents.has(n.id) || dragStateRef.current.dependencies.has(n.id)) {
+                // Remove any fixed positions to let them settle
+                if (n.fx != null || n.fy != null) {
+                  n.fx = null;
+                  n.fy = null;
+                }
+              }
+            });
+            
+            // Reset drag state
+            dragStateRef.current.draggedNodeId = null;
+            dragStateRef.current.dependents.clear();
+            dragStateRef.current.dependencies.clear();
             
             // Reset highlighting
             const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
