@@ -32,6 +32,10 @@ import {
   Search,
   X,
   Settings,
+  Folder,
+  File,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
@@ -73,6 +77,159 @@ interface GitHubTreeItem {
   type: "blob" | "tree";
   path: string;
   size?: number;
+}
+
+// CodeFlow-style File Tree Component
+function FileTree({
+  nodes,
+  onSelectFile,
+  selectedId,
+}: {
+  nodes: GraphNode[];
+  onSelectFile: (id: string) => void;
+  selectedId: string | null;
+}) {
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  
+  // Build folder tree structure
+  const tree = useMemo(() => {
+    const folderMap = new Map<string, { files: GraphNode[]; subfolders: Set<string> }>();
+    
+    nodes.forEach((node) => {
+      const path = node.data.path || node.data.filePath || "";
+      const parts = path.split("/");
+      const fileName = parts[parts.length - 1];
+      const folderPath = parts.slice(0, -1).join("/") || "root";
+      
+      if (!folderMap.has(folderPath)) {
+        folderMap.set(folderPath, { files: [], subfolders: new Set() });
+      }
+      
+      folderMap.get(folderPath)!.files.push(node);
+      
+      // Track parent folders
+      if (folderPath !== "root") {
+        const parentParts = folderPath.split("/");
+        for (let i = 1; i < parentParts.length; i++) {
+          const parentPath = parentParts.slice(0, i).join("/");
+          if (parentPath && folderMap.has(parentPath)) {
+            folderMap.get(parentPath)!.subfolders.add(folderPath);
+          }
+        }
+      }
+    });
+    
+    return folderMap;
+  }, [nodes]);
+  
+  const toggleFolder = (folderPath: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderPath)) {
+        next.delete(folderPath);
+      } else {
+        next.add(folderPath);
+      }
+      return next;
+    });
+  };
+  
+  const renderFolder = (folderPath: string, depth: number = 0): JSX.Element | null => {
+    const folder = tree.get(folderPath);
+    if (!folder) return null;
+    
+    const isExpanded = expandedFolders.has(folderPath);
+    const folderName = folderPath === "root" ? "root" : folderPath.split("/").pop() || folderPath;
+    const hasChildren = folder.files.length > 0 || folder.subfolders.size > 0;
+    
+    return (
+      <div key={folderPath}>
+        {folderPath !== "root" && (
+          <div
+            className={`flex items-center gap-1 px-2 py-1 text-xs cursor-pointer hover:bg-[#0f172a] rounded ${
+              depth > 0 ? `ml-${depth * 4}` : ""
+            }`}
+            style={{ paddingLeft: `${depth * 12 + 8}px` }}
+            onClick={() => hasChildren && toggleFolder(folderPath)}
+          >
+            {hasChildren ? (
+              isExpanded ? (
+                <ChevronDown className="h-3 w-3 text-gray-500" />
+              ) : (
+                <ChevronRight className="h-3 w-3 text-gray-500" />
+              )
+            ) : (
+              <div className="w-3" />
+            )}
+            <Folder className="h-3 w-3 text-orange-500" />
+            <span className="text-gray-400 truncate">{folderName}</span>
+          </div>
+        )}
+        
+        {isExpanded && (
+          <>
+            {/* Render subfolders */}
+            {Array.from(folder.subfolders)
+              .sort()
+              .map((subfolder) => renderFolder(subfolder, depth + 1))}
+            
+            {/* Render files */}
+            {folder.files
+              .sort((a, b) => {
+                const aName = (a.data.path || a.data.filePath || "").split("/").pop() || "";
+                const bName = (b.data.path || b.data.filePath || "").split("/").pop() || "";
+                return aName.localeCompare(bName);
+              })
+              .map((file) => {
+                const filePath = file.data.path || file.data.filePath || "";
+                const fileName = filePath.split("/").pop() || file.data.id;
+                const isSelected = selectedId === file.data.id;
+                
+                return (
+                  <div
+                    key={file.data.id}
+                    className={`flex items-center gap-1 px-2 py-1 text-xs cursor-pointer rounded ${
+                      isSelected
+                        ? "bg-orange-500/20 text-orange-400"
+                        : "hover:bg-[#0f172a] text-gray-400"
+                    }`}
+                    style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
+                    onClick={() => onSelectFile(file.data.id)}
+                  >
+                    <File className="h-3 w-3 text-gray-500" />
+                    <span className="truncate">{fileName}</span>
+                  </div>
+                );
+              })}
+          </>
+        )}
+      </div>
+    );
+  };
+  
+  // Auto-expand root
+  useEffect(() => {
+    if (tree.has("root") && !expandedFolders.has("root")) {
+      setExpandedFolders((prev) => new Set([...prev, "root"]));
+    }
+  }, [tree]);
+  
+  return (
+    <div className="space-y-0">
+      {tree.has("root") && renderFolder("root")}
+      {Array.from(tree.keys())
+        .filter((path) => path !== "root")
+        .sort()
+        .map((path) => {
+          // Only render top-level folders (no parent in tree)
+          const parts = path.split("/");
+          if (parts.length === 1) {
+            return renderFolder(path);
+          }
+          return null;
+        })}
+    </div>
+  );
 }
 
 export default function DependenciesPage({
@@ -1213,7 +1370,7 @@ export default function DependenciesPage({
         const hasSearch = currentSearchQuery.trim() && currentMatchingNodes.size > 0;
         
         // Update link paths (curved or straight based on config.curvedLinks)
-        // CodeFlow style: Use node centers directly, ensure source/target are node objects
+        // CodeFlow style: Calculate edge points on node circles, not centers
         link.attr("d", (d: any) => {
           // Ensure source and target are node objects (not IDs)
           const source = typeof d.source === "object" ? d.source : nodes.find((n: any) => n.id === d.source);
@@ -1228,14 +1385,35 @@ export default function DependenciesPage({
             return "M0,0L0,0";
           }
           
+          // Calculate node radii
+          const sourceR = getR(source);
+          const targetR = getR(target);
+          
+          // Calculate direction vector
+          const dx = target.x - source.x;
+          const dy = target.y - source.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist === 0) return "M0,0L0,0";
+          
+          // Normalize direction
+          const nx = dx / dist;
+          const ny = dy / dist;
+          
+          // Calculate edge points on circles
+          const sx = source.x + nx * sourceR;
+          const sy = source.y + ny * sourceR;
+          const tx = target.x - nx * targetR;
+          const ty = target.y - ny * targetR;
+          
           if (config.curvedLinks) {
-            const dx = target.x - source.x;
-            const dy = target.y - source.y;
-            const dr = Math.sqrt(dx * dx + dy * dy);
-            if (dr === 0) return "M0,0L0,0";
-            return `M${source.x},${source.y}A${dr},${dr} 0 0,1 ${target.x},${target.y}`;
+            // Curved arc: use actual edge points
+            const arcDist = Math.sqrt((tx - sx) * (tx - sx) + (ty - sy) * (ty - sy));
+            if (arcDist === 0) return "M0,0L0,0";
+            return `M${sx},${sy}A${arcDist},${arcDist} 0 0,1 ${tx},${ty}`;
             } else {
-            return `M${source.x},${source.y}L${target.x},${target.y}`;
+            // Straight line: use edge points
+            return `M${sx},${sy}L${tx},${ty}`;
           }
         });
         
@@ -1344,37 +1522,23 @@ export default function DependenciesPage({
         // Hide folder hulls in dependency view - only show in folder view
         hullLayer.selectAll("*").remove();
         if (viewMode === "folder") {
-          // Group folders by depth to show hierarchy - only show top-level folders to avoid confusion
-          const folderDepth = new Map<string, number>();
+          // folderList already contains only top-level folders (from node grouping logic)
+          // Group nodes by their folder
+          const nodesByFolder = new Map<string, typeof nodes>();
+          nodes.forEach((n: any) => {
+            const folder = n.folder || "root";
+            if (!nodesByFolder.has(folder)) {
+              nodesByFolder.set(folder, []);
+            }
+            nodesByFolder.get(folder)!.push(n);
+          });
+          
+          // Draw hull for each folder
           folderList.forEach((folder) => {
-            folderDepth.set(folder, folder === "root" ? 0 : folder.split("/").length);
-          });
-          
-          // Only show top-level folders (depth 0 or 1) to avoid overlapping confusion
-          // Top-level means: "root" or folders with no parent (e.g., "src", "lib", "ui")
-          const topLevelFolders = folderList.filter((folder) => {
-            const depth = folderDepth.get(folder) || 0;
-            // Show root and first-level folders only (e.g., "src", "lib", not "src/components")
-            return depth <= 1;
-          });
-          
-          // Track assigned nodes to prevent duplicates
-          const assignedNodes = new Set<string>();
-          
-          topLevelFolders.forEach((folder) => {
-            // Get ONLY nodes that belong to this exact folder (not subfolders) AND haven't been assigned
-            const folderNodes = nodes.filter((n) => {
-              const nodeFolder = n.folder || "root";
-              // Match exact folder only - no subfolders, and not already assigned
-              return nodeFolder === folder && !assignedNodes.has(n.id);
-            });
-            
-            // Mark these nodes as assigned
-            folderNodes.forEach((n) => assignedNodes.add(n.id));
-            
+            const folderNodes = nodesByFolder.get(folder) || [];
             if (folderNodes.length < 1) return;
             
-            // Calculate hull with more padding for better visibility
+            // Calculate hull with padding
             const pad = 40;
             const pts: [number, number][] = [];
             folderNodes.forEach((n: any) => {
@@ -1393,25 +1557,24 @@ export default function DependenciesPage({
             const hull = d3.polygonHull(pts);
             if (hull) {
               const color =
-                COLORS[sortedFolders.indexOf(folder) % COLORS.length] ||
+                COLORS[folderList.indexOf(folder) % COLORS.length] ||
                 COLORS[0] ||
                 "#4d9fff";
               
-              // Draw hull with better visibility
+              // Draw hull
               hullLayer
                 .append("path")
                 .attr("d", "M" + hull.join("L") + "Z")
                 .attr("fill", color)
-                .attr("fill-opacity", 0.08) // Slightly more visible
+                .attr("fill-opacity", 0.12)
                 .attr("stroke", color)
-                .attr("stroke-width", 2.5)
-                .attr("stroke-opacity", 0.4) // More visible border
-                .attr("stroke-dasharray", folder === "root" ? "0" : "4,4"); // Dashed for subfolders if we show them
+                .attr("stroke-width", 2)
+                .attr("stroke-opacity", 0.5);
               
               // Add folder label
               const cx = d3.mean(folderNodes, (n: any) => n.x) || 0;
               const cy = (d3.min(folderNodes, (n: any) => n.y) || 0) - pad - 12;
-              const folderName = folder === "root" ? "root" : folder.split("/").pop() || folder;
+              const folderName = folder === "root" ? "root" : folder;
               
               hullLayer
                 .append("text")
@@ -1419,10 +1582,10 @@ export default function DependenciesPage({
                 .attr("y", cy)
                 .attr("text-anchor", "middle")
                 .attr("fill", color)
-                .attr("font-size", "11px")
+                .attr("font-size", "12px")
                 .attr("font-family", "JetBrains Mono, monospace")
                 .attr("font-weight", 600)
-                .attr("opacity", 0.8)
+                .attr("opacity", 0.9)
                 .text(folderName);
             }
           });
@@ -2691,7 +2854,24 @@ export default function DependenciesPage({
           </div>
         </div>
 
-        {/* File Explorer / Status */}
+        {/* File Browser - CodeFlow style */}
+        {activeGraphData && activeGraphData.nodes.length > 0 && (
+          <div className="flex-1 overflow-y-auto p-4 border-b border-[#383B42]">
+            <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Files</div>
+            <FileTree
+              nodes={activeGraphData.nodes.filter(n => n.data.type === 'file')}
+              onSelectFile={(id) => {
+                if (selectFileRef.current) {
+                  selectFileRef.current(id);
+                  setHighlightedNodeId(id);
+                }
+              }}
+              selectedId={highlightedNodeId || focusedNodeId}
+            />
+          </div>
+        )}
+
+        {/* Status */}
         <div className="flex-1 overflow-y-auto p-4">
           <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Status</div>
       {status && (
