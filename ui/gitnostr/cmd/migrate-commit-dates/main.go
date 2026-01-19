@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -15,37 +14,6 @@ import (
 )
 
 func main() {
-	// CRITICAL: Add flag to filter by owner pubkey(s)
-	// This prevents migrating foreign repos that we can't fix (can't update their state events)
-	ownerPubkeysFlag := flag.String("owners", "", "Comma-separated list of owner pubkeys to migrate (hex format). If empty, migrates ALL repos (WARNING: will break foreign repos until their owners push again)")
-	flag.Parse()
-
-	var allowedOwners map[string]bool
-	if *ownerPubkeysFlag != "" {
-		allowedOwners = make(map[string]bool)
-		owners := strings.Split(*ownerPubkeysFlag, ",")
-		for _, owner := range owners {
-			owner = strings.TrimSpace(strings.ToLower(owner))
-			if len(owner) == 64 {
-				allowedOwners[owner] = true
-				log.Printf("✅ Will migrate repos owned by: %s", safePubkeyDisplay(owner))
-			} else {
-				log.Printf("⚠️  Invalid owner pubkey format (must be 64 hex chars): %s", owner)
-			}
-		}
-		if len(allowedOwners) == 0 {
-			log.Fatalf("fatal: No valid owner pubkeys provided. Use -owners=pubkey1,pubkey2,...")
-		}
-		log.Printf("📋 Filtering: Will only migrate repos owned by %d specified owner(s)", len(allowedOwners))
-	} else {
-		log.Println("⚠️  WARNING: No -owners flag specified - will migrate ALL repos!")
-		log.Println("⚠️  WARNING: This will break foreign repos until their owners push to Nostr again!")
-		log.Println("⚠️  WARNING: Foreign repo owners cannot fix this themselves - their state events will point to old SHAs!")
-		log.Println("⚠️  WARNING: Use -owners=pubkey1,pubkey2,... to only migrate your own repos")
-		log.Println("⚠️  WARNING: Press Ctrl+C within 5 seconds to cancel...")
-		time.Sleep(5 * time.Second)
-	}
-
 	log.Println("🔄 Starting commit date migration...")
 	log.Println("📋 This script will update commit dates in bridge repos to match their UpdatedAt timestamps from the database")
 
@@ -95,16 +63,6 @@ func main() {
 			log.Printf("⚠️ Error scanning row: %v", err)
 			errorCount++
 			continue
-		}
-
-		// CRITICAL: Skip foreign repos if owner filter is specified
-		if allowedOwners != nil {
-			ownerPubkeyLower := strings.ToLower(ownerPubkey)
-			if !allowedOwners[ownerPubkeyLower] {
-				log.Printf("⏭️  Skipping %s/%s (not owned by specified owner(s))", safePubkeyDisplay(ownerPubkey), repoName)
-				skippedCount++
-				continue
-			}
 		}
 
 		repoPath := filepath.Join(reposDir, ownerPubkey, repoName+".git")
@@ -231,17 +189,6 @@ func main() {
 	log.Printf("   ✅ Migrated: %d repos", migratedCount)
 	log.Printf("   ⏭️  Skipped: %d repos (already correct or not found)", skippedCount)
 	log.Printf("   ❌ Errors: %d repos", errorCount)
-
-	if migratedCount > 0 {
-		log.Println("\n⚠️  IMPORTANT: After migrating commit dates, you MUST push to Nostr again!")
-		log.Println("   Reason: git filter-branch rewrites commits, creating new SHAs.")
-		log.Println("   The Nostr state event still points to the old commit SHA.")
-		log.Println("   gitworkshop.dev and other clients read the state event, so they show the old date.")
-		log.Println("   Solution: Use 'Push to Nostr' button on gittr.space to publish a new state event.")
-		log.Println("   This will update the state event with the new commit SHA, fixing the date display.")
-		log.Println("")
-		log.Println("   For each migrated repo, go to gittr.space and click 'Push to Nostr' to fix the state event.")
-	}
 
 	if errorCount == 0 {
 		log.Println("✅ Migration completed successfully!")

@@ -22,11 +22,6 @@
 /out/
 next-env.d.ts
 
-# Capacitor
-/android/
-/ios/
-/.capacitor/
-
 # production
 /build
 
@@ -49,13 +44,16 @@ yarn-error.log*
 #ide 
 .vscode/*
 
-# npm (we use yarn as primary, but keep package-lock.json for compatibility)
-# package-lock.json is kept in repo for npm users, but yarn.lock is the source of truth
-# Dependabot updates yarn.lock, not package-lock.json
+# npm
+package-lock.json
 
 # gitnostr (backend)
 bin
 
-# development server logs
-devserver.log
-*.log
+# local bridge db artifacts
+/gitnostr/*.db
+/gitnostr/*.db*
+
+# local backup/dup files
+*.bak
+/src/src/
