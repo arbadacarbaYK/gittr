@@ -312,7 +312,8 @@ export default function DependenciesPage({
       const nodes = nodeEntriesForLayout.map((node) => {
         const size = node.data.size || 1;
         const path = node.data.path || node.data.filePath || "";
-        const folder = path.split("/").slice(0, -1).join("/") || "root";
+        // CodeFlow-style: group by top-level folder (\"src\", \"lib\", etc.)
+        const folder = path.split("/")[0] || "root";
         folders.add(folder);
 
         // CodeFlow-style: Node radius based on function count (we'll use size as proxy)
@@ -1233,7 +1234,7 @@ export default function DependenciesPage({
             const dr = Math.sqrt(dx * dx + dy * dy);
             if (dr === 0) return "M0,0L0,0";
             return `M${source.x},${source.y}A${dr},${dr} 0 0,1 ${target.x},${target.y}`;
-          } else {
+            } else {
             return `M${source.x},${source.y}L${target.x},${target.y}`;
           }
         });
@@ -2818,9 +2819,9 @@ export default function DependenciesPage({
             <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#1a1f2e]/95 backdrop-blur-sm border border-[#383B42] rounded-md px-4 py-2 text-xs text-gray-400 max-w-md z-10">
               <p>
                 💡 Showing folder structure. No dependencies found between files.
-              </p>
-        </div>
-      )}
+                </p>
+              </div>
+            )}
 
         {/* Empty state */}
         {!loading && !error && filesFetched && !activeGraphData && dependencies.length === 0 && (
@@ -2894,8 +2895,8 @@ export default function DependenciesPage({
                       </div>
                     )}
                   </div>
-                </div>
-              )}
+        </div>
+      )}
 
               {/* Graph Config Panel - moved to sidebar */}
               {activeGraphData && (
