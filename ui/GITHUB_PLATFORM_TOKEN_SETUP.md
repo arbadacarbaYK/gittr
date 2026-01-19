@@ -33,15 +33,10 @@ GITHUB_PLATFORM_TOKEN=ghp_your_token_here
 
 ## Difference from OAuth App
 
-| Type | Purpose | Where to Get | Used For | Status |
-|------|---------|--------------|----------|--------|
-| **OAuth App** (CLIENT_ID/SECRET) | User login/authentication OR platform API requests | https://github.com/settings/developers | ~~Users connecting their GitHub accounts~~ (deprecated) OR Platform API requests (if configured) | User auth: **DEPRECATED** (replaced by NIP-39). Platform requests: **OPTIONAL** (can use PAT instead) |
-| **Personal Access Token** (PLATFORM_TOKEN) | Server-side API calls | https://github.com/settings/tokens | Platform making API calls on behalf of all users | **ACTIVE** - Recommended for platform requests |
+| Type | Purpose | Where to Get | Used For |
+|------|---------|--------------|----------|
+| **OAuth App** (CLIENT_ID/SECRET) | User login/authentication | https://github.com/settings/developers | Users connecting their GitHub accounts |
+| **Personal Access Token** (PLATFORM_TOKEN) | Server-side API calls | https://github.com/settings/tokens | Platform making API calls on behalf of all users |
 
-**Note**: 
-- The OAuth App was previously used for individual user authentication, but is now deprecated in favor of NIP-39 External Identities.
-- For platform API requests (5000 requests/hour), you can use either:
-  - **Personal Access Token (PAT)** - Recommended, simpler setup (see this document)
-  - **OAuth App credentials** - Alternative, if you prefer OAuth App setup
-- The current codebase uses `GITHUB_PLATFORM_TOKEN` (PAT) for platform requests, not OAuth App credentials.
+**Note**: The OAuth App form you're filling out is for user authentication. The platform token is created separately from the tokens page.
 
