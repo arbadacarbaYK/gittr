@@ -134,7 +134,7 @@ export default function DependenciesPage({
   // CodeFlow-style graph configuration - defaults match user's preferred settings
   const [graphConfig, setGraphConfig] = useState({
     viewMode: "metro" as "force" | "radial" | "hierarchical" | "grid" | "metro",
-    spacing: 500, // Maximum spread for better visualization
+    spacing: 750, // Default spread - can go up to 1000 for very dense graphs
     linkDist: 195, // High link distance for better spread
     showLabels: true,
     curvedLinks: true, // Curved links enabled by default
@@ -751,8 +751,8 @@ export default function DependenciesPage({
         
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.3))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 2.0).distanceMax(800))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 30).iterations(5))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 2.5).distanceMax(1000))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 50).iterations(8))
           .force("x", d3.forceX((d: any) => {
             if ((d as any).isHub) return (d as any).hubX;
             if ((d as any).orbitHub) {
@@ -783,8 +783,8 @@ export default function DependenciesPage({
         });
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 0.5).strength(0.05))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 1.0).distanceMax(600))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 30).iterations(5))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 1.5).distanceMax(800))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 50).iterations(8))
           .force("x", d3.forceX((d: any) => (d as any).targetX).strength(0.8))
           .force("y", d3.forceY((d: any) => (d as any).targetY).strength(0.8))
           .force("boundary", () => {
@@ -810,8 +810,8 @@ export default function DependenciesPage({
         });
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.1))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 1.2).distanceMax(600))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 30).iterations(5))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 2.0).distanceMax(800))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 50).iterations(8))
           .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.9))
           .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.3))
           .force("boundary", () => {
@@ -827,8 +827,8 @@ export default function DependenciesPage({
         });
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 1.5).strength(0.02))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.8).distanceMax(600))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 30).iterations(5))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 1.5).distanceMax(800))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 50).iterations(8))
           .force("x", d3.forceX((d: any) => (d as any).targetX).strength(1))
           .force("y", d3.forceY((d: any) => (d as any).targetY).strength(1))
           .force("boundary", () => {
@@ -875,11 +875,11 @@ export default function DependenciesPage({
           (n as any).metroLine = actualRoots.length;
         });
         simulation
-          .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.05))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 1.0).distanceMax(600))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 30).iterations(5))
-          .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.95))
-          .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.95))
+          .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.02))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 2.5).distanceMax(1000))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 50).iterations(8))
+          .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.3))
+          .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.3))
           .force("boundary", () => {
             nodes.forEach(boundaryForce);
           });
@@ -2700,12 +2700,12 @@ export default function DependenciesPage({
                         <div className="space-y-3">
                           <div className="flex items-center gap-3">
                             <label className="text-xs text-gray-400 w-12 font-mono">Spread:</label>
-                            <input
-                              type="range"
-                              min="50"
-                              max="500"
-                              step="10"
-                              value={graphConfig.spacing}
+                    <input
+                      type="range"
+                      min="50"
+                      max="1000"
+                      step="25"
+                      value={graphConfig.spacing}
                               onChange={(e) =>
                                 setGraphConfig({ ...graphConfig, spacing: parseInt(e.target.value) })
                               }
