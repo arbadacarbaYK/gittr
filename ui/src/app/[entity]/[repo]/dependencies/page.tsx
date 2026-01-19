@@ -1366,11 +1366,11 @@ export default function DependenciesPage({
           });
           
           topLevelFolders.forEach((folder) => {
-            // Get all nodes that belong to this folder OR any subfolder of it
+            // Get ONLY nodes that belong to this exact folder (not subfolders)
             const folderNodes = nodes.filter((n) => {
               const nodeFolder = n.folder || "root";
-              // Match exact folder or subfolders
-              return nodeFolder === folder || nodeFolder.startsWith(folder + "/");
+              // Match exact folder only - no subfolders
+              return nodeFolder === folder;
             });
             
             if (folderNodes.length < 1) return;
@@ -2818,20 +2818,6 @@ export default function DependenciesPage({
           </div>
         )}
 
-        {/* Info Notice - explain folder view */}
-        {viewMode === "folder" && activeGraphData && activeGraphData.nodes.length > 0 && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#1a1f2e]/95 backdrop-blur-sm border border-orange-500/50 rounded-md px-4 py-3 text-xs text-gray-300 max-w-lg z-10">
-            <p className="font-semibold text-orange-400 mb-1">📁 Folder View</p>
-            <p className="text-gray-400 mb-1">
-              Colored polygons show <strong>top-level folders only</strong> (e.g., <code className="text-orange-300">src</code>, <code className="text-orange-300">lib</code>). 
-              Files are grouped by their immediate parent folder.
-            </p>
-            <p className="text-gray-500 text-[10px]">
-              Overlapping areas indicate nested structure. Switch to "File dependencies" to see actual dependency relationships.
-                </p>
-              </div>
-            )}
-        
         {/* Info Notice - only when no dependencies in file view */}
         {viewMode === "file" && activeGraphData && activeGraphData.nodes.length > 0 &&
           activeGraphData.edges.filter((e: any) => e.data?.type !== "folder").length === 0 && (
