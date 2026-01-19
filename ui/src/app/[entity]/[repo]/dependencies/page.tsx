@@ -1525,7 +1525,7 @@ export default function DependenciesPage({
             
             const hull = d3.polygonHull(pts);
             if (hull) {
-              const color = COLORS[folderList.indexOf(folder) % COLORS.length] || COLORS[0];
+              const color = COLORS[folderList.indexOf(folder) % COLORS.length] || COLORS[0] || "#4d9fff";
               
               // CodeFlow EXACT: fill-opacity 0.04, stroke-opacity 0.25, stroke-width 2
               hullLayer
