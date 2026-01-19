@@ -1357,13 +1357,19 @@ export default function DependenciesPage({
             return depth <= 1;
           });
           
+          // Track assigned nodes to prevent duplicates
+          const assignedNodes = new Set<string>();
+          
           topLevelFolders.forEach((folder) => {
-            // Get all nodes that belong to this folder OR any subfolder of it
+            // Get ONLY nodes that belong to this exact folder (not subfolders) AND haven't been assigned
             const folderNodes = nodes.filter((n) => {
               const nodeFolder = n.folder || "root";
-              // Match exact folder or subfolders
-              return nodeFolder === folder || nodeFolder.startsWith(folder + "/");
+              // Match exact folder only - no subfolders, and not already assigned
+              return nodeFolder === folder && !assignedNodes.has(n.id);
             });
+            
+            // Mark these nodes as assigned
+            folderNodes.forEach((n) => assignedNodes.add(n.id));
             
             if (folderNodes.length < 1) return;
             
