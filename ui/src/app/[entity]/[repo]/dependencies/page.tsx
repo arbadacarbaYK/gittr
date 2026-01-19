@@ -1351,29 +1351,41 @@ export default function DependenciesPage({
         // Hide folder hulls in dependency view - only show in folder view
         hullLayer.selectAll("*").remove();
         if (viewMode === "folder") {
-          // Group folders by depth to show hierarchy - only show top-level folders to avoid confusion
-          const folderDepth = new Map<string, number>();
-          folderList.forEach((folder) => {
-            folderDepth.set(folder, folder === "root" ? 0 : folder.split("/").length);
+          // Create a map of which nodes belong to which folders
+          const nodesByFolder = new Map<string, typeof nodes>();
+          nodes.forEach((n) => {
+            const nodeFolder = n.folder || "root";
+            if (!nodesByFolder.has(nodeFolder)) {
+              nodesByFolder.set(nodeFolder, []);
+            }
+            nodesByFolder.get(nodeFolder)!.push(n);
           });
           
-          // Only show top-level folders (depth 0 or 1) to avoid overlapping confusion
-          // Top-level means: "root" or folders with no parent (e.g., "src", "lib", "ui")
-          const topLevelFolders = folderList.filter((folder) => {
-            const depth = folderDepth.get(folder) || 0;
-            // Show root and first-level folders only (e.g., "src", "lib", not "src/components")
-            return depth <= 1;
+          // Only show folders that actually have nodes
+          const foldersWithNodes = Array.from(nodesByFolder.keys()).filter(
+            (folder) => (nodesByFolder.get(folder) || []).length > 0
+          );
+          
+          // Sort folders by depth (shallow first) so parent folders are drawn first
+          foldersWithNodes.sort((a, b) => {
+            const depthA = a === "root" ? 0 : a.split("/").length;
+            const depthB = b === "root" ? 0 : b.split("/").length;
+            return depthA - depthB;
           });
           
-          topLevelFolders.forEach((folder) => {
-            // Get ONLY nodes that belong to this exact folder (not subfolders)
-            const folderNodes = nodes.filter((n) => {
-              const nodeFolder = n.folder || "root";
-              // Match exact folder only - no subfolders
-              return nodeFolder === folder;
+          // Track which nodes have already been assigned to a hull
+          const assignedNodes = new Set<string>();
+          
+          foldersWithNodes.forEach((folder) => {
+            // Get ONLY nodes that belong to this exact folder AND haven't been assigned yet
+            const folderNodes = (nodesByFolder.get(folder) || []).filter((n) => {
+              return !assignedNodes.has(n.id);
             });
             
             if (folderNodes.length < 1) return;
+            
+            // Mark these nodes as assigned
+            folderNodes.forEach((n) => assignedNodes.add(n.id));
             
             // Calculate hull with more padding for better visibility
             const pad = 40;
