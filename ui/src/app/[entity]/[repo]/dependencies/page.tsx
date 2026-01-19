@@ -927,23 +927,27 @@ export default function DependenciesPage({
         d3
           .drag<SVGGElement, any>()
           .on("start", (event, d) => {
-            if (!event.active && simulation) simulation.alphaTarget(0.1).restart();
+            // Reduce simulation activity during drag to prevent chaos
+            if (!event.active && simulation) {
+              simulation.alphaTarget(0).restart(); // Lower alpha target
+            }
             
             // Store initial position
             dragStateRef.current.draggedNodeId = d.id;
             dragStateRef.current.initialX = d.x || 0;
             dragStateRef.current.initialY = d.y || 0;
             
+            // Fix dragged node position
             d.fx = d.x;
             d.fy = d.y;
             
             // Find all dependent nodes (nodes this node connects to)
-            const affected = new Set<string>();
+            const dependents = new Set<string>();
             links.forEach((l: any) => {
               const sourceId = typeof l.source === "object" ? l.source.id : l.source;
               const targetId = typeof l.target === "object" ? l.target.id : l.target;
               if (sourceId === d.id) {
-                affected.add(targetId);
+                dependents.add(targetId);
               }
             });
             
@@ -958,14 +962,24 @@ export default function DependenciesPage({
             });
             
             // Store for drag handler
-            dragStateRef.current.dependents = affected;
+            dragStateRef.current.dependents = dependents;
             dragStateRef.current.dependencies = dependencies;
             
             // Combine all related nodes
-            const allRelated = new Set([...affected, ...dependencies]);
+            const allRelated = new Set([...dependents, ...dependencies]);
             
-            // Update visual highlighting - highlight all nodes using nodeLayer
-            // Select all node groups, then update their circles
+            // Store initial relative positions for smooth orbiting
+            nodes.forEach((n: any) => {
+              if (allRelated.has(n.id)) {
+                n._initialRelX = (n.x || 0) - dragStateRef.current.initialX;
+                n._initialRelY = (n.y || 0) - dragStateRef.current.initialY;
+                n._initialRelDist = Math.sqrt(n._initialRelX * n._initialRelX + n._initialRelY * n._initialRelY);
+              }
+            });
+            
+            // Update visual highlighting - like search highlighting (green for related, greyish for others)
+            const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
+            
             nodeLayer.selectAll("g.node").each(function(n: any) {
               const nodeGroup = d3.select(this);
               const circle = nodeGroup.select("circle.nc");
@@ -973,39 +987,35 @@ export default function DependenciesPage({
               const isRelated = allRelated.has(n.id);
               
               circle
-                .attr("opacity", isSelected ? 1 : isRelated ? 0.8 : 0.2)
-                .attr("fill", isSelected ? "#ff5f5f" : isRelated ? "#ff9f43" : getC(n))
-                .attr("stroke-width", isSelected ? 3 : isRelated ? 2.5 : 1.5)
-                .attr("stroke", isSelected ? "#ff5f5f" : isRelated ? "#ff9f43" : (() => {
+                .attr("opacity", isSelected ? 1 : isRelated ? 1 : 0.2)
+                .attr("fill", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : getC(n))
+                .attr("stroke-width", isSelected ? 3 : isRelated ? 3 : 1.5)
+                .attr("stroke", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : (() => {
                   const c = d3.color(getC(n));
                   return c ? c.brighter(0.3).toString() : "#fff";
                 })());
             });
             
-            // Highlight links connecting to/from this node
+            // Highlight links - green for connected, greyish for others (like search)
             linkLayer.selectAll("path").each(function(l: any) {
               const path = d3.select(this);
               const sourceId = typeof l.source === "object" ? l.source.id : l.source;
               const targetId = typeof l.target === "object" ? l.target.id : l.target;
-              const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
               const isConnected = sourceId === d.id || targetId === d.id;
-              const isRelatedLink = allRelated.has(sourceId) && allRelated.has(targetId);
               
               path
-                .attr("stroke-opacity", isConnected ? 0.95 : isRelatedLink ? 0.7 : 0.15)
-                .attr("stroke", isConnected ? "#ff5f5f" : isRelatedLink ? "#ff9f43" : (theme === "light" ? "#ccc" : "#333"))
-                .attr("stroke-width", isConnected ? 3 : isRelatedLink ? 2 : Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
+                .attr("stroke-opacity", isConnected ? 0.8 : 0.15)
+                .attr("stroke", isConnected ? "#00ff9d" : (theme === "light" ? "#999999" : "#666666"))
+                .attr("stroke-width", isConnected ? 3 : Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
             });
           })
           .on("drag", (event, d) => {
+            // Update dragged node position
             d.fx = event.x;
             d.fy = event.y;
             
-            // Calculate movement vector from initial position
-            const dx = event.x - dragStateRef.current.initialX;
-            const dy = event.y - dragStateRef.current.initialY;
-            
-            // Move dependent nodes in the same direction and orbit around dragged node
+            // Smoothly move dependent/dependency nodes to orbit around dragged node
+            // Use fixed positions (fx/fy) instead of velocities to prevent chaos
             nodes.forEach((n: any) => {
               if (n.id === d.id) return; // Skip the dragged node itself
               
@@ -1013,65 +1023,64 @@ export default function DependenciesPage({
               const isDependency = dragStateRef.current.dependencies.has(n.id);
               
               if (isDependent || isDependency) {
-                // Get the node's position relative to the initial dragged node position
-                const initialRelX = (n.x || 0) - dragStateRef.current.initialX;
-                const initialRelY = (n.y || 0) - dragStateRef.current.initialY;
-                const initialRelDistance = Math.sqrt(initialRelX * initialRelX + initialRelY * initialRelY);
+                // Use stored initial relative position
+                const relX = n._initialRelX || 0;
+                const relY = n._initialRelY || 0;
+                const relDist = n._initialRelDist || 100;
                 
-                // Calculate target position: follow the dragged node's movement while maintaining relative position
-                // Use a follow strength to make them move smoothly
-                const followStrength = 0.7; // How much to follow (0-1)
-                const orbitRadius = Math.max(100, initialRelDistance); // Maintain orbit distance
+                // Maintain orbit distance but allow slight compression for closer inspection
+                const orbitRadius = Math.max(80, relDist * 0.9); // Slightly closer for better visibility
                 
                 // Normalize the relative vector
-                const normX = initialRelDistance > 0 ? initialRelX / initialRelDistance : 0;
-                const normY = initialRelDistance > 0 ? initialRelY / initialRelDistance : 0;
+                const normX = relDist > 0 ? relX / relDist : 0;
+                const normY = relDist > 0 ? relY / relDist : 0;
                 
                 // Calculate target position: dragged node position + relative offset
-                const targetX = event.x + normX * orbitRadius * followStrength;
-                const targetY = event.y + normY * orbitRadius * followStrength;
+                const targetX = event.x + normX * orbitRadius;
+                const targetY = event.y + normY * orbitRadius;
                 
-                // Apply velocity to move towards target (smooth following)
-                const currentX = n.x || 0;
-                const currentY = n.y || 0;
-                const deltaX = targetX - currentX;
-                const deltaY = targetY - currentY;
-                
-                // Apply velocity with damping for smooth movement
-                n.vx = (n.vx || 0) * 0.4 + deltaX * 0.2;
-                n.vy = (n.vy || 0) * 0.4 + deltaY * 0.2;
+                // Fix position for smooth, predictable movement (no chaos!)
+                n.fx = targetX;
+                n.fy = targetY;
               }
             });
             
-            // Restart simulation to apply velocities
-            if (simulation) {
-              simulation.alphaTarget(0.3).restart();
-            }
-            
-            // Keep highlighting during drag
+            // Don't restart simulation during drag - let the fixed positions handle movement
+            // This prevents the "flies in a glass" effect
           })
           .on("end", (event, d) => {
             if (!event.active && simulation) simulation.alphaTarget(0);
             d.fx = null;
             d.fy = null;
             
-            // Release dependent nodes (let them settle naturally)
+            // Release dependent/dependency nodes gradually (smooth transition back to natural forces)
             nodes.forEach((n: any) => {
               if (dragStateRef.current.dependents.has(n.id) || dragStateRef.current.dependencies.has(n.id)) {
-                // Remove any fixed positions to let them settle
-                if (n.fx != null || n.fy != null) {
-                  n.fx = null;
-                  n.fy = null;
-                }
+                // Clear fixed positions but keep velocities for smooth transition
+                n.fx = null;
+                n.fy = null;
+                // Clean up stored relative positions
+                delete n._initialRelX;
+                delete n._initialRelY;
+                delete n._initialRelDist;
               }
             });
+            
+            // Restart simulation to let nodes settle naturally
+            if (!event.active && simulation) {
+              simulation.alphaTarget(0.1).restart();
+              // Gradually reduce alpha target to let nodes settle
+              setTimeout(() => {
+                if (simulation) simulation.alphaTarget(0);
+              }, 500);
+            }
             
             // Reset drag state
             dragStateRef.current.draggedNodeId = null;
             dragStateRef.current.dependents.clear();
             dragStateRef.current.dependencies.clear();
             
-            // Reset highlighting
+            // Reset highlighting - like search reset
             const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
             nodeLayer.selectAll("g.node").each(function(n: any) {
               const nodeGroup = d3.select(this);
@@ -1088,7 +1097,7 @@ export default function DependenciesPage({
               const path = d3.select(this);
               path
                 .attr("stroke-opacity", 0.4)
-                .attr("stroke", theme === "light" ? "#ccc" : "#333")
+                .attr("stroke", theme === "light" ? "#999999" : "#666666")
                 .attr("stroke-width", Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
             });
           }) as any
@@ -1097,6 +1106,70 @@ export default function DependenciesPage({
       // Attach click handlers to all nodes (existing + new)
       node.on("click", (e, d) => {
         e.stopPropagation();
+        if (selectFileRef.current) selectFileRef.current(d.id);
+      });
+      
+      // Add double-click handler for dependency analysis (highlight without dragging)
+      node.on("dblclick", (e, d) => {
+        e.stopPropagation();
+        
+        // Find all dependent nodes (nodes this node connects to)
+        const dependents = new Set<string>();
+        links.forEach((l: any) => {
+          const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+          const targetId = typeof l.target === "object" ? l.target.id : l.target;
+          if (sourceId === d.id) {
+            dependents.add(targetId);
+          }
+        });
+        
+        // Also find nodes that connect to this node (dependencies)
+        const dependencies = new Set<string>();
+        links.forEach((l: any) => {
+          const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+          const targetId = typeof l.target === "object" ? l.target.id : l.target;
+          if (targetId === d.id) {
+            dependencies.add(sourceId);
+          }
+        });
+        
+        // Combine all related nodes
+        const allRelated = new Set([...dependents, ...dependencies]);
+        
+        // Highlight like drag/search - green for related, greyish for others
+        const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
+        
+        nodeLayer.selectAll("g.node").each(function(n: any) {
+          const nodeGroup = d3.select(this);
+          const circle = nodeGroup.select("circle.nc");
+          const isSelected = n.id === d.id;
+          const isRelated = allRelated.has(n.id);
+          
+          circle
+            .attr("opacity", isSelected ? 1 : isRelated ? 1 : 0.2)
+            .attr("fill", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : getC(n))
+            .attr("stroke-width", isSelected ? 3 : isRelated ? 3 : 1.5)
+            .attr("stroke", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : (() => {
+              const c = d3.color(getC(n));
+              return c ? c.brighter(0.3).toString() : "#fff";
+            })());
+        });
+        
+        // Highlight links - green for connected, greyish for others
+        linkLayer.selectAll("path").each(function(l: any) {
+          const path = d3.select(this);
+          const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+          const targetId = typeof l.target === "object" ? l.target.id : l.target;
+          const isConnected = sourceId === d.id || targetId === d.id;
+          
+          path
+            .attr("stroke-opacity", isConnected ? 0.8 : 0.15)
+            .attr("stroke", isConnected ? "#00ff9d" : (theme === "light" ? "#999999" : "#666666"))
+            .attr("stroke-width", isConnected ? 3 : Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
+        });
+        
+        // Set focused node for blast radius
+        setFocusedNodeId(d.id);
         if (selectFileRef.current) selectFileRef.current(d.id);
       });
 
@@ -1137,23 +1210,38 @@ export default function DependenciesPage({
           });
         }
         
-        // Preserve search highlighting in tick handler (so it persists during zoom/pan)
-        if (hasSearch) {
+        // Preserve highlighting in tick handler (search, drag, double-click) - so it persists during zoom/pan
+        const draggedNodeId = dragStateRef.current.draggedNodeId;
+        const dragDependents = dragStateRef.current.dependents;
+        const dragDependencies = dragStateRef.current.dependencies;
+        const dragAllRelated = new Set([...dragDependents, ...dragDependencies]);
+        const hasDrag = draggedNodeId !== null;
+        // Use focusedNodeId from state (will be updated via closure)
+        const currentFocusedNodeId = focusedNodeId;
+        const hasFocus = currentFocusedNodeId !== null;
+        
+        if (hasSearch || hasDrag || hasFocus) {
           link.each(function(l: any) {
             const path = d3.select(this);
             const sourceId = typeof l.source === "object" ? l.source.id : l.source;
             const targetId = typeof l.target === "object" ? l.target.id : l.target;
-            const isHighlighted = currentMatchingNodes.has(sourceId) || currentMatchingNodes.has(targetId);
+            
+            // Check if link is highlighted by search
+            const isSearchHighlighted = hasSearch && (currentMatchingNodes.has(sourceId) || currentMatchingNodes.has(targetId));
+            // Check if link is highlighted by drag/double-click
+            const isDragHighlighted = hasDrag && (sourceId === draggedNodeId || targetId === draggedNodeId);
+            const isFocusHighlighted = hasFocus && (sourceId === currentFocusedNodeId || targetId === currentFocusedNodeId);
+            const isHighlighted = isSearchHighlighted || isDragHighlighted || isFocusHighlighted;
             
             // Green for highlighted links, greyish for others
             path
-              .attr("stroke", isHighlighted ? "#00ff9d" : "#666666") // More greyish for non-highlighted
-              .attr("stroke-opacity", isHighlighted ? 0.8 : 0.15); // Dimmer for non-highlighted
+              .attr("stroke", isHighlighted ? "#00ff9d" : "#666666")
+              .attr("stroke-opacity", isHighlighted ? 0.8 : 0.15);
           });
         } else {
-          // Default link styling when no search - more greyish
+          // Default link styling when no highlighting - more greyish
           const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
-          link.attr("stroke", theme === "light" ? "#999999" : "#666666") // More greyish
+          link.attr("stroke", theme === "light" ? "#999999" : "#666666")
             .attr("stroke-opacity", 0.4);
         }
         
@@ -1175,24 +1263,34 @@ export default function DependenciesPage({
           return `translate(${d.x},${d.y})`;
         });
         
-        // Preserve search highlighting for nodes in tick handler (so it persists during zoom/pan)
-        if (hasSearch) {
+        // Preserve highlighting for nodes in tick handler (search, drag, double-click) - so it persists during zoom/pan
+        if (hasSearch || hasDrag || hasFocus) {
           node.selectAll("circle.nc").each(function(n: any) {
             const circle = d3.select(this);
-            const isMatch = currentMatchingNodes.has(n.id);
-            const isHighlighted = currentHighlightedNodeId === n.id;
+            
+            // Check search highlighting
+            const isSearchMatch = hasSearch && currentMatchingNodes.has(n.id);
+            const isSearchHighlighted = hasSearch && currentHighlightedNodeId === n.id;
+            
+            // Check drag/double-click highlighting
+            const isDragSelected = hasDrag && n.id === draggedNodeId;
+            const isDragRelated = hasDrag && dragAllRelated.has(n.id);
+            const isFocusSelected = hasFocus && n.id === currentFocusedNodeId;
+            
+            const isSelected = isSearchHighlighted || isDragSelected || isFocusSelected;
+            const isRelated = isSearchMatch || isDragRelated;
             
             circle
-              .attr("opacity", isMatch || isHighlighted ? 1 : 0.2)
-              .attr("fill", isHighlighted ? "#ff5f5f" : isMatch ? "#00ff9d" : getC(n))
-              .attr("stroke", isMatch || isHighlighted ? "#00ff9d" : (() => {
+              .attr("opacity", isSelected ? 1 : isRelated ? 1 : 0.2)
+              .attr("fill", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : getC(n))
+              .attr("stroke", isSelected || isRelated ? "#00ff9d" : (() => {
                 const c = d3.color(getC(n));
                 return c ? c.brighter(0.3).toString() : "#fff";
               })())
-              .attr("stroke-width", isMatch || isHighlighted ? 3 : 1.5);
+              .attr("stroke-width", isSelected || isRelated ? 3 : 1.5);
           });
         } else {
-          // Default node styling when no search
+          // Default node styling when no highlighting
           node.selectAll("circle.nc")
             .attr("opacity", 1)
             .attr("fill", getC)
@@ -1294,14 +1392,35 @@ export default function DependenciesPage({
 
       svg.on("click", (e) => {
         if (e.target === svg.node()) {
+          // Reset all highlighting (search, drag, double-click)
           setFocusedNodeId(null);
           setBlastRadius(null);
+          dragStateRef.current.draggedNodeId = null;
+          dragStateRef.current.dependents.clear();
+          dragStateRef.current.dependencies.clear();
+          
           const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
-          link.attr("stroke", theme === "light" ? "#ccc" : "#333").attr("stroke-opacity", 0.4);
-          node
-            .selectAll(".nc")
-            .attr("opacity", 1)
-            .attr("fill", getC);
+          
+          // Reset link highlighting
+          linkLayer.selectAll("path").each(function(l: any) {
+            const path = d3.select(this);
+            path
+              .attr("stroke-opacity", 0.4)
+              .attr("stroke", theme === "light" ? "#999999" : "#666666")
+              .attr("stroke-width", Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
+          });
+          
+          // Reset node highlighting
+          nodeLayer.selectAll("g.node").each(function(n: any) {
+            const nodeGroup = d3.select(this);
+            const circle = nodeGroup.select("circle.nc");
+            const c = d3.color(getC(n));
+            circle
+              .attr("opacity", 1)
+              .attr("fill", getC(n))
+              .attr("stroke-width", 1.5)
+              .attr("stroke", c ? c.brighter(0.3).toString() : "#fff");
+          });
         }
       });
 
