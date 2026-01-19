@@ -2359,7 +2359,8 @@ export default function DependenciesPage({
   const healthScore = totalFiles > 0 ? Math.min(100, Math.max(0, 100 - (totalDependencies / totalFiles * 10))) : 0;
 
   return (
-    <div className="fixed inset-0 flex bg-[#0f172a] overflow-hidden" style={{ marginTop: 0, paddingTop: 0 }}>
+    <div className="mt-4 w-screen max-w-none relative left-1/2 right-1/2 -translate-x-1/2">
+      <div className="flex bg-[#0f172a] overflow-hidden" style={{ height: 'calc(100vh - 200px)', minHeight: '600px' }}>
       {/* Left Sidebar - CodeFlow style */}
       <div 
         className="flex-shrink-0 bg-[#1a1f2e] border-r border-[#383B42] flex flex-col overflow-hidden"
@@ -2826,6 +2827,7 @@ export default function DependenciesPage({
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 }
