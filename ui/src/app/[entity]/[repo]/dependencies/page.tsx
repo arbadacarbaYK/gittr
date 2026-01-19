@@ -32,10 +32,6 @@ import {
   Search,
   X,
   Settings,
-  Folder,
-  File,
-  ChevronRight,
-  ChevronDown,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
@@ -79,159 +75,6 @@ interface GitHubTreeItem {
   size?: number;
 }
 
-// CodeFlow-style File Tree Component
-function FileTree({
-  nodes,
-  onSelectFile,
-  selectedId,
-}: {
-  nodes: GraphNode[];
-  onSelectFile: (id: string) => void;
-  selectedId: string | null;
-}) {
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  
-  // Build folder tree structure
-  const tree = useMemo(() => {
-    const folderMap = new Map<string, { files: GraphNode[]; subfolders: Set<string> }>();
-    
-    nodes.forEach((node) => {
-      const path = node.data.path || node.data.filePath || "";
-      const parts = path.split("/");
-      const fileName = parts[parts.length - 1];
-      const folderPath = parts.slice(0, -1).join("/") || "root";
-      
-      if (!folderMap.has(folderPath)) {
-        folderMap.set(folderPath, { files: [], subfolders: new Set() });
-      }
-      
-      folderMap.get(folderPath)!.files.push(node);
-      
-      // Track parent folders
-      if (folderPath !== "root") {
-        const parentParts = folderPath.split("/");
-        for (let i = 1; i < parentParts.length; i++) {
-          const parentPath = parentParts.slice(0, i).join("/");
-          if (parentPath && folderMap.has(parentPath)) {
-            folderMap.get(parentPath)!.subfolders.add(folderPath);
-          }
-        }
-      }
-    });
-    
-    return folderMap;
-  }, [nodes]);
-  
-  const toggleFolder = (folderPath: string) => {
-    setExpandedFolders((prev) => {
-      const next = new Set(prev);
-      if (next.has(folderPath)) {
-        next.delete(folderPath);
-      } else {
-        next.add(folderPath);
-      }
-      return next;
-    });
-  };
-  
-  const renderFolder = (folderPath: string, depth: number = 0): JSX.Element | null => {
-    const folder = tree.get(folderPath);
-    if (!folder) return null;
-    
-    const isExpanded = expandedFolders.has(folderPath);
-    const folderName = folderPath === "root" ? "root" : folderPath.split("/").pop() || folderPath;
-    const hasChildren = folder.files.length > 0 || folder.subfolders.size > 0;
-    
-    return (
-      <div key={folderPath}>
-        {folderPath !== "root" && (
-          <div
-            className={`flex items-center gap-1 px-2 py-1 text-xs cursor-pointer hover:bg-[#0f172a] rounded ${
-              depth > 0 ? `ml-${depth * 4}` : ""
-            }`}
-            style={{ paddingLeft: `${depth * 12 + 8}px` }}
-            onClick={() => hasChildren && toggleFolder(folderPath)}
-          >
-            {hasChildren ? (
-              isExpanded ? (
-                <ChevronDown className="h-3 w-3 text-gray-500" />
-              ) : (
-                <ChevronRight className="h-3 w-3 text-gray-500" />
-              )
-            ) : (
-              <div className="w-3" />
-            )}
-            <Folder className="h-3 w-3 text-orange-500" />
-            <span className="text-gray-400 truncate">{folderName}</span>
-          </div>
-        )}
-        
-        {isExpanded && (
-          <>
-            {/* Render subfolders */}
-            {Array.from(folder.subfolders)
-              .sort()
-              .map((subfolder) => renderFolder(subfolder, depth + 1))}
-            
-            {/* Render files */}
-            {folder.files
-              .sort((a, b) => {
-                const aName = (a.data.path || a.data.filePath || "").split("/").pop() || "";
-                const bName = (b.data.path || b.data.filePath || "").split("/").pop() || "";
-                return aName.localeCompare(bName);
-              })
-              .map((file) => {
-                const filePath = file.data.path || file.data.filePath || "";
-                const fileName = filePath.split("/").pop() || file.data.id;
-                const isSelected = selectedId === file.data.id;
-                
-                return (
-                  <div
-                    key={file.data.id}
-                    className={`flex items-center gap-1 px-2 py-1 text-xs cursor-pointer rounded ${
-                      isSelected
-                        ? "bg-orange-500/20 text-orange-400"
-                        : "hover:bg-[#0f172a] text-gray-400"
-                    }`}
-                    style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
-                    onClick={() => onSelectFile(file.data.id)}
-                  >
-                    <File className="h-3 w-3 text-gray-500" />
-                    <span className="truncate">{fileName}</span>
-                  </div>
-                );
-              })}
-          </>
-        )}
-      </div>
-    );
-  };
-  
-  // Auto-expand root
-  useEffect(() => {
-    if (tree.has("root") && !expandedFolders.has("root")) {
-      setExpandedFolders((prev) => new Set([...prev, "root"]));
-    }
-  }, [tree]);
-  
-  return (
-    <div className="space-y-0">
-      {tree.has("root") && renderFolder("root")}
-      {Array.from(tree.keys())
-        .filter((path) => path !== "root")
-        .sort()
-        .map((path) => {
-          // Only render top-level folders (no parent in tree)
-          const parts = path.split("/");
-          if (parts.length === 1) {
-            return renderFolder(path);
-          }
-          return null;
-        })}
-    </div>
-  );
-}
-
 export default function DependenciesPage({
   params,
 }: {
@@ -256,10 +99,6 @@ export default function DependenciesPage({
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"file" | "folder">("file");
   const [showExternal, setShowExternal] = useState(true);
-  const [colorMode, setColorMode] = useState<"folder" | "layer" | "churn">("folder");
-  const [sidebarWidth, setSidebarWidth] = useState(260);
-  const [rightPanelWidth, setRightPanelWidth] = useState(360);
-  const [rightTab, setRightTab] = useState<"details" | "functions" | "connections">("details");
   const [folderGraphData, setFolderGraphData] = useState<GraphData | null>(
     null
   );
@@ -291,7 +130,7 @@ export default function DependenciesPage({
   // CodeFlow-style graph configuration - defaults match user's preferred settings
   const [graphConfig, setGraphConfig] = useState({
     viewMode: "metro" as "force" | "radial" | "hierarchical" | "grid" | "metro",
-    spacing: 750, // Default spread - can go up to 1000 for very dense graphs
+    spacing: 750, // Higher default spread
     linkDist: 195, // High link distance for better spread
     showLabels: true,
     curvedLinks: true, // Curved links enabled by default
@@ -321,9 +160,7 @@ export default function DependenciesPage({
     []
   );
 
-  // CodeFlow: Always use graphData (file nodes) for rendering
-  // Folder view just shows/hides hulls, doesn't change the nodes
-  const activeGraphData = graphData;
+  const activeGraphData = viewMode === "folder" ? folderGraphData : graphData;
   const hasFolderDependencyEdges =
     activeGraphData?.edges.some((edge) => edge.data.type !== "folder") ?? false;
 
@@ -466,31 +303,30 @@ export default function DependenciesPage({
         "#ff5f5f",
         "#84cc16",
       ];
+      const isFolderView = viewMode === "folder";
       // CodeFlow-style: Extract folders from file paths for positioning/coloring
       const folders = new Set<string>();
       const nodes = nodeEntriesForLayout.map((node) => {
         const size = node.data.size || 1;
         const path = node.data.path || node.data.filePath || "";
-        // CodeFlow-style: group by top-level folder (\"src\", \"lib\", etc.)
-        const folder = path.split("/")[0] || "root";
+        const topFolder = path.split("/")[0] || "root";
+        const fullFolder = path.split("/").slice(0, -1).join("/") || "root";
+        const folder =
+          node.data.type === "package"
+            ? "external"
+            : isFolderView
+              ? topFolder
+              : fullFolder;
         folders.add(folder);
 
         // CodeFlow-style: Node radius based on function count (we'll use size as proxy)
         const base = node.data.type === "package" ? 10 : 8;
         const radius = Math.max(8, Math.min(24, 5 + Math.sqrt(size) * 0.8));
         
-        // Ensure packages always have a name/label
-        let nodeName = node.data.displayLabel || node.data.label || node.data.id;
-        if (node.data.type === "package" && !nodeName) {
-          // Extract package name from path or ID
-          const pathOrId = node.data.path || node.data.id || "";
-          nodeName = pathOrId.split("/").pop() || pathOrId.split("@").pop() || "pkg";
-        }
-        
         return {
           id: node.data.id,
-          label: nodeName,
-          name: nodeName,
+          label: node.data.displayLabel || node.data.label,
+          name: node.data.displayLabel || node.data.label,
           type: node.data.type,
           radius,
           folder,
@@ -571,7 +407,7 @@ export default function DependenciesPage({
         .append("marker")
         .attr("id", "arr")
         .attr("viewBox", "0 -5 10 10")
-        .attr("refX", 14)
+        .attr("refX", 10)
         .attr("refY", 0)
         .attr("markerWidth", 4)
         .attr("markerHeight", 4)
@@ -649,8 +485,7 @@ export default function DependenciesPage({
               Math.max(1, Math.min(2, Math.sqrt((d.count || 1)) * 0.3))
             )
             .attr("stroke-opacity", 0.4)
-            .attr("marker-end", "url(#arr)")
-            .attr("marker-end", "url(#arr)"),
+            .attr("marker-end", "none"),
           (update) => update,
           (exit) => exit.remove()
         );
@@ -677,43 +512,9 @@ export default function DependenciesPage({
 
       // CodeFlow EXACT: Helper functions for node rendering
       const getR = (d: any) => Math.max(8, Math.min(24, 5 + (d.fnCount || 0) * 0.8));
-      // CodeFlow-style: Color function based on colorMode
       const getC = (d: any) => {
-        if (colorMode === 'folder') {
-          // Color by folder/directory
-          return d.color || COLORS[Array.from(folders).indexOf(d.folder) % COLORS.length] || COLORS[0];
-        } else if (colorMode === 'layer') {
-          // Color by architectural layer (heuristic based on folder patterns)
-          const path = d.path || d.id || '';
-          if (path.includes('/ui/') || path.includes('/components/') || path.includes('/pages/')) {
-            return '#4d9fff'; // Blue for UI/Frontend layer
-          } else if (path.includes('/api/') || path.includes('/server/') || path.includes('/backend/')) {
-            return '#00ff9d'; // Green for API/Backend layer
-          } else if (path.includes('/lib/') || path.includes('/utils/') || path.includes('/helpers/')) {
-            return '#a78bfa'; // Purple for Library/Utils layer
-          } else if (path.includes('/db/') || path.includes('/models/') || path.includes('/schema/')) {
-            return '#ff9f43'; // Orange for Data layer
-          } else if (path.includes('/test/') || path.includes('/__tests__/') || path.includes('spec.')) {
-            return '#ec4899'; // Pink for Test layer
-          } else if (path.includes('/config/') || path.includes('/.')) {
-            return '#84cc16'; // Lime for Config layer
-          } else {
-            return '#8b5cf6'; // Default purple
-          }
-        } else if (colorMode === 'churn') {
-          // Color by file churn (change frequency)
-          // For now, use a placeholder heuristic based on file size or depth
-          // In a real implementation, this would use git history data
-          const pathDepth = (d.path || d.id || '').split('/').length;
-          if (pathDepth <= 2) {
-            return '#ff5f5f'; // Red for high-churn (root/shallow files change often)
-          } else if (pathDepth <= 4) {
-            return '#ff9f43'; // Orange for medium-churn
-          } else {
-            return '#4d9fff'; // Blue for low-churn (deep files change less)
-          }
-        }
-        return d.color || COLORS[0];
+        // CodeFlow-style: Color by folder
+        return d.color || COLORS[Array.from(folders).indexOf(d.folder) % COLORS.length] || COLORS[0];
       };
 
       // Update circle attributes for all nodes (existing + new)
@@ -771,16 +572,7 @@ export default function DependenciesPage({
         .attr("pointer-events", "none")
         .attr("opacity", graphConfigRef.current.showLabels ? 1 : 0) // Use graphConfigRef for latest value
         .text((d) => {
-          // Handle empty or undefined names - use ID as fallback
-          let n = d.name || d.id || d.label || "?";
-          // Remove file extension for files
-          if (d.type === "file") {
-            n = n.replace(/\.[^.]+$/, "");
-          }
-          // For packages, use the package name (might be scoped like @package/name)
-          if (d.type === "package" && !n) {
-            n = d.id || d.path || "pkg";
-          }
+          const n = d.name.replace(/\.[^.]+$/, "");
           const r = getR(d);
           // Calculate max characters that fit inside circle (circumference / font width)
           // Approximate: each character is ~0.6 * font size wide
@@ -792,21 +584,8 @@ export default function DependenciesPage({
       // Add mouseover/mouseout handlers for tooltip
       node
         .on("mouseover", function(event, d: any) {
-          // Get full name with fallbacks
-          let fullName = d.name || d.id || d.label || d.path || "Unknown";
-          let displayName = d.path || d.id || d.name || "Unknown";
-          
-          // Remove file extension for files
-          if (d.type === "file") {
-            fullName = fullName.replace(/\.[^.]+$/, "");
-          }
-          
-          // For packages, show the full package path
-          if (d.type === "package") {
-            fullName = d.path || d.id || d.name || "Package";
-            displayName = d.path || d.id || d.name || "External Package";
-          }
-          
+          const fullName = d.name.replace(/\.[^.]+$/, "");
+          const displayName = d.name;
           tooltip
             .style("opacity", 1)
             .html(`<div><strong>${fullName}</strong></div><div style="font-size: 10px; color: #aaa; margin-top: 4px;">${displayName}</div>`);
@@ -941,8 +720,8 @@ export default function DependenciesPage({
         
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.3))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 2.5).distanceMax(1000))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 50).iterations(8))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 1.5).distanceMax(400))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
           .force("x", d3.forceX((d: any) => {
             if ((d as any).isHub) return (d as any).hubX;
             if ((d as any).orbitHub) {
@@ -973,8 +752,8 @@ export default function DependenciesPage({
         });
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 0.5).strength(0.05))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 1.5).distanceMax(800))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 50).iterations(8))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.5))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
           .force("x", d3.forceX((d: any) => (d as any).targetX).strength(0.8))
           .force("y", d3.forceY((d: any) => (d as any).targetY).strength(0.8))
           .force("boundary", () => {
@@ -1000,8 +779,8 @@ export default function DependenciesPage({
         });
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.1))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 2.0).distanceMax(800))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 50).iterations(8))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.8).distanceMax(200))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
           .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.9))
           .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.3))
           .force("boundary", () => {
@@ -1017,8 +796,8 @@ export default function DependenciesPage({
         });
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 1.5).strength(0.02))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 1.5).distanceMax(800))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 50).iterations(8))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.3))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
           .force("x", d3.forceX((d: any) => (d as any).targetX).strength(1))
           .force("y", d3.forceY((d: any) => (d as any).targetY).strength(1))
           .force("boundary", () => {
@@ -1065,14 +844,35 @@ export default function DependenciesPage({
           (n as any).metroLine = actualRoots.length;
         });
         simulation
-          .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.02))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 2.5).distanceMax(1000))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 50).iterations(8))
-          .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.3))
-          .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.3))
+          .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.05))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.4))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
+          .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.95))
+          .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.95))
           .force("boundary", () => {
             nodes.forEach(boundaryForce);
           });
+      }
+      
+      // Update forces when spacing/linkDist change - use graphConfigRef for latest values
+      const linkForce = simulation.force("link") as any;
+      if (linkForce) {
+        linkForce.distance(config.linkDist);
+      }
+      const chargeForce = simulation.force("charge") as any;
+      if (chargeForce) {
+        // Update charge strength based on view mode
+        if (config.viewMode === "force") {
+          chargeForce.strength(-config.spacing * 1.5);
+        } else if (config.viewMode === "radial") {
+          chargeForce.strength(-config.spacing * 0.5);
+        } else if (config.viewMode === "hierarchical") {
+          chargeForce.strength(-config.spacing * 0.8);
+        } else if (config.viewMode === "grid") {
+          chargeForce.strength(-config.spacing * 0.3);
+        } else if (config.viewMode === "metro") {
+          chargeForce.strength(-config.spacing * 0.4);
+        }
       }
       
       // Always restart simulation when config changes to apply new forces
@@ -1083,189 +883,110 @@ export default function DependenciesPage({
         .restart();
       
       // Attach drag handlers with highlighting and dependent node movement
-      // Track if there's actual movement to prevent click from triggering drag
-      let dragStarted = false;
-      let startX = 0;
-      let startY = 0;
-      
       node.call(
         d3
           .drag<SVGGElement, any>()
           .on("start", (event, d) => {
-            // Track start position to detect actual drag vs click
-            startX = event.x;
-            startY = event.y;
-            dragStarted = false;
+            if (!event.active && simulation) simulation.alphaTarget(0.1).restart();
             
-            // Don't do anything on start - wait for actual drag movement
-          })
-          .on("drag", (event, d) => {
-            // Only activate drag if there's actual movement (more than 5px)
-            const dx = Math.abs(event.x - startX);
-            const dy = Math.abs(event.y - startY);
-            if (!dragStarted && (dx < 5 && dy < 5)) {
-              return; // Too little movement, treat as click
-            }
+            // Store initial position
+            dragStateRef.current.draggedNodeId = d.id;
+            dragStateRef.current.initialX = d.x || 0;
+            dragStateRef.current.initialY = d.y || 0;
             
-            if (!dragStarted) {
-              // First actual drag - initialize drag state
-              dragStarted = true;
-              
-              // Store initial position
-              dragStateRef.current.draggedNodeId = d.id;
-              dragStateRef.current.initialX = d.x || 0;
-              dragStateRef.current.initialY = d.y || 0;
-              // Fix dragged node position
-              d.fx = d.x;
-              d.fy = d.y;
-              
-              // Find all dependent nodes (nodes this node connects to)
-              const dependents = new Set<string>();
-              links.forEach((l: any) => {
-                const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-                const targetId = typeof l.target === "object" ? l.target.id : l.target;
-                if (sourceId === d.id) {
-                  dependents.add(targetId);
-                }
-              });
-              
-              // Also find nodes that connect to this node (dependencies)
-              const dependencies = new Set<string>();
-              links.forEach((l: any) => {
-                const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-                const targetId = typeof l.target === "object" ? l.target.id : l.target;
-                if (targetId === d.id) {
-                  dependencies.add(sourceId);
-                }
-              });
-              
-              // Store for drag handler
-              dragStateRef.current.dependents = dependents;
-              dragStateRef.current.dependencies = dependencies;
-              
-              // Combine all related nodes
-              const allRelated = new Set([...dependents, ...dependencies]);
-              
-              // Store initial relative positions for smooth orbiting
-              nodes.forEach((n: any) => {
-                if (allRelated.has(n.id)) {
-                  n._initialRelX = (n.x || 0) - dragStateRef.current.initialX;
-                  n._initialRelY = (n.y || 0) - dragStateRef.current.initialY;
-                  n._initialRelDist = Math.sqrt(n._initialRelX * n._initialRelX + n._initialRelY * n._initialRelY);
-                }
-              });
-              
-              // Update visual highlighting - like search highlighting (green for related, greyish for others)
-              const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
-              
-              nodeLayer.selectAll("g.node").each(function(n: any) {
-                const nodeGroup = d3.select(this);
-                const circle = nodeGroup.select("circle.nc");
-                const isSelected = n.id === d.id;
-                const isRelated = allRelated.has(n.id);
-                
-                circle
-                  .attr("opacity", isSelected ? 1 : isRelated ? 1 : 0.2)
-                  .attr("fill", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : getC(n))
-                  .attr("stroke-width", isSelected ? 3 : isRelated ? 3 : 1.5)
-                  .attr("stroke", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : (() => {
-                    const c = d3.color(getC(n));
-                    return c ? c.brighter(0.3).toString() : "#fff";
-                  })());
-              });
-              
-              // Highlight links - green for connected, greyish for others (like search)
-              linkLayer.selectAll("path").each(function(l: any) {
-                const path = d3.select(this);
-                const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-                const targetId = typeof l.target === "object" ? l.target.id : l.target;
-                const isConnected = sourceId === d.id || targetId === d.id;
-                
-                path
-                  .attr("stroke-opacity", isConnected ? 0.8 : 0.15)
-                  .attr("stroke", isConnected ? "#00ff9d" : (theme === "light" ? "#999999" : "#666666"))
-                  .attr("stroke-width", isConnected ? 3 : Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
-              });
-            }
+            d.fx = d.x;
+            d.fy = d.y;
             
-            // Continue with drag movement
-            // Update dragged node position
-            d.fx = event.x;
-            d.fy = event.y;
-            
-            // Smoothly move dependent/dependency nodes to orbit around dragged node
-            // Use fixed positions (fx/fy) instead of velocities to prevent chaos
-            nodes.forEach((n: any) => {
-              if (n.id === d.id) return; // Skip the dragged node itself
-              
-              const isDependent = dragStateRef.current.dependents.has(n.id);
-              const isDependency = dragStateRef.current.dependencies.has(n.id);
-              
-              if (isDependent || isDependency) {
-                // Use stored initial relative position
-                const relX = n._initialRelX || 0;
-                const relY = n._initialRelY || 0;
-                const relDist = n._initialRelDist || 100;
-                
-                // Maintain orbit distance but allow slight compression for closer inspection
-                const orbitRadius = Math.max(80, relDist * 0.9); // Slightly closer for better visibility
-                
-                // Normalize the relative vector
-                const normX = relDist > 0 ? relX / relDist : 0;
-                const normY = relDist > 0 ? relY / relDist : 0;
-                
-                // Calculate target position: dragged node position + relative offset
-                const targetX = event.x + normX * orbitRadius;
-                const targetY = event.y + normY * orbitRadius;
-                
-                // Fix position for smooth, predictable movement (no chaos!)
-                n.fx = targetX;
-                n.fy = targetY;
+            // Find all dependent nodes (nodes this node connects to)
+            const affected = new Set<string>();
+            links.forEach((l: any) => {
+              const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+              const targetId = typeof l.target === "object" ? l.target.id : l.target;
+              if (sourceId === d.id) {
+                affected.add(targetId);
               }
             });
             
-            // Don't restart simulation during drag - let the fixed positions handle movement
-            // This prevents the "flies in a glass" effect
+            // Also find nodes that connect to this node (dependencies)
+            const dependencies = new Set<string>();
+            links.forEach((l: any) => {
+              const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+              const targetId = typeof l.target === "object" ? l.target.id : l.target;
+              if (targetId === d.id) {
+                dependencies.add(sourceId);
+              }
+            });
+            
+            // Store for drag handler
+            dragStateRef.current.dependents = affected;
+            dragStateRef.current.dependencies = dependencies;
+            
+            // Combine all related nodes
+            const allRelated = new Set([...affected, ...dependencies]);
+            
+            // Update visual highlighting - highlight all nodes using nodeLayer
+            // Select all node groups, then update their circles
+            nodeLayer.selectAll("g.node").each(function(n: any) {
+              const nodeGroup = d3.select(this);
+              const circle = nodeGroup.select("circle.nc");
+              const isSelected = n.id === d.id;
+              const isRelated = allRelated.has(n.id);
+              
+              circle
+                .attr("opacity", isSelected ? 1 : isRelated ? 0.8 : 0.2)
+                .attr("fill", isSelected ? "#ff5f5f" : isRelated ? "#ff9f43" : getC(n))
+                .attr("stroke-width", isSelected ? 3 : isRelated ? 2.5 : 1.5)
+                .attr("stroke", isSelected ? "#ff5f5f" : isRelated ? "#ff9f43" : (() => {
+                  const c = d3.color(getC(n));
+                  return c ? c.brighter(0.3).toString() : "#fff";
+                })());
+            });
+            
+            // Highlight links connecting to/from this node
+            linkLayer.selectAll("path").each(function(l: any) {
+              const path = d3.select(this);
+              const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+              const targetId = typeof l.target === "object" ? l.target.id : l.target;
+              const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
+              const isConnected = sourceId === d.id || targetId === d.id;
+              const isRelatedLink = allRelated.has(sourceId) && allRelated.has(targetId);
+              
+              path
+                .attr("stroke-opacity", isConnected ? 0.95 : isRelatedLink ? 0.7 : 0.15)
+                .attr("stroke", isConnected ? "#ff5f5f" : isRelatedLink ? "#ff9f43" : (theme === "light" ? "#ccc" : "#333"))
+                .attr("stroke-width", isConnected ? 3 : isRelatedLink ? 2 : Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
+            });
+          })
+          .on("drag", (event, d) => {
+            d.fx = event.x;
+            d.fy = event.y;
+            // Keep simulation active while dragging the node
+            if (simulation) {
+              simulation.alphaTarget(0.2).restart();
+            }
           })
           .on("end", (event, d) => {
-            // Only reset if drag actually started (not just a click)
-            if (!dragStarted) {
-              return; // It was just a click, don't reset anything
-            }
-            
             if (!event.active && simulation) simulation.alphaTarget(0);
             d.fx = null;
             d.fy = null;
-            dragStarted = false;
             
-            // Release dependent/dependency nodes gradually (smooth transition back to natural forces)
+            // Release dependent nodes (let them settle naturally)
             nodes.forEach((n: any) => {
               if (dragStateRef.current.dependents.has(n.id) || dragStateRef.current.dependencies.has(n.id)) {
-                // Clear fixed positions but keep velocities for smooth transition
-                n.fx = null;
-                n.fy = null;
-                // Clean up stored relative positions
-                delete n._initialRelX;
-                delete n._initialRelY;
-                delete n._initialRelDist;
+                // Remove any fixed positions to let them settle
+                if (n.fx != null || n.fy != null) {
+                  n.fx = null;
+                  n.fy = null;
+                }
               }
             });
-            
-            // Restart simulation to let nodes settle naturally
-            if (!event.active && simulation) {
-              simulation.alphaTarget(0.1).restart();
-              // Gradually reduce alpha target to let nodes settle
-              setTimeout(() => {
-                if (simulation) simulation.alphaTarget(0);
-              }, 500);
-            }
             
             // Reset drag state
             dragStateRef.current.draggedNodeId = null;
             dragStateRef.current.dependents.clear();
             dragStateRef.current.dependencies.clear();
             
-            // Reset highlighting - like search reset
+            // Reset highlighting
             const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
             nodeLayer.selectAll("g.node").each(function(n: any) {
               const nodeGroup = d3.select(this);
@@ -1282,7 +1003,7 @@ export default function DependenciesPage({
               const path = d3.select(this);
               path
                 .attr("stroke-opacity", 0.4)
-                .attr("stroke", theme === "light" ? "#999999" : "#666666")
+                .attr("stroke", theme === "light" ? "#ccc" : "#333")
                 .attr("stroke-width", Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
             });
           }) as any
@@ -1291,70 +1012,6 @@ export default function DependenciesPage({
       // Attach click handlers to all nodes (existing + new)
       node.on("click", (e, d) => {
         e.stopPropagation();
-        if (selectFileRef.current) selectFileRef.current(d.id);
-      });
-      
-      // Add double-click handler for dependency analysis (highlight without dragging)
-      node.on("dblclick", (e, d) => {
-        e.stopPropagation();
-        
-        // Find all dependent nodes (nodes this node connects to)
-        const dependents = new Set<string>();
-        links.forEach((l: any) => {
-          const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-          const targetId = typeof l.target === "object" ? l.target.id : l.target;
-          if (sourceId === d.id) {
-            dependents.add(targetId);
-          }
-        });
-        
-        // Also find nodes that connect to this node (dependencies)
-        const dependencies = new Set<string>();
-        links.forEach((l: any) => {
-          const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-          const targetId = typeof l.target === "object" ? l.target.id : l.target;
-          if (targetId === d.id) {
-            dependencies.add(sourceId);
-          }
-        });
-        
-        // Combine all related nodes
-        const allRelated = new Set([...dependents, ...dependencies]);
-        
-        // Highlight like drag/search - green for related, greyish for others
-        const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
-        
-        nodeLayer.selectAll("g.node").each(function(n: any) {
-          const nodeGroup = d3.select(this);
-          const circle = nodeGroup.select("circle.nc");
-          const isSelected = n.id === d.id;
-          const isRelated = allRelated.has(n.id);
-          
-          circle
-            .attr("opacity", isSelected ? 1 : isRelated ? 1 : 0.2)
-            .attr("fill", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : getC(n))
-            .attr("stroke-width", isSelected ? 3 : isRelated ? 3 : 1.5)
-            .attr("stroke", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : (() => {
-              const c = d3.color(getC(n));
-              return c ? c.brighter(0.3).toString() : "#fff";
-            })());
-        });
-        
-        // Highlight links - green for connected, greyish for others
-        linkLayer.selectAll("path").each(function(l: any) {
-          const path = d3.select(this);
-          const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-          const targetId = typeof l.target === "object" ? l.target.id : l.target;
-          const isConnected = sourceId === d.id || targetId === d.id;
-          
-          path
-            .attr("stroke-opacity", isConnected ? 0.8 : 0.15)
-            .attr("stroke", isConnected ? "#00ff9d" : (theme === "light" ? "#999999" : "#666666"))
-            .attr("stroke-width", isConnected ? 3 : Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
-        });
-        
-        // Set focused node for blast radius
-        setFocusedNodeId(d.id);
         if (selectFileRef.current) selectFileRef.current(d.id);
       });
 
@@ -1370,67 +1027,73 @@ export default function DependenciesPage({
         const currentMatchingNodes = matchingNodesRef.current;
         const currentHighlightedNodeId = highlightedNodeIdRef.current;
         const hasSearch = currentSearchQuery.trim() && currentMatchingNodes.size > 0;
+        const currentDraggedNodeId = dragStateRef.current.draggedNodeId;
         
         // Update link paths (curved or straight based on config.curvedLinks)
-        // CodeFlow EXACT: Use node centers, not edge points
-        link.attr("d", (d: any) => {
-          // Ensure source and target are node objects (not IDs)
-          const source = typeof d.source === "object" ? d.source : nodes.find((n: any) => n.id === d.source);
-          const target = typeof d.target === "object" ? d.target : nodes.find((n: any) => n.id === d.target);
-          
+        const buildLinkPath = (d: any) => {
+          const source = typeof d.source === "object" ? d.source : d.source;
+          const target = typeof d.target === "object" ? d.target : d.target;
           if (!source || !target || source.x == null || source.y == null || target.x == null || target.y == null) {
             return "M0,0L0,0";
           }
-          
-          // Validate positions are finite
-          if (!isFinite(source.x) || !isFinite(source.y) || !isFinite(target.x) || !isFinite(target.y)) {
+          const dx = target.x - source.x;
+          const dy = target.y - source.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (!isFinite(dist) || dist === 0) {
             return "M0,0L0,0";
           }
-          
-          // CodeFlow EXACT: Use centers for both curved and straight
+          const sourceR = getR(source);
+          const targetR = getR(target);
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const sx = source.x + nx * sourceR;
+          const sy = source.y + ny * sourceR;
+          const tx = target.x - nx * targetR;
+          const ty = target.y - ny * targetR;
           if (config.curvedLinks) {
-            const dx = target.x - source.x;
-            const dy = target.y - source.y;
-            const dr = Math.sqrt(dx * dx + dy * dy);
-            if (dr === 0) return "M0,0L0,0";
-            return `M${source.x},${source.y}A${dr},${dr} 0 0,1 ${target.x},${target.y}`;
-          } else {
-            return `M${source.x},${source.y}L${target.x},${target.y}`;
+            const mx = (sx + tx) / 2;
+            const my = (sy + ty) / 2;
+            const perpX = -ny;
+            const perpY = nx;
+            const curve = Math.min(200, Math.max(20, dist * 0.15));
+            const cx = mx + perpX * curve;
+            const cy = my + perpY * curve;
+            return `M${sx},${sy}Q${cx},${cy} ${tx},${ty}`;
           }
-        });
+          return `M${sx},${sy}L${tx},${ty}`;
+        };
+        link.attr("d", buildLinkPath);
         
-        // Preserve highlighting in tick handler (search, drag, double-click) - so it persists during zoom/pan
-        const draggedNodeId = dragStateRef.current.draggedNodeId;
-        const dragDependents = dragStateRef.current.dependents;
-        const dragDependencies = dragStateRef.current.dependencies;
-        const dragAllRelated = new Set([...dragDependents, ...dragDependencies]);
-        const hasDrag = draggedNodeId !== null;
-        // Use focusedNodeId from state (will be updated via closure)
-        const currentFocusedNodeId = focusedNodeId;
-        const hasFocus = currentFocusedNodeId !== null;
-        
-        if (hasSearch || hasDrag || hasFocus) {
+        // Preserve search highlighting in tick handler (so it persists during zoom/pan)
+        if (currentDraggedNodeId) {
+          // Highlight links connected to the dragged node
           link.each(function(l: any) {
             const path = d3.select(this);
             const sourceId = typeof l.source === "object" ? l.source.id : l.source;
             const targetId = typeof l.target === "object" ? l.target.id : l.target;
-            
-            // Check if link is highlighted by search
-            const isSearchHighlighted = hasSearch && (currentMatchingNodes.has(sourceId) || currentMatchingNodes.has(targetId));
-            // Check if link is highlighted by drag/double-click
-            const isDragHighlighted = hasDrag && (sourceId === draggedNodeId || targetId === draggedNodeId);
-            const isFocusHighlighted = hasFocus && (sourceId === currentFocusedNodeId || targetId === currentFocusedNodeId);
-            const isHighlighted = isSearchHighlighted || isDragHighlighted || isFocusHighlighted;
+            const isConnected =
+              sourceId === currentDraggedNodeId || targetId === currentDraggedNodeId;
+            path
+              .attr("stroke", isConnected ? "#ff5f5f" : "#666666")
+              .attr("stroke-opacity", isConnected ? 0.9 : 0.15)
+              .attr("stroke-width", isConnected ? 2.5 : Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
+          });
+        } else if (hasSearch) {
+          link.each(function(l: any) {
+            const path = d3.select(this);
+            const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+            const targetId = typeof l.target === "object" ? l.target.id : l.target;
+            const isHighlighted = currentMatchingNodes.has(sourceId) || currentMatchingNodes.has(targetId);
             
             // Green for highlighted links, greyish for others
             path
-              .attr("stroke", isHighlighted ? "#00ff9d" : "#666666")
-              .attr("stroke-opacity", isHighlighted ? 0.8 : 0.15);
+              .attr("stroke", isHighlighted ? "#00ff9d" : "#666666") // More greyish for non-highlighted
+              .attr("stroke-opacity", isHighlighted ? 0.8 : 0.15); // Dimmer for non-highlighted
           });
         } else {
-          // Default link styling when no highlighting - more greyish
+          // Default link styling when no search - more greyish
           const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
-          link.attr("stroke", theme === "light" ? "#999999" : "#666666")
+          link.attr("stroke", theme === "light" ? "#999999" : "#666666") // More greyish
             .attr("stroke-opacity", 0.4);
         }
         
@@ -1452,34 +1115,24 @@ export default function DependenciesPage({
           return `translate(${d.x},${d.y})`;
         });
         
-        // Preserve highlighting for nodes in tick handler (search, drag, double-click) - so it persists during zoom/pan
-        if (hasSearch || hasDrag || hasFocus) {
+        // Preserve search highlighting for nodes in tick handler (so it persists during zoom/pan)
+        if (hasSearch) {
           node.selectAll("circle.nc").each(function(n: any) {
             const circle = d3.select(this);
-            
-            // Check search highlighting
-            const isSearchMatch = hasSearch && currentMatchingNodes.has(n.id);
-            const isSearchHighlighted = hasSearch && currentHighlightedNodeId === n.id;
-            
-            // Check drag/double-click highlighting
-            const isDragSelected = hasDrag && n.id === draggedNodeId;
-            const isDragRelated = hasDrag && dragAllRelated.has(n.id);
-            const isFocusSelected = hasFocus && n.id === currentFocusedNodeId;
-            
-            const isSelected = isSearchHighlighted || isDragSelected || isFocusSelected;
-            const isRelated = isSearchMatch || isDragRelated;
+            const isMatch = currentMatchingNodes.has(n.id);
+            const isHighlighted = currentHighlightedNodeId === n.id;
             
             circle
-              .attr("opacity", isSelected ? 1 : isRelated ? 1 : 0.2)
-              .attr("fill", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : getC(n))
-              .attr("stroke", isSelected || isRelated ? "#00ff9d" : (() => {
+              .attr("opacity", isMatch || isHighlighted ? 1 : 0.2)
+              .attr("fill", isHighlighted ? "#ff5f5f" : isMatch ? "#00ff9d" : getC(n))
+              .attr("stroke", isMatch || isHighlighted ? "#00ff9d" : (() => {
                 const c = d3.color(getC(n));
                 return c ? c.brighter(0.3).toString() : "#fff";
               })())
-              .attr("stroke-width", isSelected || isRelated ? 3 : 1.5);
+              .attr("stroke-width", isMatch || isHighlighted ? 3 : 1.5);
           });
         } else {
-          // Default node styling when no highlighting
+          // Default node styling when no search
           node.selectAll("circle.nc")
             .attr("opacity", 1)
             .attr("fill", getC)
@@ -1499,63 +1152,58 @@ export default function DependenciesPage({
         updateHulls();
       });
 
-      // CodeFlow EXACT: Update hulls (folder groupings)
+      // CodeFlow-style: Update hulls (folder groupings)
       const updateHulls = () => {
+        // Hide folder hulls in dependency view - only show in folder view
         hullLayer.selectAll("*").remove();
-        if (viewMode === "folder" && folderList.length > 0 && nodes.length > 0) {
-          // CodeFlow EXACT: Use folderList and filter nodes by folder
+        if (viewMode === "folder") {
           folderList.forEach((folder) => {
-            const fn = nodes.filter((n: any) => n.folder === folder);
-            if (fn.length < 1) return;
-            
-            // CodeFlow EXACT: pad=30, use node positions directly (no radius offset)
-            const pad = 30;
-            const pts: [number, number][] = [];
-            fn.forEach((n: any) => {
-              if (n.x != null && n.y != null && isFinite(n.x) && isFinite(n.y)) {
-                pts.push(
-                  [n.x - pad, n.y - pad],
-                  [n.x + pad, n.y - pad],
-                  [n.x - pad, n.y + pad],
-                  [n.x + pad, n.y + pad]
-                );
-              }
-            });
-            if (pts.length < 3) return;
-            
-            const hull = d3.polygonHull(pts);
-            if (hull) {
-              const color = COLORS[folderList.indexOf(folder) % COLORS.length] || COLORS[0] || "#4d9fff";
-              
-              // CodeFlow EXACT: fill-opacity 0.04, stroke-opacity 0.25, stroke-width 2
-              hullLayer
-                .append("path")
-                .attr("d", "M" + hull.join("L") + "Z")
-                .attr("fill", color)
-                .attr("fill-opacity", 0.04)
-                .attr("stroke", color)
-                .attr("stroke-width", 2)
-                .attr("stroke-opacity", 0.25)
-                .attr("rx", 8);
-              
-              // CodeFlow EXACT: label positioning
-              const cx = d3.mean(fn, (n: any) => n.x) || 0;
-              const cy = (d3.min(fn, (n: any) => n.y) || 0) - pad - 8;
-              
-              hullLayer
-                .append("text")
-                .attr("x", cx)
-                .attr("y", cy)
-                .attr("text-anchor", "middle")
-                .attr("fill", color)
-                .attr("font-size", "10px")
-                .attr("font-family", "JetBrains Mono, monospace")
-                .attr("font-weight", 600)
-                .attr("opacity", 0.7)
-                .text(folder || "root");
+          const folderNodes = nodes.filter((n) => n.folder === folder);
+          if (folderNodes.length < 1) return;
+          const pad = 30;
+          const pts: [number, number][] = [];
+          folderNodes.forEach((n: any) => {
+            if (n.x != null && n.y != null && isFinite(n.x) && isFinite(n.y)) {
+              pts.push(
+                [n.x - pad, n.y - pad],
+                [n.x + pad, n.y - pad],
+                [n.x - pad, n.y + pad],
+                [n.x + pad, n.y + pad]
+              );
             }
           });
+          if (pts.length < 3) return;
+          const hull = d3.polygonHull(pts);
+          if (hull) {
+            const color =
+              COLORS[folderList.indexOf(folder) % COLORS.length] ||
+              COLORS[0] ||
+              "#4d9fff";
+            hullLayer
+              .append("path")
+              .attr("d", "M" + hull.join("L") + "Z")
+              .attr("fill", color)
+              .attr("fill-opacity", 0.04)
+              .attr("stroke", color)
+              .attr("stroke-width", 2)
+              .attr("stroke-opacity", 0.25);
+            const cx = d3.mean(folderNodes, (n: any) => n.x) || 0;
+            const cy = (d3.min(folderNodes, (n: any) => n.y) || 0) - pad - 8;
+            hullLayer
+              .append("text")
+              .attr("x", cx)
+              .attr("y", cy)
+              .attr("text-anchor", "middle")
+              .attr("fill", color)
+              .attr("font-size", "10px")
+              .attr("font-family", "JetBrains Mono, monospace")
+              .attr("font-weight", 600)
+              .attr("opacity", 0.7)
+              .text(folder || "root");
+          }
+        });
         }
+        // In dependency view, hulls are hidden
       };
 
       selectFileRef.current = (id: string) => {
@@ -1586,35 +1234,14 @@ export default function DependenciesPage({
 
       svg.on("click", (e) => {
         if (e.target === svg.node()) {
-          // Reset all highlighting (search, drag, double-click)
           setFocusedNodeId(null);
           setBlastRadius(null);
-          dragStateRef.current.draggedNodeId = null;
-          dragStateRef.current.dependents.clear();
-          dragStateRef.current.dependencies.clear();
-          
           const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
-          
-          // Reset link highlighting
-          linkLayer.selectAll("path").each(function(l: any) {
-            const path = d3.select(this);
-            path
-              .attr("stroke-opacity", 0.4)
-              .attr("stroke", theme === "light" ? "#999999" : "#666666")
-              .attr("stroke-width", Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
-          });
-          
-          // Reset node highlighting
-          nodeLayer.selectAll("g.node").each(function(n: any) {
-            const nodeGroup = d3.select(this);
-            const circle = nodeGroup.select("circle.nc");
-            const c = d3.color(getC(n));
-            circle
-              .attr("opacity", 1)
-              .attr("fill", getC(n))
-              .attr("stroke-width", 1.5)
-              .attr("stroke", c ? c.brighter(0.3).toString() : "#fff");
-          });
+          link.attr("stroke", theme === "light" ? "#ccc" : "#333").attr("stroke-opacity", 0.4);
+          node
+            .selectAll(".nc")
+            .attr("opacity", 1)
+            .attr("fill", getC);
         }
       });
 
@@ -1707,7 +1334,6 @@ export default function DependenciesPage({
     graphPalette,
     focusedNodeId,
     graphConfig, // Add graphConfig so simulation updates when config changes
-    colorMode, // Add colorMode so graph re-colors when color mode changes
   ]);
 
 
@@ -1860,7 +1486,7 @@ export default function DependenciesPage({
       if (!layoutInitRef.current) {
         setShowFolders(false);
         setFocusMode(false);
-        setViewMode("folder");
+        setViewMode("file");
         setEdgeWeightThreshold(1);
         setShowExternal(true);
         setMinFolderSize(1);
@@ -2072,14 +1698,14 @@ export default function DependenciesPage({
 
       if (!isInternal) {
         // External package - create a node for it
-        const label = packageKey || toKey || toId || "unknown-package";
-        const displayLabel = toDisplayLabel(label) || label;
+        const label = packageKey;
+        const displayLabel = toDisplayLabel(label);
         nodes.set(toKey, {
           data: {
             id: toId,
-            label: label || displayLabel,
-            displayLabel: displayLabel || label,
-            path: toKey || label,
+            label,
+            displayLabel,
+            path: toKey,
             type: "package",
             size: calcNodeSize(displayLabel, 26, 90),
           },
@@ -2675,38 +2301,26 @@ export default function DependenciesPage({
     });
   }, [searchQuery, matchingNodes, highlightedNodeId, graphPalette, activeGraphData]);
 
-  // Calculate stats for sidebar
-  const totalFiles = activeGraphData?.nodes.filter(n => n.data.type === 'file').length || 0;
-  const totalDependencies = activeGraphData?.edges.filter(e => e.data?.type !== 'folder').length || 0;
-  const healthScore = totalFiles > 0 ? Math.min(100, Math.max(0, 100 - (totalDependencies / totalFiles * 10))) : 0;
-
   return (
-    <div className="mt-4 w-full">
-      <div className="flex bg-[#0f172a] overflow-hidden" style={{ height: 'calc(100vh - 200px)', minHeight: '600px' }}>
-      {/* Left Sidebar - CodeFlow style - Always visible */}
-      <div 
-        className="flex-shrink-0 bg-[#1a1f2e] border-r border-[#383B42] flex flex-col overflow-hidden"
-        style={{ width: `${sidebarWidth}px`, minWidth: `${sidebarWidth}px` }}
-      >
-        {/* Sidebar Header */}
-        <div className="p-4 border-b border-[#383B42]">
-          <div className="flex items-center gap-2 mb-4">
-            <GitBranch className="h-5 w-5 text-orange-500" />
-            <h2 className="text-lg font-semibold text-gray-200">Dependencies</h2>
+    <div className="mt-4 w-screen max-w-none relative left-1/2 right-1/2 -translate-x-1/2 px-3 sm:px-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-2">
+          <GitBranch className="h-5 w-5 text-purple-500" />
+          <h2 className="text-xl font-semibold">Dependency Graph</h2>
         </div>
-          
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Search Input - CodeFlow style */}
+          <div className="relative flex items-center">
+            <Search className="absolute left-2 h-4 w-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search files..."
+              placeholder="Search files/folders..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
                 setHighlightedNodeId(null);
               }}
-              className="w-full pl-9 pr-9 py-2 text-sm bg-[#0f172a] border border-[#383B42] rounded-md text-gray-200 placeholder-gray-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
+              className="pl-8 pr-8 py-1.5 text-sm bg-[#1e293b] border border-[#383B42] rounded-md text-gray-200 placeholder-gray-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 w-48"
             />
             {searchQuery && (
               <button
@@ -2714,173 +2328,177 @@ export default function DependenciesPage({
                   setSearchQuery("");
                   setHighlightedNodeId(null);
                 }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                className="absolute right-2 text-gray-400 hover:text-gray-200"
               >
                 <X className="h-4 w-4" />
               </button>
             )}
-          </div>
-          {matchingNodes.size > 0 && (
-            <div className="mt-2 text-xs text-gray-500">
-              {matchingNodes.size} match{matchingNodes.size !== 1 ? 'es' : ''}
-            </div>
-          )}
-      </div>
-
-        {/* Health Score */}
-        <div className="p-4 border-b border-[#383B42]">
-          <div className="text-xs text-gray-500 uppercase tracking-wider mb-2">Health Score</div>
-          <div className="flex items-end gap-3">
-            <div className="text-4xl font-bold text-orange-500">{Math.round(healthScore)}</div>
-            <div className="text-sm text-gray-400 mb-1">/ 100</div>
-          </div>
-          <div className="mt-3 h-2 bg-[#0f172a] rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-orange-500 to-orange-400 transition-all duration-500"
-              style={{ width: `${healthScore}%` }}
-            />
-          </div>
+            {matchingNodes.size > 0 && (
+              <span className="absolute -right-8 text-xs text-gray-400">
+                {matchingNodes.size}
+              </span>
+            )}
         </div>
-
-        {/* Stats Grid */}
-        <div className="p-4 border-b border-[#383B42] grid grid-cols-2 gap-3">
-          <div className="bg-[#0f172a] rounded-lg p-3">
-            <div className="text-xs text-gray-500 mb-1">Files</div>
-            <div className="text-2xl font-semibold text-gray-200">{totalFiles}</div>
-          </div>
-          <div className="bg-[#0f172a] rounded-lg p-3">
-            <div className="text-xs text-gray-500 mb-1">Dependencies</div>
-            <div className="text-2xl font-semibold text-gray-200">{totalDependencies}</div>
-          </div>
-        </div>
-
-        {/* View Mode Toggle */}
-        <div className="p-4 border-b border-[#383B42]">
-          <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">View Mode</div>
-          <div className="space-y-2">
-            <button
-              onClick={() => setViewMode("file")}
-              disabled={!folderGraphData}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                viewMode === "file"
-                  ? 'bg-orange-500/20 text-orange-400 border border-orange-500/50'
-                  : 'bg-[#0f172a] text-gray-400 border border-transparent hover:bg-[#1e293b] hover:text-gray-300 disabled:opacity-50'
-              }`}
-            >
-              File dependencies
-            </button>
-            <button
-              onClick={() => setViewMode("folder")}
-              disabled={!folderGraphData}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                viewMode === "folder"
-                  ? 'bg-orange-500/20 text-orange-400 border border-orange-500/50'
-                  : 'bg-[#0f172a] text-gray-400 border border-transparent hover:bg-[#1e293b] hover:text-gray-300 disabled:opacity-50'
-              }`}
-            >
-              Folder view
-            </button>
-          </div>
-        </div>
-
-        {/* External Toggle */}
-        <div className="p-4 border-b border-[#383B42]">
-          <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">External Dependencies</div>
-          <button
+        <Button
+          onClick={() => setViewMode("folder")}
+          disabled={!folderGraphData}
+          variant={viewMode === "folder" ? "default" : "outline"}
+          size="sm"
+        >
+          Folder view
+        </Button>
+        <Button
+          onClick={() => setViewMode("file")}
+          disabled={!graphData}
+          variant={viewMode === "file" ? "default" : "outline"}
+          size="sm"
+        >
+          File dependencies
+        </Button>
+          <Button
             onClick={() => setShowExternal((prev) => !prev)}
             disabled={!activeGraphData}
-            className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-              showExternal
-                ? 'bg-orange-500/20 text-orange-400 border border-orange-500/50'
-                : 'bg-[#0f172a] text-gray-400 border border-transparent hover:bg-[#1e293b] hover:text-gray-300 disabled:opacity-50'
-            }`}
+            variant={showExternal ? "default" : "outline"}
+            size="sm"
           >
             {showExternal ? "External on" : "External off"}
-          </button>
+          </Button>
+          <Button
+            onClick={() => setShowGraphConfig(!showGraphConfig)}
+            variant={showGraphConfig ? "default" : "outline"}
+            size="sm"
+          >
+            <Settings className="h-4 w-4 mr-2" />
+            Config
+        </Button>
         </div>
+      </div>
 
-        {/* Color Mode Selector */}
-        <div className="p-4 border-b border-[#383B42]">
-          <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Color By</div>
-          <div className="space-y-2">
-            {(['folder', 'layer', 'churn'] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => setColorMode(mode)}
-                className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  colorMode === mode
-                    ? 'bg-orange-500/20 text-orange-400 border border-orange-500/50'
-                    : 'bg-[#0f172a] text-gray-400 border border-transparent hover:bg-[#1e293b] hover:text-gray-300'
-                }`}
-              >
-                {mode.charAt(0).toUpperCase() + mode.slice(1)}
-              </button>
-            ))}
+      {/* CodeFlow-style Graph Config Panel */}
+      {showGraphConfig && (
+        <div className="mb-4 p-4 bg-[#1e293b] border border-[#383B42] rounded-md">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Layout</h4>
+              <div className="flex flex-wrap gap-2">
+                {(["force", "radial", "hierarchical", "grid", "metro"] as const).map((mode) => (
+                  <Button
+                    key={mode}
+                    onClick={() => setGraphConfig({ ...graphConfig, viewMode: mode })}
+                    variant={graphConfig.viewMode === mode ? "default" : "outline"}
+                    size="sm"
+                    className="text-xs font-mono"
+                  >
+                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Spacing</h4>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <label className="text-xs text-gray-300 w-16 font-mono">Spread:</label>
+                  <input
+                    type="range"
+                    min="50"
+                    max="1000"
+                    step="10"
+                    value={graphConfig.spacing}
+                    onChange={(e) =>
+                      setGraphConfig({ ...graphConfig, spacing: parseInt(e.target.value) })
+                    }
+                    className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
+                  />
+                  <span className="text-xs text-gray-400 w-12 font-mono text-right">{graphConfig.spacing}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="text-xs text-gray-300 w-16 font-mono">Links:</label>
+                  <input
+                    type="range"
+                    min="30"
+                    max="200"
+                    step="5"
+                    value={graphConfig.linkDist}
+                    onChange={(e) =>
+                      setGraphConfig({ ...graphConfig, linkDist: parseInt(e.target.value) })
+                    }
+                    className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
+                  />
+                  <span className="text-xs text-gray-400 w-12 font-mono text-right">{graphConfig.linkDist}</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Display</h4>
+              <div className="space-y-3">
+                <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-gray-200">
+                  <input
+                    type="checkbox"
+                    checked={graphConfig.showLabels}
+                    onChange={(e) =>
+                      setGraphConfig({ ...graphConfig, showLabels: e.target.checked })
+                    }
+                    className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
+                  />
+                  <span className="font-mono">Show labels</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-gray-200">
+                  <input
+                    type="checkbox"
+                    checked={graphConfig.curvedLinks}
+                    onChange={(e) =>
+                      setGraphConfig({ ...graphConfig, curvedLinks: e.target.checked })
+                    }
+                    className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
+                  />
+                  <span className="font-mono">Curved links</span>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
+      )}
 
-        {/* File Browser - CodeFlow style - Always use graphData (file dependencies) */}
-        {graphData && graphData.nodes.length > 0 && (
-          <div className="flex-1 overflow-y-auto p-4 border-b border-[#383B42]">
-            <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Files</div>
-            <FileTree
-              nodes={graphData.nodes.filter(n => n.data.type === 'file' || n.data.type === 'package')}
-              onSelectFile={(id) => {
-                if (selectFileRef.current) {
-                  selectFileRef.current(id);
-                  setHighlightedNodeId(id);
-                }
-              }}
-              selectedId={highlightedNodeId || focusedNodeId}
-            />
-          </div>
-        )}
-
-        {/* Status */}
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Status</div>
       {status && (
-            <div className="text-xs text-gray-400 bg-[#0f172a] rounded-lg p-3 mb-3">
+        <div className="mb-4 p-3 bg-[#22262C] border border-[#383B42] rounded-md text-sm text-gray-400">
           {status}
         </div>
       )}
+
       {error && (
-            <div className="bg-red-900/20 border border-red-500/50 rounded-md p-3 flex items-start gap-2 text-red-400 text-xs">
-              <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+        <div className="mb-4 p-4 bg-red-900/20 border border-red-500/50 rounded-md flex items-center gap-2 text-red-400">
+          <AlertCircle className="h-5 w-5" />
           <span>{error}</span>
         </div>
       )}
-          {loading && !activeGraphData && (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
+
+      {loading && !activeGraphData && (
+        <div className="flex items-center justify-center h-96">
+          <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
         </div>
       )}
-        </div>
-      </div>
 
-      {/* Center Canvas */}
-      <div className="flex-1 flex flex-col overflow-hidden relative bg-[#0f172a]"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(245,158,11,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(245,158,11,0.08) 1px, transparent 1px)",
-          backgroundSize: "24px 24px",
-        }}
-      >
-        {/* SVG Canvas - Clean, no toolbar buttons */}
-        {activeGraphData && activeGraphData.nodes.length > 0 && (
+      {activeGraphData && activeGraphData.nodes.length > 0 && (
+        <div
+          className="border border-[#383B42] rounded-md overflow-hidden bg-[#0f172a] relative h-[70vh] min-h-[520px] md:h-[700px]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(139,92,246,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(139,92,246,0.12) 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+          }}
+        >
           <svg
             ref={svgRef}
             className="w-full h-full cursor-grab active:cursor-grabbing"
           />
-        )}
 
-        {/* Zoom Controls - absolutely positioned on canvas */}
-        {activeGraphData && activeGraphData.nodes.length > 0 && (
-          <div className="absolute bottom-4 right-4 flex flex-col gap-2 z-20">
+          {/* Zoom Controls */}
+          <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
             <Button
               variant="outline"
               size="sm"
-              className="bg-[#1a1f2e]/90 backdrop-blur-sm border-[#383B42] hover:bg-[#22262C] hover:border-orange-500/50 h-9 w-9 p-0"
+              className="bg-[#1e293b] border-[#383B42] hover:bg-[#22262C] hover:border-purple-500/50 h-8 w-8 p-0"
               onClick={() => {
                 if (!svgRef.current || !zoomRef.current) return;
                 import("d3").then((d3) => {
@@ -2899,7 +2517,7 @@ export default function DependenciesPage({
             <Button
               variant="outline"
               size="sm"
-              className="bg-[#1a1f2e]/90 backdrop-blur-sm border-[#383B42] hover:bg-[#22262C] hover:border-orange-500/50 h-9 w-9 p-0"
+              className="bg-[#1e293b] border-[#383B42] hover:bg-[#22262C] hover:border-purple-500/50 h-8 w-8 p-0"
               onClick={() => {
                 if (!svgRef.current || !zoomRef.current) return;
                 import("d3").then((d3) => {
@@ -2918,7 +2536,7 @@ export default function DependenciesPage({
             <Button
               variant="outline"
               size="sm"
-              className="bg-[#1a1f2e]/90 backdrop-blur-sm border-[#383B42] hover:bg-[#22262C] hover:border-orange-500/50 h-9 w-9 p-0"
+              className="bg-[#1e293b] border-[#383B42] hover:bg-[#22262C] hover:border-purple-500/50 h-8 w-8 p-0"
               onClick={() => {
                 if (!svgRef.current || !zoomRef.current || !simRef.current) return;
                 import("d3").then((d3) => {
@@ -2956,244 +2574,58 @@ export default function DependenciesPage({
               <Maximize2 className="h-4 w-4" />
             </Button>
           </div>
-        )}
 
-        {/* Info Notice - only when no dependencies in file view */}
-        {viewMode === "file" && activeGraphData && activeGraphData.nodes.length > 0 &&
-          activeGraphData.edges.filter((e: any) => e.data?.type !== "folder").length === 0 && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#1a1f2e]/95 backdrop-blur-sm border border-[#383B42] rounded-md px-4 py-2 text-xs text-gray-400 max-w-md z-10">
-              <p>
-                💡 Showing folder structure. No dependencies found between files.
+          {activeGraphData.nodes.length > 0 &&
+            activeGraphData.edges.filter((e: any) => e.data.type !== "folder")
+              .length === 0 && (
+              <div className="absolute top-4 left-4 bg-[#1e293b] border border-[#383B42] rounded-md px-3 py-2 text-xs text-gray-400 max-w-xs">
+                <p>
+                  💡 Showing folder structure. No dependencies found between
+                  files.
+                </p>
+                <p className="mt-1 text-gray-500">
+                  Files are connected to their parent folders.
                 </p>
               </div>
             )}
-
-        {/* Empty state */}
-        {!loading && !error && filesFetched && !activeGraphData && dependencies.length === 0 && (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            <div className="text-center">
-              <GitBranch className="h-16 w-16 mx-auto mb-4 opacity-30" />
-              <p className="text-sm">No dependencies found in this repository</p>
-            </div>
-        </div>
-      )}
-      </div>
-
-      {/* Right Panel - CodeFlow style - Always visible */}
-      <div 
-        className="flex-shrink-0 bg-[#1a1f2e] border-l border-[#383B42] flex flex-col overflow-hidden"
-        style={{ width: `${rightPanelWidth}px`, minWidth: `${rightPanelWidth}px` }}
-      >
-        {/* Tab Header */}
-        <div className="flex border-b border-[#383B42]">
-          {(['details', 'functions', 'connections'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setRightTab(tab)}
-              className={`flex-1 px-4 py-3 text-xs font-medium uppercase tracking-wider transition-colors ${
-                rightTab === tab
-                  ? 'text-orange-400 bg-[#0f172a] border-b-2 border-orange-500'
-                  : 'text-gray-500 hover:text-gray-300 hover:bg-[#1e293b]'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {rightTab === 'details' && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-xs font-semibold text-gray-400 uppercase mb-3 tracking-wider">Graph Info</h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Total Files:</span>
-                    <span className="text-gray-200 font-mono">{totalFiles}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Dependencies:</span>
-                    <span className="text-gray-200 font-mono">{totalDependencies}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Avg per File:</span>
-                    <span className="text-gray-200 font-mono">
-                      {totalFiles > 0 ? (totalDependencies / totalFiles).toFixed(1) : '0'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {focusedNodeId && activeGraphData && (
-                <div className="pt-4 border-t border-[#383B42]">
-                  <h3 className="text-xs font-semibold text-gray-400 uppercase mb-3 tracking-wider">Selected Node</h3>
-                  <div className="space-y-2 text-sm">
-                    <div>
-                      <span className="text-gray-500 text-xs">ID:</span>
-                      <p className="text-gray-200 font-mono text-xs mt-1 break-all">{focusedNodeId}</p>
-                    </div>
-                    {blastRadius && (
-                      <div>
-                        <span className="text-gray-500 text-xs">Blast Radius:</span>
-                        <p className="text-orange-400 font-mono text-sm mt-1">{blastRadius.affected.length} files</p>
-                      </div>
-                    )}
-                  </div>
         </div>
       )}
 
-              {/* Graph Config Panel - moved to sidebar */}
-              {activeGraphData && (
-                <div className="pt-4 border-t border-[#383B42]">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Config</h3>
-                    <button
-                      onClick={() => setShowGraphConfig(!showGraphConfig)}
-                      className="text-gray-500 hover:text-gray-300 transition-colors"
-                    >
-                      <Settings className="h-4 w-4" />
-                    </button>
-                  </div>
-                  {showGraphConfig && (
-                    <div className="space-y-4">
-                      {/* Layout */}
-                      <div>
-                        <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Layout</h4>
-                        <div className="flex flex-wrap gap-2">
-                          {(["force", "radial", "hierarchical", "grid", "metro"] as const).map((mode) => (
-                            <button
-                              key={mode}
-                              onClick={() => setGraphConfig({ ...graphConfig, viewMode: mode })}
-                              className={`px-2 py-1 text-xs font-mono rounded border transition-colors ${
-                                graphConfig.viewMode === mode
-                                  ? 'bg-orange-500/20 text-orange-400 border-orange-500/50'
-                                  : 'bg-[#0f172a] text-gray-400 border-[#383B42] hover:bg-[#1e293b] hover:text-gray-300'
-                              }`}
-                            >
-                              {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      {/* Spacing */}
-                      <div>
-                        <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Spacing</h4>
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-3">
-                            <label className="text-xs text-gray-400 w-12 font-mono">Spread:</label>
-                    <input
-                      type="range"
-                      min="50"
-                      max="1000"
-                      step="25"
-                      value={graphConfig.spacing}
-                              onChange={(e) =>
-                                setGraphConfig({ ...graphConfig, spacing: parseInt(e.target.value) })
-                              }
-                              className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
-                            />
-                            <span className="text-xs text-gray-400 w-10 font-mono text-right">{graphConfig.spacing}</span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <label className="text-xs text-gray-400 w-12 font-mono">Links:</label>
-                            <input
-                              type="range"
-                              min="30"
-                              max="200"
-                              step="5"
-                              value={graphConfig.linkDist}
-                              onChange={(e) =>
-                                setGraphConfig({ ...graphConfig, linkDist: parseInt(e.target.value) })
-                              }
-                              className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
-                            />
-                            <span className="text-xs text-gray-400 w-10 font-mono text-right">{graphConfig.linkDist}</span>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Display */}
-                      <div>
-                        <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Display</h4>
-                        <div className="space-y-2">
-                          <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer hover:text-gray-200">
-                            <input
-                              type="checkbox"
-                              checked={graphConfig.showLabels}
-                              onChange={(e) =>
-                                setGraphConfig({ ...graphConfig, showLabels: e.target.checked })
-                              }
-                              className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
-                            />
-                            <span className="font-mono text-xs">Show labels</span>
-                          </label>
-                          <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer hover:text-gray-200">
-                            <input
-                              type="checkbox"
-                              checked={graphConfig.curvedLinks}
-                              onChange={(e) =>
-                                setGraphConfig({ ...graphConfig, curvedLinks: e.target.checked })
-                              }
-                              className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
-                            />
-                            <span className="font-mono text-xs">Curved links</span>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+      {!loading && !error && filesFetched && dependencies.length === 0 && (
+        <div className="text-center py-12 text-gray-400">
+          <GitBranch className="h-12 w-12 mx-auto mb-4 opacity-50" />
+          <p>No dependencies found in this repository</p>
+        </div>
+      )}
 
-          {rightTab === 'functions' && (
-            <div className="space-y-4">
-              <div className="text-sm text-gray-500">
-                <p>Function analysis coming soon...</p>
-              </div>
-            </div>
-          )}
-
-          {rightTab === 'connections' && (
-            <div className="space-y-4">
-              {dependencies.length > 0 ? (
-                <>
-                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                    All Dependencies ({dependencies.length})
+      {dependencies.length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-sm font-semibold mb-2 text-gray-400">
+            Dependency List ({dependencies.length})
           </h3>
-                  <div className="space-y-2">
-                    {dependencies.slice(0, 100).map((dep, idx) => (
-                      <div key={idx} className="text-xs bg-[#0f172a] rounded p-2">
-                        <div className="text-orange-400 font-mono break-all">{dep.from}</div>
-                        <div className="text-gray-500 my-1">↓</div>
-                        <div className="text-blue-400 font-mono break-all">{dep.to}</div>
+          <div className="bg-[#22262C] border border-[#383B42] rounded-md p-4 max-h-64 overflow-y-auto">
+            <ul className="space-y-1 text-sm">
+              {dependencies.slice(0, 50).map((dep, idx) => (
+                <li key={idx} className="text-gray-300">
+                  <span className="text-purple-400">{dep.from}</span>
+                  {" → "}
+                  <span className="text-blue-400">{dep.to}</span>
                   {dep.line && (
-                          <div className="text-gray-600 text-[10px] mt-1">
-                            Line {dep.line}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    {dependencies.length > 100 && (
-                      <div className="text-xs text-gray-500 italic text-center pt-2">
-                        ... and {dependencies.length - 100} more
-                      </div>
-                    )}
+                    <span className="text-gray-500 ml-2">
+                      (line {dep.line})
+                    </span>
+                  )}
+                </li>
+              ))}
+              {dependencies.length > 50 && (
+                <li className="text-gray-500 italic">
+                  ... and {dependencies.length - 50} more
+                </li>
+              )}
+            </ul>
           </div>
-                </>
-              ) : (
-                <div className="text-sm text-gray-500">
-                  <p>No dependencies found</p>
         </div>
       )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
     </div>
   );
 }

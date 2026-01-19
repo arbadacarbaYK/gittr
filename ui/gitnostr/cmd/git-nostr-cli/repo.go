@@ -12,53 +12,38 @@ import (
 	"time"
 
 	"github.com/nbd-wtf/go-nostr"
-	"github.com/arbadacarbaYK/gitnostr"
-	"github.com/arbadacarbaYK/gitnostr/protocol"
+	"github.com/spearson78/gitnostr"
+	"github.com/spearson78/gitnostr/protocol"
 )
 
 func repoCreate(cfg Config, pool *nostr.RelayPool) {
 	flags := flag.NewFlagSet("repo create", flag.ContinueOnError)
 
+	publicRead := flags.Bool("public-read", true, "repository will be readable by all users")
+	publicWrite := flags.Bool("public-write", false, "repository will be writeable by all users")
+
 	flags.Parse(os.Args[3:])
 
 	repoName := flags.Args()[0]
 
-	log.Println("repo create ", repoName)
+	log.Println("repo create --public-read=", *publicRead, " --public-write=", *publicWrite, " ", repoName)
 
-	// NIP-34: Build tags array with required metadata
-	// Content MUST be empty per NIP-34 spec - all metadata goes in tags
-	// NOTE: Privacy is NOT encoded in NIP-34 events (per spec)
-	// Privacy is enforced via the "maintainers" tag (NIP-34 spec) and bridge access control
-	tags := nostr.Tags{
-		{"d", repoName}, // Replaceable event identifier (NIP-34 required)
-		{"name", repoName}, // Human-readable project name
-		{"description", fmt.Sprintf("Repository: %s", repoName)}, // Description
+	repoJson, err := json.Marshal(protocol.Repository{
+		RepositoryName: repoName,
+		PublicRead:     *publicRead,
+		PublicWrite:    *publicWrite,
+		GitSshBase:     cfg.GitSshBase,
+	})
+	if err != nil {
+		log.Fatal("repo marshal :", err)
 	}
 
-	// Add clone tag if GitSshBase is configured
-	// Convert SSH base to HTTPS clone URL if possible
-	if cfg.GitSshBase != "" {
-		// Try to extract domain from GitSshBase (format: git@domain or domain)
-		cloneUrl := cfg.GitSshBase
-		if strings.Contains(cloneUrl, "@") {
-			// Format: git@domain -> https://domain
-			parts := strings.Split(cloneUrl, "@")
-			if len(parts) == 2 {
-				cloneUrl = "https://" + parts[1]
-			}
-		} else if !strings.Contains(cloneUrl, "://") {
-			// No protocol specified, assume HTTPS
-			cloneUrl = "https://" + cloneUrl
-		}
-		tags = append(tags, []string{"clone", cloneUrl})
-	}
-
-	// NIP-34: Content field MUST be empty - all metadata in tags
+	var tags nostr.Tags
 	_, statuses, err := pool.PublishEvent(&nostr.Event{
 		CreatedAt: time.Now(),
-		Kind:      protocol.KindRepositoryNIP34, // NIP-34: Use kind 30617
+		Kind:      protocol.KindRepository,
 		Tags:      tags,
-		Content:   "", // NIP-34: Content MUST be empty
+		Content:   string(repoJson),
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -167,8 +152,7 @@ func repoClone(cfg Config, pool *nostr.RelayPool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Query for both legacy (kind 51) and NIP-34 (kind 30617) events
-	_, subchan := pool.Sub(nostr.Filters{{Kinds: []int{protocol.KindRepository, protocol.KindRepositoryNIP34}, Authors: []string{identifier}}})
+	_, subchan := pool.Sub(nostr.Filters{{Kinds: []int{protocol.KindRepository}, Authors: []string{identifier}}})
 
 	var pubKey string
 	var repository protocol.Repository
@@ -193,49 +177,13 @@ func repoClone(cfg Config, pool *nostr.RelayPool) {
 			return
 		case event := <-subchan:
 			var checkRepo protocol.Repository
-			var checkRepoName string
 
-			// Handle NIP-34 events (kind 30617) - data is in tags, not content
-			if event.Event.Kind == protocol.KindRepositoryNIP34 {
-				// Extract repository name from "d" tag
-				for _, tag := range event.Event.Tags {
-					if len(tag) >= 2 && tag[0] == "d" {
-						checkRepoName = tag[1]
-						break
-					}
-				}
-				// Set default values for NIP-34
-				checkRepo.RepositoryName = checkRepoName
-				checkRepo.PublicRead = true
-				checkRepo.PublicWrite = false
-				// Extract GitSshBase from clone tags if available
-				for _, tag := range event.Event.Tags {
-					if len(tag) >= 2 && tag[0] == "clone" {
-						cloneUrl := tag[1]
-						// Try to extract domain from clone URL
-						if strings.HasPrefix(cloneUrl, "https://") {
-							domain := strings.TrimPrefix(cloneUrl, "https://")
-							domain = strings.Split(domain, "/")[0]
-							checkRepo.GitSshBase = "git@" + domain
-						} else if strings.HasPrefix(cloneUrl, "http://") {
-							domain := strings.TrimPrefix(cloneUrl, "http://")
-							domain = strings.Split(domain, "/")[0]
-							checkRepo.GitSshBase = "git@" + domain
-						}
-						break
-					}
-				}
-			} else {
-				// Legacy kind 51 - parse from JSON content
-				err := json.Unmarshal([]byte(event.Event.Content), &checkRepo)
-				if err != nil {
-					log.Println("Failed to parse repository.")
-					continue
-				}
-				checkRepoName = checkRepo.RepositoryName
+			err := json.Unmarshal([]byte(event.Event.Content), &checkRepo)
+			if err != nil {
+				log.Println("Failed to parse repository.")
 			}
 
-			if checkRepoName == repoName {
+			if checkRepo.RepositoryName == repoName {
 				repository = checkRepo
 				pubKey = event.Event.PubKey
 			}

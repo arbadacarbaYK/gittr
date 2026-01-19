@@ -37,6 +37,9 @@ GITWORKSHOPS_TAG_PARSING_BUG.md
 LOCALSTORAGE_QUOTA_FIX.md
 CLEAR_FOREIGN_REPOS_FIX.md
 
+# Local restore backups
+/_hetzner_backup/
+
 log*.txt
 *.log
 devserver.log
