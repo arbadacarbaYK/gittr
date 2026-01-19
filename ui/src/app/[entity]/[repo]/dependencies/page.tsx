@@ -1370,7 +1370,7 @@ export default function DependenciesPage({
         const hasSearch = currentSearchQuery.trim() && currentMatchingNodes.size > 0;
         
         // Update link paths (curved or straight based on config.curvedLinks)
-        // CodeFlow style: Calculate edge points on node circles, not centers
+        // CodeFlow EXACT: Use node centers, not edge points
         link.attr("d", (d: any) => {
           // Ensure source and target are node objects (not IDs)
           const source = typeof d.source === "object" ? d.source : nodes.find((n: any) => n.id === d.source);
@@ -1380,40 +1380,20 @@ export default function DependenciesPage({
             return "M0,0L0,0";
           }
           
-          // Validate positions are finite and within reasonable bounds
+          // Validate positions are finite
           if (!isFinite(source.x) || !isFinite(source.y) || !isFinite(target.x) || !isFinite(target.y)) {
             return "M0,0L0,0";
           }
           
-          // Calculate node radii
-          const sourceR = getR(source);
-          const targetR = getR(target);
-          
-          // Calculate direction vector
-          const dx = target.x - source.x;
-          const dy = target.y - source.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          
-          if (dist === 0) return "M0,0L0,0";
-          
-          // Normalize direction
-          const nx = dx / dist;
-          const ny = dy / dist;
-          
-          // Calculate edge points on circles
-          const sx = source.x + nx * sourceR;
-          const sy = source.y + ny * sourceR;
-          const tx = target.x - nx * targetR;
-          const ty = target.y - ny * targetR;
-          
+          // CodeFlow EXACT: Use centers for both curved and straight
           if (config.curvedLinks) {
-            // Curved arc: use actual edge points
-            const arcDist = Math.sqrt((tx - sx) * (tx - sx) + (ty - sy) * (ty - sy));
-            if (arcDist === 0) return "M0,0L0,0";
-            return `M${sx},${sy}A${arcDist},${arcDist} 0 0,1 ${tx},${ty}`;
-            } else {
-            // Straight line: use edge points
-            return `M${sx},${sy}L${tx},${ty}`;
+            const dx = target.x - source.x;
+            const dy = target.y - source.y;
+            const dr = Math.sqrt(dx * dx + dy * dy);
+            if (dr === 0) return "M0,0L0,0";
+            return `M${source.x},${source.y}A${dr},${dr} 0 0,1 ${target.x},${target.y}`;
+          } else {
+            return `M${source.x},${source.y}L${target.x},${target.y}`;
           }
         });
         
@@ -1517,38 +1497,25 @@ export default function DependenciesPage({
         updateHulls();
       });
 
-      // CodeFlow-style: Update hulls (folder groupings)
+      // CodeFlow EXACT: Update hulls (folder groupings)
       const updateHulls = () => {
-        // Hide folder hulls in dependency view - only show in folder view
         hullLayer.selectAll("*").remove();
         if (viewMode === "folder") {
-          // folderList already contains only top-level folders (from node grouping logic)
-          // Group nodes by their folder
-          const nodesByFolder = new Map<string, typeof nodes>();
-          nodes.forEach((n: any) => {
-            const folder = n.folder || "root";
-            if (!nodesByFolder.has(folder)) {
-              nodesByFolder.set(folder, []);
-            }
-            nodesByFolder.get(folder)!.push(n);
-          });
-          
-          // Draw hull for each folder
+          // CodeFlow EXACT: Use folderList and filter nodes by folder
           folderList.forEach((folder) => {
-            const folderNodes = nodesByFolder.get(folder) || [];
-            if (folderNodes.length < 1) return;
+            const fn = nodes.filter((n: any) => n.folder === folder);
+            if (fn.length < 1) return;
             
-            // Calculate hull with padding
-            const pad = 40;
+            // CodeFlow EXACT: pad=30, use node positions directly (no radius offset)
+            const pad = 30;
             const pts: [number, number][] = [];
-            folderNodes.forEach((n: any) => {
-              if (n.x != null && n.y != null && isFinite(n.x) && isFinite(n.y)) {
-                const r = getR(n);
+            fn.forEach((n: any) => {
+              if (n.x && n.y) {
                 pts.push(
-                  [n.x - pad - r, n.y - pad - r],
-                  [n.x + pad + r, n.y - pad - r],
-                  [n.x - pad - r, n.y + pad + r],
-                  [n.x + pad + r, n.y + pad + r]
+                  [n.x - pad, n.y - pad],
+                  [n.x + pad, n.y - pad],
+                  [n.x - pad, n.y + pad],
+                  [n.x + pad, n.y + pad]
                 );
               }
             });
@@ -1556,25 +1523,22 @@ export default function DependenciesPage({
             
             const hull = d3.polygonHull(pts);
             if (hull) {
-              const color =
-                COLORS[folderList.indexOf(folder) % COLORS.length] ||
-                COLORS[0] ||
-                "#4d9fff";
+              const color = COLORS[folderList.indexOf(folder) % COLORS.length] || COLORS[0];
               
-              // Draw hull
+              // CodeFlow EXACT: fill-opacity 0.04, stroke-opacity 0.25, stroke-width 2
               hullLayer
                 .append("path")
                 .attr("d", "M" + hull.join("L") + "Z")
                 .attr("fill", color)
-                .attr("fill-opacity", 0.12)
+                .attr("fill-opacity", 0.04)
                 .attr("stroke", color)
                 .attr("stroke-width", 2)
-                .attr("stroke-opacity", 0.5);
+                .attr("stroke-opacity", 0.25)
+                .attr("rx", 8);
               
-              // Add folder label
-              const cx = d3.mean(folderNodes, (n: any) => n.x) || 0;
-              const cy = (d3.min(folderNodes, (n: any) => n.y) || 0) - pad - 12;
-              const folderName = folder === "root" ? "root" : folder;
+              // CodeFlow EXACT: label positioning
+              const cx = d3.mean(fn, (n: any) => n.x) || 0;
+              const cy = (d3.min(fn, (n: any) => n.y) || 0) - pad - 8;
               
               hullLayer
                 .append("text")
@@ -1582,15 +1546,14 @@ export default function DependenciesPage({
                 .attr("y", cy)
                 .attr("text-anchor", "middle")
                 .attr("fill", color)
-                .attr("font-size", "12px")
+                .attr("font-size", "10px")
                 .attr("font-family", "JetBrains Mono, monospace")
                 .attr("font-weight", 600)
-                .attr("opacity", 0.9)
-                .text(folderName);
+                .attr("opacity", 0.7)
+                .text(folder || "root");
             }
           });
         }
-        // In dependency view, hulls are hidden
       };
 
       selectFileRef.current = (id: string) => {
@@ -2855,11 +2818,11 @@ export default function DependenciesPage({
         </div>
 
         {/* File Browser - CodeFlow style */}
-        {activeGraphData && activeGraphData.nodes.length > 0 && (
+        {activeGraphData && (
           <div className="flex-1 overflow-y-auto p-4 border-b border-[#383B42]">
             <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Files</div>
             <FileTree
-              nodes={activeGraphData.nodes.filter(n => n.data.type === 'file')}
+              nodes={activeGraphData.nodes.filter(n => n.data.type === 'file' || n.data.type === 'package')}
               onSelectFile={(id) => {
                 if (selectFileRef.current) {
                   selectFileRef.current(id);
