@@ -319,10 +319,18 @@ export default function DependenciesPage({
         const base = node.data.type === "package" ? 10 : 8;
         const radius = Math.max(8, Math.min(24, 5 + Math.sqrt(size) * 0.8));
         
+        // Ensure packages always have a name/label
+        let nodeName = node.data.displayLabel || node.data.label || node.data.id;
+        if (node.data.type === "package" && !nodeName) {
+          // Extract package name from path or ID
+          const pathOrId = node.data.path || node.data.id || "";
+          nodeName = pathOrId.split("/").pop() || pathOrId.split("@").pop() || "pkg";
+        }
+        
         return {
           id: node.data.id,
-          label: node.data.displayLabel || node.data.label,
-          name: node.data.displayLabel || node.data.label,
+          label: nodeName,
+          name: nodeName,
           type: node.data.type,
           radius,
           folder,
@@ -603,7 +611,16 @@ export default function DependenciesPage({
         .attr("pointer-events", "none")
         .attr("opacity", graphConfigRef.current.showLabels ? 1 : 0) // Use graphConfigRef for latest value
         .text((d) => {
-          const n = d.name.replace(/\.[^.]+$/, "");
+          // Handle empty or undefined names - use ID as fallback
+          let n = d.name || d.id || d.label || "?";
+          // Remove file extension for files
+          if (d.type === "file") {
+            n = n.replace(/\.[^.]+$/, "");
+          }
+          // For packages, use the package name (might be scoped like @package/name)
+          if (d.type === "package" && !n) {
+            n = d.id || d.path || "pkg";
+          }
           const r = getR(d);
           // Calculate max characters that fit inside circle (circumference / font width)
           // Approximate: each character is ~0.6 * font size wide
@@ -615,8 +632,21 @@ export default function DependenciesPage({
       // Add mouseover/mouseout handlers for tooltip
       node
         .on("mouseover", function(event, d: any) {
-          const fullName = d.name.replace(/\.[^.]+$/, "");
-          const displayName = d.name;
+          // Get full name with fallbacks
+          let fullName = d.name || d.id || d.label || d.path || "Unknown";
+          let displayName = d.path || d.id || d.name || "Unknown";
+          
+          // Remove file extension for files
+          if (d.type === "file") {
+            fullName = fullName.replace(/\.[^.]+$/, "");
+          }
+          
+          // For packages, show the full package path
+          if (d.type === "package") {
+            fullName = d.path || d.id || d.name || "Package";
+            displayName = d.path || d.id || d.name || "External Package";
+          }
+          
           tooltip
             .style("opacity", 1)
             .html(`<div><strong>${fullName}</strong></div><div style="font-size: 10px; color: #aaa; margin-top: 4px;">${displayName}</div>`);
@@ -1729,14 +1759,14 @@ export default function DependenciesPage({
 
       if (!isInternal) {
         // External package - create a node for it
-        const label = packageKey;
-        const displayLabel = toDisplayLabel(label);
+        const label = packageKey || toKey || toId || "unknown-package";
+        const displayLabel = toDisplayLabel(label) || label;
         nodes.set(toKey, {
           data: {
             id: toId,
-            label,
-            displayLabel,
-            path: toKey,
+            label: label || displayLabel,
+            displayLabel: displayLabel || label,
+            path: toKey || label,
             type: "package",
             size: calcNodeSize(displayLabel, 26, 90),
           },
