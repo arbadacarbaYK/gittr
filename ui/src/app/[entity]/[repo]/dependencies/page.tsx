@@ -751,8 +751,8 @@ export default function DependenciesPage({
         
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.3))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 1.5).distanceMax(400))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 2.0).distanceMax(800))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 30).iterations(5))
           .force("x", d3.forceX((d: any) => {
             if ((d as any).isHub) return (d as any).hubX;
             if ((d as any).orbitHub) {
@@ -783,8 +783,8 @@ export default function DependenciesPage({
         });
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 0.5).strength(0.05))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.5))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 1.0).distanceMax(600))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 30).iterations(5))
           .force("x", d3.forceX((d: any) => (d as any).targetX).strength(0.8))
           .force("y", d3.forceY((d: any) => (d as any).targetY).strength(0.8))
           .force("boundary", () => {
@@ -810,8 +810,8 @@ export default function DependenciesPage({
         });
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.1))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.8).distanceMax(200))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 1.2).distanceMax(600))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 30).iterations(5))
           .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.9))
           .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.3))
           .force("boundary", () => {
@@ -827,8 +827,8 @@ export default function DependenciesPage({
         });
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 1.5).strength(0.02))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.3))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.8).distanceMax(600))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 30).iterations(5))
           .force("x", d3.forceX((d: any) => (d as any).targetX).strength(1))
           .force("y", d3.forceY((d: any) => (d as any).targetY).strength(1))
           .force("boundary", () => {
@@ -876,34 +876,13 @@ export default function DependenciesPage({
         });
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.05))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.4))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
+          .force("charge", d3.forceManyBody().strength(-config.spacing * 1.0).distanceMax(600))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 30).iterations(5))
           .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.95))
           .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.95))
           .force("boundary", () => {
             nodes.forEach(boundaryForce);
           });
-      }
-      
-      // Update forces when spacing/linkDist change - use graphConfigRef for latest values
-      const linkForce = simulation.force("link") as any;
-      if (linkForce) {
-        linkForce.distance(config.linkDist);
-      }
-      const chargeForce = simulation.force("charge") as any;
-      if (chargeForce) {
-        // Update charge strength based on view mode
-        if (config.viewMode === "force") {
-          chargeForce.strength(-config.spacing * 1.5);
-        } else if (config.viewMode === "radial") {
-          chargeForce.strength(-config.spacing * 0.5);
-        } else if (config.viewMode === "hierarchical") {
-          chargeForce.strength(-config.spacing * 0.8);
-        } else if (config.viewMode === "grid") {
-          chargeForce.strength(-config.spacing * 0.3);
-        } else if (config.viewMode === "metro") {
-          chargeForce.strength(-config.spacing * 0.4);
-        }
       }
       
       // Always restart simulation when config changes to apply new forces
