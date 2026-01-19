@@ -321,7 +321,9 @@ export default function DependenciesPage({
     []
   );
 
-  const activeGraphData = viewMode === "folder" ? folderGraphData : graphData;
+  // CodeFlow: Always use graphData (file nodes) for rendering
+  // Folder view just shows/hides hulls, doesn't change the nodes
+  const activeGraphData = graphData;
   const hasFolderDependencyEdges =
     activeGraphData?.edges.some((edge) => edge.data.type !== "folder") ?? false;
 
@@ -1500,7 +1502,7 @@ export default function DependenciesPage({
       // CodeFlow EXACT: Update hulls (folder groupings)
       const updateHulls = () => {
         hullLayer.selectAll("*").remove();
-        if (viewMode === "folder") {
+        if (viewMode === "folder" && folderList.length > 0 && nodes.length > 0) {
           // CodeFlow EXACT: Use folderList and filter nodes by folder
           folderList.forEach((folder) => {
             const fn = nodes.filter((n: any) => n.folder === folder);
@@ -1510,7 +1512,7 @@ export default function DependenciesPage({
             const pad = 30;
             const pts: [number, number][] = [];
             fn.forEach((n: any) => {
-              if (n.x && n.y) {
+              if (n.x != null && n.y != null && isFinite(n.x) && isFinite(n.y)) {
                 pts.push(
                   [n.x - pad, n.y - pad],
                   [n.x + pad, n.y - pad],
@@ -2817,12 +2819,12 @@ export default function DependenciesPage({
           </div>
         </div>
 
-        {/* File Browser - CodeFlow style */}
-        {activeGraphData && (
+        {/* File Browser - CodeFlow style - Always use graphData (file dependencies) */}
+        {graphData && graphData.nodes.length > 0 && (
           <div className="flex-1 overflow-y-auto p-4 border-b border-[#383B42]">
             <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Files</div>
             <FileTree
-              nodes={activeGraphData.nodes.filter(n => n.data.type === 'file' || n.data.type === 'package')}
+              nodes={graphData.nodes.filter(n => n.data.type === 'file' || n.data.type === 'package')}
               onSelectFile={(id) => {
                 if (selectFileRef.current) {
                   selectFileRef.current(id);
