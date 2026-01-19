@@ -2518,19 +2518,19 @@ export default function DependenciesPage({
   const healthScore = totalFiles > 0 ? Math.min(100, Math.max(0, 100 - (totalDependencies / totalFiles * 10))) : 0;
 
   return (
-    <div className="mt-4 w-screen max-w-none relative left-1/2 right-1/2 -translate-x-1/2">
+    <div className="mt-4 w-full">
       <div className="flex bg-[#0f172a] overflow-hidden" style={{ height: 'calc(100vh - 200px)', minHeight: '600px' }}>
-      {/* Left Sidebar - CodeFlow style */}
+      {/* Left Sidebar - CodeFlow style - Always visible */}
       <div 
         className="flex-shrink-0 bg-[#1a1f2e] border-r border-[#383B42] flex flex-col overflow-hidden"
-        style={{ width: `${sidebarWidth}px` }}
+        style={{ width: `${sidebarWidth}px`, minWidth: `${sidebarWidth}px` }}
       >
         {/* Sidebar Header */}
         <div className="p-4 border-b border-[#383B42]">
           <div className="flex items-center gap-2 mb-4">
             <GitBranch className="h-5 w-5 text-orange-500" />
             <h2 className="text-lg font-semibold text-gray-200">Dependencies</h2>
-          </div>
+        </div>
           
           {/* Search */}
           <div className="relative">
@@ -2562,7 +2562,7 @@ export default function DependenciesPage({
               {matchingNodes.size} match{matchingNodes.size !== 1 ? 'es' : ''}
             </div>
           )}
-        </div>
+      </div>
 
         {/* Health Score */}
         <div className="p-4 border-b border-[#383B42]">
@@ -2614,22 +2614,22 @@ export default function DependenciesPage({
         {/* File Explorer / Status */}
         <div className="flex-1 overflow-y-auto p-4">
           <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Status</div>
-          {status && (
+      {status && (
             <div className="text-xs text-gray-400 bg-[#0f172a] rounded-lg p-3 mb-3">
-              {status}
-            </div>
-          )}
-          {error && (
+          {status}
+        </div>
+      )}
+      {error && (
             <div className="bg-red-900/20 border border-red-500/50 rounded-md p-3 flex items-start gap-2 text-red-400 text-xs">
               <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
+          <span>{error}</span>
+        </div>
+      )}
           {loading && !activeGraphData && (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
-            </div>
-          )}
+        </div>
+      )}
         </div>
       </div>
 
@@ -2765,9 +2765,9 @@ export default function DependenciesPage({
             </p>
             <p className="text-gray-500 text-[10px]">
               Overlapping areas indicate nested structure. Switch to "File dependencies" to see actual dependency relationships.
-            </p>
-          </div>
-        )}
+                </p>
+              </div>
+            )}
         
         {/* Info Notice - only when no dependencies in file view */}
         {viewMode === "file" && activeGraphData && activeGraphData.nodes.length > 0 &&
@@ -2776,8 +2776,8 @@ export default function DependenciesPage({
               <p>
                 💡 Showing folder structure. No dependencies found between files.
               </p>
-            </div>
-          )}
+        </div>
+      )}
 
         {/* Empty state */}
         {!loading && !error && filesFetched && !activeGraphData && dependencies.length === 0 && (
@@ -2786,14 +2786,14 @@ export default function DependenciesPage({
               <GitBranch className="h-16 w-16 mx-auto mb-4 opacity-30" />
               <p className="text-sm">No dependencies found in this repository</p>
             </div>
-          </div>
-        )}
+        </div>
+      )}
       </div>
 
-      {/* Right Panel - CodeFlow style */}
+      {/* Right Panel - CodeFlow style - Always visible */}
       <div 
         className="flex-shrink-0 bg-[#1a1f2e] border-l border-[#383B42] flex flex-col overflow-hidden"
-        style={{ width: `${rightPanelWidth}px` }}
+        style={{ width: `${rightPanelWidth}px`, minWidth: `${rightPanelWidth}px` }}
       >
         {/* Tab Header */}
         <div className="flex border-b border-[#383B42]">
@@ -2974,14 +2974,14 @@ export default function DependenciesPage({
                 <>
                   <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
                     All Dependencies ({dependencies.length})
-                  </h3>
+          </h3>
                   <div className="space-y-2">
                     {dependencies.slice(0, 100).map((dep, idx) => (
                       <div key={idx} className="text-xs bg-[#0f172a] rounded p-2">
                         <div className="text-orange-400 font-mono break-all">{dep.from}</div>
                         <div className="text-gray-500 my-1">↓</div>
                         <div className="text-blue-400 font-mono break-all">{dep.to}</div>
-                        {dep.line && (
+                  {dep.line && (
                           <div className="text-gray-600 text-[10px] mt-1">
                             Line {dep.line}
                           </div>
@@ -2993,13 +2993,13 @@ export default function DependenciesPage({
                         ... and {dependencies.length - 100} more
                       </div>
                     )}
-                  </div>
+          </div>
                 </>
               ) : (
                 <div className="text-sm text-gray-500">
                   <p>No dependencies found</p>
-                </div>
-              )}
+        </div>
+      )}
             </div>
           )}
         </div>
