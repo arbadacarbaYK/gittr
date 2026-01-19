@@ -1315,51 +1315,82 @@ export default function DependenciesPage({
         // Hide folder hulls in dependency view - only show in folder view
         hullLayer.selectAll("*").remove();
         if (viewMode === "folder") {
+          // Group folders by depth to show hierarchy - only show top-level folders to avoid confusion
+          const folderDepth = new Map<string, number>();
           folderList.forEach((folder) => {
-          const folderNodes = nodes.filter((n) => n.folder === folder);
-          if (folderNodes.length < 1) return;
-          const pad = 30;
-          const pts: [number, number][] = [];
-          folderNodes.forEach((n: any) => {
-            if (n.x != null && n.y != null && isFinite(n.x) && isFinite(n.y)) {
-              pts.push(
-                [n.x - pad, n.y - pad],
-                [n.x + pad, n.y - pad],
-                [n.x - pad, n.y + pad],
-                [n.x + pad, n.y + pad]
-              );
+            folderDepth.set(folder, folder === "root" ? 0 : folder.split("/").length);
+          });
+          
+          // Only show top-level folders (depth 0 or 1) to avoid overlapping confusion
+          // Top-level means: "root" or folders with no parent (e.g., "src", "lib", "ui")
+          const topLevelFolders = folderList.filter((folder) => {
+            const depth = folderDepth.get(folder) || 0;
+            // Show root and first-level folders only (e.g., "src", "lib", not "src/components")
+            return depth <= 1;
+          });
+          
+          topLevelFolders.forEach((folder) => {
+            // Get all nodes that belong to this folder OR any subfolder of it
+            const folderNodes = nodes.filter((n) => {
+              const nodeFolder = n.folder || "root";
+              // Match exact folder or subfolders
+              return nodeFolder === folder || nodeFolder.startsWith(folder + "/");
+            });
+            
+            if (folderNodes.length < 1) return;
+            
+            // Calculate hull with more padding for better visibility
+            const pad = 40;
+            const pts: [number, number][] = [];
+            folderNodes.forEach((n: any) => {
+              if (n.x != null && n.y != null && isFinite(n.x) && isFinite(n.y)) {
+                const r = getR(n);
+                pts.push(
+                  [n.x - pad - r, n.y - pad - r],
+                  [n.x + pad + r, n.y - pad - r],
+                  [n.x - pad - r, n.y + pad + r],
+                  [n.x + pad + r, n.y + pad + r]
+                );
+              }
+            });
+            if (pts.length < 3) return;
+            
+            const hull = d3.polygonHull(pts);
+            if (hull) {
+              const color =
+                COLORS[topLevelFolders.indexOf(folder) % COLORS.length] ||
+                COLORS[0] ||
+                "#4d9fff";
+              
+              // Draw hull with better visibility
+              hullLayer
+                .append("path")
+                .attr("d", "M" + hull.join("L") + "Z")
+                .attr("fill", color)
+                .attr("fill-opacity", 0.08) // Slightly more visible
+                .attr("stroke", color)
+                .attr("stroke-width", 2.5)
+                .attr("stroke-opacity", 0.4) // More visible border
+                .attr("stroke-dasharray", folder === "root" ? "0" : "4,4"); // Dashed for subfolders if we show them
+              
+              // Add folder label
+              const cx = d3.mean(folderNodes, (n: any) => n.x) || 0;
+              const cy = (d3.min(folderNodes, (n: any) => n.y) || 0) - pad - 12;
+              const folderName = folder === "root" ? "root" : folder.split("/").pop() || folder;
+              
+              hullLayer
+                .append("text")
+                .attr("x", cx)
+                .attr("y", cy)
+                .attr("text-anchor", "middle")
+                .attr("fill", color)
+                .attr("font-size", "11px")
+                .attr("font-family", "JetBrains Mono, monospace")
+                .attr("font-weight", 600)
+                .attr("opacity", 0.8)
+                .text(folderName);
             }
           });
-          if (pts.length < 3) return;
-          const hull = d3.polygonHull(pts);
-          if (hull) {
-            const color =
-              COLORS[folderList.indexOf(folder) % COLORS.length] ||
-              COLORS[0] ||
-              "#4d9fff";
-            hullLayer
-              .append("path")
-              .attr("d", "M" + hull.join("L") + "Z")
-              .attr("fill", color)
-              .attr("fill-opacity", 0.04)
-              .attr("stroke", color)
-              .attr("stroke-width", 2)
-              .attr("stroke-opacity", 0.25);
-            const cx = d3.mean(folderNodes, (n: any) => n.x) || 0;
-            const cy = (d3.min(folderNodes, (n: any) => n.y) || 0) - pad - 8;
-            hullLayer
-              .append("text")
-              .attr("x", cx)
-              .attr("y", cy)
-              .attr("text-anchor", "middle")
-              .attr("fill", color)
-              .attr("font-size", "10px")
-              .attr("font-family", "JetBrains Mono, monospace")
-              .attr("font-weight", 600)
-              .attr("opacity", 0.7)
-              .text(folder || "root");
-          }
-        });
         }
         // In dependency view, hulls are hidden
       };
@@ -2724,8 +2755,22 @@ export default function DependenciesPage({
           </div>
         )}
 
-        {/* Info Notice - only when no dependencies */}
-        {activeGraphData && activeGraphData.nodes.length > 0 &&
+        {/* Info Notice - explain folder view */}
+        {viewMode === "folder" && activeGraphData && activeGraphData.nodes.length > 0 && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#1a1f2e]/95 backdrop-blur-sm border border-orange-500/50 rounded-md px-4 py-3 text-xs text-gray-300 max-w-lg z-10">
+            <p className="font-semibold text-orange-400 mb-1">📁 Folder View</p>
+            <p className="text-gray-400 mb-1">
+              Colored polygons show <strong>top-level folders only</strong> (e.g., <code className="text-orange-300">src</code>, <code className="text-orange-300">lib</code>). 
+              Files are grouped by their immediate parent folder.
+            </p>
+            <p className="text-gray-500 text-[10px]">
+              Overlapping areas indicate nested structure. Switch to "File dependencies" to see actual dependency relationships.
+            </p>
+          </div>
+        )}
+        
+        {/* Info Notice - only when no dependencies in file view */}
+        {viewMode === "file" && activeGraphData && activeGraphData.nodes.length > 0 &&
           activeGraphData.edges.filter((e: any) => e.data?.type !== "folder").length === 0 && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#1a1f2e]/95 backdrop-blur-sm border border-[#383B42] rounded-md px-4 py-2 text-xs text-gray-400 max-w-md z-10">
               <p>
