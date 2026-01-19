@@ -406,7 +406,9 @@ export default function DependenciesPage({
       });
 
       const defs = svg.append("defs");
-      // Arrow marker for links
+      // Arrow marker for links - use theme-appropriate color
+      const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
+      const markerColor = theme === "light" ? "#ccc" : "#666";
       defs
         .append("marker")
         .attr("id", "arr")
@@ -418,7 +420,7 @@ export default function DependenciesPage({
         .attr("orient", "auto")
         .append("path")
         .attr("d", "M0,-4L10,0L0,4")
-        .attr("fill", graphPalette.edge);
+        .attr("fill", markerColor);
 
       const container = svg.append("g");
 
@@ -923,93 +925,113 @@ export default function DependenciesPage({
         .restart();
       
       // Attach drag handlers with highlighting and dependent node movement
+      // Track if there's actual movement to prevent click from triggering drag
+      let dragStarted = false;
+      let startX = 0;
+      let startY = 0;
+      
       node.call(
         d3
           .drag<SVGGElement, any>()
           .on("start", (event, d) => {
-            // Reduce simulation activity during drag to prevent chaos
-            if (!event.active && simulation) {
-              simulation.alphaTarget(0).restart(); // Lower alpha target
-            }
+            // Track start position to detect actual drag vs click
+            startX = event.x;
+            startY = event.y;
+            dragStarted = false;
             
-            // Store initial position
-            dragStateRef.current.draggedNodeId = d.id;
-            dragStateRef.current.initialX = d.x || 0;
-            dragStateRef.current.initialY = d.y || 0;
-            
-            // Fix dragged node position
-            d.fx = d.x;
-            d.fy = d.y;
-            
-            // Find all dependent nodes (nodes this node connects to)
-            const dependents = new Set<string>();
-            links.forEach((l: any) => {
-              const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-              const targetId = typeof l.target === "object" ? l.target.id : l.target;
-              if (sourceId === d.id) {
-                dependents.add(targetId);
-              }
-            });
-            
-            // Also find nodes that connect to this node (dependencies)
-            const dependencies = new Set<string>();
-            links.forEach((l: any) => {
-              const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-              const targetId = typeof l.target === "object" ? l.target.id : l.target;
-              if (targetId === d.id) {
-                dependencies.add(sourceId);
-              }
-            });
-            
-            // Store for drag handler
-            dragStateRef.current.dependents = dependents;
-            dragStateRef.current.dependencies = dependencies;
-            
-            // Combine all related nodes
-            const allRelated = new Set([...dependents, ...dependencies]);
-            
-            // Store initial relative positions for smooth orbiting
-            nodes.forEach((n: any) => {
-              if (allRelated.has(n.id)) {
-                n._initialRelX = (n.x || 0) - dragStateRef.current.initialX;
-                n._initialRelY = (n.y || 0) - dragStateRef.current.initialY;
-                n._initialRelDist = Math.sqrt(n._initialRelX * n._initialRelX + n._initialRelY * n._initialRelY);
-              }
-            });
-            
-            // Update visual highlighting - like search highlighting (green for related, greyish for others)
-            const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
-            
-            nodeLayer.selectAll("g.node").each(function(n: any) {
-              const nodeGroup = d3.select(this);
-              const circle = nodeGroup.select("circle.nc");
-              const isSelected = n.id === d.id;
-              const isRelated = allRelated.has(n.id);
-              
-              circle
-                .attr("opacity", isSelected ? 1 : isRelated ? 1 : 0.2)
-                .attr("fill", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : getC(n))
-                .attr("stroke-width", isSelected ? 3 : isRelated ? 3 : 1.5)
-                .attr("stroke", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : (() => {
-                  const c = d3.color(getC(n));
-                  return c ? c.brighter(0.3).toString() : "#fff";
-                })());
-            });
-            
-            // Highlight links - green for connected, greyish for others (like search)
-            linkLayer.selectAll("path").each(function(l: any) {
-              const path = d3.select(this);
-              const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-              const targetId = typeof l.target === "object" ? l.target.id : l.target;
-              const isConnected = sourceId === d.id || targetId === d.id;
-              
-              path
-                .attr("stroke-opacity", isConnected ? 0.8 : 0.15)
-                .attr("stroke", isConnected ? "#00ff9d" : (theme === "light" ? "#999999" : "#666666"))
-                .attr("stroke-width", isConnected ? 3 : Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
-            });
+            // Don't do anything on start - wait for actual drag movement
           })
           .on("drag", (event, d) => {
+            // Only activate drag if there's actual movement (more than 3px)
+            const dx = Math.abs(event.x - startX);
+            const dy = Math.abs(event.y - startY);
+            if (!dragStarted && (dx < 3 && dy < 3)) {
+              return; // Too little movement, treat as click
+            }
+            
+            if (!dragStarted) {
+              // First actual drag - initialize drag state
+              dragStarted = true;
+              
+              // Store initial position
+              dragStateRef.current.draggedNodeId = d.id;
+              dragStateRef.current.initialX = d.x || 0;
+              dragStateRef.current.initialY = d.y || 0;
+            
+              // Fix dragged node position
+              d.fx = d.x;
+              d.fy = d.y;
+              
+              // Find all dependent nodes (nodes this node connects to)
+              const dependents = new Set<string>();
+              links.forEach((l: any) => {
+                const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+                const targetId = typeof l.target === "object" ? l.target.id : l.target;
+                if (sourceId === d.id) {
+                  dependents.add(targetId);
+                }
+              });
+              
+              // Also find nodes that connect to this node (dependencies)
+              const dependencies = new Set<string>();
+              links.forEach((l: any) => {
+                const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+                const targetId = typeof l.target === "object" ? l.target.id : l.target;
+                if (targetId === d.id) {
+                  dependencies.add(sourceId);
+                }
+              });
+              
+              // Store for drag handler
+              dragStateRef.current.dependents = dependents;
+              dragStateRef.current.dependencies = dependencies;
+              
+              // Combine all related nodes
+              const allRelated = new Set([...dependents, ...dependencies]);
+              
+              // Store initial relative positions for smooth orbiting
+              nodes.forEach((n: any) => {
+                if (allRelated.has(n.id)) {
+                  n._initialRelX = (n.x || 0) - dragStateRef.current.initialX;
+                  n._initialRelY = (n.y || 0) - dragStateRef.current.initialY;
+                  n._initialRelDist = Math.sqrt(n._initialRelX * n._initialRelX + n._initialRelY * n._initialRelY);
+                }
+              });
+              
+              // Update visual highlighting - like search highlighting (green for related, greyish for others)
+              const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
+              
+              nodeLayer.selectAll("g.node").each(function(n: any) {
+                const nodeGroup = d3.select(this);
+                const circle = nodeGroup.select("circle.nc");
+                const isSelected = n.id === d.id;
+                const isRelated = allRelated.has(n.id);
+                
+                circle
+                  .attr("opacity", isSelected ? 1 : isRelated ? 1 : 0.2)
+                  .attr("fill", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : getC(n))
+                  .attr("stroke-width", isSelected ? 3 : isRelated ? 3 : 1.5)
+                  .attr("stroke", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : (() => {
+                    const c = d3.color(getC(n));
+                    return c ? c.brighter(0.3).toString() : "#fff";
+                  })());
+              });
+              
+              // Highlight links - green for connected, greyish for others (like search)
+              linkLayer.selectAll("path").each(function(l: any) {
+                const path = d3.select(this);
+                const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+                const targetId = typeof l.target === "object" ? l.target.id : l.target;
+                const isConnected = sourceId === d.id || targetId === d.id;
+                
+                path
+                  .attr("stroke-opacity", isConnected ? 0.8 : 0.15)
+                  .attr("stroke", isConnected ? "#00ff9d" : (theme === "light" ? "#999999" : "#666666"))
+                  .attr("stroke-width", isConnected ? 3 : Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
+              });
+            }
+            
+            // Continue with drag movement
             // Update dragged node position
             d.fx = event.x;
             d.fy = event.y;
@@ -1187,28 +1209,42 @@ export default function DependenciesPage({
         const hasSearch = currentSearchQuery.trim() && currentMatchingNodes.size > 0;
         
         // Update link paths (curved or straight based on config.curvedLinks)
-        if (config.curvedLinks) {
-          link.attr("d", (d: any) => {
-            const source = typeof d.source === "object" ? d.source : d.source;
-            const target = typeof d.target === "object" ? d.target : d.target;
-            if (!source || !target || source.x == null || source.y == null || target.x == null || target.y == null) {
-              return "M0,0L0,0";
-            }
-            const dx = target.x - source.x;
-            const dy = target.y - source.y;
-            const dr = Math.sqrt(dx * dx + dy * dy);
-            return `M${source.x},${source.y}A${dr},${dr} 0 0,1 ${target.x},${target.y}`;
-              });
-            } else {
-          link.attr("d", (d: any) => {
-            const source = typeof d.source === "object" ? d.source : d.source;
-            const target = typeof d.target === "object" ? d.target : d.target;
-            if (!source || !target || source.x == null || source.y == null || target.x == null || target.y == null) {
-              return "M0,0L0,0";
-            }
-            return `M${source.x},${source.y}L${target.x},${target.y}`;
-          });
-        }
+        // Account for node radius so lines reach the edge of nodes, not their centers
+        link.attr("d", (d: any) => {
+          const source = typeof d.source === "object" ? d.source : d.source;
+          const target = typeof d.target === "object" ? d.target : d.target;
+          if (!source || !target || source.x == null || source.y == null || target.x == null || target.y == null) {
+            return "M0,0L0,0";
+          }
+          
+          // Calculate node radii
+          const sourceR = getR(source);
+          const targetR = getR(target);
+          
+          // Calculate direction vector
+          const dx = target.x - source.x;
+          const dy = target.y - source.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist === 0) return "M0,0L0,0";
+          
+          // Normalize direction
+          const nx = dx / dist;
+          const ny = dy / dist;
+          
+          // Calculate start and end points (on node edges, not centers)
+          const x1 = source.x + nx * sourceR;
+          const y1 = source.y + ny * sourceR;
+          const x2 = target.x - nx * targetR;
+          const y2 = target.y - ny * targetR;
+          
+          if (config.curvedLinks) {
+            const dr = Math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+            return `M${x1},${y1}A${dr},${dr} 0 0,1 ${x2},${y2}`;
+          } else {
+            return `M${x1},${y1}L${x2},${y2}`;
+          }
+        });
         
         // Preserve highlighting in tick handler (search, drag, double-click) - so it persists during zoom/pan
         const draggedNodeId = dragStateRef.current.draggedNodeId;
@@ -2515,7 +2551,11 @@ export default function DependenciesPage({
   // Calculate stats for sidebar
   const totalFiles = activeGraphData?.nodes.filter(n => n.data.type === 'file').length || 0;
   const totalDependencies = activeGraphData?.edges.filter(e => e.data?.type !== 'folder').length || 0;
-  const healthScore = totalFiles > 0 ? Math.min(100, Math.max(0, 100 - (totalDependencies / totalFiles * 10))) : 0;
+  // Health score: Lower is better (fewer dependencies per file = healthier)
+  // Score: 100 - (avg deps per file * 10), clamped to 0-100
+  // Example: 4.4 deps/file = 56 score, 10+ deps/file = 0 score
+  const avgDepsPerFile = totalFiles > 0 ? totalDependencies / totalFiles : 0;
+  const healthScore = Math.min(100, Math.max(0, Math.round(100 - (avgDepsPerFile * 10))));
 
   return (
     <div className="mt-4 w-full">
