@@ -923,93 +923,112 @@ export default function DependenciesPage({
         .restart();
       
       // Attach drag handlers with highlighting and dependent node movement
+      // Track if there's actual movement to prevent click from triggering drag
+      let dragStarted = false;
+      let startX = 0;
+      let startY = 0;
+      
       node.call(
         d3
           .drag<SVGGElement, any>()
           .on("start", (event, d) => {
-            // Reduce simulation activity during drag to prevent chaos
-            if (!event.active && simulation) {
-              simulation.alphaTarget(0).restart(); // Lower alpha target
-            }
+            // Track start position to detect actual drag vs click
+            startX = event.x;
+            startY = event.y;
+            dragStarted = false;
             
-            // Store initial position
-            dragStateRef.current.draggedNodeId = d.id;
-            dragStateRef.current.initialX = d.x || 0;
-            dragStateRef.current.initialY = d.y || 0;
-            
-            // Fix dragged node position
-            d.fx = d.x;
-            d.fy = d.y;
-            
-            // Find all dependent nodes (nodes this node connects to)
-            const dependents = new Set<string>();
-            links.forEach((l: any) => {
-              const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-              const targetId = typeof l.target === "object" ? l.target.id : l.target;
-              if (sourceId === d.id) {
-                dependents.add(targetId);
-              }
-            });
-            
-            // Also find nodes that connect to this node (dependencies)
-            const dependencies = new Set<string>();
-            links.forEach((l: any) => {
-              const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-              const targetId = typeof l.target === "object" ? l.target.id : l.target;
-              if (targetId === d.id) {
-                dependencies.add(sourceId);
-              }
-            });
-            
-            // Store for drag handler
-            dragStateRef.current.dependents = dependents;
-            dragStateRef.current.dependencies = dependencies;
-            
-            // Combine all related nodes
-            const allRelated = new Set([...dependents, ...dependencies]);
-            
-            // Store initial relative positions for smooth orbiting
-            nodes.forEach((n: any) => {
-              if (allRelated.has(n.id)) {
-                n._initialRelX = (n.x || 0) - dragStateRef.current.initialX;
-                n._initialRelY = (n.y || 0) - dragStateRef.current.initialY;
-                n._initialRelDist = Math.sqrt(n._initialRelX * n._initialRelX + n._initialRelY * n._initialRelY);
-              }
-            });
-            
-            // Update visual highlighting - like search highlighting (green for related, greyish for others)
-            const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
-            
-            nodeLayer.selectAll("g.node").each(function(n: any) {
-              const nodeGroup = d3.select(this);
-              const circle = nodeGroup.select("circle.nc");
-              const isSelected = n.id === d.id;
-              const isRelated = allRelated.has(n.id);
-              
-              circle
-                .attr("opacity", isSelected ? 1 : isRelated ? 1 : 0.2)
-                .attr("fill", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : getC(n))
-                .attr("stroke-width", isSelected ? 3 : isRelated ? 3 : 1.5)
-                .attr("stroke", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : (() => {
-                  const c = d3.color(getC(n));
-                  return c ? c.brighter(0.3).toString() : "#fff";
-                })());
-            });
-            
-            // Highlight links - green for connected, greyish for others (like search)
-            linkLayer.selectAll("path").each(function(l: any) {
-              const path = d3.select(this);
-              const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-              const targetId = typeof l.target === "object" ? l.target.id : l.target;
-              const isConnected = sourceId === d.id || targetId === d.id;
-              
-              path
-                .attr("stroke-opacity", isConnected ? 0.8 : 0.15)
-                .attr("stroke", isConnected ? "#00ff9d" : (theme === "light" ? "#999999" : "#666666"))
-                .attr("stroke-width", isConnected ? 3 : Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
-            });
+            // Don't do anything on start - wait for actual drag movement
           })
           .on("drag", (event, d) => {
+            // Only activate drag if there's actual movement (more than 5px)
+            const dx = Math.abs(event.x - startX);
+            const dy = Math.abs(event.y - startY);
+            if (!dragStarted && (dx < 5 && dy < 5)) {
+              return; // Too little movement, treat as click
+            }
+            
+            if (!dragStarted) {
+              // First actual drag - initialize drag state
+              dragStarted = true;
+              
+              // Store initial position
+              dragStateRef.current.draggedNodeId = d.id;
+              dragStateRef.current.initialX = d.x || 0;
+              dragStateRef.current.initialY = d.y || 0;
+              // Fix dragged node position
+              d.fx = d.x;
+              d.fy = d.y;
+              
+              // Find all dependent nodes (nodes this node connects to)
+              const dependents = new Set<string>();
+              links.forEach((l: any) => {
+                const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+                const targetId = typeof l.target === "object" ? l.target.id : l.target;
+                if (sourceId === d.id) {
+                  dependents.add(targetId);
+                }
+              });
+              
+              // Also find nodes that connect to this node (dependencies)
+              const dependencies = new Set<string>();
+              links.forEach((l: any) => {
+                const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+                const targetId = typeof l.target === "object" ? l.target.id : l.target;
+                if (targetId === d.id) {
+                  dependencies.add(sourceId);
+                }
+              });
+              
+              // Store for drag handler
+              dragStateRef.current.dependents = dependents;
+              dragStateRef.current.dependencies = dependencies;
+              
+              // Combine all related nodes
+              const allRelated = new Set([...dependents, ...dependencies]);
+              
+              // Store initial relative positions for smooth orbiting
+              nodes.forEach((n: any) => {
+                if (allRelated.has(n.id)) {
+                  n._initialRelX = (n.x || 0) - dragStateRef.current.initialX;
+                  n._initialRelY = (n.y || 0) - dragStateRef.current.initialY;
+                  n._initialRelDist = Math.sqrt(n._initialRelX * n._initialRelX + n._initialRelY * n._initialRelY);
+                }
+              });
+              
+              // Update visual highlighting - like search highlighting (green for related, greyish for others)
+              const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
+              
+              nodeLayer.selectAll("g.node").each(function(n: any) {
+                const nodeGroup = d3.select(this);
+                const circle = nodeGroup.select("circle.nc");
+                const isSelected = n.id === d.id;
+                const isRelated = allRelated.has(n.id);
+                
+                circle
+                  .attr("opacity", isSelected ? 1 : isRelated ? 1 : 0.2)
+                  .attr("fill", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : getC(n))
+                  .attr("stroke-width", isSelected ? 3 : isRelated ? 3 : 1.5)
+                  .attr("stroke", isSelected ? "#ff5f5f" : isRelated ? "#00ff9d" : (() => {
+                    const c = d3.color(getC(n));
+                    return c ? c.brighter(0.3).toString() : "#fff";
+                  })());
+              });
+              
+              // Highlight links - green for connected, greyish for others (like search)
+              linkLayer.selectAll("path").each(function(l: any) {
+                const path = d3.select(this);
+                const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+                const targetId = typeof l.target === "object" ? l.target.id : l.target;
+                const isConnected = sourceId === d.id || targetId === d.id;
+                
+                path
+                  .attr("stroke-opacity", isConnected ? 0.8 : 0.15)
+                  .attr("stroke", isConnected ? "#00ff9d" : (theme === "light" ? "#999999" : "#666666"))
+                  .attr("stroke-width", isConnected ? 3 : Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
+              });
+            }
+            
+            // Continue with drag movement
             // Update dragged node position
             d.fx = event.x;
             d.fy = event.y;
@@ -1049,9 +1068,15 @@ export default function DependenciesPage({
             // This prevents the "flies in a glass" effect
           })
           .on("end", (event, d) => {
+            // Only reset if drag actually started (not just a click)
+            if (!dragStarted) {
+              return; // It was just a click, don't reset anything
+            }
+            
             if (!event.active && simulation) simulation.alphaTarget(0);
             d.fx = null;
             d.fy = null;
+            dragStarted = false;
             
             // Release dependent/dependency nodes gradually (smooth transition back to natural forces)
             nodes.forEach((n: any) => {
@@ -1187,28 +1212,31 @@ export default function DependenciesPage({
         const hasSearch = currentSearchQuery.trim() && currentMatchingNodes.size > 0;
         
         // Update link paths (curved or straight based on config.curvedLinks)
-        if (config.curvedLinks) {
-          link.attr("d", (d: any) => {
-            const source = typeof d.source === "object" ? d.source : d.source;
-            const target = typeof d.target === "object" ? d.target : d.target;
-            if (!source || !target || source.x == null || source.y == null || target.x == null || target.y == null) {
-              return "M0,0L0,0";
-            }
+        // CodeFlow style: Use node centers directly, ensure source/target are node objects
+        link.attr("d", (d: any) => {
+          // Ensure source and target are node objects (not IDs)
+          const source = typeof d.source === "object" ? d.source : nodes.find((n: any) => n.id === d.source);
+          const target = typeof d.target === "object" ? d.target : nodes.find((n: any) => n.id === d.target);
+          
+          if (!source || !target || source.x == null || source.y == null || target.x == null || target.y == null) {
+            return "M0,0L0,0";
+          }
+          
+          // Validate positions are finite and within reasonable bounds
+          if (!isFinite(source.x) || !isFinite(source.y) || !isFinite(target.x) || !isFinite(target.y)) {
+            return "M0,0L0,0";
+          }
+          
+          if (config.curvedLinks) {
             const dx = target.x - source.x;
             const dy = target.y - source.y;
             const dr = Math.sqrt(dx * dx + dy * dy);
+            if (dr === 0) return "M0,0L0,0";
             return `M${source.x},${source.y}A${dr},${dr} 0 0,1 ${target.x},${target.y}`;
-              });
-            } else {
-          link.attr("d", (d: any) => {
-            const source = typeof d.source === "object" ? d.source : d.source;
-            const target = typeof d.target === "object" ? d.target : d.target;
-            if (!source || !target || source.x == null || source.y == null || target.x == null || target.y == null) {
-              return "M0,0L0,0";
-            }
+          } else {
             return `M${source.x},${source.y}L${target.x},${target.y}`;
-          });
-        }
+          }
+        });
         
         // Preserve highlighting in tick handler (search, drag, double-click) - so it persists during zoom/pan
         const draggedNodeId = dragStateRef.current.draggedNodeId;
@@ -1358,7 +1386,7 @@ export default function DependenciesPage({
             const hull = d3.polygonHull(pts);
             if (hull) {
               const color =
-                COLORS[topLevelFolders.indexOf(folder) % COLORS.length] ||
+                COLORS[sortedFolders.indexOf(folder) % COLORS.length] ||
                 COLORS[0] ||
                 "#4d9fff";
               
@@ -2778,20 +2806,6 @@ export default function DependenciesPage({
           </div>
         )}
 
-        {/* Info Notice - explain folder view */}
-        {viewMode === "folder" && activeGraphData && activeGraphData.nodes.length > 0 && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#1a1f2e]/95 backdrop-blur-sm border border-orange-500/50 rounded-md px-4 py-3 text-xs text-gray-300 max-w-lg z-10">
-            <p className="font-semibold text-orange-400 mb-1">📁 Folder View</p>
-            <p className="text-gray-400 mb-1">
-              Colored polygons show <strong>top-level folders only</strong> (e.g., <code className="text-orange-300">src</code>, <code className="text-orange-300">lib</code>). 
-              Files are grouped by their immediate parent folder.
-            </p>
-            <p className="text-gray-500 text-[10px]">
-              Overlapping areas indicate nested structure. Switch to "File dependencies" to see actual dependency relationships.
-                </p>
-              </div>
-            )}
-        
         {/* Info Notice - only when no dependencies in file view */}
         {viewMode === "file" && activeGraphData && activeGraphData.nodes.length > 0 &&
           activeGraphData.edges.filter((e: any) => e.data?.type !== "folder").length === 0 && (
