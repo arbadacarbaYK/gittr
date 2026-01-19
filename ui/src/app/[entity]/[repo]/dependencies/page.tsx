@@ -119,12 +119,14 @@ export default function DependenciesPage({
     initialY: number;
     dependents: Set<string>;
     dependencies: Set<string>;
+    frozenPositions: Map<string, { fx: number | null; fy: number | null }>;
   }>({
     draggedNodeId: null,
     initialX: 0,
     initialY: 0,
     dependents: new Set(),
     dependencies: new Set(),
+    frozenPositions: new Map(),
   });
   
   // CodeFlow-style graph configuration - defaults match user's preferred settings
@@ -887,7 +889,7 @@ export default function DependenciesPage({
         d3
           .drag<SVGGElement, any>()
           .on("start", (event, d) => {
-            if (!event.active && simulation) simulation.alphaTarget(0.1).restart();
+            if (!event.active && simulation) simulation.alphaTarget(0).restart();
             
             // Store initial position
             dragStateRef.current.draggedNodeId = d.id;
@@ -896,6 +898,21 @@ export default function DependenciesPage({
             
             d.fx = d.x;
             d.fy = d.y;
+
+            // Freeze all other nodes in place during drag to prevent drift
+            dragStateRef.current.frozenPositions.clear();
+            nodes.forEach((n: any) => {
+              if (n.id === d.id) return;
+              const nodeAny = n as any;
+              dragStateRef.current.frozenPositions.set(n.id, {
+                fx: nodeAny.fx ?? null,
+                fy: nodeAny.fy ?? null,
+              });
+              if (n.x != null && n.y != null && isFinite(n.x) && isFinite(n.y)) {
+                nodeAny.fx = n.x;
+                nodeAny.fy = n.y;
+              }
+            });
             
             // Find all dependent nodes (nodes this node connects to)
             const affected = new Set<string>();
@@ -960,26 +977,22 @@ export default function DependenciesPage({
           .on("drag", (event, d) => {
             d.fx = event.x;
             d.fy = event.y;
-            // Keep simulation active while dragging the node
-            if (simulation) {
-              simulation.alphaTarget(0.2).restart();
-            }
+            // Keep simulation ticking without adding energy
+            if (simulation) simulation.alphaTarget(0);
           })
           .on("end", (event, d) => {
             if (!event.active && simulation) simulation.alphaTarget(0);
             d.fx = null;
             d.fy = null;
             
-            // Release dependent nodes (let them settle naturally)
-            nodes.forEach((n: any) => {
-              if (dragStateRef.current.dependents.has(n.id) || dragStateRef.current.dependencies.has(n.id)) {
-                // Remove any fixed positions to let them settle
-                if (n.fx != null || n.fy != null) {
-                  n.fx = null;
-                  n.fy = null;
-                }
-              }
+            // Release frozen nodes back to their previous fx/fy
+            dragStateRef.current.frozenPositions.forEach((pos, id) => {
+              const node = nodes.find((n: any) => n.id === id) as any;
+              if (!node) return;
+              node.fx = pos.fx;
+              node.fy = pos.fy;
             });
+            dragStateRef.current.frozenPositions.clear();
             
             // Reset drag state
             dragStateRef.current.draggedNodeId = null;
