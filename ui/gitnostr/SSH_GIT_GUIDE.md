@@ -261,15 +261,6 @@ This publishes:
 - Check that your private key is in `~/.ssh/` with correct permissions (600)
 - Verify the bridge service has processed your key (may take a few seconds)
 
-### "Permission denied" (for read operations on private repos)
-- Private repositories are only accessible to the owner and maintainers
-- Access is determined by your **Nostr pubkey (npub)**, not your GitHub username
-- If you're a maintainer on GitHub but can't access a private repo:
-  - The repository owner needs to add your Nostr pubkey (npub) as a maintainer in Repository Settings → Contributors
-  - Your GitHub username alone isn't enough - you need your npub explicitly added
-- **Identity Mapping**: If you've done GitHub OAuth, your GitHub identity is linked to your Nostr pubkey. However, for access control, the owner must still add your npub as a maintainer.
-- **CLI/API**: Same access control applies - you'll see `fatal: permission denied for read operation` if you don't have access
-
 ### "Permission denied" (for write operations)
 - Only repository owners and users with WRITE or ADMIN permissions can push
 - Check repository permissions in Settings → Repository → Permissions
