@@ -2591,6 +2591,51 @@ export default function DependenciesPage({
           </div>
         </div>
 
+        {/* View Mode Toggle */}
+        <div className="p-4 border-b border-[#383B42]">
+          <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">View Mode</div>
+          <div className="space-y-2">
+            <button
+              onClick={() => setViewMode("file")}
+              disabled={!folderGraphData}
+              className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                viewMode === "file"
+                  ? 'bg-orange-500/20 text-orange-400 border border-orange-500/50'
+                  : 'bg-[#0f172a] text-gray-400 border border-transparent hover:bg-[#1e293b] hover:text-gray-300 disabled:opacity-50'
+              }`}
+            >
+              File dependencies
+            </button>
+            <button
+              onClick={() => setViewMode("folder")}
+              disabled={!folderGraphData}
+              className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                viewMode === "folder"
+                  ? 'bg-orange-500/20 text-orange-400 border border-orange-500/50'
+                  : 'bg-[#0f172a] text-gray-400 border border-transparent hover:bg-[#1e293b] hover:text-gray-300 disabled:opacity-50'
+              }`}
+            >
+              Folder view
+            </button>
+          </div>
+        </div>
+
+        {/* External Toggle */}
+        <div className="p-4 border-b border-[#383B42]">
+          <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">External Dependencies</div>
+          <button
+            onClick={() => setShowExternal((prev) => !prev)}
+            disabled={!activeGraphData}
+            className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+              showExternal
+                ? 'bg-orange-500/20 text-orange-400 border border-orange-500/50'
+                : 'bg-[#0f172a] text-gray-400 border border-transparent hover:bg-[#1e293b] hover:text-gray-300 disabled:opacity-50'
+            }`}
+          >
+            {showExternal ? "External on" : "External off"}
+          </button>
+        </div>
+
         {/* Color Mode Selector */}
         <div className="p-4 border-b border-[#383B42]">
           <div className="text-xs text-gray-500 uppercase tracking-wider mb-3">Color By</div>
@@ -2641,29 +2686,7 @@ export default function DependenciesPage({
           backgroundSize: "24px 24px",
         }}
       >
-        {/* Canvas Toolbar - absolutely positioned on canvas */}
-        <div className="absolute top-4 left-4 z-20 flex items-center gap-2">
-          <Button
-            onClick={() => setViewMode(viewMode === "folder" ? "file" : "folder")}
-            disabled={!folderGraphData}
-            variant={viewMode === "folder" ? "default" : "outline"}
-            size="sm"
-            className="bg-[#1a1f2e]/90 backdrop-blur-sm border-[#383B42] hover:bg-[#22262C] hover:border-orange-500/50 text-xs"
-          >
-            {viewMode === "folder" ? "Folder view" : "File dependencies"}
-          </Button>
-          <Button
-            onClick={() => setShowExternal((prev) => !prev)}
-            disabled={!activeGraphData}
-            variant={showExternal ? "default" : "outline"}
-            size="sm"
-            className="bg-[#1a1f2e]/90 backdrop-blur-sm border-[#383B42] hover:bg-[#22262C] hover:border-orange-500/50 text-xs"
-          >
-            {showExternal ? "External on" : "External off"}
-          </Button>
-        </div>
-
-        {/* SVG Canvas */}
+        {/* SVG Canvas - Clean, no toolbar buttons */}
         {activeGraphData && activeGraphData.nodes.length > 0 && (
           <svg
             ref={svgRef}
