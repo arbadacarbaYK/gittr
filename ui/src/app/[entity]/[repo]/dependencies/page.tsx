@@ -2502,107 +2502,7 @@ export default function DependenciesPage({
           >
             {showExternal ? "External on" : "External off"}
           </Button>
-          <Button
-            onClick={() => setShowGraphConfig(!showGraphConfig)}
-            variant={showGraphConfig ? "default" : "outline"}
-            size="sm"
-            className="bg-[#1a1f2e]/90 backdrop-blur-sm border-[#383B42] hover:bg-[#22262C] hover:border-orange-500/50 text-xs"
-          >
-            <Settings className="h-4 w-4 mr-1.5" />
-            Config
-          </Button>
         </div>
-
-        {/* Graph Config Panel - absolutely positioned on canvas */}
-        {showGraphConfig && activeGraphData && (
-          <div className="absolute top-16 left-4 z-20 w-96 max-w-[calc(100%-2rem)] bg-[#1a1f2e]/95 backdrop-blur-sm border border-[#383B42] rounded-lg shadow-xl">
-            <div className="p-4 space-y-4">
-              {/* Layout */}
-              <div>
-                <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Layout</h4>
-                <div className="flex flex-wrap gap-2">
-                  {(["force", "radial", "hierarchical", "grid", "metro"] as const).map((mode) => (
-                    <Button
-                      key={mode}
-                      onClick={() => setGraphConfig({ ...graphConfig, viewMode: mode })}
-                      variant={graphConfig.viewMode === mode ? "default" : "outline"}
-                      size="sm"
-                      className="text-xs font-mono bg-[#0f172a] border-[#383B42] hover:bg-[#22262C] hover:border-orange-500/50"
-                    >
-                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-              
-              {/* Spacing */}
-              <div>
-                <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Spacing</h4>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <label className="text-xs text-gray-300 w-16 font-mono">Spread:</label>
-                    <input
-                      type="range"
-                      min="50"
-                      max="500"
-                      step="10"
-                      value={graphConfig.spacing}
-                      onChange={(e) =>
-                        setGraphConfig({ ...graphConfig, spacing: parseInt(e.target.value) })
-                      }
-                      className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
-                    />
-                    <span className="text-xs text-gray-400 w-12 font-mono text-right">{graphConfig.spacing}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <label className="text-xs text-gray-300 w-16 font-mono">Links:</label>
-                    <input
-                      type="range"
-                      min="30"
-                      max="200"
-                      step="5"
-                      value={graphConfig.linkDist}
-                      onChange={(e) =>
-                        setGraphConfig({ ...graphConfig, linkDist: parseInt(e.target.value) })
-                      }
-                      className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
-                    />
-                    <span className="text-xs text-gray-400 w-12 font-mono text-right">{graphConfig.linkDist}</span>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Display */}
-              <div>
-                <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Display</h4>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-gray-200">
-                    <input
-                      type="checkbox"
-                      checked={graphConfig.showLabels}
-                      onChange={(e) =>
-                        setGraphConfig({ ...graphConfig, showLabels: e.target.checked })
-                      }
-                      className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
-                    />
-                    <span className="font-mono text-xs">Show labels</span>
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-gray-200">
-                    <input
-                      type="checkbox"
-                      checked={graphConfig.curvedLinks}
-                      onChange={(e) =>
-                        setGraphConfig({ ...graphConfig, curvedLinks: e.target.checked })
-                      }
-                      className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
-                    />
-                    <span className="font-mono text-xs">Curved links</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* SVG Canvas */}
         {activeGraphData && activeGraphData.nodes.length > 0 && (
@@ -2778,6 +2678,110 @@ export default function DependenciesPage({
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* Graph Config Panel - moved to sidebar */}
+              {activeGraphData && (
+                <div className="pt-4 border-t border-[#383B42]">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Config</h3>
+                    <button
+                      onClick={() => setShowGraphConfig(!showGraphConfig)}
+                      className="text-gray-500 hover:text-gray-300 transition-colors"
+                    >
+                      <Settings className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {showGraphConfig && (
+                    <div className="space-y-4">
+                      {/* Layout */}
+                      <div>
+                        <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Layout</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {(["force", "radial", "hierarchical", "grid", "metro"] as const).map((mode) => (
+                            <button
+                              key={mode}
+                              onClick={() => setGraphConfig({ ...graphConfig, viewMode: mode })}
+                              className={`px-2 py-1 text-xs font-mono rounded border transition-colors ${
+                                graphConfig.viewMode === mode
+                                  ? 'bg-orange-500/20 text-orange-400 border-orange-500/50'
+                                  : 'bg-[#0f172a] text-gray-400 border-[#383B42] hover:bg-[#1e293b] hover:text-gray-300'
+                              }`}
+                            >
+                              {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Spacing */}
+                      <div>
+                        <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Spacing</h4>
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-3">
+                            <label className="text-xs text-gray-400 w-12 font-mono">Spread:</label>
+                            <input
+                              type="range"
+                              min="50"
+                              max="500"
+                              step="10"
+                              value={graphConfig.spacing}
+                              onChange={(e) =>
+                                setGraphConfig({ ...graphConfig, spacing: parseInt(e.target.value) })
+                              }
+                              className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
+                            />
+                            <span className="text-xs text-gray-400 w-10 font-mono text-right">{graphConfig.spacing}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <label className="text-xs text-gray-400 w-12 font-mono">Links:</label>
+                            <input
+                              type="range"
+                              min="30"
+                              max="200"
+                              step="5"
+                              value={graphConfig.linkDist}
+                              onChange={(e) =>
+                                setGraphConfig({ ...graphConfig, linkDist: parseInt(e.target.value) })
+                              }
+                              className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
+                            />
+                            <span className="text-xs text-gray-400 w-10 font-mono text-right">{graphConfig.linkDist}</span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Display */}
+                      <div>
+                        <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Display</h4>
+                        <div className="space-y-2">
+                          <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer hover:text-gray-200">
+                            <input
+                              type="checkbox"
+                              checked={graphConfig.showLabels}
+                              onChange={(e) =>
+                                setGraphConfig({ ...graphConfig, showLabels: e.target.checked })
+                              }
+                              className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
+                            />
+                            <span className="font-mono text-xs">Show labels</span>
+                          </label>
+                          <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer hover:text-gray-200">
+                            <input
+                              type="checkbox"
+                              checked={graphConfig.curvedLinks}
+                              onChange={(e) =>
+                                setGraphConfig({ ...graphConfig, curvedLinks: e.target.checked })
+                              }
+                              className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
+                            />
+                            <span className="font-mono text-xs">Curved links</span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
