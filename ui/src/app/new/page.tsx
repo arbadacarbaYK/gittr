@@ -150,7 +150,7 @@ function NewRepoPageContent() {
         setUrl(normalizedUrl); // Update the input field
       }
 
-      // Check if it's a GitHub URL or custom git server
+      // Check if it's a GitHub URL or other known git host
       const isGitHub = normalizedUrl.includes("github.com");
       const isGitLab = normalizedUrl.includes("gitlab.com");
       const isCodeberg = normalizedUrl.includes("codeberg.org");
@@ -158,8 +158,9 @@ function NewRepoPageContent() {
       let r: Response;
       let d: any;
 
-      if (isGitHub || isGitLab || isCodeberg) {
-        // Use existing import API for GitHub/GitLab/Codeberg
+      if (isGitHub) {
+        // Use GitHub-specific import API (uses GitHub REST API, contributors, stars, etc.)
+        setStatus("Importing from GitHub...");
         // Include GitHub token if available (for private repos)
         const githubToken =
           typeof window !== "undefined"
@@ -174,9 +175,23 @@ function NewRepoPageContent() {
           }),
         });
         d = await r.json();
+      } else if (isGitLab || isCodeberg) {
+        // GitLab/Codeberg (and similar https git hosts) use the generic git import
+        // This clones the repo directly via `git clone`, which works across providers
+        setStatus(
+          isGitLab
+            ? "Importing from GitLab via git clone..."
+            : "Importing from Codeberg via git clone..."
+        );
+        r = await fetch("/api/import-git", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sourceUrl: normalizedUrl }),
+        });
+        d = await r.json();
       } else {
-        // Custom git server - use new import endpoint
-        setStatus("Importing from custom git server...");
+        // Custom / self-hosted git servers
+        setStatus("Importing from custom git server via git clone...");
         r = await fetch("/api/import-git", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
