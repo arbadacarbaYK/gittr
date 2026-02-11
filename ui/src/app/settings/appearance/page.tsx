@@ -10,6 +10,7 @@ const THEMES = [
   { id: "cypherpunk", label: "Cypherpunk (neon green/terminal)" },
   { id: "girly", label: "Girly (pink pastels)" },
   { id: "arcade80s", label: "80s Arcade (neon cyan/magenta)" },
+  { id: "midnight", label: "Midnight (calm deep navy/teal)" },
 ];
 
 const QR_STYLES = [

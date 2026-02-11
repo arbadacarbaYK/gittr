@@ -157,6 +157,22 @@
   --font-family: 'Impact', 'Arial Black', sans-serif;
 }
 
+/* Midnight theme - deep navy with subtle teal accents (calm, focused) */
+:root[data-theme="midnight"] {
+  --color-bg-primary: #050812; /* Almost-black navy */
+  --color-bg-secondary: #0b101d; /* Deeper panel background */
+  --color-bg-dark: #02040a;
+  --color-text-primary: #e5f0ff; /* Soft off-white */
+  --color-text-secondary: #9fb3d9; /* Muted slate/steel */
+  --color-accent-primary: #2dd4bf; /* Teal (cyan/green mix) */
+  --color-accent-hover: #5eead4; /* Lighter teal */
+  --color-accent-secondary: #60a5fa; /* Soft blue for success/info */
+  --color-border: #1f2937; /* Subtle border */
+  --color-link: #38bdf8; /* Sky blue links */
+  --color-link-hover: #7dd3fc;
+  --font-family: system-ui, -apple-system, sans-serif;
+}
+
 /* Apply theme colors and fonts globally */
 body {
   background-color: var(--color-bg-primary);
@@ -182,6 +198,10 @@ body {
 }
 
 :root[data-theme="arcade80s"] * {
+  font-family: var(--font-family);
+}
+
+:root[data-theme="midnight"] * {
   font-family: var(--font-family);
 }
 
@@ -240,14 +260,16 @@ a:hover {
 :root[data-theme="bitcoin"] a,
 :root[data-theme="cypherpunk"] a,
 :root[data-theme="girly"] a,
-:root[data-theme="arcade80s"] a {
+:root[data-theme="arcade80s"] a,
+:root[data-theme="midnight"] a {
   color: var(--color-link) !important;
 }
 
 :root[data-theme="bitcoin"] a:hover,
 :root[data-theme="cypherpunk"] a:hover,
 :root[data-theme="girly"] a:hover,
-:root[data-theme="arcade80s"] a:hover {
+:root[data-theme="arcade80s"] a:hover,
+:root[data-theme="midnight"] a:hover {
   color: var(--color-link-hover) !important;
 }
 
@@ -259,7 +281,9 @@ a:hover {
 :root[data-theme="girly"] .text-purple-500,
 :root[data-theme="girly"] .text-purple-400,
 :root[data-theme="arcade80s"] .text-purple-500,
-:root[data-theme="arcade80s"] .text-purple-400 {
+:root[data-theme="arcade80s"] .text-purple-400,
+:root[data-theme="midnight"] .text-purple-500,
+:root[data-theme="midnight"] .text-purple-400 {
   color: var(--color-accent-primary) !important;
 }
 
@@ -270,7 +294,9 @@ a:hover {
 :root[data-theme="girly"] .hover\:text-purple-500:hover,
 :root[data-theme="girly"] .hover\:text-purple-400:hover,
 :root[data-theme="arcade80s"] .hover\:text-purple-500:hover,
-:root[data-theme="arcade80s"] .hover\:text-purple-400:hover {
+:root[data-theme="arcade80s"] .hover\:text-purple-400:hover,
+:root[data-theme="midnight"] .hover\:text-purple-500:hover,
+:root[data-theme="midnight"] .hover\:text-purple-400:hover {
   color: var(--color-accent-hover) !important;
 }
 
@@ -278,14 +304,16 @@ a:hover {
 :root[data-theme="bitcoin"] .border-purple-500,
 :root[data-theme="cypherpunk"] .border-purple-500,
 :root[data-theme="girly"] .border-purple-500,
-:root[data-theme="arcade80s"] .border-purple-500 {
+:root[data-theme="arcade80s"] .border-purple-500,
+:root[data-theme="midnight"] .border-purple-500 {
   border-color: var(--color-accent-primary) !important;
 }
 
 :root[data-theme="bitcoin"] .border-gray-700,
 :root[data-theme="cypherpunk"] .border-gray-700,
 :root[data-theme="girly"] .border-gray-700,
-:root[data-theme="arcade80s"] .border-gray-700 {
+:root[data-theme="arcade80s"] .border-gray-700,
+:root[data-theme="midnight"] .border-gray-700 {
   border-color: var(--color-border) !important;
 }
 
@@ -293,14 +321,16 @@ a:hover {
 :root[data-theme="bitcoin"] .ring-purple-500,
 :root[data-theme="cypherpunk"] .ring-purple-500,
 :root[data-theme="girly"] .ring-purple-500,
-:root[data-theme="arcade80s"] .ring-purple-500 {
+:root[data-theme="arcade80s"] .ring-purple-500,
+:root[data-theme="midnight"] .ring-purple-500 {
   --tw-ring-color: var(--color-accent-primary) !important;
 }
 
 :root[data-theme="bitcoin"] .ring-purple-400,
 :root[data-theme="cypherpunk"] .ring-purple-400,
 :root[data-theme="girly"] .ring-purple-400,
-:root[data-theme="arcade80s"] .ring-purple-400 {
+:root[data-theme="arcade80s"] .ring-purple-400,
+:root[data-theme="midnight"] .ring-purple-400 {
   --tw-ring-color: var(--color-accent-primary) !important;
 }
 
@@ -308,10 +338,12 @@ a:hover {
 :root[data-theme="cypherpunk"] .focus\:ring-purple-500:focus,
 :root[data-theme="girly"] .focus\:ring-purple-500:focus,
 :root[data-theme="arcade80s"] .focus\:ring-purple-500:focus,
+:root[data-theme="midnight"] .focus\:ring-purple-500:focus,
 :root[data-theme="bitcoin"] .focus\:ring-purple-400:focus,
 :root[data-theme="cypherpunk"] .focus\:ring-purple-400:focus,
 :root[data-theme="girly"] .focus\:ring-purple-400:focus,
-:root[data-theme="arcade80s"] .focus\:ring-purple-400:focus {
+:root[data-theme="arcade80s"] .focus\:ring-purple-400:focus,
+:root[data-theme="midnight"] .focus\:ring-purple-400:focus {
   --tw-ring-color: var(--color-accent-primary) !important;
 }
 
@@ -340,7 +372,11 @@ a:hover {
 :root[data-theme="arcade80s"] button.border-purple-500.text-purple-400,
 :root[data-theme="arcade80s"] .border-purple-500.text-purple-400,
 :root[data-theme="arcade80s"] button.border-purple-500.hover\:text-purple-400:hover,
-:root[data-theme="arcade80s"] .border-purple-500.hover\:text-purple-400:hover {
+:root[data-theme="arcade80s"] .border-purple-500.hover\:text-purple-400:hover,
+:root[data-theme="midnight"] button.border-purple-500.text-purple-400,
+:root[data-theme="midnight"] .border-purple-500.text-purple-400,
+:root[data-theme="midnight"] button.border-purple-500.hover\:text-purple-400:hover,
+:root[data-theme="midnight"] .border-purple-500.hover\:text-purple-400:hover {
   color: var(--color-accent-primary) !important;
   border-color: var(--color-accent-primary) !important;
 }
@@ -349,21 +385,24 @@ a:hover {
 :root[data-theme="bitcoin"] .bg-purple-600,
 :root[data-theme="cypherpunk"] .bg-purple-600,
 :root[data-theme="girly"] .bg-purple-600,
-:root[data-theme="arcade80s"] .bg-purple-600 {
+:root[data-theme="arcade80s"] .bg-purple-600,
+:root[data-theme="midnight"] .bg-purple-600 {
   background-color: var(--color-accent-primary) !important;
 }
 
 :root[data-theme="bitcoin"] .bg-purple-600:hover,
 :root[data-theme="cypherpunk"] .bg-purple-600:hover,
 :root[data-theme="girly"] .bg-purple-600:hover,
-:root[data-theme="arcade80s"] .bg-purple-600:hover {
+:root[data-theme="arcade80s"] .bg-purple-600:hover,
+:root[data-theme="midnight"] .bg-purple-600:hover {
   background-color: var(--color-accent-hover) !important;
 }
 
 :root[data-theme="bitcoin"] .hover\:bg-purple-700:hover,
 :root[data-theme="cypherpunk"] .hover\:bg-purple-700:hover,
 :root[data-theme="girly"] .hover\:bg-purple-700:hover,
-:root[data-theme="arcade80s"] .hover\:bg-purple-700:hover {
+:root[data-theme="arcade80s"] .hover\:bg-purple-700:hover,
+:root[data-theme="midnight"] .hover\:bg-purple-700:hover {
   background-color: var(--color-accent-hover) !important;
 }
 
@@ -371,21 +410,24 @@ a:hover {
 :root[data-theme="bitcoin"] .bg-purple-500\/20,
 :root[data-theme="cypherpunk"] .bg-purple-500\/20,
 :root[data-theme="girly"] .bg-purple-500\/20,
-:root[data-theme="arcade80s"] .bg-purple-500\/20 {
+:root[data-theme="arcade80s"] .bg-purple-500\/20,
+:root[data-theme="midnight"] .bg-purple-500\/20 {
   background-color: color-mix(in srgb, var(--color-accent-primary) 20%, transparent) !important;
 }
 
 :root[data-theme="bitcoin"] .bg-purple-900\/20,
 :root[data-theme="cypherpunk"] .bg-purple-900\/20,
 :root[data-theme="girly"] .bg-purple-900\/20,
-:root[data-theme="arcade80s"] .bg-purple-900\/20 {
+:root[data-theme="arcade80s"] .bg-purple-900\/20,
+:root[data-theme="midnight"] .bg-purple-900\/20 {
   background-color: color-mix(in srgb, var(--color-accent-primary) 20%, transparent) !important;
 }
 
 :root[data-theme="bitcoin"] .bg-purple-900\/30,
 :root[data-theme="cypherpunk"] .bg-purple-900\/30,
 :root[data-theme="girly"] .bg-purple-900\/30,
-:root[data-theme="arcade80s"] .bg-purple-900\/30 {
+:root[data-theme="arcade80s"] .bg-purple-900\/30,
+:root[data-theme="midnight"] .bg-purple-900\/30 {
   background-color: color-mix(in srgb, var(--color-accent-primary) 30%, transparent) !important;
 }
 
@@ -393,7 +435,8 @@ a:hover {
 :root[data-theme="bitcoin"] .border-purple-500\/50,
 :root[data-theme="cypherpunk"] .border-purple-500\/50,
 :root[data-theme="girly"] .border-purple-500\/50,
-:root[data-theme="arcade80s"] .border-purple-500\/50 {
+:root[data-theme="arcade80s"] .border-purple-500\/50,
+:root[data-theme="midnight"] .border-purple-500\/50 {
   border-color: color-mix(in srgb, var(--color-accent-primary) 50%, transparent) !important;
 }
 
@@ -401,7 +444,8 @@ a:hover {
 :root[data-theme="bitcoin"] .text-purple-300,
 :root[data-theme="cypherpunk"] .text-purple-300,
 :root[data-theme="girly"] .text-purple-300,
-:root[data-theme="arcade80s"] .text-purple-300 {
+:root[data-theme="arcade80s"] .text-purple-300,
+:root[data-theme="midnight"] .text-purple-300 {
   color: var(--color-accent-primary) !important;
 }
 
@@ -416,28 +460,32 @@ a:hover {
 :root[data-theme="bitcoin"] .bg-dark,
 :root[data-theme="cypherpunk"] .bg-dark,
 :root[data-theme="girly"] .bg-dark,
-:root[data-theme="arcade80s"] .bg-dark {
+:root[data-theme="arcade80s"] .bg-dark,
+:root[data-theme="midnight"] .bg-dark {
   background-color: var(--color-bg-dark) !important;
 }
 
 :root[data-theme="bitcoin"] .bg-\[#0E1116\],
 :root[data-theme="cypherpunk"] .bg-\[#0E1116\],
 :root[data-theme="girly"] .bg-\[#0E1116\],
-:root[data-theme="arcade80s"] .bg-\[#0E1116\] {
+:root[data-theme="arcade80s"] .bg-\[#0E1116\],
+:root[data-theme="midnight"] .bg-\[#0E1116\] {
   background-color: var(--color-bg-primary) !important;
 }
 
 :root[data-theme="bitcoin"] .bg-\[#171B21\],
 :root[data-theme="cypherpunk"] .bg-\[#171B21\],
 :root[data-theme="girly"] .bg-\[#171B21\],
-:root[data-theme="arcade80s"] .bg-\[#171B21\] {
+:root[data-theme="arcade80s"] .bg-\[#171B21\],
+:root[data-theme="midnight"] .bg-\[#171B21\] {
   background-color: var(--color-bg-secondary) !important;
 }
 
 :root[data-theme="bitcoin"] .bg-\[#22262C\],
 :root[data-theme="cypherpunk"] .bg-\[#22262C\],
 :root[data-theme="girly"] .bg-\[#22262C\],
-:root[data-theme="arcade80s"] .bg-\[#22262C\] {
+:root[data-theme="arcade80s"] .bg-\[#22262C\],
+:root[data-theme="midnight"] .bg-\[#22262C\] {
   background-color: var(--color-bg-secondary) !important;
 }
 
@@ -445,14 +493,16 @@ a:hover {
 :root[data-theme="bitcoin"] .text-white,
 :root[data-theme="cypherpunk"] .text-white,
 :root[data-theme="girly"] .text-white,
-:root[data-theme="arcade80s"] .text-white {
+:root[data-theme="arcade80s"] .text-white,
+:root[data-theme="midnight"] .text-white {
   color: var(--color-text-primary) !important;
 }
 
 :root[data-theme="bitcoin"] .text-gray-400,
 :root[data-theme="cypherpunk"] .text-gray-400,
 :root[data-theme="girly"] .text-gray-400,
-:root[data-theme="arcade80s"] .text-gray-400 {
+:root[data-theme="arcade80s"] .text-gray-400,
+:root[data-theme="midnight"] .text-gray-400 {
   color: var(--color-text-secondary) !important;
 }
 
