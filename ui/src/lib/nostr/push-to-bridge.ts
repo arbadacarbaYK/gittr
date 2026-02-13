@@ -1,5 +1,6 @@
 import { BridgeFilePayload } from "@/lib/nostr/push-repo-to-nostr";
 import { checkBridgeExists } from "@/lib/utils/repo-status";
+import { getBridgeAuthHeaders } from "./bridge-auth";
 
 interface PushBridgeParams {
   ownerPubkey: string;
@@ -8,6 +9,8 @@ interface PushBridgeParams {
   branch?: string;
   files: BridgeFilePayload[];
   commitDate?: number; // Unix timestamp in seconds (from lastNostrEventCreatedAt)
+  pubkey?: string; // User's pubkey for auth
+  signer?: (event: any) => Promise<any>; // Nostr signer function
 }
 
 // CRITICAL: Chunk files to avoid 413 Request Entity Too Large errors
@@ -179,11 +182,19 @@ export async function pushFilesToBridge({
       }, 30000);
 
       try {
+        // Build headers - add auth if pubkey + signer provided
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        
+        if (pubkey && signer) {
+          const authHeaders = await getBridgeAuthHeaders(pubkey, signer);
+          headers["Authorization"] = authHeaders.get("Authorization") || "";
+        }
+
         const response = await fetch("/api/nostr/repo/push", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers,
           body: JSON.stringify({
             ownerPubkey,
             repo: repoSlug,
