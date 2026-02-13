@@ -92,7 +92,7 @@ export default async function handler(
 
   setCorsHeaders(res, req);
 
-  const rateLimitResult = await rateLimiters.api(req as any);
+  const rateLimitResult = await rateLimiters.push(req as any);
   if (rateLimitResult) {
     return res.status(429).json(JSON.parse(await rateLimitResult.text()));
   }

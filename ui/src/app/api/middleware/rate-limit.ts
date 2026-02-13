@@ -205,6 +205,12 @@ export const rateLimiters = {
     windowMs: 60000, // 1 minute
   }),
 
+  // Tight limits for bridge push (prevent repo spam & disk abuse)
+  push: rateLimit({
+    maxRequests: 10,
+    windowMs: 60000, // 1 minute
+  }),
+
   // Loose limits for general endpoints
   general: rateLimit({
     maxRequests: 200,
