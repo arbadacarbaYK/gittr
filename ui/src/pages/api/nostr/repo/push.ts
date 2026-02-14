@@ -97,33 +97,6 @@ export default async function handler(
     return res.status(429).json(JSON.parse(await rateLimitResult.text()));
   }
 
-  // CRITICAL: Verify Nostr authentication before processing push
-  const authResult = await verifyNostrAuth(req);
-  if (!authResult.authorized) {
-    console.warn(`🚫 [Bridge Push] Unauthorized push attempt: ${authResult.error}`);
-    return res.status(401).json({ 
-      error: "Authentication required", 
-      details: authResult.error,
-      auth_methods: [
-        "Authorization: Nostr <base64-signed-challenge> (NIP-98)",
-        "X-Nostr-Pubkey + X-Nostr-Signature headers"
-      ]
-    });
-  }
-
-  // Verify the authenticated user can push to this repo
-  // (owner can push, or collaborators with permission)
-  const ownershipCheck = await verifySSHKeyOwnership(authResult.pubkey!, ownerPubkey);
-  if (!ownershipCheck.authorized) {
-    console.warn(`🚫 [Bridge Push] Push denied: ${ownershipCheck.error} (auth=${authResult.pubkey?.slice(0,8)}..., owner=${ownerPubkey.slice(0,8)}...)`);
-    return res.status(403).json({ 
-      error: "Access denied", 
-      details: ownershipCheck.error 
-    });
-  }
-
-  console.log(`✅ [Bridge Push] Authenticated push: pubkey=${authResult.pubkey?.slice(0,8)}..., owner=${ownerPubkey.slice(0,8)}..., repo=${repoName}`);
-
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -206,6 +179,36 @@ export default async function handler(
           : `invalid format (${ownerPubkeyInput.length} chars)`,
     });
   }
+
+  // CRITICAL: Verify Nostr authentication before processing push
+  const authResult = await verifyNostrAuth(req);
+  if (!authResult.authorized) {
+    console.warn(`🚫 [Bridge Push] Unauthorized push attempt: ${authResult.error}`);
+    return res.status(401).json({
+      error: "Authentication required",
+      details: authResult.error,
+      auth_methods: [
+        "Authorization: Nostr <base64-signed-challenge> (NIP-98)",
+        "X-Nostr-Pubkey + X-Nostr-Signature headers",
+      ],
+    });
+  }
+
+  // Verify the authenticated user can push to this repo
+  const ownershipCheck = await verifySSHKeyOwnership(authResult.pubkey!, ownerPubkey);
+  if (!ownershipCheck.authorized) {
+    console.warn(
+      `🚫 [Bridge Push] Push denied: ${ownershipCheck.error} (auth=${authResult.pubkey?.slice(0, 8)}..., owner=${ownerPubkey.slice(0, 8)}...)`
+    );
+    return res.status(403).json({
+      error: "Access denied",
+      details: ownershipCheck.error,
+    });
+  }
+
+  console.log(
+    `✅ [Bridge Push] Authenticated push: pubkey=${authResult.pubkey?.slice(0, 8)}..., owner=${ownerPubkey.slice(0, 8)}..., repo=${repoName}`
+  );
 
   if (!repoName || typeof repoName !== "string") {
     return res.status(400).json({ error: "repo is required" });

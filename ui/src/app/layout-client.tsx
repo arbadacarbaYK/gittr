@@ -69,7 +69,7 @@ export default function ClientLayout({
   useEffect(() => {
     migrateLegacyLocalStorage();
 
-    // Migrate classic theme to bitcoin (new default)
+    // Migrate classic/empty theme to midnight (default)
     // CRITICAL: This runs after React hydration, so we need to be aggressive
     try {
       const currentTheme = localStorage.getItem("gittr_theme");
@@ -81,26 +81,26 @@ export default function ClientLayout({
         currentTheme === "undefined" ||
         currentTheme.trim() === ""
       ) {
-        localStorage.setItem("gittr_theme", "bitcoin");
-        document.documentElement.setAttribute("data-theme", "bitcoin");
+        localStorage.setItem("gittr_theme", "midnight");
+        document.documentElement.setAttribute("data-theme", "midnight");
         document.documentElement.classList.add("dark");
         // Also set on body as fallback
         if (document.body) {
-          document.body.setAttribute("data-theme", "bitcoin");
+          document.body.setAttribute("data-theme", "midnight");
         }
-        console.log("✅ [Theme] Migrated to bitcoin default");
+        console.log("✅ [Theme] Migrated to midnight default");
       } else {
         // Ensure theme is applied even if it's already set
         document.documentElement.setAttribute("data-theme", currentTheme);
         document.documentElement.classList.add("dark");
       }
     } catch (e) {
-      // If anything fails, force bitcoin
+      // If anything fails, force midnight
       try {
-        document.documentElement.setAttribute("data-theme", "bitcoin");
+        document.documentElement.setAttribute("data-theme", "midnight");
         document.documentElement.classList.add("dark");
         if (document.body) {
-          document.body.setAttribute("data-theme", "bitcoin");
+          document.body.setAttribute("data-theme", "midnight");
         }
       } catch (e2) {}
     }
@@ -203,7 +203,7 @@ export default function ClientLayout({
   useEffect(() => {
     try {
       const applyTheme = () => {
-        const t = localStorage.getItem("gittr_theme") || "bitcoin";
+        const t = localStorage.getItem("gittr_theme") || "midnight";
         document.documentElement.dataset.theme = t;
       };
 

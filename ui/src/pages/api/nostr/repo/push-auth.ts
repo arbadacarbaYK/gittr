@@ -39,14 +39,16 @@ export async function verifyNostrAuth(req: NextApiRequest): Promise<{
       }
       
       // Verify the signature
-      const { verifySignature, getPublicKey } = await import('@noble/secp256k1');
+      const { verify } = await import('@noble/secp256k1');
       const pubkeyBuffer = Buffer.from(challenge.pubkey, 'hex');
       const message = JSON.stringify(challenge);
       const msgHash = new TextEncoder().encode(message);
       
-      // For NIP-98, we verify the signature over the challenge
-      const sigBytes = Buffer.from(challenge.sig, 'hex');
-      const isValid = verifySignature(sigBytes, msgHash.slice(0, 32), pubkeyBuffer.slice(1));
+      // For NIP-98, we verify the signature over the challenge (msgHash truncated to 32 bytes for ECDSA)
+      const sigBytes = new Uint8Array(Buffer.from(challenge.sig, 'hex'));
+      const msgHash32 = new Uint8Array(msgHash.slice(0, 32));
+      const pubkeyU8 = new Uint8Array(pubkeyBuffer);
+      const isValid = verify(sigBytes, msgHash32, pubkeyU8);
       
       if (!isValid) {
         return { authorized: false, error: 'Invalid signature' };
@@ -67,16 +69,16 @@ export async function verifyNostrAuth(req: NextApiRequest): Promise<{
   // Method 2: Direct pubkey + signature (simpler for some clients)
   if (providedPubkey && providedSig) {
     try {
-      const { verifySignature } = await import('@noble/secp256k1');
+      const { verify } = await import('@noble/secp256k1');
       
       // Create a simple challenge message
       const message = `gittr:push:${providedPubkey}:${Date.now()}`;
       const msgBytes = new TextEncoder().encode(message);
       
-      const sigBytes = Buffer.from(providedSig, 'hex');
-      const pubkeyBytes = Buffer.from(providedPubkey, 'hex');
-      
-      const isValid = verifySignature(sigBytes, msgBytes.slice(0, 32), pubkeyBytes.slice(1));
+      const sigBytes = new Uint8Array(Buffer.from(providedSig, 'hex'));
+      const pubkeyBytes = new Uint8Array(Buffer.from(providedPubkey, 'hex'));
+      const msgHash32 = new Uint8Array(msgBytes.slice(0, 32));
+      const isValid = verify(sigBytes, msgHash32, pubkeyBytes);
       
       if (!isValid) {
         return { authorized: false, error: 'Invalid signature' };
@@ -127,4 +129,13 @@ export function generateChallenge(pubkey: string): {
     created_at: Math.floor(Date.now() / 1000),
     challenge: `gittr:push:${Date.now()}`,
   };
+}
+
+/** This file is a shared auth helper; not a standalone API route. */
+export default function handler(req: NextApiRequest, res: NextApiResponse) {
+  res.setHeader("Allow", "GET, POST");
+  res.status(405).json({
+    error:
+      "Not an endpoint. Use /api/nostr/repo/push or /api/nostr/repo/push-challenge.",
+  });
 }

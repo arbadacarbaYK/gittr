@@ -26,6 +26,7 @@ export async function getBridgeAuthHeaders(
   // Step 2: Sign the challenge with NIP-07
   const created_at = Math.floor(Date.now() / 1000);
   const unsignedEvent = {
+    pubkey,
     kind: 24242,
     created_at,
     tags: [["challenge", challenge]],
