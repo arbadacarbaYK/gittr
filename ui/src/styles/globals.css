@@ -406,12 +406,13 @@ a:hover {
   background-color: var(--color-accent-hover) !important;
 }
 
-/* Background colors with opacity - theme-aware */
+/* Background colors with opacity - theme-aware (fallback for Firefox < 113 / older browsers) */
 :root[data-theme="bitcoin"] .bg-purple-500\/20,
 :root[data-theme="cypherpunk"] .bg-purple-500\/20,
 :root[data-theme="girly"] .bg-purple-500\/20,
 :root[data-theme="arcade80s"] .bg-purple-500\/20,
 :root[data-theme="midnight"] .bg-purple-500\/20 {
+  background-color: var(--color-accent-primary);
   background-color: color-mix(in srgb, var(--color-accent-primary) 20%, transparent) !important;
 }
 
@@ -420,6 +421,7 @@ a:hover {
 :root[data-theme="girly"] .bg-purple-900\/20,
 :root[data-theme="arcade80s"] .bg-purple-900\/20,
 :root[data-theme="midnight"] .bg-purple-900\/20 {
+  background-color: var(--color-accent-primary);
   background-color: color-mix(in srgb, var(--color-accent-primary) 20%, transparent) !important;
 }
 
@@ -428,15 +430,17 @@ a:hover {
 :root[data-theme="girly"] .bg-purple-900\/30,
 :root[data-theme="arcade80s"] .bg-purple-900\/30,
 :root[data-theme="midnight"] .bg-purple-900\/30 {
+  background-color: var(--color-accent-primary);
   background-color: color-mix(in srgb, var(--color-accent-primary) 30%, transparent) !important;
 }
 
-/* Border colors with opacity - theme-aware */
+/* Border colors with opacity - theme-aware (fallback for older browsers) */
 :root[data-theme="bitcoin"] .border-purple-500\/50,
 :root[data-theme="cypherpunk"] .border-purple-500\/50,
 :root[data-theme="girly"] .border-purple-500\/50,
 :root[data-theme="arcade80s"] .border-purple-500\/50,
 :root[data-theme="midnight"] .border-purple-500\/50 {
+  border-color: var(--color-accent-primary);
   border-color: color-mix(in srgb, var(--color-accent-primary) 50%, transparent) !important;
 }
 
