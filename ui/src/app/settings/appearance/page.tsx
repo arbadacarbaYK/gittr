@@ -5,12 +5,12 @@ import { useEffect, useState } from "react";
 import SettingsHero from "@/components/settings-hero";
 
 const THEMES = [
+  { id: "midnight", label: "Midnight (calm deep navy/teal)" },
   { id: "bitcoin", label: "Bitcoin (orange/gray)" },
   { id: "classic", label: "Classic" },
   { id: "cypherpunk", label: "Cypherpunk (neon green/terminal)" },
   { id: "girly", label: "Girly (pink pastels)" },
   { id: "arcade80s", label: "80s Arcade (neon cyan/magenta)" },
-  { id: "midnight", label: "Midnight (calm deep navy/teal)" },
 ];
 
 const QR_STYLES = [
@@ -20,11 +20,11 @@ const QR_STYLES = [
 ];
 
 export default function AppearancePage() {
-  const [theme, setTheme] = useState("bitcoin");
+  const [theme, setTheme] = useState("midnight");
   const [qrStyle, setQrStyle] = useState("classic");
 
   useEffect(() => {
-    const t = localStorage.getItem("gittr_theme") || "bitcoin";
+    const t = localStorage.getItem("gittr_theme") || "midnight";
     const q = localStorage.getItem("gittr_qr_style") || "classic";
     setTheme(t);
     setQrStyle(q);

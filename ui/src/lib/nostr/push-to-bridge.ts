@@ -83,6 +83,8 @@ export async function pushFilesToBridge({
   branch = "main",
   files,
   commitDate,
+  pubkey,
+  signer,
 }: PushBridgeParams) {
   // CRITICAL: Allow empty files array - we'll still create a commit with --allow-empty
   // This ensures every push creates a new commit with the current timestamp

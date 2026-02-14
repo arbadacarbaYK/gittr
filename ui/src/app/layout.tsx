@@ -74,7 +74,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning data-theme="bitcoin">
+    <html lang="en" suppressHydrationWarning data-theme="midnight">
       <head>
         <meta name="gittr-build" content={DEV_CACHE_BUST} />
         {/* Apply theme before React hydrates to prevent flash */}
@@ -83,11 +83,11 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
-                  // CRITICAL: Always default to bitcoin, migrate classic if present
+                  // CRITICAL: Default to midnight, migrate classic/bitcoin-if-empty if present
                   // This MUST run before any React rendering to prevent flash
                   let theme = localStorage.getItem('gittr_theme');
                   if (!theme || theme === 'classic' || theme === 'null' || theme === 'undefined') {
-                    theme = 'bitcoin';
+                    theme = 'midnight';
                     try {
                       localStorage.setItem('gittr_theme', theme);
                     } catch (e) {
@@ -102,28 +102,28 @@ export default function RootLayout({
                     document.body.setAttribute('data-theme', theme);
                   }
                 } catch (e) {
-                  // If anything fails, force bitcoin
+                  // If anything fails, force midnight
                   try {
-                    document.documentElement.setAttribute('data-theme', 'bitcoin');
+                    document.documentElement.setAttribute('data-theme', 'midnight');
                     document.documentElement.classList.add('dark');
                     if (document.body) {
-                      document.body.setAttribute('data-theme', 'bitcoin');
+                      document.body.setAttribute('data-theme', 'midnight');
                     }
                   } catch (e2) {}
                 }
                 
                 // CRITICAL: Double-check theme is set correctly (in case localStorage was empty/null)
-                // This ensures bitcoin is always the default, even for first-time visitors
+                // This ensures midnight is always the default for first-time visitors
                 const currentThemeAttr = document.documentElement.getAttribute('data-theme');
                 if (!currentThemeAttr || currentThemeAttr === 'classic' || currentThemeAttr === 'null' || currentThemeAttr === 'undefined') {
-                  document.documentElement.setAttribute('data-theme', 'bitcoin');
+                  document.documentElement.setAttribute('data-theme', 'midnight');
                   document.documentElement.classList.add('dark');
                   if (document.body) {
-                    document.body.setAttribute('data-theme', 'bitcoin');
+                    document.body.setAttribute('data-theme', 'midnight');
                   }
                   // Also update localStorage to persist
                   try {
-                    localStorage.setItem('gittr_theme', 'bitcoin');
+                    localStorage.setItem('gittr_theme', 'midnight');
                 } catch (e) {}
                 }
                 
