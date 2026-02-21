@@ -1,4 +1,4 @@
-import { rateLimiters } from "@/app/api/middleware/rate-limit";
+import { rateLimiters, checkPushPerPubkey } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { verifyNostrAuth, verifySSHKeyOwnership } from "./push-auth";
 
@@ -192,6 +192,13 @@ export default async function handler(
         "X-Nostr-Pubkey + X-Nostr-Signature headers",
       ],
     });
+  }
+
+  // Per-pubkey rate limit (in addition to per-IP)
+  const pubkeyLimit = checkPushPerPubkey(authResult.pubkey!);
+  if (pubkeyLimit.limited && pubkeyLimit.body) {
+    res.setHeader("Retry-After", String(pubkeyLimit.body.retry_after));
+    return res.status(429).json(pubkeyLimit.body);
   }
 
   // Verify the authenticated user can push to this repo

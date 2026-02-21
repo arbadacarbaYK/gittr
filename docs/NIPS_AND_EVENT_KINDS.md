@@ -186,17 +186,31 @@ This document lists all Nostr Improvement Proposals (NIPs) and event kinds used 
   - `g[]`: GRASP service websocket URLs (wss://) in order of preference - zero or more
 - **Content**: Empty per NIP-34 spec
 
+### Kind 30023: Long-form Content (NIP-23) — Repository discussion topics
+- **Purpose**: Long-form text (articles, blog posts). Used by gittr for **repo discussion board topics** so any NIP-23 client can read them.
+- **Usage**: One event per discussion topic; replies use NIP-22 kind 1111 (per NIP-23).
+- **Tags**:
+  - `d`: Replaceable identifier (required)
+  - `title`: Topic title
+  - `summary`: Short summary (optional)
+  - `published_at`: Unix timestamp (string)
+  - `t`: Topic/category (NIP-23 hashtag)
+  - `repo`: Repository scope — `entity/repo` (e.g. `npub.../my-repo`) for filtering
+  - `status`: `open` or `closed` (gittr extension)
+  - `category`: Category label (gittr extension)
+- **Content**: Markdown body (discussion description)
+
 ### Kind 9806: Bounties
 - **Purpose**: Lightning bounties for issues
 - **Usage**: Issue bounties with LNURL-withdraw
 - **Tags**: `repo`, `e` (issue ID), `amount`, `status`, `withdraw_id`, `lnurl`, `invoice`, `p[]` (creator, claimer)
 
 ### Kind 1111: Comments (NIP-22)
-- **Purpose**: Comments on issues, PRs, discussions
-- **Usage**: Issue/PR comments, discussion replies
-- **Tags**: 
+- **Purpose**: Comments on issues, PRs, patches, and **discussion topics** (NIP-23 kind 30023)
+- **Usage**: Issue/PR comments; discussion replies (root event = 30023, K=30023)
+- **Tags**:
   - `E`: Root event ID - REQUIRED (uppercase E per NIP-22)
-  - `K`: Root event kind - REQUIRED
+  - `K`: Root event kind - REQUIRED (e.g. 1621 issue, 1618 PR, 30023 discussion)
   - `P`: Root event author pubkey - REQUIRED when available
   - `e`: Parent event ID - REQUIRED (lowercase for parent scope)
   - `k`: Parent event kind - REQUIRED
@@ -211,7 +225,7 @@ For relays to support gittr.space, they must allow these event kinds:
 ```toml
 # nostr-rs-relay config.toml
 [relay]
-allowed_kinds = [0, 1, 7, 50, 51, 52, 1337, 1111, 1617, 1618, 1619, 1621, 1630, 1631, 1632, 1633, 10317, 30617, 30618, 9735, 9806]
+allowed_kinds = [0, 1, 7, 50, 51, 52, 1337, 1111, 1617, 1618, 1619, 1621, 1630, 1631, 1632, 1633, 10317, 30023, 30617, 30618, 9735, 9806]
 ```
 
 ```yaml
@@ -231,7 +245,8 @@ relay:
 | 50 | Custom | Repository Permissions | Git access control |
 | 51 | Custom | Repository (Legacy) | Repository announcements (read-only) |
 | 52 | Custom | SSH Keys | Git authentication |
-| 1111 | NIP-22 | Comments | Issue/PR/patch comments (primary) |
+| 1111 | NIP-22 | Comments | Issue/PR/patch/discussion comments |
+| 30023 | NIP-23 | Long-form | Repo discussion topics (replies = 1111) |
 | 1337 | NIP-C0 | Code Snippets | Code snippet sharing |
 | 1617 | NIP-34 | Patches | Patch-based code contributions |
 | 1618 | NIP-34 | Pull Requests | Pull request announcements |

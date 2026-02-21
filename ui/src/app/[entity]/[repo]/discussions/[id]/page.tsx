@@ -14,7 +14,9 @@ import {
   loadDiscussionById,
   persistDiscussion,
 } from "@/lib/discussions/storage";
+import { createCommentEvent } from "@/lib/nostr/events";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { formatDateTime24h } from "@/lib/utils/date-format";
@@ -36,7 +38,7 @@ export default function DiscussionDetailPage({
   params: Promise<{ entity: string; repo: string; id: string }>;
 }) {
   const resolvedParams = use(params);
-  const { pubkey: currentUserPubkey } = useNostrContext();
+  const { pubkey: currentUserPubkey, publish, defaultRelays } = useNostrContext();
   const [discussion, setDiscussion] = useState<Discussion | null>(null);
   const [loading, setLoading] = useState(true);
   const [replyContent, setReplyContent] = useState("");
@@ -76,13 +78,11 @@ export default function DiscussionDetailPage({
     [metadata]
   );
 
-  const handleReply = useCallback(() => {
+  const handleReply = useCallback(async () => {
     if (!replyContent.trim() || !discussion || !currentUserPubkey) return;
 
     try {
-      const commentId = `comment-${Date.now()}-${Math.random()
-        .toString(36)
-        .substr(2, 9)}`;
+      let commentId = `comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const newComment: DiscussionComment = {
         id: commentId,
         author: currentUserPubkey,
@@ -91,36 +91,48 @@ export default function DiscussionDetailPage({
         parentId: replyParentId || undefined,
       };
 
-      const updatedComments: DiscussionComment[] = [
-        ...discussion.comments,
-        newComment,
-      ];
+      if (publish && defaultRelays?.length) {
+        try {
+          const privateKey = await getNostrPrivateKey();
+          if (privateKey) {
+            const commentEvent = createCommentEvent(
+              {
+                replyTo: discussion.id,
+                rootKind: 30023,
+                rootPubkey: discussion.author,
+                repoEntity: resolvedParams.entity,
+                repoName: resolvedParams.repo,
+                content: replyContent.trim(),
+              },
+              privateKey
+            );
+            publish(commentEvent, defaultRelays);
+            commentId = commentEvent.id;
+            newComment.id = commentId;
+          }
+        } catch (err) {
+          console.error("Failed to publish comment to Nostr:", err);
+        }
+      }
+
+      const updatedComments: DiscussionComment[] = [...discussion.comments, newComment];
       const updatedDiscussion: Discussion = {
         ...discussion,
         comments: updatedComments,
         commentCount: updatedComments.length,
       };
 
-      persistDiscussion(
-        resolvedParams.entity,
-        resolvedParams.repo,
-        updatedDiscussion
-      );
-
+      persistDiscussion(resolvedParams.entity, resolvedParams.repo, updatedDiscussion);
       setDiscussion(updatedDiscussion);
       setReplyContent("");
       setReplyingTo(null);
       setReplyParentId(null);
-
-      // Focus textarea if still mounted
-      if (textareaRef.current) {
-        textareaRef.current.focus();
-      }
+      if (textareaRef.current) textareaRef.current.focus();
     } catch (error) {
       console.error("Failed to add comment:", error);
       alert("Failed to add comment: " + (error as Error).message);
     }
-  }, [discussion, currentUserPubkey, params, replyContent, replyParentId]);
+  }, [discussion, currentUserPubkey, publish, defaultRelays, resolvedParams.entity, resolvedParams.repo, replyContent, replyParentId]);
 
   const startReply = (parentId?: string, authorPubkey?: string) => {
     setReplyParentId(parentId || null);
