@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { type Discussion, appendDiscussion } from "@/lib/discussions/storage";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { KIND_DISCUSSION, createDiscussionEvent } from "@/lib/nostr/events";
+import { KIND_LONG_FORM, createDiscussionEvent } from "@/lib/nostr/events";
 import useSession from "@/lib/nostr/useSession";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 
@@ -84,80 +84,38 @@ export default function NewDiscussionPage() {
       }
 
       try {
-        // Generate a unique ID for the discussion
-        const discussionId = `discussion-${Date.now()}-${Math.random()
-          .toString(36)
-          .substring(2, 9)}`;
+        const now = Math.floor(Date.now() / 1000);
+        const identifier = `${entity}/${repo}/${now}-${Math.random().toString(36).slice(2, 10)}`;
 
-        // Create discussion object
-        const newDiscussion: Discussion = {
-          id: discussionId,
-          entity,
-          repo,
-          title,
-          description,
-          preview: description.substring(0, 200), // First 200 chars as preview
-          author: currentUserPubkey,
-          authorName: initials || currentUserPubkey.slice(0, 8),
-          category: selectedCategory || undefined,
-          createdAt: Date.now(),
-          commentCount: 0,
-          comments: [],
-        };
+        let discussionEvent: Event | null = null;
 
-        // Store locally
-        try {
-          appendDiscussion(entity, repo, newDiscussion);
-
-          console.log("Discussion saved locally:", newDiscussion);
-
-          // Dispatch event to notify discussions page
-          window.dispatchEvent(
-            new CustomEvent("gittr:discussion-created", {
-              detail: newDiscussion,
-            })
-          );
-        } catch (err) {
-          console.error("Failed to save discussion locally:", err);
-          const message = err instanceof Error ? err.message : String(err);
-          setErrorMsg(`Failed to save discussion: ${message}`);
-          setSubmitting(false);
-          return;
-        }
-
-        // Publish to Nostr (similar to issues)
+        // Build and sign NIP-23 (kind 30023) event first so we have event.id for the discussion
         if (publish && defaultRelays && defaultRelays.length > 0) {
           try {
             const privateKey = await getNostrPrivateKey();
             const hasNip07 = typeof window !== "undefined" && window.nostr;
             const { getPublicKey } = await import("nostr-tools");
-
-            let discussionEvent: Event | null = null;
-            const nip07 = hasNip07 ? window.nostr : undefined;
             const authorPubkey = privateKey
               ? getPublicKey(privateKey)
-              : (await nip07?.getPublicKey()) ?? currentUserPubkey;
+              : (await (hasNip07 ? window.nostr!.getPublicKey() : null)) ?? currentUserPubkey;
 
-            if (nip07) {
+            if (hasNip07 && window.nostr) {
               const unsignedEvent = {
-                kind: KIND_DISCUSSION,
-                created_at: Math.floor(Date.now() / 1000),
+                kind: KIND_LONG_FORM,
+                created_at: now,
                 tags: [
-                  ["d", `${entity}/${repo}`],
-                  ["repo", entity, repo],
+                  ["d", identifier],
+                  ["title", title],
+                  ["summary", description.slice(0, 200)],
+                  ["published_at", String(now)],
+                  ["repo", `${entity}/${repo}`],
                   ["status", "open"],
-                  ...(selectedCategory ? [["category", selectedCategory]] : []),
+                  ...(selectedCategory ? [["t", selectedCategory], ["category", selectedCategory]] : []),
                 ],
-                content: JSON.stringify({
-                  title,
-                  description,
-                  status: "open",
-                  category: selectedCategory || undefined,
-                }),
+                content: description,
                 pubkey: authorPubkey,
               } as unknown as UnsignedEvent;
-
-              discussionEvent = await nip07.signEvent(unsignedEvent);
+              discussionEvent = await window.nostr.signEvent(unsignedEvent);
             } else if (privateKey) {
               discussionEvent = createDiscussionEvent(
                 {
@@ -167,6 +125,7 @@ export default function NewDiscussionPage() {
                   description,
                   category: selectedCategory || undefined,
                   status: "open",
+                  identifier,
                 },
                 privateKey
               );
@@ -174,20 +133,45 @@ export default function NewDiscussionPage() {
 
             if (discussionEvent && publish) {
               publish(discussionEvent, defaultRelays);
-              console.log(
-                "✅ Published discussion to Nostr:",
-                discussionEvent.id
-              );
+              console.log("✅ Published discussion (NIP-23 30023) to Nostr:", discussionEvent.id);
             }
           } catch (err) {
             console.error("Failed to publish discussion to Nostr:", err);
-            // Continue - discussion is already saved locally
           }
         }
 
-        setSubmitting(false);
+        // Use event.id as discussion id (so NIP-22 comments can reference it); fallback to local id if not published
+        const discussionId = discussionEvent?.id ?? `local-${identifier}`;
 
-        // Navigate to discussions page
+        const newDiscussion: Discussion = {
+          id: discussionId,
+          entity,
+          repo,
+          title,
+          description,
+          preview: description.substring(0, 200),
+          author: currentUserPubkey,
+          authorName: initials || currentUserPubkey.slice(0, 8),
+          category: selectedCategory || undefined,
+          createdAt: (discussionEvent?.created_at ?? now) * 1000,
+          commentCount: 0,
+          comments: [],
+        };
+
+        try {
+          appendDiscussion(entity, repo, newDiscussion);
+          window.dispatchEvent(
+            new CustomEvent("gittr:discussion-created", { detail: newDiscussion })
+          );
+        } catch (err) {
+          console.error("Failed to save discussion locally:", err);
+          const message = err instanceof Error ? err.message : String(err);
+          setErrorMsg(`Failed to save discussion: ${message}`);
+          setSubmitting(false);
+          return;
+        }
+
+        setSubmitting(false);
         router.push(`/${entity}/${repo}/discussions`);
       } catch (error) {
         console.error("Error creating discussion:", error);

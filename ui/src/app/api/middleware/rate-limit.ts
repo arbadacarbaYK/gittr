@@ -147,10 +147,13 @@ export function rateLimit(config: Partial<RateLimitConfig> = {}) {
 
     // Check if rate limit exceeded
     if (requests.length >= maxRequests) {
+      const windowSeconds = Math.ceil(windowMs / 1000);
       return new Response(
         JSON.stringify({
           error: "Rate limit exceeded",
-          retryAfter: Math.ceil(windowMs / 1000),
+          retryAfter: windowSeconds,
+          retry_after: windowSeconds,
+          window_seconds: windowSeconds,
         }),
         {
           status: 429,
@@ -228,4 +231,40 @@ export const rateLimiters = {
     maxRequests: 20,
     windowMs: 60000, // 1 minute
   }),
+
+  pushChallenge: rateLimit({
+    maxRequests: 30,
+    windowMs: 60000, // 1 minute per IP
+  }),
 };
+
+const PUSH_PER_PUBKEY_MAX = 5;
+const PUSH_PER_PUBKEY_WINDOW_MS = 60000;
+const pushPerPubkeyStore: RateLimitStore = {};
+
+export function checkPushPerPubkey(pubkey: string): {
+  limited: boolean;
+  retryAfter?: number;
+  body?: { error: string; retryAfter: number; retry_after: number; window_seconds: number };
+} {
+  const key = `push_pubkey_${pubkey.toLowerCase()}`;
+  const now = Date.now();
+  let requests = pushPerPubkeyStore[key] || [];
+  requests = requests.filter((t) => now - t < PUSH_PER_PUBKEY_WINDOW_MS);
+  if (requests.length >= PUSH_PER_PUBKEY_MAX) {
+    const windowSeconds = Math.ceil(PUSH_PER_PUBKEY_WINDOW_MS / 1000);
+    return {
+      limited: true,
+      retryAfter: windowSeconds,
+      body: {
+        error: "Rate limit exceeded (per identity)",
+        retryAfter: windowSeconds,
+        retry_after: windowSeconds,
+        window_seconds: windowSeconds,
+      },
+    };
+  }
+  requests.push(now);
+  pushPerPubkeyStore[key] = requests;
+  return { limited: false };
+}

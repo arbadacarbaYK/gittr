@@ -1,10 +1,17 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { generateChallenge } from "./push-auth";
+import { rateLimiters } from "@/app/api/middleware/rate-limit";
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+  const rateLimitResult = await rateLimiters.pushChallenge(req as any);
+  if (rateLimitResult) {
+    const body = await rateLimitResult.json();
+    res.setHeader("Retry-After", rateLimitResult.headers.get("Retry-After") ?? "60");
+    return res.status(429).json(body);
+  }
+
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");

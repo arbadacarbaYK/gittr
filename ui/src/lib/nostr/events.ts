@@ -16,7 +16,10 @@ export const KIND_STATUS_APPLIED = 1631; // NIP-34: Status - Applied/Merged (PRs
 export const KIND_STATUS_CLOSED = 1632; // NIP-34: Status - Closed
 export const KIND_STATUS_DRAFT = 1633; // NIP-34: Status - Draft
 export const KIND_GRASP_LIST = 10317; // NIP-34: User GRASP list (preferred GRASP servers)
-export const KIND_DISCUSSION = 9805; // Custom: Discussions
+/** NIP-23: Long-form content. Used for repo discussion topics (replies use NIP-22 kind 1111). */
+export const KIND_LONG_FORM = 30023;
+/** @deprecated Use KIND_LONG_FORM (NIP-23). Kept for backward compatibility. */
+export const KIND_DISCUSSION = KIND_LONG_FORM;
 export const KIND_BOUNTY = 9806; // Custom: Bounties
 export const KIND_COMMENT = 1111; // NIP-22: Comments (was kind 1, migrated to NIP-22)
 export const KIND_REACTION = 7; // NIP-25: Reactions
@@ -107,6 +110,8 @@ export interface DiscussionEvent {
   description: string;
   category?: string;
   status?: "open" | "closed";
+  /** NIP-23 replaceable identifier (d tag). If not set, createDiscussionEvent will generate one. */
+  identifier?: string;
 }
 
 export interface PatchEvent {
@@ -896,35 +901,38 @@ export function createStatusEvent(
   return event;
 }
 
-// Create and sign a Nostr discussion event
+// Create and sign a Nostr discussion topic event (NIP-23 kind 30023)
+// Replies MUST use NIP-22 kind 1111 per NIP-23. Repo scope via "repo" tag for filtering.
 export function createDiscussionEvent(
   discussion: DiscussionEvent,
   privateKey: string
 ): any {
   const pubkey = getPublicKey(privateKey);
+  const now = Math.floor(Date.now() / 1000);
+  const status = discussion.status || "open";
+
+  const d =
+    discussion.identifier ??
+    `${discussion.repoEntity}/${discussion.repoName}/${now}-${Math.random().toString(36).slice(2, 10)}`;
 
   const tags: string[][] = [
-    ["repo", discussion.repoEntity, discussion.repoName],
+    ["d", d],
+    ["title", discussion.title],
+    ["summary", discussion.description.slice(0, 200)],
+    ["published_at", String(now)],
+    ["repo", `${discussion.repoEntity}/${discussion.repoName}`],
+    ["status", status],
   ];
-
   if (discussion.category) {
-    tags.push(["category", discussion.category]);
-  }
-
-  if (discussion.status) {
-    tags.push(["status", discussion.status]);
+    tags.push(["t", discussion.category]); // NIP-23 topics/hashtags
+    tags.push(["category", discussion.category]); // keep for our filters
   }
 
   const event = {
-    kind: KIND_DISCUSSION,
-    created_at: Math.floor(Date.now() / 1000),
+    kind: KIND_LONG_FORM,
+    created_at: now,
     tags,
-    content: JSON.stringify({
-      title: discussion.title,
-      description: discussion.description,
-      status: discussion.status || "open",
-      category: discussion.category,
-    }),
+    content: discussion.description,
     pubkey,
     id: "",
     sig: "",
