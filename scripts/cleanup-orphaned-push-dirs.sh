@@ -1,8 +1,11 @@
 #!/bin/bash
-# Script to clean up orphaned push working directories on Hetzner
+# Script to clean up orphaned push working directories on the production host
 # These directories are left behind when chunked pushes fail before the last chunk
+#
+# Usage: ./cleanup-orphaned-push-dirs.sh <host_or_ip> [ssh_key_path]
+# Do not commit real host IPs to git — pass them at runtime or use a local env script.
 
-HOST=${1:-"91.99.86.115"}
+HOST="${1:?Usage: $0 <host_or_ip> [ssh_key_path]}"
 KEY=${2:-"~/.ssh/id_ed25519_hetzner_new"}
 
 echo "🔍 Checking for orphaned push directories on $HOST..."

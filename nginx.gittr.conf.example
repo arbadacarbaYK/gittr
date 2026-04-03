@@ -1,10 +1,7 @@
-# Nginx configuration for gittr.space
-# This is a backup/reference config - actual server config is at /etc/nginx/sites-available/gittr
-# DO NOT use this directly - it contains server-specific paths and SSL cert paths
-# Use this as a reference when setting up a new server
+# Example nginx shape for reference — adjust on the server.
 
 server {
-    server_name gittr.space 91.99.86.115;
+    server_name gittr.space;
     
     # Increase body size limit for large repository pushes (chunked uploads)
     # This allows chunks up to 10MB, matching the chunk size limit in push-to-bridge.ts
@@ -61,7 +58,7 @@ server {
     } # managed by Certbot
 
     listen 80;
-    server_name gittr.space 91.99.86.115;
+    server_name gittr.space;
     return 404; # managed by Certbot
 }
 

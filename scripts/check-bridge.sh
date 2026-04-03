@@ -6,7 +6,8 @@
 set -e
 
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519_hetzner_new}"
-SERVER="${SERVER:-root@91.99.86.115}"
+# Set SERVER=root@your-host (no default — do not embed VPS IPs in the repo)
+: "${SERVER:?Set SERVER=root@<hostname_or_ip> for SSH (example: export SERVER=root@203.0.113.10)}"
 
 echo "🔍 Checking git-nostr-bridge status..."
 echo ""
