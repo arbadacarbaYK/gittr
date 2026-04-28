@@ -3,7 +3,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
-import { pushFilesToBridge } from "@/lib/nostr/push-to-bridge";
 import { isOwner } from "@/lib/repo-permissions";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { formatDateTime24h } from "@/lib/utils/date-format";
@@ -845,32 +844,8 @@ export function ReposList({
                         });
 
                         if (result.success) {
-                          const shouldAutoBridge = !r.sourceUrl;
-                          if (
-                            shouldAutoBridge &&
-                            r.ownerPubkey &&
-                            result.filesForBridge &&
-                            result.filesForBridge.length > 0
-                          ) {
-                            try {
-                              await pushFilesToBridge({
-                                ownerPubkey: r.ownerPubkey.toLowerCase(),
-                                repoSlug: repoForUrl,
-                                entity,
-                                branch: r.defaultBranch || "main",
-                                files: result.filesForBridge,
-                              });
-                            } catch (bridgeError: any) {
-                              console.error("Bridge sync failed:", bridgeError);
-                              alert(
-                                `⚠️ Repository event published but bridge sync failed: ${
-                                  bridgeError?.message ||
-                                  bridgeError?.toString() ||
-                                  "Unknown error"
-                                }`
-                              );
-                            }
-                          }
+                          // Bridge sync already happens inside pushRepoToNostr.
+                          // Do not run a second bridge push from this page.
                           // Reload repos to show updated status
                           const updatedRepos = JSON.parse(
                             localStorage.getItem("gittr_repos") || "[]"

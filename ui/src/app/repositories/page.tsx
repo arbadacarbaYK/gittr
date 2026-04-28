@@ -16,7 +16,6 @@ import { getUserActivities } from "@/lib/activity-tracking";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
-import { pushFilesToBridge } from "@/lib/nostr/push-to-bridge";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { isOwner } from "@/lib/repo-permissions";
@@ -3323,35 +3322,8 @@ export default function RepositoriesPage() {
                               });
 
                               if (result.success) {
-                                const shouldAutoBridge = !r.sourceUrl;
-                                if (
-                                  shouldAutoBridge &&
-                                  r.ownerPubkey &&
-                                  result.filesForBridge &&
-                                  result.filesForBridge.length > 0
-                                ) {
-                                  try {
-                                    await pushFilesToBridge({
-                                      ownerPubkey: r.ownerPubkey.toLowerCase(),
-                                      repoSlug: repoForUrl,
-                                      entity,
-                                      branch: r.defaultBranch || "main",
-                                      files: result.filesForBridge,
-                                    });
-                                  } catch (bridgeError: any) {
-                                    console.error(
-                                      "Bridge sync failed:",
-                                      bridgeError
-                                    );
-                                    alert(
-                                      `⚠️ Repository event published but bridge sync failed: ${
-                                        bridgeError?.message ||
-                                        bridgeError?.toString() ||
-                                        "Unknown error"
-                                      }`
-                                    );
-                                  }
-                                }
+                                // Bridge sync already happens inside pushRepoToNostr.
+                                // Do not run a second bridge push from this page.
                                 // Reload repos to show updated status
                                 const updatedRepos = JSON.parse(
                                   localStorage.getItem("gittr_repos") || "[]"

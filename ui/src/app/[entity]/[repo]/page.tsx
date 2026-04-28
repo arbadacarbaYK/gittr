@@ -40,7 +40,6 @@ import {
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
-import { pushFilesToBridge } from "@/lib/nostr/push-to-bridge";
 import {
   type Metadata,
   useContributorMetadata,
@@ -1188,7 +1187,14 @@ export default function RepoCodePage() {
       const newUrl = `/${resolvedParams.entity}/${resolvedParams.repo}${
         query ? `?${query}` : ""
       }${currentHash}`;
-      router.replace(newUrl, { scroll: false });
+      // Keep repo navigation state updates client-only.
+      // Using router.replace here can re-trigger route resolution and metadata fetches,
+      // which causes request storms and visible UI flicker.
+      if (typeof window !== "undefined") {
+        window.history.replaceState(null, "", newUrl);
+      } else {
+        router.replace(newUrl, { scroll: false });
+      }
 
       // Reset flag after a short delay to allow URL to update
       setTimeout(() => {
@@ -16743,38 +16749,8 @@ export default function RepoCodePage() {
                                         result.filesForBridge.length > 0;
 
                                       if (shouldAutoBridge) {
-                                        try {
-                                          // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
-                                          // Priority: repositoryName > repo > slug > decodedRepo
-                                          const repoAny = repo as any;
-                                          const actualRepoName =
-                                            repoAny?.repositoryName ||
-                                            repo.repo ||
-                                            repo.slug ||
-                                            decodedRepo;
-                                          await pushFilesToBridge({
-                                            ownerPubkey: bridgeOwnerPubkey!,
-                                            repoSlug: actualRepoName,
-                                            entity: resolvedParams.entity,
-                                            branch:
-                                              repo.defaultBranch ||
-                                              repoData?.defaultBranch ||
-                                              "main",
-                                            files: result.filesForBridge!,
-                                          });
-                                        } catch (bridgeError: any) {
-                                          console.error(
-                                            "Bridge sync failed:",
-                                            bridgeError
-                                          );
-                                          alert(
-                                            `⚠️ Repository event published but bridge sync failed: ${
-                                              bridgeError?.message ||
-                                              bridgeError?.toString() ||
-                                              "Unknown error"
-                                            }`
-                                          );
-                                        }
+                                        // Bridge sync already happens inside pushRepoToNostr.
+                                        // Do not run a second bridge push from this page.
                                       }
 
                                       // Show success message

@@ -11,6 +11,7 @@ interface PushBridgeParams {
   commitDate?: number; // Unix timestamp in seconds (from lastNostrEventCreatedAt)
   pubkey?: string; // User's pubkey for auth
   signer?: (event: any) => Promise<any>; // Nostr signer function
+  authEvent?: any; // Reuse already signed repo event to avoid extra auth prompt
 }
 
 // CRITICAL: Chunk files to avoid 413 Request Entity Too Large errors
@@ -85,6 +86,7 @@ export async function pushFilesToBridge({
   commitDate,
   pubkey,
   signer,
+  authEvent,
 }: PushBridgeParams) {
   // CRITICAL: Allow empty files array - we'll still create a commit with --allow-empty
   // This ensures every push creates a new commit with the current timestamp
@@ -123,6 +125,13 @@ export async function pushFilesToBridge({
   try {
     let allRefs: Array<{ ref: string; commit: string }> = [];
     let lastResult: any = null;
+    let authorizationHeader = "";
+
+    // Compute bridge auth once per push flow (then reuse across chunks).
+    if (!authEvent && pubkey && signer) {
+      const authHeaders = await getBridgeAuthHeaders(pubkey, signer);
+      authorizationHeader = authHeaders.get("Authorization") || "";
+    }
 
     // Push chunks sequentially to avoid overwhelming the server
     // CRITICAL: Each chunk must commit because each API call uses a new temp directory
@@ -188,10 +197,15 @@ export async function pushFilesToBridge({
         const headers: Record<string, string> = {
           "Content-Type": "application/json",
         };
-        
-        if (pubkey && signer) {
-          const authHeaders = await getBridgeAuthHeaders(pubkey, signer);
-          headers["Authorization"] = authHeaders.get("Authorization") || "";
+
+        if (authEvent) {
+          headers["X-Nostr-Auth-Event"] = Buffer.from(
+            JSON.stringify(authEvent)
+          ).toString("base64");
+        }
+
+        if (authorizationHeader) {
+          headers["Authorization"] = authorizationHeader;
         }
 
         const response = await fetch("/api/nostr/repo/push", {

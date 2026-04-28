@@ -1,19 +1,23 @@
 /**
  * Bridge Push Authentication Middleware
  * 
- * Two auth methods supported:
- * 1. NIP-98 HTTP Auth (preferred for agents) - sign a challenge with Nostr key
- * 2. SSH Key pubkey verification - verify pubkey owns SSH keys in Nostr
+ * Auth methods supported:
+ * 1. Signed repo event header (preferred for UI pushes)
+ * 2. NIP-98 HTTP Auth - sign a challenge with Nostr key
+ * 3. Legacy pubkey/signature headers
  */
 
 import type { NextApiRequest, NextApiResponse } from "next";
 import { SimplePool } from "nostr-tools";
 
 const KIND_SSH_KEY = 52;
+const KIND_REPOSITORY_ANNOUNCEMENT = 30617;
+const AUTH_EVENT_MAX_AGE_SECONDS = 10 * 60;
 
 /**
  * Extract and verify Nostr auth from request headers
  * Supports:
+ * - X-Nostr-Auth-Event: <base64-signed-nostr-event-json>
  * - Authorization: Nostr <base64-signed-challenge>
  * - X-Nostr-Pubkey: <hex-pubkey>
  * - X-Nostr-Signature: <sig>
@@ -24,9 +28,57 @@ export async function verifyNostrAuth(req: NextApiRequest): Promise<{
   error?: string;
 }> {
   const authHeader = req.headers.authorization;
+  const signedAuthEventHeader = req.headers["x-nostr-auth-event"] as
+    | string
+    | undefined;
   const providedPubkey = req.headers['x-nostr-pubkey'] as string | undefined;
   const providedSig = req.headers['x-nostr-signature'] as string | undefined;
-  
+
+  // Method 0: Reuse signed repo event from this push session (preferred for UI flow)
+  if (signedAuthEventHeader) {
+    try {
+      const decoded = Buffer.from(signedAuthEventHeader, "base64").toString(
+        "utf-8"
+      );
+      const parsedEvent = JSON.parse(decoded);
+      const { validateEvent, verifySignature } = await import("nostr-tools");
+
+      if (!validateEvent(parsedEvent)) {
+        return { authorized: false, error: "Invalid auth event format" };
+      }
+
+      if (!verifySignature(parsedEvent)) {
+        return { authorized: false, error: "Invalid auth event signature" };
+      }
+
+      if (parsedEvent.kind !== KIND_REPOSITORY_ANNOUNCEMENT) {
+        return {
+          authorized: false,
+          error: "Auth event must be a repository announcement (kind 30617)",
+        };
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      if (
+        typeof parsedEvent.created_at !== "number" ||
+        Math.abs(now - parsedEvent.created_at) > AUTH_EVENT_MAX_AGE_SECONDS
+      ) {
+        return { authorized: false, error: "Auth event expired" };
+      }
+
+      if (!parsedEvent.pubkey || typeof parsedEvent.pubkey !== "string") {
+        return { authorized: false, error: "Auth event missing pubkey" };
+      }
+
+      return { authorized: true, pubkey: parsedEvent.pubkey.toLowerCase() };
+    } catch (err: any) {
+      return {
+        authorized: false,
+        error: `Auth event verification failed: ${err.message}`,
+      };
+    }
+  }
+
   // Method 1: NIP-98 style Authorization header
   if (authHeader?.startsWith('Nostr ')) {
     try {

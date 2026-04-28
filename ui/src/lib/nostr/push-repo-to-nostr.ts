@@ -2116,6 +2116,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           branch: repo.defaultBranch || "main",
           files: filesForBridge,
           commitDate,
+          authEvent: repoEvent,
           pubkey, // Pass user's pubkey for auth
           signer: window.nostr.signEvent, // Pass NIP-07 signer for auth
         }).catch((error: any) => {
@@ -2226,6 +2227,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           branch: repo.defaultBranch || "main",
           files: [], // Empty array - bridge will create commit with --allow-empty
           commitDate,
+          authEvent: repoEvent,
           pubkey, // Pass user's pubkey for auth
           signer: window.nostr.signEvent, // Pass NIP-07 signer for auth
         }).catch((error: any) => {

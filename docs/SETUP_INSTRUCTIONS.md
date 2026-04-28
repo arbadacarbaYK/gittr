@@ -351,6 +351,14 @@ sudo apt install nginx
 sudo nano /etc/nginx/sites-available/gittr
 ```
 
+Add API rate-limit zones in `/etc/nginx/nginx.conf` (inside `http {}`):
+
+```nginx
+limit_req_zone $binary_remote_addr zone=api_per_ip:20m rate=600r/m;
+limit_req_zone $binary_remote_addr zone=auth_per_ip:10m rate=180r/m;
+limit_conn_zone $binary_remote_addr zone=conn_per_ip:10m;
+```
+
 ```nginx
 server {
     listen 80;
@@ -365,6 +373,22 @@ server {
     ssl_certificate /etc/letsencrypt/live/gittr.space/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/gittr.space/privkey.pem;
     
+    location ^~ /api/ {
+        # Return 429 for throttled API traffic (instead of default 503)
+        limit_req_status 429;
+        limit_req zone=api_per_ip burst=50 nodelay;
+        limit_conn conn_per_ip 30;
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     location / {
         proxy_pass http://localhost:3000;
         proxy_http_version 1.1;
