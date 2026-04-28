@@ -28,6 +28,64 @@ const sanitizePath = (input: string): string => {
   return parts.join("/");
 };
 
+const MAX_REFNAME_LENGTH = 255;
+
+const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\"'\"'`)}'`;
+
+const validateBranchName = (
+  input: unknown
+): { branch: string; error?: string } => {
+  const branch = typeof input === "string" ? input.trim() : "main";
+
+  if (!branch) {
+    return { branch: "", error: "branch must not be empty" };
+  }
+
+  if (branch.length > MAX_REFNAME_LENGTH) {
+    return { branch: "", error: "branch is too long" };
+  }
+
+  if (branch === "HEAD") {
+    return { branch: "", error: "branch name HEAD is not allowed" };
+  }
+
+  if (
+    branch.startsWith("-") ||
+    branch.startsWith("/") ||
+    branch.endsWith("/") ||
+    branch.endsWith(".")
+  ) {
+    return { branch: "", error: "branch has invalid leading or trailing characters" };
+  }
+
+  if (
+    branch.includes("..") ||
+    branch.includes("//") ||
+    branch.includes("@{") ||
+    branch.includes("\\") ||
+    branch.includes(" ") ||
+    branch.includes("~") ||
+    branch.includes("^") ||
+    branch.includes(":") ||
+    branch.includes("?") ||
+    branch.includes("*") ||
+    branch.includes("[")
+  ) {
+    return { branch: "", error: "branch contains invalid ref characters" };
+  }
+
+  const parts = branch.split("/");
+  if (parts.some((part) => !part || part === "." || part === ".." || part.endsWith(".lock"))) {
+    return { branch: "", error: "branch contains invalid path segments" };
+  }
+
+  if (!/^[A-Za-z0-9._/-]+$/.test(branch)) {
+    return { branch: "", error: "branch contains unsupported characters" };
+  }
+
+  return { branch };
+};
+
 async function resolveReposDir(): Promise<string> {
   let reposDir =
     process.env.GIT_NOSTR_BRIDGE_REPOS_DIR ||
@@ -104,7 +162,7 @@ export default async function handler(
   const {
     ownerPubkey: ownerPubkeyInput,
     repo: repoName,
-    branch = "main",
+    branch: branchInput = "main",
     files,
     commitDate,
     createCommit = true,
@@ -221,6 +279,13 @@ export default async function handler(
     return res.status(400).json({ error: "repo is required" });
   }
 
+  const branchValidation = validateBranchName(branchInput);
+  if (branchValidation.error) {
+    return res.status(400).json({ error: branchValidation.error });
+  }
+  const branch = branchValidation.branch;
+  const branchRef = `refs/heads/${branch}`;
+
   if (!Array.isArray(files)) {
     return res.status(400).json({ error: "files array is required" });
   }
@@ -266,7 +331,7 @@ export default async function handler(
       // CRITICAL: Set HEAD to the branch we'll push (usually "main")
       // This ensures git log and other commands work immediately
       await execAsync(
-        `git --git-dir="${repoPath}" symbolic-ref HEAD refs/heads/${branch}`
+        `git --git-dir="${repoPath}" symbolic-ref HEAD ${shellQuote(branchRef)}`
       );
 
       // CRITICAL: Set ownership to git-nostr:git-nostr so bridge can write refs
@@ -512,7 +577,7 @@ export default async function handler(
           },
         }
       );
-      await execAsync(`git -C "${tempDir}" branch -M ${branch}`);
+      await execAsync(`git -C "${tempDir}" branch -M ${shellQuote(branch)}`);
       await execAsync(`git -C "${tempDir}" remote add origin "${repoPath}"`);
 
       // CRITICAL: Add the bare repo to git's safe.directory before pushing
@@ -541,14 +606,14 @@ export default async function handler(
         }
       }
 
-      await execAsync(`git -C "${tempDir}" push --force origin ${branch}`, {
+      await execAsync(`git -C "${tempDir}" push --force origin ${shellQuote(branch)}`, {
         timeout: 120000,
       }); // 2 min timeout
 
       // CRITICAL: Update HEAD in bare repo to point to the branch we just pushed
       // This ensures git log and other commands work correctly
       await execAsync(
-        `git --git-dir="${repoPath}" symbolic-ref HEAD refs/heads/${branch}`
+        `git --git-dir="${repoPath}" symbolic-ref HEAD ${shellQuote(branchRef)}`
       );
 
       // CRITICAL: Ensure ownership is correct after push
