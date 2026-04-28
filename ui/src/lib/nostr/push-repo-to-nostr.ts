@@ -2127,16 +2127,20 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           return null;
         });
 
-        // CRITICAL: Wait for bridge push to complete before creating state event
-        // This ensures all chunks are processed and we get refs from the final chunk
-        // The state event must reference the latest commit that includes ALL files
+        // Don't block the second signature on full bridge push completion.
+        // Wait briefly for fresh refs, then continue to state-event signing.
         onProgress?.(
-          "⏳ Waiting for bridge push to complete (all chunks must finish)..."
+          "⏳ Waiting briefly for bridge refs before second signature..."
         );
         try {
-          // CRITICAL: Wait for bridge push to complete - this ensures all chunks are processed
-          // Each chunk commits separately, but we need the final chunk's refs (which includes all files)
-          const pushResult = await bridgePushPromise;
+          const QUICK_REF_TIMEOUT = 12000;
+          const timeoutPromise = new Promise((resolve) =>
+            setTimeout(resolve, QUICK_REF_TIMEOUT)
+          );
+          const pushResult = await Promise.race([
+            bridgePushPromise,
+            timeoutPromise.then(() => null),
+          ]);
 
           if (pushResult && pushResult.refs && Array.isArray(pushResult.refs)) {
             refs = pushResult.refs;
@@ -2159,9 +2163,8 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
               );
             }
           } else {
-            // Bridge push completed but no refs - try fetching from bridge API as fallback
-            console.warn(
-              `⚠️ [Push Repo] Bridge push completed but no refs returned - trying bridge API...`
+            onProgress?.(
+              "⚠️ Bridge push still running; continuing with second signature using latest available refs"
             );
             try {
               const refsResponse = await fetch(
