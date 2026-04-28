@@ -131,11 +131,11 @@ export default function DependenciesPage({
   
   // CodeFlow-style graph configuration - defaults match user's preferred settings
   const [graphConfig, setGraphConfig] = useState({
-    viewMode: "metro" as "force" | "radial" | "hierarchical" | "grid" | "metro",
-    spacing: 750, // Higher default spread
-    linkDist: 195, // High link distance for better spread
-    showLabels: true,
-    curvedLinks: true, // Curved links enabled by default
+    viewMode: "force" as "force" | "radial" | "hierarchical" | "grid" | "metro",
+    spacing: 180,
+    linkDist: 110,
+    showLabels: false,
+    curvedLinks: false,
   });
   const graphConfigRef = useRef(graphConfig);
   graphConfigRef.current = graphConfig; // Keep ref in sync
@@ -386,6 +386,23 @@ export default function DependenciesPage({
         linkMap.get(key)!.count += edge.data.weight || 1;
       });
       const links = Array.from(linkMap.values());
+      const nodeDegree = new Map<string, number>();
+      links.forEach((l: any) => {
+        const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+        const targetId = typeof l.target === "object" ? l.target.id : l.target;
+        nodeDegree.set(sourceId, (nodeDegree.get(sourceId) || 0) + 1);
+        nodeDegree.set(targetId, (nodeDegree.get(targetId) || 0) + 1);
+      });
+      const MAX_VISIBLE_LABELS = 80;
+      const labelNodeIds = new Set(
+        [...nodes]
+          .sort(
+            (a: any, b: any) =>
+              (nodeDegree.get(b.id) || 0) - (nodeDegree.get(a.id) || 0)
+          )
+          .slice(0, MAX_VISIBLE_LABELS)
+          .map((n: any) => n.id)
+      );
 
       console.log("📁 Folders:", folderList.length, folderList.slice(0, 10));
       console.log("📊 Nodes:", nodes.length);
@@ -484,9 +501,9 @@ export default function DependenciesPage({
               return theme === "light" ? "#ccc" : "#333";
             })
             .attr("stroke-width", (d: any) =>
-              Math.max(1, Math.min(2, Math.sqrt((d.count || 1)) * 0.3))
+              Math.max(1, Math.min(2.5, Math.sqrt((d.count || 1)) * 0.45))
             )
-            .attr("stroke-opacity", 0.4)
+            .attr("stroke-opacity", 0.6)
             .attr("marker-end", "none"),
           (update) => update,
           (exit) => exit.remove()
@@ -554,8 +571,9 @@ export default function DependenciesPage({
       // Ensure text is readable inside circles with proper sizing
       node
         .select("text")
-        .attr("text-anchor", "middle")
-        .attr("dy", "0.35em") // Better vertical centering inside circle
+        .attr("text-anchor", "start")
+        .attr("dy", "0.32em")
+        .attr("x", (d: any) => getR(d) + 4)
             .attr("fill", (d: any) => {
               const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
               return theme === "light" ? "#333" : "#eee";
@@ -573,14 +591,11 @@ export default function DependenciesPage({
         .attr("font-weight", 500)
         .attr("pointer-events", "none")
         .attr("opacity", graphConfigRef.current.showLabels ? 1 : 0) // Use graphConfigRef for latest value
-        .text((d) => {
-          const n = d.name.replace(/\.[^.]+$/, "");
-          const r = getR(d);
-          // Calculate max characters that fit inside circle (circumference / font width)
-          // Approximate: each character is ~0.6 * font size wide
-          const fontSize = Math.max(8, Math.min(12, r * 0.4));
-          const maxChars = Math.max(3, Math.floor((r * 2 * Math.PI) / (fontSize * 0.6)) - 1);
-          return n.length > maxChars ? n.slice(0, maxChars) + "…" : n;
+        .text((d: any) => {
+          if (!labelNodeIds.has(d.id)) return "";
+          const n = (d.name || "").replace(/\.[^.]+$/, "");
+          const maxChars = 28;
+          return n.length > maxChars ? `${n.slice(0, maxChars)}…` : n;
         });
 
       // Add mouseover/mouseout handlers for tooltip
@@ -723,7 +738,7 @@ export default function DependenciesPage({
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.3))
           .force("charge", d3.forceManyBody().strength(-config.spacing * 1.5).distanceMax(400))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10).iterations(3))
           .force("x", d3.forceX((d: any) => {
             if ((d as any).isHub) return (d as any).hubX;
             if ((d as any).orbitHub) {
@@ -755,7 +770,7 @@ export default function DependenciesPage({
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 0.5).strength(0.05))
           .force("charge", d3.forceManyBody().strength(-config.spacing * 0.5))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10).iterations(3))
           .force("x", d3.forceX((d: any) => (d as any).targetX).strength(0.8))
           .force("y", d3.forceY((d: any) => (d as any).targetY).strength(0.8))
           .force("boundary", () => {
@@ -782,7 +797,7 @@ export default function DependenciesPage({
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.1))
           .force("charge", d3.forceManyBody().strength(-config.spacing * 0.8).distanceMax(200))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10).iterations(3))
           .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.9))
           .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.3))
           .force("boundary", () => {
@@ -799,7 +814,7 @@ export default function DependenciesPage({
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 1.5).strength(0.02))
           .force("charge", d3.forceManyBody().strength(-config.spacing * 0.3))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10).iterations(3))
           .force("x", d3.forceX((d: any) => (d as any).targetX).strength(1))
           .force("y", d3.forceY((d: any) => (d as any).targetY).strength(1))
           .force("boundary", () => {
@@ -848,7 +863,7 @@ export default function DependenciesPage({
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.05))
           .force("charge", d3.forceManyBody().strength(-config.spacing * 0.4))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 20).iterations(3))
+          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10).iterations(3))
           .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.95))
           .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.95))
           .force("boundary", () => {
@@ -879,9 +894,10 @@ export default function DependenciesPage({
       
       // Always restart simulation when config changes to apply new forces
       simulation
-        .velocityDecay(0.6)
-        .alphaDecay(0.05)
-        .alpha(1) // Full alpha when view mode or config changes - restart simulation
+        .velocityDecay(0.78)
+        .alphaDecay(0.09)
+        .alphaMin(0.02)
+        .alpha(0.9)
         .restart();
       
       // Attach drag handlers with highlighting and dependent node movement
@@ -1107,7 +1123,7 @@ export default function DependenciesPage({
           // Default link styling when no search - more greyish
           const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
           link.attr("stroke", theme === "light" ? "#999999" : "#666666") // More greyish
-            .attr("stroke-opacity", 0.4);
+            .attr("stroke-opacity", 0.6);
         }
         
         // Clamp node positions to viewport bounds to prevent nodes going outside
@@ -1159,7 +1175,8 @@ export default function DependenciesPage({
         // Update text opacity and ensure it's centered inside circle
         node.selectAll("text")
           .attr("opacity", config.showLabels ? 1 : 0)
-          .attr("dy", "0.35em"); // Better vertical centering inside circle
+          .attr("dy", "0.32em")
+          .attr("x", (d: any) => getR(d) + 4);
         
         // Update hulls
         updateHulls();
@@ -1435,6 +1452,7 @@ export default function DependenciesPage({
       setStatus(`Parsing dependencies from ${codeFiles.length} code files...`);
       const allDeps: Dependency[] = [];
 
+      const PROGRESSIVE_GRAPH_UPDATE_EVERY = 20;
       // Fetch and parse each code file
       for (let i = 0; i < codeFiles.length; i++) {
         const file = codeFiles[i];
@@ -1475,12 +1493,17 @@ export default function DependenciesPage({
 
             allDeps.push(...resolvedDeps);
 
-            // Update graph progressively as files are scanned (like Gource)
-            const currentGraph = buildGraph(allDeps, filePaths);
-            const currentFolderGraph = buildFolderOverview(allDeps, filePaths);
-            setGraphData(currentGraph);
-            setFolderGraphData(currentFolderGraph);
-            setDependencies([...allDeps]);
+            // Update graph progressively, but throttled to avoid wild re-layout churn.
+            const shouldRefreshGraph =
+              i === codeFiles.length - 1 ||
+              (i + 1) % PROGRESSIVE_GRAPH_UPDATE_EVERY === 0;
+            if (shouldRefreshGraph) {
+              const currentGraph = buildGraph(allDeps, filePaths);
+              const currentFolderGraph = buildFolderOverview(allDeps, filePaths);
+              setGraphData(currentGraph);
+              setFolderGraphData(currentFolderGraph);
+              setDependencies([...allDeps]);
+            }
           } else {
             console.warn(
               `⚠️ [Dependencies] No content fetched for ${file.path}`
