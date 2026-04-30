@@ -166,6 +166,13 @@ func main() {
 		}
 	}
 
+	// Repository owners should always retain full access, even if
+	// RepositoryPermission rows are missing/stale for their own pubkey.
+	if strings.EqualFold(targetPubKey, ownerPubKey) {
+		ownerPerm := "ADMIN"
+		permission = &ownerPerm
+	}
+
 	row = db.QueryRow("SELECT PublicRead,PublicWrite FROM RepositoryPermission WHERE OwnerPubKey=? AND RepositoryName=? AND TargetPubKey=?", ownerPubKey, repoName, targetPubKey)
 
 	var consumePaywallGrant bool
