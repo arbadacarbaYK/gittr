@@ -27,8 +27,15 @@ export function parseDependencies(
     case "jsx":
     case "ts":
     case "tsx":
+    case "mjs":
+    case "cjs":
+    case "mts":
+    case "cts":
+    case "vue":
+    case "svelte":
       return parseJavaScriptDependencies(filePath, lines);
     case "py":
+    case "pyw":
       return parsePythonDependencies(filePath, lines);
     case "go":
       return parseGoDependencies(filePath, lines);

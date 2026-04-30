@@ -75,6 +75,16 @@ interface GitHubTreeItem {
   size?: number;
 }
 
+/** Bridge uses "file", GitHub/Nostr trees often use "blob"; only exclude real directories. */
+function isDependencyListingFile(f: { type?: string; path: string }): boolean {
+  const t = (f.type || "").toLowerCase();
+  if (t === "dir" || t === "tree" || t === "folder") return false;
+  return true;
+}
+
+const DEPENDENCY_CODE_FILE_RE =
+  /\.(js|mjs|cjs|ts|mts|cts|jsx|tsx|py|pyw|go|rs|java|php|rb|vue|svelte)$/i;
+
 export default function DependenciesPage({
   params,
 }: {
@@ -1432,12 +1442,16 @@ export default function DependenciesPage({
       setStatus(`Analyzing ${files.length} files for dependencies...`);
       const codeFiles = files.filter(
         (f) =>
-          f.type === "file" &&
-          /\.(js|ts|jsx|tsx|py|go|rs|java|php|rb)$/.test(f.path)
+          isDependencyListingFile(f) && DEPENDENCY_CODE_FILE_RE.test(f.path)
       );
 
       if (codeFiles.length === 0) {
-        setError("No code files found to analyze");
+        const fileLikeCount = files.filter(isDependencyListingFile).length;
+        setError(
+          fileLikeCount > 0
+            ? `No analyzable source files found (supported: JS/TS, Python, Go, Rust, Java, PHP, Ruby, Vue, Svelte). This repository lists ${fileLikeCount} non-directory path(s) but none match those extensions.`
+            : "No code files found to analyze"
+        );
         setLoading(false);
         return;
       }
