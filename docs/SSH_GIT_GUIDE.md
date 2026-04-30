@@ -29,6 +29,20 @@ git clone git@git.gittr.space:daa41bedb68591363bf4407f687cb9789cc543ed024bb77c22
 
 All three formats resolve to the same repository.
 
+## SSH Username Compatibility
+
+Both SSH usernames are supported for Git operations:
+
+```bash
+# Preferred (bridge host user)
+git clone git-nostr@git.gittr.space:<owner-identifier>/<repo-name>.git
+
+# Compatibility alias (GitHub-style)
+git clone git@git.gittr.space:<owner-identifier>/<repo-name>.git
+```
+
+If one username fails in your local SSH config, try the other. Both map to the same bridge permission checks.
+
 ## Workflow 1: Create and Add Files via SSH
 
 ### 1.1 From a Local Source
@@ -260,6 +274,10 @@ Notes:
 - Ensure your SSH key is added in Settings → SSH Keys
 - Check that your private key is in `~/.ssh/` with correct permissions (600)
 - Verify the bridge service has processed your key (may take a few seconds)
+- Force a single key to avoid auth spam:
+  - `GIT_SSH_COMMAND='ssh -o IdentitiesOnly=yes -i ~/.ssh/<your-key>' git ls-remote git-nostr@git.gittr.space:<owner>/<repo>.git`
+- If you see `Too many authentication failures`, your SSH agent likely offered too many keys. Use `IdentitiesOnly=yes` as shown above.
+- If your IP was previously blocked by fail2ban, retry after unban/ban expiry.
 
 ### "Permission denied" (for read operations on private repos)
 - Private repositories are only accessible to the owner and maintainers

@@ -9624,7 +9624,14 @@ export default function RepoCodePage() {
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [safeFiles]);
 
-  // Helper to get raw GitHub URL for a file path
+  function encodePathSegments(path: string): string {
+    return path
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+  }
+
+  // Helper to get provider-aware raw URL for a file path
   function getRawUrl(path: string): string | null {
     if (!repoData?.sourceUrl) return null;
     try {
@@ -9633,9 +9640,27 @@ export default function RepoCodePage() {
       const owner = parts[0];
       const repo = (parts[1] || resolvedParams.repo).replace(/\.git$/, "");
       const branch = selectedBranch || repoData?.defaultBranch || "main";
-      return `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
-        branch
-      )}/${path}`;
+      const encodedPath = encodePathSegments(path);
+
+      if (u.hostname.includes("github.com")) {
+        return `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
+          branch
+        )}/${encodedPath}`;
+      }
+
+      if (u.hostname.includes("gitlab.com")) {
+        return `https://gitlab.com/${owner}/${repo}/-/raw/${encodeURIComponent(
+          branch
+        )}/${encodedPath}`;
+      }
+
+      if (u.hostname.includes("codeberg.org")) {
+        return `https://codeberg.org/${owner}/${repo}/raw/branch/${encodeURIComponent(
+          branch
+        )}/${encodedPath}`;
+      }
+
+      return null;
     } catch {
       return null;
     }
@@ -11308,6 +11333,12 @@ export default function RepoCodePage() {
         "Binary files cannot be edited inline. Please open an issue or upload via PR."
       );
       return;
+    }
+    if (type === "html") {
+      setHtmlViewMode("code");
+    }
+    if (type === "markdown") {
+      setMarkdownViewMode("code");
     }
     // Switch to inline edit mode with current content prefilled
     setProposeEdit(true);
@@ -13761,16 +13792,12 @@ export default function RepoCodePage() {
                     </a>
                     {isOwner ? (
                       <>
-                        {/* Edit button - only show in code view for HTML/Markdown, or for other text files (not media) */}
-                        {((fileType === "html" && htmlViewMode === "code") ||
-                          (fileType === "markdown" &&
-                            markdownViewMode === "code") ||
-                          (fileType !== "image" &&
-                            fileType !== "video" &&
-                            fileType !== "audio" &&
-                            fileType !== "pdf" &&
-                            fileType !== "html" &&
-                            fileType !== "markdown")) && (
+                        {/* Edit button - show only for inline-editable file types */}
+                        {fileType !== "image" &&
+                          fileType !== "video" &&
+                          fileType !== "audio" &&
+                          fileType !== "pdf" &&
+                          fileType !== "binary" && (
                           <button
                             className="text-sm text-purple-500 hover:underline whitespace-nowrap"
                             onClick={() => editCurrentFile()}
@@ -13787,17 +13814,13 @@ export default function RepoCodePage() {
                       </>
                     ) : (
                       <>
-                        {/* Edit button - only show in code view for HTML/Markdown, or for other text files (not media) */}
+                        {/* Edit button - show only for inline-editable file types */}
                         {!proposeEdit &&
-                          ((fileType === "html" && htmlViewMode === "code") ||
-                            (fileType === "markdown" &&
-                              markdownViewMode === "code") ||
-                            (fileType !== "image" &&
-                              fileType !== "video" &&
-                              fileType !== "audio" &&
-                              fileType !== "pdf" &&
-                              fileType !== "html" &&
-                              fileType !== "markdown")) && (
+                          fileType !== "image" &&
+                          fileType !== "video" &&
+                          fileType !== "audio" &&
+                          fileType !== "pdf" &&
+                          fileType !== "binary" && (
                             <button
                               className="text-sm text-purple-500 hover:underline whitespace-nowrap"
                               onClick={() => {
@@ -13816,6 +13839,12 @@ export default function RepoCodePage() {
                                     "Binary files cannot be edited inline. Please open an issue or upload via PR."
                                   );
                                   return;
+                                }
+                                if (type === "html") {
+                                  setHtmlViewMode("code");
+                                }
+                                if (type === "markdown") {
+                                  setMarkdownViewMode("code");
                                 }
                                 setProposeEdit(true);
                                 setProposedContent(fileContent || "");

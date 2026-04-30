@@ -246,10 +246,23 @@ sudo nano /etc/ssh/sshd_config
 
 Add/verify:
 ```
-AllowUsers git-nostr
+AllowUsers root git-nostr git
 PubkeyAuthentication yes
 AuthorizedKeysFile .ssh/authorized_keys
 PermitUserEnvironment yes
+```
+
+Optional compatibility alias for `git@...` URLs:
+```
+Match User git
+    AuthorizedKeysFile /etc/ssh/git-authorized_keys
+```
+
+And create the compatibility key file:
+```bash
+sudo cp /home/git-nostr/.ssh/authorized_keys /etc/ssh/git-authorized_keys
+sudo chown root:root /etc/ssh/git-authorized_keys
+sudo chmod 644 /etc/ssh/git-authorized_keys
 ```
 
 Restart SSH:
@@ -529,6 +542,9 @@ sudo journalctl -u git-nostr-bridge -n 50
 - Check SSH server: `sudo systemctl status sshd`
 - Test SSH: `ssh git-nostr@gittr.space`
 - Ensure port 22 is open: `sudo ufw allow 22/tcp`
+- If `Too many authentication failures` appears, force one key:
+  - `GIT_SSH_COMMAND='ssh -o IdentitiesOnly=yes -i ~/.ssh/<key>' git ls-remote git-nostr@gittr.space:<pubkey>/<repo>.git`
+- Keep fail2ban thresholds practical for real users (avoid aggressive permanent bans for normal retries).
 
 ### Push paywall blocks pushes
 - If terminal shows `push payment required ...`, generate/pay invoice in repo UI via **Push to Nostr**, then retry `git push`.

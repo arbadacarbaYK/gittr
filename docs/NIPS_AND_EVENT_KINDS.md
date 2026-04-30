@@ -161,6 +161,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `t[]`: Labels (optional)
   - `p[]`: Assignees (optional, custom extension)
 - **Content**: Markdown description text (not JSON)
+- **Interop requirement**: If local cache is missing `r`, derive it from git root commit history (earliest unique commit) before publishing.
 
 ### Kind 1618: Pull Requests (NIP-34)
 - **Purpose**: Code review and merging
@@ -176,6 +177,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `merge-base`: Most recent common ancestor (optional)
   - `t[]`: Labels (optional)
 - **Content**: Markdown description text (not JSON)
+- **Interop requirement**: If local cache is missing `r`, derive it from git root commit history (earliest unique commit) before publishing.
 
 ### Kind 1619: Pull Request Updates (NIP-34)
 - **Purpose**: Update PR when new commits are pushed

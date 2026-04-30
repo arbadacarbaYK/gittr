@@ -45,6 +45,7 @@ Connects to a set of relays and:
 
 Configured as the command for a nostr users ssh-key in the authorized_keys file.
 Whenever a user tries to perform a git operation (push/pull) git-nostr-ssh will perform an access control check.
+Repository owners are always treated as `ADMIN` for their own repositories, even if a cached permission row is missing/stale.
 If a repository has a configured push paywall (`push_cost_sats > 0`), SSH write operations (`git-receive-pack`) also require a non-expired paid authorization grant in bridge SQLite. If a pending invoice already exists for the payer identity, SSH can print `pending invoice (BOLT11): ...` directly. Each successful push consumes one paid authorization.
 
 ### git-nostr-hook

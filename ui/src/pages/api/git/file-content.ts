@@ -17,6 +17,12 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+  const encodePathSegments = (value: string): string =>
+    value
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+
   // Handle OPTIONS request for CORS
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res, req);
@@ -88,7 +94,7 @@ export default async function handler(
       }
       const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
         branchStr
-      )}/${encodeURIComponent(filePathStr)}`;
+      )}/${encodePathSegments(filePathStr)}`;
 
       console.log(`🔍 [Git API] Fetching from GitHub raw URL: ${rawUrl}`);
 
@@ -638,7 +644,7 @@ export default async function handler(
       // Format: https://gitlab.com/{projectPath}/-/raw/{branch}/{filePath}
       const rawUrl = `https://gitlab.com/${projectPath}/-/raw/${encodeURIComponent(
         branchStr
-      )}/${encodeURIComponent(filePathStr)}`;
+      )}/${encodePathSegments(filePathStr)}`;
       let response = await fetch(rawUrl, {
         headers: {
           "User-Agent": "Mozilla/5.0 (compatible; gittr-space/1.0)",
@@ -753,7 +759,7 @@ export default async function handler(
       }
       const rawUrl = `https://codeberg.org/${owner}/${repo}/raw/branch/${encodeURIComponent(
         branchStr
-      )}/${encodeURIComponent(filePathStr)}`;
+      )}/${encodePathSegments(filePathStr)}`;
 
       console.log(`🔍 [Git API] Fetching from Codeberg raw URL: ${rawUrl}`);
 
