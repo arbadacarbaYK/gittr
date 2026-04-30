@@ -114,6 +114,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       releases?: unknown[];
       logoUrl?: string;
       requiredApprovals?: number;
+      pushCostSats?: number;
       zapPolicy?: string;
       publicRead?: boolean;
     };
@@ -677,10 +678,10 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         if (!bridgeContent || bridgeContent === "") {
           // Try file.data (alternative field name)
           bridgeContent =
-            (file as any).data &&
-            typeof (file as any).data === "string" &&
-            (file as any).data.length > 0
-              ? (file as any).data
+            (file ).data &&
+            typeof (file ).data === "string" &&
+            (file ).data.length > 0
+              ? (file ).data
               : undefined;
         }
 
@@ -843,7 +844,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       // Helper function to add timeout to fetch
       const fetchWithTimeout = async (
         url: string,
-        timeoutMs: number = 30000
+        timeoutMs = 30000
       ): Promise<Response> => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -1617,6 +1618,17 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         });
       }
 
+      if (
+        typeof repo.pushCostSats === "number" &&
+        Number.isFinite(repo.pushCostSats) &&
+        repo.pushCostSats >= 0
+      ) {
+        nip34Tags.push([
+          "push_cost_sats",
+          String(Math.floor(repo.pushCostSats)),
+        ]);
+      }
+
       // NIP-34: Add maintainers tags (from contributors + owner)
       // CRITICAL: Always include event publisher (owner) as maintainer for discoverability
       const maintainerPubkeys = new Set<string>();
@@ -1888,7 +1900,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             if (repo.branches.length === 0) return [];
             // Check if first element is a string (old format)
             if (typeof repo.branches[0] === "string") {
-              return (repo.branches as string[]).map((name) => ({ name }));
+              return (repo.branches ).map((name) => ({ name }));
             }
             // Otherwise, filter to ensure correct format
             const result: Array<{ name: string; commit?: string }> = [];
@@ -1922,6 +1934,10 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             : [],
           logoUrl: repo.logoUrl,
           requiredApprovals: repo.requiredApprovals,
+          pushCostSats:
+            typeof repo.pushCostSats === "number"
+              ? Math.max(0, Math.floor(repo.pushCostSats))
+              : 0,
           zapPolicy:
             typeof repo.zapPolicy === "string"
               ? undefined
@@ -2587,7 +2603,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           const allRelaysForVerification = defaultRelays;
 
           let foundStateEvent = false;
-          let foundOnRelays: string[] = [];
+          const foundOnRelays: string[] = [];
           const verifyUnsub = subscribe(
             [
               {

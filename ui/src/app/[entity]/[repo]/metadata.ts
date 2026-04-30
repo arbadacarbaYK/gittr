@@ -1,4 +1,4 @@
-import { Metadata } from 'next';
+import { type Metadata } from 'next';
 import { nip19 } from 'nostr-tools';
 import { resolveRepoIconForMetadata, resolveUserIconForMetadata } from '@/lib/utils/metadata-icon-resolver';
 
@@ -9,7 +9,7 @@ import { resolveRepoIconForMetadata, resolveUserIconForMetadata } from '@/lib/ut
 async function fetchRepoDescription(
   entity: string,
   repoName: string,
-  timeoutMs: number = 2000
+  timeoutMs = 2000
 ): Promise<string | null> {
   try {
     // Resolve entity to pubkey

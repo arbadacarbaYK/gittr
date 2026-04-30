@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
-import { ClaimedIdentity } from "@/lib/nostr/useContributorMetadata";
+import { type ClaimedIdentity } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { getUserMetadata } from "@/lib/utils/entity-resolver";
@@ -523,7 +523,7 @@ export default function ProfilePage() {
         console.log("🔐 [Profile Settings] Using NIP-07 to sign event...");
         setUpdateStatus("Waiting for NIP-07 extension to sign...");
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        event = await window.nostr.signEvent(event as any);
+        event = await window.nostr.signEvent(event );
         console.log("✅ [Profile Settings] Event signed with NIP-07");
       } else if (privateKey) {
         // Use private key (fallback)
@@ -965,7 +965,7 @@ export default function ProfilePage() {
                     if (newIdentityPlatform && newIdentityName) {
                       // Normalize identity for Telegram (should be user ID, not username)
                       let normalizedIdentity = newIdentityName.trim();
-                      let normalizedProof =
+                      const normalizedProof =
                         newIdentityProof.trim() || undefined;
 
                       // For Telegram, ensure we're using user ID (numeric)

@@ -62,7 +62,7 @@ export default function FindPage({
           repos,
           resolvedParams.entity,
           resolvedParams.repo
-        ) as StoredRepo | undefined;
+        ) ;
 
         // If repo found but no files, try to fetch from API
         if (

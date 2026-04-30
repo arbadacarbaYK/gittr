@@ -253,6 +253,22 @@ This publishes:
 - `git push` updates the repository on the bridge server
 - "Push to Nostr" publishes NIP-34 events to Nostr relays
 - Both are needed for full functionality: bridge for git operations, Nostr events for discovery
+- Publishing to Nostr always requires signer approval (NIP-07 extension or local nsec signer)
+
+## Push Paywall Flow (Optional Per Repository)
+
+Some repositories require sats payment before push is accepted.
+
+Flow:
+1. Repo owner sets **Push Cost (sats)**.
+2. User opens repo in web UI and clicks **Push to Nostr** to create invoice.
+3. User pays the invoice (QR/BOLT11).
+4. Server grants short-lived, **single-use** push authorization.
+5. User retries `git push` to continue the Git operation. **Each successful push consumes one authorization.**
+
+Notes:
+- Repo owners can enable non-zero Push Cost after configuring either LNbits Invoice Key or Blink API Key in Settings -> Account.
+- For SSH, authorization is bound to payer pubkey + owner/repo, so concurrent users are authorized independently.
 
 ## Troubleshooting
 
@@ -264,6 +280,16 @@ This publishes:
 ### "Permission denied" (for write operations)
 - Only repository owners and users with WRITE or ADMIN permissions can push
 - Check repository permissions in Settings → Repository → Permissions
+
+### "push payment required for '<owner>/<repo>' (<n> sats)"
+- If SSH prints `pending invoice (BOLT11): ...`, pay that exact invoice.
+- If no invoice is printed, generate one in the repository web UI (Push to Nostr).
+- Retry `git push`.
+- If owner setup fails, verify Settings -> Account has either LNbits Invoice Key or Blink API Key configured.
+
+### "push payment authorization expired"
+- The paid authorization window expired.
+- Pay the printed pending invoice (if shown) or create/pay a fresh invoice, then retry push.
 
 ### "Repository not found"
 - Check that the repository exists on gittr

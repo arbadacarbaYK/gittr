@@ -490,7 +490,7 @@ export async function syncCommitsFromBridge(
   ownerPubkey: string,
   repoEntity: string,
   repoName: string,
-  branch: string = "main"
+  branch = "main"
 ): Promise<number> {
   try {
     // Fetch commits from bridge API

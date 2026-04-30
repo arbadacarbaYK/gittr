@@ -1,6 +1,6 @@
 import { loadStoredRepos } from "@/lib/repos/storage";
 
-import { MetadataRoute } from "next";
+import { type MetadataRoute } from "next";
 import { nip19 } from "nostr-tools";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -31,7 +31,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Dynamic pages - repositories
   // Note: In a production environment, you might want to fetch from Nostr relays
   // For now, we'll use localStorage repos (limited to what's cached)
-  let repoPages: MetadataRoute.Sitemap = [];
+  const repoPages: MetadataRoute.Sitemap = [];
 
   // Server-side: We can't access localStorage
   // In production, you'd want to fetch from a database or Nostr relays

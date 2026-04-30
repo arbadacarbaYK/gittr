@@ -15,7 +15,10 @@ export const KIND_STATUS_OPEN = 1630; // NIP-34: Status - Open
 export const KIND_STATUS_APPLIED = 1631; // NIP-34: Status - Applied/Merged (PRs) or Resolved (Issues)
 export const KIND_STATUS_CLOSED = 1632; // NIP-34: Status - Closed
 export const KIND_STATUS_DRAFT = 1633; // NIP-34: Status - Draft
+export const KIND_COVER_NOTE = 1624; // Experimental: PR/issue cover notes (ngit ecosystem)
 export const KIND_GRASP_LIST = 10317; // NIP-34: User GRASP list (preferred GRASP servers)
+export const KIND_GIT_REPOSITORIES_LIST = 10018; // NIP-51: Followed Git repositories list
+export const KIND_LABEL_OVERLAY = 1985; // NIP-32: Label overlays for post-hoc metadata
 /** NIP-23: Long-form content. Used for repo discussion topics (replies use NIP-22 kind 1111). */
 export const KIND_LONG_FORM = 30023;
 /** @deprecated Use KIND_LONG_FORM (NIP-23). Kept for backward compatibility. */
@@ -26,6 +29,20 @@ export const KIND_REACTION = 7; // NIP-25: Reactions
 export const KIND_ZAP = 9735; // NIP-57: Zaps
 export const KIND_DELETION = 5; // NIP-09: Deletion/Revocation events
 export const KIND_CODE_SNIPPET = 1337; // NIP-C0: Code snippets
+
+function requireNip34Field(
+  value: string | undefined,
+  fieldName: string,
+  eventName: string
+): string {
+  const normalized = value?.trim();
+  if (!normalized) {
+    throw new Error(
+      `[${eventName}] Missing required NIP-34 field: ${fieldName}`
+    );
+  }
+  return normalized;
+}
 
 export interface RepositoryEvent {
   repositoryName: string;
@@ -70,6 +87,7 @@ export interface RepositoryEvent {
   }>;
   logoUrl?: string;
   requiredApprovals?: number;
+  pushCostSats?: number;
   // Deletion marker - if true, owner has marked this repo as deleted on Nostr
   deleted?: boolean;
   archived?: boolean; // Alternative to deleted - marks repo as archived but not deleted
@@ -108,10 +126,24 @@ export interface DiscussionEvent {
   repoName: string;
   title: string;
   description: string;
+  ownerPubkey?: string; // Optional NIP-34 repository owner for interop tags
+  earliestUniqueCommit?: string; // Optional NIP-34 "r" tag for repo-level correlation
   category?: string;
   status?: "open" | "closed";
   /** NIP-23 replaceable identifier (d tag). If not set, createDiscussionEvent will generate one. */
   identifier?: string;
+}
+
+export interface GitRepositoriesListEvent {
+  repoAddresses: string[]; // NIP-34 "a" addresses, e.g. 30617:<pubkey>:<repo-id>
+}
+
+export interface LabelOverlayEvent {
+  targetAddress?: string; // NIP-32 target "a" tag
+  targetEventId?: string; // NIP-32 target "e" tag
+  labels?: string[]; // NIP-32 labels ("l")
+  labelNamespace?: string; // NIP-32 namespace ("L"), default "git"
+  subject?: string; // Optional subject overlay using "#subject" label convention
 }
 
 export interface PatchEvent {
@@ -297,6 +329,14 @@ export function createRepositoryEvent(
     });
   }
 
+  if (
+    typeof repo.pushCostSats === "number" &&
+    Number.isFinite(repo.pushCostSats) &&
+    repo.pushCostSats >= 0
+  ) {
+    tags.push(["push_cost_sats", String(Math.floor(repo.pushCostSats))]);
+  }
+
   // NIP-34: Add maintainers tags (from contributors + owner)
   // CRITICAL: Always include event publisher (owner) as maintainer for discoverability
   const maintainerPubkeys = new Set<string>();
@@ -368,9 +408,12 @@ export function createRepositoryEvent(
     });
   }
 
-  // NOTE: Privacy is handled via access control (maintainers list + bridge permissions)
-  // NIP-34 spec does not include public-read/public-write tags
-  // Privacy status is stored locally and enforced by the bridge, not in Nostr events
+  // Privacy tags are included so clients can render visibility consistently.
+  // We keep bridge-side access control as the source of truth for enforcement.
+  const normalizedPublicRead = repo.publicRead !== false;
+  const normalizedPublicWrite = repo.publicWrite === true;
+  tags.push(["public-read", normalizedPublicRead ? "true" : "false"]);
+  tags.push(["public-write", normalizedPublicWrite ? "true" : "false"]);
 
   // NIP-34: Content field MUST be empty per spec
   // All metadata goes in tags, not in content
@@ -544,17 +587,29 @@ export function createRepositoryStateEvent(
 // Per NIP-34: https://nips.nostr.com/34#issues
 export function createIssueEvent(issue: IssueEvent, privateKey: string): any {
   const pubkey = getPublicKey(privateKey);
+  const repoName = requireNip34Field(issue.repoName, "repoName", "issue");
+  const ownerPubkey = requireNip34Field(
+    issue.ownerPubkey,
+    "ownerPubkey",
+    "issue"
+  );
+  const earliestUniqueCommit = requireNip34Field(
+    issue.earliestUniqueCommit,
+    "r (earliestUniqueCommit)",
+    "issue"
+  );
+  const title = requireNip34Field(issue.title, "subject", "issue");
 
   // NIP-34 required tags
   const tags: string[][] = [
     // ["a", "30617:<base-repo-owner-pubkey>:<base-repo-id>"] - REQUIRED
-    ["a", `30617:${issue.ownerPubkey}:${issue.repoName}`],
+    ["a", `30617:${ownerPubkey}:${repoName}`],
     // ["r", "<earliest-unique-commit-id-of-repo>"] - REQUIRED (helps clients subscribe to all issues for a repo)
-    ...(issue.earliestUniqueCommit ? [["r", issue.earliestUniqueCommit]] : []),
+    ["r", earliestUniqueCommit],
     // ["p", "<repository-owner>"] - REQUIRED
-    ["p", issue.ownerPubkey],
+    ["p", ownerPubkey],
     // ["subject", "<issue-subject>"] - REQUIRED
-    ["subject", issue.title],
+    ["subject", title],
   ];
 
   // Optional tags
@@ -599,15 +654,26 @@ export function createIssueEvent(issue: IssueEvent, privateKey: string): any {
 // Patches SHOULD be used if each event is under 60kb, otherwise PRs SHOULD be used
 export function createPatchEvent(patch: PatchEvent, privateKey: string): any {
   const pubkey = getPublicKey(privateKey);
+  const repoName = requireNip34Field(patch.repoName, "repoName", "patch");
+  const ownerPubkey = requireNip34Field(
+    patch.ownerPubkey,
+    "ownerPubkey",
+    "patch"
+  );
+  const earliestUniqueCommit = requireNip34Field(
+    patch.earliestUniqueCommit,
+    "r (earliestUniqueCommit)",
+    "patch"
+  );
 
   // NIP-34 required tags
   const tags: string[][] = [
     // ["a", "30617:<base-repo-owner-pubkey>:<base-repo-id>"] - REQUIRED
-    ["a", `30617:${patch.ownerPubkey}:${patch.repoName}`],
+    ["a", `30617:${ownerPubkey}:${repoName}`],
     // ["r", "<earliest-unique-commit-id-of-repo>"] - REQUIRED (helps clients subscribe to all patches for a repo)
-    ...(patch.earliestUniqueCommit ? [["r", patch.earliestUniqueCommit]] : []),
+    ["r", earliestUniqueCommit],
     // ["p", "<repository-owner>"] - REQUIRED
-    ["p", patch.ownerPubkey],
+    ["p", ownerPubkey],
   ];
 
   // Optional: Notify other users
@@ -681,23 +747,43 @@ export function createPullRequestEvent(
   privateKey: string
 ): any {
   const pubkey = getPublicKey(privateKey);
+  const repoName = requireNip34Field(pr.repoName, "repoName", "pull-request");
+  const ownerPubkey = requireNip34Field(
+    pr.ownerPubkey,
+    "ownerPubkey",
+    "pull-request"
+  );
+  const earliestUniqueCommit = requireNip34Field(
+    pr.earliestUniqueCommit,
+    "r (earliestUniqueCommit)",
+    "pull-request"
+  );
+  const title = requireNip34Field(pr.title, "subject", "pull-request");
+  const currentCommitId = requireNip34Field(
+    pr.currentCommitId,
+    "c (currentCommitId)",
+    "pull-request"
+  );
+  if (!pr.cloneUrls || pr.cloneUrls.length === 0) {
+    throw new Error(
+      "[pull-request] Missing required NIP-34 field: clone (at least one URL)"
+    );
+  }
 
   // NIP-34 required tags
   const tags: string[][] = [
     // ["a", "30617:<base-repo-owner-pubkey>:<base-repo-id>"] - REQUIRED
-    ["a", `30617:${pr.ownerPubkey}:${pr.repoName}`],
+    ["a", `30617:${ownerPubkey}:${repoName}`],
     // ["r", "<earliest-unique-commit-id-of-repo>"] - REQUIRED (helps clients subscribe to all PRs for a repo)
-    ...(pr.earliestUniqueCommit ? [["r", pr.earliestUniqueCommit]] : []),
+    ["r", earliestUniqueCommit],
     // ["p", "<repository-owner>"] - REQUIRED
-    ["p", pr.ownerPubkey],
+    ["p", ownerPubkey],
     // ["subject", "<PR-subject>"] - REQUIRED
-    ["subject", pr.title],
+    ["subject", title],
     // ["c", "<current-commit-id>"] - REQUIRED (tip of the PR branch)
-    ...(pr.currentCommitId ? [["c", pr.currentCommitId]] : []),
+    ["c", currentCommitId],
     // ["clone", "<clone-url>", ...] - REQUIRED (at least one git clone URL where commit can be downloaded)
-    ...(pr.cloneUrls && pr.cloneUrls.length > 0
-      ? pr.cloneUrls.map((url) => ["clone", url])
-      : []),
+    ...pr.cloneUrls.map((url) => ["clone", url]),
   ];
 
   // Optional tags
@@ -913,16 +999,27 @@ export function createDiscussionEvent(
 
   const d =
     discussion.identifier ??
-    `${discussion.repoEntity}/${discussion.repoName}/${now}-${Math.random().toString(36).slice(2, 10)}`;
+    `${discussion.repoEntity}/${discussion.repoName}/${now}-${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
 
   const tags: string[][] = [
     ["d", d],
     ["title", discussion.title],
+    ["subject", discussion.title], // Improves compatibility with issue-centric UIs
     ["summary", discussion.description.slice(0, 200)],
     ["published_at", String(now)],
     ["repo", `${discussion.repoEntity}/${discussion.repoName}`],
     ["status", status],
   ];
+  if (discussion.ownerPubkey && /^[0-9a-f]{64}$/i.test(discussion.ownerPubkey)) {
+    // Optional NIP-34 repository pointer tags for cross-client repo correlation.
+    tags.push(["a", `30617:${discussion.ownerPubkey}:${discussion.repoName}`]);
+    tags.push(["p", discussion.ownerPubkey]);
+  }
+  if (discussion.earliestUniqueCommit) {
+    tags.push(["r", discussion.earliestUniqueCommit]);
+  }
   if (discussion.category) {
     tags.push(["t", discussion.category]); // NIP-23 topics/hashtags
     tags.push(["category", discussion.category]); // keep for our filters
@@ -933,6 +1030,98 @@ export function createDiscussionEvent(
     created_at: now,
     tags,
     content: discussion.description,
+    pubkey,
+    id: "",
+    sig: "",
+  };
+
+  event.id = getEventHash(event);
+  event.sig = signEvent(event, privateKey);
+  return event;
+}
+
+// Create and sign a NIP-51 git repositories follow list (kind 10018)
+export function createGitRepositoriesListEvent(
+  list: GitRepositoriesListEvent,
+  privateKey: string
+): any {
+  const pubkey = getPublicKey(privateKey);
+  const uniqueAddresses = Array.from(
+    new Set(
+      (list.repoAddresses || [])
+        .map((a) => a.trim())
+        .filter((a) => /^30617:[0-9a-f]{64}:.+/i.test(a))
+    )
+  );
+
+  const tags: string[][] = uniqueAddresses.map((address) => ["a", address]);
+  const event = {
+    kind: KIND_GIT_REPOSITORIES_LIST,
+    created_at: Math.floor(Date.now() / 1000),
+    tags,
+    content: "",
+    pubkey,
+    id: "",
+    sig: "",
+  };
+
+  event.id = getEventHash(event);
+  event.sig = signEvent(event, privateKey);
+  return event;
+}
+
+export function parseGitRepositoriesListEvent(event: unknown): string[] {
+  if (!event || typeof event !== "object") return [];
+  const typedEvent = event as { kind?: unknown; tags?: unknown };
+  if (typedEvent.kind !== KIND_GIT_REPOSITORIES_LIST) return [];
+  if (!Array.isArray(typedEvent.tags)) return [];
+
+  const repoAddresses: string[] = [];
+  for (const tag of typedEvent.tags) {
+    if (!Array.isArray(tag) || tag.length < 2) continue;
+    if (tag[0] !== "a" || typeof tag[1] !== "string") continue;
+    const candidate = tag[1].trim();
+    if (/^30617:[0-9a-f]{64}:.+/i.test(candidate)) {
+      repoAddresses.push(candidate);
+    }
+  }
+
+  return repoAddresses;
+}
+
+// Create and sign a NIP-32 label overlay event (kind 1985)
+export function createLabelOverlayEvent(
+  labelOverlay: LabelOverlayEvent,
+  privateKey: string
+): any {
+  const pubkey = getPublicKey(privateKey);
+  const namespace = (labelOverlay.labelNamespace || "git").trim();
+  const tags: string[][] = [];
+
+  if (labelOverlay.targetAddress?.trim()) {
+    tags.push(["a", labelOverlay.targetAddress.trim()]);
+  }
+  if (labelOverlay.targetEventId?.trim()) {
+    tags.push(["e", labelOverlay.targetEventId.trim()]);
+  }
+
+  tags.push(["L", namespace]);
+
+  const labels = new Set<string>();
+  (labelOverlay.labels || []).forEach((label) => {
+    const normalized = label.trim();
+    if (normalized) labels.add(normalized);
+  });
+  if (labelOverlay.subject?.trim()) {
+    labels.add(`#subject:${labelOverlay.subject.trim()}`);
+  }
+  labels.forEach((label) => tags.push(["l", label, namespace]));
+
+  const event = {
+    kind: KIND_LABEL_OVERLAY,
+    created_at: Math.floor(Date.now() / 1000),
+    tags,
+    content: "",
     pubkey,
     id: "",
     sig: "",

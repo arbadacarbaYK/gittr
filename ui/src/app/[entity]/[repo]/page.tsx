@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { FuzzyFileFinder } from "@/components/ui/fuzzy-file-finder";
 import { MermaidRenderer } from "@/components/ui/mermaid-renderer";
+import { PaymentQR } from "@/components/ui/payment-qr";
+import { PushPaywallStatus } from "@/components/ui/push-paywall-status";
 import { RelayDisplay } from "@/components/ui/relay-display";
 import { RepoLinks } from "@/components/ui/repo-links";
 import { RepoZapButton } from "@/components/ui/repo-zap-button";
@@ -45,6 +47,7 @@ import {
   useContributorMetadata,
 } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
+import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 import {
   type RepoFileEntry,
@@ -609,6 +612,7 @@ export default function RepoCodePage() {
   const branchesRef = useRef<string[]>([]); // Ref to track previous branches array to prevent render loops
   const tagsRef = useRef<string[]>([]); // Ref to track previous tags array to prevent render loops
   const ownerQueryRef = useRef<string>(""); // Prevent multiple Nostr queries for owner pubkey
+  const pushToNostrButtonRef = useRef<HTMLButtonElement | null>(null);
   // Initialize stable ref from localStorage if available to prevent empty → populated transition
   // Initialize as empty array to prevent hydration errors, will be populated in useEffect
   const ownerPubkeysStableRef = useRef<string[]>([]);
@@ -745,6 +749,18 @@ export default function RepoCodePage() {
     nostrUrls: string[];
   } | null>(null);
   const [isPushing, setIsPushing] = useState<boolean>(false);
+  const [showPushPaymentQR, setShowPushPaymentQR] = useState<boolean>(false);
+  const [pushPaymentInvoice, setPushPaymentInvoice] = useState<string | null>(
+    null
+  );
+  const [pushPaymentAmount, setPushPaymentAmount] = useState<number>(0);
+  const [pushPaymentError, setPushPaymentError] = useState<string | null>(null);
+  const [pushPaymentLnbitsUrl, setPushPaymentLnbitsUrl] = useState<string>("");
+  const [pushPaymentLnbitsReadKey, setPushPaymentLnbitsReadKey] =
+    useState<string>("");
+  const [pushPaymentBlinkApiKey, setPushPaymentBlinkApiKey] =
+    useState<string>("");
+  const [pushStartedAt, setPushStartedAt] = useState<number | null>(null);
   const [isRefetching, setIsRefetching] = useState<boolean>(false);
   const [fetchStatusExpanded, setFetchStatusExpanded] =
     useState<boolean>(false);
@@ -752,6 +768,30 @@ export default function RepoCodePage() {
   const [effectiveSourceUrl, setEffectiveSourceUrl] = useState<string | null>(
     null
   ); // sourceUrl from local repo or Nostr event
+
+  // Keep a local timer for push operations so the UI can recover from stalled flows.
+  useEffect(() => {
+    if (isPushing && pushStartedAt === null) {
+      setPushStartedAt(Date.now());
+      return;
+    }
+    if (!isPushing && pushStartedAt !== null) {
+      setPushStartedAt(null);
+    }
+  }, [isPushing, pushStartedAt]);
+
+  useEffect(() => {
+    if (!isPushing || pushStartedAt === null) return;
+    const timeout = window.setTimeout(() => {
+      if (Date.now() - pushStartedAt >= 120_000) {
+        console.warn(
+          "⚠️ [Push UI] Auto-resetting stuck push state after 120s timeout"
+        );
+        setIsPushing(false);
+      }
+    }, 120_000);
+    return () => window.clearTimeout(timeout);
+  }, [isPushing, pushStartedAt]);
 
   // Get owner metadata for Nostr profile picture fallback
   // Fetch metadata for both entity and actual owner pubkey (CRITICAL for imported repos)
@@ -1103,7 +1143,7 @@ export default function RepoCodePage() {
 
   // Helper function to generate href for repo links (avoids duplication)
   const getRepoLink = useCallback(
-    (subpath: string = "", includeSearchParams: boolean = false) => {
+    (subpath = "", includeSearchParams = false) => {
       const basePath =
         ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink)
           ? `/${nip19.npubEncode(ownerPubkeyForLink)}/${resolvedParams.repo}${
@@ -4108,6 +4148,11 @@ export default function RepoCodePage() {
                       eventRepoData.publicRead = tagValue === "true";
                     } else if (tagName === "public-write" && tagValue) {
                       eventRepoData.publicWrite = tagValue === "true";
+                    } else if (tagName === "push_cost_sats" && tagValue) {
+                      const parsedCost = parseInt(tagValue, 10);
+                      if (Number.isFinite(parsedCost) && parsedCost >= 0) {
+                        eventRepoData.pushCostSats = parsedCost;
+                      }
                     }
                     // CRITICAL: Extract contributors from "p" tags: ["p", pubkey, weight, role]
                     else if (tagName === "p") {
@@ -4339,6 +4384,11 @@ export default function RepoCodePage() {
                       eventRepoData.publicRead = tagValue === "true";
                     } else if (tagName === "public-write" && tagValue) {
                       eventRepoData.publicWrite = tagValue === "true";
+                    } else if (tagName === "push_cost_sats" && tagValue) {
+                      const parsedCost = parseInt(tagValue, 10);
+                      if (Number.isFinite(parsedCost) && parsedCost >= 0) {
+                        eventRepoData.pushCostSats = parsedCost;
+                      }
                     }
                     // CRITICAL: Extract contributors from "p" tags: ["p", pubkey, weight, role]
                     else if (tagName === "p") {
@@ -4649,11 +4699,7 @@ export default function RepoCodePage() {
                   contributors = contributorTags.map((c) => ({
                     pubkey: c.pubkey,
                     weight: c.weight,
-                    role: c.role as
-                      | "owner"
-                      | "maintainer"
-                      | "contributor"
-                      | undefined,
+                    role: c.role,
                   }));
                   console.log(
                     `📋 [File Fetch] Extracted ${contributors.length} contributors from "p" tags:`,
@@ -8975,7 +9021,7 @@ export default function RepoCodePage() {
 
         for (const p of candidates) {
           // Try sourceUrl first
-          let gitUrl: string | undefined = repoData.sourceUrl;
+          const gitUrl: string | undefined = repoData.sourceUrl;
           let ownerRepo: {
             owner: string;
             repo: string;
@@ -9719,7 +9765,7 @@ export default function RepoCodePage() {
                   parsed.length > 0 &&
                   parsed.every((n: any) => typeof n === "number")
                 ) {
-                  parsedContent = parsed as number[];
+                  parsedContent = parsed;
                   isJsonArray = true;
                   console.log(
                     `🔍 [fetchGithubRaw] Detected JSON stringified array for ${path}, parsed to array`
@@ -9747,9 +9793,9 @@ export default function RepoCodePage() {
             parsedContent &&
             typeof parsedContent === "object" &&
             !Array.isArray(parsedContent) &&
-            "type" in (parsedContent as any) &&
-            (parsedContent as any).type === "Buffer" &&
-            Array.isArray((parsedContent as any).data);
+            "type" in parsedContent &&
+            parsedContent.type === "Buffer" &&
+            Array.isArray(parsedContent.data);
 
           // Also check if content is a string representation of comma-separated numbers (e.g., "137,80,78,...")
           // OR a string of just numbers (e.g., "1378078...") - this can happen when byte arrays are JSON stringified
@@ -12702,8 +12748,10 @@ export default function RepoCodePage() {
                   {/* Privacy badge */}
                   {(() => {
                     const repoDataAny = repoData as any;
-                    const isPrivate = repoDataAny?.publicRead === false;
-                    if (isPrivate !== undefined) {
+                    const publicReadRaw = repoDataAny?.publicRead;
+                    const isPrivate =
+                      publicReadRaw === false || publicReadRaw === "false";
+                    if (publicReadRaw !== undefined) {
                       return (
                         <Badge className="border border-gray-600 text-gray-300 bg-transparent text-xs flex items-center gap-1 ml-2">
                           {isPrivate ? (
@@ -15294,7 +15342,7 @@ export default function RepoCodePage() {
                                       if (!existingRepo) return;
 
                                       // Build links array - add GitHub Pages if available
-                                      let links = existingRepo.links || [];
+                                      const links = existingRepo.links || [];
                                       if (
                                         importData.homepage &&
                                         typeof importData.homepage ===
@@ -15407,13 +15455,13 @@ export default function RepoCodePage() {
                                         if (localFile) {
                                           // Compare content (handle both text and binary)
                                           const localContent = String(
-                                            (localFile as any).content || ""
+                                            localFile.content || ""
                                           );
                                           const githubContent = String(
                                             (githubFile as any).content || ""
                                           );
                                           const localIsBinary = Boolean(
-                                            (localFile as any).isBinary || false
+                                            localFile.isBinary || false
                                           );
                                           const githubIsBinary = Boolean(
                                             (githubFile as any).isBinary ||
@@ -16608,6 +16656,7 @@ export default function RepoCodePage() {
                           defaultRelays.length > 0 && (
                             <>
                               <Button
+                                ref={pushToNostrButtonRef}
                                 size="sm"
                                 variant="outline"
                                 disabled={isPushing || isRefetching}
@@ -16664,6 +16713,65 @@ export default function RepoCodePage() {
                                     if (!validation.valid) {
                                       alert(
                                         `Cannot push corrupted repository: ${validation.error}`
+                                      );
+                                      setIsPushing(false);
+                                      return;
+                                    }
+
+                                    const pushOwnerPubkey = (
+                                      repoOwnerPubkey ||
+                                      entityPubkey ||
+                                      repo.ownerPubkey ||
+                                      currentUserPubkey ||
+                                      ""
+                                    ).toLowerCase();
+                                    const paymentAuth =
+                                      await ensurePushPaymentAuthorization({
+                                        entity: resolvedParams.entity,
+                                        repo: resolvedParams.repo,
+                                        ownerPubkey: pushOwnerPubkey,
+                                        payerPubkey: currentUserPubkey,
+                                        ownerMetadata:
+                                          (ownerMetadata as any)?.[
+                                            pushOwnerPubkey
+                                          ] || undefined,
+                                        privateKey: privateKey || undefined,
+                                        signer:
+                                          typeof window !== "undefined" &&
+                                          window.nostr
+                                            ? window.nostr.signEvent
+                                            : undefined,
+                                      });
+                                    if (!paymentAuth.ok) {
+                                      if (
+                                        paymentAuth.needsExternalPayment &&
+                                        paymentAuth.invoice
+                                      ) {
+                                        setPushPaymentInvoice(
+                                          paymentAuth.invoice
+                                        );
+                                        setPushPaymentAmount(
+                                          paymentAuth.pushCostSats || 0
+                                        );
+                                        setPushPaymentLnbitsUrl(
+                                          paymentAuth.ownerLnbitsUrl || ""
+                                        );
+                                        setPushPaymentLnbitsReadKey(
+                                          paymentAuth.ownerLnbitsReadKey || ""
+                                        );
+                                        setPushPaymentBlinkApiKey(
+                                          paymentAuth.ownerBlinkApiKey || ""
+                                        );
+                                        setPushPaymentError(null);
+                                        setShowPushPaymentQR(true);
+                                        setIsPushing(false);
+                                        return;
+                                      }
+                                      alert(
+                                        `Push blocked: ${
+                                          paymentAuth.error ||
+                                          "payment authorization failed"
+                                        }`
                                       );
                                       setIsPushing(false);
                                       return;
@@ -16728,6 +16836,33 @@ export default function RepoCodePage() {
                                     }
 
                                     if (result.success && result.eventId) {
+                                      // Consume exactly one paid push intent after successful Nostr push.
+                                      // This keeps paywall state aligned even if optional bridge sync returns conflicts.
+                                      try {
+                                        await fetch(
+                                          "/api/nostr/repo/push-payment",
+                                          {
+                                            method: "POST",
+                                            headers: {
+                                              "Content-Type":
+                                                "application/json",
+                                            },
+                                            body: JSON.stringify({
+                                              action: "consume_paid_intent",
+                                              ownerPubkey: pushOwnerPubkey,
+                                              repo: resolvedParams.repo,
+                                              payerPubkey:
+                                                currentUserPubkey.toLowerCase(),
+                                            }),
+                                          }
+                                        );
+                                      } catch (consumeErr) {
+                                        console.warn(
+                                          "Failed to consume paid push intent after success:",
+                                          consumeErr
+                                        );
+                                      }
+
                                       // Update state directly from push result
                                       setNostrEventId(result.eventId);
 
@@ -16842,7 +16977,7 @@ export default function RepoCodePage() {
 
                                             // Retry bridge check with delays (bridge needs time to process events from relays)
                                             const checkBridgeWithRetry = async (
-                                              attempt: number = 1
+                                              attempt = 1
                                             ) => {
                                               const delay = attempt * 2000; // 2s, 4s, 6s
                                               await new Promise((resolve) =>
@@ -16936,10 +17071,30 @@ export default function RepoCodePage() {
                                   ? "Pushing to Nostr..."
                                   : "Push to Nostr"}
                               </Button>
+                              <PushPaywallStatus
+                                entity={resolvedParams.entity}
+                                repo={resolvedParams.repo}
+                                ownerPubkey={(
+                                  repoOwnerPubkey ||
+                                  entityPubkey ||
+                                  (repo as any)?.ownerPubkey ||
+                                  currentUserPubkey ||
+                                  ""
+                                )?.toLowerCase()}
+                                payerPubkey={currentUserPubkey}
+                              />
                               <p className="text-xs text-gray-500 mt-2">
                                 Requires 2 signatures. Confirmed after both are
                                 signed.
                               </p>
+                              {(repo?.hasUnpushedEdits === true ||
+                                getRepoStatus(repo) === "live_with_edits" ||
+                                getRepoStatus(repo) === "local") && (
+                                <p className="text-xs text-amber-400 mt-1">
+                                  Local changes are not visible in other clients
+                                  yet. Push to Nostr to publish them.
+                                </p>
+                              )}
                             </>
                           )}
                       </div>
@@ -17195,9 +17350,7 @@ export default function RepoCodePage() {
         {safeFiles.length > 0 && (
           <FuzzyFileFinder
             files={safeFiles.map((f) => ({
-              type: (f?.type === "file" || f?.type === "dir"
-                ? f.type
-                : "file") as "file" | "dir",
+              type: f?.type === "file" || f?.type === "dir" ? f.type : "file",
               path: f?.path || "",
               size: f?.size,
             }))}
@@ -17219,6 +17372,50 @@ export default function RepoCodePage() {
             onClose={() => {
               setShowSshGitHelp(false);
               setSshGitHelpData(null);
+            }}
+          />
+        )}
+        {showPushPaymentQR && (
+          <PaymentQR
+            invoice={pushPaymentInvoice}
+            amount={pushPaymentAmount}
+            error={pushPaymentError}
+            pushPaymentPoll={{
+              ownerPubkey: (
+                repoOwnerPubkey ||
+                entityPubkey ||
+                repoData?.ownerPubkey ||
+                currentUserPubkey ||
+                ""
+              ).toLowerCase(),
+              repo: resolvedParams.repo,
+              payerPubkey: (currentUserPubkey || "").toLowerCase(),
+              ownerLnbitsUrl: pushPaymentLnbitsUrl || undefined,
+              ownerLnbitsReadKey: pushPaymentLnbitsReadKey || undefined,
+              ownerBlinkApiKey: pushPaymentBlinkApiKey || undefined,
+            }}
+            onPaid={() => {
+              setShowPushPaymentQR(false);
+              setPushPaymentInvoice(null);
+              setPushPaymentAmount(0);
+              setPushPaymentLnbitsUrl("");
+              setPushPaymentLnbitsReadKey("");
+              setPushPaymentBlinkApiKey("");
+              setPushPaymentError(null);
+              setTimeout(() => {
+                if (pushToNostrButtonRef.current && !isPushing) {
+                  pushToNostrButtonRef.current.click();
+                }
+              }, 250);
+            }}
+            onClose={() => {
+              setShowPushPaymentQR(false);
+              setPushPaymentInvoice(null);
+              setPushPaymentAmount(0);
+              setPushPaymentLnbitsUrl("");
+              setPushPaymentLnbitsReadKey("");
+              setPushPaymentBlinkApiKey("");
+              setPushPaymentError(null);
             }}
           />
         )}

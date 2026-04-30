@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { ZapButton } from "@/components/ui/zap-button";
+import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { resolveRepoReceiveWallet } from "@/lib/payments/resolve-repo-wallet";
 import {
@@ -32,6 +33,7 @@ export function RepoZapButton({
   amount = 10, // Use 2-10 sats for testing (LNbits ~300 sats, NWC ~84 sats)
   comment,
 }: RepoZapButtonProps) {
+  const { pubkey: currentUserPubkey } = useNostrContext();
   const [zapMode, setZapMode] = useState<"owner-only" | "auto-split">(
     "owner-only"
   );
@@ -54,7 +56,7 @@ export function RepoZapButton({
   // Fetch Nostr metadata for all contributors to get Lightning addresses
   const metadataMap = useContributorMetadata(contributorPubkeys);
 
-  // Resolve repo receive wallet (priority: repo config -> owner profile -> owner settings)
+  // Resolve repo receive wallet (priority: owner profile -> owner settings -> repo config)
   const [repoWallet, setRepoWallet] = useState<{
     lud16?: string;
     lnurl?: string;
@@ -68,13 +70,19 @@ export function RepoZapButton({
       return;
     }
     const ownerMeta = metadataMap[ownerPubkey];
-    resolveRepoReceiveWallet(entity, repo, ownerPubkey, ownerMeta)
+    resolveRepoReceiveWallet(
+      entity,
+      repo,
+      ownerPubkey,
+      ownerMeta,
+      currentUserPubkey || undefined
+    )
       .then(setRepoWallet)
       .catch((error) => {
         console.error("Failed to resolve repo wallet:", error);
         setRepoWallet({ source: "none" });
       });
-  }, [entity, repo, ownerPubkey, metadataMap]);
+  }, [entity, repo, ownerPubkey, metadataMap, currentUserPubkey]);
 
   // Filter contributors who have Lightning receive addresses
   const contributorsWithAddresses = useMemo(() => {

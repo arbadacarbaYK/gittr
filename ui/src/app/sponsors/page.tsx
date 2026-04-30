@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
-import { ZapRecord, getZapHistory } from "@/lib/payments/zap-tracker";
+import { type ZapRecord, getZapHistory } from "@/lib/payments/zap-tracker";
 import {
   formatDate24h,
   formatDateTime24h,

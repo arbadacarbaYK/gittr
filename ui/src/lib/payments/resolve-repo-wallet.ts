@@ -1,11 +1,11 @@
 /**
  * Resolves the receive wallet for a repository zap
  * Priority order:
- * 1. Repo-specific wallet config (from repo settings)
- * 2. Owner's Nostr profile (lud16, lnurl, nwcRecv from metadata)
- * 3. Owner's user settings (fallback, if we can access them)
+ * 1. Owner's Nostr profile (lud16, lnurl, nwcRecv from metadata)
+ * 2. Owner's user settings (fallback, if we can access them)
+ * 3. Repo-specific wallet config (from repo settings)
  */
-import { Metadata } from "@/lib/nostr/useContributorMetadata";
+import { type Metadata } from "@/lib/nostr/useContributorMetadata";
 import { type StoredRepo } from "@/lib/repos/storage";
 import { getSecureItem } from "@/lib/security/encryptedStorage";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
@@ -31,14 +31,67 @@ export async function resolveRepoReceiveWallet(
   entity: string,
   repo: string,
   ownerPubkey?: string,
-  ownerMetadata?: Metadata
+  ownerMetadata?: Metadata,
+  currentUserPubkey?: string
 ): Promise<{
   lud16?: string;
   lnurl?: string;
   nwcRecv?: string;
   source: "repo-config" | "owner-profile" | "owner-settings" | "none";
 }> {
-  // Priority 1: Check repo-specific wallet config
+  // Priority 1: Check owner's Nostr profile metadata
+  if (ownerMetadata) {
+    if (ownerMetadata.lud16) {
+      return { lud16: ownerMetadata.lud16, source: "owner-profile" as const };
+    }
+    if (ownerMetadata.lnurl) {
+      return { lnurl: ownerMetadata.lnurl, source: "owner-profile" as const };
+    }
+    // NWC receive from profile (less common, but possible)
+    const profileJson = typeof ownerMetadata === "object" ? ownerMetadata : {};
+    if ((profileJson as any).nwcRecv) {
+      return {
+        nwcRecv: (profileJson as any).nwcRecv,
+        source: "owner-profile" as const,
+      };
+    }
+  }
+
+  // Priority 2: Check owner's user settings (if owner is current user)
+  // This is a fallback - we can't access other users' settings
+  try {
+    if (
+      ownerPubkey &&
+      currentUserPubkey &&
+      currentUserPubkey.toLowerCase() === ownerPubkey.toLowerCase()
+    ) {
+      // Current user owns the repo - can use their settings (encrypted if encryption is enabled)
+      try {
+        const [lud16, lnurl, nwcRecv] = await Promise.all([
+          getSecureItem("gittr_lud16"),
+          getSecureItem("gittr_lnurl"),
+          getSecureItem("gittr_nwc_recv"),
+        ]);
+
+        if (lud16) return { lud16, source: "owner-settings" as const };
+        if (lnurl) return { lnurl, source: "owner-settings" as const };
+        if (nwcRecv) return { nwcRecv, source: "owner-settings" as const };
+      } catch (error) {
+        // Fallback to plaintext for backward compatibility
+        const lud16 = localStorage.getItem("gittr_lud16");
+        const lnurl = localStorage.getItem("gittr_lnurl");
+        const nwcRecv = localStorage.getItem("gittr_nwc_recv");
+
+        if (lud16) return { lud16, source: "owner-settings" as const };
+        if (lnurl) return { lnurl, source: "owner-settings" as const };
+        if (nwcRecv) return { nwcRecv, source: "owner-settings" as const };
+      }
+    }
+  } catch (error) {
+    console.error("Error reading owner settings:", error);
+  }
+
+  // Priority 3: Check repo-specific wallet config
   try {
     const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
     const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
@@ -69,60 +122,6 @@ export async function resolveRepoReceiveWallet(
     }
   } catch (error) {
     console.error("Error reading repo wallet config:", error);
-  }
-
-  // Priority 2: Check owner's Nostr profile metadata
-  if (ownerMetadata) {
-    if (ownerMetadata.lud16) {
-      return { lud16: ownerMetadata.lud16, source: "owner-profile" as const };
-    }
-    if (ownerMetadata.lnurl) {
-      return { lnurl: ownerMetadata.lnurl, source: "owner-profile" as const };
-    }
-    // NWC receive from profile (less common, but possible)
-    const profileJson = typeof ownerMetadata === "object" ? ownerMetadata : {};
-    if ((profileJson as any).nwcRecv) {
-      return {
-        nwcRecv: (profileJson as any).nwcRecv,
-        source: "owner-profile" as const,
-      };
-    }
-  }
-
-  // Priority 3: Check owner's user settings (if owner is current user)
-  // This is a fallback - we can't access other users' settings
-  try {
-    if (ownerPubkey) {
-      const currentUserPubkey = localStorage.getItem("nostr:session")
-        ? JSON.parse(localStorage.getItem("nostr:session") || "{}").pubkey
-        : null;
-
-      if (currentUserPubkey === ownerPubkey) {
-        // Current user owns the repo - can use their settings (encrypted if encryption is enabled)
-        try {
-          const [lud16, lnurl, nwcRecv] = await Promise.all([
-            getSecureItem("gittr_lud16"),
-            getSecureItem("gittr_lnurl"),
-            getSecureItem("gittr_nwc_recv"),
-          ]);
-
-          if (lud16) return { lud16, source: "owner-settings" as const };
-          if (lnurl) return { lnurl, source: "owner-settings" as const };
-          if (nwcRecv) return { nwcRecv, source: "owner-settings" as const };
-        } catch (error) {
-          // Fallback to plaintext for backward compatibility
-          const lud16 = localStorage.getItem("gittr_lud16");
-          const lnurl = localStorage.getItem("gittr_lnurl");
-          const nwcRecv = localStorage.getItem("gittr_nwc_recv");
-
-          if (lud16) return { lud16, source: "owner-settings" as const };
-          if (lnurl) return { lnurl, source: "owner-settings" as const };
-          if (nwcRecv) return { nwcRecv, source: "owner-settings" as const };
-        }
-      }
-    }
-  } catch (error) {
-    console.error("Error reading owner settings:", error);
   }
 
   return { source: "none" };

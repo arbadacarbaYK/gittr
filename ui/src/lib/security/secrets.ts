@@ -8,7 +8,7 @@
  */
 export function maskSecret(
   secret: string | null | undefined,
-  visibleChars: number = 4
+  visibleChars = 4
 ): string {
   if (!secret || secret.length === 0) return "***";
 

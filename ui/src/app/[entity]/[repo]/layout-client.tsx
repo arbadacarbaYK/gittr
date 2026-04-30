@@ -12,6 +12,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { RepoQRShare } from "@/components/ui/repo-qr-share";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  KIND_GIT_REPOSITORIES_LIST,
+  parseGitRepositoriesListEvent,
+} from "@/lib/nostr/events";
 import { getZapTotal } from "@/lib/payments/zap-tracker";
 import { canManageSettings, isOwner } from "@/lib/repo-permissions";
 import {
@@ -47,7 +51,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useParams, usePathname, useSearchParams } from "next/navigation";
-import { nip19 } from "nostr-tools";
+import { type UnsignedEvent, nip19 } from "nostr-tools";
 
 const menuItems = [
   {
@@ -106,7 +110,8 @@ const menuItems = [
     icon: <Settings className="mr-2 h-4 w-4" />,
   },
 ];
-const MENU_ITEM_WIDTH = 165;
+const MENU_ITEM_WIDTH = 185;
+const HEADER_RESERVED_WIDTH = 760;
 
 export default function RepoLayoutClient({
   children,
@@ -130,7 +135,7 @@ export default function RepoLayoutClient({
   const searchParams = useSearchParams();
   // Use consistent default width on server and initial client render to prevent hydration mismatch
   const [windowWidth, setWindowWidth] = useState(1920);
-  const { pubkey } = useNostrContext();
+  const { pubkey, publish, subscribe, defaultRelays } = useNostrContext();
   const [isWatching, setIsWatching] = useState(false);
   const [isStarred, setIsStarred] = useState(false);
   const [starCount, setStarCount] = useState<number>(0);
@@ -170,11 +175,14 @@ export default function RepoLayoutClient({
     ? rawOwnerDisplayName
     : safeInitialDisplayName;
   const ownerPicture = mounted ? rawOwnerPicture : null;
+  const publicReadRaw = (repo as any)?.publicRead;
+  const isPrivateRepo =
+    publicReadRaw === false || publicReadRaw === "false" || publicReadRaw === 0;
 
   // Helper function to generate href for repo links (avoids duplication)
   // Use consistent href on initial render to prevent hydration mismatches
   const getRepoLink = useCallback(
-    (subpath: string = "", includeSearchParams: boolean = false) => {
+    (subpath = "", includeSearchParams = false) => {
       // On initial render (before mount), always use resolvedParams.entity to ensure consistency
       const effectiveOwnerPubkey = mounted ? ownerPubkey : null;
       const basePath =
@@ -401,7 +409,7 @@ export default function RepoLayoutClient({
         // Try each candidate logo file
         for (const logoPath of candidates) {
           // Try sourceUrl first
-          let gitUrl: string | undefined = foundRepo.sourceUrl;
+          const gitUrl: string | undefined = foundRepo.sourceUrl;
           let ownerRepo: {
             owner: string;
             repo: string;
@@ -577,6 +585,61 @@ export default function RepoLayoutClient({
     } catch {}
   }, [resolvedParams.entity, resolvedParams.repo, pubkey, repo]);
 
+  // Sync watch state from canonical NIP-51 list (kind 10018)
+  useEffect(() => {
+    if (!pubkey || !subscribe || !defaultRelays || defaultRelays.length === 0) {
+      return;
+    }
+    if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+      return;
+    }
+
+    const repoIdentifier =
+      (repo as { repositoryName?: string; repo?: string; slug?: string } | null)
+        ?.repositoryName ||
+      (repo as { repositoryName?: string; repo?: string; slug?: string } | null)
+        ?.repo ||
+      resolvedParams.repo;
+    if (!repoIdentifier) return;
+
+    const repoAddress = `30617:${ownerPubkey}:${repoIdentifier}`;
+    let latestEvent: { created_at?: number; tags?: unknown } | null = null;
+
+    const unsub = subscribe(
+      [
+        {
+          kinds: [KIND_GIT_REPOSITORIES_LIST],
+          authors: [pubkey],
+          limit: 1,
+        },
+      ],
+      defaultRelays,
+      (event) => {
+        if (!latestEvent || (event.created_at || 0) >= (latestEvent.created_at || 0)) {
+          latestEvent = event;
+        }
+      },
+      3000,
+      () => {
+        if (!latestEvent) return;
+        const followed = parseGitRepositoriesListEvent(latestEvent);
+        const isFollowed = followed.includes(repoAddress);
+        setIsWatching(isFollowed);
+      }
+    );
+
+    return () => {
+      unsub();
+    };
+  }, [
+    pubkey,
+    subscribe,
+    defaultRelays,
+    ownerPubkey,
+    repo,
+    resolvedParams.repo,
+  ]);
+
   // Update zap total badge (local tracker for now)
   useEffect(() => {
     try {
@@ -669,6 +732,16 @@ export default function RepoLayoutClient({
     if (!pubkey) return;
     try {
       const repoId = `${resolvedParams.entity}/${resolvedParams.repo}`;
+      const repoIdentifier =
+        (repo as { repositoryName?: string; repo?: string; slug?: string } | null)
+          ?.repositoryName ||
+        (repo as { repositoryName?: string; repo?: string; slug?: string } | null)
+          ?.repo ||
+        resolvedParams.repo;
+      const repoAddress =
+        ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
+          ? `30617:${ownerPubkey}:${repoIdentifier}`
+          : null;
       const watched = JSON.parse(
         localStorage.getItem("gittr_watched_repos") || "[]"
       ) as string[];
@@ -685,12 +758,82 @@ export default function RepoLayoutClient({
         );
         setIsWatching(true);
       }
+
+      // Publish canonical NIP-51 Git repositories list (kind 10018) when possible.
+      if (
+        repoAddress &&
+        publish &&
+        defaultRelays &&
+        defaultRelays.length > 0 &&
+        typeof window !== "undefined" &&
+        window.nostr
+      ) {
+        const nextWatched = isWatching
+          ? watched.filter((r) => r !== repoId)
+          : [...watched, repoId];
+        const watchedRepoAddresses = new Set<string>();
+        const storedRepos = loadStoredRepos();
+        nextWatched.forEach((watchedRepoId) => {
+          const [watchedEntity, watchedRepoName] = watchedRepoId.split("/");
+          if (!watchedEntity || !watchedRepoName) return;
+          const found = findRepoByEntityAndName<StoredRepo>(
+            storedRepos,
+            watchedEntity,
+            watchedRepoName
+          );
+          const watchedOwnerPubkey = found
+            ? getRepoOwnerPubkey(found, watchedEntity)
+            : watchedEntity;
+          if (!watchedOwnerPubkey || !/^[0-9a-f]{64}$/i.test(watchedOwnerPubkey)) {
+            return;
+          }
+          const watchedRepoIdentifier =
+            (found as { repositoryName?: string; repo?: string; slug?: string } | null)
+              ?.repositoryName ||
+            (found as { repositoryName?: string; repo?: string; slug?: string } | null)
+              ?.repo ||
+            watchedRepoName;
+          watchedRepoAddresses.add(
+            `30617:${watchedOwnerPubkey}:${watchedRepoIdentifier}`
+          );
+        });
+        if (!isWatching) {
+          watchedRepoAddresses.add(repoAddress);
+        }
+
+        const createdAt = Math.floor(Date.now() / 1000);
+        const unsignedEvent = {
+          kind: KIND_GIT_REPOSITORIES_LIST,
+          created_at: createdAt,
+          tags: Array.from(watchedRepoAddresses).map((address) => ["a", address]),
+          content: "",
+          pubkey,
+        };
+        void window.nostr
+          .signEvent(unsignedEvent as UnsignedEvent)
+          .then((signedEvent) => {
+            publish(signedEvent, defaultRelays);
+          })
+          .catch((error) => {
+            console.warn("[Repo Watch] Failed to publish kind 10018 list:", error);
+          });
+      }
+
       // Notify repo pages to refresh their counters
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("gittr:repos-updated"));
       }
     } catch {}
-  }, [resolvedParams.entity, resolvedParams.repo, isWatching, pubkey]);
+  }, [
+    resolvedParams.entity,
+    resolvedParams.repo,
+    isWatching,
+    pubkey,
+    repo,
+    ownerPubkey,
+    publish,
+    defaultRelays,
+  ]);
 
   const handleStar = useCallback(() => {
     if (!pubkey) return;
@@ -799,9 +942,9 @@ export default function RepoLayoutClient({
 
   // Memoize the number of visible menu items to prevent recalculation on every render
   const visibleMenuItemsCount = useMemo(() => {
-    return mounted
-      ? Math.floor(windowWidth / MENU_ITEM_WIDTH)
-      : Math.floor(1920 / MENU_ITEM_WIDTH);
+    const effectiveWidth = mounted ? windowWidth : 1920;
+    const availableWidth = Math.max(0, effectiveWidth - HEADER_RESERVED_WIDTH);
+    return Math.max(1, Math.floor(availableWidth / MENU_ITEM_WIDTH));
   }, [mounted, windowWidth]);
 
   // Removed onClick handler that was interfering with navigation
@@ -892,7 +1035,7 @@ export default function RepoLayoutClient({
               {decodeURIComponent(resolvedParams.repo)}
             </a>
             <span className="border-lightgray text-gray-400 ml-1.5 mt-px rounded-full border px-1.5 text-xs">
-              Public
+              {isPrivateRepo ? "Private" : "Public"}
             </span>
           </div>
 

@@ -45,9 +45,9 @@ export default function ComparePage({
     try {
       const repos = loadStoredRepos();
       const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
-      setBranches((repoData?.branches as string[] | undefined) || ["main"]);
+      setBranches((repoData?.branches ) || ["main"]);
       setTags(
-        (repoData?.tags as string[] | undefined)?.map(
+        (repoData?.tags )?.map(
           (t: string | { name: string }) => (typeof t === "string" ? t : t.name)
         ) || []
       );

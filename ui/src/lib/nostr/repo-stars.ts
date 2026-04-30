@@ -1,5 +1,5 @@
 // NIP-25: Repository star reactions and NIP-51: Following lists
-import { Event, Filter } from "nostr-tools";
+import { type Event, type Filter } from "nostr-tools";
 
 import { KIND_REACTION } from "./events";
 

@@ -98,6 +98,7 @@ export interface StoredRepo {
   fromNostr?: boolean;
   publicRead?: boolean; // NIP-34: Repository privacy (read access)
   publicWrite?: boolean; // NIP-34: Repository privacy (write access)
+  pushCostSats?: number; // Optional repo-level push paywall cost in sats
 }
 
 const hasLocalChanges = (repo: StoredRepo): boolean =>
@@ -826,7 +827,7 @@ export const saveRepoDeletedPaths = (
 export function normalizeFilePath(path: string): string {
   if (!path || typeof path !== "string") return "";
   // Remove leading and trailing slashes
-  let normalized = path.trim().replace(/^\/+|\/+$/g, "");
+  const normalized = path.trim().replace(/^\/+|\/+$/g, "");
   // If path is empty after normalization, it was just "/" - return empty (invalid)
   if (!normalized) return "";
   return normalized;

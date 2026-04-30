@@ -89,7 +89,7 @@ export default function ProjectsPage() {
       // Ensure all projects have view property and items array
       const normalized: Project[] = stored.map((p) => ({
         ...p,
-        view: (p.view || "kanban") as "kanban" | "roadmap",
+        view: (p.view || "kanban"),
         items: p.items || [], // Ensure items array exists
       }));
       setProjects(normalized);
@@ -460,9 +460,7 @@ export default function ProjectsPage() {
       p.id === project.id
         ? {
             ...p,
-            view: (p.view === "kanban" ? "roadmap" : "kanban") as
-              | "kanban"
-              | "roadmap",
+            view: (p.view === "kanban" ? "roadmap" : "kanban"),
           }
         : p
     );

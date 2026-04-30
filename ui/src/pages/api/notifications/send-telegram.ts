@@ -47,7 +47,7 @@ export default async function handler(
     // Telegram HTML: Use <a href="url">link text</a> for clickable links
     // Escape HTML special characters in the URL
     // Convert http:// to https:// for better Telegram link support (or keep http if needed)
-    let escapedUrl = url
+    const escapedUrl = url
       ? url.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
       : "";
     // Note: Telegram supports both http and https in HTML links, but https is preferred

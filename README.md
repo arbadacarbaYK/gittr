@@ -28,6 +28,7 @@ A decentralized Git platform built on Nostr with native Bitcoin/Lightning paymen
 - ✅ Issue bounties (funded via LNbits)
 - ✅ Accumulated zap distribution (manual split)
 - ✅ Payment settings (LNURL, LUD-16, NWC, LNbits)
+- ✅ Optional repository push paywall (`push_cost_sats`) for GUI + SSH pushes
 - ✅ Bounty Hunt page for discovering funded work
 
 ### Developer Experience
@@ -317,9 +318,12 @@ This diagram shows **all enhancements** added to the gittr.space platform across
 
 See **[NIPS_AND_EVENT_KINDS.md](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FNIPS_AND_EVENT_KINDS.md)** for complete documentation.
 
+Interop note: gittr now enforces required NIP-34 tags for issue/patch/PR events, uses canonical repository identifiers in `a` tags, supports NIP-51 git repository follow lists (`10018`), and includes NIP-32 label overlays (`1985`) for post-creation metadata compatibility with ngit/gitworkshop clients.
+
 **Standard NIPs:**
 - NIP-01 (Basic Protocol), NIP-11 (Relay Info), NIP-19 (bech32), NIP-22 (Comments), NIP-25 (Reactions/Stars)
 - NIP-33/34 (Replaceable Events - Repository announcements)
+- NIP-32 (Labeling overlays), NIP-51 (Lists, including followed Git repositories)
 - NIP-46 (Remote Signer/NIP-07), NIP-57 (Lightning Zaps), NIP-96 (Blossom file storage)
 - NIP-C0 (Code Snippets)
 
@@ -332,7 +336,10 @@ See **[NIPS_AND_EVENT_KINDS.md](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p
 - **Kind 1618 (NIP-34)** – Pull requests
 - **Kind 1619 (NIP-34)** – Pull request updates
 - **Kind 1621 (NIP-34)** – Issues
+- **Kind 1624 (Experimental)** – Cover notes (feature-flagged interoperability primitive)
 - **Kind 1630-1633 (NIP-34)** – Status events (Open/Applied/Closed/Draft)
+- **Kind 1985 (NIP-32)** – Label overlays for post-hoc labels/subject metadata
+- **Kind 10018 (NIP-51)** – Followed Git repositories list
 - **Kind 30617 (NIP-34)** – Repository metadata (primary source)
 - **Kind 30618 (NIP-34)** – Repository state (required for ngit clients)
 - **Kind 9806** – Bounties (custom extension)

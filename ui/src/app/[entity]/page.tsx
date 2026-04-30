@@ -24,12 +24,12 @@ import {
   KIND_STATUS_CLOSED,
 } from "@/lib/nostr/events";
 import {
-  ClaimedIdentity,
+  type ClaimedIdentity,
   useContributorMetadata,
 } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
-import { UserStats } from "@/lib/stats";
+import { type UserStats } from "@/lib/stats";
 import {
   getEntityDisplayName,
   getEntityPicture,
@@ -563,7 +563,7 @@ export default function EntityPage({
 
       if (existingIndex >= 0) {
         const existing = existingRepos[existingIndex];
-        const existingLatest = (existing as any).lastNostrEventCreatedAt || 0;
+        const existingLatest = (existing ).lastNostrEventCreatedAt || 0;
         if (event.created_at > existingLatest) {
           existingRepos[existingIndex] = {
             ...existing,
@@ -1354,12 +1354,12 @@ export default function EntityPage({
                 dedupeMap.set(key, r);
               } else {
                 // Keep the one with the most recent event date
-                const rLatest = (r as any).lastNostrEventCreatedAt
-                  ? (r as any).lastNostrEventCreatedAt * 1000
-                  : (r as any).updatedAt || r.createdAt || 0;
-                const existingLatest = (existing as any).lastNostrEventCreatedAt
-                  ? (existing as any).lastNostrEventCreatedAt * 1000
-                  : (existing as any).updatedAt || existing.createdAt || 0;
+                const rLatest = (r ).lastNostrEventCreatedAt
+                  ? (r ).lastNostrEventCreatedAt * 1000
+                  : (r ).updatedAt || r.createdAt || 0;
+                const existingLatest = (existing ).lastNostrEventCreatedAt
+                  ? (existing ).lastNostrEventCreatedAt * 1000
+                  : (existing ).updatedAt || existing.createdAt || 0;
                 if (rLatest > existingLatest) {
                   dedupeMap.set(key, r);
                 }
@@ -1631,9 +1631,9 @@ export default function EntityPage({
         // CRITICAL: getUserActivities now filters out activities from deleted repos
         // Defer statistics loading to improve initial page load performance
         setTimeout(() => {
-          let activities = getUserActivities(fullPubkey);
-          let counts = getUserActivityCounts(fullPubkey);
-          let graph = getContributionGraph(fullPubkey);
+          const activities = getUserActivities(fullPubkey);
+          const counts = getUserActivityCounts(fullPubkey);
+          const graph = getContributionGraph(fullPubkey);
 
           // Set localStorage counts after page has rendered
           setActivityCounts(counts);
@@ -3608,7 +3608,7 @@ export default function EntityPage({
                     };
 
                     // Try sourceUrl first
-                    let gitUrl: string | undefined = repo.sourceUrl;
+                    const gitUrl: string | undefined = repo.sourceUrl;
                     let ownerRepo: {
                       owner: string;
                       repo: string;
@@ -3622,12 +3622,12 @@ export default function EntityPage({
                     // If sourceUrl didn't work, try clone array
                     if (
                       !ownerRepo &&
-                      (repo as any).clone &&
-                      Array.isArray((repo as any).clone) &&
-                      (repo as any).clone.length > 0
+                      (repo ).clone &&
+                      Array.isArray((repo ).clone) &&
+                      (repo ).clone.length > 0
                     ) {
                       // Find first GitHub/GitLab/Codeberg URL in clone array
-                      const gitCloneUrl = (repo as any).clone.find(
+                      const gitCloneUrl = (repo ).clone.find(
                         (url: string) =>
                           url &&
                           (url.includes("github.com") ||
@@ -3673,7 +3673,7 @@ export default function EntityPage({
                       const ownerPubkey =
                         repo.ownerPubkey ||
                         getRepoOwnerPubkey(repo, repo.entity);
-                      const repoDataAny = repo as any;
+                      const repoDataAny = repo ;
                       let repoName =
                         repoDataAny?.repositoryName ||
                         repo.repo ||

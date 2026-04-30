@@ -23,7 +23,7 @@ export default function TestDataPage() {
       };
 
       // Create repo
-      let repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
+      const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
       if (
         !repos.find(
           (r: any) => r.entity === testRepo.entity && r.repo === testRepo.repo

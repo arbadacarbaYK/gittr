@@ -30,7 +30,7 @@ export function detectConflicts(
     after?: string;
   }>,
   baseFiles: Record<string, string>, // path -> content
-  baseBranch: string = "main"
+  baseBranch = "main"
 ): ConflictResult {
   const conflicts: Conflict[] = [];
 

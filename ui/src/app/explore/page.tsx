@@ -16,6 +16,7 @@ import {
   type Metadata,
   useContributorMetadata,
 } from "@/lib/nostr/useContributorMetadata";
+import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 import { loadStoredRepos } from "@/lib/repos/storage";
 import {
   getEntityDisplayName,
@@ -634,7 +635,7 @@ function ExplorePageContent() {
         };
 
         // Try sourceUrl first
-        let gitUrl: string | undefined = repo.sourceUrl;
+        const gitUrl: string | undefined = repo.sourceUrl;
         let ownerRepo: {
           owner: string;
           repo: string;
@@ -2218,10 +2219,9 @@ function ExplorePageContent() {
       // Skip if owner marked as deleted/archived on Nostr (completely hidden from explore - no note shown)
       if (r.deleted === true || r.archived === true) return false;
 
-      // Filter out private repos (unless user is the owner)
+      // Filter out private repos unless current user has private access.
       // NOTE: Repos without publicRead field (undefined) are treated as public (default)
       if (r.publicRead === false) {
-        // Check if current user is the owner
         const repoOwnerPubkey =
           r.ownerPubkey ||
           (r.entity && r.entity.startsWith("npub")
@@ -2236,12 +2236,14 @@ function ExplorePageContent() {
                 }
               })()
             : null);
-        const isOwner =
-          pubkey &&
-          repoOwnerPubkey &&
-          pubkey.toLowerCase() === repoOwnerPubkey.toLowerCase();
-        if (!isOwner) {
-          return false; // Hide private repos from non-owners
+        const hasAccess = hasPrivateRepoAccess(
+          pubkey,
+          r.contributors || [],
+          repoOwnerPubkey,
+          (r as any).maintainers || []
+        );
+        if (!hasAccess) {
+          return false; // Hide private repos from unauthorized users
         }
       }
 
@@ -2563,7 +2565,7 @@ function ExplorePageContent() {
                 (r.slug && typeof r.slug === "string" && r.slug.includes("/")
                   ? r.slug.split("/")[1]
                   : r.slug || "");
-              const ownerPubkey = getRepoOwnerPubkey(r as any, entity);
+              const ownerPubkey = getRepoOwnerPubkey(r , entity);
 
               // Skip repos with missing critical data (silently, no warnings)
               if (!ownerPubkey || !repo || !entity) {
@@ -2591,7 +2593,7 @@ function ExplorePageContent() {
               const repoDisplayName = r.name || repoForUrl; // CRITICAL: Use original name for display
 
               // CRITICAL: Resolve full owner pubkey and get display name from metadata
-              const ownerPubkey = getRepoOwnerPubkey(r as any, entity);
+              const ownerPubkey = getRepoOwnerPubkey(r , entity);
 
               // CRITICAL: Use npub format for URL (GRASP protocol standard)
               // Convert ownerPubkey to npub format for consistent URLs

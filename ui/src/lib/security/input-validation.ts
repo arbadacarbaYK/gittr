@@ -133,8 +133,8 @@ export function validateRepoName(name: string): {
 // Text content validation (for comments, descriptions, etc.)
 export function validateTextContent(
   content: string,
-  maxLength: number = 10000,
-  fieldName: string = "Content"
+  maxLength = 10000,
+  fieldName = "Content"
 ): { valid: boolean; error?: string } {
   if (content === undefined || content === null) {
     return { valid: false, error: `${fieldName} is required` };

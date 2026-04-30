@@ -34,6 +34,14 @@ interface PaymentQRProps {
   onPaid?: () => void; // Callback when payment is confirmed
   extra?: React.ReactNode; // Optional extra content (e.g., mode selection, notes)
   error?: string | null; // Optional error message to display
+  pushPaymentPoll?: {
+    ownerPubkey: string;
+    repo: string;
+    payerPubkey: string;
+    ownerLnbitsUrl?: string;
+    ownerLnbitsReadKey?: string;
+    ownerBlinkApiKey?: string;
+  };
 }
 
 export function PaymentQR({
@@ -47,6 +55,7 @@ export function PaymentQR({
   onPaid,
   extra,
   error,
+  pushPaymentPoll,
 }: PaymentQRProps) {
   const [copied, setCopied] = useState(false);
   const [nwcUri, setNwcUri] = useState<string | null>(propNwcUri || null);
@@ -55,6 +64,7 @@ export function PaymentQR({
     "pending" | "paid" | "checking"
   >("pending");
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const hasTriggeredOnPaidRef = useRef(false);
 
   const cleanInvoice = (invoice || "").replace(/^lightning:/i, "");
 
@@ -505,6 +515,50 @@ export function PaymentQR({
   };
 
   const checkPaymentStatus = async () => {
+    if (
+      pushPaymentPoll?.ownerPubkey &&
+      pushPaymentPoll?.repo &&
+      pushPaymentPoll?.payerPubkey
+    ) {
+      try {
+        const params = new URLSearchParams({
+          ownerPubkey: pushPaymentPoll.ownerPubkey,
+          repo: pushPaymentPoll.repo,
+          payerPubkey: pushPaymentPoll.payerPubkey,
+        });
+        const headers: Record<string, string> = {};
+        if (pushPaymentPoll.ownerLnbitsUrl) {
+          headers["x-owner-lnbits-url"] = pushPaymentPoll.ownerLnbitsUrl;
+        }
+        if (pushPaymentPoll.ownerLnbitsReadKey) {
+          headers["x-owner-lnbits-read-key"] = pushPaymentPoll.ownerLnbitsReadKey;
+        }
+        if (pushPaymentPoll.ownerBlinkApiKey) {
+          headers["x-owner-blink-api-key"] = pushPaymentPoll.ownerBlinkApiKey;
+        }
+        const response = await fetch(`/api/nostr/repo/push-payment?${params}`, {
+          headers,
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data?.authorized) {
+          setPaid(true);
+          setPaymentStatus("paid");
+          if (!hasTriggeredOnPaidRef.current && onPaid) {
+            hasTriggeredOnPaidRef.current = true;
+            onPaid();
+          }
+          if (pollingIntervalRef.current) {
+            clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+        }
+      } catch (error) {
+        console.error("Push paywall status check failed:", error);
+      }
+      return;
+    }
+
     if (!paymentHash || !lnbitsUrl || !lnbitsAdminKey) return;
 
     try {
@@ -522,7 +576,8 @@ export function PaymentQR({
         setPaid(true);
         setPaymentStatus("paid");
         // Call onPaid callback to record accumulated zap
-        if (onPaid) {
+        if (!hasTriggeredOnPaidRef.current && onPaid) {
+          hasTriggeredOnPaidRef.current = true;
           onPaid();
         }
         if (pollingIntervalRef.current) {
@@ -537,7 +592,11 @@ export function PaymentQR({
 
   // Poll payment status if we have paymentHash
   useEffect(() => {
-    if (paymentHash && lnbitsUrl && lnbitsAdminKey && !paid) {
+    const shouldPollPushPaywall =
+      !!pushPaymentPoll?.ownerPubkey &&
+      !!pushPaymentPoll?.repo &&
+      !!pushPaymentPoll?.payerPubkey;
+    if ((shouldPollPushPaywall || (paymentHash && lnbitsUrl && lnbitsAdminKey)) && !paid) {
       // Initial check
       checkPaymentStatus();
       // Poll every 3 seconds
@@ -548,7 +607,15 @@ export function PaymentQR({
         }
       };
     }
-  }, [paymentHash, lnbitsUrl, lnbitsAdminKey, paid]);
+  }, [
+    paymentHash,
+    lnbitsUrl,
+    lnbitsAdminKey,
+    paid,
+    pushPaymentPoll?.ownerPubkey,
+    pushPaymentPoll?.repo,
+    pushPaymentPoll?.payerPubkey,
+  ]);
 
   const copyInvoice = async () => {
     try {

@@ -1,4 +1,4 @@
-import { Metadata } from "next";
+import { type Metadata } from "next";
 
 // Default metadata for the site
 // Next.js App Router will pick this up automatically

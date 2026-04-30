@@ -75,6 +75,13 @@ Edit `ui/.env.local` with your values. All configuration is in this file - domai
 
 If you run backend/bridge services from the repo root, there is also a root `.env.example` that mirrors the optional server-side variables.
 
+**Push paywall note (optional):**
+- Repo owners can set `Push Cost (sats)` in Repo Settings.
+- To enable non-zero Push Cost, owner must configure either `LNbits Invoice Key` or `Blink API Key` in `Settings -> Account`.
+- This paywall is enforced for both GUI push and SSH push when set above `0`.
+- GUI authorization uses a dedicated push-payment intent flow and grants a short push window (default 15 minutes).
+- SSH push checks the same bridge DB grant before allowing `git-receive-pack`.
+
 **GitHub OAuth Setup (Optional, for private repository access):**
 
 If you want users to be able to import and view files from private GitHub repositories, you need to set up GitHub OAuth:
@@ -522,6 +529,11 @@ sudo journalctl -u git-nostr-bridge -n 50
 - Check SSH server: `sudo systemctl status sshd`
 - Test SSH: `ssh git-nostr@gittr.space`
 - Ensure port 22 is open: `sudo ufw allow 22/tcp`
+
+### Push paywall blocks pushes
+- If terminal shows `push payment required ...`, generate/pay invoice in repo UI via **Push to Nostr**, then retry `git push`.
+- If terminal shows `push payment authorization expired`, pay pending invoice (or create a new one) and push again.
+- Verify repo owner has configured `LNbits Invoice Key` or `Blink API Key` in Settings -> Account before setting non-zero Push Cost.
 
 ### Telegram webhook not working
 - Check webhook status: `curl https://gittr.space/api/telegram/webhook-status`

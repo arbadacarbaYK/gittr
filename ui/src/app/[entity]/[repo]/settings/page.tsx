@@ -26,7 +26,10 @@ import {
   loadStoredRepos,
   saveStoredRepos,
 } from "@/lib/repos/storage";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+import {
+  getNostrPrivateKey,
+  getSecureItem,
+} from "@/lib/security/encryptedStorage";
 import { formatDate24h } from "@/lib/utils/date-format";
 import {
   getRepoStorageKey,
@@ -148,6 +151,10 @@ export default function RepoSettingsPage() {
     nwcSend?: string;
   }>({});
   const [requiredApprovals, setRequiredApprovals] = useState<number>(1);
+  const [pushCostSats, setPushCostSats] = useState<number>(0);
+  const [hasLnbitsInvoiceKey, setHasLnbitsInvoiceKey] =
+    useState<boolean>(false);
+  const [hasBlinkApiKey, setHasBlinkApiKey] = useState<boolean>(false);
   const [gitSshBase, setGitSshBase] = useState("");
   const [owners, setOwners] = useState<
     Array<{ pubkey: string; name?: string; weight: number; role: "owner" }>
@@ -174,6 +181,7 @@ export default function RepoSettingsPage() {
           zapPolicy?: { splits?: ZapSplit[] };
           logoUrl?: string;
           requiredApprovals?: number;
+          pushCostSats?: number;
           walletConfig?: typeof repoWalletConfig;
           gitSshBase?: string;
           publicRead?: boolean;
@@ -184,6 +192,13 @@ export default function RepoSettingsPage() {
         setZapSplits(repoWithExtras.zapPolicy?.splits || []);
         setLogoInput(repoWithExtras.logoUrl || "");
         setRequiredApprovals(repoWithExtras.requiredApprovals || 1);
+        setPushCostSats(
+          typeof repoWithExtras.pushCostSats === "number" &&
+            Number.isFinite(repoWithExtras.pushCostSats) &&
+            repoWithExtras.pushCostSats >= 0
+            ? Math.floor(repoWithExtras.pushCostSats)
+            : 0
+        );
         // Load repo wallet config
         setRepoWalletConfig(repoWithExtras.walletConfig || {});
         // Load gitSshBase
@@ -267,6 +282,47 @@ export default function RepoSettingsPage() {
     } catch {}
   }, [entity, repo]);
 
+  useEffect(() => {
+    let mounted = true;
+    const loadInvoiceKey = async () => {
+      try {
+        const [invoiceKey, blinkKey] = await Promise.all([
+          getSecureItem("gittr_lnbits_invoice_key"),
+          getSecureItem("gittr_blink_api_key"),
+        ]);
+        if (mounted) {
+          setHasLnbitsInvoiceKey(
+            typeof invoiceKey === "string" && invoiceKey.trim().length > 0
+          );
+          setHasBlinkApiKey(
+            typeof blinkKey === "string" && blinkKey.trim().length > 0
+          );
+        }
+      } catch {
+        const fallback =
+          typeof window !== "undefined"
+            ? localStorage.getItem("gittr_lnbits_invoice_key")
+            : "";
+        const fallbackBlink =
+          typeof window !== "undefined"
+            ? localStorage.getItem("gittr_blink_api_key")
+            : "";
+        if (mounted) {
+          setHasLnbitsInvoiceKey(
+            typeof fallback === "string" && fallback.trim().length > 0
+          );
+          setHasBlinkApiKey(
+            typeof fallbackBlink === "string" && fallbackBlink.trim().length > 0
+          );
+        }
+      }
+    };
+    loadInvoiceKey();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const handleAddTag = () => {
     if (tagInput.trim() && !tags.includes(tagInput.trim())) {
       setTags([...tags, tagInput.trim()]);
@@ -309,6 +365,14 @@ export default function RepoSettingsPage() {
     setStatus("");
 
     try {
+      if (!hasLnbitsInvoiceKey && !hasBlinkApiKey && pushCostSats > 0) {
+        setStatus(
+          "Error: Push Cost requires LNbits Invoice Key OR Blink API Key in Settings -> Account."
+        );
+        setSaving(false);
+        return;
+      }
+
       // CRITICAL: Require signature for settings changes (owner must sign)
       const privateKey = await getNostrPrivateKey();
       const hasNip07 = typeof window !== "undefined" && window.nostr;
@@ -366,6 +430,7 @@ export default function RepoSettingsPage() {
               : undefined,
           gitSshBase: gitSshBase || undefined,
           requiredApprovals: requiredApprovals,
+          pushCostSats: Math.max(0, Math.floor(pushCostSats || 0)),
           contributors: updatedContributors,
           ownerPubkey: owners[0]?.pubkey || repos[repoIndex].ownerPubkey, // First owner is primary
           publicRead: isPublic,
@@ -379,6 +444,7 @@ export default function RepoSettingsPage() {
           walletConfig?: typeof repoWalletConfig;
           gitSshBase?: string;
           requiredApprovals?: number;
+          pushCostSats?: number;
         };
         // Assign runtime properties separately
         const repoWithExtras = repos[repoIndex] as StoredRepo & {
@@ -389,6 +455,7 @@ export default function RepoSettingsPage() {
           walletConfig?: typeof repoWalletConfig;
           gitSshBase?: string;
           requiredApprovals?: number;
+          pushCostSats?: number;
         };
         repoWithExtras.publicRead = isPublic;
         repoWithExtras.publicWrite = false; // Repos are read-only for non-owners
@@ -403,6 +470,10 @@ export default function RepoSettingsPage() {
             : undefined;
         repoWithExtras.gitSshBase = gitSshBase || undefined;
         repoWithExtras.requiredApprovals = requiredApprovals;
+        repoWithExtras.pushCostSats = Math.max(
+          0,
+          Math.floor(pushCostSats || 0)
+        );
         saveStoredRepos(repos);
 
         // Mark repo as having unpushed edits if it was previously live
@@ -444,6 +515,7 @@ export default function RepoSettingsPage() {
             tags,
             zapPolicy: zapSplits.length > 0 ? { splits: zapSplits } : undefined,
             requiredApprovals: requiredApprovals,
+            pushCostSats: Math.max(0, Math.floor(pushCostSats || 0)),
             links: repoLinks.length > 0 ? repoLinks : undefined,
             // CRITICAL: Preserve clone and relays tags from original push
             // This ensures the replaceable event maintains discoverability
@@ -1117,6 +1189,47 @@ export default function RepoSettingsPage() {
               Private
             </Button>
           </div>
+        </div>
+
+        <div>
+          <Label>Push Cost (sats)</Label>
+          <p className="text-sm text-gray-400 mt-1 mb-3">
+            Require a payment before every Git push (GUI and SSH). Set to 0 to
+            disable.
+          </p>
+          <p className="text-xs text-yellow-400 mb-2">
+            Requires LNbits Invoice Key or Blink API Key in Settings -&gt;
+            Account (repo owner).
+          </p>
+          <p className="text-xs text-gray-400 mb-2">
+            Blink key format is GraphQL API key from dashboard.blink.sv
+            (usually starts with <code>blink_</code>).
+          </p>
+          {!hasLnbitsInvoiceKey && !hasBlinkApiKey && (
+            <p className="text-xs text-red-400 mb-2">
+              Missing LNbits Invoice Key and Blink API Key: push paywall can
+              only be 0 until one is configured.
+            </p>
+          )}
+          <Input
+            type="number"
+            min="0"
+            max="10000000"
+            value={pushCostSats}
+            onChange={(e) =>
+              setPushCostSats(() => {
+                const nextValue = Math.max(
+                  0,
+                  Math.min(10000000, parseInt(e.target.value) || 0)
+                );
+                if (!hasLnbitsInvoiceKey && !hasBlinkApiKey && nextValue > 0)
+                  return 0;
+                return nextValue;
+              })
+            }
+            placeholder="0"
+            className="w-40"
+          />
         </div>
 
         <div>

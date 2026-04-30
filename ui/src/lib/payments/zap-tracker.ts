@@ -79,7 +79,7 @@ export function getZapCount(
 export function getZapHistory(
   recipient?: string,
   contextId?: string,
-  limit: number = 50
+  limit = 50
 ): ZapRecord[] {
   if (typeof window === "undefined") return [];
 

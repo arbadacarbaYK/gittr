@@ -235,6 +235,24 @@ This publishes:
 - `git push` updates the repository on the bridge server
 - "Push to Nostr" publishes NIP-34 events to Nostr relays
 - Both are needed for full functionality: bridge for git operations, Nostr events for discovery
+- Publishing to Nostr always requires a signer approval (NIP-07 extension or local nsec signer)
+
+## Push Paywall Flow (Optional Per Repository)
+
+Some repositories can require a sats payment before pushes are accepted.
+
+How it works:
+1. Repo owner sets **Push Cost (sats)** in repository settings.
+2. On "Push to Nostr", gittr creates a Lightning invoice (QR + BOLT11).
+3. Payer pays invoice with any wallet.
+4. Server records a short-lived, **single-use** push authorization (you must use it before it expires).
+5. Retry push (`git push origin main`) to continue the Git operation. **Each successful push consumes one authorization** — paying once does not cover unlimited pushes.
+
+Notes:
+- This paywall is separate from "Zap this repo" donations.
+- Unused authorization expires after a short time; if expired, create/pay a new invoice.
+- Repo owners can enable non-zero Push Cost after configuring either LNbits Invoice Key or Blink API Key in Settings -> Account.
+- For SSH, authorization is linked to the payer pubkey + owner/repo tuple, so simultaneous payments from different users stay isolated.
 
 ## Troubleshooting
 
@@ -255,6 +273,19 @@ This publishes:
 ### "Permission denied" (for write operations)
 - Only repository owners and users with WRITE or ADMIN permissions can push
 - Check repository permissions in Settings → Repository → Permissions
+
+### "push payment required for '<owner>/<repo>' (<n> sats)"
+- The repository has push paywall enabled.
+- If an active invoice already exists for your payer identity, SSH prints it directly as `pending invoice (BOLT11): ...`.
+- If no invoice is printed, open the repository page on gittr.space and click **Push to Nostr** once to generate one.
+- Pay the invoice.
+- Run `git push origin main` again.
+- If owner setup fails, verify Settings -> Account has either LNbits Invoice Key or Blink API Key configured.
+
+### "push payment authorization expired"
+- Previous paid authorization window has expired.
+- Pay the printed pending invoice if shown, or generate/pay a new push invoice in the web UI.
+- Retry `git push`.
 
 ### "Repository not found"
 - Check that the repository exists on gittr

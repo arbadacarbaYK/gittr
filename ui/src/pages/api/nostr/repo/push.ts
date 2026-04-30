@@ -1,6 +1,8 @@
-import { rateLimiters, checkPushPerPubkey } from "@/app/api/middleware/rate-limit";
+import {
+  checkPushPerPubkey,
+  rateLimiters,
+} from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
-import { verifyNostrAuth, verifySSHKeyOwnership } from "./push-auth";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync, statSync } from "fs";
@@ -10,6 +12,8 @@ import { dirname, join, normalize } from "path";
 import { promisify } from "util";
 
 import { mkdir, mkdtemp, rm, stat, writeFile } from "fs/promises";
+
+import { verifyNostrAuth, verifySSHKeyOwnership } from "./push-auth";
 
 const execAsync = promisify(exec);
 
@@ -30,7 +34,8 @@ const sanitizePath = (input: string): string => {
 
 const MAX_REFNAME_LENGTH = 255;
 
-const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\"'\"'`)}'`;
+const shellQuote = (value: string): string =>
+  `'${value.replace(/'/g, `'\"'\"'`)}'`;
 
 const validateBranchName = (
   input: unknown
@@ -55,7 +60,10 @@ const validateBranchName = (
     branch.endsWith("/") ||
     branch.endsWith(".")
   ) {
-    return { branch: "", error: "branch has invalid leading or trailing characters" };
+    return {
+      branch: "",
+      error: "branch has invalid leading or trailing characters",
+    };
   }
 
   if (
@@ -75,7 +83,11 @@ const validateBranchName = (
   }
 
   const parts = branch.split("/");
-  if (parts.some((part) => !part || part === "." || part === ".." || part.endsWith(".lock"))) {
+  if (
+    parts.some(
+      (part) => !part || part === "." || part === ".." || part.endsWith(".lock")
+    )
+  ) {
     return { branch: "", error: "branch contains invalid path segments" };
   }
 
@@ -129,6 +141,115 @@ async function resolveReposDir(): Promise<string> {
   }
 
   return reposDir;
+}
+
+async function resolveBridgeDbPath(): Promise<string | null> {
+  const configPaths = [
+    process.env.HOME
+      ? `${process.env.HOME}/.config/git-nostr/git-nostr-bridge.json`
+      : null,
+    "/home/git-nostr/.config/git-nostr/git-nostr-bridge.json",
+  ].filter(Boolean) as string[];
+
+  for (const configPath of configPaths) {
+    try {
+      if (existsSync(configPath)) {
+        const configContent = readFileSync(configPath, "utf-8");
+        const config = JSON.parse(configContent);
+        if (config.DbFile && typeof config.DbFile === "string") {
+          const homeDir = configPath.includes("/home/git-nostr")
+            ? "/home/git-nostr"
+            : process.env.HOME || "";
+          return config.DbFile.replace(/^~/, homeDir);
+        }
+      }
+    } catch {
+      // Ignore config read errors and continue to next path
+    }
+  }
+
+  if (process.env.HOME) {
+    return `${process.env.HOME}/.config/git-nostr/git-nostr-db.sqlite`;
+  }
+  return null;
+}
+
+async function getRepoPushPolicy(
+  dbPath: string,
+  ownerPubkey: string,
+  repoName: string
+): Promise<number> {
+  if (!existsSync(dbPath)) return 0;
+  try {
+    await execAsync("which sqlite3", { timeout: 1000 });
+  } catch {
+    return 0;
+  }
+
+  const escapedOwnerPubkey = ownerPubkey.replace(/'/g, "''");
+  const escapedRepoName = repoName.replace(/'/g, "''");
+  const query = `SELECT PushCostSats FROM RepositoryPushPolicy WHERE OwnerPubKey='${escapedOwnerPubkey}' AND RepositoryName='${escapedRepoName}' LIMIT 1`;
+  const escapedQuery = query.replace(/'/g, "'\\''");
+  const command = `echo '${escapedQuery}' | sqlite3 "${dbPath}"`;
+  try {
+    const { stdout } = await execAsync(command, { timeout: 4000 });
+    const value = parseInt((stdout || "").trim(), 10);
+    if (Number.isFinite(value) && value >= 0) return value;
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function hasPaidPushIntent(
+  dbPath: string,
+  ownerPubkey: string,
+  repoName: string,
+  payerPubkey: string
+): Promise<boolean> {
+  if (!existsSync(dbPath)) return false;
+  try {
+    await execAsync("which sqlite3", { timeout: 1000 });
+  } catch {
+    return false;
+  }
+
+  const escapedOwnerPubkey = ownerPubkey.replace(/'/g, "''");
+  const escapedRepoName = repoName.replace(/'/g, "''");
+  const escapedPayer = payerPubkey.replace(/'/g, "''");
+  const query = `SELECT 1 FROM RepositoryPushPaymentIntent WHERE OwnerPubKey='${escapedOwnerPubkey}' AND RepositoryName='${escapedRepoName}' AND PayerPubKey='${escapedPayer}' AND Status='paid' LIMIT 1`;
+  const escapedQuery = query.replace(/'/g, "'\\''");
+  const command = `echo '${escapedQuery}' | sqlite3 "${dbPath}"`;
+  try {
+    const { stdout } = await execAsync(command, { timeout: 4000 });
+    return (stdout || "").trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Consumes one paid invoice intent after a successful bridge push (single-use). */
+async function consumeSingleUsePaidIntent(
+  dbPath: string,
+  ownerPubkey: string,
+  repoName: string,
+  payerPubkey: string
+): Promise<void> {
+  if (!existsSync(dbPath)) return;
+  try {
+    await execAsync("which sqlite3", { timeout: 1000 });
+  } catch {
+    return;
+  }
+
+  const escapedOwnerPubkey = ownerPubkey.replace(/'/g, "''");
+  const escapedRepoName = repoName.replace(/'/g, "''");
+  const escapedPayer = payerPubkey.replace(/'/g, "''");
+  const now = Math.floor(Date.now() / 1000);
+  const query = `UPDATE RepositoryPushPaymentIntent SET Status='consumed',UpdatedAt=${now} WHERE IntentId=(SELECT IntentId FROM RepositoryPushPaymentIntent WHERE OwnerPubKey='${escapedOwnerPubkey}' AND RepositoryName='${escapedRepoName}' AND PayerPubKey='${escapedPayer}' AND Status='paid' ORDER BY PaidAt DESC, UpdatedAt DESC LIMIT 1)`;
+  const escapedQuery = query.replace(/'/g, "'\\''");
+  const command = `echo '${escapedQuery}' | sqlite3 "${dbPath}"`;
+  await execAsync(command, { timeout: 4000 });
 }
 
 export const config = {
@@ -241,7 +362,9 @@ export default async function handler(
   // CRITICAL: Verify Nostr authentication before processing push
   const authResult = await verifyNostrAuth(req);
   if (!authResult.authorized) {
-    console.warn(`🚫 [Bridge Push] Unauthorized push attempt: ${authResult.error}`);
+    console.warn(
+      `🚫 [Bridge Push] Unauthorized push attempt: ${authResult.error}`
+    );
     return res.status(401).json({
       error: "Authentication required",
       details: authResult.error,
@@ -260,10 +383,18 @@ export default async function handler(
   }
 
   // Verify the authenticated user can push to this repo
-  const ownershipCheck = await verifySSHKeyOwnership(authResult.pubkey!, ownerPubkey);
+  const ownershipCheck = await verifySSHKeyOwnership(
+    authResult.pubkey!,
+    ownerPubkey
+  );
   if (!ownershipCheck.authorized) {
     console.warn(
-      `🚫 [Bridge Push] Push denied: ${ownershipCheck.error} (auth=${authResult.pubkey?.slice(0, 8)}..., owner=${ownerPubkey.slice(0, 8)}...)`
+      `🚫 [Bridge Push] Push denied: ${
+        ownershipCheck.error
+      } (auth=${authResult.pubkey?.slice(0, 8)}..., owner=${ownerPubkey.slice(
+        0,
+        8
+      )}...)`
     );
     return res.status(403).json({
       error: "Access denied",
@@ -272,11 +403,41 @@ export default async function handler(
   }
 
   console.log(
-    `✅ [Bridge Push] Authenticated push: pubkey=${authResult.pubkey?.slice(0, 8)}..., owner=${ownerPubkey.slice(0, 8)}..., repo=${repoName}`
+    `✅ [Bridge Push] Authenticated push: pubkey=${authResult.pubkey?.slice(
+      0,
+      8
+    )}..., owner=${ownerPubkey.slice(0, 8)}..., repo=${repoName}`
   );
 
   if (!repoName || typeof repoName !== "string") {
     return res.status(400).json({ error: "repo is required" });
+  }
+
+  // Optional push paywall enforcement (if bridge policy exists for this repo).
+  const bridgeDbPath = await resolveBridgeDbPath();
+  let paywallPushCostSats = 0;
+  if (bridgeDbPath) {
+    paywallPushCostSats = await getRepoPushPolicy(
+      bridgeDbPath,
+      ownerPubkey,
+      repoName
+    );
+    if (paywallPushCostSats > 0) {
+      const hasGrant = await hasPaidPushIntent(
+        bridgeDbPath,
+        ownerPubkey,
+        repoName,
+        authResult.pubkey!.toLowerCase()
+      );
+      if (!hasGrant) {
+        return res.status(402).json({
+          error: "Push payment required",
+          details: `This repository requires a ${paywallPushCostSats} sats payment for each push.`,
+          pushCostSats: paywallPushCostSats,
+          hint: "Create/pay a push authorization invoice via the repository Push to Nostr flow (owner wallet can be LNbits or Blink), then retry. Each paid authorization is consumed by one successful push.",
+        });
+      }
+    }
   }
 
   const branchValidation = validateBranchName(branchInput);
@@ -556,6 +717,25 @@ export default async function handler(
     const shouldCommit = createCommit !== false; // Default to true, only skip if explicitly false
 
     if (shouldCommit) {
+      // Safety guard: never allow a zero-file snapshot to overwrite a repo.
+      // This can happen if files[] is empty and the "clone existing repo"
+      // preservation step failed; with --allow-empty + force-push that would
+      // otherwise publish an empty tree commit.
+      if (files.length === 0) {
+        const { stdout: trackedFilesOut } = await execAsync(
+          `git -C "${tempDir}" ls-files`,
+          { timeout: 5000 }
+        );
+        if (!trackedFilesOut.trim()) {
+          return res.status(409).json({
+            error:
+              "Refusing to push empty repository snapshot (no files available).",
+            details:
+              "Push aborted to prevent accidental data loss. Re-fetch source files and retry.",
+          });
+        }
+      }
+
       // CRITICAL: Only run git add on the final chunk (or non-chunked pushes)
       // git add -A on a directory with hundreds of files (from previous chunks) is VERY slow
       // By deferring git add until the final chunk, we only do it once with all files
@@ -606,9 +786,12 @@ export default async function handler(
         }
       }
 
-      await execAsync(`git -C "${tempDir}" push --force origin ${shellQuote(branch)}`, {
-        timeout: 120000,
-      }); // 2 min timeout
+      await execAsync(
+        `git -C "${tempDir}" push --force origin ${shellQuote(branch)}`,
+        {
+          timeout: 120000,
+        }
+      ); // 2 min timeout
 
       // CRITICAL: Update HEAD in bare repo to point to the branch we just pushed
       // This ensures git log and other commands work correctly
@@ -659,7 +842,7 @@ export default async function handler(
     // CRITICAL: Only retrieve refs if we actually committed and pushed
     // Intermediate chunks don't commit, so their refs would be stale (from before this push)
     // Only the final chunk should return refs after successfully committing all accumulated files
-    let refs: Array<{ ref: string; commit: string }> = [];
+    const refs: Array<{ ref: string; commit: string }> = [];
     if (shouldCommit) {
       // CRITICAL: Get commit SHAs immediately after push (no need to wait for bridge)
       // This allows us to publish state event immediately with real commit SHAs
@@ -722,6 +905,25 @@ export default async function handler(
         );
         // Non-critical - temp directory will be cleaned up by OS eventually
       }
+    }
+
+    const isFinalChunk =
+      !isChunked ||
+      chunkIndex === undefined ||
+      totalChunks === undefined ||
+      chunkIndex === totalChunks - 1;
+    if (
+      paywallPushCostSats > 0 &&
+      bridgeDbPath &&
+      shouldCommit &&
+      isFinalChunk
+    ) {
+      await consumeSingleUsePaidIntent(
+        bridgeDbPath,
+        ownerPubkey,
+        repoName,
+        authResult.pubkey!.toLowerCase()
+      );
     }
 
     return res.status(200).json({

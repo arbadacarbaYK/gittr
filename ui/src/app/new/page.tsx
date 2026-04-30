@@ -230,7 +230,7 @@ function NewRepoPageContent() {
           });
           // Ensure current user (owner) is ALWAYS in contributors array with pubkey for icon resolution
           // GitHub contributors won't have pubkeys, but we add the current user as owner
-          let contributors: Array<{
+          const contributors: Array<{
             pubkey?: string;
             name?: string;
             picture?: string;

@@ -263,7 +263,7 @@ export function parseGitSource(cloneUrl: string): GitSource {
 async function fetchFromGitHub(
   owner: string,
   repo: string,
-  branch: string = "main"
+  branch = "main"
 ): Promise<Array<{ type: string; path: string; size?: number }> | null> {
   try {
     // CRITICAL: First get the default branch from repo info
@@ -530,7 +530,7 @@ async function fetchFromGitHub(
 async function fetchFromCodeberg(
   owner: string,
   repo: string,
-  branch: string = "main"
+  branch = "main"
 ): Promise<Array<{ type: string; path: string; size?: number }> | null> {
   try {
     // CRITICAL: First get the default branch from repo info
@@ -776,7 +776,7 @@ async function fetchFromCodeberg(
 async function fetchFromGitLab(
   owner: string,
   repo: string,
-  branch: string = "main"
+  branch = "main"
 ): Promise<Array<{ type: string; path: string; size?: number }> | null> {
   try {
     // CRITICAL: First get the default branch from repo info
@@ -929,7 +929,7 @@ async function fetchFromGitLab(
 async function fetchFromNostrGit(
   npub: string,
   repo: string,
-  branch: string = "main",
+  branch = "main",
   cloneUrl: string,
   eventPublisherPubkey?: string
 ): Promise<Array<{ type: string; path: string; size?: number }> | null> {
@@ -1239,7 +1239,7 @@ async function fetchFromNostrGit(
  */
 export async function fetchFilesFromSource(
   source: GitSource,
-  branch: string = "main",
+  branch = "main",
   eventPublisherPubkey?: string
 ): Promise<Array<{ type: string; path: string; size?: number }> | null> {
   console.log(
@@ -1299,7 +1299,7 @@ export async function fetchFilesFromSource(
  */
 export async function fetchFilesFromMultipleSources(
   cloneUrls: string[],
-  branch: string = "main",
+  branch = "main",
   onStatusUpdate?: (status: FetchStatus) => void,
   eventPublisherPubkey?: string,
   userPubkey?: string,

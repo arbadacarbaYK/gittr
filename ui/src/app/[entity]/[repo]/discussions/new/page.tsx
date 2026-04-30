@@ -97,7 +97,7 @@ export default function NewDiscussionPage() {
             const { getPublicKey } = await import("nostr-tools");
             const authorPubkey = privateKey
               ? getPublicKey(privateKey)
-              : (await (hasNip07 ? window.nostr!.getPublicKey() : null)) ?? currentUserPubkey;
+              : (await (hasNip07 ? window.nostr.getPublicKey() : null)) ?? currentUserPubkey;
 
             if (hasNip07 && window.nostr) {
               const unsignedEvent = {

@@ -46,7 +46,7 @@ export async function generateCSRFToken(): Promise<string> {
  */
 export async function validateCSRFToken(
   token: string,
-  maxAge: number = 3600000
+  maxAge = 3600000
 ): Promise<{ valid: boolean; error?: string }> {
   if (!token || typeof token !== "string") {
     return { valid: false, error: "CSRF token is required" };

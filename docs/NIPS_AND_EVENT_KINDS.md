@@ -2,6 +2,19 @@
 
 This document lists all Nostr Improvement Proposals (NIPs) and event kinds used by gittr.space.
 
+## Interop Baseline (ngit/gitworkshop)
+
+To keep event behavior consistent with other major NIP-34 clients (including ngit/gitworkshop), gittr enforces these interoperability rules:
+
+- For kind `1621` (issues), required NIP-34 tags are always present: `a`, `r`, `p`, `subject`.
+- For kind `1617` (patches), required NIP-34 tags are always present: `a`, `r`, `p`.
+- For kind `1618` (pull requests), required NIP-34 tags are always present: `a`, `r`, `p`, `subject`, `c`, and at least one `clone`.
+- Repository references use canonical repo identifiers (`repositoryName` / `d` tag identity), so `a` tags stay consistent across clients.
+- NIP-22 comment threading for discussion replies preserves real parent references (`E/K/P` root + `e/k/p` parent), so nested threads render correctly in external clients.
+- NIP-51 git follow lists (`kind:10018`) are used for followed repositories (`a` tags to `30617` addresses).
+- NIP-32 label overlays (`kind:1985`) are supported for post-creation metadata overlays (labels and subject-style updates).
+- Experimental `kind:1624` cover notes are treated as optional/non-blocking (feature-flagged behavior).
+
 ## Standard NIPs
 
 ### NIP-01: Basic Protocol
@@ -46,6 +59,22 @@ This document lists all Nostr Improvement Proposals (NIPs) and event kinds used 
 - **Purpose**: Lightning Network payments
 - **Usage**: Repository zaps, contributor tips, bounties
 - **Event Kind**: `9735` (KIND_ZAP)
+
+### NIP-51: Lists
+- **Purpose**: Standard user list events
+- **Usage**: Followed Git repositories list
+- **Event Kind**: `10018` (KIND_GIT_REPOSITORIES_LIST)
+- **Tags**:
+  - `a[]`: Repository addresses (`30617:<owner-pubkey>:<repo-id>`)
+
+### NIP-32: Labeling
+- **Purpose**: Post-hoc labeling and metadata overlays
+- **Usage**: Overlay labels and subject-like metadata updates for issue/PR workflows
+- **Event Kind**: `1985` (KIND_LABEL_OVERLAY)
+- **Tags**:
+  - `a`/`e`: Target event reference
+  - `L`: Label namespace
+  - `l[]`: Label values within namespace
 
 ### NIP-96: Blossom (File Storage)
 - **Purpose**: Large file storage for Nostr events
@@ -162,6 +191,11 @@ This document lists all Nostr Improvement Proposals (NIPs) and event kinds used 
   - `merge-base`: Most recent common ancestor (optional)
 - **Content**: Empty (all data in tags)
 
+### Kind 1624: Cover Notes (Experimental)
+- **Purpose**: Optional "cover note"/summary primitive used by some ngit ecosystem workflows
+- **Usage**: Feature-flagged only; never required for core PR/issue interoperability
+- **Status**: Experimental/non-canonical
+
 ### Kinds 1630-1633: Status Events (NIP-34)
 - **Purpose**: Track status of issues, PRs, and patches
 - **Usage**: Separate events for status changes (not tags in main event)
@@ -185,6 +219,22 @@ This document lists all Nostr Improvement Proposals (NIPs) and event kinds used 
 - **Tags**:
   - `g[]`: GRASP service websocket URLs (wss://) in order of preference - zero or more
 - **Content**: Empty per NIP-34 spec
+
+### Kind 10018: Git Repositories List (NIP-51)
+- **Purpose**: User follow list of NIP-34 repositories
+- **Usage**: Follow/unfollow repository UX with cross-client list compatibility
+- **Tags**:
+  - `a[]`: Repository addresses (`30617:<owner-pubkey>:<repo-id>`)
+- **Content**: Empty
+
+### Kind 1985: Label Overlay (NIP-32)
+- **Purpose**: Attach labels and mutable metadata overlays to existing events
+- **Usage**: Post-creation labels and subject-style overlays for issues/PRs
+- **Tags**:
+  - `a` and/or `e`: Target references
+  - `L`: Namespace
+  - `l[]`: Label values
+- **Content**: Empty
 
 ### Kind 30023: Long-form Content (NIP-23) — Repository discussion topics
 - **Purpose**: Long-form text (articles, blog posts). Used by gittr for **repo discussion board topics** so any NIP-23 client can read them.
@@ -225,14 +275,14 @@ For relays to support gittr.space, they must allow these event kinds:
 ```toml
 # nostr-rs-relay config.toml
 [relay]
-allowed_kinds = [0, 1, 7, 50, 51, 52, 1337, 1111, 1617, 1618, 1619, 1621, 1630, 1631, 1632, 1633, 10317, 30023, 30617, 30618, 9735, 9806]
+allowed_kinds = [0, 1, 7, 50, 51, 52, 1337, 1111, 1617, 1618, 1619, 1621, 1624, 1630, 1631, 1632, 1633, 1985, 10018, 10317, 30023, 30617, 30618, 9735, 9806]
 ```
 
 ```yaml
 # strfry config
 relay:
   eventKinds:
-    allow: [0, 1, 7, 50, 51, 52, 1337, 1111, 1617, 1618, 1619, 1621, 1630, 1631, 1632, 1633, 10317, 30617, 30618, 9735, 9806]
+    allow: [0, 1, 7, 50, 51, 52, 1337, 1111, 1617, 1618, 1619, 1621, 1624, 1630, 1631, 1632, 1633, 1985, 10018, 10317, 30617, 30618, 9735, 9806]
 ```
 
 ## Summary Table
@@ -252,10 +302,13 @@ relay:
 | 1618 | NIP-34 | Pull Requests | Pull request announcements |
 | 1619 | NIP-34 | PR Updates | PR branch updates (new commits) |
 | 1621 | NIP-34 | Issues | Issue tracking |
+| 1624 | Experimental | Cover Notes | Optional cover notes for PR/issue summaries |
 | 1630 | NIP-34 | Status: Open | Issue/PR opened |
 | 1631 | NIP-34 | Status: Applied/Merged | PR merged or issue resolved |
 | 1632 | NIP-34 | Status: Closed | Issue/PR closed |
 | 1633 | NIP-34 | Status: Draft | Issue/PR/patch set to draft |
+| 1985 | NIP-32 | Label Overlay | Post-hoc labels and metadata overlays |
+| 10018 | NIP-51 | Git Repositories List | Followed repositories list |
 | 10317 | NIP-34 | User GRASP List | Preferred GRASP servers for NIP-34 activity |
 | 30617 | NIP-34 | Repository Metadata | Repository announcements (primary) |
 | 30618 | NIP-34 | Repository State | Repository state (required for ngit clients) |

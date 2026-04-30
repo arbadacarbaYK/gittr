@@ -18,6 +18,7 @@ import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
+import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { isOwner } from "@/lib/repo-permissions";
 import {
   type StoredRepo,
@@ -462,7 +463,7 @@ export default function RepositoriesPage() {
           };
 
           // Try sourceUrl first
-          let gitUrl: string | undefined = repo.sourceUrl;
+          const gitUrl: string | undefined = repo.sourceUrl;
           let ownerRepo: {
             owner: string;
             repo: string;
@@ -605,10 +606,10 @@ export default function RepositoriesPage() {
         const repoForValidation = {
           repositoryName: r.repositoryName || r.repo || r.slug || r.name || "",
           entity: r.entity || "",
-          ownerPubkey: (r as any).ownerPubkey || "",
+          ownerPubkey: (r ).ownerPubkey || "",
         };
 
-        const eventId = (r as any).nostrEventId || (r as any).lastNostrEventId;
+        const eventId = (r ).nostrEventId || (r ).lastNostrEventId;
 
         if (isRepoCorrupted(repoForValidation, eventId)) {
           return false; // Remove corrupted repos
@@ -1521,17 +1522,17 @@ export default function RepositoriesPage() {
             // Always use entity derived from event.pubkey (the actual owner)
             // Remove any entity field from repoData if it exists
             // This prevents other Nostr clients from publishing corrupted entity values
-            if ((repoData as any).entity) {
+            if ((repoData ).entity) {
               console.warn(
                 "⚠️ [Repositories] Ignoring entity from repoData (using event.pubkey instead):",
                 {
-                  repoDataEntity: (repoData as any).entity,
+                  repoDataEntity: (repoData ).entity,
                   correctEntity: entity,
                   eventId: event.id.slice(0, 8),
                 }
               );
             }
-            const { entity: _, ...cleanRepoData } = repoData as any;
+            const { entity: _, ...cleanRepoData } = repoData ;
 
             // Merge ALL metadata from Nostr event
             const repo: any = {
@@ -1770,11 +1771,11 @@ export default function RepositoriesPage() {
                 repositoryName:
                   r.repositoryName || r.repo || r.slug || r.name || "",
                 entity: r.entity || "",
-                ownerPubkey: (r as any).ownerPubkey || "",
+                ownerPubkey: (r ).ownerPubkey || "",
               };
 
               const eventId =
-                (r as any).nostrEventId || (r as any).lastNostrEventId;
+                (r ).nostrEventId || (r ).lastNostrEventId;
 
               if (isRepoCorrupted(repoForValidation, eventId)) {
                 // Silently remove - don't spam console
@@ -1967,7 +1968,7 @@ export default function RepositoriesPage() {
             repo: r.repo,
             slug: r.slug,
             name: r.name,
-            ownerPubkey: (r as any).ownerPubkey?.slice(0, 16),
+            ownerPubkey: (r ).ownerPubkey?.slice(0, 16),
           }))
         );
       } else {
@@ -1988,9 +1989,9 @@ export default function RepositoriesPage() {
             "❌ [Repositories] Excluding repo with corrupted entity 'gittr.space':",
             {
               repo: repoName,
-              ownerPubkey: (r as any).ownerPubkey?.slice(0, 16),
-              nostrEventId: (r as any).nostrEventId?.slice(0, 16),
-              lastNostrEventId: (r as any).lastNostrEventId?.slice(0, 16),
+              ownerPubkey: (r ).ownerPubkey?.slice(0, 16),
+              nostrEventId: (r ).nostrEventId?.slice(0, 16),
+              lastNostrEventId: (r ).lastNostrEventId?.slice(0, 16),
             }
           );
           return false; // Always exclude - these are corrupted
@@ -2016,7 +2017,7 @@ export default function RepositoriesPage() {
             {
               repo: repoName,
               entity: r.entity,
-              ownerPubkey: (r as any).ownerPubkey?.slice(0, 16),
+              ownerPubkey: (r ).ownerPubkey?.slice(0, 16),
             }
           );
           return false; // Only npub format is valid
@@ -2041,9 +2042,9 @@ export default function RepositoriesPage() {
             entityLength: r.entity?.length,
             entityIsNpub: r.entity?.startsWith("npub"),
             decodedEntityPubkey: decodedEntityPubkey?.slice(0, 16),
-            ownerPubkey: (r as any).ownerPubkey?.slice(0, 16),
-            ownerPubkeyLength: (r as any).ownerPubkey?.length,
-            ownerPubkeyIs64Char: (r as any).ownerPubkey?.length === 64,
+            ownerPubkey: (r ).ownerPubkey?.slice(0, 16),
+            ownerPubkeyLength: (r ).ownerPubkey?.length,
+            ownerPubkeyIs64Char: (r ).ownerPubkey?.length === 64,
             currentUserPubkey: pubkey?.slice(0, 16),
             currentUserPubkeyLength: pubkey?.length,
             hasContributors: !!(
@@ -2058,10 +2059,10 @@ export default function RepositoriesPage() {
 
         // Priority 1: Check direct ownerPubkey match (most reliable)
         if (
-          (r as any).ownerPubkey &&
-          typeof (r as any).ownerPubkey === "string"
+          (r ).ownerPubkey &&
+          typeof (r ).ownerPubkey === "string"
         ) {
-          const ownerPubkey = (r as any).ownerPubkey;
+          const ownerPubkey = (r ).ownerPubkey;
           if (ownerPubkey.toLowerCase() === pubkey.toLowerCase()) {
             if (isTides)
               console.log(
@@ -2073,7 +2074,7 @@ export default function RepositoriesPage() {
         }
 
         // Priority 2: Check getRepoOwnerPubkey (uses ownerPubkey or contributors)
-        const repoOwnerPubkey = getRepoOwnerPubkey(r as any, r.entity);
+        const repoOwnerPubkey = getRepoOwnerPubkey(r , r.entity);
         if (
           repoOwnerPubkey &&
           repoOwnerPubkey.toLowerCase() === pubkey.toLowerCase()
@@ -2172,7 +2173,7 @@ export default function RepositoriesPage() {
             {
               entity: r.entity,
               repoOwnerPubkey: repoOwnerPubkey?.slice(0, 16),
-              directOwnerPubkey: (r as any).ownerPubkey?.slice(0, 16),
+              directOwnerPubkey: (r ).ownerPubkey?.slice(0, 16),
               currentUser: pubkey.slice(0, 16),
               hasContributors: !!(
                 r.contributors && Array.isArray(r.contributors)
@@ -3099,7 +3100,7 @@ export default function RepositoriesPage() {
             // CRITICAL: For URLs and bridge operations, use repositoryName from Nostr event (exact name used by git-nostr-bridge)
             // Priority: repositoryName > repo > slug
             // For display, use original name (r.name)
-            const rAny = r as any;
+            const rAny = r ;
             const repoForUrl =
               rAny?.repositoryName || r.repo || r.slug || "unnamed-repo";
             const displayName = r.name || repoForUrl; // CRITICAL: Use original name for display
@@ -3302,6 +3303,32 @@ export default function RepositoriesPage() {
                                 return;
                               }
 
+                              const ownerPubkey =
+                                getRepoOwnerPubkey(r as StoredRepo, entity) ||
+                                (r ).ownerPubkey ||
+                                "";
+                              const paymentAuth =
+                                await ensurePushPaymentAuthorization({
+                                  entity,
+                                  repo: repoForUrl,
+                                  ownerPubkey: ownerPubkey.toLowerCase(),
+                                  payerPubkey: pubkey,
+                                  signer:
+                                    typeof window !== "undefined" &&
+                                    window.nostr
+                                      ? window.nostr.signEvent
+                                      : undefined,
+                                });
+                              if (!paymentAuth.ok) {
+                                alert(
+                                  `Push blocked: ${
+                                    paymentAuth.error ||
+                                    "payment authorization failed"
+                                  }`
+                                );
+                                return;
+                              }
+
                               setPushingRepos((prev: Set<string>) =>
                                 new Set(prev).add(`${entity}/${repoForUrl}`)
                               );
@@ -3369,24 +3396,24 @@ export default function RepositoriesPage() {
                         </Button>
                       )}
                     <div className="opacity-70 text-xs sm:text-sm whitespace-nowrap">
-                      {(r as any).lastNostrEventCreatedAt ? (
+                      {(r ).lastNostrEventCreatedAt ? (
                         <>
                           <span className="hidden sm:inline">Last push: </span>
                           {formatDateTime24h(
-                            (r as any).lastNostrEventCreatedAt * 1000
+                            (r ).lastNostrEventCreatedAt * 1000
                           )}
                         </>
-                      ) : (r as any).lastPushAttempt ? (
+                      ) : (r ).lastPushAttempt ? (
                         <>
                           <span className="hidden sm:inline">
                             Push attempted:{" "}
                           </span>
-                          {formatDateTime24h((r as any).lastPushAttempt)}
+                          {formatDateTime24h((r ).lastPushAttempt)}
                         </>
-                      ) : (r as any).lastModifiedAt ? (
+                      ) : (r ).lastModifiedAt ? (
                         <>
                           <span className="hidden sm:inline">Modified: </span>
-                          {formatDateTime24h((r as any).lastModifiedAt)}
+                          {formatDateTime24h((r ).lastModifiedAt)}
                         </>
                       ) : (
                         <>

@@ -1,6 +1,6 @@
 // server component wrapper that exports metadata
 // and imports the client layout component
-import { Metadata } from "next";
+import { type Metadata } from "next";
 
 import ClientLayout from "./layout-client";
 

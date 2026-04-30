@@ -1,6 +1,6 @@
 import { resolveUserIconForMetadata } from "@/lib/utils/metadata-icon-resolver";
 
-import { Metadata } from "next";
+import { type Metadata } from "next";
 import { nip19 } from "nostr-tools";
 
 // Cache configuration for link previews

@@ -27,6 +27,7 @@ export default function AccountSettingsPage() {
   const [lnbitsUrl, setLnbitsUrl] = useState("");
   const [lnbitsAdminKey, setLnbitsAdminKey] = useState("");
   const [lnbitsInvoiceKey, setLnbitsInvoiceKey] = useState("");
+  const [blinkApiKey, setBlinkApiKey] = useState("");
   const [saved, setSaved] = useState<string>("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [validation, setValidation] = useState<Record<string, boolean>>({});
@@ -69,6 +70,7 @@ export default function AccountSettingsPage() {
         const lnbitsInvoiceKey = await getSecureItem(
           "gittr_lnbits_invoice_key"
         );
+        const blinkApiKey = await getSecureItem("gittr_blink_api_key");
 
         setLnurl(lnurl || "");
         setLud16(lud16 || "");
@@ -77,6 +79,7 @@ export default function AccountSettingsPage() {
         setLnbitsUrl(lnbitsUrl || "");
         setLnbitsAdminKey(lnbitsAdminKey || "");
         setLnbitsInvoiceKey(lnbitsInvoiceKey || "");
+        setBlinkApiKey(blinkApiKey || "");
 
         // Debug: Verify NWC string was loaded correctly (don't log full string for security)
         if (nwcSend) {
@@ -99,6 +102,7 @@ export default function AccountSettingsPage() {
         setLnbitsInvoiceKey(
           localStorage.getItem("gittr_lnbits_invoice_key") || ""
         );
+        setBlinkApiKey(localStorage.getItem("gittr_blink_api_key") || "");
       }
     };
 
@@ -200,6 +204,12 @@ export default function AccountSettingsPage() {
     newValidation.lnbitsInvoiceKey =
       !newErrors.lnbitsInvoiceKey && lnbitsInvoiceKey.length > 0;
 
+    if (blinkApiKey && !blinkApiKey.match(/^blink_[A-Za-z0-9_-]{10,}$/)) {
+      newErrors.blinkApiKey =
+        "Blink API key must look like blink_... (from dashboard.blink.sv)";
+    }
+    newValidation.blinkApiKey = !newErrors.blinkApiKey && blinkApiKey.length > 0;
+
     // Only update state if validation should be shown (after save attempt)
     // This prevents re-renders during typing
     if (showValidation) {
@@ -230,6 +240,7 @@ export default function AccountSettingsPage() {
       await setSecureItem("gittr_lnbits_url", lnbitsUrl);
       await setSecureItem("gittr_lnbits_admin_key", lnbitsAdminKey);
       await setSecureItem("gittr_lnbits_invoice_key", lnbitsInvoiceKey);
+      await setSecureItem("gittr_blink_api_key", blinkApiKey);
 
       setSaved("Saved successfully!");
       setTimeout(() => setSaved(""), 2000);
@@ -758,6 +769,12 @@ export default function AccountSettingsPage() {
             contributors) and bounties. If not set, defaults from environment
             will be used.
           </p>
+          <p className="text-xs text-gray-500 mb-3">
+            Blink dashboard API keys use Blink GraphQL (X-API-KEY at
+            api.blink.sv/graphql) and are not interchangeable with LNbits
+            admin/invoice keys in these inputs. If you only use Blink app wallet
+            access, prefer NWC fields above.
+          </p>
           <div className="space-y-4">
             <InputField
               label="LNbits URL"
@@ -788,6 +805,16 @@ export default function AccountSettingsPage() {
               isValid={validation.lnbitsInvoiceKey}
               showError={showValidation}
               helpText="Invoice/Read API key from your LNbits instance (for listing/reading withdraw links - optional but recommended for bounties)"
+            />
+            <InputField
+              label="Blink API Key"
+              value={blinkApiKey}
+              onChange={setBlinkApiKey}
+              placeholder="blink_..."
+              error={errors.blinkApiKey}
+              isValid={validation.blinkApiKey}
+              showError={showValidation}
+              helpText="Optional alternative to LNbits for push paywall invoice creation + payment status verification (Blink GraphQL key from dashboard.blink.sv)."
             />
             {/* Balance display */}
             {lnbitsBalance && (

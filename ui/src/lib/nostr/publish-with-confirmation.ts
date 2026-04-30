@@ -31,7 +31,7 @@ export async function publishWithConfirmation(
   ) => () => void,
   event: any,
   relays: string[],
-  timeout: number = 10000
+  timeout = 10000
 ): Promise<PublishResult> {
   return new Promise((resolve) => {
     const eventId = event.id;

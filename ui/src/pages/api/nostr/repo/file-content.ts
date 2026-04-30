@@ -201,7 +201,7 @@ export default async function handler(
     // We'll use double quotes and escape any existing quotes in the path
     // CRITICAL: Use decoded file path to ensure non-ASCII characters (Cyrillic, Chinese, etc.) are handled correctly
     const filePathStr: string = decodedFilePath;
-    let branchStr: string = Array.isArray(branch)
+    const branchStr: string = Array.isArray(branch)
       ? branch[0] || "main"
       : typeof branch === "string"
       ? branch
@@ -215,7 +215,7 @@ export default async function handler(
 
     // CRITICAL: Try branch fallback if initial branch fails (main -> master)
     let stdout: Buffer | string = Buffer.alloc(0),
-      stderr: string = "";
+      stderr = "";
     let actualBranch = branchStr;
     let branchNotFound = false;
 

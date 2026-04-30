@@ -26,7 +26,7 @@ export function getGithubProfile(pubkey: string): string | null {
 
 // Cache for GitHub username -> pubkey mappings from NIP-39 (queried from Nostr)
 let githubIdentityCache: Map<string, string> | null = null;
-let githubIdentityCacheTimestamp: number = 0;
+let githubIdentityCacheTimestamp = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Query Nostr for GitHub identity mappings via NIP-39
@@ -207,7 +207,7 @@ export function mapGithubContributors(
   githubContributors: GitHubContributor[],
   currentUserPubkey?: string,
   currentUserPicture?: string,
-  keepAnonymous: boolean = true, // DEFAULT: Keep all contributors (changed from false)
+  keepAnonymous = true, // DEFAULT: Keep all contributors (changed from false)
   nostrMetadata?: Record<
     string,
     { picture?: string; name?: string; display_name?: string }

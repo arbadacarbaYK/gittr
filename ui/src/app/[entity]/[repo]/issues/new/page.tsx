@@ -295,7 +295,10 @@ export default function RepoIssueNewPage() {
           return;
         }
 
-        // Get earliest unique commit (optional but recommended for NIP-34 "r" tag)
+        // Get repository name (use canonical repositoryName from NIP-34 event when available)
+        const actualRepositoryName = (repoData as any)?.repositoryName || repo;
+
+        // Get earliest unique commit (required for NIP-34 "r" tag)
         const earliestUniqueCommit =
           (repoData as any).earliestUniqueCommit ||
           (repoData.commits &&
@@ -303,6 +306,13 @@ export default function RepoIssueNewPage() {
           repoData.commits.length > 0
             ? (repoData.commits[0] as any)?.id
             : undefined);
+        if (!earliestUniqueCommit) {
+          setErrorMsg(
+            "Cannot create issue yet: repository is missing earliest unique commit (NIP-34 'r' tag). Push/sync the repo first."
+          );
+          setSubmitting(false);
+          return;
+        }
 
         let issueEvent: any;
         let authorPubkey: string;
@@ -319,7 +329,7 @@ export default function RepoIssueNewPage() {
           // Create NIP-34 compliant event
           const tags: string[][] = [
             // ["a", "30617:<base-repo-owner-pubkey>:<base-repo-id>"] - REQUIRED
-            ["a", `30617:${finalOwnerPubkey}:${repo}`],
+            ["a", `30617:${finalOwnerPubkey}:${actualRepositoryName}`],
             // ["r", "<earliest-unique-commit-id-of-repo>"] - REQUIRED (helps clients subscribe)
             ...(earliestUniqueCommit ? [["r", earliestUniqueCommit]] : []),
             // ["p", "<repository-owner>"] - REQUIRED
@@ -374,7 +384,7 @@ export default function RepoIssueNewPage() {
           issueEvent = createIssueEvent(
             {
               repoEntity: entity,
-              repoName: repo,
+              repoName: actualRepositoryName,
               ownerPubkey: finalOwnerPubkey, // Required for NIP-34
               earliestUniqueCommit,
               title,

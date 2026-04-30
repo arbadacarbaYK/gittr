@@ -143,9 +143,9 @@ export default function RepoReleasesPage({
       if (rec) {
         // Load releases from repo object (imported from GitHub or created natively)
         const repoWithReleases = rec as StoredRepo & { releases?: Release[] };
-        setReleases((repoWithReleases.releases || []) as Release[]);
+        setReleases((repoWithReleases.releases || []));
         setTags(
-          (rec.tags as string[] | undefined)
+          (rec.tags )
             ?.map((t: string | { name: string }) =>
               typeof t === "string" ? t : t?.name
             )
@@ -278,11 +278,11 @@ export default function RepoReleasesPage({
       };
       const nextReleases = [
         rel,
-        ...((repoWithReleases.releases || []) as Release[]),
+        ...((repoWithReleases.releases || [])),
       ];
       (repos[idx] as StoredRepo & { releases?: Release[] }).releases =
         nextReleases;
-      const currentTags = repos[idx].tags as string[] | undefined;
+      const currentTags = repos[idx].tags ;
       const tagSet = new Set<string>(
         (currentTags || []).map((t: string | { name: string }) =>
           typeof t === "string" ? t : t?.name

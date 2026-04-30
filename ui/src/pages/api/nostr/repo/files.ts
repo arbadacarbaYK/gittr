@@ -266,7 +266,7 @@ export default async function handler(
     console.log(`🔍 Fetching file tree for branch: ${branch}`);
     let stdout: string, stderr: string;
     let branchNotFound = false;
-    let actualBranch = branchStr; // Track which branch was actually used
+    const actualBranch = branchStr; // Track which branch was actually used
 
     try {
       // CRITICAL: Explicitly set UTF-8 encoding for git ls-tree to handle non-ASCII filenames (Cyrillic, Chinese, etc.)

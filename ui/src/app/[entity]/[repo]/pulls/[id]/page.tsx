@@ -315,7 +315,7 @@ export default function PRDetailPage({
         // Check if current user can merge (owner or maintainer - write access)
         const repos = loadStoredRepos();
         // Try multiple lookup strategies - repo might be stored with different field names
-        let repo = repos.find((r: StoredRepo) => {
+        const repo = repos.find((r: StoredRepo) => {
           const entityMatch = r.entity === resolvedParams.entity;
           const repoMatch =
             r.repo === resolvedParams.repo ||

@@ -176,7 +176,7 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
     }> = [];
     let readme: string | undefined;
 
-    function walkDir(dir: string, basePath: string = "") {
+    function walkDir(dir: string, basePath = "") {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
 
       for (const entry of entries) {

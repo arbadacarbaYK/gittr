@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Conflict } from "@/lib/git/conflict-detection";
+import { type Conflict } from "@/lib/git/conflict-detection";
 
 import { AlertCircle, Check, GitMerge, X } from "lucide-react";
 

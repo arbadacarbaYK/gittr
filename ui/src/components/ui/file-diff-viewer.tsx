@@ -89,7 +89,7 @@ export function FileDiffViewer({
   };
 
   // Simple line-by-line diff (basic implementation)
-  const calculateDiff = (beforeText: string = "", afterText: string = "") => {
+  const calculateDiff = (beforeText = "", afterText = "") => {
     if (!beforeText && !afterText) return [];
 
     const beforeLines = (beforeText || "").split("\n");

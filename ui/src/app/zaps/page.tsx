@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
-import { ZapRecord, getZapHistory } from "@/lib/payments/zap-tracker";
+import { type ZapRecord, getZapHistory } from "@/lib/payments/zap-tracker";
 import {
   formatDate24h,
   formatDateTime24h,

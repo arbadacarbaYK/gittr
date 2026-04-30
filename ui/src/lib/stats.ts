@@ -5,7 +5,7 @@
  * CRITICAL: New functions count from Nostr events (network source of truth)
  * Old functions use localStorage (kept for fallback)
  */
-import { Activity, ActivityType, getActivities } from "./activity-tracking";
+import { type Activity, ActivityType, getActivities } from "./activity-tracking";
 import {
   KIND_ISSUE,
   KIND_PULL_REQUEST,
@@ -92,7 +92,7 @@ function userHasAccessToRepo(
  * @param userPubkey - Optional: filter to repos where user has access (owner or write access)
  */
 export function getTopRepos(
-  count: number = 10,
+  count = 10,
   userPubkey?: string | null
 ): RepoStats[] {
   const activities = getActivities();
@@ -203,7 +203,7 @@ export function getTopRepos(
 /**
  * Get most active developers (by PR merges)
  */
-export function getTopDevsByPRs(count: number = 10): UserStats[] {
+export function getTopDevsByPRs(count = 10): UserStats[] {
   const activities = getActivities();
   const userMap = new Map<string, UserStats>();
 
@@ -235,7 +235,7 @@ export function getTopDevsByPRs(count: number = 10): UserStats[] {
 /**
  * Get most active bounty takers
  */
-export function getTopBountyTakers(count: number = 10): UserStats[] {
+export function getTopBountyTakers(count = 10): UserStats[] {
   const activities = getActivities();
   const userMap = new Map<string, UserStats>();
 
@@ -269,7 +269,7 @@ export function getTopBountyTakers(count: number = 10): UserStats[] {
  * @param userPubkey - Optional: only count activities on repos where this user has access
  */
 export function getTopUsers(
-  count: number = 10,
+  count = 10,
   userPubkey?: string | null
 ): UserStats[] {
   const activities = getActivities();
@@ -362,7 +362,7 @@ export function getTopUsers(
  * Optionally filter by owner pubkey to show only user's own bounties
  */
 export function getLatestBounties(
-  count: number = 5,
+  count = 5,
   ownerPubkey?: string | null
 ): Array<{
   issueId: string;
@@ -428,7 +428,7 @@ export function getLatestBounties(
 /**
  * Get open bounties (available bounties with status "paid" on open issues)
  */
-export function getOpenBounties(count: number = 5): Array<{
+export function getOpenBounties(count = 5): Array<{
   issueId: string;
   repoId: string;
   repoName: string;
@@ -565,7 +565,7 @@ export function getOwnBountyStats(ownerPubkey: string | null): {
  * @param userPubkey - Optional: filter by specific user's pubkey and only show activities on repos where user has access
  */
 export function getRecentActivity(
-  count: number = 10,
+  count = 10,
   userPubkey?: string | null
 ): Activity[] {
   const activities = getActivities();
@@ -761,7 +761,7 @@ export function getOpenPRsAndIssues(userPubkey?: string | null): {
  */
 export function getRecentBountyActivities(
   userPubkey: string | null,
-  count: number = 5
+  count = 5
 ): Activity[] {
   if (!userPubkey) return [];
 
@@ -956,7 +956,7 @@ export function countRepoActivitiesFromNostr(
     options?: any
   ) => () => void,
   relays: string[],
-  sinceDays: number = 90 // Count activity from last 90 days (increased from 30 for better coverage)
+  sinceDays = 90 // Count activity from last 90 days (increased from 30 for better coverage)
 ): Promise<Map<string, RepoStats>> {
   // CRITICAL: Only use GRASP/git relays - regular relays don't have git events!
   const { getGraspServers } = require("@/lib/utils/grasp-servers");
@@ -1029,7 +1029,7 @@ export function countRepoActivitiesFromNostr(
             if (!repoMap.has(repoId)) {
               repoMap.set(repoId, {
                 repoId,
-                repoName: repoName as string,
+                repoName: repoName ,
                 entity: event.pubkey,
                 activityCount: 0,
                 prCount: 0,
@@ -1051,7 +1051,7 @@ export function countRepoActivitiesFromNostr(
             const repoId = `${event.pubkey}/${repoName}`;
             const existing = repoMap.get(repoId) || {
               repoId,
-              repoName: repoName as string,
+              repoName: repoName ,
               entity: event.pubkey,
               activityCount: 0,
               prCount: 0,
@@ -1083,7 +1083,7 @@ export function countRepoActivitiesFromNostr(
               const repoId = `${ownerPubkey}/${repoName}`;
               const existing = repoMap.get(repoId) || {
                 repoId,
-                repoName: repoName as string,
+                repoName: repoName ,
                 entity: ownerPubkey,
                 activityCount: 0,
                 prCount: 0,
@@ -1119,7 +1119,7 @@ export function countRepoActivitiesFromNostr(
                 const repoId = `${ownerPubkey}/${repoName}`;
                 const existing = repoMap.get(repoId) || {
                   repoId,
-                  repoName: repoName as string,
+                  repoName: repoName ,
                   entity: ownerPubkey,
                   activityCount: 0,
                   prCount: 0,
@@ -1152,7 +1152,7 @@ export function countRepoActivitiesFromNostr(
               const repoId = `${ownerPubkey}/${repoName}`;
               const existing = repoMap.get(repoId) || {
                 repoId,
-                repoName: repoName as string,
+                repoName: repoName ,
                 entity: ownerPubkey,
                 activityCount: 0,
                 prCount: 0,
@@ -1188,7 +1188,7 @@ export function countRepoActivitiesFromNostr(
                 const repoId = `${ownerPubkey}/${repoName}`;
                 const existing = repoMap.get(repoId) || {
                   repoId,
-                  repoName: repoName as string,
+                  repoName: repoName ,
                   entity: ownerPubkey,
                   activityCount: 0,
                   prCount: 0,
@@ -1268,7 +1268,7 @@ export function countUserActivitiesFromNostr(
     options?: any
   ) => () => void,
   relays: string[],
-  sinceDays: number = 90 // Count activity from last 90 days (increased from 30 for better coverage)
+  sinceDays = 90 // Count activity from last 90 days (increased from 30 for better coverage)
 ): Promise<Map<string, UserStats>> {
   // CRITICAL: Only use GRASP/git relays - regular relays don't have git events!
   const { getGraspServers } = require("@/lib/utils/grasp-servers");
@@ -1473,7 +1473,7 @@ export async function getTopReposFromNostr(
     options?: any
   ) => () => void,
   relays: string[],
-  count: number = 10
+  count = 10
 ): Promise<RepoStats[]> {
   try {
     if (!subscribe || typeof subscribe !== "function") {
@@ -1560,7 +1560,7 @@ export async function getTopUsersFromNostr(
     options?: any
   ) => () => void,
   relays: string[],
-  count: number = 10
+  count = 10
 ): Promise<UserStats[]> {
   // CRITICAL: countUserActivitiesFromNostr doesn't filter to GRASP servers (users can be on any relay)
   // But for consistency and performance, filter to GRASP servers here

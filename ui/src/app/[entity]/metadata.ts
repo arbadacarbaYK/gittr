@@ -1,4 +1,4 @@
-import { Metadata } from 'next';
+import { type Metadata } from 'next';
 import { nip19 } from 'nostr-tools';
 
 export async function generateMetadata(

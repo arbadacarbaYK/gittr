@@ -6,16 +6,17 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BoltSnow } from "@/components/ui/bolt-snow";
 import { Button } from "@/components/ui/button";
 import { ZapButton } from "@/components/ui/zap-button";
-import { Activity, backfillActivities } from "@/lib/activity-tracking";
+import { type Activity, backfillActivities } from "@/lib/activity-tracking";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
+import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 import { loadStoredRepos } from "@/lib/repos/storage";
 import {
-  RepoStats,
-  UserStats,
+  type RepoStats,
+  type UserStats,
   getLatestBounties,
   getOpenBounties,
   getOpenPRsAndIssues,
@@ -244,7 +245,7 @@ export default function HomePage() {
 
     const repos = loadStoredRepos();
     const ownRepos = repos.filter(
-      (r: any) => (r as any).ownerPubkey === pubkey
+      (r: any) => (r ).ownerPubkey === pubkey
     );
 
     // Check bridge for repos that have event IDs but bridgeProcessed is not set
@@ -256,10 +257,10 @@ export default function HomePage() {
         r.lastStateEventId
       );
       const bridgeProcessed = r.bridgeProcessed;
-      const ownerPubkey = (r as any).ownerPubkey;
+      const ownerPubkey = (r ).ownerPubkey;
       // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
       // Priority: repositoryName > repo > slug
-      const rAny = r as any;
+      const rAny = r ;
       const repoName = rAny?.repositoryName || r.repo || r.slug;
       const entity = r.entity;
 
@@ -486,7 +487,7 @@ export default function HomePage() {
                 if (existingIndex >= 0) {
                   const existing = existingRepos[existingIndex];
                   const existingLatest =
-                    (existing as any).lastNostrEventCreatedAt || 0;
+                    (existing ).lastNostrEventCreatedAt || 0;
                   if (event.created_at > existingLatest) {
                     existingRepos[existingIndex] = {
                       ...existing,
@@ -570,7 +571,7 @@ export default function HomePage() {
                           if (existingIndex >= 0) {
                             const existing = existingRepos[existingIndex];
                             const existingLatest =
-                              (existing as any).lastNostrEventCreatedAt || 0;
+                              (existing ).lastNostrEventCreatedAt || 0;
                             if (latestEvent.created_at > existingLatest) {
                               const repoEntry: any = {
                                 slug: repoName,
@@ -1152,6 +1153,23 @@ export default function HomePage() {
 
   const userMetadata = useContributorMetadata(allPubkeys);
 
+  const canCurrentUserSeeRepo = useCallback(
+    (repoLike: any): boolean => {
+      const isPrivate = repoLike?.publicRead === false;
+      if (!isPrivate) return true;
+      if (!pubkey) return false;
+
+      const ownerPubkey = getRepoOwnerPubkey(repoLike, repoLike?.entity);
+      return hasPrivateRepoAccess(
+        pubkey,
+        repoLike?.contributors || [],
+        ownerPubkey,
+        repoLike?.maintainers || []
+      );
+    },
+    [pubkey]
+  );
+
   // CRITICAL: useContributorMetadata already loads from cache, but we need to ensure
   // it's available immediately. The hook loads from "nostr_metadata_cache" which is
   // the same cache used by useContributorMetadata, so metadata should be available.
@@ -1427,7 +1445,27 @@ export default function HomePage() {
             {!statsLoaded ? (
               <div className="text-sm text-gray-500 py-2">Loading...</div>
             ) : topRepos.length > 0 ? (
-              topRepos.slice(0, 5).map((repo, idx) => {
+              topRepos
+                .filter((repo) => {
+                  const [entity, repoName] =
+                    repo.repoId &&
+                    typeof repo.repoId === "string" &&
+                    repo.repoId.includes("/")
+                      ? repo.repoId.split("/")
+                      : [repo.entity || "", repo.repoId || ""];
+                  const matchingRepo = repos.find((r: any) => {
+                    const sameEntity =
+                      (r.entity || "").toLowerCase() ===
+                      (entity || "").toLowerCase();
+                    const sameRepo =
+                      (r.repo || r.slug || "").toLowerCase() ===
+                      (repoName || "").toLowerCase();
+                    return sameEntity && sameRepo;
+                  });
+                  return matchingRepo ? canCurrentUserSeeRepo(matchingRepo) : true;
+                })
+                .slice(0, 5)
+                .map((repo, idx) => {
                 // repoId is in format "entity/repo"
                 const [entity, repoName] =
                   repo.repoId &&
@@ -2179,7 +2217,8 @@ export default function HomePage() {
                   }
 
                   // Filter out deleted repos
-                  return !r.deleted && !r.archived;
+                  if (r.deleted || r.archived) return false;
+                  return canCurrentUserSeeRepo(r);
                 })
                 .map((r, index) => {
                   const entity = r.entity;

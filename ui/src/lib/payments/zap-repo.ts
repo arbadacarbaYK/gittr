@@ -61,9 +61,9 @@ export function getContributorsWithAddresses(
       return !!(meta?.lud16 || meta?.lnurl || meta?.nwcRecv);
     })
     .map((c) => {
-      const meta = metadataMap[c.pubkey!];
+      const meta = metadataMap[c.pubkey];
       return {
-        pubkey: c.pubkey!,
+        pubkey: c.pubkey,
         name: c.name || meta?.name || meta?.display_name,
         picture: c.picture || meta?.picture,
         weight: c.weight,

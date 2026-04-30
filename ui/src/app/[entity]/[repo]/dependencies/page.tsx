@@ -11,7 +11,7 @@ import {
   loadStoredRepos,
 } from "@/lib/repos/storage";
 import {
-  Dependency,
+  type Dependency,
   parseDependencies,
   resolveImportPath,
 } from "@/lib/utils/dependency-parser";
@@ -461,20 +461,20 @@ export default function DependenciesPage({
             svgSelection
               .transition()
               .duration(200)
-              .call(zoom.scaleBy as any, 1.4, center);
+              .call(zoom.scaleBy , 1.4, center);
           } else if (e.key === "-") {
             e.preventDefault();
             const center = [svgRef.current.clientWidth / 2, svgRef.current.clientHeight / 2];
             svgSelection
               .transition()
               .duration(200)
-              .call(zoom.scaleBy as any, 0.7, center);
+              .call(zoom.scaleBy , 0.7, center);
           } else if (e.key === "0") {
             e.preventDefault();
             svgSelection
               .transition()
               .duration(300)
-              .call(zoom.transform as any, d3.zoomIdentity);
+              .call(zoom.transform , d3.zoomIdentity);
           }
         }
       };
@@ -740,19 +740,19 @@ export default function DependenciesPage({
           .force("charge", d3.forceManyBody().strength(-config.spacing * 1.5).distanceMax(400))
           .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10).iterations(3))
           .force("x", d3.forceX((d: any) => {
-            if ((d as any).isHub) return (d as any).hubX;
-            if ((d as any).orbitHub) {
-              const hub = hubNodes.find((h: any) => h.id === (d as any).orbitHub);
-              if (hub) return hub.hubX + Math.cos((d as any).orbitAngle) * (d as any).orbitRadius;
+            if ((d ).isHub) return (d ).hubX;
+            if ((d ).orbitHub) {
+              const hub = hubNodes.find((h: any) => h.id === (d ).orbitHub);
+              if (hub) return hub.hubX + Math.cos((d ).orbitAngle) * (d ).orbitRadius;
             }
             const center = centers[d.folder];
             return center ? center.x : width / 2;
           }).strength(0.8))
           .force("y", d3.forceY((d: any) => {
-            if ((d as any).isHub) return (d as any).hubY;
-            if ((d as any).orbitHub) {
-              const hub = hubNodes.find((h: any) => h.id === (d as any).orbitHub);
-              if (hub) return hub.hubY + Math.sin((d as any).orbitAngle) * (d as any).orbitRadius;
+            if ((d ).isHub) return (d ).hubY;
+            if ((d ).orbitHub) {
+              const hub = hubNodes.find((h: any) => h.id === (d ).orbitHub);
+              if (hub) return hub.hubY + Math.sin((d ).orbitAngle) * (d ).orbitRadius;
             }
             const center = centers[d.folder];
             return center ? center.y : height / 2;
@@ -771,8 +771,8 @@ export default function DependenciesPage({
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 0.5).strength(0.05))
           .force("charge", d3.forceManyBody().strength(-config.spacing * 0.5))
           .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10).iterations(3))
-          .force("x", d3.forceX((d: any) => (d as any).targetX).strength(0.8))
-          .force("y", d3.forceY((d: any) => (d as any).targetY).strength(0.8))
+          .force("x", d3.forceX((d: any) => (d ).targetX).strength(0.8))
+          .force("y", d3.forceY((d: any) => (d ).targetY).strength(0.8))
           .force("boundary", () => {
             nodes.forEach(boundaryForce);
           });
@@ -798,8 +798,8 @@ export default function DependenciesPage({
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.1))
           .force("charge", d3.forceManyBody().strength(-config.spacing * 0.8).distanceMax(200))
           .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10).iterations(3))
-          .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.9))
-          .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.3))
+          .force("x", d3.forceX((d: any) => (d ).targetX || width / 2).strength(0.9))
+          .force("y", d3.forceY((d: any) => (d ).targetY || height / 2).strength(0.3))
           .force("boundary", () => {
             nodes.forEach(boundaryForce);
           });
@@ -815,8 +815,8 @@ export default function DependenciesPage({
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 1.5).strength(0.02))
           .force("charge", d3.forceManyBody().strength(-config.spacing * 0.3))
           .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10).iterations(3))
-          .force("x", d3.forceX((d: any) => (d as any).targetX).strength(1))
-          .force("y", d3.forceY((d: any) => (d as any).targetY).strength(1))
+          .force("x", d3.forceX((d: any) => (d ).targetX).strength(1))
+          .force("y", d3.forceY((d: any) => (d ).targetY).strength(1))
           .force("boundary", () => {
             nodes.forEach(boundaryForce);
           });
@@ -855,28 +855,28 @@ export default function DependenciesPage({
             }
           }
         });
-        nodes.filter((n: any) => !(n as any).targetX).forEach((n: any, i: number) => {
+        nodes.filter((n: any) => !(n ).targetX).forEach((n: any, i: number) => {
           n.targetX = 80 + i * 50;
           n.targetY = height - 80;
-          (n as any).metroLine = actualRoots.length;
+          (n ).metroLine = actualRoots.length;
         });
         simulation
           .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.05))
           .force("charge", d3.forceManyBody().strength(-config.spacing * 0.4))
           .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10).iterations(3))
-          .force("x", d3.forceX((d: any) => (d as any).targetX || width / 2).strength(0.95))
-          .force("y", d3.forceY((d: any) => (d as any).targetY || height / 2).strength(0.95))
+          .force("x", d3.forceX((d: any) => (d ).targetX || width / 2).strength(0.95))
+          .force("y", d3.forceY((d: any) => (d ).targetY || height / 2).strength(0.95))
           .force("boundary", () => {
             nodes.forEach(boundaryForce);
           });
       }
       
       // Update forces when spacing/linkDist change - use graphConfigRef for latest values
-      const linkForce = simulation.force("link") as any;
+      const linkForce = simulation.force("link") ;
       if (linkForce) {
         linkForce.distance(config.linkDist);
       }
-      const chargeForce = simulation.force("charge") as any;
+      const chargeForce = simulation.force("charge") ;
       if (chargeForce) {
         // Update charge strength based on view mode
         if (config.viewMode === "force") {
@@ -919,7 +919,7 @@ export default function DependenciesPage({
             dragStateRef.current.frozenPositions.clear();
             nodes.forEach((n: any) => {
               if (n.id === d.id) return;
-              const nodeAny = n as any;
+              const nodeAny = n ;
               dragStateRef.current.frozenPositions.set(n.id, {
                 fx: nodeAny.fx ?? null,
                 fy: nodeAny.fy ?? null,
@@ -1307,7 +1307,7 @@ export default function DependenciesPage({
           .transition()
           .duration(500)
           .call(
-            zoom.transform as any,
+            zoom.transform ,
             d3.zoomIdentity.translate(tx, ty).scale(scale)
           );
       };
@@ -2299,7 +2299,7 @@ export default function DependenciesPage({
               .transition()
               .duration(500)
               .call(
-                zoomRef.current.transform as any,
+                zoomRef.current.transform ,
                 d3.zoomIdentity
                   .translate(width / 2 - highlightedNode.x * 1.5, height / 2 - highlightedNode.y * 1.5)
                   .scale(1.5)
@@ -2543,7 +2543,7 @@ export default function DependenciesPage({
                   d3.select(svgRef.current)
                     .transition()
                     .duration(200)
-                    .call(zoom.scaleBy as any, 1.4, center);
+                    .call(zoom.scaleBy , 1.4, center);
                 });
               }}
               title="Zoom In"
@@ -2562,7 +2562,7 @@ export default function DependenciesPage({
                   d3.select(svgRef.current)
                     .transition()
                     .duration(200)
-                    .call(zoom.scaleBy as any, 0.7, center);
+                    .call(zoom.scaleBy , 0.7, center);
                 });
               }}
               title="Zoom Out"
@@ -2597,7 +2597,7 @@ export default function DependenciesPage({
                       .transition()
                       .duration(400)
                       .call(
-                        zoom.transform as any,
+                        zoom.transform ,
                         d3.zoomIdentity
                           .translate(w / 2 - scale * (minX + maxX) / 2, h / 2 - scale * (minY + maxY) / 2)
                           .scale(Math.min(scale, 2))

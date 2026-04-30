@@ -280,7 +280,7 @@ export function validateNWC(input: string): string | null {
 /**
  * Validate and sanitize text input (for descriptions, comments, etc.)
  */
-export function sanitizeText(input: string, maxLength: number = 10000): string {
+export function sanitizeText(input: string, maxLength = 10000): string {
   if (!input || typeof input !== "string") return "";
 
   // Remove null bytes and control characters (except newlines and tabs)
@@ -324,7 +324,7 @@ export function validateJSON(input: string): any | null {
 /**
  * Get maximum depth of nested object
  */
-function getObjectDepth(obj: any, currentDepth: number = 0): number {
+function getObjectDepth(obj: any, currentDepth = 0): number {
   if (currentDepth > 10) return currentDepth; // Safety limit
   if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
     return currentDepth;
@@ -379,7 +379,7 @@ export class RateLimiter {
   private maxRequests: number;
   private windowMs: number;
 
-  constructor(maxRequests: number = 10, windowMs: number = 60000) {
+  constructor(maxRequests = 10, windowMs = 60000) {
     this.maxRequests = maxRequests;
     this.windowMs = windowMs;
   }

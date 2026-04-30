@@ -2,7 +2,9 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PushPaywallStatus } from "@/components/ui/push-paywall-status";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
+import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { isOwner } from "@/lib/repo-permissions";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { formatDateTime24h } from "@/lib/utils/date-format";
@@ -187,7 +189,7 @@ export function ReposList({
         };
 
         // Try sourceUrl first
-        let gitUrl: string | undefined = repo.sourceUrl;
+        const gitUrl: string | undefined = repo.sourceUrl;
         let ownerRepo: {
           owner: string;
           repo: string;
@@ -251,7 +253,7 @@ export function ReposList({
           const ownerPubkey = repo.entity
             ? getRepoOwnerPubkey(repo, repo.entity)
             : null;
-          const repoDataAny = repo as any;
+          const repoDataAny = repo ;
           let repoName =
             repoDataAny?.repositoryName || repo.repo || repo.slug || repo.name;
 
@@ -327,7 +329,7 @@ export function ReposList({
         "❌ [ReposList] Excluding repo with corrupted entity 'gittr.space':",
         {
           repo: repoName,
-          ownerPubkey: (r as any).ownerPubkey?.slice(0, 16),
+          ownerPubkey: (r ).ownerPubkey?.slice(0, 16),
         }
       );
       return false; // Always exclude - these are corrupted
@@ -342,7 +344,7 @@ export function ReposList({
         {
           repo: repoName,
           entity: r.entity,
-          ownerPubkey: (r as any).ownerPubkey?.slice(0, 16),
+          ownerPubkey: (r ).ownerPubkey?.slice(0, 16),
         }
       );
       return false; // Only npub format is valid
@@ -353,14 +355,14 @@ export function ReposList({
 
     // Priority 1: Check direct ownerPubkey match (most reliable)
     if (
-      (r as any).ownerPubkey &&
-      (r as any).ownerPubkey.toLowerCase() === pubkey.toLowerCase()
+      (r ).ownerPubkey &&
+      (r ).ownerPubkey.toLowerCase() === pubkey.toLowerCase()
     ) {
       return true;
     }
 
     // Priority 2: Check via getRepoOwnerPubkey (uses ownerPubkey or contributors)
-    const repoOwnerPubkey = getRepoOwnerPubkey(r as any, r.entity);
+    const repoOwnerPubkey = getRepoOwnerPubkey(r , r.entity);
     if (
       repoOwnerPubkey &&
       repoOwnerPubkey.toLowerCase() === pubkey.toLowerCase()
@@ -387,8 +389,8 @@ export function ReposList({
           if (entityPubkey.toLowerCase() === pubkey.toLowerCase()) {
             // Additional check: ensure ownerPubkey matches if it exists
             if (
-              (r as any).ownerPubkey &&
-              (r as any).ownerPubkey.toLowerCase() !== pubkey.toLowerCase()
+              (r ).ownerPubkey &&
+              (r ).ownerPubkey.toLowerCase() !== pubkey.toLowerCase()
             )
               return false;
             return true;
@@ -475,7 +477,7 @@ export function ReposList({
   const filtered = filteredRepos.filter((r) => {
     // CRITICAL: Filter out corrupted repos FIRST (before any other checks)
     if (
-      isRepoCorrupted(r, (r as any).nostrEventId || (r as any).lastNostrEventId)
+      isRepoCorrupted(r, (r ).nostrEventId || (r ).lastNostrEventId)
     ) {
       return false; // Never show corrupted repos
     }
@@ -484,15 +486,15 @@ export function ReposList({
     if (isRepoDeleted(r)) return false;
 
     // Skip if owner marked as deleted/archived on Nostr
-    if ((r as any).deleted === true || (r as any).archived === true)
+    if ((r ).deleted === true || (r ).archived === true)
       return false;
 
     // CRITICAL: "Your repositories" should ONLY show repos owned by the current user
     if (!pubkey) return false;
 
     const repoName = r.repo || r.slug || r.name || "";
-    const repoOwnerPubkey = getRepoOwnerPubkey(r as any, r.entity);
-    const directOwnerPubkey = (r as any).ownerPubkey;
+    const repoOwnerPubkey = getRepoOwnerPubkey(r , r.entity);
+    const directOwnerPubkey = (r ).ownerPubkey;
 
     // Priority 1: Check direct ownerPubkey match (most reliable)
     if (
@@ -574,12 +576,12 @@ export function ReposList({
     }
 
     // If same status, sort by date (newest first)
-    const aLatest = (a as any).lastNostrEventCreatedAt
-      ? (a as any).lastNostrEventCreatedAt * 1000
-      : (a as any).updatedAt || a.createdAt || 0;
-    const bLatest = (b as any).lastNostrEventCreatedAt
-      ? (b as any).lastNostrEventCreatedAt * 1000
-      : (b as any).updatedAt || b.createdAt || 0;
+    const aLatest = (a ).lastNostrEventCreatedAt
+      ? (a ).lastNostrEventCreatedAt * 1000
+      : (a ).updatedAt || a.createdAt || 0;
+    const bLatest = (b ).lastNostrEventCreatedAt
+      ? (b ).lastNostrEventCreatedAt * 1000
+      : (b ).updatedAt || b.createdAt || 0;
 
     if (aLatest !== bLatest) {
       return bLatest - aLatest; // Newest first
@@ -791,7 +793,7 @@ export function ReposList({
                     isLocal &&
                     pubkey &&
                     isOwner(pubkey, r.contributors, r.ownerPubkey)
-                      ? ""
+                      ? "flex flex-col items-start"
                       : "hidden"
                   }
                   suppressHydrationWarning
@@ -824,6 +826,36 @@ export function ReposList({
                             );
                             return;
                           }
+                        }
+
+                        const ownerPubkey =
+                          getRepoOwnerPubkey(r, entity) ||
+                          (r ).ownerPubkey ||
+                          "";
+                        const paymentAuth =
+                          await ensurePushPaymentAuthorization({
+                            entity,
+                            repo: repoForUrl,
+                            ownerPubkey: ownerPubkey.toLowerCase(),
+                            payerPubkey: pubkey,
+                            ownerMetadata:
+                              (ownerMetadata as any)?.[
+                                ownerPubkey.toLowerCase()
+                              ] || undefined,
+                            privateKey: privateKey || undefined,
+                            signer:
+                              typeof window !== "undefined" && window.nostr
+                                ? window.nostr.signEvent
+                                : undefined,
+                          });
+                        if (!paymentAuth.ok) {
+                          alert(
+                            `Push blocked: ${
+                              paymentAuth.error ||
+                              "payment authorization failed"
+                            }`
+                          );
+                          return;
                         }
 
                         setPushingRepos((prev) =>
@@ -891,23 +923,35 @@ export function ReposList({
                     <Upload className="h-3 w-3 mr-1" />
                     {isPushing ? "Pushing..." : "Push to Nostr"}
                   </Button>
+                  <PushPaywallStatus
+                    entity={entity}
+                    repo={repoForUrl}
+                    ownerPubkey={
+                      (
+                        getRepoOwnerPubkey(r, entity) ||
+                        (r ).ownerPubkey ||
+                        ""
+                      ).toLowerCase() as string
+                    }
+                    payerPubkey={pubkey}
+                  />
                 </div>
                 <div className="opacity-70 text-sm whitespace-nowrap">
-                  {(r as any).lastNostrEventCreatedAt ? (
+                  {(r ).lastNostrEventCreatedAt ? (
                     <>
                       Last push:{" "}
                       {formatDateTime24h(
-                        (r as any).lastNostrEventCreatedAt * 1000
+                        (r ).lastNostrEventCreatedAt * 1000
                       )}
                     </>
-                  ) : (r as any).lastPushAttempt ? (
+                  ) : (r ).lastPushAttempt ? (
                     <>
                       Push attempted:{" "}
-                      {formatDateTime24h((r as any).lastPushAttempt)}
+                      {formatDateTime24h((r ).lastPushAttempt)}
                     </>
-                  ) : (r as any).lastModifiedAt ? (
+                  ) : (r ).lastModifiedAt ? (
                     <>
-                      Modified: {formatDateTime24h((r as any).lastModifiedAt)}
+                      Modified: {formatDateTime24h((r ).lastModifiedAt)}
                     </>
                   ) : (
                     <>Created: {formatDateTime24h(r.createdAt)}</>

@@ -14,7 +14,7 @@
  */
 export function formatPaymentMessage(
   username?: string | null,
-  maxLength: number = 160
+  maxLength = 160
 ): string {
   // Default username if not provided
   const displayName = username || "Anonymous";

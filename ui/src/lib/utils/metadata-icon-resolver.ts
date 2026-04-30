@@ -98,7 +98,7 @@ export async function resolveRepoIconForMetadata(
 export async function resolveUserIconForMetadata(
   entity: string,
   baseUrl: string,
-  timeoutMs: number = 1000
+  timeoutMs = 1000
 ): Promise<string> {
   const ownerPubkey = resolveEntityToPubkey(entity);
 

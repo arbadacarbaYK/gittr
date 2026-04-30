@@ -26,10 +26,12 @@ import {
   KIND_CODE_SNIPPET,
   KIND_COMMENT,
   KIND_ISSUE,
+  KIND_LABEL_OVERLAY,
   KIND_STATUS_CLOSED,
   KIND_STATUS_OPEN,
   createBountyEvent,
   createCommentEvent,
+  createLabelOverlayEvent,
   createStatusEvent,
 } from "@/lib/nostr/events";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
@@ -70,7 +72,7 @@ import {
 } from "lucide-react";
 import { Reply } from "lucide-react";
 import Link from "next/link";
-import { nip19 } from "nostr-tools";
+import { type UnsignedEvent, nip19 } from "nostr-tools";
 import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
@@ -698,7 +700,7 @@ export default function IssueDetailPage({
   );
 
   const handleToggleLabel = useCallback(
-    (label: string) => {
+    async (label: string) => {
       if (!issue || !isOwner) return;
 
       try {
@@ -714,18 +716,89 @@ export default function IssueDetailPage({
             : [...labels, label];
           return i.id === issue.id ? { ...i, labels: newLabels } : i;
         });
-        localStorage.setItem(key, JSON.stringify(updated));
-        setIssue({
+        const nextIssue = {
           ...issue,
           labels: issue.labels.includes(label)
             ? issue.labels.filter((l) => l !== label)
             : [...issue.labels, label],
-        });
+        };
+        localStorage.setItem(key, JSON.stringify(updated));
+        setIssue(nextIssue);
+
+        // Publish NIP-32 label overlay for cross-client label synchronization.
+        if (publish && defaultRelays && defaultRelays.length > 0) {
+          const repos = loadStoredRepos();
+          const foundRepo = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+          const ownerPubkey = foundRepo
+            ? getRepoOwnerPubkey(foundRepo, entity)
+            : resolveEntityToPubkey(entity);
+          const repoIdentifier =
+            (foundRepo as { repositoryName?: string; repo?: string; slug?: string } | null)
+              ?.repositoryName ||
+            (foundRepo as { repositoryName?: string; repo?: string; slug?: string } | null)
+              ?.repo ||
+            repo;
+
+          let overlayEvent: any | null = null;
+          if (typeof window !== "undefined" && window.nostr) {
+            const createdAt = Math.floor(Date.now() / 1000);
+            const tags: string[][] = [["L", "gittr.issue"]];
+            if (issueEventId) {
+              tags.push(["e", issueEventId]);
+            }
+            if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+              tags.push(["a", `30617:${ownerPubkey}:${repoIdentifier}`]);
+            }
+            nextIssue.labels.forEach((value) => tags.push(["l", value, "gittr.issue"]));
+            tags.push(["l", `#subject:${nextIssue.title}`, "gittr.issue"]);
+
+            const unsignedOverlayEvent = {
+              kind: KIND_LABEL_OVERLAY,
+              created_at: createdAt,
+              tags,
+              content: "",
+              pubkey: currentUserPubkey || "",
+            };
+            overlayEvent = await window.nostr.signEvent(
+              unsignedOverlayEvent as UnsignedEvent
+            );
+          } else {
+            const privateKey = await getNostrPrivateKey();
+            if (privateKey) {
+              overlayEvent = createLabelOverlayEvent(
+                {
+                  targetEventId: issueEventId || undefined,
+                  targetAddress:
+                    ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
+                      ? `30617:${ownerPubkey}:${repoIdentifier}`
+                      : undefined,
+                  labels: nextIssue.labels,
+                  subject: nextIssue.title,
+                  labelNamespace: "gittr.issue",
+                },
+                privateKey
+              );
+            }
+          }
+          if (overlayEvent) {
+            publish(overlayEvent, defaultRelays);
+          }
+        }
       } catch (error) {
         console.error("Failed to toggle label:", error);
       }
     },
-    [issue, isOwner, entity, repo, id]
+    [
+      issue,
+      isOwner,
+      entity,
+      repo,
+      id,
+      publish,
+      defaultRelays,
+      issueEventId,
+      currentUserPubkey,
+    ]
   );
 
   const handleBountyCreated = useCallback(
@@ -1963,7 +2036,9 @@ export default function IssueDetailPage({
                         {filteredLabels.map((label) => (
                           <DropdownMenuItem
                             key={label}
-                            onClick={() => handleToggleLabel(label)}
+                            onClick={() => {
+                              void handleToggleLabel(label);
+                            }}
                             className={
                               issue.labels.includes(label)
                                 ? "bg-purple-900/50"
@@ -1989,7 +2064,9 @@ export default function IssueDetailPage({
                     {label}
                     {isOwner && (
                       <button
-                        onClick={() => handleToggleLabel(label)}
+                        onClick={() => {
+                          void handleToggleLabel(label);
+                        }}
                         className="ml-1 hover:text-red-400"
                       >
                         <X className="h-3 w-3" />

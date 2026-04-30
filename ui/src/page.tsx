@@ -2,11 +2,11 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useContributorMetadata, ClaimedIdentity } from "@/lib/nostr/useContributorMetadata";
+import { useContributorMetadata, type ClaimedIdentity } from "@/lib/nostr/useContributorMetadata";
 import { resolveEntityToPubkey, getEntityDisplayName, getRepoOwnerPubkey, getEntityPicture, getUserMetadata } from "@/lib/utils/entity-resolver";
 import { getUserActivities, getUserActivityCounts, getContributionGraph } from "@/lib/activity-tracking";
 import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
-import { UserStats } from "@/lib/stats";
+import { type UserStats } from "@/lib/stats";
 import { nip19, getEventHash, signEvent } from "nostr-tools";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
@@ -748,12 +748,12 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 dedupeMap.set(key, r);
               } else {
                 // Keep the one with the most recent event date
-                const rLatest = (r as any).lastNostrEventCreatedAt 
-                  ? (r as any).lastNostrEventCreatedAt * 1000
-                  : ((r as any).updatedAt || r.createdAt || 0);
-                const existingLatest = (existing as any).lastNostrEventCreatedAt 
-                  ? (existing as any).lastNostrEventCreatedAt * 1000
-                  : ((existing as any).updatedAt || existing.createdAt || 0);
+                const rLatest = (r ).lastNostrEventCreatedAt 
+                  ? (r ).lastNostrEventCreatedAt * 1000
+                  : ((r ).updatedAt || r.createdAt || 0);
+                const existingLatest = (existing ).lastNostrEventCreatedAt 
+                  ? (existing ).lastNostrEventCreatedAt * 1000
+                  : ((existing ).updatedAt || existing.createdAt || 0);
                 if (rLatest > existingLatest) {
                   dedupeMap.set(key, r);
                 }

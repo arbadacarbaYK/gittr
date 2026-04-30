@@ -645,7 +645,7 @@ export default function RelaysPage() {
     setGraspListServers(graspListServers.filter((s) => s !== url));
   };
 
-  const renderRelayList = (relays: string[], showRemove: boolean = false) => {
+  const renderRelayList = (relays: string[], showRemove = false) => {
     if (relays.length === 0) return null;
 
     return (

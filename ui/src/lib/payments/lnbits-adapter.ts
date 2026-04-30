@@ -102,7 +102,7 @@ export async function createPayment(
 
   // Build request body - use format compatible with both versions
   // Start with common fields that work in both versions
-  let body: Record<string, any> = {
+  const body: Record<string, any> = {
     out: request.out,
   };
 

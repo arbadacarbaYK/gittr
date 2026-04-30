@@ -110,7 +110,7 @@ export default function NewPullRequestPage({
           resolvedParams.repo
         );
         if (repo?.branches && Array.isArray(repo.branches)) {
-          setBranches(repo.branches as string[]);
+          setBranches(repo.branches );
           if (!baseBranchParam) {
             setBaseBranch(repo.defaultBranch || "main");
           }
@@ -445,7 +445,7 @@ export default function NewPullRequestPage({
         finalOwnerPubkey = resolved;
       }
 
-      // Get earliest unique commit (optional but recommended for NIP-34 "r" tag)
+      // Get earliest unique commit (required for NIP-34 "r" tag)
       const earliestUniqueCommit =
         (repoData as any).earliestUniqueCommit ||
         (repoData.commits &&
@@ -453,6 +453,14 @@ export default function NewPullRequestPage({
         repoData.commits.length > 0
           ? (repoData.commits[0] as any)?.id
           : undefined);
+      if (!earliestUniqueCommit) {
+        showToast(
+          "Cannot create PR yet: repository is missing earliest unique commit (NIP-34 'r' tag). Push/sync the repo first.",
+          "error"
+        );
+        setCreating(false);
+        return;
+      }
 
       // Get clone URLs from repo data (required for NIP-34 "clone" tag)
       // Prioritize user's preferred GRASP servers if available
@@ -636,17 +644,25 @@ export default function NewPullRequestPage({
         }
       }
 
-      // Final fallback: Generate placeholder if no commit ID found
-      // This happens when creating PR from pending changes that haven't been pushed yet
+      // NIP-34 requires a real commit id for "c"; placeholders break interoperability
       if (!currentCommitId) {
-        currentCommitId = `pr-${Date.now()}-${Math.random()
-          .toString(36)
-          .substr(2, 9)}`;
-        console.log(
-          `⚠️ [PR Create] No commit ID found for branch ${
+        showToast(
+          `Cannot create PR yet: no real commit id found for branch ${
             headBranch || "unknown"
-          } - using placeholder: ${currentCommitId}`
+          }. Push commits first so NIP-34 required tag 'c' can be set.`,
+          "error"
         );
+        setCreating(false);
+        return;
+      }
+
+      if (cloneUrls.length === 0) {
+        showToast(
+          "Cannot create PR yet: no clone URLs available (NIP-34 requires at least one 'clone' tag).",
+          "error"
+        );
+        setCreating(false);
+        return;
       }
 
       let prEvent: any;
@@ -659,7 +675,7 @@ export default function NewPullRequestPage({
         // Create NIP-34 compliant event
         const tags: string[][] = [
           // ["a", "30617:<base-repo-owner-pubkey>:<base-repo-id>"] - REQUIRED
-          ["a", `30617:${finalOwnerPubkey}:${repo}`],
+          ["a", `30617:${finalOwnerPubkey}:${actualRepositoryName}`],
           // ["r", "<earliest-unique-commit-id-of-repo>"] - REQUIRED (helps clients subscribe)
           ...(earliestUniqueCommit ? [["r", earliestUniqueCommit]] : []),
           // ["p", "<repository-owner>"] - REQUIRED
@@ -727,7 +743,7 @@ export default function NewPullRequestPage({
         prEvent = createPullRequestEvent(
           {
             repoEntity: entity,
-            repoName: repo,
+            repoName: actualRepositoryName,
             ownerPubkey: finalOwnerPubkey,
             earliestUniqueCommit,
             title: title.trim(),

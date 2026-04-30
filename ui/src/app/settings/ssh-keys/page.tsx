@@ -511,7 +511,7 @@ export default function SSHKeysPage() {
         };
         unsignedEvent.id = getEventHash(unsignedEvent);
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
-        sshKeyEvent = await window.nostr.signEvent(unsignedEvent as any);
+        sshKeyEvent = await window.nostr.signEvent(unsignedEvent );
       } else if (privateKey) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         sshKeyEvent = createSSHKeyEvent(
@@ -525,7 +525,7 @@ export default function SSHKeysPage() {
       // Publish to Nostr relays
       if (publish) {
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
-        void publish(sshKeyEvent as any, defaultRelays);
+        void publish(sshKeyEvent , defaultRelays);
 
         // CRITICAL: Also send SSH key event directly to bridge API for immediate processing
         // The bridge only watches for SSH keys from users with repository permissions via relay subscription,

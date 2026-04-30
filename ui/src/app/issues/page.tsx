@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { KIND_ISSUE } from "@/lib/nostr/events";
+import { KIND_ISSUE, KIND_LABEL_OVERLAY } from "@/lib/nostr/events";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { loadStoredRepos } from "@/lib/repos/storage";
@@ -431,8 +431,39 @@ export default function IssuesPage({}) {
           kinds: [KIND_ISSUE],
           "#a": [`30617:${ownerPubkey}:${repoName}`],
         });
+        // NIP-32 overlays can be targeted to repo address; subscribe for label/subject updates.
+        filters.push({
+          kinds: [KIND_LABEL_OVERLAY],
+          "#a": [`30617:${ownerPubkey}:${repoName}`],
+        });
       }
     });
+
+    // Some clients publish NIP-32 overlays with only an event pointer ("e"), no repo address ("a").
+    // Subscribe by known local issue IDs as a compatibility fallback.
+    const knownIssueIds = new Set<string>();
+    userRepos.forEach((repo: any) => {
+      const entity =
+        repo.entity ||
+        repo.slug?.split("/")[0] ||
+        repo.ownerPubkey?.slice(0, 8);
+      const repoName =
+        repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
+      if (!entity || !repoName) return;
+      const key = getRepoStorageKey("gittr_issues", entity, repoName);
+      const localIssues = JSON.parse(localStorage.getItem(key) || "[]") as any[];
+      localIssues.forEach((issue: any) => {
+        if (issue?.id && typeof issue.id === "string") {
+          knownIssueIds.add(issue.id);
+        }
+      });
+    });
+    if (knownIssueIds.size > 0) {
+      filters.push({
+        kinds: [KIND_LABEL_OVERLAY],
+        "#e": Array.from(knownIssueIds).slice(0, 500),
+      });
+    }
 
     if (filters.length === 0) return;
 
@@ -441,9 +472,68 @@ export default function IssuesPage({}) {
       filters,
       defaultRelays,
       (event, isAfterEose, relayURL) => {
-        if (cancelled || event.kind !== KIND_ISSUE) return;
+        if (cancelled) return;
 
         try {
+          if (event.kind === KIND_LABEL_OVERLAY) {
+            const targetEventTag = event.tags.find(
+              (t: string[]) => t[0] === "e" && !!t[1]
+            );
+            const labelTags = event.tags.filter(
+              (t: string[]) => t[0] === "l" && !!t[1]
+            );
+            if (!targetEventTag || labelTags.length === 0) return;
+
+            const targetIssueId = targetEventTag[1];
+            const nextLabels = labelTags
+              .map((t: string[]) => t[1])
+              .filter((value): value is string => typeof value === "string")
+              .filter((value: string) => !value.startsWith("#subject:"));
+            const subjectLabel = labelTags
+              .map((t: string[]) => t[1])
+              .filter((value): value is string => typeof value === "string")
+              .find((value: string) => value.startsWith("#subject:"));
+            const nextSubject = subjectLabel
+              ? subjectLabel.replace(/^#subject:/, "").trim()
+              : "";
+
+            userRepos.forEach((repoItem: any) => {
+              const e =
+                repoItem.entity ||
+                repoItem.slug?.split("/")[0] ||
+                repoItem.ownerPubkey?.slice(0, 8);
+              const rn =
+                repoItem.repo ||
+                repoItem.slug?.split("/")[1] ||
+                repoItem.name ||
+                repoItem.slug;
+              if (!e || !rn) return;
+              const key = getRepoStorageKey("gittr_issues", e, rn);
+              const existingIssues = JSON.parse(localStorage.getItem(key) || "[]");
+              const idx = existingIssues.findIndex((i: any) => i.id === targetIssueId);
+              if (idx < 0) return;
+              existingIssues[idx] = {
+                ...existingIssues[idx],
+                labels: nextLabels,
+                ...(nextSubject ? { title: nextSubject } : {}),
+              };
+              localStorage.setItem(key, JSON.stringify(existingIssues));
+            });
+            setAllIssues((prev) =>
+              prev.map((item) =>
+                item.id === targetIssueId
+                  ? {
+                      ...item,
+                      tags: nextLabels,
+                      ...(nextSubject ? { title: nextSubject } : {}),
+                    }
+                  : item
+              )
+            );
+            return;
+          }
+
+          if (event.kind !== KIND_ISSUE) return;
           // NIP-34: Parse from tags and markdown content, but also support old JSON format
           const aTag = event.tags.find((t: string[]) => t[0] === "a");
           const subjectTag = event.tags.find(

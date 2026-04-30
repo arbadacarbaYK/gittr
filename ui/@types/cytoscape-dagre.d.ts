@@ -1,5 +1,5 @@
 declare module "cytoscape-dagre" {
-  import cytoscape from "cytoscape";
+  import type cytoscape from "cytoscape";
   const dagre: cytoscape.Ext;
   export default dagre;
 }

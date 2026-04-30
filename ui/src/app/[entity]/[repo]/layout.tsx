@@ -3,7 +3,7 @@ import {
   resolveUserIconForMetadata,
 } from "@/lib/utils/metadata-icon-resolver";
 
-import { Metadata } from "next";
+import { type Metadata } from "next";
 import { nip19 } from "nostr-tools";
 
 import RepoLayoutClient from "./layout-client";
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 async function fetchRepoDescription(
   entity: string,
   repoName: string,
-  timeoutMs: number = 2000
+  timeoutMs = 2000
 ): Promise<string | null> {
   try {
     // Resolve entity to pubkey

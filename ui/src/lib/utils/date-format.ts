@@ -12,8 +12,8 @@
  */
 export function formatDateTime24h(
   timestamp: number | string | Date,
-  includeTime: boolean = true,
-  includeSeconds: boolean = false
+  includeTime = true,
+  includeSeconds = false
 ): string {
   const date =
     typeof timestamp === "string" || typeof timestamp === "number"
@@ -62,7 +62,7 @@ export function formatDate24h(timestamp: number | string | Date): string {
  */
 export function formatTime24h(
   timestamp: number | string | Date,
-  includeSeconds: boolean = false
+  includeSeconds = false
 ): string {
   const date =
     typeof timestamp === "string" || typeof timestamp === "number"

@@ -723,8 +723,8 @@ export default function ImportPage() {
             });
 
             // First, try to fetch the repo with exact case
-            let repoApiUrl = `https://api.github.com/repos/${repoUsername}/${repoNameFromUrl}`;
-            let repoResponse = await fetch(repoApiUrl, {
+            const repoApiUrl = `https://api.github.com/repos/${repoUsername}/${repoNameFromUrl}`;
+            const repoResponse = await fetch(repoApiUrl, {
               headers: { "User-Agent": "gittr-space" } as any,
             });
 

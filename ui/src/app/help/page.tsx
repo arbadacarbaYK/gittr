@@ -1097,6 +1097,10 @@ export default function HelpPage() {
                 metadata files live inside the Nostr event; the real Git objects
                 stay on the bridge.
               </p>
+              <p className="mt-2 text-xs text-gray-400">
+                If you see "Local changes are not visible in other clients yet",
+                push to Nostr to publish those edits to relays.
+              </p>
               <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded">
                 <p className="text-sm text-blue-200 font-semibold mb-1">
                   📦 File Content During Push
@@ -1111,6 +1115,61 @@ export default function HelpPage() {
                   <strong>If files are missing:</strong> Re-import the
                   repository to load all files into localStorage before pushing.
                 </p>
+              </div>
+
+              <div className="mt-3 p-3 bg-yellow-900/20 border border-yellow-600/30 rounded">
+                <p className="text-sm text-yellow-200 font-semibold mb-1">
+                  ⚡ Push Paywall (if enabled by repo owner)
+                </p>
+                <ul className="text-sm text-yellow-100 list-disc list-inside space-y-1 ml-2">
+                  <li>
+                    Repo owners must configure either <strong>LNbits Invoice
+                    Key</strong> or <strong>Blink API Key</strong> in Settings
+                    -&gt; Account before enabling non-zero Push Cost.
+                  </li>
+                  <li>
+                    If a repo has <strong>Push Cost (sats)</strong> above zero,
+                    "Push to Nostr" first creates a payment invoice.
+                  </li>
+                  <li>
+                    The UI shows a QR/BOLT11 invoice popup. Pay it with any
+                    Lightning wallet, then retry push.
+                  </li>
+                  <li>
+                    For SSH pushes, if authorization is missing/expired the
+                    terminal may print a <code className="bg-gray-800 px-1 rounded">pending invoice (BOLT11)</code>{" "}
+                    directly. Pay it, then run{" "}
+                    <code className="bg-gray-800 px-1 rounded">git push</code>{" "}
+                    again.
+                  </li>
+                  <li>
+                    Each paid authorization is <strong>single-use</strong>: one
+                    successful bridge push consumes it. Unused authorization
+                    expires after a short time.
+                  </li>
+                </ul>
+              </div>
+
+              <div className="mt-3 p-3 bg-red-900/20 border border-red-600/30 rounded">
+                <p className="text-sm text-red-200 font-semibold mb-1">
+                  🛠️ Common Push Errors
+                </p>
+                <ul className="text-sm text-red-100 list-disc list-inside space-y-1 ml-2">
+                  <li>
+                    <code className="bg-red-950/40 px-1 rounded">
+                      Push payment required
+                    </code>{" "}
+                    in browser/API: pay the shown invoice first, then retry.
+                  </li>
+                  <li>
+                    <code className="bg-red-950/40 px-1 rounded">
+                      push payment authorization expired
+                    </code>{" "}
+                    in SSH: create/pay a fresh invoice in the web UI, then run{" "}
+                    <code className="bg-red-950/40 px-1 rounded">git push</code>{" "}
+                    again.
+                  </li>
+                </ul>
               </div>
             </div>
 

@@ -95,11 +95,20 @@ export default function DiscussionDetailPage({
         try {
           const privateKey = await getNostrPrivateKey();
           if (privateKey) {
+            const parentComment = replyParentId
+              ? discussion.comments.find((comment) => comment.id === replyParentId)
+              : null;
             const commentEvent = createCommentEvent(
               {
-                replyTo: discussion.id,
+                replyTo: replyParentId || discussion.id,
                 rootKind: 30023,
                 rootPubkey: discussion.author,
+                ...(parentComment
+                  ? {
+                      parentKind: 1111,
+                      parentPubkey: parentComment.author,
+                    }
+                  : {}),
                 repoEntity: resolvedParams.entity,
                 repoName: resolvedParams.repo,
                 content: replyContent.trim(),

@@ -743,7 +743,7 @@ export function useContributorMetadata(pubkeys: string[]) {
 
           // Only update if we actually get new data (prevent loops)
           setMetadataMap((prev) => {
-            let updated = { ...prev };
+            const updated = { ...prev };
             let hasChanges = false;
 
             for (const [pubkey, cachedMeta] of Object.entries(
