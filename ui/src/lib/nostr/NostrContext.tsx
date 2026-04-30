@@ -139,11 +139,13 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       onEose?: OnEose,
       options: SubscriptionOptions = {}
     ) => {
+      // nostr-relaypool disallows using maxDelayMs and onEose together.
+      const safeMaxDelayMs = onEose ? undefined : maxDelayms;
       const unsub = relayPool.subscribe(
         filters,
         relays,
         onEvent,
-        maxDelayms,
+        safeMaxDelayMs,
         onEose,
         options
       );
@@ -202,11 +204,13 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       onEose?: (relayUrl: string, minCreatedAt: number) => void,
       options?: any
     ) => {
+      // Keep behavior aligned with main subscribe wrapper.
+      const safeMaxDelayMs = onEose ? undefined : maxDelayms;
       return relayPool.subscribe(
         filters,
         relays,
         onEvent,
-        maxDelayms,
+        safeMaxDelayMs,
         onEose,
         options
       );
