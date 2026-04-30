@@ -110,8 +110,10 @@ const menuItems = [
     icon: <Settings className="mr-2 h-4 w-4" />,
   },
 ];
-const MENU_ITEM_WIDTH = 185;
-const HEADER_RESERVED_WIDTH = 520;
+// Conservative width estimates for top repo nav overflow calculation.
+// The previous values were too large and pushed items into overflow too early.
+const MENU_ITEM_WIDTH = 130;
+const HEADER_RESERVED_WIDTH = 280;
 
 export default function RepoLayoutClient({
   children,
