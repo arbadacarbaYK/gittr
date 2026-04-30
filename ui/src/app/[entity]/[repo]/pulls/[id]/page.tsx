@@ -26,6 +26,7 @@ import {
   createPullRequestUpdateEvent,
   createStatusEvent,
 } from "@/lib/nostr/events";
+import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import {
@@ -107,6 +108,10 @@ interface PRData {
   headBranch?: string;
 }
 
+function isHexEventId(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/i.test(value);
+}
+
 export default function PRDetailPage({
   params,
 }: {
@@ -144,6 +149,8 @@ export default function PRDetailPage({
     new Map()
   );
   const [prEventId, setPrEventId] = useState<string | null>(null);
+  const [mergePublishReady, setMergePublishReady] = useState<boolean>(false);
+  const [mergePublishReason, setMergePublishReason] = useState<string>("");
 
   // Fetch metadata for PR author, mergedBy, contributors, and bounty creator
   const allPubkeys = useMemo(() => {
@@ -308,8 +315,12 @@ export default function PRDetailPage({
           headBranch: prData.headBranch,
         });
         // Store PR event ID if available
-        if (prData.nostrEventId || prData.lastNostrEventId) {
-          setPrEventId(prData.nostrEventId || prData.lastNostrEventId);
+        const resolvedPrEventId =
+          prData.nostrEventId ||
+          prData.lastNostrEventId ||
+          (isHexEventId(prData.id) ? prData.id : null);
+        if (resolvedPrEventId) {
+          setPrEventId(resolvedPrEventId);
         }
 
         // Check if current user can merge (owner or maintainer - write access)
@@ -413,6 +424,38 @@ export default function PRDetailPage({
   }, [pr]);
 
   const hasChanges = changedFiles.length > 0;
+
+  const checkMergePublishPreflight = useCallback(async () => {
+    if (!currentUserPubkey) {
+      setMergePublishReady(false);
+      setMergePublishReason("Not logged in");
+      return;
+    }
+
+    const rootEventId = prEventId || (pr && isHexEventId(pr.id) ? pr.id : null);
+    if (!rootEventId) {
+      setMergePublishReady(false);
+      setMergePublishReason("PR root event ID missing");
+      return;
+    }
+
+    const hasNip07 = typeof window !== "undefined" && !!window.nostr;
+    if (hasNip07) {
+      setMergePublishReady(true);
+      setMergePublishReason("NIP-07 signer available");
+      return;
+    }
+
+    const privateKey = await getNostrPrivateKey();
+    if (privateKey) {
+      setMergePublishReady(true);
+      setMergePublishReason("Local private key signer available");
+      return;
+    }
+
+    setMergePublishReady(false);
+    setMergePublishReason("No signer available (NIP-07/private key)");
+  }, [currentUserPubkey, prEventId, pr]);
 
   const handleMerge = useCallback(async () => {
     // Only owners and maintainers can merge (write access)
@@ -783,7 +826,11 @@ export default function PRDetailPage({
       });
 
       // 3a. Create and publish NIP-34 status event (kind 1631: Applied/Merged)
-      if (prEventId && currentUserPubkey) {
+      // Fall back to PR id when it is itself a valid event id.
+      const rootEventId = prEventId || (isHexEventId(pr.id) ? pr.id : null);
+      let mergeStatusPublished = false;
+      let mergeStatusSkippedReason = "";
+      if (rootEventId && currentUserPubkey) {
         try {
           const repos = loadStoredRepos();
           const repo = findRepoByEntityAndName<StoredRepo>(
@@ -814,7 +861,7 @@ export default function PRDetailPage({
                     kind: KIND_STATUS_APPLIED,
                     created_at: Math.floor(Date.now() / 1000),
                     tags: [
-                      ["e", prEventId, "", "root"],
+                      ["e", rootEventId, "", "root"],
                       ["p", ownerPubkeyHex],
                       ["p", pr.author],
                       ["a", `30617:${ownerPubkeyHex}:${resolvedParams.repo}`],
@@ -832,7 +879,7 @@ export default function PRDetailPage({
                   statusEvent = createStatusEvent(
                     {
                       statusKind: KIND_STATUS_APPLIED,
-                      rootEventId: prEventId,
+                      rootEventId,
                       ownerPubkey: ownerPubkeyHex,
                       rootEventAuthor: pr.author,
                       repoName: resolvedParams.repo,
@@ -850,6 +897,7 @@ export default function PRDetailPage({
                   statusEvent
                 ) {
                   publish(statusEvent, defaultRelays);
+                  mergeStatusPublished = true;
                   console.log(
                     "✅ Published NIP-34 status event (merged):",
                     statusEvent.id
@@ -859,9 +907,15 @@ export default function PRDetailPage({
             }
           }
         } catch (error) {
+          mergeStatusSkippedReason =
+            error instanceof Error ? error.message : String(error);
           console.error("Failed to publish status event:", error);
           // Don't block merge if status event publishing fails
         }
+      } else {
+        mergeStatusSkippedReason = !rootEventId
+          ? "missing PR root event id"
+          : "missing current user pubkey";
       }
 
       // 6. Add PR author to contributors if not already present
@@ -1198,7 +1252,13 @@ export default function PRDetailPage({
 
       setMerging(false);
       setShowMergeModal(false);
-      alert("Pull request merged successfully!");
+      if (mergeStatusPublished) {
+        alert("Pull request merged and published to Nostr successfully!");
+      } else {
+        alert(
+          `Pull request merged locally, but merge status was not published to Nostr (${mergeStatusSkippedReason || "unknown reason"}). Use Push to Nostr to sync repository state.`
+        );
+      }
 
       // Record PR merge activity (PR author gets credit)
       if (pr.author) {
@@ -1267,6 +1327,38 @@ export default function PRDetailPage({
         }
       }
 
+      // 7. Push updated repository state so other clients can immediately
+      // reconstruct the post-merge codebase without relying on local-only data.
+      let repoStatePushed = false;
+      let repoStatePushError = "";
+      if (publish && subscribe && defaultRelays?.length > 0 && currentUserPubkey) {
+        try {
+          const pushResult = await pushRepoToNostr({
+            repoSlug: resolvedParams.repo,
+            entity: resolvedParams.entity,
+            publish,
+            subscribe,
+            defaultRelays,
+            privateKey: privateKey || undefined,
+            pubkey: currentUserPubkey,
+            onProgress: (message) => {
+              console.log(`[Merge Push ${resolvedParams.repo}] ${message}`);
+            },
+          });
+          repoStatePushed = !!pushResult.success;
+          if (!pushResult.success) {
+            repoStatePushError = pushResult.error || "unknown push failure";
+          }
+        } catch (pushError) {
+          repoStatePushError =
+            pushError instanceof Error ? pushError.message : String(pushError);
+          console.error("Failed to push merged repo state to Nostr:", pushError);
+        }
+      } else {
+        repoStatePushError =
+          "missing publish context, relays, or signer identity";
+      }
+
       // Dispatch event to update counts
       window.dispatchEvent(new CustomEvent("gittr:pr-updated"));
       window.dispatchEvent(
@@ -1276,6 +1368,11 @@ export default function PRDetailPage({
       );
 
       router.refresh();
+      if (!repoStatePushed) {
+        alert(
+          `Merge completed, but repository state was not pushed to Nostr (${repoStatePushError}). Please run Push to Nostr for this repo so other clients see the merged code state.`
+        );
+      }
     } catch (error) {
       setMerging(false);
       console.error("Failed to merge PR:", error);
@@ -1504,6 +1601,7 @@ export default function PRDetailPage({
             variant="default"
             onClick={async () => {
               setShowMergeModal(true);
+              await checkMergePublishPreflight();
               // Check wallet balance if there's a bounty
               if (
                 linkedIssue?.bountyAmount &&
@@ -1540,6 +1638,18 @@ export default function PRDetailPage({
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold mb-4">Merge pull request</h2>
             <div className="space-y-4">
+              <div
+                className={`p-3 rounded border text-sm ${
+                  mergePublishReady
+                    ? "bg-emerald-900/20 border-emerald-600 text-emerald-200"
+                    : "bg-amber-900/20 border-amber-600 text-amber-200"
+                }`}
+              >
+                {mergePublishReady
+                  ? `Will sign and publish merge status to Nostr (${mergePublishReason}).`
+                  : `Local-only merge risk: ${mergePublishReason}.`}
+              </div>
+
               {/* Bounty Warning - Prominent */}
               {linkedIssue?.bountyAmount &&
                 (linkedIssue?.bountyWithdrawId ||

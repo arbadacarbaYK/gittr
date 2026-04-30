@@ -1992,7 +1992,7 @@ export default function HomePage() {
                       );
                       return (
                         <Link
-                          key={pr.id}
+                          key={`${pr.entity}-${pr.repoName}-${pr.id}`}
                           href={href}
                           className="block hover:bg-gray-800/50 rounded p-1.5 -m-1.5"
                         >
@@ -2023,7 +2023,7 @@ export default function HomePage() {
                       );
                       return (
                         <Link
-                          key={issue.id}
+                          key={`${issue.entity}-${issue.repoName}-${issue.id}`}
                           href={href}
                           className="block hover:bg-gray-800/50 rounded p-1.5 -m-1.5"
                         >

@@ -618,18 +618,22 @@ export default function NewPullRequestPage({
         }
       }
 
-      // Fetch actual commit ID from the PR branch if it exists (required for NIP-34 "c" tag)
-      // Try to get the latest commit from the head branch
+      // Fetch actual commit ID for NIP-34 required "c" tag.
+      // Use compare branch when present, otherwise fall back to selected base branch.
       let currentCommitId: string | undefined;
+      const branchForCommit =
+        (headBranch && headBranch.trim()) ||
+        (baseBranch && baseBranch.trim()) ||
+        "";
 
-      if (headBranch && finalOwnerPubkey && actualRepositoryName) {
+      if (branchForCommit && finalOwnerPubkey && actualRepositoryName) {
         try {
-          // Fetch commits from bridge API for the head branch
+          // Fetch commits from bridge API for the chosen branch
           const commitsUrl = `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
             finalOwnerPubkey
           )}&repo=${encodeURIComponent(
             actualRepositoryName
-          )}&branch=${encodeURIComponent(headBranch)}&limit=1`;
+          )}&branch=${encodeURIComponent(branchForCommit)}&limit=1`;
           const commitsResponse = await fetch(commitsUrl);
 
           if (commitsResponse.ok) {
@@ -649,7 +653,7 @@ export default function NewPullRequestPage({
               ) {
                 currentCommitId = latestCommit.id;
                 console.log(
-                  `✅ [PR Create] Fetched commit ID from head branch ${headBranch}: ${currentCommitId?.slice(
+                  `✅ [PR Create] Fetched commit ID from branch ${branchForCommit}: ${currentCommitId?.slice(
                     0,
                     8
                   )}...`
@@ -666,20 +670,20 @@ export default function NewPullRequestPage({
       }
 
       // Fallback: If we couldn't fetch from bridge, try localStorage commits
-      if (!currentCommitId && headBranch) {
+      if (!currentCommitId && branchForCommit) {
         try {
           const commitsKey = getRepoStorageKey("gittr_commits", entity, repo);
           const allCommits = JSON.parse(
             localStorage.getItem(commitsKey) || "[]"
           );
           const branchCommits = allCommits
-            .filter((c: any) => c.branch === headBranch)
+            .filter((c: any) => c.branch === branchForCommit)
             .sort((a: any, b: any) => b.timestamp - a.timestamp); // Newest first
 
           if (branchCommits.length > 0 && branchCommits[0]?.id) {
             currentCommitId = branchCommits[0].id;
             console.log(
-              `✅ [PR Create] Found commit ID in localStorage for branch ${headBranch}: ${currentCommitId?.slice(
+              `✅ [PR Create] Found commit ID in localStorage for branch ${branchForCommit}: ${currentCommitId?.slice(
                 0,
                 8
               )}...`
@@ -697,7 +701,7 @@ export default function NewPullRequestPage({
       if (!currentCommitId) {
         showToast(
           `Cannot create PR yet: no real commit id found for branch ${
-            headBranch || "unknown"
+            branchForCommit || "unknown"
           }. Push commits first so NIP-34 required tag 'c' can be set.`,
           "error"
         );

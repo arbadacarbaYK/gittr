@@ -360,9 +360,28 @@ export default function RepoCodePage() {
   const repoProcessedRef = useRef<string>(""); // Track which repo we've already processed
   const fileFetchInProgressRef = useRef<boolean>(false); // Prevent multiple simultaneous file fetches
   const fileFetchAttemptedRef = useRef<string>(""); // Track which repos we've already attempted to fetch files for
+  const fileFetchRetryCountRef = useRef<Record<string, number>>({}); // Limit automatic retry loops per repo+branch
   const bridgeFetchInProgressRef = useRef<boolean>(false);
   const ownerMetadataRef = useRef<Record<string, Metadata>>({}); // Ref to access latest ownerMetadata without causing re-renders
   const repoDataRef = useRef<StoredRepo | null>(null); // Ref to access latest repoData without causing dependency loops
+  const MAX_AUTO_FILE_FETCH_RETRIES = 2;
+
+  const getFileFetchRetryCount = useCallback((repoKeyWithBranch: string) => {
+    return fileFetchRetryCountRef.current[repoKeyWithBranch] || 0;
+  }, []);
+
+  const canAutoRetryFileFetch = useCallback(
+    (repoKeyWithBranch: string) => {
+      return getFileFetchRetryCount(repoKeyWithBranch) < MAX_AUTO_FILE_FETCH_RETRIES;
+    },
+    [getFileFetchRetryCount]
+  );
+
+  const markFileFetchAttempt = useCallback((repoKeyWithBranch: string) => {
+    fileFetchRetryCountRef.current[repoKeyWithBranch] =
+      (fileFetchRetryCountRef.current[repoKeyWithBranch] || 0) + 1;
+    fileFetchAttemptedRef.current = repoKeyWithBranch;
+  }, []);
 
   const entityPubkey = useMemo(() => {
     if (!resolvedParams.entity) return null;
@@ -2618,6 +2637,7 @@ export default function RepoCodePage() {
     setFetchStatuses([]);
     fileFetchAttemptedRef.current = "";
     fileFetchInProgressRef.current = false;
+    fileFetchRetryCountRef.current = {};
   }, [resolvedParams.entity, resolvedParams.repo]);
 
   // Check Nostr event for sourceUrl if missing from local repo (for button text)
@@ -3327,6 +3347,7 @@ export default function RepoCodePage() {
         "git-02.uid.ovh",
         "git.jb55.com", // Read-only: can read repos from here but won't push to it
       ];
+      const expansionServers = knownGitServers.slice(0, 3);
 
       // Extract npub and repo from existing Nostr git URLs
       const nostrGitUrls = initialCloneUrls.filter((url) => {
@@ -3359,7 +3380,7 @@ export default function RepoCodePage() {
 
           // Generate clone URLs for all known git servers
           let addedCount = 0;
-          knownGitServers.forEach((server) => {
+          expansionServers.forEach((server) => {
             const expandedUrl = `https://${server}/${npub}/${repo}.git`;
             if (!initialCloneUrls.includes(expandedUrl)) {
               initialCloneUrls.push(expandedUrl);
@@ -3369,7 +3390,7 @@ export default function RepoCodePage() {
           // CRITICAL: Log once with count instead of per-URL to reduce console spam
           if (addedCount > 0) {
             console.log(
-              `✅ [File Fetch] Added ${addedCount} expanded clone URLs for ${knownGitServers.length} git servers`
+              `✅ [File Fetch] Added ${addedCount} expanded clone URLs for ${expansionServers.length} git servers`
             );
           }
         }
@@ -3428,12 +3449,19 @@ export default function RepoCodePage() {
       // CRITICAL: If we attempted before but have no files (failed fetch), clear the attempted flag to allow retry
       // This is especially important when cloneUrls exist - we need to keep trying until files are loaded
       if (hasAttempted && !hasFiles) {
+        const willRetry = hasCloneUrls && canAutoRetryFileFetch(repoKeyWithBranch);
         console.log(
           "🔄 [File Fetch] Previous attempt failed (no files), clearing attempted flag to allow retry:",
           repoKeyWithBranch,
-          { hasCloneUrls, willRetry: hasCloneUrls }
+          {
+            hasCloneUrls,
+            willRetry,
+            retryCount: getFileFetchRetryCount(repoKeyWithBranch),
+          }
         );
-        fileFetchAttemptedRef.current = "";
+        if (willRetry) {
+          fileFetchAttemptedRef.current = "";
+        }
       }
 
       // CRITICAL: If we have cloneUrls, we MUST try to fetch (even if attempted before with no files)
@@ -3446,7 +3474,7 @@ export default function RepoCodePage() {
 
         // Mark as attempted BEFORE starting to prevent other triggers
         // CRITICAL: Set isInProgress here (when we actually start fetching), not earlier
-        fileFetchAttemptedRef.current = repoKeyWithBranch;
+        markFileFetchAttempt(repoKeyWithBranch);
         fileFetchInProgressRef.current = true;
 
         // Show fetching message for GitHub/GitLab sources
@@ -3828,9 +3856,15 @@ export default function RepoCodePage() {
             filesAfterFetch.length > 0;
           if (!hasFilesAfterFetch) {
             console.log(
-              "🔄 [File Fetch] No files found in immediate fetch, clearing attempted flag to allow retry"
+              "🔄 [File Fetch] No files found in immediate fetch",
+              {
+                retryCount: getFileFetchRetryCount(repoKeyWithBranch),
+                willRetry: canAutoRetryFileFetch(repoKeyWithBranch),
+              }
             );
-            fileFetchAttemptedRef.current = "";
+            if (canAutoRetryFileFetch(repoKeyWithBranch)) {
+              fileFetchAttemptedRef.current = "";
+            }
           }
         }
       }
@@ -5508,6 +5542,7 @@ export default function RepoCodePage() {
                   "git-01.uid.ovh",
                   "git-02.uid.ovh",
                 ];
+                const expansionServers = knownGitServers.slice(0, 3);
 
                 // Extract npub and repo from existing Nostr git URLs
                 const nostrGitUrls = cloneUrls.filter((url) => {
@@ -5540,7 +5575,7 @@ export default function RepoCodePage() {
 
                     // Generate clone URLs for all known git servers
                     let addedCount = 0;
-                    knownGitServers.forEach((server) => {
+                    expansionServers.forEach((server) => {
                       const expandedUrl = `https://${server}/${npub}/${repo}.git`;
                       if (!cloneUrls.includes(expandedUrl)) {
                         cloneUrls.push(expandedUrl);
@@ -5550,7 +5585,7 @@ export default function RepoCodePage() {
                     // CRITICAL: Log once with count instead of per-URL to reduce console spam
                     if (addedCount > 0) {
                       console.log(
-                        `✅ [File Fetch] Added ${addedCount} expanded clone URLs for ${knownGitServers.length} git servers (EOSE)`
+                        `✅ [File Fetch] Added ${addedCount} expanded clone URLs for ${expansionServers.length} git servers (EOSE)`
                       );
                     }
                   }
@@ -5602,9 +5637,15 @@ export default function RepoCodePage() {
                 if (hasAttempted && !hasFiles) {
                   console.log(
                     "🔄 [File Fetch] Previous attempt failed (no files), clearing attempted flag to allow retry:",
-                    repoKeyWithBranch
+                    repoKeyWithBranch,
+                    {
+                      retryCount: getFileFetchRetryCount(repoKeyWithBranch),
+                      willRetry: canAutoRetryFileFetch(repoKeyWithBranch),
+                    }
                   );
-                  fileFetchAttemptedRef.current = "";
+                  if (canAutoRetryFileFetch(repoKeyWithBranch)) {
+                    fileFetchAttemptedRef.current = "";
+                  }
                 }
 
                 if (cloneUrls.length > 0) {
@@ -5614,7 +5655,7 @@ export default function RepoCodePage() {
                   const branch = String(currentData?.defaultBranch || "main");
 
                   // Mark as attempted BEFORE starting to prevent other triggers
-                  fileFetchAttemptedRef.current = repoKeyWithBranch;
+                  markFileFetchAttempt(repoKeyWithBranch);
                   fileFetchInProgressRef.current = true;
 
                   // Update fetch statuses - merge with existing to avoid duplicates
@@ -6101,6 +6142,7 @@ export default function RepoCodePage() {
               "git-01.uid.ovh",
               "git-02.uid.ovh",
             ];
+            const expansionServers = knownGitServers.slice(0, 3);
 
             const nostrGitUrls = cloneUrls.filter((url) => {
               const match = url.match(
@@ -6125,7 +6167,7 @@ export default function RepoCodePage() {
                 );
 
                 let addedCount = 0;
-                knownGitServers.forEach((server) => {
+                expansionServers.forEach((server) => {
                   const expandedUrl = `https://${server}/${npub}/${repo}.git`;
                   if (!cloneUrls.includes(expandedUrl)) {
                     cloneUrls.push(expandedUrl);
@@ -6135,7 +6177,7 @@ export default function RepoCodePage() {
                 // CRITICAL: Log once with count instead of per-URL to reduce console spam
                 if (addedCount > 0) {
                   console.log(
-                    `✅ [File Fetch] Added ${addedCount} expanded clone URLs for ${knownGitServers.length} git servers (timeout)`
+                    `✅ [File Fetch] Added ${addedCount} expanded clone URLs for ${expansionServers.length} git servers (timeout)`
                   );
                 }
               }
@@ -6408,8 +6450,12 @@ export default function RepoCodePage() {
                     error: s.error,
                   }))
                 );
-                // CRITICAL: Clear attempted flag if multi-source fetch failed (allows retry)
-                fileFetchAttemptedRef.current = "";
+                // Allow only bounded automatic retries to prevent endless source loops.
+                const currentRetryCount =
+                  fileFetchRetryCountRef.current[repoKeyWithBranch] || 0;
+                if (currentRetryCount < MAX_AUTO_FILE_FETCH_RETRIES) {
+                  fileFetchAttemptedRef.current = "";
+                }
               }
             }
 
@@ -8510,9 +8556,15 @@ export default function RepoCodePage() {
             const currentRepoKeyWithBranch = `${currentRepoKey}:${currentBranch}`;
             if (fileFetchAttemptedRef.current === currentRepoKeyWithBranch) {
               console.log(
-                "🔄 [File Fetch] Error occurred, clearing attempted flag to allow retry"
+                "🔄 [File Fetch] Error occurred during bridge fallback",
+                {
+                  retryCount: getFileFetchRetryCount(currentRepoKeyWithBranch),
+                  willRetry: canAutoRetryFileFetch(currentRepoKeyWithBranch),
+                }
               );
-              fileFetchAttemptedRef.current = "";
+              if (canAutoRetryFileFetch(currentRepoKeyWithBranch)) {
+                fileFetchAttemptedRef.current = "";
+              }
             }
           } finally {
             fileFetchInProgressRef.current = false;
@@ -8801,7 +8853,7 @@ export default function RepoCodePage() {
     }
 
     // Now try to open the file
-    if (!loadingFile) {
+    if (!loadingFile && !proposeEdit) {
       // Only open if we don't have content yet and haven't failed before
       if (!fileContent && !failedFilesRef.current.has(selectedFile)) {
         openingFromURLRef.current = true;
@@ -11324,6 +11376,10 @@ export default function RepoCodePage() {
   // Edit/Delete handlers
   const editCurrentFile = useCallback(() => {
     if (!selectedFile) return;
+    if (loadingFile || !fileContent) {
+      alert("File is still loading. Please wait a second, then click Edit again.");
+      return;
+    }
     const type = getFileType(selectedFile);
     const isBinary = ["image", "video", "audio", "pdf", "binary"].includes(
       type
@@ -11343,7 +11399,7 @@ export default function RepoCodePage() {
     // Switch to inline edit mode with current content prefilled
     setProposeEdit(true);
     setProposedContent(fileContent || "");
-  }, [selectedFile, fileContent]);
+  }, [selectedFile, fileContent, loadingFile]);
 
   const deleteCurrentFile = useCallback(() => {
     if (!selectedFile) return;
@@ -13825,6 +13881,12 @@ export default function RepoCodePage() {
                               className="text-sm text-purple-500 hover:underline whitespace-nowrap"
                               onClick={() => {
                                 if (!selectedFile) return;
+                                if (loadingFile || !fileContent) {
+                                  alert(
+                                    "File is still loading. Please wait a second, then click Edit again."
+                                  );
+                                  return;
+                                }
                                 const type = getFileType(selectedFile);
                                 if (
                                   [
@@ -13874,6 +13936,66 @@ export default function RepoCodePage() {
                 <div className="p-4">
                   {loadingFile ? (
                     <p className="text-gray-400">Loading...</p>
+                  ) : proposeEdit ? (
+                    <div className="space-y-2">
+                      <textarea
+                        className="w-full h-[60vh] bg-[#0E1116] border border-[#383B42] text-white p-3 rounded font-mono text-sm"
+                        value={proposedContent}
+                        onChange={(e) => setProposedContent(e.target.value)}
+                      />
+                      <div className="flex items-center gap-3">
+                        <>
+                          <button
+                            className="px-3 py-1 border border-purple-500 bg-purple-600 hover:bg-purple-700 rounded"
+                            onClick={async () => {
+                              if (!selectedFile) return;
+                              const before = fileContent || "";
+                              const after = proposedContent;
+                              if (after === before) {
+                                setProposeEdit(false);
+                                setProposedContent("");
+                                return;
+                              }
+
+                              try {
+                                const { addPendingEdit } = await import(
+                                  "@/lib/pending-changes"
+                                );
+                                addPendingEdit(
+                                  resolvedParams.entity,
+                                  resolvedParams.repo,
+                                  currentUserPubkey || "",
+                                  {
+                                    path: selectedFile,
+                                    before,
+                                    after,
+                                    type: "edit",
+                                    timestamp: Date.now(),
+                                  }
+                                );
+                                setProposeEdit(false);
+                                setProposedContent("");
+                                window.location.href = `/${resolvedParams.entity}/${resolvedParams.repo}/pulls/new`;
+                              } catch (error) {
+                                console.error("Failed to create PR/commit:", error);
+                                alert("Failed to save changes. Please try again.");
+                              }
+                            }}
+                          >
+                            Create Pull Request
+                          </button>
+                          <button
+                            className="px-3 py-1 border border-gray-500 bg-gray-700 rounded"
+                            onClick={() => {
+                              setProposeEdit(false);
+                              setProposedContent("");
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      </div>
+                    </div>
                   ) : fileType === "image" && isBinaryUrl ? (
                     <div className="flex justify-center">
                       <img
@@ -14603,84 +14725,13 @@ export default function RepoCodePage() {
                       </a>
                     </div>
                   ) : (
-                    <>
-                      {proposeEdit ? (
-                        <div className="space-y-2">
-                          <textarea
-                            className="w-full h-[60vh] bg-[#0E1116] border border-[#383B42] text-white p-3 rounded font-mono text-sm"
-                            value={proposedContent}
-                            onChange={(e) => setProposedContent(e.target.value)}
-                          />
-                          <div className="flex items-center gap-3">
-                            <>
-                              <button
-                                className="px-3 py-1 border border-purple-500 bg-purple-600 hover:bg-purple-700 rounded"
-                                onClick={async () => {
-                                  if (!selectedFile) return;
-                                  const before = fileContent || "";
-                                  const after = proposedContent;
-                                  if (after === before) {
-                                    setProposeEdit(false);
-                                    setProposedContent("");
-                                    return;
-                                  }
-
-                                  try {
-                                    // For both owners and non-owners: save as pending edit and redirect to PR creation
-                                    // This allows owners to create PRs with multiple files instead of auto-committing
-                                    const { addPendingEdit } = await import(
-                                      "@/lib/pending-changes"
-                                    );
-                                    addPendingEdit(
-                                      resolvedParams.entity,
-                                      resolvedParams.repo,
-                                      currentUserPubkey || "",
-                                      {
-                                        path: selectedFile,
-                                        before,
-                                        after,
-                                        type: "edit",
-                                        timestamp: Date.now(),
-                                      }
-                                    );
-                                    setProposeEdit(false);
-                                    setProposedContent("");
-                                    window.location.href = `/${resolvedParams.entity}/${resolvedParams.repo}/pulls/new`;
-                                  } catch (error) {
-                                    console.error(
-                                      "Failed to create PR/commit:",
-                                      error
-                                    );
-                                    alert(
-                                      "Failed to save changes. Please try again."
-                                    );
-                                  }
-                                }}
-                              >
-                                Create Pull Request
-                              </button>
-                              <button
-                                className="px-3 py-1 border border-gray-500 bg-gray-700 rounded"
-                                onClick={() => {
-                                  setProposeEdit(false);
-                                  setProposedContent("");
-                                }}
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          </div>
-                        </div>
-                      ) : (
-                        <CodeViewer
-                          content={fileContent}
-                          filePath={selectedFile}
-                          entity={resolvedParams.entity}
-                          repo={resolvedParams.repo}
-                          branch={selectedBranch}
-                        />
-                      )}
-                    </>
+                    <CodeViewer
+                      content={fileContent}
+                      filePath={selectedFile}
+                      entity={resolvedParams.entity}
+                      repo={resolvedParams.repo}
+                      branch={selectedBranch}
+                    />
                   )}
                 </div>
               </div>

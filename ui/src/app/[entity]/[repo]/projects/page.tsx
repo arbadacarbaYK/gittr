@@ -641,6 +641,8 @@ export default function ProjectsPage() {
 
   const renderKanban = () => {
     if (!project) return null;
+    const getProjectItemKey = (item: ProjectItem, index: number) =>
+      `${item.type}-${item.id}-${item.issueId || ""}-${item.prId || ""}-${index}`;
 
     return (
       <div className="grid grid-cols-3 gap-4">
@@ -667,8 +669,8 @@ export default function ProjectsPage() {
           <div className="space-y-2">
             {project.items
               .filter((item) => item.status === "todo")
-              .map((item) => (
-                <div key={item.id}>{renderItem(item)}</div>
+              .map((item, index) => (
+                <div key={getProjectItemKey(item, index)}>{renderItem(item)}</div>
               ))}
             {project.items.filter((item) => item.status === "todo").length ===
               0 && (
@@ -702,8 +704,8 @@ export default function ProjectsPage() {
           <div className="space-y-2">
             {project.items
               .filter((item) => item.status === "in_progress")
-              .map((item) => (
-                <div key={item.id}>{renderItem(item)}</div>
+              .map((item, index) => (
+                <div key={getProjectItemKey(item, index)}>{renderItem(item)}</div>
               ))}
             {project.items.filter((item) => item.status === "in_progress")
               .length === 0 && (
@@ -737,8 +739,8 @@ export default function ProjectsPage() {
           <div className="space-y-2">
             {project.items
               .filter((item) => item.status === "done")
-              .map((item) => (
-                <div key={item.id}>{renderItem(item)}</div>
+              .map((item, index) => (
+                <div key={getProjectItemKey(item, index)}>{renderItem(item)}</div>
               ))}
             {project.items.filter((item) => item.status === "done").length ===
               0 && (
@@ -808,7 +810,7 @@ export default function ProjectsPage() {
           </div>
           <div className="space-y-3">
             {sortedItems.length > 0 ? (
-              sortedItems.map((item) => {
+              sortedItems.map((item, index) => {
                 const days = item.estimatedDays || 7;
                 const startDate = item.dueDate
                   ? new Date(item.dueDate - days * 24 * 60 * 60 * 1000)
@@ -823,7 +825,7 @@ export default function ProjectsPage() {
 
                 return (
                   <div
-                    key={item.id}
+                    key={`${item.type}-${item.id}-${item.issueId || ""}-${item.prId || ""}-${index}`}
                     className={`border rounded p-3 bg-gray-900 ${
                       isOverdue
                         ? "border-red-700"

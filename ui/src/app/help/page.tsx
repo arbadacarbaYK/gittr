@@ -1967,8 +1967,34 @@ export default function HelpPage() {
                 Need More Help?
               </h3>
               <p>
-                If you have questions or encounter issues, please check the
-                GitHub repository or open an issue.
+                If you have questions or hit issues, use the{" "}
+                <a
+                  href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  gittr repository on gittr.space
+                </a>{" "}
+                first, and also check these references:{" "}
+                <a
+                  href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  gitnostr
+                </a>{" "}
+                and{" "}
+                <a
+                  href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-helper-tools"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  gittr-helper-tools
+                </a>
+                .
               </p>
             </div>
           </div>
