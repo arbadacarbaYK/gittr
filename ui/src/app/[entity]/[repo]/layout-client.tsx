@@ -943,10 +943,6 @@ export default function RepoLayoutClient({
   // Memoize the number of visible menu items to prevent recalculation on every render
   const visibleMenuItemsCount = useMemo(() => {
     const effectiveWidth = mounted ? windowWidth : 1920;
-    // On large desktop widths, keep repo tabs visible and avoid unnecessary overflow menu.
-    if (effectiveWidth >= 1280) {
-      return filteredMenuItems.length;
-    }
     const availableWidth = Math.max(0, effectiveWidth - HEADER_RESERVED_WIDTH);
     return Math.max(1, Math.floor(availableWidth / MENU_ITEM_WIDTH));
   }, [mounted, windowWidth, filteredMenuItems.length]);
@@ -1156,7 +1152,7 @@ export default function RepoLayoutClient({
         </div>
 
         <div className="flex justify-between items-center gap-4">
-          <div className="flex-1 overflow-x-hidden">
+          <div className="flex-1 overflow-x-auto">
             <ul className="my-4 flex items-center gap-x-4 min-w-max">
               {filteredMenuItems
                 .slice(0, visibleMenuItemsCount)
