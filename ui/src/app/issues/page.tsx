@@ -748,15 +748,9 @@ export default function IssuesPage({}) {
     []
   );
 
-  // Filter and sort issues based on search, status, and type
-  const filteredIssues = useMemo(() => {
+  // Filter issues by type/search first, then derive status counts from that same slice
+  const issuesForCurrentView = useMemo(() => {
     let filtered = [...allIssues];
-
-    // Filter by status
-    filtered = filtered.filter((issue) => {
-      const status = issue.status || "open";
-      return issueStatus === "open" ? status === "open" : status === "closed";
-    });
 
     // Filter by type (created/assigned/mentioned)
     if (currentUserPubkey) {
@@ -857,19 +851,29 @@ export default function IssuesPage({}) {
       });
     }
 
+    return filtered;
+  }, [allIssues, issueType, search, currentUserPubkey]);
+
+  // Filter by status and sort for rendered list
+  const filteredIssues = useMemo(() => {
+    const filtered = issuesForCurrentView.filter((issue) => {
+      const status = issue.status || "open";
+      return issueStatus === "open" ? status === "open" : status === "closed";
+    });
+
     // Sort by createdAt (newest first)
     filtered.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
     return filtered;
-  }, [allIssues, issueStatus, issueType, search, currentUserPubkey]);
+  }, [issuesForCurrentView, issueStatus]);
 
   const openCount = useMemo(
-    () => allIssues.filter((i) => (i.status || "open") === "open").length,
-    [allIssues]
+    () => issuesForCurrentView.filter((i) => (i.status || "open") === "open").length,
+    [issuesForCurrentView]
   );
   const closedCount = useMemo(
-    () => allIssues.filter((i) => (i.status || "open") === "closed").length,
-    [allIssues]
+    () => issuesForCurrentView.filter((i) => (i.status || "open") === "closed").length,
+    [issuesForCurrentView]
   );
 
   // Collect all unique entity pubkeys for metadata fetching

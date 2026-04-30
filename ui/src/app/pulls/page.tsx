@@ -801,17 +801,9 @@ export default function PullsPage({}) {
   const handlePRTypeAssigned = useCallback(() => setPrType("assigned"), []);
   const handlePRTypeMentioned = useCallback(() => setPrType("mentioned"), []);
 
-  // Filter and sort PRs based on search, status, and type
-  const filteredPRs = useMemo(() => {
+  // Filter PRs by type/search first, then derive status counts from that same slice
+  const prsForCurrentView = useMemo(() => {
     let filtered = [...allPRs];
-
-    // Filter by status
-    filtered = filtered.filter((pr) => {
-      const status = pr.status || "open";
-      return prStatus === "open"
-        ? status === "open"
-        : status === "closed" || status === "merged";
-    });
 
     // Filter by type (created/assigned/mentioned)
     if (currentUserPubkey) {
@@ -908,19 +900,31 @@ export default function PullsPage({}) {
       });
     }
 
+    return filtered;
+  }, [allPRs, prType, search, currentUserPubkey]);
+
+  // Filter by status and sort for rendered list
+  const filteredPRs = useMemo(() => {
+    const filtered = prsForCurrentView.filter((pr) => {
+      const status = pr.status || "open";
+      return prStatus === "open"
+        ? status === "open"
+        : status === "closed" || status === "merged";
+    });
+
     // Sort by createdAt (newest first)
     filtered.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
     return filtered;
-  }, [allPRs, prStatus, prType, search, currentUserPubkey]);
+  }, [prsForCurrentView, prStatus]);
 
   const openCount = useMemo(
-    () => allPRs.filter((pr) => (pr.status || "open") === "open").length,
-    [allPRs]
+    () => prsForCurrentView.filter((pr) => (pr.status || "open") === "open").length,
+    [prsForCurrentView]
   );
   const closedCount = useMemo(
-    () => allPRs.filter((pr) => (pr.status || "open") !== "open").length,
-    [allPRs]
+    () => prsForCurrentView.filter((pr) => (pr.status || "open") !== "open").length,
+    [prsForCurrentView]
   );
 
   // Collect all unique entity pubkeys for metadata fetching
