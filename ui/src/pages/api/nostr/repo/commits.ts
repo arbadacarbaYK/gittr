@@ -122,6 +122,39 @@ interface Commit {
   parentIds?: string[];
 }
 
+async function resolveEarliestUniqueCommit(
+  repoPath: string,
+  branchName: string
+): Promise<string | undefined> {
+  const branchCandidates =
+    branchName === "main"
+      ? ["main", "master", "HEAD"]
+      : branchName === "master"
+      ? ["master", "main", "HEAD"]
+      : [branchName, "main", "master", "HEAD"];
+
+  for (const candidate of branchCandidates) {
+    try {
+      const { stdout } = await execAsync(
+        `git --git-dir="${repoPath}" rev-list --max-parents=0 ${candidate}`,
+        { timeout: 5000 }
+      );
+      const roots = stdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+      if (roots.length > 0) {
+        // If there are multiple roots (unrelated histories), return the first.
+        return roots[0];
+      }
+    } catch {
+      // Try next branch candidate
+    }
+  }
+
+  return undefined;
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -249,7 +282,12 @@ export default async function handler(
       }
     }
 
-    return res.status(200).json({ commits });
+    const earliestUniqueCommit = await resolveEarliestUniqueCommit(
+      repoPath,
+      branchName
+    );
+
+    return res.status(200).json({ commits, earliestUniqueCommit });
   } catch (error: any) {
     console.error("❌ [Commits API] Error:", error);
     return res.status(500).json({

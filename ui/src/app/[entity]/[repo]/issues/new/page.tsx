@@ -299,13 +299,66 @@ export default function RepoIssueNewPage() {
         const actualRepositoryName = (repoData as any)?.repositoryName || repo;
 
         // Get earliest unique commit (required for NIP-34 "r" tag)
-        const earliestUniqueCommit =
+        let earliestUniqueCommit =
           (repoData as any).earliestUniqueCommit ||
           (repoData.commits &&
           Array.isArray(repoData.commits) &&
           repoData.commits.length > 0
             ? (repoData.commits[0] as any)?.id
             : undefined);
+
+        // Fallback: derive earliest unique commit from bridge for repos that were
+        // created/synced by other clients and may not have local cache fields.
+        if (!earliestUniqueCommit) {
+          try {
+            const defaultBranch =
+              typeof (repoData as any)?.defaultBranch === "string" &&
+              (repoData as any).defaultBranch.trim().length > 0
+                ? (repoData as any).defaultBranch.trim()
+                : "main";
+
+            const commitsRes = await fetch(
+              `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
+                finalOwnerPubkey
+              )}&repo=${encodeURIComponent(
+                actualRepositoryName
+              )}&branch=${encodeURIComponent(defaultBranch)}&limit=1`
+            );
+
+            if (commitsRes.ok) {
+              const commitsPayload = await commitsRes.json();
+              earliestUniqueCommit =
+                commitsPayload?.earliestUniqueCommit ||
+                commitsPayload?.commits?.[commitsPayload.commits.length - 1]
+                  ?.id ||
+                commitsPayload?.commits?.[0]?.id;
+
+              if (earliestUniqueCommit) {
+                // Keep local cache warm to avoid future submit failures.
+                (repoData as any).earliestUniqueCommit = earliestUniqueCommit;
+                const reposForUpdate = loadStoredRepos();
+                const targetRepo = findRepoByEntityAndName(
+                  reposForUpdate,
+                  entity,
+                  repo
+                );
+                if (targetRepo) {
+                  (targetRepo as any).earliestUniqueCommit = earliestUniqueCommit;
+                  localStorage.setItem(
+                    "gittr_repos",
+                    JSON.stringify(reposForUpdate)
+                  );
+                }
+              }
+            }
+          } catch (resolveError) {
+            console.warn(
+              "Failed to resolve earliest unique commit from bridge:",
+              resolveError
+            );
+          }
+        }
+
         if (!earliestUniqueCommit) {
           setErrorMsg(
             "Cannot create issue yet: repository is missing earliest unique commit (NIP-34 'r' tag). Push/sync the repo first."
