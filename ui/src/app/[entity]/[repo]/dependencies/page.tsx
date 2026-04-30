@@ -2003,16 +2003,19 @@ export default function DependenciesPage({
     branch: string,
     repo?: StoredRepo
   ): Promise<Array<{ type: string; path: string }> | null> {
-    // Priority 1: Check if repo has files in localStorage (from Nostr events or GitHub import)
-    // CRITICAL: Use files immediately if available - don't wait for all relays
+    const listingFileCount = (
+      arr: Array<{ type: string; path: string }> | null | undefined
+    ) =>
+      !arr?.length
+        ? 0
+        : arr.filter((f) => isDependencyListingFile(f)).length;
+
+    let localList: Array<{ type: string; path: string }> | null = null;
+
     if (repo?.files && Array.isArray(repo.files) && repo.files.length > 0) {
-      console.log(
-        `✅ [Dependencies] Using ${repo.files.length} files from repo data (immediate)`
-      );
-      return repo.files;
+      localList = repo.files;
     }
 
-    // Also check localStorage directly in case repo object is stale
     try {
       const allRepos = loadStoredRepos();
       const matchingRepo = allRepos.find((r) => {
@@ -2032,28 +2035,22 @@ export default function DependenciesPage({
       });
 
       if (
+        !localList &&
         matchingRepo?.files &&
         Array.isArray(matchingRepo.files) &&
         matchingRepo.files.length > 0
       ) {
-        console.log(
-          `✅ [Dependencies] Using ${matchingRepo.files.length} files from localStorage (immediate)`
-        );
-        return matchingRepo.files;
+        localList = matchingRepo.files;
       }
 
-      // CRITICAL: Check separate files storage key (for optimized storage)
-      if (matchingRepo) {
+      if (!localList && matchingRepo) {
         try {
           const storedFiles = loadRepoFiles(
             resolvedParams.entity,
             resolvedParams.repo
           );
           if (storedFiles && storedFiles.length > 0) {
-            console.log(
-              `✅ [Dependencies] Using ${storedFiles.length} files from separate storage key`
-            );
-            return storedFiles.map((f: RepoFileEntry) => ({
+            localList = storedFiles.map((f: RepoFileEntry) => ({
               type: f.type,
               path: f.path,
             }));
@@ -2066,60 +2063,66 @@ export default function DependenciesPage({
       console.warn("Failed to check localStorage for files:", e);
     }
 
-    // Priority 2: Try GitHub API if sourceUrl is available
-    if (repo?.sourceUrl) {
+    async function loadGithubTree(): Promise<
+      Array<{ type: string; path: string }> | null
+    > {
+      if (!repo?.sourceUrl) return null;
       try {
         const githubMatch = repo.sourceUrl.match(
           /github\.com\/([^\/]+)\/([^\/]+)/
         );
-        if (githubMatch) {
-          const [, owner, repoName] = githubMatch;
-          const response = await fetch(
-            `https://api.github.com/repos/${owner}/${repoName}/git/trees/${encodeURIComponent(
-              branch
-            )}?recursive=1`,
-            {
-              headers: {
-                "User-Agent": "gittr-space",
-                Accept: "application/vnd.github.v3+json",
-              },
-            }
-          );
-          if (response.ok) {
-            const data = (await response.json()) as { tree?: GitHubTreeItem[] };
-            if (data.tree && Array.isArray(data.tree)) {
-              const files = data.tree
-                .filter((n): n is GitHubTreeItem => n.type === "blob")
-                .map((n) => ({
-                  type: "file" as const,
-                  path: n.path,
-                  size: n.size,
-                }));
-              const dirs = data.tree
-                .filter((n): n is GitHubTreeItem => n.type === "tree")
-                .map((n) => ({ type: "dir" as const, path: n.path }));
-              console.log(
-                `✅ [Dependencies] Fetched ${files.length} files from GitHub`
-              );
-              return [...dirs, ...files];
-            }
+        if (!githubMatch) return null;
+        const [, owner, ghRepo] = githubMatch;
+        const response = await fetch(
+          `https://api.github.com/repos/${owner}/${ghRepo}/git/trees/${encodeURIComponent(
+            branch
+          )}?recursive=1`,
+          {
+            headers: {
+              "User-Agent": "gittr-space",
+              Accept: "application/vnd.github.v3+json",
+            },
           }
-        }
+        );
+        if (!response.ok) return null;
+        const data = (await response.json()) as { tree?: GitHubTreeItem[] };
+        if (!data.tree || !Array.isArray(data.tree)) return null;
+        const files = data.tree
+          .filter((n): n is GitHubTreeItem => n.type === "blob")
+          .map((n) => ({
+            type: "file" as const,
+            path: n.path,
+            size: n.size,
+          }));
+        const dirs = data.tree
+          .filter((n): n is GitHubTreeItem => n.type === "tree")
+          .map((n) => ({ type: "dir" as const, path: n.path }));
+        console.log(
+          `✅ [Dependencies] Fetched ${files.length} files from GitHub`
+        );
+        return [...dirs, ...files];
       } catch (err) {
         console.warn("Failed to fetch from GitHub:", err);
+        return null;
       }
     }
 
-    // Priority 3: Try git-nostr-bridge API (for cloned repos)
-    try {
-      const response = await fetch(
-        `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
-          ownerPubkey
-        )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
-          branch
-        )}&includeSizes=1`
-      );
-      if (response.ok) {
+    async function loadBridgeTree(): Promise<
+      Array<{ type: string; path: string }> | null
+    > {
+      try {
+        const response = await fetch(
+          `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
+            ownerPubkey
+          )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
+            branch
+          )}&includeSizes=1`
+        );
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.warn("git-nostr-bridge API error:", errorData);
+          return null;
+        }
         const data = await response.json();
         if (data.files && Array.isArray(data.files) && data.files.length > 0) {
           console.log(
@@ -2127,12 +2130,46 @@ export default function DependenciesPage({
           );
           return data.files;
         }
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        console.warn("git-nostr-bridge API error:", errorData);
+      } catch (err) {
+        console.warn("Failed to fetch from git-nostr-bridge:", err);
       }
-    } catch (err) {
-      console.warn("Failed to fetch from git-nostr-bridge:", err);
+      return null;
+    }
+
+    const [githubList, bridgeList] = await Promise.all([
+      loadGithubTree(),
+      loadBridgeTree(),
+    ]);
+
+    let best = localList;
+    let bestN = listingFileCount(best);
+    for (const cand of [githubList, bridgeList]) {
+      const n = listingFileCount(cand);
+      if (cand && cand.length > 0 && n > bestN) {
+        best = cand;
+        bestN = n;
+      }
+    }
+
+    if (best && best.length > 0) {
+      if (best !== localList && localList?.length) {
+        console.log(
+          `✅ [Dependencies] Prefer listing with ${bestN} file-like paths over local (${listingFileCount(localList)})`
+        );
+      } else if (best === bridgeList && bridgeList) {
+        console.log(
+          `✅ [Dependencies] Using git-nostr-bridge listing (${bestN} file-like paths)`
+        );
+      } else if (best === githubList && githubList) {
+        console.log(
+          `✅ [Dependencies] Using GitHub listing (${bestN} file-like paths)`
+        );
+      } else if (localList) {
+        console.log(
+          `✅ [Dependencies] Using ${localList.length} files from local cache`
+        );
+      }
+      return best;
     }
 
     return null;

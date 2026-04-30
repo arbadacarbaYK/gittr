@@ -8740,9 +8740,11 @@ export default function RepoCodePage() {
       `${folderPrefix}readme`,
     ];
 
-    const readmeFile = safeFiles.find(
-      (f: any) => readmeVariants.includes(f.path) && f.type === "file"
-    );
+    const readmeFile = safeFiles.find((f: any) => {
+      if (!readmeVariants.includes(f.path)) return false;
+      const t = String(f.type || "file").toLowerCase();
+      return t !== "dir" && t !== "tree" && t !== "folder";
+    });
 
     if (!readmeFile) {
       setCurrentFolderReadme(null);
@@ -8755,6 +8757,92 @@ export default function RepoCodePage() {
       try {
         const branch = selectedBranch || repoData?.defaultBranch || "main";
         const sourceUrl = repoData?.sourceUrl;
+
+        // Nostr / gittr routes: on-disk bridge is authoritative (GitHub mirror may lag merges)
+        const isNostrEntityRoute =
+          !!resolvedParams.entity &&
+          (resolvedParams.entity.startsWith("npub") ||
+            /^[0-9a-f]{64}$/i.test(resolvedParams.entity));
+
+        if (isNostrEntityRoute && repoData) {
+          let ownerPubkey: string | null =
+            (repoData as any).ownerPubkey &&
+            /^[0-9a-f]{64}$/i.test(String((repoData as any).ownerPubkey))
+              ? String((repoData as any).ownerPubkey).toLowerCase()
+              : null;
+          if (!ownerPubkey) {
+            const resolved = resolveEntityToPubkey(
+              resolvedParams.entity,
+              repoData as any
+            );
+            if (resolved && /^[0-9a-f]{64}$/i.test(resolved)) {
+              ownerPubkey = resolved.toLowerCase();
+            }
+          }
+          if (!ownerPubkey) {
+            const repos = loadStoredRepos();
+            const r = findRepoByEntityAndName(
+              repos,
+              resolvedParams.entity,
+              resolvedParams.repo
+            );
+            if (r?.ownerPubkey && /^[0-9a-f]{64}$/i.test(r.ownerPubkey)) {
+              ownerPubkey = r.ownerPubkey.toLowerCase();
+            }
+          }
+          if (!ownerPubkey && resolvedParams.entity.startsWith("npub")) {
+            try {
+              const decoded = nip19.decode(resolvedParams.entity);
+              if (
+                decoded.type === "npub" &&
+                typeof decoded.data === "string" &&
+                /^[0-9a-f]{64}$/i.test(decoded.data)
+              ) {
+                ownerPubkey = decoded.data.toLowerCase();
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+          if (ownerPubkey) {
+            const repoDataAny = repoData as any;
+            let bridgeRepoName =
+              repoDataAny?.repositoryName ||
+              repoDataAny?.repo ||
+              repoDataAny?.slug ||
+              repoDataAny?.name ||
+              decodedRepo;
+            if (String(bridgeRepoName).includes("/")) {
+              const parts = String(bridgeRepoName).split("/");
+              bridgeRepoName = parts[parts.length - 1] || bridgeRepoName;
+            }
+            bridgeRepoName = String(bridgeRepoName).replace(/\.git$/, "");
+            try {
+              const bridgeUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+                ownerPubkey
+              )}&repo=${encodeURIComponent(
+                bridgeRepoName
+              )}&path=${encodeURIComponent(
+                readmeFile.path
+              )}&branch=${encodeURIComponent(branch)}`;
+              const bridgeResp = await fetch(bridgeUrl);
+              if (bridgeResp.ok) {
+                const data = await bridgeResp.json();
+                if (
+                  data?.content !== undefined &&
+                  data?.content !== null &&
+                  !data.isBinary
+                ) {
+                  setCurrentFolderReadme(String(data.content));
+                  setLoadingFolderReadme(false);
+                  return;
+                }
+              }
+            } catch (e) {
+              console.warn("[Folder README] Bridge fetch failed:", e);
+            }
+          }
+        }
 
         if (sourceUrl) {
           // Try API first
@@ -8814,11 +8902,14 @@ export default function RepoCodePage() {
     safeFiles,
     repoData?.sourceUrl,
     repoData?.defaultBranch,
+    repoData?.ownerPubkey,
+    (repoData as any)?.repositoryName,
     selectedBranch,
     selectedFile,
     fileContent,
     resolvedParams.entity,
     resolvedParams.repo,
+    decodedRepo,
   ]);
 
   // Open file when selectedFile is set from URL (skip URL update since URL already has it)
@@ -9724,6 +9815,116 @@ export default function RepoCodePage() {
     isBinary: boolean;
   }> {
     // console.log(`🔍 [fetchGithubRaw] Fetching file: ${path}`, { hasRepoData: !!repoData, filesCount: repoData?.files?.length || 0, ownerPubkey: (repoData as any)?.ownerPubkey ? (repoData as any).ownerPubkey.slice(0, 8) : null });
+
+    // Strategy 0: Nostr entity URLs — prefer on-disk bridge over embedded events and GitHub mirrors
+    const isNostrEntityRoute =
+      !!resolvedParams.entity &&
+      (resolvedParams.entity.startsWith("npub") ||
+        /^[0-9a-f]{64}$/i.test(resolvedParams.entity));
+
+    if (isNostrEntityRoute && repoData) {
+      let ownerPk: string | null = (repoData as any)?.ownerPubkey;
+      if (!ownerPk || !/^[0-9a-f]{64}$/i.test(ownerPk)) {
+        try {
+          const repos = loadStoredRepos();
+          const matchingRepo = repos.find((r: any) => {
+            const entityMatch =
+              r.entity === resolvedParams.entity ||
+              (r.entity &&
+                resolvedParams.entity &&
+                r.entity.toLowerCase() === resolvedParams.entity.toLowerCase());
+            const repoMatch =
+              r.repo === resolvedParams.repo ||
+              r.slug === resolvedParams.repo ||
+              r.name === resolvedParams.repo;
+            return entityMatch && repoMatch;
+          });
+          if (matchingRepo?.ownerPubkey) ownerPk = matchingRepo.ownerPubkey;
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!ownerPk || !/^[0-9a-f]{64}$/i.test(ownerPk)) {
+        if (resolvedParams.entity.startsWith("npub")) {
+          try {
+            const decoded = nip19.decode(resolvedParams.entity);
+            if (
+              decoded.type === "npub" &&
+              /^[0-9a-f]{64}$/i.test(decoded.data as string)
+            ) {
+              ownerPk = decoded.data as string;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      if (!ownerPk || !/^[0-9a-f]{64}$/i.test(ownerPk)) {
+        const resolved = resolveEntityToPubkey(resolvedParams.entity, repoData);
+        if (resolved && /^[0-9a-f]{64}$/i.test(resolved)) ownerPk = resolved;
+      }
+      if (ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk)) {
+        const repoDataAny = repoData as any;
+        let bridgeRepo =
+          repoDataAny?.repositoryName ||
+          repoDataAny?.["repo"] ||
+          repoDataAny?.["slug"] ||
+          repoDataAny?.name ||
+          String(decodedRepo || "");
+        if (bridgeRepo.includes("/")) {
+          const parts = bridgeRepo.split("/");
+          bridgeRepo = parts[parts.length - 1] || bridgeRepo;
+        }
+        bridgeRepo = String(bridgeRepo).replace(/\.git$/, "");
+        const branch0 = selectedBranch || repoData?.defaultBranch || "main";
+        try {
+          const api0 = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+            ownerPk.toLowerCase()
+          )}&repo=${encodeURIComponent(bridgeRepo)}&path=${encodeURIComponent(
+            path
+          )}&branch=${encodeURIComponent(branch0)}`;
+          const r0 = await fetch(api0);
+          if (r0.ok) {
+            const d0 = await r0.json();
+            if (d0.content !== undefined) {
+              if (d0.isBinary) {
+                const ext0 = path.split(".").pop()?.toLowerCase() || "";
+                const mimeTypes0: Record<string, string> = {
+                  png: "image/png",
+                  jpg: "image/jpeg",
+                  jpeg: "image/jpeg",
+                  gif: "image/gif",
+                  webp: "image/webp",
+                  svg: "image/svg+xml",
+                  ico: "image/x-icon",
+                  pdf: "application/pdf",
+                  woff: "font/woff",
+                  woff2: "font/woff2",
+                  ttf: "font/ttf",
+                  otf: "font/otf",
+                  mp4: "video/mp4",
+                  mp3: "audio/mpeg",
+                  wav: "audio/wav",
+                };
+                const mime0 = mimeTypes0[ext0] || "application/octet-stream";
+                const dataUrl0 = `data:${mime0};base64,${d0.content}`;
+                return { content: null, url: dataUrl0, isBinary: true };
+              }
+              return {
+                content: d0.content,
+                url: null,
+                isBinary: false,
+              };
+            }
+          }
+        } catch (e) {
+          console.warn(
+            `[fetchGithubRaw] Strategy 0 (bridge) failed for ${path}:`,
+            e
+          );
+        }
+      }
+    }
 
     // Strategy 1: Check if file content is embedded in repoData.files array
     // According to the working insights: "Files embedded in Nostr events are always checked first"
