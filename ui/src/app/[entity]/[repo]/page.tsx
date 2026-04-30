@@ -15232,21 +15232,38 @@ export default function RepoCodePage() {
                                       `🔄 [Refetch] Starting refetch for ${resolvedParams.repo} from source: ${effectiveSourceUrl}`
                                     );
 
-                                    // Call import API to fetch latest from GitHub/GitLab/Codeberg
-                                    // Include GitHub token if available (for private repos)
+                                    // Route refetch to the correct backend:
+                                    // - /api/import for GitHub (supports GitHub metadata/private token flow)
+                                    // - /api/import-git for GitLab/Codeberg/other git hosts
+                                    // Include GitHub token only for GitHub imports.
                                     const githubToken =
                                       localStorage.getItem(
                                         "gittr_github_token"
                                       );
+                                    const sourceHost = (() => {
+                                      try {
+                                        return new URL(effectiveSourceUrl).hostname;
+                                      } catch {
+                                        return "";
+                                      }
+                                    })();
+                                    const isGitHubSource =
+                                      sourceHost === "github.com" ||
+                                      sourceHost.endsWith(".github.com");
+                                    const importEndpoint = isGitHubSource
+                                      ? "/api/import"
+                                      : "/api/import-git";
                                     console.log(
-                                      `📡 [Refetch] Calling /api/import with sourceUrl: ${effectiveSourceUrl}${
+                                      `📡 [Refetch] Calling ${importEndpoint} with sourceUrl: ${effectiveSourceUrl}${
                                         githubToken
-                                          ? " (with GitHub token)"
+                                          ? isGitHubSource
+                                            ? " (with GitHub token)"
+                                            : " (token ignored for non-GitHub source)"
                                           : ""
                                       }`
                                     );
                                     const importResponse = await fetch(
-                                      "/api/import",
+                                      importEndpoint,
                                       {
                                         method: "POST",
                                         headers: {
@@ -15254,7 +15271,7 @@ export default function RepoCodePage() {
                                         },
                                         body: JSON.stringify({
                                           sourceUrl: effectiveSourceUrl,
-                                          ...(githubToken
+                                          ...(isGitHubSource && githubToken
                                             ? { githubToken }
                                             : {}),
                                         }),
