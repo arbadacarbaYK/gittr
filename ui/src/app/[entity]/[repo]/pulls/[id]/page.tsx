@@ -1252,13 +1252,6 @@ export default function PRDetailPage({
 
       setMerging(false);
       setShowMergeModal(false);
-      if (mergeStatusPublished) {
-        alert("Pull request merged and published to Nostr successfully!");
-      } else {
-        alert(
-          `Pull request merged locally, but merge status was not published to Nostr (${mergeStatusSkippedReason || "unknown reason"}). Use Push to Nostr to sync repository state.`
-        );
-      }
 
       // Record PR merge activity (PR author gets credit)
       if (pr.author) {
@@ -1368,9 +1361,23 @@ export default function PRDetailPage({
       );
 
       router.refresh();
-      if (!repoStatePushed) {
+      if (mergeStatusPublished && repoStatePushed) {
+        alert("Pull request merged and pushed to Nostr successfully.");
+      } else if (!mergeStatusPublished && repoStatePushed) {
         alert(
-          `Merge completed, but repository state was not pushed to Nostr (${repoStatePushError}). Please run Push to Nostr for this repo so other clients see the merged code state.`
+          `Pull request merged and repository state was pushed, but merge status event was not published (${mergeStatusSkippedReason || "unknown reason"}).`
+        );
+      } else if (mergeStatusPublished && !repoStatePushed) {
+        alert(
+          `Pull request merged and merge status was published, but repository state was not pushed to Nostr (${repoStatePushError || "unknown push failure"}). Please run Push to Nostr for this repo.`
+        );
+      } else {
+        alert(
+          `Pull request merged locally, but Nostr sync is incomplete (status: ${
+            mergeStatusSkippedReason || "not published"
+          }, repo push: ${
+            repoStatePushError || "not completed"
+          }). Please run Push to Nostr for this repo.`
         );
       }
     } catch (error) {
