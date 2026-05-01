@@ -4,46 +4,16 @@
  * without a row, push cost is treated as 0 even if the UI saved pushCostSats locally.
  */
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
+import { resolveBridgeDbPath } from "@/lib/resolve-bridge-db-path";
 
 import { exec } from "child_process";
-import { existsSync, readFileSync } from "fs";
+import { existsSync } from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { promisify } from "util";
 
 import { verifyNostrAuth } from "./push-auth";
 
 const execAsync = promisify(exec);
-
-async function resolveBridgeDbPath(): Promise<string | null> {
-  const configPaths = [
-    process.env.HOME
-      ? `${process.env.HOME}/.config/git-nostr/git-nostr-bridge.json`
-      : null,
-    "/home/git-nostr/.config/git-nostr/git-nostr-bridge.json",
-  ].filter(Boolean) as string[];
-
-  for (const configPath of configPaths) {
-    try {
-      if (existsSync(configPath)) {
-        const configContent = readFileSync(configPath, "utf-8");
-        const config = JSON.parse(configContent);
-        if (config.DbFile && typeof config.DbFile === "string") {
-          const homeDir = configPath.includes("/home/git-nostr")
-            ? "/home/git-nostr"
-            : process.env.HOME || "";
-          return config.DbFile.replace(/^~/, homeDir);
-        }
-      }
-    } catch {
-      // continue
-    }
-  }
-
-  if (process.env.HOME) {
-    return `${process.env.HOME}/.config/git-nostr/git-nostr-db.sqlite`;
-  }
-  return null;
-}
 
 function escSql(value: string): string {
   return value.replace(/'/g, "''");
@@ -133,7 +103,7 @@ export default async function handler(
     return res.status(503).json({ error: "sqlite3 not available on server" });
   }
 
-  const dbPath = await resolveBridgeDbPath();
+  const dbPath = resolveBridgeDbPath();
   if (!dbPath || !existsSync(dbPath)) {
     return res.status(503).json({ error: "Bridge database not available" });
   }

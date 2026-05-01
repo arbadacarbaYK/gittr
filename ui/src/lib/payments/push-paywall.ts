@@ -29,7 +29,13 @@ export async function ensurePushPaymentAuthorization(params: {
     ownerPubkey,
     payerPubkey,
   } = params;
-  if (!ownerPubkey || !repo) return { ok: true };
+  if (!ownerPubkey?.trim() || !repo?.trim()) {
+    return {
+      ok: false,
+      error:
+        "Cannot verify push payment: missing owner pubkey or repository name.",
+    };
+  }
 
   const checkRes = await fetch(
     `/api/nostr/repo/push-payment?ownerPubkey=${encodeURIComponent(

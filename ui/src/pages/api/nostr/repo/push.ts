@@ -3,6 +3,7 @@ import {
   rateLimiters,
 } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { resolveBridgeDbPath } from "@/lib/resolve-bridge-db-path";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync, statSync } from "fs";
@@ -141,37 +142,6 @@ async function resolveReposDir(): Promise<string> {
   }
 
   return reposDir;
-}
-
-async function resolveBridgeDbPath(): Promise<string | null> {
-  const configPaths = [
-    process.env.HOME
-      ? `${process.env.HOME}/.config/git-nostr/git-nostr-bridge.json`
-      : null,
-    "/home/git-nostr/.config/git-nostr/git-nostr-bridge.json",
-  ].filter(Boolean) as string[];
-
-  for (const configPath of configPaths) {
-    try {
-      if (existsSync(configPath)) {
-        const configContent = readFileSync(configPath, "utf-8");
-        const config = JSON.parse(configContent);
-        if (config.DbFile && typeof config.DbFile === "string") {
-          const homeDir = configPath.includes("/home/git-nostr")
-            ? "/home/git-nostr"
-            : process.env.HOME || "";
-          return config.DbFile.replace(/^~/, homeDir);
-        }
-      }
-    } catch {
-      // Ignore config read errors and continue to next path
-    }
-  }
-
-  if (process.env.HOME) {
-    return `${process.env.HOME}/.config/git-nostr/git-nostr-db.sqlite`;
-  }
-  return null;
 }
 
 async function getRepoPushPolicy(
@@ -414,7 +384,7 @@ export default async function handler(
   }
 
   // Optional push paywall enforcement (if bridge policy exists for this repo).
-  const bridgeDbPath = await resolveBridgeDbPath();
+  const bridgeDbPath = resolveBridgeDbPath();
   let paywallPushCostSats = 0;
   if (bridgeDbPath) {
     paywallPushCostSats = await getRepoPushPolicy(
