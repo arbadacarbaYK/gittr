@@ -82,6 +82,7 @@ If you run backend/bridge services from the repo root, there is also a root `.en
 - This paywall is enforced for both GUI push and SSH push when set above `0`.
 - GUI authorization uses a dedicated push-payment intent flow and grants a short push window (default 15 minutes).
 - **Merge to Nostr** (post-merge automatic repo-state push) uses the same authorization: if paywall applies, the merge flow opens the invoice QR before the bridge push can complete.
+- **Push Cost in repo settings** must be written to the bridge SQLite table `RepositoryPushPolicy` (not only `localStorage`). Saving repo settings now calls `POST /api/nostr/repo/push-policy-sync` with your signed kind **30617** so the paywall amount matches what `/api/nostr/repo/push-payment` enforces. NIP-07-only users previously skipped publishing settings (`privateKey` was required); that is fixed—sign with the extension when saving. If you set Push Cost before this change, open **Repo → Settings**, verify the value, and **Save** once after upgrading so the bridge row is created/updated.
 - SSH push checks the same bridge DB grant before allowing `git-receive-pack`.
 
 **GitHub OAuth Setup (Optional, for private repository access):**

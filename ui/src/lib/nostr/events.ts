@@ -248,12 +248,20 @@ export interface CodeSnippetEvent {
   repoRelay?: string; // Recommended relay for repo event (additional parameter on 'repo' tag)
 }
 
-// Create and sign a Nostr repository event
-export function createRepositoryEvent(
+/** Build kind 30617 payload (unsigned). Caller sets id/sig. */
+export function buildUnsignedRepositoryEvent(
   repo: RepositoryEvent,
-  privateKey: string
-): any {
-  const pubkey = getPublicKey(privateKey);
+  pubkeyHex: string
+): {
+  kind: number;
+  created_at: number;
+  tags: string[][];
+  content: string;
+  pubkey: string;
+  id: string;
+  sig: string;
+} {
+  const pubkey = pubkeyHex.toLowerCase();
 
   // NIP-34: Build tags array with all required metadata
   const tags: string[][] = [
@@ -428,9 +436,30 @@ export function createRepositoryEvent(
     sig: "",
   };
 
+  return event;
+}
+
+// Create and sign a Nostr repository event (local nsec)
+export function createRepositoryEvent(
+  repo: RepositoryEvent,
+  privateKey: string
+): any {
+  const pubkey = getPublicKey(privateKey);
+  const event = buildUnsignedRepositoryEvent(repo, pubkey);
   event.id = getEventHash(event);
   event.sig = signEvent(event, privateKey);
   return event;
+}
+
+/** Sign kind 30617 with NIP-07 (Alby, nos2x, etc.). */
+export async function createRepositoryEventNip07(
+  repo: RepositoryEvent,
+  nostr: NonNullable<Window["nostr"]>
+): Promise<any> {
+  const pubkey = (await nostr.getPublicKey()).toLowerCase();
+  const event = buildUnsignedRepositoryEvent(repo, pubkey);
+  event.id = getEventHash(event);
+  return nostr.signEvent(event);
 }
 
 export function createCodeSnippetEvent(

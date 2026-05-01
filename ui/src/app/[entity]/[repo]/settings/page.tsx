@@ -16,6 +16,7 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   KIND_REPOSITORY_NIP34,
   createRepositoryEvent,
+  createRepositoryEventNip07,
 } from "@/lib/nostr/events";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { getAccumulatedZaps } from "@/lib/payments/zap-repo";
@@ -68,6 +69,40 @@ interface Milestone {
   name: string;
   description?: string;
   dueDate?: number;
+}
+
+function utf8ToBase64Json(obj: unknown): string {
+  const json = JSON.stringify(obj);
+  const bytes = new TextEncoder().encode(json);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]!);
+  }
+  return btoa(binary);
+}
+
+async function syncRepositoryPushPolicyToBridge(
+  signedRepoEvent: Record<string, unknown>
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/nostr/repo/push-policy-sync", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Nostr-Auth-Event": utf8ToBase64Json(signedRepoEvent),
+      },
+    });
+    if (!res.ok) {
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      return { ok: false, error: j.error || res.statusText };
+    }
+    return { ok: true };
+  } catch (e: unknown) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
 }
 
 export default function RepoSettingsPage() {
@@ -496,9 +531,8 @@ export default function RepoSettingsPage() {
         localStorage.setItem(milestonesKey, JSON.stringify(milestones));
       } catch {}
 
-      // Publish updated repository event to Nostr (optional)
-      if (publish && pubkey && privateKey) {
-        // Load repo data to preserve clone/relays tags from original push
+      // Publish kind 30617 + sync push_cost_sats into bridge SQLite (paywall enforcement reads DB, not localStorage).
+      if (publish && pubkey && (privateKey || hasNip07)) {
         const repos = loadStoredRepos();
         const repoData = findRepoByEntityAndName<StoredRepo>(
           repos,
@@ -506,27 +540,53 @@ export default function RepoSettingsPage() {
           repo
         );
 
-        const repoEvent = createRepositoryEvent(
-          {
-            repositoryName: repo,
-            publicRead: isPublic,
-            publicWrite: false,
-            description,
-            tags,
-            zapPolicy: zapSplits.length > 0 ? { splits: zapSplits } : undefined,
-            requiredApprovals: requiredApprovals,
-            pushCostSats: Math.max(0, Math.floor(pushCostSats || 0)),
-            links: repoLinks.length > 0 ? repoLinks : undefined,
-            // CRITICAL: Preserve clone and relays tags from original push
-            // This ensures the replaceable event maintains discoverability
-            clone: repoData?.clone || [],
-            relays: repoData?.relays || defaultRelays || [],
-          },
-          privateKey
-        );
+        const repoEventPayload = {
+          repositoryName: repo,
+          publicRead: isPublic,
+          publicWrite: false,
+          description,
+          tags,
+          zapPolicy: zapSplits.length > 0 ? { splits: zapSplits } : undefined,
+          requiredApprovals: requiredApprovals,
+          pushCostSats: Math.max(0, Math.floor(pushCostSats || 0)),
+          links: repoLinks.length > 0 ? repoLinks : undefined,
+          clone: repoData?.clone || [],
+          relays: repoData?.relays || defaultRelays || [],
+        };
 
-        publish(repoEvent, defaultRelays);
-        setStatus("Settings saved and published to Nostr!");
+        let signedRepoEvent: any = null;
+        if (privateKey) {
+          signedRepoEvent = createRepositoryEvent(repoEventPayload, privateKey);
+        } else if (
+          hasNip07 &&
+          typeof window !== "undefined" &&
+          window.nostr
+        ) {
+          signedRepoEvent = await createRepositoryEventNip07(
+            repoEventPayload,
+            window.nostr
+          );
+        }
+
+        if (signedRepoEvent) {
+          const syncResult = await syncRepositoryPushPolicyToBridge(
+            signedRepoEvent
+          );
+          publish(signedRepoEvent, defaultRelays);
+          if (syncResult.ok) {
+            setStatus(
+              "Settings saved, push paywall synced to bridge, and published to Nostr!"
+            );
+          } else {
+            setStatus(
+              `Settings saved and published to Nostr. Warning: bridge push-policy sync failed (${syncResult.error || "unknown"}). Paywall may not apply until the bridge ingests your announcement.`
+            );
+          }
+        } else {
+          setStatus(
+            "Settings saved (could not sign repository announcement)."
+          );
+        }
       } else {
         setStatus("Settings saved");
       }
