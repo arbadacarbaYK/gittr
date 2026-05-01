@@ -9,6 +9,7 @@ import { CodeSnippetRenderer } from "@/components/ui/code-snippet-renderer";
 import { ConflictDetector } from "@/components/ui/conflict-detector";
 import { CopyableCodeBlock } from "@/components/ui/copyable-code-block";
 import { FileDiffViewer } from "@/components/ui/file-diff-viewer";
+import { PaymentQR } from "@/components/ui/payment-qr";
 import { PRReviewSection } from "@/components/ui/pr-review-section";
 import { Reactions } from "@/components/ui/reactions";
 import { ZapButton } from "@/components/ui/zap-button";
@@ -33,6 +34,7 @@ import {
   formatNotificationMessage,
   sendNotification,
 } from "@/lib/notifications";
+import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import {
   isOwner as checkIsOwner,
   hasWriteAccess,
@@ -151,6 +153,15 @@ export default function PRDetailPage({
   const [prEventId, setPrEventId] = useState<string | null>(null);
   const [mergePublishReady, setMergePublishReady] = useState<boolean>(false);
   const [mergePublishReason, setMergePublishReason] = useState<string>("");
+  const [mergePushPayment, setMergePushPayment] = useState<{
+    invoice: string;
+    pushCostSats: number;
+    ownerPubkey: string;
+    repoName: string;
+    ownerLnbitsUrl?: string;
+    ownerLnbitsReadKey?: string;
+    ownerBlinkApiKey?: string;
+  } | null>(null);
 
   // Fetch metadata for PR author, mergedBy, contributors, and bounty creator
   const allPubkeys = useMemo(() => {
@@ -456,6 +467,56 @@ export default function PRDetailPage({
     setMergePublishReady(false);
     setMergePublishReason("No signer available (NIP-07/private key)");
   }, [currentUserPubkey, prEventId, pr]);
+
+  const pushMergedRepoAfterPayment = useCallback(async () => {
+    if (
+      !mergePushPayment ||
+      !publish ||
+      !subscribe ||
+      !defaultRelays?.length ||
+      !currentUserPubkey
+    ) {
+      return;
+    }
+    try {
+      const privateKey = await getNostrPrivateKey();
+      const pushResult = await pushRepoToNostr({
+        repoSlug: resolvedParams.repo,
+        entity: resolvedParams.entity,
+        publish,
+        subscribe,
+        defaultRelays,
+        privateKey: privateKey || undefined,
+        pubkey: currentUserPubkey,
+        onProgress: (message) => {
+          console.log(`[Merge Push Retry ${resolvedParams.repo}] ${message}`);
+        },
+      });
+      if (pushResult.success) {
+        alert("Push payment authorized and merged repository state was pushed.");
+      } else {
+        alert(
+          `Payment was confirmed, but push still failed: ${pushResult.error || "unknown push failure"}`
+        );
+      }
+    } catch (error) {
+      alert(
+        `Payment was confirmed, but push retry failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    } finally {
+      setMergePushPayment(null);
+    }
+  }, [
+    mergePushPayment,
+    publish,
+    subscribe,
+    defaultRelays,
+    currentUserPubkey,
+    resolvedParams.repo,
+    resolvedParams.entity,
+  ]);
 
   const handleMerge = useCallback(async () => {
     // Only owners and maintainers can merge (write access)
@@ -1326,6 +1387,46 @@ export default function PRDetailPage({
       let repoStatePushError = "";
       if (publish && subscribe && defaultRelays?.length > 0 && currentUserPubkey) {
         try {
+          const resolvedOwnerPubkey =
+            (repo ? getRepoOwnerPubkey(repo, resolvedParams.entity) : null) ||
+            resolveEntityToPubkey(resolvedParams.entity) ||
+            "";
+          if (!resolvedOwnerPubkey) {
+            repoStatePushError =
+              "missing owner pubkey for push payment authorization";
+          } else {
+            const paymentAuth = await ensurePushPaymentAuthorization({
+              entity: resolvedParams.entity,
+              repo: resolvedParams.repo,
+              ownerPubkey: resolvedOwnerPubkey.toLowerCase(),
+              payerPubkey: currentUserPubkey,
+              signer:
+                typeof window !== "undefined" && window.nostr
+                  ? window.nostr.signEvent
+                  : undefined,
+            });
+
+            if (!paymentAuth.ok) {
+              repoStatePushError =
+                paymentAuth.error || "payment authorization failed";
+              if (
+                paymentAuth.needsExternalPayment &&
+                paymentAuth.invoice &&
+                paymentAuth.pushCostSats
+              ) {
+                setMergePushPayment({
+                  invoice: paymentAuth.invoice,
+                  pushCostSats: paymentAuth.pushCostSats,
+                  ownerPubkey: resolvedOwnerPubkey.toLowerCase(),
+                  repoName: resolvedParams.repo,
+                  ownerLnbitsUrl: paymentAuth.ownerLnbitsUrl,
+                  ownerLnbitsReadKey: paymentAuth.ownerLnbitsReadKey,
+                  ownerBlinkApiKey: paymentAuth.ownerBlinkApiKey,
+                });
+                repoStatePushError =
+                  "push payment required - invoice opened for authorization";
+              }
+            } else {
           const pushResult = await pushRepoToNostr({
             repoSlug: resolvedParams.repo,
             entity: resolvedParams.entity,
@@ -1341,6 +1442,8 @@ export default function PRDetailPage({
           repoStatePushed = !!pushResult.success;
           if (!pushResult.success) {
             repoStatePushError = pushResult.error || "unknown push failure";
+          }
+            }
           }
         } catch (pushError) {
           repoStatePushError =
@@ -1815,6 +1918,28 @@ export default function PRDetailPage({
             </div>
           </div>
         </div>
+      )}
+      {mergePushPayment && (
+        <PaymentQR
+          invoice={mergePushPayment.invoice}
+          amount={mergePushPayment.pushCostSats}
+          onClose={() => setMergePushPayment(null)}
+          onPaid={pushMergedRepoAfterPayment}
+          pushPaymentPoll={{
+            ownerPubkey: mergePushPayment.ownerPubkey,
+            repo: mergePushPayment.repoName,
+            payerPubkey: currentUserPubkey || "",
+            ownerLnbitsUrl: mergePushPayment.ownerLnbitsUrl,
+            ownerLnbitsReadKey: mergePushPayment.ownerLnbitsReadKey,
+            ownerBlinkApiKey: mergePushPayment.ownerBlinkApiKey,
+          }}
+          extra={
+            <p className="text-xs text-gray-400 mb-3">
+              This repository has push paywall enabled. Pay once to authorize
+              this merged-state push.
+            </p>
+          }
+        />
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

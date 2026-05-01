@@ -255,8 +255,14 @@ export default function AccountSettingsPage() {
     if (nwcSendError) newErrors.nwcSend = nwcSendError;
     newValidation.nwcSend = !nwcSendError && nwcSend.length > 0;
 
-    // LNbits URL validation - only if field has value
-    if (lnbitsUrl && !lnbitsUrl.match(/^https?:\/\/.+/)) {
+    // LNbits URL validation - required when any LNbits key is configured
+    const hasAnyLnbitsKey = !!(
+      lnbitsAdminKey.trim() || lnbitsInvoiceKey.trim()
+    );
+    if (hasAnyLnbitsKey && !lnbitsUrl.trim()) {
+      newErrors.lnbitsUrl =
+        "LNbits instance URL is required when LNbits admin/invoice key is set";
+    } else if (lnbitsUrl && !lnbitsUrl.match(/^https?:\/\/.+/)) {
       newErrors.lnbitsUrl = "LNbits URL must be a valid HTTP/HTTPS URL";
     }
     newValidation.lnbitsUrl = !newErrors.lnbitsUrl && lnbitsUrl.length > 0;
