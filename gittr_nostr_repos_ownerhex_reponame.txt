@@ -1,5 +1,5 @@
-# owner_pubkey_hex/reponame — from Hetzner bridge bare repos
-# Regenerate hex list: ssh bridge + list dirs, or keep this file as source of truth.
+# owner_pubkey_hex/reponame — ALL bare repos on Hetzner bridge (not gittr-only)
+# For repos pushed via gittr HTTP UI at least once, see gittr_nostr_repos_ownerhex_reponame_gittr_http_only.txt
 
 00521dbbe0faa4ca065fad77086a18f5d6606cbf2ba95f4aa3827f064727255b/profile
 006b479af3cb317c539db64c84d603f524bc85da4ba9475696e0f8925c4b5b6b/profile

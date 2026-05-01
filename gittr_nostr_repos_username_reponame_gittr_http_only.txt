@@ -1,0 +1,57 @@
+# username/reponame — repos with ≥1 commit from gittr HTTP push (author push@gittr.space)
+# Source hex list: gittr_nostr_repos_ownerhex_reponame_gittr_http_only.txt
+# Rescan on server: scripts/scan-gittr-http-pushed-repos.sh
+# username: Nostr kind 0 — nip05 local-part, else display_name/name (slugified);
+#          if missing/junk profile: pub_<first8hex> (suffix if collision).
+# Rebuild: node scripts/build-gittr-repo-owner-usernames.mjs gittr_nostr_repos_ownerhex_reponame_gittr_http_only.txt gittr_nostr_repos_username_reponame_gittr_http_only.txt
+abracadabra/audiotext
+abracadabra/bitcoin_meetup_calendar
+abracadabra/chicksontheblocks
+abracadabra/gitnostr
+abracadabra/gittr
+abracadabra/gittr-helper-tools
+abracadabra/is-this-thing-on
+abracadabra/lnbits-tabletown
+abracadabra/mylnbitch
+abracadabra/norman-mcp-server
+abracadabra/sats4berlin
+abracadabra/sociostr
+abracadabra/voice-intelligence-app
+btc_hans/btc-node-compose
+btcforplebs/nip-vip
+clarkqaq/clarkqaq
+geektoshi/nostr-hypermedia
+heart-on-sleeve/gitter-test123
+hero-van-kampen/partytap
+noerd/einundzwanzighh-gesundesgeld
+printer/gobrrr-pool
+rafftyl/lxmf
+rafftyl/lxst
+rafftyl/nomadnet
+rafftyl/reticulum
+rafftyl/rnode-firmware
+roguehashrate/testing
+roguehashrate/this-is-a-test
+satopshq-cfaa4b5f/e2e-test-final
+satopshq-cfaa4b5f/fixed-ref-1771073388662
+satopshq-cfaa4b5f/gittr-mcp-final-test
+satopshq-cfaa4b5f/gittr-mcp-test-final
+satopshq-cfaa4b5f/gittr-mcp-test-v4
+satopshq-cfaa4b5f/gittr-mcp-works
+satopshq-cfaa4b5f/push-only-test
+satopshq-cfaa4b5f/push-test-1771079645136
+satopshq-cfaa4b5f/sattest-repo
+satopshq-cfaa4b5f/test-bridge-123
+satopshq-cfaa4b5f/test-explicit-creds
+satopshq-cfaa4b5f/test-mcp-files
+satopshq-cfaa4b5f/test-mcp-ssh
+satopshq-cfaa4b5f/test-pr-fix-1771085433196
+satopshq-cfaa4b5f/test-pr-fix-1771085483402
+satopshq-cfaa4b5f/test-pr-fix2-1771085515126
+satopshq-cfaa4b5f/test-pr-fix3-1771085532146
+satopshq-cfaa4b5f/test-pr-fix3-1771085623845
+satopshq-cfaa4b5f/test-pr-fix4-1771085669510
+satopshq-cfaa4b5f/test-wait-1771073313687
+satopshq-cfaa4b5f/verify-flow
+satopshq-cfaa4b5f/verify-flow-2
+satopshq/gittr-mcp-test

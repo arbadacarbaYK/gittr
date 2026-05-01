@@ -11,8 +11,10 @@ import { SimplePool } from "../ui/node_modules/nostr-tools/lib/esm/nostr.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
-const HEX_SOURCE = path.join(ROOT, "gittr_nostr_repos_ownerhex_reponame.txt");
-const OUT = path.join(ROOT, "gittr_nostr_repos_username_reponame.txt");
+const HEX_SOURCE =
+  process.argv[2] || path.join(ROOT, "gittr_nostr_repos_ownerhex_reponame.txt");
+const OUT =
+  process.argv[3] || path.join(ROOT, "gittr_nostr_repos_username_reponame.txt");
 
 const RELAYS = [
   "wss://nos.lol",
@@ -139,12 +141,13 @@ async function main() {
   }
   const sorted = [...lines].sort();
 
+  const srcName = path.basename(HEX_SOURCE);
   const header = [
-    "# username/reponame — repos present on gittr Hetzner bridge (bare repos on disk)",
-    "# Source pubkey list: gittr_nostr_repos_ownerhex_reponame.txt",
+    "# username/reponame — derived from bridge ownerhex list (see source filename in next line)",
+    `# Source: ${srcName}`,
     "# username: Nostr kind 0 — nip05 local-part, else display_name/name (slugified);",
     "#          if missing/junk profile: pub_<first8hex> (suffix if collision).",
-    "# Rebuild: node scripts/build-gittr-repo-owner-usernames.mjs",
+    "# Rebuild: node scripts/build-gittr-repo-owner-usernames.mjs [hexfile] [outfile]",
     "",
   ].join("\n");
 

@@ -1,8 +1,9 @@
-# username/reponame — repos present on gittr Hetzner bridge (bare repos on disk)
-# Source pubkey list: gittr_nostr_repos_ownerhex_reponame.txt
+# username/reponame — ALL repos on Hetzner bridge (bare dirs), not gittr-HTTP-only
+# Source: gittr_nostr_repos_ownerhex_reponame.txt
+# For gittr UI HTTP push only: gittr_nostr_repos_username_reponame_gittr_http_only.txt
 # username: Nostr kind 0 — nip05 local-part, else display_name/name (slugified);
 #          if missing/junk profile: pub_<first8hex> (suffix if collision).
-# Rebuild: node scripts/build-gittr-repo-owner-usernames.mjs
+# Rebuild: node scripts/build-gittr-repo-owner-usernames.mjs [hexfile] [outfile]
 a-goblin-king/mole-android
 a15c281t1/profile
 aarn-rodrguez/pathos
