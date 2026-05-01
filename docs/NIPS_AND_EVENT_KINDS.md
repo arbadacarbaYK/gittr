@@ -137,6 +137,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `branch[]`: Branch names and commits
   - `release[]`: Release tags and metadata
   - `link[]`: Repository links (docs, social media, etc.)
+  - `push_cost_sats` (optional, **gittr / git-nostr-bridge extension**): Integer sats charged per push when the bridge enforces a paywall. **Not** part of the core NIP-34 text; we reuse kind **30617** so the amount is owner-attested on the same replaceable repo announcement other clients already follow. The bridge copies this tag into `RepositoryPushPolicy` for `/api/nostr/repo/push` and SSH enforcement; purely local UI state alone cannot secure server-side push.
 - **Privacy**: Privacy is NOT encoded in NIP-34 event tags (per spec). The NIP-34 spec does not include `public-read` or `public-write` tags. Privacy is determined by the `maintainers[]` tag (which IS in the spec) and bridge-level access control. Repository events are public on relays (for discoverability), but file access is restricted to maintainers via the bridge.
 
 ### Kind 30618: Repository State (NIP-34)
