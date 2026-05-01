@@ -17,6 +17,79 @@ import { normalizeUrlOnBlur } from "@/lib/utils/url-normalize";
 import { AlertCircle, CheckCircle2, Lock, Shield, XCircle } from "lucide-react";
 import Link from "next/link";
 
+function InputField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  error,
+  isValid,
+  helpText,
+  showError,
+  onValidateBlur,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  error?: string;
+  isValid?: boolean;
+  helpText?: string;
+  showError?: boolean;
+  onValidateBlur?: () => void;
+}) {
+  const displayError = showError && error;
+  const fieldId = `input-${label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")}`;
+  const fieldName = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return (
+    <div className="space-y-1">
+      <label htmlFor={fieldId} className="block text-sm font-medium">
+        {label}
+      </label>
+      <div className="relative">
+        <input
+          id={fieldId}
+          name={fieldName}
+          className={`w-full border p-2 text-black rounded ${
+            displayError
+              ? "border-red-500"
+              : isValid
+              ? "border-green-500"
+              : "border-gray-300"
+          }`}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={(e) => {
+            const normalized = normalizeUrlOnBlur(e.target.value);
+            if (normalized !== e.target.value) {
+              onChange(normalized);
+            }
+            onValidateBlur?.();
+          }}
+          placeholder={placeholder}
+        />
+        {value && (
+          <span className="absolute right-2 top-1/2 transform -translate-y-1/2">
+            {displayError ? (
+              <XCircle className="h-5 w-5 text-red-500" />
+            ) : isValid ? (
+              <CheckCircle2 className="h-5 w-5 text-green-500" />
+            ) : null}
+          </span>
+        )}
+      </div>
+      {displayError && <p className="text-red-500 text-xs">{error}</p>}
+      {!displayError && helpText && <p className="text-gray-500 text-xs">{helpText}</p>}
+    </div>
+  );
+}
+
 export default function AccountSettingsPage() {
   const { pubkey, publish, defaultRelays } = useNostrContext();
   const metadata = useMetadata();
@@ -472,87 +545,6 @@ export default function AccountSettingsPage() {
     // This prevents blocking input
   }, []);
 
-  function InputField({
-    label,
-    value,
-    onChange,
-    placeholder,
-    error,
-    isValid,
-    helpText,
-    showError,
-  }: {
-    label: string;
-    value: string;
-    onChange: (value: string) => void;
-    placeholder: string;
-    error?: string;
-    isValid?: boolean;
-    helpText?: string;
-    showError?: boolean;
-  }) {
-    const displayError = showError && error;
-    // Generate a unique id from the label
-    const fieldId = `input-${label
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")}`;
-    const fieldName = label
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
-    return (
-      <div className="space-y-1">
-        <label htmlFor={fieldId} className="block text-sm font-medium">
-          {label}
-        </label>
-        <div className="relative">
-          <input
-            id={fieldId}
-            name={fieldName}
-            className={`w-full border p-2 text-black rounded ${
-              displayError
-                ? "border-red-500"
-                : isValid
-                ? "border-green-500"
-                : "border-gray-300"
-            }`}
-            value={value}
-            onChange={(e) => {
-              // Simply update value without any validation or state blocking
-              onChange(e.target.value);
-            }}
-            onBlur={(e) => {
-              // Normalize URL (auto-add https:// if needed)
-              const normalized = normalizeUrlOnBlur(e.target.value);
-              if (normalized !== e.target.value) {
-                onChange(normalized);
-              }
-              // Only validate on blur if validation was already shown (after save attempt)
-              if (showValidation) {
-                validateAll();
-              }
-            }}
-            placeholder={placeholder}
-          />
-          {value && (
-            <span className="absolute right-2 top-1/2 transform -translate-y-1/2">
-              {displayError ? (
-                <XCircle className="h-5 w-5 text-red-500" />
-              ) : isValid ? (
-                <CheckCircle2 className="h-5 w-5 text-green-500" />
-              ) : null}
-            </span>
-          )}
-        </div>
-        {displayError && <p className="text-red-500 text-xs">{error}</p>}
-        {!displayError && helpText && (
-          <p className="text-gray-500 text-xs">{helpText}</p>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="p-6">
       <SettingsHero title="Account" />
@@ -639,6 +631,7 @@ export default function AccountSettingsPage() {
               error={errors.lnurl}
               isValid={validation.lnurl}
               showError={showValidation}
+              onValidateBlur={() => showValidation && validateAll()}
               helpText="Used for receiving Lightning payments via LNURL. https:// will be added automatically if needed."
             />
             <InputField
@@ -649,6 +642,7 @@ export default function AccountSettingsPage() {
               error={errors.lud16}
               isValid={validation.lud16}
               showError={showValidation}
+              onValidateBlur={() => showValidation && validateAll()}
               helpText="Used for receiving Lightning payments via Lightning address"
             />
             <InputField
@@ -659,6 +653,7 @@ export default function AccountSettingsPage() {
               error={errors.nwcRecv}
               isValid={validation.nwcRecv}
               showError={showValidation}
+              onValidateBlur={() => showValidation && validateAll()}
               helpText="Used for receiving Lightning payments via Nostr Wallet Connect"
             />
             {/* Connection status display for receive wallet */}
@@ -718,6 +713,7 @@ export default function AccountSettingsPage() {
               error={errors.nwcSend}
               isValid={validation.nwcSend}
               showError={showValidation}
+              onValidateBlur={() => showValidation && validateAll()}
               helpText="Required for sending zaps. Used for single-recipient payments. Note: Some wallets (like minibits.cash) may not support balance queries but will still work for payments."
             />
             {/* Connection status display */}
@@ -784,6 +780,7 @@ export default function AccountSettingsPage() {
               error={errors.lnbitsUrl}
               isValid={validation.lnbitsUrl}
               showError={showValidation}
+              onValidateBlur={() => showValidation && validateAll()}
               helpText="Your LNbits instance URL (for split payments and bounties). Examples: bitcoindelta.club (v0.12.12) or azzamo.online (latest). https:// will be added automatically. The system automatically detects and supports both API versions."
             />
             <InputField
@@ -794,6 +791,7 @@ export default function AccountSettingsPage() {
               error={errors.lnbitsAdminKey}
               isValid={validation.lnbitsAdminKey}
               showError={showValidation}
+              onValidateBlur={() => showValidation && validateAll()}
               helpText="Admin API key from your LNbits instance (for creating/updating/deleting withdraw links - keep this secret!)"
             />
             <InputField
@@ -804,6 +802,7 @@ export default function AccountSettingsPage() {
               error={errors.lnbitsInvoiceKey}
               isValid={validation.lnbitsInvoiceKey}
               showError={showValidation}
+              onValidateBlur={() => showValidation && validateAll()}
               helpText="Invoice/Read API key from your LNbits instance (for listing/reading withdraw links - optional but recommended for bounties)"
             />
             <InputField
@@ -814,6 +813,7 @@ export default function AccountSettingsPage() {
               error={errors.blinkApiKey}
               isValid={validation.blinkApiKey}
               showError={showValidation}
+              onValidateBlur={() => showValidation && validateAll()}
               helpText="Optional alternative to LNbits for push paywall invoice creation + payment status verification (Blink GraphQL key from dashboard.blink.sv)."
             />
             {/* Balance display */}
