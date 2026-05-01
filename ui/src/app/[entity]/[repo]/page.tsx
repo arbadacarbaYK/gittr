@@ -10665,11 +10665,23 @@ export default function RepoCodePage() {
           const {
             isGraspServer: isGraspServerFn,
           } = require("@/lib/utils/grasp-servers");
-          const graspCloneUrl = cloneUrls.find(
+          let graspCloneUrl = cloneUrls.find(
             (url: string) =>
               isGraspServerFn(url) &&
               (url.startsWith("http://") || url.startsWith("https://"))
           );
+          // Some 30617 events put the GRASP git URL only in sourceUrl, not in clone[]
+          if (!graspCloneUrl) {
+            const su =
+              (repoData as any)?.sourceUrl || (repoData as any)?.forkedFrom;
+            if (
+              typeof su === "string" &&
+              isGraspServerFn(su) &&
+              (su.startsWith("http://") || su.startsWith("https://"))
+            ) {
+              graspCloneUrl = su;
+            }
+          }
 
           if (graspCloneUrl) {
             const errorType =
