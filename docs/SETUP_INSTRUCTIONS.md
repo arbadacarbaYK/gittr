@@ -78,8 +78,10 @@ If you run backend/bridge services from the repo root, there is also a root `.en
 **Push paywall note (optional):**
 - Repo owners can set `Push Cost (sats)` in Repo Settings.
 - To enable non-zero Push Cost, owner must configure either `LNbits Invoice Key` or `Blink API Key` in `Settings -> Account`.
+- If you use LNbits keys, you must also set **LNbits instance URL** (the UI blocks save without it when a key is present).
 - This paywall is enforced for both GUI push and SSH push when set above `0`.
 - GUI authorization uses a dedicated push-payment intent flow and grants a short push window (default 15 minutes).
+- **Merge to Nostr** (post-merge automatic repo-state push) uses the same authorization: if paywall applies, the merge flow opens the invoice QR before the bridge push can complete.
 - SSH push checks the same bridge DB grant before allowing `git-receive-pack`.
 
 **GitHub OAuth Setup (Optional, for private repository access):**
@@ -548,6 +550,7 @@ sudo journalctl -u git-nostr-bridge -n 50
 
 ### Push paywall blocks pushes
 - If terminal shows `push payment required ...`, generate/pay invoice in repo UI via **Push to Nostr**, then retry `git push`.
+- After merging a PR with paywall enabled, pay the invoice in the on-screen QR modal (or use **Push to Nostr** afterward) so the merged state can reach the bridge.
 - If terminal shows `push payment authorization expired`, pay pending invoice (or create a new one) and push again.
 - Verify repo owner has configured `LNbits Invoice Key` or `Blink API Key` in Settings -> Account before setting non-zero Push Cost.
 
