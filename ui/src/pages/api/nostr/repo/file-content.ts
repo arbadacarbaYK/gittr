@@ -280,9 +280,7 @@ export default async function handler(
         // We have content, treat as success (git might have warnings in stderr)
         branchNotFound = false;
         console.log(
-          `✅ Got file content from '${branchStr}' branch (${
-            Buffer.isBuffer(stdout) ? stdout.length : stdout.length
-          } bytes, had error but stdout exists)`
+          `✅ Got file content from '${branchStr}' branch (${stdout.length} bytes, had error but stdout exists)`
         );
       } else if (
         stderr.includes("fatal: not a valid object name") ||
@@ -381,11 +379,7 @@ export default async function handler(
             actualBranch = fallbackBranch;
             branchNotFound = false;
             console.log(
-              `✅ Found file in '${fallbackBranch}' branch (from error stdout, ${
-                Buffer.isBuffer(fallbackStdout)
-                  ? fallbackStdout.length
-                  : fallbackStdout.length
-              } bytes)`
+              `✅ Found file in '${fallbackBranch}' branch (from error stdout, ${fallbackStdout.length} bytes)`
             );
             break;
           } else if (!isBranchError) {

@@ -1,12 +1,40 @@
-import { loadStoredRepos } from "@/lib/repos/storage";
+import { readFileSync, existsSync } from "fs";
+import { join } from "path";
 
 import { type MetadataRoute } from "next";
-import { nip19 } from "nostr-tools";
+
+const MAX_SITEMAP_URLS = 45000;
+
+/** Lines like npub1.../repo-name from bridge index; boosts crawl of public repos. */
+function loadNostrPushedRepoPaths(): string[] {
+  const candidates = [
+    join(process.cwd(), "..", "nostr-pushed-repos.txt"),
+    join(process.cwd(), "nostr-pushed-repos.txt"),
+  ];
+  for (const filePath of candidates) {
+    try {
+      if (!existsSync(filePath)) continue;
+      const raw = readFileSync(filePath, "utf8");
+      const lines = raw
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(
+          (l) =>
+            l.length > 0 &&
+            !l.startsWith("#") &&
+            /^npub1[0-9a-z]+\/.+/i.test(l)
+        );
+      return [...new Set(lines)];
+    } catch {
+      /* continue */
+    }
+  }
+  return [];
+}
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space";
 
-  // Static pages
   const staticPages: MetadataRoute.Sitemap = [
     {
       url: baseUrl,
@@ -28,14 +56,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
-  // Dynamic pages - repositories
-  // Note: In a production environment, you might want to fetch from Nostr relays
-  // For now, we'll use localStorage repos (limited to what's cached)
-  const repoPages: MetadataRoute.Sitemap = [];
+  const repoPaths = loadNostrPushedRepoPaths().slice(0, MAX_SITEMAP_URLS);
+  const now = new Date();
+  const repoPages: MetadataRoute.Sitemap = repoPaths.map((line) => {
+    const slash = line.indexOf("/");
+    const entity = line.slice(0, slash);
+    const repo = line.slice(slash + 1);
+    const url = `${baseUrl}/${encodeURIComponent(entity)}/${encodeURIComponent(repo)}`;
+    return {
+      url,
+      lastModified: now,
+      changeFrequency: "weekly" as const,
+      priority: 0.65,
+    };
+  });
 
-  // Server-side: We can't access localStorage
-  // In production, you'd want to fetch from a database or Nostr relays
-  // For now, return static pages only - dynamic repo pages will be indexed as they're discovered
-  // TODO: Implement server-side repo discovery from Nostr relays or database
-  return staticPages;
+  return [...staticPages, ...repoPages];
 }
