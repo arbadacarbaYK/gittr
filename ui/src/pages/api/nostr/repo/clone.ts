@@ -3,12 +3,26 @@ import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync } from "fs";
+import { rm } from "fs/promises";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { nip05, nip19 } from "nostr-tools";
 import { join } from "path";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
+
+/** True if bare repo at gitDir has at least one commit (valid HEAD). */
+async function bareRepoHasCommits(gitDir: string): Promise<boolean> {
+  try {
+    await execAsync(`git --git-dir="${gitDir}" rev-parse --verify HEAD`, {
+      timeout: 15000,
+      maxBuffer: 1024,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Resolves an entity (npub, NIP-05, or hex pubkey) to a full 64-char hex pubkey
@@ -227,14 +241,22 @@ export default async function handler(
   const repoPath = join(reposDir, ownerPubkey, `${repoName}.git`);
 
   try {
-    // Check if repository already exists
+    // Placeholder bare repos (git init --bare, no commits) must not short-circuit:
+    // fetchGithubRaw triggers clone on 404, but an empty .git dir exists on disk.
     if (existsSync(repoPath)) {
-      console.log("✅ Repository already exists at:", repoPath);
-      return res.status(200).json({
-        success: true,
-        message: "Repository already exists",
-        path: repoPath,
-      });
+      const hasCommits = await bareRepoHasCommits(repoPath);
+      if (hasCommits) {
+        console.log("✅ Repository already exists at:", repoPath);
+        return res.status(200).json({
+          success: true,
+          message: "Repository already exists",
+          path: repoPath,
+        });
+      }
+      console.log(
+        `📦 [Clone API] Replacing empty or invalid bare repo, cloning from GRASP: ${repoPath}`
+      );
+      await rm(repoPath, { recursive: true, force: true });
     }
 
     // Ensure parent directory exists
