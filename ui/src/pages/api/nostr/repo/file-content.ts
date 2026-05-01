@@ -9,6 +9,28 @@ import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
+/** child_process may return stderr/stdout as Buffer — never call .substring on it raw */
+function execErrToString(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (Buffer.isBuffer(v)) return v.toString("utf8");
+  if (v instanceof Uint8Array) return Buffer.from(v).toString("utf8");
+  return String(v);
+}
+
+function normalizeStdout(raw: unknown): Buffer {
+  if (raw == null) return Buffer.alloc(0);
+  if (Buffer.isBuffer(raw)) return raw;
+  if (typeof raw === "string") return Buffer.from(raw, "utf8");
+  if (raw instanceof Uint8Array) return Buffer.from(raw);
+  return Buffer.alloc(0);
+}
+
+function hasStdoutBytes(stdout: Buffer | string): boolean {
+  if (Buffer.isBuffer(stdout)) return stdout.length > 0;
+  return typeof stdout === "string" && stdout.length > 0;
+}
+
 /**
  * Resolves an entity (npub, NIP-05, or hex pubkey) to a full 64-char hex pubkey
  * This allows bridge API endpoints to accept NIP-05 format (e.g., geek@primal.net)
@@ -191,6 +213,20 @@ export default async function handler(
       return res.status(404).json({
         error: "Repository not found",
         path: repoPath,
+        hint: "This host has no bare clone yet. Files in the UI may come from Nostr events only; push via gittr or git to populate the bridge.",
+      });
+    }
+
+    // Empty bare repo (bridge created dir but no commits) — avoid git show + Buffer/stderr bugs
+    try {
+      await execAsync(`git --git-dir="${repoPath}" rev-parse --verify HEAD`, {
+        timeout: 5000,
+      });
+    } catch {
+      return res.status(404).json({
+        error: "Repository exists but has no commits on this server",
+        path: repoPath,
+        hint: "Use Push to Nostr from gittr or push over git so the bridge has objects; the file tree may still show from relay metadata.",
       });
     }
 
@@ -231,26 +267,16 @@ export default async function handler(
           encoding: "buffer" as any, // Get raw buffer to detect binary files (file path is already UTF-8)
         }
       );
-      stdout = result.stdout;
-      stderr =
-        (result.stderr
-          ? Buffer.isBuffer(result.stderr)
-            ? result.stderr.toString()
-            : result.stderr
-          : "") || "";
+      stdout = normalizeStdout(result.stdout);
+      stderr = execErrToString(result.stderr);
     } catch (error: any) {
       // execAsync throws when command fails - extract stderr from error
-      stderr = error.stderr || error.message || String(error);
-      stdout = error.stdout || Buffer.alloc(0);
+      stderr = execErrToString(error.stderr ?? error.message ?? error);
+      stdout = normalizeStdout(error.stdout);
 
       // CRITICAL: Check if stdout exists in error - git sometimes outputs to stderr even on success
       // If we have stdout content, treat it as success
-      if (
-        stdout &&
-        (Buffer.isBuffer(stdout)
-          ? stdout.length > 0
-          : typeof stdout === "string" && stdout.length > 0)
-      ) {
+      if (hasStdoutBytes(stdout)) {
         // We have content, treat as success (git might have warnings in stderr)
         branchNotFound = false;
         console.log(
@@ -269,7 +295,7 @@ export default async function handler(
         branchNotFound = true;
       } else {
         // Other error - might be file not found
-        if (stderr && !stdout) {
+        if (stderr && !hasStdoutBytes(stdout)) {
           return res.status(404).json({
             error: "File not found",
             path: filePath,
@@ -308,20 +334,15 @@ export default async function handler(
               encoding: "buffer" as any, // Get raw buffer to detect binary files (file path is already UTF-8)
             }
           );
-          stdout = result.stdout;
-          stderr =
-            (result.stderr
-              ? Buffer.isBuffer(result.stderr)
-                ? result.stderr.toString()
-                : result.stderr
-              : "") || "";
+          stdout = normalizeStdout(result.stdout);
+          stderr = execErrToString(result.stderr);
 
           // Check if we actually got content (not just an empty buffer)
           // Note: stdout is always Buffer when encoding is 'buffer', but type is Buffer | string for compatibility
           const stdoutLength = Buffer.isBuffer(stdout)
             ? stdout.length
             : (stdout as string).length || 0;
-          if (stdout && stdoutLength > 0) {
+          if (stdoutLength > 0) {
             actualBranch = fallbackBranch;
             branchNotFound = false; // Reset flag - we found the file
             console.log(
@@ -335,14 +356,15 @@ export default async function handler(
             // Continue to next fallback
           }
         } catch (fallbackError: any) {
-          const fallbackStderr =
-            fallbackError.stderr ||
-            fallbackError.message ||
-            String(fallbackError);
-          const fallbackStdout = fallbackError.stdout || Buffer.alloc(0);
+          const fallbackStderr = execErrToString(
+            fallbackError.stderr ??
+              fallbackError.message ??
+              fallbackError
+          );
+          const fallbackStdout = normalizeStdout(fallbackError.stdout);
           console.warn(
             `⚠️ Failed to fetch from '${fallbackBranch}' branch:`,
-            fallbackStderr.substring(0, 200)
+            fallbackStderr.slice(0, 200)
           );
 
           // If the error has stdout, it might still be valid (some git commands output to stderr even on success)
@@ -354,12 +376,7 @@ export default async function handler(
             fallbackStderr.includes("fatal: Invalid object name") ||
             fallbackStderr.includes("fatal: ambiguous argument");
 
-          if (
-            fallbackStdout &&
-            (Buffer.isBuffer(fallbackStdout)
-              ? fallbackStdout.length > 0
-              : typeof fallbackStdout === "string" && fallbackStdout.length > 0)
-          ) {
+          if (hasStdoutBytes(fallbackStdout)) {
             stdout = fallbackStdout;
             actualBranch = fallbackBranch;
             branchNotFound = false;
@@ -382,7 +399,10 @@ export default async function handler(
       }
 
       // If all branches failed
-      if (branchNotFound && (!stdout || (stderr && stderr.includes("fatal")))) {
+      if (
+        branchNotFound &&
+        (!hasStdoutBytes(stdout) || (stderr && stderr.includes("fatal")))
+      ) {
         return res.status(404).json({
           error: "File not found in any branch",
           path: filePath,
@@ -392,7 +412,7 @@ export default async function handler(
       }
     }
 
-    if (stderr && !stdout) {
+    if (stderr && !hasStdoutBytes(stdout)) {
       return res.status(404).json({
         error: "File not found",
         path: filePath,
