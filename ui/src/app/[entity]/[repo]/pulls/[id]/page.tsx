@@ -494,6 +494,7 @@ export default function PRDetailPage({
       });
       if (pushResult.success) {
         alert("Push payment authorized and merged repository state was pushed.");
+        router.refresh();
       } else {
         alert(
           `Payment was confirmed, but push still failed: ${pushResult.error || "unknown push failure"}`
@@ -516,6 +517,7 @@ export default function PRDetailPage({
     currentUserPubkey,
     resolvedParams.repo,
     resolvedParams.entity,
+    router,
   ]);
 
   const handleMerge = useCallback(async () => {
@@ -1385,6 +1387,8 @@ export default function PRDetailPage({
       // reconstruct the post-merge codebase without relying on local-only data.
       let repoStatePushed = false;
       let repoStatePushError = "";
+      /** If true, we opened the push-invoice modal — must not router.refresh() yet or the page remount wipes modal state. */
+      let deferRefreshForMergePushInvoice = false;
       if (publish && subscribe && defaultRelays?.length > 0 && currentUserPubkey) {
         try {
           const resolvedOwnerPubkey =
@@ -1414,6 +1418,7 @@ export default function PRDetailPage({
                 paymentAuth.invoice &&
                 paymentAuth.pushCostSats
               ) {
+                deferRefreshForMergePushInvoice = true;
                 setMergePushPayment({
                   invoice: paymentAuth.invoice,
                   pushCostSats: paymentAuth.pushCostSats,
@@ -1463,8 +1468,15 @@ export default function PRDetailPage({
         })
       );
 
-      router.refresh();
-      if (mergeStatusPublished && repoStatePushed) {
+      if (!deferRefreshForMergePushInvoice) {
+        router.refresh();
+      }
+      if (deferRefreshForMergePushInvoice) {
+        // Invoice modal is shown; avoid refresh/alerts that hide it or imply push finished.
+        console.log(
+          "[Merge] Push paywall: invoice modal open — refresh deferred until payment completes or modal closes."
+        );
+      } else if (mergeStatusPublished && repoStatePushed) {
         alert("Pull request merged and pushed to Nostr successfully.");
       } else if (!mergeStatusPublished && repoStatePushed) {
         alert(
@@ -1923,7 +1935,10 @@ export default function PRDetailPage({
         <PaymentQR
           invoice={mergePushPayment.invoice}
           amount={mergePushPayment.pushCostSats}
-          onClose={() => setMergePushPayment(null)}
+          onClose={() => {
+            setMergePushPayment(null);
+            router.refresh();
+          }}
           onPaid={pushMergedRepoAfterPayment}
           pushPaymentPoll={{
             ownerPubkey: mergePushPayment.ownerPubkey,
