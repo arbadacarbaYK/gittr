@@ -44,3 +44,7 @@ log*.txt
 *.log
 devserver.log
 Nip34*.md
+
+# Local one-off exports (bridge repo lists, etc.)
+.tmp_*.txt
+.tmp_*.tsv
