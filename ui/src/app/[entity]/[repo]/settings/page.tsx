@@ -574,18 +574,18 @@ export default function RepoSettingsPage() {
           );
           publish(signedRepoEvent, defaultRelays);
           if (syncResult.ok) {
-            setStatus(
-              "Settings saved, push paywall synced to bridge, and published to Nostr!"
-            );
+            setStatus("Settings saved");
           } else {
+            console.warn(
+              "[Repo settings] Bridge push-policy sync failed:",
+              syncResult.error
+            );
             setStatus(
-              `Settings saved and published to Nostr. Warning: bridge push-policy sync failed (${syncResult.error || "unknown"}). Paywall may not apply until the bridge ingests your announcement.`
+              "Settings saved — if paywall stays off, save once more in a few seconds"
             );
           }
         } else {
-          setStatus(
-            "Settings saved (could not sign repository announcement)."
-          );
+          setStatus("Settings saved (sign in with NIP-07 or nsec to publish)");
         }
       } else {
         setStatus("Settings saved");
@@ -1257,6 +1257,12 @@ export default function RepoSettingsPage() {
             Require a payment before every Git push (GUI and SSH). Set to 0 to
             disable.
           </p>
+          <p className="text-xs text-gray-500 mb-2">
+            Saving settings publishes your repository announcement (kind 30617),
+            which carries this value — one NIP-07 or nsec signature, same as
+            publishing any repo metadata change, not a separate “paywall”
+            signature.
+          </p>
           <p className="text-xs text-yellow-400 mb-2">
             Requires LNbits Invoice Key or Blink API Key in Settings -&gt;
             Account (repo owner).
@@ -1769,8 +1775,8 @@ export default function RepoSettingsPage() {
           </Button>
           {status && (
             <span
-              className={`text-sm ${
-                status.includes("Error") ? "text-red-400" : "text-green-400"
+              className={`text-sm max-w-[14rem] sm:max-w-xs md:max-w-sm text-right leading-snug ${
+                status.includes("Error") ? "text-red-400" : "text-gray-400"
               }`}
             >
               {status}
