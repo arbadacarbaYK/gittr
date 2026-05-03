@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run ON the Hetzner host (or any machine) as a user that can read bare repos, e.g.:
+# Run on the git host (or any machine) as a user that can read bare repos, e.g.:
 #   sudo -u git-nostr bash scripts/scan-gittr-http-pushed-repos.sh
 #
 # Lists owner_pubkey_hex/reponame for repos that have at least one commit authored by

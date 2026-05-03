@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
-# Deploy infra/nsite-gateway to Hetzner (or any host) over SSH.
+# Deploy infra/nsite-gateway (+ gittr-nsite-gateway overlay) to a host over SSH.
 # Requires: Docker Engine + Compose v2 plugin on the server (see SETUP_INSTRUCTIONS.md).
 #
 # Usage (from repo root):
-#   ./scripts/deploy-nsite-gateway.sh
-#   ./scripts/deploy-nsite-gateway.sh 91.99.86.115
-#
-# SSH key defaults to ~/.ssh/id_ed25519_hetzner_new (same as upload_to_hetzner.sh).
+#   export SSH_KEY=~/.ssh/id_ed25519   # optional; defaults below
+#   ./scripts/deploy-nsite-gateway.sh your.server.example
+#   # or: DEPLOY_HOST=your.server.example ./scripts/deploy-nsite-gateway.sh
 
 set -euo pipefail
 
-HOST="${1:-91.99.86.115}"
-KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519_hetzner_new}"
+HOST="${1:-${DEPLOY_HOST:-}}"
+if [[ -z "${HOST}" ]]; then
+  echo "❌ Missing host. Usage: $0 <ssh-hostname-or-ip>"
+  echo "   Example: $0 my.gateway.internal"
+  echo "   Or set DEPLOY_HOST and run with no args."
+  exit 1
+fi
+
+KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
 REMOTE="/opt/ngit/infra/nsite-gateway"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,7 +36,12 @@ fi
 echo "📦 Deploying nsite gateway → root@${HOST}:${REMOTE}"
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "mkdir -p '${REMOTE}/public'"
 
+echo "📦 Syncing gittr nsite-gateway fork (for /status/manifests.json build)…"
+ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "rm -rf '/opt/ngit/infra/gittr-nsite-gateway'"
+scp -i "$KEY" -q -r "$ROOT/infra/gittr-nsite-gateway" "root@${HOST}:/opt/ngit/infra/"
+
 scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/docker-compose.yml" "root@${HOST}:${REMOTE}/"
+scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/docker-compose.gittr-gateway.yml" "root@${HOST}:${REMOTE}/"
 scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/README.md" "root@${HOST}:${REMOTE}/"
 scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/.env.example" "root@${HOST}:${REMOTE}/"
 scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/gittr-pages.production.env" "root@${HOST}:${REMOTE}/"
@@ -52,7 +63,7 @@ ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" 'export DEBIAN_FRONTEND=noninterac
 echo "🔧 Writing production .env on server (from gittr-pages.production.env)..."
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "install -m 0600 -T '${REMOTE}/gittr-pages.production.env' '${REMOTE}/.env'"
 
-echo "🐳 Pulling image and restarting stack..."
-ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "cd '${REMOTE}' && docker compose pull && docker compose up -d"
+echo "🐳 Building gittr gateway fork image and restarting stack…"
+ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "cd '${REMOTE}' && docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml build && docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml up -d"
 
-echo "✅ nsite gateway should be listening on host port 3040 (proxy https://pages.gittr.space → 127.0.0.1:3040 per SETUP_INSTRUCTIONS.md)."
+echo "✅ nsite gateway should be listening on host port 3040 (see SETUP_INSTRUCTIONS.md for HTTPS / reverse-proxy in front)."

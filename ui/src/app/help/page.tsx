@@ -2035,9 +2035,10 @@ export default function HelpPage() {
                     href="/explore"
                     className="text-purple-400 hover:text-purple-300"
                   >
-                    Explore page
+                    Repos
                   </Link>{" "}
-                  to see all repos from Nostr (consistent across browsers).
+                  page to see all repositories from Nostr (consistent across
+                  browsers).
                 </p>
               </div>
             </div>

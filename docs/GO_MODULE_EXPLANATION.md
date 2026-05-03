@@ -42,13 +42,13 @@ All bridge source code is in **this repo** at:
 - `ui/gitnostr/bridge/` - Bridge library code
 - `ui/gitnostr/protocol/` - Protocol definitions
 
-The `upload_to_hetzner.sh` script uploads these files directly from this repo to the server.
+Deployment is whatever process you use to put this repo onto your server (rsync, CI, etc.); the bridge binaries are built from local `ui/gitnostr/` sources.
 
 ### Summary
 
 - ✅ **Module path**: `github.com/arbadacarbaYK/gitnostr` (just an identifier)
 - ✅ **Actual source**: `ui/gitnostr/` in this repo
-- ✅ **Deployment**: Files uploaded directly from this repo via `upload_to_hetzner.sh`
+- ✅ **Deployment**: Your normal server rollout from this repo (not a separate Go download)
 - ❌ **NOT from GitHub**: The code is not fetched from GitHub, it's all local
 
 This is standard Go practice and is completely normal!

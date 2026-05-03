@@ -1,0 +1,12 @@
+# Optional override: build gittr’s nsite-gateway fork (adds /status/manifests.json).
+# Usage (from this directory):
+#   docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml up -d --build
+#
+# Default compose keeps the upstream image; use this file when you want the fork.
+
+services:
+  nsite-gateway:
+    image: gittr-nsite-gateway:local
+    build:
+      context: ../gittr-nsite-gateway
+      dockerfile: Dockerfile

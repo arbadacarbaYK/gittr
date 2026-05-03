@@ -15,6 +15,8 @@ export type NavItem = {
   title: string;
   href: string;
   disabled?: boolean;
+  /** Open in a new tab (e.g. gittr Pages directory while keeping the current tab). */
+  openInNewTab?: boolean;
 };
 
 export type MainNavItem = NavItem;
@@ -64,7 +66,18 @@ export function MainNav({ items, children }: MainNavProps) {
             <a
               key={index}
               href={item.disabled ? "#" : item.href}
-              onClick={(e) => handleNavClick(e, item.href, item.disabled)}
+              rel={item.openInNewTab ? "noopener noreferrer" : undefined}
+              target={item.openInNewTab ? "_blank" : undefined}
+              onClick={(e) => {
+                if (item.disabled || item.href === "#") {
+                  e.preventDefault();
+                  return;
+                }
+                if (item.openInNewTab) {
+                  return;
+                }
+                handleNavClick(e, item.href, item.disabled);
+              }}
               className={cn(
                 "flex items-center text-lg font-semibold text-white hover:text-white/80 sm:text-sm",
 

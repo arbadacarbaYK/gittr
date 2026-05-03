@@ -47,6 +47,7 @@ import {
   useContributorMetadata,
 } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
+import { buildNsiteSiteUrl, slugToNsiteDTag } from "@/lib/nsite/nsite-url";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 import {
@@ -103,11 +104,13 @@ import {
   CircleDot,
   Code,
   Copy,
+  ExternalLink,
   Eye,
   File,
   Folder,
   GitBranch,
   GitFork,
+  Globe,
   HelpCircle,
   History,
   Link2,
@@ -372,7 +375,9 @@ export default function RepoCodePage() {
 
   const canAutoRetryFileFetch = useCallback(
     (repoKeyWithBranch: string) => {
-      return getFileFetchRetryCount(repoKeyWithBranch) < MAX_AUTO_FILE_FETCH_RETRIES;
+      return (
+        getFileFetchRetryCount(repoKeyWithBranch) < MAX_AUTO_FILE_FETCH_RETRIES
+      );
     },
     [getFileFetchRetryCount]
   );
@@ -481,7 +486,9 @@ export default function RepoCodePage() {
       return /^[0-9a-f]{64}$/i.test(low) ? low : null;
     };
 
-    const fromEvent = hex64((repoData as any)?.ownerPubkey as string | undefined);
+    const fromEvent = hex64(
+      (repoData as any)?.ownerPubkey as string | undefined
+    );
     const fromState = hex64(repoOwnerPubkey);
     const fromEntity = hex64(entityPubkey);
 
@@ -504,15 +511,12 @@ export default function RepoCodePage() {
 
     if (resolvedParams.entity && resolvedParams.entity.length === 8) {
       try {
-        const sess = JSON.parse(
-          localStorage.getItem("nostr:session") || "{}"
-        );
+        const sess = JSON.parse(localStorage.getItem("nostr:session") || "{}");
         const pk = sess?.pubkey || "";
         if (
           pk &&
           /^[0-9a-f]{64}$/i.test(pk) &&
-          pk.slice(0, 8).toLowerCase() ===
-            resolvedParams.entity.toLowerCase()
+          pk.slice(0, 8).toLowerCase() === resolvedParams.entity.toLowerCase()
         ) {
           return pk.toLowerCase();
         }
@@ -3517,7 +3521,8 @@ export default function RepoCodePage() {
       // CRITICAL: If we attempted before but have no files (failed fetch), clear the attempted flag to allow retry
       // This is especially important when cloneUrls exist - we need to keep trying until files are loaded
       if (hasAttempted && !hasFiles) {
-        const willRetry = hasCloneUrls && canAutoRetryFileFetch(repoKeyWithBranch);
+        const willRetry =
+          hasCloneUrls && canAutoRetryFileFetch(repoKeyWithBranch);
         console.log(
           "🔄 [File Fetch] Previous attempt failed (no files), clearing attempted flag to allow retry:",
           repoKeyWithBranch,
@@ -3923,13 +3928,10 @@ export default function RepoCodePage() {
             Array.isArray(filesAfterFetch) &&
             filesAfterFetch.length > 0;
           if (!hasFilesAfterFetch) {
-            console.log(
-              "🔄 [File Fetch] No files found in immediate fetch",
-              {
-                retryCount: getFileFetchRetryCount(repoKeyWithBranch),
-                willRetry: canAutoRetryFileFetch(repoKeyWithBranch),
-              }
-            );
+            console.log("🔄 [File Fetch] No files found in immediate fetch", {
+              retryCount: getFileFetchRetryCount(repoKeyWithBranch),
+              willRetry: canAutoRetryFileFetch(repoKeyWithBranch),
+            });
             if (canAutoRetryFileFetch(repoKeyWithBranch)) {
               fileFetchAttemptedRef.current = "";
             }
@@ -11658,7 +11660,9 @@ export default function RepoCodePage() {
   const editCurrentFile = useCallback(() => {
     if (!selectedFile) return;
     if (loadingFile || !fileContent) {
-      alert("File is still loading. Please wait a second, then click Edit again.");
+      alert(
+        "File is still loading. Please wait a second, then click Edit again."
+      );
       return;
     }
     const type = getFileType(selectedFile);
@@ -14135,13 +14139,13 @@ export default function RepoCodePage() {
                           fileType !== "audio" &&
                           fileType !== "pdf" &&
                           fileType !== "binary" && (
-                          <button
-                            className="text-sm text-purple-500 hover:underline whitespace-nowrap"
-                            onClick={() => editCurrentFile()}
-                          >
-                            Edit
-                          </button>
-                        )}
+                            <button
+                              className="text-sm text-purple-500 hover:underline whitespace-nowrap"
+                              onClick={() => editCurrentFile()}
+                            >
+                              Edit
+                            </button>
+                          )}
                         <button
                           className="text-sm text-red-400 hover:underline whitespace-nowrap"
                           onClick={() => deleteCurrentFile()}
@@ -14258,8 +14262,13 @@ export default function RepoCodePage() {
                                 setProposedContent("");
                                 window.location.href = `/${resolvedParams.entity}/${resolvedParams.repo}/pulls/new`;
                               } catch (error) {
-                                console.error("Failed to create PR/commit:", error);
-                                alert("Failed to save changes. Please try again.");
+                                console.error(
+                                  "Failed to create PR/commit:",
+                                  error
+                                );
+                                alert(
+                                  "Failed to save changes. Please try again."
+                                );
                               }
                             }}
                           >
@@ -15603,7 +15612,8 @@ export default function RepoCodePage() {
                                       );
                                     const sourceHost = (() => {
                                       try {
-                                        return new URL(effectiveSourceUrl).hostname;
+                                        return new URL(effectiveSourceUrl)
+                                          .hostname;
                                       } catch {
                                         return "";
                                       }
@@ -17449,6 +17459,145 @@ export default function RepoCodePage() {
                                   ? "Pushing to Nostr..."
                                   : "Push to Nostr"}
                               </Button>
+                              <div className="mt-3 rounded-lg border border-violet-900/40 bg-violet-950/20 p-3">
+                                <h4 className="flex items-center gap-2 text-sm font-semibold text-white">
+                                  <Globe
+                                    className="h-4 w-4 shrink-0 text-violet-400"
+                                    aria-hidden
+                                  />
+                                  Publish as gittr Pages (nsite)
+                                </h4>
+                                <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+                                  After your repo is on Nostr, publish a static
+                                  site (NIP-5A) so it loads on our gateway. Use
+                                  the same order:{" "}
+                                  <span className="text-zinc-300">
+                                    push repo → publish manifest + blobs
+                                  </span>{" "}
+                                  (CLI or nsyte), not the other way around.
+                                </p>
+                                <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-xs text-zinc-400">
+                                  <li>
+                                    Finish <strong>Push to Nostr</strong>{" "}
+                                    (above) so the latest tree is what you ship
+                                    to the site.
+                                  </li>
+                                  <li>
+                                    Build static files (e.g.{" "}
+                                    <code className="text-zinc-300">
+                                      index.html
+                                    </code>
+                                    ) and publish a{" "}
+                                    <strong className="text-zinc-300">
+                                      named
+                                    </strong>{" "}
+                                    manifest (kind 35128) with a short{" "}
+                                    <code className="text-zinc-300">d</code>{" "}
+                                    tag. A convenient id from this repo slug:{" "}
+                                    <code className="break-all text-violet-200">
+                                      {slugToNsiteDTag(resolvedParams.repo)}
+                                    </code>
+                                    .
+                                  </li>
+                                  <li>
+                                    Point users at your URL on gittr Pages; see{" "}
+                                    <Link
+                                      className="text-violet-400 underline-offset-2 hover:underline"
+                                      href="/pages"
+                                    >
+                                      /pages
+                                    </Link>{" "}
+                                    for relay discovery.
+                                  </li>
+                                </ol>
+                                {(() => {
+                                  const pagesBase = (
+                                    process.env.NEXT_PUBLIC_GITTR_PAGES_URL ||
+                                    "https://pages.gittr.space"
+                                  ).replace(/\/$/, "");
+                                  const ownerHex = (
+                                    repoOwnerPubkey ||
+                                    entityPubkey ||
+                                    ""
+                                  ).toLowerCase();
+                                  if (!/^[0-9a-f]{64}$/.test(ownerHex)) {
+                                    return null;
+                                  }
+                                  const dTag = slugToNsiteDTag(
+                                    resolvedParams.repo
+                                  );
+                                  const namedUrl = buildNsiteSiteUrl(
+                                    pagesBase,
+                                    ownerHex,
+                                    { kind: "named", dTag }
+                                  );
+                                  const rootUrl = buildNsiteSiteUrl(
+                                    pagesBase,
+                                    ownerHex,
+                                    { kind: "root" }
+                                  );
+                                  return (
+                                    <div className="mt-3 space-y-2 border-t border-violet-900/30 pt-3 text-xs text-zinc-400">
+                                      <p className="font-medium text-zinc-300">
+                                        Preview URLs (after you publish the
+                                        manifest)
+                                      </p>
+                                      <p>
+                                        <span className="text-zinc-500">
+                                          Named ({dTag}):{" "}
+                                        </span>
+                                        <a
+                                          className="break-all text-violet-400 underline-offset-2 hover:underline"
+                                          href={namedUrl}
+                                          rel="noopener noreferrer"
+                                          target="_blank"
+                                        >
+                                          {namedUrl}
+                                        </a>
+                                      </p>
+                                      <p>
+                                        <span className="text-zinc-500">
+                                          Root (whole pubkey):{" "}
+                                        </span>
+                                        <a
+                                          className="break-all text-violet-400/80 underline-offset-2 hover:underline"
+                                          href={rootUrl}
+                                          rel="noopener noreferrer"
+                                          target="_blank"
+                                        >
+                                          {rootUrl}
+                                        </a>
+                                      </p>
+                                    </div>
+                                  );
+                                })()}
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <a
+                                    className="inline-flex items-center gap-1 rounded-md border border-zinc-600 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-zinc-800"
+                                    href="https://github.com/nostr-protocol/nips/blob/master/5A.md"
+                                    rel="noopener noreferrer"
+                                    target="_blank"
+                                  >
+                                    NIP-5A spec
+                                    <ExternalLink
+                                      className="h-3 w-3"
+                                      aria-hidden
+                                    />
+                                  </a>
+                                  <a
+                                    className="inline-flex items-center gap-1 rounded-md border border-zinc-600 bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-zinc-800"
+                                    href="https://nsyte.run"
+                                    rel="noopener noreferrer"
+                                    target="_blank"
+                                  >
+                                    nsyte.run
+                                    <ExternalLink
+                                      className="h-3 w-3"
+                                      aria-hidden
+                                    />
+                                  </a>
+                                </div>
+                              </div>
                               <PushPaywallStatus
                                 entity={resolvedParams.entity}
                                 repo={resolvedParams.repo}

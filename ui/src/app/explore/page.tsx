@@ -2460,7 +2460,7 @@ function ExplorePageContent() {
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
       <h1 className="text-2xl font-bold mb-4">
-        {userFilter ? `Repositories by ${userFilter}` : "Explore"}
+        {userFilter ? `Repositories by ${userFilter}` : "Repos"}
       </h1>
       {userFilter && (
         <p className="text-gray-400 mb-4">
@@ -2565,7 +2565,7 @@ function ExplorePageContent() {
                 (r.slug && typeof r.slug === "string" && r.slug.includes("/")
                   ? r.slug.split("/")[1]
                   : r.slug || "");
-              const ownerPubkey = getRepoOwnerPubkey(r , entity);
+              const ownerPubkey = getRepoOwnerPubkey(r, entity);
 
               // Skip repos with missing critical data (silently, no warnings)
               if (!ownerPubkey || !repo || !entity) {
@@ -2593,7 +2593,7 @@ function ExplorePageContent() {
               const repoDisplayName = r.name || repoForUrl; // CRITICAL: Use original name for display
 
               // CRITICAL: Resolve full owner pubkey and get display name from metadata
-              const ownerPubkey = getRepoOwnerPubkey(r , entity);
+              const ownerPubkey = getRepoOwnerPubkey(r, entity);
 
               // CRITICAL: Use npub format for URL (GRASP protocol standard)
               // Convert ownerPubkey to npub format for consistent URLs

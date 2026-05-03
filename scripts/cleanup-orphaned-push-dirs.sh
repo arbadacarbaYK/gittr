@@ -6,7 +6,7 @@
 # Do not commit real host IPs to git — pass them at runtime or use a local env script.
 
 HOST="${1:?Usage: $0 <host_or_ip> [ssh_key_path]}"
-KEY=${2:-"~/.ssh/id_ed25519_hetzner_new"}
+KEY=${2:-"~/.ssh/id_ed25519"}
 
 echo "🔍 Checking for orphaned push directories on $HOST..."
 

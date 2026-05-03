@@ -1126,7 +1126,7 @@ const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)
 **Problem**: Deleted repositories were showing up in explore page, homepage recent repos, public profile pages, and "My repositories" page, even though they were marked as deleted.
 
 **Solution**: Added comprehensive deleted repository filtering to all pages that display repository lists:
-1. **Explore page** - Filters deleted repos in `filteredRepos` useMemo
+1. **Repos page** (`/explore`) - Filters deleted repos in `filteredRepos` useMemo
 2. **My repositories page** - Filters deleted repos before ownership checks
 3. **Homepage (recent repos)** - Already had filtering (verified)
 4. **Public profile page** - Already had filtering (verified)

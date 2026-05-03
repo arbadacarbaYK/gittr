@@ -29,6 +29,10 @@ export const KIND_REACTION = 7; // NIP-25: Reactions
 export const KIND_ZAP = 9735; // NIP-57: Zaps
 export const KIND_DELETION = 5; // NIP-09: Deletion/Revocation events
 export const KIND_CODE_SNIPPET = 1337; // NIP-C0: Code snippets
+/** NIP-5A: Root site manifest (one replaceable per pubkey, no `d` tag). */
+export const KIND_NSITE_ROOT = 15128;
+/** NIP-5A: Named site manifest (addressable per pubkey + `d`). */
+export const KIND_NSITE_NAMED = 35128;
 
 function requireNip34Field(
   value: string | undefined,
@@ -1041,7 +1045,10 @@ export function createDiscussionEvent(
     ["repo", `${discussion.repoEntity}/${discussion.repoName}`],
     ["status", status],
   ];
-  if (discussion.ownerPubkey && /^[0-9a-f]{64}$/i.test(discussion.ownerPubkey)) {
+  if (
+    discussion.ownerPubkey &&
+    /^[0-9a-f]{64}$/i.test(discussion.ownerPubkey)
+  ) {
     // Optional NIP-34 repository pointer tags for cross-client repo correlation.
     tags.push(["a", `30617:${discussion.ownerPubkey}:${discussion.repoName}`]);
     tags.push(["p", discussion.ownerPubkey]);

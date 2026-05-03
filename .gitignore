@@ -23,7 +23,8 @@ data
 nginx.conf
 *.nginx
 nginx.gittr.conf.example
-upload_to_hetzner.sh
+# Private root-level deploy helper scripts (operator-specific names)
+/upload_*.sh
 PUSH_VERIFICATION_SUMMARY.md
 docs/ELEVATOR_PITCH.md
 RELEASE_ASSETS_BLOSSOM_PLAN.md

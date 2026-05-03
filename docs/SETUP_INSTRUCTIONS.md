@@ -481,13 +481,13 @@ server {
 
 ```bash
 chmod +x scripts/deploy-nsite-gateway.sh
-./scripts/deploy-nsite-gateway.sh YOUR_SERVER_IP
+./scripts/deploy-nsite-gateway.sh your.gateway.host
 ```
 
 **Server prerequisites:** Docker Engine + **`docker compose`**. On **Ubuntu 24.04** use `docker-compose-v2` (not always named `docker-compose-plugin`):  
 `sudo apt install -y docker.io docker-compose-v2` then `sudo systemctl enable --now docker`.
 
-If you keep a **private** `upload_to_hetzner.sh` (often gitignored), run **`./scripts/deploy-nsite-gateway.sh`** after each upload, or merge the `gittr Pages` block from the repo’s tracked `upload_to_hetzner.sh` into your copy.
+After the main app is on the server, whenever **`infra/nsite-gateway`** or **`infra/gittr-nsite-gateway`** change, run **`./scripts/deploy-nsite-gateway.sh`** from your laptop (pass your SSH target as the first argument; see script header). That syncs gateway files and rebuilds the Docker stack (including **`/status/manifests.json`**).
 
 ```bash
 sudo ln -s /etc/nginx/sites-available/gittr /etc/nginx/sites-enabled/
@@ -549,7 +549,7 @@ sudo certbot --nginx -d pages.gittr.space
 
    Then: `sudo nginx -t && sudo systemctl reload nginx`.
 
-The built-in **Status** UI (table vs cards, search) comes from **upstream nsite-gateway**; changing it means **forking** that project or putting a **custom front** in front of the gateway—not something gittr’s Next.js app controls today.
+**gittr gateway overlay:** The repo ships **`infra/gittr-nsite-gateway`** (Docker build clones upstream **hzrd149/nsite-gateway** at image build time, applies our overlay) adding **`GET /status/manifests.json`**. On **your server**, from **`infra/nsite-gateway`**, run `docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml up -d --build` so gittr’s **`/pages`** app can consume JSON instead of scraping HTML. See **`infra/gittr-nsite-gateway/README.md`**. Production uses **your** `pages.gittr.space` host only; a separate GitHub fork of upstream is **optional** for maintainers who want it, not required for users or traffic.
 
 ### Step 14: Configure SSL Certificate
 
@@ -575,7 +575,7 @@ NEXT_PUBLIC_SITE_URL=https://gittr.space
 NEXT_PUBLIC_GITTR_PAGES_URL=https://pages.gittr.space
 ```
 
-The optional **`NEXT_PUBLIC_GITTR_PAGES_URL`** (no trailing slash) powers the in-app **Pages** nav link and `/pages` hub; default in code is `https://pages.gittr.space` if unset.
+The optional **`NEXT_PUBLIC_GITTR_PAGES_URL`** (no trailing slash) powers the in-app **Pages** nav link (opens `/pages` in a **new tab** from the header so your current view stays open), the **`/pages`** directory (loads published sites from the gateway: prefers **`/status/manifests.json`** from the **gittr nsite-gateway fork**, otherwise parses **`/status`** HTML), and owner-repo hints for **Publish as gittr Pages**; default in code is `https://pages.gittr.space` if unset. The Next.js route **`GET /api/gittr-pages/status-sites`** (cached ~2 minutes) must reach the gateway from the app server.
 
 **Note:** `NEXT_PUBLIC_SITE_URL` is used for:
 

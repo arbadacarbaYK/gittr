@@ -42,7 +42,7 @@ A decentralized Git platform built on Nostr with native Bitcoin/Lightning paymen
 - ✅ Installable PWA (manifest + service worker)
 
 ### Discovery & Social
-- ✅ Explore page (repos and users)
+- ✅ Repos page (`/explore` — repos and users)
 - ✅ User profiles with activity timelines
 - ✅ Activity tracking and statistics
 - ✅ Sponsors page (users who zapped you)

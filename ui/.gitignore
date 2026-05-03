@@ -28,6 +28,7 @@ next-env.d.ts
 # misc
 .DS_Store
 *.pem
+tmpkey
 
 # debug
 npm-debug.log*
@@ -50,7 +51,7 @@ package-lock.json
 # gitnostr (backend)
 bin
 # If someone runs `go build` in gitnostr/ root, binaries land here — do not commit (large, linux-only).
-# Production/Hetzner: build with `make` → outputs under bin/ (already ignored).
+# Production: build with `make` → outputs under bin/ (already ignored).
 /gitnostr/git-nostr-ssh
 /gitnostr/git-nostr-bridge
 

@@ -232,7 +232,7 @@ export default function UserProjectsPage() {
             Create projects in your repositories to see them aggregated here
           </p>
           <Link href="/explore">
-            <Button variant="outline">Browse Repositories</Button>
+            <Button variant="outline">Browse repos</Button>
           </Link>
         </div>
       ) : (

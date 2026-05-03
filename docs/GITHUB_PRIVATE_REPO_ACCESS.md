@@ -60,7 +60,7 @@ When you view a repo page:
 
 **ONLY use `public_repo` scope!** Do NOT use `repo` scope as it would allow access to any user's private repos.
 
-### On Hetzner Server
+### On your production server
 
 The token is optional and only needed for:
 - Higher rate limits (5000/hour vs 60/hour)

@@ -315,7 +315,7 @@ export default function SponsorsPage() {
           </p>
           <Link href="/explore">
             <button className="mt-4 px-4 py-2 border border-purple-500 text-purple-400 rounded hover:bg-purple-900/20">
-              Explore Repositories
+              Browse repos
             </button>
           </Link>
         </div>

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BoltSnow } from "@/components/ui/bolt-snow";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { ZapButton } from "@/components/ui/zap-button";
 import { type Activity, backfillActivities } from "@/lib/activity-tracking";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
@@ -32,6 +32,7 @@ import {
   getTopUsersFromNostr,
   getUserBountyActivityStats,
 } from "@/lib/stats";
+import { cn } from "@/lib/utils";
 import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
@@ -244,9 +245,7 @@ export default function HomePage() {
     if (!pubkey || !mounted) return;
 
     const repos = loadStoredRepos();
-    const ownRepos = repos.filter(
-      (r: any) => (r ).ownerPubkey === pubkey
-    );
+    const ownRepos = repos.filter((r: any) => r.ownerPubkey === pubkey);
 
     // Check bridge for repos that have event IDs but bridgeProcessed is not set
     ownRepos.forEach((r: any) => {
@@ -257,10 +256,10 @@ export default function HomePage() {
         r.lastStateEventId
       );
       const bridgeProcessed = r.bridgeProcessed;
-      const ownerPubkey = (r ).ownerPubkey;
+      const ownerPubkey = r.ownerPubkey;
       // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
       // Priority: repositoryName > repo > slug
-      const rAny = r ;
+      const rAny = r;
       const repoName = rAny?.repositoryName || r.repo || r.slug;
       const entity = r.entity;
 
@@ -486,8 +485,7 @@ export default function HomePage() {
 
                 if (existingIndex >= 0) {
                   const existing = existingRepos[existingIndex];
-                  const existingLatest =
-                    (existing ).lastNostrEventCreatedAt || 0;
+                  const existingLatest = existing.lastNostrEventCreatedAt || 0;
                   if (event.created_at > existingLatest) {
                     existingRepos[existingIndex] = {
                       ...existing,
@@ -571,7 +569,7 @@ export default function HomePage() {
                           if (existingIndex >= 0) {
                             const existing = existingRepos[existingIndex];
                             const existingLatest =
-                              (existing ).lastNostrEventCreatedAt || 0;
+                              existing.lastNostrEventCreatedAt || 0;
                             if (latestEvent.created_at > existingLatest) {
                               const repoEntry: any = {
                                 slug: repoName,
@@ -1462,36 +1460,38 @@ export default function HomePage() {
                       (repoName || "").toLowerCase();
                     return sameEntity && sameRepo;
                   });
-                  return matchingRepo ? canCurrentUserSeeRepo(matchingRepo) : true;
+                  return matchingRepo
+                    ? canCurrentUserSeeRepo(matchingRepo)
+                    : true;
                 })
                 .slice(0, 5)
                 .map((repo, idx) => {
-                // repoId is in format "entity/repo"
-                const [entity, repoName] =
-                  repo.repoId &&
-                  typeof repo.repoId === "string" &&
-                  repo.repoId.includes("/")
-                    ? repo.repoId.split("/")
-                    : [repo.entity || "", repo.repoId || ""];
-                const href = getRepoUrl(entity || "", repoName || "");
+                  // repoId is in format "entity/repo"
+                  const [entity, repoName] =
+                    repo.repoId &&
+                    typeof repo.repoId === "string" &&
+                    repo.repoId.includes("/")
+                      ? repo.repoId.split("/")
+                      : [repo.entity || "", repo.repoId || ""];
+                  const href = getRepoUrl(entity || "", repoName || "");
 
-                return (
-                  <Link
-                    key={repo.repoId}
-                    href={href}
-                    className="block hover:bg-gray-800/50 rounded p-2 -m-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-purple-300 truncate flex-1">
-                        {idx + 1}. {repo.repoName}
-                      </span>
-                      <span className="text-xs text-gray-500 ml-2">
-                        {repo.activityCount}
-                      </span>
-                    </div>
-                  </Link>
-                );
-              })
+                  return (
+                    <Link
+                      key={repo.repoId}
+                      href={href}
+                      className="block hover:bg-gray-800/50 rounded p-2 -m-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-purple-300 truncate flex-1">
+                          {idx + 1}. {repo.repoName}
+                        </span>
+                        <span className="text-xs text-gray-500 ml-2">
+                          {repo.activityCount}
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                })
             ) : (
               <div className="text-sm text-gray-500 py-2">
                 {statsLoaded ? "No active repos yet" : "Loading..."}
@@ -2179,7 +2179,7 @@ export default function HomePage() {
               href="/explore"
               className="text-sm text-purple-500 hover:underline"
             >
-              Explore all
+              See all repos
             </Link>
           </div>
           {recent.length === 0 ? (
@@ -2415,9 +2415,19 @@ export default function HomePage() {
               </Link>
               <Link href="/explore">
                 <Button className="w-full" variant="outline">
-                  Explore
+                  Repos
                 </Button>
               </Link>
+              <a
+                className={cn(
+                  buttonVariants({ variant: "outline", className: "w-full" })
+                )}
+                href="/pages"
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                Explore pages
+              </a>
               <Link href="/repositories">
                 <Button className="w-full" variant="outline">
                   Your repositories

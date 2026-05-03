@@ -35,12 +35,13 @@ const HeaderConfig = {
       href: "/issues",
     },
     {
-      title: "Explore",
+      title: "Repos",
       href: "/explore",
     },
     {
       title: "Pages",
       href: "/pages",
+      openInNewTab: true,
     },
     {
       title: "Bounty Hunt",

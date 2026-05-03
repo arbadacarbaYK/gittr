@@ -1,14 +1,14 @@
 #!/bin/bash
 # Harden rsyslog rotation on server to prevent disk fill from log bursts.
 # Usage:
-#   SERVER=root@91.99.86.115 ./scripts/harden-rsyslog-rotation.sh
+#   SERVER=root@your-server.example ./scripts/harden-rsyslog-rotation.sh
 # Optional:
-#   SSH_KEY=~/.ssh/id_ed25519_hetzner_new
+#   SSH_KEY=~/.ssh/id_ed25519
 
 set -euo pipefail
 
-SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519_hetzner_new}"
-: "${SERVER:?Set SERVER=root@<hostname_or_ip> (example: export SERVER=root@91.99.86.115)}"
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
+: "${SERVER:?Set SERVER=root@<hostname_or_ip> (example: export SERVER=root@your-server.example)}"
 
 echo "🔐 Applying rsyslog logrotate hardening on $SERVER..."
 

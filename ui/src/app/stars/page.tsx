@@ -269,7 +269,7 @@ export default function StarsPage() {
           </p>
           <Link href="/explore">
             <Button variant="outline" className="mt-4">
-              Explore Repositories
+              Browse repos
             </Button>
           </Link>
         </div>

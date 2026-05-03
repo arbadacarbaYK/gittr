@@ -90,18 +90,33 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
             }
           )}
 
-          {items.map((item, index) => (
-            <Link
-              key={index}
-              href={item.href}
-              onClick={onClick}
-              className={cn(
-                "hover:text-gray-400 flex w-full items-center border-b border-b-lightgray p-3 text-sm font-medium "
-              )}
-            >
-              {item.title}
-            </Link>
-          ))}
+          {items.map((item, index) =>
+            item.openInNewTab ? (
+              <a
+                key={index}
+                href={item.href}
+                rel="noopener noreferrer"
+                target="_blank"
+                onClick={onClick}
+                className={cn(
+                  "hover:text-gray-400 flex w-full items-center border-b border-b-lightgray p-3 text-sm font-medium "
+                )}
+              >
+                {item.title}
+              </a>
+            ) : (
+              <Link
+                key={index}
+                href={item.href}
+                onClick={onClick}
+                className={cn(
+                  "hover:text-gray-400 flex w-full items-center border-b border-b-lightgray p-3 text-sm font-medium "
+                )}
+              >
+                {item.title}
+              </Link>
+            )
+          )}
 
           {isLoggedIn ? (
             <div onClick={onClick} className="flex items-center p-3">
