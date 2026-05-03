@@ -181,7 +181,7 @@ export default function RepoLayoutClient({
     ? rawOwnerDisplayName
     : safeInitialDisplayName;
   const ownerPicture = mounted ? rawOwnerPicture : null;
-  const publicReadRaw = (repo as any)?.publicRead;
+  const publicReadRaw = repo?.publicRead;
   const isPrivateRepo =
     publicReadRaw === false || publicReadRaw === "false" || publicReadRaw === 0;
 

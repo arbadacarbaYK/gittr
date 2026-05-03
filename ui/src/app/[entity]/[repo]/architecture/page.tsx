@@ -17,6 +17,7 @@ import {
 import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
+  resolveEntityToPubkeyAsync,
 } from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
@@ -309,14 +310,29 @@ export default function ArchitecturePage({
       // Get repos from localStorage
       const repos = loadStoredRepos();
 
-      // Get repo data
-      const repo = findRepoByEntityAndName<StoredRepo>(
-        repos,
-        resolvedParams.entity,
-        resolvedParams.repo
-      );
+      // Get repo data (local list). Deep links without a cached row still work
+      // if the URL entity resolves to an owner — we then fetch files from the bridge.
+      let repo =
+        findRepoByEntityAndName<StoredRepo>(
+          repos,
+          resolvedParams.entity,
+          resolvedParams.repo
+        ) ?? null;
       if (!repo) {
-        throw new Error("Repository not found");
+        setStatus("Opening repository from link (not in local list)...");
+        const pk =
+          resolveEntityToPubkey(resolvedParams.entity) ??
+          (await resolveEntityToPubkeyAsync(resolvedParams.entity));
+        if (!pk) {
+          throw new Error(
+            "This repository is not saved in this browser yet, and the owner in the URL could not be resolved. Use an npub or full hex pubkey in the path, or open the repo from Gittr once so it is cached."
+          );
+        }
+        repo = {
+          entity: resolvedParams.entity,
+          repo: resolvedParams.repo,
+          ownerPubkey: pk.toLowerCase(),
+        };
       }
 
       setStatus("Resolving repository owner...");
@@ -332,10 +348,24 @@ export default function ArchitecturePage({
         throw new Error("Could not resolve repository owner");
       }
 
+      // Same canonical name as Dependencies (NIP-34 repositoryName vs URL slug)
+      const repoDataAny = repo as any;
+      let actualRepoName =
+        repoDataAny?.repositoryName ||
+        repoDataAny?.repo ||
+        repoDataAny?.slug ||
+        repoDataAny?.name ||
+        resolvedParams.repo;
+      if (actualRepoName.includes("/")) {
+        const parts = actualRepoName.split("/");
+        actualRepoName = parts[parts.length - 1] || actualRepoName;
+      }
+      actualRepoName = actualRepoName.replace(/\.git$/, "");
+
       setStatus("Fetching file list...");
       const files = await fetchFileList(
         ownerPubkey,
-        resolvedParams.repo,
+        actualRepoName,
         branch,
         repo
       );
