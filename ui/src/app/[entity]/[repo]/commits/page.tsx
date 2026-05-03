@@ -8,13 +8,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import {
   formatDate24h,
   formatDateTime24h,
   formatTime24h,
 } from "@/lib/utils/date-format";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
-import { getEntityDisplayName } from "@/lib/utils/entity-resolver";
+import {
+  getEntityDisplayName,
+  getRepoOwnerPubkey,
+  resolveEntityToPubkeyAsync,
+} from "@/lib/utils/entity-resolver";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { GitBranch, GitCommit, History, Search } from "lucide-react";
 import Link from "next/link";
@@ -71,21 +77,66 @@ export default function CommitsPage({
   // Fetch Nostr metadata for all commit authors
   const authorMetadata = useContributorMetadata(authorPubkeys);
 
-  const loadCommits = useCallback(() => {
-    if (!mounted) return; // Don't load from localStorage until mounted
+  const loadCommits = useCallback(async () => {
+    if (!mounted) return;
+    setLoading(true);
     try {
-      // Load commits from localStorage
       const commitsKey = getRepoStorageKey("gittr_commits", entity, repo);
-      const allCommits = JSON.parse(
+      let allCommits = JSON.parse(
         localStorage.getItem(commitsKey) || "[]"
       ) as Commit[];
 
-      // Filter by branch if specified
+      if (!Array.isArray(allCommits) || allCommits.length === 0) {
+        const repos = loadStoredRepos();
+        const rec = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+        let ownerPk = rec ? getRepoOwnerPubkey(rec, entity) : null;
+        if (!ownerPk && entity?.includes("@")) {
+          ownerPk = await resolveEntityToPubkeyAsync(entity, rec ?? undefined);
+        }
+        const repoName =
+          (rec as StoredRepo & { repositoryName?: string })?.repositoryName ||
+          rec?.repo ||
+          rec?.name ||
+          repo;
+        if (ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk) && repoName) {
+          const res = await fetch(
+            `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
+              ownerPk
+            )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
+              branch
+            )}&limit=500`
+          );
+          if (res.ok) {
+            const data = (await res.json()) as {
+              commits?: Array<{
+                id: string;
+                message: string;
+                author: string;
+                timestamp: number;
+                branch?: string;
+                parentIds?: string[];
+              }>;
+            };
+            const raw = data.commits || [];
+            allCommits = raw.map((c) => ({
+              id: c.id,
+              message: c.message,
+              author: c.author,
+              timestamp: c.timestamp,
+              branch: c.branch || branch,
+              parentIds: c.parentIds,
+            }));
+            if (allCommits.length > 0) {
+              localStorage.setItem(commitsKey, JSON.stringify(allCommits));
+            }
+          }
+        }
+      }
+
       let branchCommits = allCommits.filter(
         (c) => !c.branch || c.branch === branch
       );
 
-      // Filter by file if specified (show commits that touched this file)
       if (fileFilter) {
         branchCommits = branchCommits.filter(
           (c) =>
@@ -104,13 +155,12 @@ export default function CommitsPage({
         );
       }
 
-      // Sort by timestamp (newest first)
       branchCommits.sort((a, b) => b.timestamp - a.timestamp);
 
       setCommits(branchCommits);
-      setLoading(false);
     } catch (error) {
       console.error("Failed to load commits:", error);
+    } finally {
       setLoading(false);
     }
   }, [mounted, entity, repo, branch, fileFilter]);

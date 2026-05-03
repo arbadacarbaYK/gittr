@@ -20,6 +20,7 @@ import {
   getEntityDisplayName,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
+import { normalizeIssueListStatus } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { clsx } from "clsx";
@@ -34,14 +35,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { nip19 } from "nostr-tools";
-
-function normalizeIssueListStatus(
-  s: string | undefined
-): "open" | "closed" {
-  const v = String(s || "open").toLowerCase().trim();
-  if (v === "closed" || v === "done" || v === "resolved") return "closed";
-  return "open";
-}
 
 interface IIssueData {
   id: string;
@@ -401,7 +394,9 @@ export default function IssuesPage({}) {
         repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
       if (!entity || !repoName) return;
       const key = getRepoStorageKey("gittr_issues", entity, repoName);
-      const localIssues = JSON.parse(localStorage.getItem(key) || "[]") as any[];
+      const localIssues = JSON.parse(
+        localStorage.getItem(key) || "[]"
+      ) as any[];
       localIssues.forEach((issue: any) => {
         if (issue?.id && typeof issue.id === "string") {
           knownIssueIds.add(issue.id);
@@ -459,8 +454,12 @@ export default function IssuesPage({}) {
                 repoItem.slug;
               if (!e || !rn) return;
               const key = getRepoStorageKey("gittr_issues", e, rn);
-              const existingIssues = JSON.parse(localStorage.getItem(key) || "[]");
-              const idx = existingIssues.findIndex((i: any) => i.id === targetIssueId);
+              const existingIssues = JSON.parse(
+                localStorage.getItem(key) || "[]"
+              );
+              const idx = existingIssues.findIndex(
+                (i: any) => i.id === targetIssueId
+              );
               if (idx < 0) return;
               existingIssues[idx] = {
                 ...existingIssues[idx],
@@ -784,13 +783,10 @@ export default function IssuesPage({}) {
         } = require("@/lib/utils/mention-detection");
         filtered = filtered.filter((issue) => {
           const titleMentions = extractMentionedPubkeys(issue.title || "");
-          const descMentions = extractMentionedPubkeys(
-            issue.description || ""
-          );
+          const descMentions = extractMentionedPubkeys(issue.description || "");
           const allMentions = [...titleMentions, ...descMentions];
           return allMentions.some(
-            (pubkey) =>
-              pubkey.toLowerCase() === currentUserPubkey.toLowerCase()
+            (pubkey) => pubkey.toLowerCase() === currentUserPubkey.toLowerCase()
           );
         });
       }
@@ -803,9 +799,7 @@ export default function IssuesPage({}) {
   const filteredIssues = useMemo(() => {
     const filtered = issuesForTypedList.filter((issue) => {
       const bucket = normalizeIssueListStatus(issue.status);
-      return issueStatus === "open"
-        ? bucket === "open"
-        : bucket === "closed";
+      return issueStatus === "open" ? bucket === "open" : bucket === "closed";
     });
 
     // Sort by createdAt (newest first)

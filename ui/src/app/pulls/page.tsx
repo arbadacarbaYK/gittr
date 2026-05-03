@@ -20,6 +20,7 @@ import {
   getEntityDisplayName,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
+import { normalizePrListStatus } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { clsx } from "clsx";
@@ -35,12 +36,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { nip19 } from "nostr-tools";
-
-function normalizePrListStatus(s: string | undefined): "open" | "closed" {
-  const v = String(s || "open").toLowerCase().trim();
-  if (v === "closed" || v === "merged") return "closed";
-  return "open";
-}
 
 interface IPullRequestData {
   id: string;
@@ -527,7 +522,9 @@ export default function PullsPage({}) {
               if (!e || !rn) return;
               const key = getRepoStorageKey("gittr_prs", e, rn);
               const existingPRs = JSON.parse(localStorage.getItem(key) || "[]");
-              const idx = existingPRs.findIndex((pr: any) => pr.id === targetPrId);
+              const idx = existingPRs.findIndex(
+                (pr: any) => pr.id === targetPrId
+              );
               if (idx < 0) return;
               existingPRs[idx] = {
                 ...existingPRs[idx],
@@ -836,8 +833,7 @@ export default function PullsPage({}) {
           const descMentions = extractMentionedPubkeys(pr.description || "");
           const allMentions = [...titleMentions, ...descMentions];
           return allMentions.some(
-            (pubkey) =>
-              pubkey.toLowerCase() === currentUserPubkey.toLowerCase()
+            (pubkey) => pubkey.toLowerCase() === currentUserPubkey.toLowerCase()
           );
         });
       }
@@ -850,9 +846,7 @@ export default function PullsPage({}) {
   const filteredPRs = useMemo(() => {
     const filtered = prsForTypedList.filter((pr) => {
       const bucket = normalizePrListStatus(pr.status);
-      return prStatus === "open"
-        ? bucket === "open"
-        : bucket === "closed";
+      return prStatus === "open" ? bucket === "open" : bucket === "closed";
     });
 
     // Sort by createdAt (newest first)

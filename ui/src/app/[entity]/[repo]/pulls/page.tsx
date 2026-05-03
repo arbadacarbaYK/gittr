@@ -26,6 +26,7 @@ import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
+import { normalizePrListStatus } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { clsx } from "clsx";
@@ -72,6 +73,7 @@ export default function RepoPullsPage({
   const [search, setSearch] = useState<string>(`is:open is:pr`);
   const [issues, setIssues] = useState<IPullsData[]>([]);
   const [allPRs, setAllPRs] = useState<IPullsData[]>([]); // Store all PRs for counting
+  const [prTabCounts, setPrTabCounts] = useState({ open: 0, closed: 0 });
   const { subscribe, defaultRelays } = useNostrContext();
   const pathname = usePathname() || "";
 
@@ -94,15 +96,17 @@ export default function RepoPullsPage({
       );
       const list = JSON.parse(localStorage.getItem(key) || "[]");
 
-      // Filter PRs by status
+      const openN = list.filter(
+        (pr: any) => normalizePrListStatus(pr.status) === "open"
+      ).length;
+      const closedN = list.filter(
+        (pr: any) => normalizePrListStatus(pr.status) === "closed"
+      ).length;
+      setPrTabCounts({ open: openN, closed: closedN });
+
       const filtered = list.filter((pr: any) => {
-        const prStatus = pr.status || "open";
-        if (issueStatus === "open") {
-          return prStatus === "open";
-        } else {
-          // "closed" includes both "closed" and "merged" PRs
-          return prStatus === "closed" || prStatus === "merged";
-        }
+        const bucket = normalizePrListStatus(pr.status);
+        return issueStatus === "open" ? bucket === "open" : bucket === "closed";
       });
 
       const mapped: IPullsData[] = filtered.map((pr: any, idx: number) => ({
@@ -360,13 +364,19 @@ export default function RepoPullsPage({
               localStorage.setItem(key, JSON.stringify(existingPRs));
 
               // Trigger reload by updating state
+              const openC = existingPRs.filter(
+                (pr: any) => normalizePrListStatus(pr.status) === "open"
+              ).length;
+              const closedC = existingPRs.filter(
+                (pr: any) => normalizePrListStatus(pr.status) === "closed"
+              ).length;
+              setPrTabCounts({ open: openC, closed: closedC });
+
               const filtered = existingPRs.filter((pr: any) => {
-                const prStatus = pr.status || "open";
-                if (issueStatus === "open") {
-                  return prStatus === "open";
-                } else {
-                  return prStatus === "closed" || prStatus === "merged";
-                }
+                const bucket = normalizePrListStatus(pr.status);
+                return issueStatus === "open"
+                  ? bucket === "open"
+                  : bucket === "closed";
               });
 
               const mapped: IPullsData[] = filtered.map(
@@ -492,12 +502,10 @@ export default function RepoPullsPage({
                   localStorage.getItem(prsKey) || "[]"
                 );
                 const filtered = reloadedPRs.filter((pr: any) => {
-                  const prStatus = pr.status || "open";
-                  if (issueStatus === "open") {
-                    return prStatus === "open";
-                  } else {
-                    return prStatus === "closed" || prStatus === "merged";
-                  }
+                  const bucket = normalizePrListStatus(pr.status);
+                  return issueStatus === "open"
+                    ? bucket === "open"
+                    : bucket === "closed";
                 });
 
                 const mapped: IPullsData[] = filtered.map(
@@ -540,6 +548,14 @@ export default function RepoPullsPage({
                     createdAt: pr.createdAt || Date.now(),
                   })
                 );
+
+                const openR = reloadedPRs.filter(
+                  (pr: any) => normalizePrListStatus(pr.status) === "open"
+                ).length;
+                const closedR = reloadedPRs.filter(
+                  (pr: any) => normalizePrListStatus(pr.status) === "closed"
+                ).length;
+                setPrTabCounts({ open: openR, closed: closedR });
 
                 setAllPRs(allMapped);
                 setIssues(mapped);
@@ -671,7 +687,7 @@ export default function RepoPullsPage({
                   onClick={handleIssueStatusOpen}
                 >
                   <CircleDot className="h-5 w-5 mr-2 mt-0.5" />{" "}
-                  {mounted ? issues.length : 0} Open
+                  {mounted ? prTabCounts.open : 0} Open
                 </button>
                 <button
                   className={clsx("flex text-zinc-400 hover:text-zinc-200", {
@@ -680,12 +696,7 @@ export default function RepoPullsPage({
                   onClick={handleIssueStatusClosed}
                 >
                   <Check className="h-5 w-5 mr-2 mt-0.5" />{" "}
-                  {mounted
-                    ? allPRs.filter(
-                        (pr) => pr.status === "closed" || pr.status === "merged"
-                      ).length
-                    : 0}{" "}
-                  Closed
+                  {mounted ? prTabCounts.closed : 0} Closed
                 </button>
               </div>
               <div className="mt-2 flex text-gray-400 lg:mt-0 space-x-6">

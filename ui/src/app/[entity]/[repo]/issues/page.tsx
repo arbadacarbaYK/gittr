@@ -24,6 +24,7 @@ import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
+import { normalizeIssueListStatus } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { clsx } from "clsx";
@@ -69,6 +70,7 @@ export default function RepoIssuesPage({
   const [search, setSearch] = useState<string>(`is:open is:issue`);
 
   const [issues, setIssues] = useState<IIssueData[]>([]);
+  const [issueTabCounts, setIssueTabCounts] = useState({ open: 0, closed: 0 });
   const { subscribe, defaultRelays } = useNostrContext();
 
   useEffect(() => {
@@ -85,10 +87,16 @@ export default function RepoIssuesPage({
         resolvedParams.repo
       );
       const list = JSON.parse(localStorage.getItem(key) || "[]");
-      // Filter by status and map correctly
+      const openN = list.filter(
+        (it: any) => normalizeIssueListStatus(it.status) === "open"
+      ).length;
+      const closedN = list.filter(
+        (it: any) => normalizeIssueListStatus(it.status) === "closed"
+      ).length;
+      setIssueTabCounts({ open: openN, closed: closedN });
+
       const filtered = list.filter((it: any) => {
-        const status = it.status || "open";
-        return status === issueStatus;
+        return normalizeIssueListStatus(it.status) === issueStatus;
       });
       const mapped: IIssueData[] = filtered.map((it: any, idx: number) => ({
         id: it.id || String(idx),
@@ -548,7 +556,7 @@ export default function RepoIssuesPage({
                   onClick={handleIssueStatusOpen}
                 >
                   <CircleDot className="h-5 w-5 mr-2 mt-0.5" />{" "}
-                  {mounted ? issues.length : 0} Open
+                  {mounted ? issueTabCounts.open : 0} Open
                 </button>
                 <button
                   className={clsx("flex text-zinc-400 hover:text-zinc-200", {
@@ -557,26 +565,7 @@ export default function RepoIssuesPage({
                   onClick={handleIssueStatusClosed}
                 >
                   <Check className="h-5 w-5 mr-2 mt-0.5" />{" "}
-                  {mounted
-                    ? (() => {
-                        try {
-                          const key = getRepoStorageKey(
-                            "gittr_issues",
-                            resolvedParams.entity,
-                            resolvedParams.repo
-                          );
-                          const list = JSON.parse(
-                            localStorage.getItem(key) || "[]"
-                          );
-                          return list.filter(
-                            (it: any) => (it.status || "open") === "closed"
-                          ).length;
-                        } catch {
-                          return 0;
-                        }
-                      })()
-                    : 0}{" "}
-                  Closed
+                  {mounted ? issueTabCounts.closed : 0} Closed
                 </button>
               </div>
               <div className="mt-2 flex text-gray-400 lg:mt-0 space-x-6">

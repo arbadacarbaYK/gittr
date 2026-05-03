@@ -132,7 +132,7 @@ export default function RepoReleasesPage({
   const [assetName, setAssetName] = useState("");
   const [assetPlatform, setAssetPlatform] = useState("linux");
 
-  useEffect(() => {
+  const reloadRepoReleasesFromStorage = useCallback(() => {
     try {
       const repos = loadStoredRepos();
       const rec = findRepoByEntityAndName<StoredRepo>(
@@ -141,28 +141,24 @@ export default function RepoReleasesPage({
         resolvedParams.repo
       );
       if (rec) {
-        // Load releases from repo object (imported from GitHub or created natively)
         const repoWithReleases = rec as StoredRepo & { releases?: Release[] };
-        setReleases((repoWithReleases.releases || []));
+        setReleases(repoWithReleases.releases || []);
         setTags(
-          (rec.tags )
+          rec.tags
             ?.map((t: string | { name: string }) =>
               typeof t === "string" ? t : t?.name
             )
             .filter(Boolean) || []
         );
         setSourceUrl(rec.sourceUrl);
-        // Get repo logo if available
         const repoWithLogo = rec as StoredRepo & { logoUrl?: string };
         if (repoWithLogo.logoUrl) {
           setRepoLogo(repoWithLogo.logoUrl);
         } else {
-          // Try to find logo file
           const logoFile = rec.files?.find((f: RepoFileEntry) =>
             /(^|\/)logo\.(png|jpg|jpeg|gif|webp|svg|ico)$/i.test(f.path)
           );
           if (logoFile && rec.sourceUrl) {
-            // Construct GitHub raw URL
             try {
               const url = new URL(rec.sourceUrl);
               const [owner, repoName] = url.pathname
@@ -173,12 +169,34 @@ export default function RepoReleasesPage({
               setRepoLogo(
                 `https://raw.githubusercontent.com/${owner}/${repoName}/${branch}/${logoFile.path}`
               );
-            } catch {}
+            } catch {
+              setRepoLogo(undefined);
+            }
+          } else {
+            setRepoLogo(undefined);
           }
         }
       }
-    } catch {}
+    } catch {
+      /* keep prior state */
+    }
   }, [resolvedParams.entity, resolvedParams.repo]);
+
+  useEffect(() => {
+    reloadRepoReleasesFromStorage();
+  }, [reloadRepoReleasesFromStorage]);
+
+  useEffect(() => {
+    window.addEventListener(
+      "gittr:repo-updated",
+      reloadRepoReleasesFromStorage
+    );
+    return () =>
+      window.removeEventListener(
+        "gittr:repo-updated",
+        reloadRepoReleasesFromStorage
+      );
+  }, [reloadRepoReleasesFromStorage]);
 
   const onCreateRelease = useCallback(() => {
     setShowForm(true);
@@ -276,13 +294,10 @@ export default function RepoReleasesPage({
       const repoWithReleases = repos[idx] as StoredRepo & {
         releases?: Release[];
       };
-      const nextReleases = [
-        rel,
-        ...((repoWithReleases.releases || [])),
-      ];
+      const nextReleases = [rel, ...(repoWithReleases.releases || [])];
       (repos[idx] as StoredRepo & { releases?: Release[] }).releases =
         nextReleases;
-      const currentTags = repos[idx].tags ;
+      const currentTags = repos[idx].tags;
       const tagSet = new Set<string>(
         (currentTags || []).map((t: string | { name: string }) =>
           typeof t === "string" ? t : t?.name
