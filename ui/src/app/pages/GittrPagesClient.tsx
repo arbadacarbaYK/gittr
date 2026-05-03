@@ -3,6 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
+import {
+  authorSearchTokens,
+  cardAuthorPrimary,
+  cardAuthorTooltip,
+} from "@/lib/gittr-pages/author-card-label";
+import { pagesCardPreviewUrl } from "@/lib/gittr-pages/card-preview-url";
 import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-status-html";
 import { cn } from "@/lib/utils";
 
@@ -77,7 +83,7 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
     return sites.filter((s) => {
       const hay = [
         s.title,
-        s.authorDisplay,
+        authorSearchTokens(s),
         s.description,
         s.siteUrl,
         s.updatedLabel,
@@ -217,60 +223,90 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
         <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {loading
             ? Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)
-            : filtered.map((s) => (
-                <li key={`${s.siteUrl}-${s.pathsStatusUrl}`}>
-                  <article
-                    className={cn(
-                      "group flex h-full flex-col rounded-xl border border-[#383B42] bg-[#0E1116]/95 p-5 shadow-md transition",
-                      "hover:-translate-y-0.5 hover:border-[var(--color-accent-primary)]/50 hover:shadow-lg hover:shadow-[var(--color-accent-primary)]/5"
-                    )}
-                  >
-                    <h2 className="line-clamp-2 text-lg font-semibold leading-snug text-white">
-                      {s.title}
-                    </h2>
-                    {s.authorDisplay ? (
-                      <p className="mt-2 line-clamp-2 text-sm text-gray-400">
-                        {s.authorDisplay}
-                      </p>
-                    ) : null}
-                    {s.description ? (
-                      <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-gray-300">
-                        {s.description}
-                      </p>
-                    ) : null}
-                    <p className="mt-3 text-xs text-gray-500">
-                      {s.pathCount} path{s.pathCount === 1 ? "" : "s"} ·{" "}
-                      {s.hits} hit{s.hits === 1 ? "" : "s"}
-                      {s.updatedLabel ? ` · ${s.updatedLabel}` : ""}
-                    </p>
-                    <div className="mt-5 flex flex-wrap gap-2 border-t border-[#383B42]/60 pt-4">
-                      <a
-                        className={cn(
-                          buttonVariants({ size: "sm", variant: "default" }),
-                          "shadow-sm"
-                        )}
-                        href={s.siteUrl}
-                        rel="noopener noreferrer"
-                        target="_blank"
-                      >
-                        Open site
-                        <ExternalLink className="ml-1.5 h-3 w-3" />
-                      </a>
-                      <a
-                        className={cn(
-                          buttonVariants({ size: "sm", variant: "outline" })
-                        )}
-                        href={s.pathsStatusUrl}
-                        rel="noopener noreferrer"
-                        target="_blank"
-                      >
-                        Details
-                        <ExternalLink className="ml-1.5 h-3 w-3" />
-                      </a>
-                    </div>
-                  </article>
-                </li>
-              ))}
+            : filtered.map((s) => {
+                const previewUrl = pagesCardPreviewUrl(s.siteUrl);
+                const authorPrimary = cardAuthorPrimary(s);
+                const authorTip = cardAuthorTooltip(s);
+                return (
+                  <li key={`${s.siteUrl}-${s.pathsStatusUrl}`}>
+                    <article
+                      className={cn(
+                        "group relative flex h-full min-h-[14rem] flex-col overflow-hidden rounded-xl border border-[#383B42] bg-[#0E1116]/95 shadow-md transition",
+                        "hover:-translate-y-0.5 hover:border-[var(--color-accent-primary)]/50 hover:shadow-lg hover:shadow-[var(--color-accent-primary)]/5"
+                      )}
+                    >
+                      {previewUrl ? (
+                        <>
+                          {/* Remote snapshot; disable Next/Image (unknown hosts). */}
+                          <img
+                            alt=""
+                            aria-hidden
+                            className="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover object-top opacity-[0.2] transition duration-300 group-hover:opacity-[0.26]"
+                            decoding="async"
+                            loading="lazy"
+                            src={previewUrl}
+                            onError={(e) => {
+                              e.currentTarget.remove();
+                            }}
+                          />
+                          <div
+                            aria-hidden
+                            className="absolute inset-0 z-[1] bg-gradient-to-b from-[#0a0c10]/94 via-[#0e1116]/88 to-[#0e1116]/96"
+                          />
+                        </>
+                      ) : null}
+                      <div className="relative z-10 flex h-full flex-col p-5">
+                        <h2 className="line-clamp-2 text-lg font-semibold leading-snug text-white">
+                          {s.title}
+                        </h2>
+                        {authorPrimary ? (
+                          <p
+                            className="mt-2 truncate text-sm text-gray-400"
+                            title={authorTip || undefined}
+                          >
+                            {authorPrimary}
+                          </p>
+                        ) : null}
+                        {s.description ? (
+                          <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-gray-300">
+                            {s.description}
+                          </p>
+                        ) : null}
+                        <p className="mt-3 text-xs text-gray-500">
+                          {s.pathCount} path{s.pathCount === 1 ? "" : "s"} ·{" "}
+                          {s.hits} hit{s.hits === 1 ? "" : "s"}
+                          {s.updatedLabel ? ` · ${s.updatedLabel}` : ""}
+                        </p>
+                        <div className="mt-auto flex flex-wrap gap-2 border-t border-[#383B42]/60 pt-4">
+                          <a
+                            className={cn(
+                              buttonVariants({ size: "sm", variant: "default" }),
+                              "shadow-sm"
+                            )}
+                            href={s.siteUrl}
+                            rel="noopener noreferrer"
+                            target="_blank"
+                          >
+                            Open site
+                            <ExternalLink className="ml-1.5 h-3 w-3" />
+                          </a>
+                          <a
+                            className={cn(
+                              buttonVariants({ size: "sm", variant: "outline" })
+                            )}
+                            href={s.pathsStatusUrl}
+                            rel="noopener noreferrer"
+                            target="_blank"
+                          >
+                            Details
+                            <ExternalLink className="ml-1.5 h-3 w-3" />
+                          </a>
+                        </div>
+                      </div>
+                    </article>
+                  </li>
+                );
+              })}
         </ul>
 
         <div className="mt-12 flex flex-wrap gap-3 border-t border-[#383B42] pt-10">

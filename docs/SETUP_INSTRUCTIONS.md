@@ -577,6 +577,8 @@ NEXT_PUBLIC_GITTR_PAGES_URL=https://pages.gittr.space
 
 The optional **`NEXT_PUBLIC_GITTR_PAGES_URL`** (no trailing slash) powers the in-app **Pages** nav link (opens `/pages` in a **new tab** from the header so your current view stays open), the **`/pages`** directory (loads published sites from the gateway: prefers **`/status/manifests.json`** from the **gittr nsite-gateway fork**, otherwise parses **`/status`** HTML), and owner-repo hints for **Publish as gittr Pages**; default in code is `https://pages.gittr.space` if unset. The Next.js route **`GET /api/gittr-pages/status-sites`** (cached ~2 minutes) must reach the gateway from the app server.
 
+**Pages directory cards:** optional live snapshot backgrounds use a third-party screenshot URL (image.thum.io). Set **`NEXT_PUBLIC_PAGES_CARD_PREVIEW=0`** in `ui/.env.local` to turn them off (privacy or fewer external requests). Author lines show a **short label** (display name when the gateway sends one; otherwise a shortened npub) with the **full npub in the native tooltip** (hover).
+
 **Note:** `NEXT_PUBLIC_SITE_URL` is used for:
 
 - SEO metadata (sitemap, robots.txt, Open Graph tags)
