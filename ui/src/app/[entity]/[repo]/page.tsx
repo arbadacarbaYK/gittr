@@ -473,6 +473,63 @@ export default function RepoCodePage() {
     return false;
   }, [currentUserPubkey, entityPubkey, repoOwnerPubkey]);
 
+  /** Who receives repo zaps — never default to the viewer's pubkey (that sent tips to the wrong person). */
+  const zapRecipientPubkey = useMemo((): string | null => {
+    const hex64 = (p: string | null | undefined): string | null => {
+      if (!p || typeof p !== "string") return null;
+      const low = p.toLowerCase();
+      return /^[0-9a-f]{64}$/i.test(low) ? low : null;
+    };
+
+    const fromEvent = hex64((repoData as any)?.ownerPubkey as string | undefined);
+    const fromState = hex64(repoOwnerPubkey);
+    const fromEntity = hex64(entityPubkey);
+
+    if (fromState) return fromState;
+    if (fromEvent) return fromEvent;
+    if (fromEntity) return fromEntity;
+
+    try {
+      const repos = loadStoredRepos();
+      const r = findRepoByEntityAndName<StoredRepo>(
+        repos,
+        resolvedParams.entity,
+        decodedRepo
+      );
+      const fromStored = hex64(r?.ownerPubkey);
+      if (fromStored) return fromStored;
+    } catch {
+      /* ignore */
+    }
+
+    if (resolvedParams.entity && resolvedParams.entity.length === 8) {
+      try {
+        const sess = JSON.parse(
+          localStorage.getItem("nostr:session") || "{}"
+        );
+        const pk = sess?.pubkey || "";
+        if (
+          pk &&
+          /^[0-9a-f]{64}$/i.test(pk) &&
+          pk.slice(0, 8).toLowerCase() ===
+            resolvedParams.entity.toLowerCase()
+        ) {
+          return pk.toLowerCase();
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    return null;
+  }, [
+    repoOwnerPubkey,
+    entityPubkey,
+    (repoData as any)?.ownerPubkey,
+    resolvedParams.entity,
+    decodedRepo,
+  ]);
+
   const shouldPersistRepoCache = useCallback(() => {
     const currentRepo = repoDataRef.current;
     return repoIsOwner || currentRepo?.hasUnpushedEdits === true;
@@ -17415,43 +17472,12 @@ export default function RepoCodePage() {
               })()
             : null}
 
-          {mounted && showZap && currentUserPubkey && (
+          {mounted && showZap && currentUserPubkey && zapRecipientPubkey && (
             <div className="mb-4 pb-4 border-b border-lightgray">
               <h3 className="text-sm font-semibold mb-2">Zap this repo</h3>
               <RepoZapButton
                 repoId={`${resolvedParams.entity}/${resolvedParams.repo}`}
-                ownerPubkey={(() => {
-                  // Resolve actual owner pubkey
-                  if (isOwner && currentUserPubkey) return currentUserPubkey;
-                  // Try to get owner pubkey from repo data or entity lookup
-                  try {
-                    const repos = loadStoredRepos();
-                    const repo = findRepoByEntityAndName<StoredRepo>(
-                      repos,
-                      resolvedParams.entity,
-                      decodedRepo
-                    );
-                    if (repo?.ownerPubkey) return repo.ownerPubkey;
-                    // Fallback: try to resolve from entity/pubkey mapping
-                    if (
-                      resolvedParams.entity &&
-                      resolvedParams.entity.length === 8
-                    ) {
-                      // Might be a pubkey prefix, try to match
-                      const sess = JSON.parse(
-                        localStorage.getItem("nostr:session") || "{}"
-                      );
-                      const pk = sess?.pubkey || "";
-                      if (
-                        pk &&
-                        pk.slice(0, 8).toLowerCase() ===
-                          resolvedParams.entity.toLowerCase()
-                      )
-                        return pk;
-                    }
-                  } catch {}
-                  return currentUserPubkey || ""; // Final fallback
-                })()}
+                ownerPubkey={zapRecipientPubkey}
                 contributors={(repoData?.contributors || []).map((c) => ({
                   ...c,
                   weight: c.weight ?? 0,
