@@ -68,6 +68,28 @@ export function PaymentQR({
 
   const cleanInvoice = (invoice || "").replace(/^lightning:/i, "");
 
+  /** True only when we poll and can flip to "Paid" (LNbits invoice or push paywall). */
+  const canDetectCompletion = useMemo(() => {
+    const pushPaywall =
+      !!pushPaymentPoll?.ownerPubkey &&
+      !!pushPaymentPoll?.repo &&
+      !!pushPaymentPoll?.payerPubkey;
+    const lnbitsInvoice =
+      !!paymentHash &&
+      typeof paymentHash === "string" &&
+      paymentHash.length > 8 &&
+      !!lnbitsUrl &&
+      !!lnbitsAdminKey;
+    return pushPaywall || lnbitsInvoice;
+  }, [
+    pushPaymentPoll?.ownerPubkey,
+    pushPaymentPoll?.repo,
+    pushPaymentPoll?.payerPubkey,
+    paymentHash,
+    lnbitsUrl,
+    lnbitsAdminKey,
+  ]);
+
   // Get QR style from settings
   const [qrStyle, setQrStyle] = useState("classic");
 
@@ -771,6 +793,22 @@ export function PaymentQR({
             <p className="text-xs text-gray-400 mt-2 text-center">
               Scan with a Lightning wallet to pay
             </p>
+
+            {invoice && !error && !paid && !canDetectCompletion && (
+              <div
+                className="mt-3 rounded-md border border-slate-600 bg-slate-900/70 px-3 py-2.5 text-center text-xs text-slate-200 leading-relaxed"
+                role="status"
+              >
+                <p className="font-medium text-slate-100">
+                  When you have finished paying, close this window
+                </p>
+                <p className="mt-1 text-slate-400">
+                  This page cannot see whether your wallet completed the
+                  payment, so it will not update automatically. Use the X above or
+                  tap outside the dialog.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
