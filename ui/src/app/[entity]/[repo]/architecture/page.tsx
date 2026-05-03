@@ -373,7 +373,7 @@ export default function ArchitecturePage({
         setError(null);
         setMermaidDiagram("");
         setStatus(
-          "No file listing available from the server or from this browser’s cache yet. Open the repo’s Code tab once (it loads the tree into this browser), then return to Architecture. On the server, Next must read the same repositoryDir as git-nostr-bridge — set GIT_NOSTR_BRIDGE_REPOS_DIR in ui/.env.local if needed. Try ?branch=… if your default branch is not main."
+          "No file listing yet. Open the Code tab once and wait for the file tree to finish loading, then return here (public repos now save that tree in this browser for all viewers). If it still fails, set GIT_NOSTR_BRIDGE_REPOS_DIR on the server or try ?branch= for non-main defaults."
         );
         setLoading(false);
         return;

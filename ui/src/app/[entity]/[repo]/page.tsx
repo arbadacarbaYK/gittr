@@ -537,7 +537,18 @@ export default function RepoCodePage() {
 
   const persistRepoFiles = useCallback(
     (files: RepoFileEntry[], context: string) => {
-      if (!shouldPersistRepoCache()) return;
+      const currentRepo = repoDataRef.current;
+      const ownerOrLocalEdits =
+        repoIsOwner || currentRepo?.hasUnpushedEdits === true;
+      const publicReadRaw = (currentRepo as any)?.publicRead;
+      const isPrivateRepoListing =
+        publicReadRaw === false ||
+        publicReadRaw === "false" ||
+        publicReadRaw === 0;
+      // Always cache file tree for public repos (any viewer) so Architecture / Dependencies
+      // can read gittr_files__… from localStorage after Code loads. Previously only owners
+      // persisted, so visitors never populated that key and those tabs always failed.
+      if (!ownerOrLocalEdits && isPrivateRepoListing) return;
       try {
         saveRepoFiles(resolvedParams.entity, resolvedParams.repo, files);
         console.log(
@@ -613,7 +624,7 @@ export default function RepoCodePage() {
       effectiveUserPubkey,
       resolvedParams.entity,
       resolvedParams.repo,
-      shouldPersistRepoCache,
+      repoIsOwner,
     ]
   );
 
