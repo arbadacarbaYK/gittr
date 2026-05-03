@@ -579,6 +579,8 @@ The optional **`NEXT_PUBLIC_GITTR_PAGES_URL`** (no trailing slash) powers the in
 
 **Pages directory cards:** optional live snapshot backgrounds use a third-party screenshot URL (image.thum.io). Set **`NEXT_PUBLIC_PAGES_CARD_PREVIEW=0`** in `ui/.env.local` to turn them off (privacy or fewer external requests). Author lines show a **short label** (display name when the gateway sends one; otherwise a shortened npub) with the **full npub in the native tooltip** (hover).
 
+**Repo sidebar (gittr Pages):** every viewer sees compact **Live / Root / Directory** links when the owner pubkey is known. **Owners and maintainers** get **Add gittr Pages links to README** (owners: writes README + marks unpushed; maintainers: copies a snippet). After changing README, the owner must **Push to Nostr** again so relays pick up the doc for all clients.
+
 **Note:** `NEXT_PUBLIC_SITE_URL` is used for:
 
 - SEO metadata (sitemap, robots.txt, Open Graph tags)
