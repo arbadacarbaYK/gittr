@@ -39,9 +39,9 @@ export function buildGittrPagesManifestIssueDraft(
 
 ## Manual path (current)
 
-1. **Working tree** — If files are missing or stale locally, use **Refetch from Nostr** on this repo in gittr, then edit/add site files here (at least something that serves as \`/index.html\`).
-2. **Optional README** — Use the sidebar **gittr Pages** block (button or “update on push”) so the live URL appears in the readme; that is separate from the gateway manifest.
-3. **Push to Nostr** — Publish repo + readme metadata from gittr.
+1. **Working tree** — Edit/add site files here (at least something that serves as \`/index.html\`). Use **Refetch from Nostr** only when this browser’s copy might not match relays (stale, edits on another device, sanity-check). After **you** push from this tab, gittr already stores event IDs locally — you do **not** need refetch before the next readme/site push for this session.
+2. **README + live URL** — Sidebar **gittr Pages**: **README + Push to Nostr** is the usual one-shot after local edits; or the separate README button / “update on push” then **Push to Nostr**. README is separate from the gateway manifest.
+3. **Push to Nostr** — Publishes repo + readme metadata (same as the shortcut’s push step).
 4. **NIP-5A manifest (kind 35128)** — Upload blobs (e.g. Blossom), replace the SHA256 placeholders below, then publish the real replaceable event with your usual **NIP-5A / nsite** signer. The gittr gateway reads relays, not this issue text.
 
 **Intended live URL (named site):**  
@@ -57,9 +57,11 @@ ${JSON.stringify(jsonSkeleton, null, 2)}
 
 ---
 
-## “Full gittr flow” (not built yet)
+## What gittr already does vs what you still sign elsewhere
 
-Doing everything inside gittr with a single button would still mean **multiple signatures** (repo state, optional readme merge, NIP-5A manifest, maybe repo metadata). That product path is planned separately; today this issue + the sidebar are the supported **manual** helpers.
+**Inside gittr:** edit files → **README + Push** (or stepwise README then Push). Refetch first is optional — for when relays should be the read source of truth, not because your own push “hasn’t arrived back” on this device (IDs are stored after publish).
+
+**Outside this web UI (today):** Blossom uploads + **kind 35128** manifest on relays. A single button that also signs and publishes 35128 from the browser would add more signatures and isn’t wired here yet; use your NIP-5A / nsite tool for that part. This issue is just a checklist + JSON skeleton.
 `;
 
   return { title, body };

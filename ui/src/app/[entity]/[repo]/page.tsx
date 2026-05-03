@@ -53,6 +53,10 @@ import {
   upsertGittrPagesReadmeSection,
   validateReadmeGittrPagesBlock,
 } from "@/lib/gittr-pages/readme-section";
+
+/** After Nostr refetch (full reload), resume README gittr block + Push to Nostr. */
+const GITTR_CHAIN_README_PUSH_AFTER_REFETCH_KEY =
+  "gittr_chain_readme_push_after_refetch_v1";
 import { buildNsiteSiteUrl, slugToNsiteDTag } from "@/lib/nsite/nsite-url";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { hasPrivateRepoAccess, hasWriteAccess } from "@/lib/repo-permissions";
@@ -711,6 +715,7 @@ export default function RepoCodePage() {
   const tagsRef = useRef<string[]>([]); // Ref to track previous tags array to prevent render loops
   const ownerQueryRef = useRef<string>(""); // Prevent multiple Nostr queries for owner pubkey
   const pushToNostrButtonRef = useRef<HTMLButtonElement | null>(null);
+  const refetchButtonRef = useRef<HTMLButtonElement | null>(null);
   // Initialize stable ref from localStorage if available to prevent empty → populated transition
   // Initialize as empty array to prevent hydration errors, will be populated in useEffect
   const ownerPubkeysStableRef = useRef<string[]>([]);
@@ -2634,6 +2639,10 @@ export default function RepoCodePage() {
       namedUrl: string;
       dTag: string;
       isOwnerSession: boolean;
+      /** Skip success alert when chaining Push on the same page. */
+      silent?: boolean;
+      /** After README is persisted, trigger the existing Push to Nostr control. */
+      schedulePushClick?: boolean;
     }) => {
       const section = buildGittrPagesReadmeAppend(args.namedUrl, args.dTag);
       if (!args.isOwnerSession) {
@@ -2681,12 +2690,105 @@ export default function RepoCodePage() {
       } catch (e) {
         console.error("Failed to persist README", e);
       }
-      alert(
-        "README gittr Pages block updated.\n\nUse Push to Nostr so everyone sees it on relays."
-      );
+      if (!args.silent) {
+        alert(
+          "README gittr Pages block updated.\n\nUse Push to Nostr so everyone sees it on relays."
+        );
+      }
+      if (args.schedulePushClick) {
+        setTimeout(() => {
+          pushToNostrButtonRef.current?.click();
+        }, 200);
+      }
     },
     [decodedRepo, resolvedParams.entity]
   );
+
+  useEffect(() => {
+    if (!mounted) return;
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(GITTR_CHAIN_README_PUSH_AFTER_REFETCH_KEY);
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    type ChainPayload = {
+      v: number;
+      entity: string;
+      decodedRepo: string;
+      namedUrl: string;
+      dTag: string;
+    };
+    let parsed: ChainPayload;
+    try {
+      parsed = JSON.parse(raw) as ChainPayload;
+    } catch {
+      try {
+        sessionStorage.removeItem(GITTR_CHAIN_README_PUSH_AFTER_REFETCH_KEY);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    if (
+      parsed.v !== 1 ||
+      parsed.entity !== resolvedParams.entity ||
+      parsed.decodedRepo !== decodedRepo
+    ) {
+      try {
+        sessionStorage.removeItem(GITTR_CHAIN_README_PUSH_AFTER_REFETCH_KEY);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    if (!repoData) return;
+
+    try {
+      sessionStorage.removeItem(GITTR_CHAIN_README_PUSH_AFTER_REFETCH_KEY);
+    } catch {
+      /* ignore */
+    }
+
+    const cur = (repoData.readme || "").trimEnd();
+    const nextReadme = upsertGittrPagesReadmeSection(
+      cur,
+      parsed.namedUrl,
+      parsed.dTag
+    );
+    markRepoAsEdited(decodedRepo, resolvedParams.entity);
+    setRepoData((prev: any) =>
+      prev ? { ...prev, readme: nextReadme, hasUnpushedEdits: true } : prev
+    );
+    try {
+      const repos = loadStoredRepos();
+      const idx = repos.findIndex(
+        (r: any) =>
+          (r.slug === decodedRepo || r.repo === decodedRepo) &&
+          r.entity === resolvedParams.entity
+      );
+      if (idx >= 0) {
+        repos[idx] = {
+          ...(repos[idx] as StoredRepo),
+          readme: nextReadme,
+          hasUnpushedEdits: true,
+        } as StoredRepo;
+        saveStoredRepos(repos);
+      }
+    } catch (e) {
+      console.error("Failed to persist README after refetch chain", e);
+    }
+    setTimeout(() => {
+      pushToNostrButtonRef.current?.click();
+    }, 350);
+  }, [
+    mounted,
+    repoData,
+    decodedRepo,
+    resolvedParams.entity,
+    resolvedParams.repo,
+  ]);
 
   // Load Nostr event ID from localStorage and check bridge
   useEffect(() => {
@@ -15552,6 +15654,7 @@ export default function RepoCodePage() {
                         {showRefetchButton && (
                           <>
                             <Button
+                              ref={refetchButtonRef}
                               size="sm"
                               variant="outline"
                               disabled={isRefetching || isPushing}
@@ -17697,6 +17800,54 @@ export default function RepoCodePage() {
                                     isOwnerSession
                                     autoReadmeOnPush={gittrPagesAutoReadme}
                                     onAutoReadmeOnPushChange={setGittrPagesAutoReadme}
+                                    chainActionsDisabled={
+                                      isPushing || isRefetching
+                                    }
+                                    canChainNostrRefetch={
+                                      showRefetchButton && !hasSourceUrl
+                                    }
+                                    onReadmeThenPush={() => {
+                                      void appendGittrPagesReadmeBlock({
+                                        namedUrl: gittrPagesUrls.namedUrl,
+                                        dTag: gittrPagesUrls.dTag,
+                                        isOwnerSession: true,
+                                        silent: true,
+                                        schedulePushClick: true,
+                                      });
+                                    }}
+                                    onRefetchThenReadmeThenPush={() => {
+                                      const refetchEl = refetchButtonRef.current;
+                                      if (!refetchEl) {
+                                        alert(
+                                          "Refetch control is not available on this screen."
+                                        );
+                                        return;
+                                      }
+                                      if (refetchEl.disabled) {
+                                        alert(
+                                          "Wait until push/refetch finishes, then try again."
+                                        );
+                                        return;
+                                      }
+                                      try {
+                                        sessionStorage.setItem(
+                                          GITTR_CHAIN_README_PUSH_AFTER_REFETCH_KEY,
+                                          JSON.stringify({
+                                            v: 1,
+                                            entity: resolvedParams.entity,
+                                            decodedRepo,
+                                            namedUrl: gittrPagesUrls.namedUrl,
+                                            dTag: gittrPagesUrls.dTag,
+                                          })
+                                        );
+                                      } catch {
+                                        alert(
+                                          "Could not start chain (storage blocked?)."
+                                        );
+                                        return;
+                                      }
+                                      refetchEl.click();
+                                    }}
                                     issueDraft={
                                       gittrPagesUrls
                                         ? {
