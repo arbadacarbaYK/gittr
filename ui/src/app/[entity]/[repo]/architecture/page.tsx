@@ -373,7 +373,7 @@ export default function ArchitecturePage({
         setError(null);
         setMermaidDiagram("");
         setStatus(
-          "No file tree yet for this owner/repo on the bridge (empty clone, different branch, or not mirrored). Try another branch (?branch=…), open the repo’s Code tab from Gittr, then refresh. If you had this tab open before an update, hard-refresh (Ctrl+Shift+R) so the latest scripts load."
+          "No file listing available from the server or from this browser’s cache yet. Open the repo’s Code tab once (it loads the tree into this browser), then return to Architecture. On the server, Next must read the same repositoryDir as git-nostr-bridge — set GIT_NOSTR_BRIDGE_REPOS_DIR in ui/.env.local if needed. Try ?branch=… if your default branch is not main."
         );
         setLoading(false);
         return;
@@ -450,25 +450,37 @@ export default function ArchitecturePage({
         return matchingRepo.files;
       }
 
-      // CRITICAL: Check separate files storage key (for optimized storage)
-      if (matchingRepo) {
-        try {
-          const storedFiles = loadRepoFiles(
-            resolvedParams.entity,
-            resolvedParams.repo
+      // Separate file tree cache (Code tab / bridge) — keyed by URL entity + repo slug.
+      // Must NOT require a row in gittr_repos: deep links and synthetic repo objects still
+      // have the same keys after persistRepoFiles on the main repo page.
+      try {
+        const slugFiles = loadRepoFiles(
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        if (slugFiles && slugFiles.length > 0) {
+          console.log(
+            `✅ [Architecture] Using ${slugFiles.length} files from gittr_files cache (${resolvedParams.repo})`
           );
-          if (storedFiles && storedFiles.length > 0) {
+          return slugFiles.map((f: RepoFileEntry) => ({
+            type: f.type,
+            path: f.path,
+          }));
+        }
+        if (repoName && repoName !== resolvedParams.repo) {
+          const nameFiles = loadRepoFiles(resolvedParams.entity, repoName);
+          if (nameFiles && nameFiles.length > 0) {
             console.log(
-              `✅ [Architecture] Using ${storedFiles.length} files from separate storage key`
+              `✅ [Architecture] Using ${nameFiles.length} files from gittr_files cache (${repoName})`
             );
-            return storedFiles.map((f: RepoFileEntry) => ({
+            return nameFiles.map((f: RepoFileEntry) => ({
               type: f.type,
               path: f.path,
             }));
           }
-        } catch (e) {
-          console.warn("Failed to check separate files storage:", e);
         }
+      } catch (e) {
+        console.warn("Failed to check separate files storage:", e);
       }
     } catch (e) {
       console.warn("Failed to check localStorage for files:", e);

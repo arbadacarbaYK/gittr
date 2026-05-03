@@ -1452,7 +1452,7 @@ export default function DependenciesPage({
       if (!files || files.length === 0) {
         setError(null);
         setStatus(
-          "No file tree yet for this owner/repo on the bridge (empty clone, different branch, or not mirrored). Try another branch (?branch=…), open the repo’s Code tab from Gittr, then refresh. If you had this tab open before an update, hard-refresh (Ctrl+Shift+R) so the latest scripts load."
+          "No file listing available from the server or from this browser’s cache yet. Open the repo’s Code tab once (it loads the tree into this browser), then return to Dependencies. On the server, Next must read the same repositoryDir as git-nostr-bridge — set GIT_NOSTR_BRIDGE_REPOS_DIR in ui/.env.local if needed. Try ?branch=… if your default branch is not main."
         );
         setLoading(false);
         return;
@@ -2062,17 +2062,25 @@ export default function DependenciesPage({
         localList = matchingRepo.files;
       }
 
-      if (!localList && matchingRepo) {
+      if (!localList) {
         try {
-          const storedFiles = loadRepoFiles(
+          const slugFiles = loadRepoFiles(
             resolvedParams.entity,
             resolvedParams.repo
           );
-          if (storedFiles && storedFiles.length > 0) {
-            localList = storedFiles.map((f: RepoFileEntry) => ({
+          if (slugFiles && slugFiles.length > 0) {
+            localList = slugFiles.map((f: RepoFileEntry) => ({
               type: f.type,
               path: f.path,
             }));
+          } else if (repoName && repoName !== resolvedParams.repo) {
+            const nameFiles = loadRepoFiles(resolvedParams.entity, repoName);
+            if (nameFiles && nameFiles.length > 0) {
+              localList = nameFiles.map((f: RepoFileEntry) => ({
+                type: f.type,
+                path: f.path,
+              }));
+            }
           }
         } catch (e) {
           console.warn("Failed to check separate files storage:", e);

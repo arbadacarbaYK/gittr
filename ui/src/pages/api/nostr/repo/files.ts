@@ -163,11 +163,14 @@ export default async function handler(
   // If not set in env, try to read from git-nostr-bridge config file
   // Try both root's home and git-nostr user's home
   if (!reposDir) {
+    // Prefer the dedicated bridge user's config first: production Next.js often runs as
+    // root or another user, so $HOME/.config/... can exist but point at the wrong tree or
+    // omit repositoryDir; the bridge always uses /home/git-nostr/... when deployed per docs.
     const configPaths = [
+      "/home/git-nostr/.config/git-nostr/git-nostr-bridge.json",
       process.env.HOME
         ? `${process.env.HOME}/.config/git-nostr/git-nostr-bridge.json`
         : null,
-      "/home/git-nostr/.config/git-nostr/git-nostr-bridge.json",
     ].filter(Boolean) as string[];
 
     for (const configPath of configPaths) {
