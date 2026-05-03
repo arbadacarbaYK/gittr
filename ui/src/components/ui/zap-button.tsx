@@ -41,7 +41,10 @@ interface ZapButtonProps {
   modalExtra?: React.ReactNode; // extra content to show in the QR modal
   recipientMetadata?: { lud16?: string; lnurl?: string; nwcRecv?: string }; // Pre-resolved wallet (from repo config, etc.)
   label?: string; // Custom button label (defaults to "{amount} sats")
-  /** Repo zaps: use NIP-57 when the recipient LNURL-pay endpoint advertises `allowsNostr` */
+  /**
+   * Repo zaps: allow NIP-57 fallback (NIP-07 signs kind 9734) only if plain invoice
+   * creation fails while the pay endpoint advertises `allowsNostr`.
+   */
   nip57ProfileZap?: boolean;
   /** Repo split zaps: resolve LNbits send keys repo-first (see resolveRepoSendWallet) */
   splitSendContext?: { entity: string; repo: string };
@@ -232,6 +235,39 @@ export function ZapButton({
           return;
         }
 
+        // Plain LNURL invoice first — no NIP-07 prompt. Same BOLT11 for paying.
+        // NIP-57 (signed kind 9734) is only a fallback when this path fails but
+        // the pay endpoint advertises allowsNostr (some setups require `nostr`).
+        const tryCreateInvoiceViaApi = async (): Promise<{
+          invoice: string;
+          paymentHash: string;
+        } | null> => {
+          try {
+            const response = await fetch("/api/zap/create-invoice", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                recipient: recipient,
+                amount: zapAmount,
+                comment: paymentMessage,
+                lud16: recipientMetadata.lud16,
+                lnurl: recipientMetadata.lnurl,
+              }),
+            });
+            if (!response.ok) return null;
+            const data = await response.json();
+            const invoice = data.paymentRequest as string | undefined;
+            if (!invoice || invoice.length < 50) return null;
+            return { invoice, paymentHash: "" };
+          } catch (apiErr: unknown) {
+            console.warn(
+              "[ZapButton] create-invoice API:",
+              apiErr instanceof Error ? apiErr.message : apiErr
+            );
+            return null;
+          }
+        };
+
         const tryNip57Invoice = async (): Promise<{
           invoice: string;
           paymentHash: string;
@@ -309,45 +345,17 @@ export function ZapButton({
           }
         };
 
-        paymentResult = await tryNip57Invoice();
-
+        paymentResult = await tryCreateInvoiceViaApi();
         if (!paymentResult) {
-          try {
-            const response = await fetch("/api/zap/create-invoice", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                recipient: recipient,
-                amount: zapAmount,
-                comment: paymentMessage, // Include comment for LNURL invoices
-                lud16: recipientMetadata.lud16,
-                lnurl: recipientMetadata.lnurl,
-              }),
-            });
-
-            if (!response.ok) {
-              const error = await response
-                .json()
-                .catch(() => ({ message: "Unknown error" }));
-              throw new Error(error.message || "Failed to create invoice");
-            }
-
-            const data = await response.json();
-            const invoice = data.paymentRequest;
-
-            if (!invoice || invoice.length < 50) {
-              throw new Error("Received invalid invoice");
-            }
-
-            paymentResult = { invoice, paymentHash: "" };
-          } catch (error: any) {
-            setError(
-              error.message || "Failed to create invoice. Please try again."
-            );
-            setPaymentInvoice(null);
-            setLoading(false);
-            return;
-          }
+          paymentResult = await tryNip57Invoice();
+        }
+        if (!paymentResult) {
+          setError(
+            "Failed to create invoice. Check the recipient Lightning address and try again."
+          );
+          setPaymentInvoice(null);
+          setLoading(false);
+          return;
         }
       }
 
