@@ -1,8 +1,9 @@
 /**
- * Regenerate gittr_nostr_repos_username_reponame.txt:
+ * Regenerate gittr_nostr_repos_username_reponame.txt (output is gitignored):
  * - Reads owner hex + repo from existing root file (first column is pubkey hex today).
  * - Fetches kind 0 from relays, derives a URL-safe username from profile.
  * - Writes username/reponame lines (sorted, unique).
+ * Do not commit the *.txt exports — keep on server / local only.
  */
 import fs from "fs";
 import path from "path";

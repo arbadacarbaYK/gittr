@@ -1,0 +1,4 @@
+# Example format for gittr_nostr_repos_ownerhex_reponame.txt (gitignored).
+# Lines: lowercase 64-hex owner pubkey / reponame (bare repo directory name)
+# Produce on server from bridge scans — do not commit real exports.
+# Then: node scripts/build-gittr-repo-owner-usernames.mjs

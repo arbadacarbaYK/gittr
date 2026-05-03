@@ -48,3 +48,8 @@ Nip34*.md
 # Local one-off exports (bridge repo lists, etc.)
 .tmp_*.txt
 .tmp_*.tsv
+
+# SEO / sitemap: owner hex, npub paths, repo slugs — maintain on server or locally only
+# (never commit real lists; use *.example.txt in repo for format hints)
+nostr-pushed-repos.txt
+gittr_nostr_repos_*.txt

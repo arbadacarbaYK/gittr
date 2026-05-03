@@ -1,0 +1,3 @@
+# Copy to nostr-pushed-repos.txt (gitignored). One public URL path per line:
+#   npub1.../repo-slug
+# Used by ui/src/app/sitemap.ts when present next to the ui/ app or repo root.

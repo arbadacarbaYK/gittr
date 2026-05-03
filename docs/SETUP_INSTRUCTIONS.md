@@ -510,6 +510,8 @@ NEXT_PUBLIC_SITE_URL=https://gittr.space
 - GRASP server file fetching (internal API calls)
 - Defaults to `https://gittr.space` if not set
 
+**Sitemap / SEO repo lists (not in git):** The app may read `nostr-pushed-repos.txt` (lines like `npub1…/repo-slug`) from the repo root or parent of `ui/` when generating `sitemap.xml`. Bridge export files matching `gittr_nostr_repos_*.txt` are used by helper scripts only. **Real lists are gitignored** — generate on the server or your secure machine and deploy with your process (e.g. copy next to `/opt/ngit/ui` before `yarn build`). See `nostr-pushed-repos.example.txt` and `repo-list-ownerhex-for-username-script.example.txt` for formats. **Old git history may still contain removed list files** until rewritten; rotate keys if that exposure matters.
+
 **Note:** The `git-nostr-bridge` service doesn't use these environment variables - it uses its own JSON config file (`~/.config/git-nostr/git-nostr-bridge.json`). The frontend uses `NEXT_PUBLIC_GIT_SSH_BASE` to construct clone URLs displayed to users.
 
 **How it works:**
