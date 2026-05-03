@@ -142,22 +142,33 @@ export async function createNWCZap(
 // - For splits: Creates invoice from SOURCE wallet (owner's LNbits wallet with SplitPayments configured)
 // - For single: Creates invoice from recipient's LNURL, then pays with LNbits
 export async function createLNbitsZap(
-  config: ZapRequest & { splits?: ZapSplit[] }
+  config: ZapRequest & {
+    splits?: ZapSplit[];
+    /** When set (e.g. repo split zaps), used instead of account keys — must match resolveRepoSendWallet order */
+    lnbitsUrlOverride?: string;
+    lnbitsAdminKeyOverride?: string;
+  }
 ): Promise<{ invoice: string; paymentHash: string } | null> {
   try {
-    // Get user's LNbits config from secure storage (encrypted if encryption is enabled)
-    let lnbitsUrl: string | undefined;
-    let lnbitsAdminKey: string | undefined;
-    if (typeof window !== "undefined") {
+    let lnbitsUrl: string | undefined = config.lnbitsUrlOverride;
+    let lnbitsAdminKey: string | undefined = config.lnbitsAdminKeyOverride;
+
+    if ((!lnbitsUrl || !lnbitsAdminKey) && typeof window !== "undefined") {
       try {
-        lnbitsUrl = (await getSecureItem("gittr_lnbits_url")) || undefined;
+        lnbitsUrl =
+          lnbitsUrl || (await getSecureItem("gittr_lnbits_url")) || undefined;
         lnbitsAdminKey =
-          (await getSecureItem("gittr_lnbits_admin_key")) || undefined;
+          lnbitsAdminKey ||
+          (await getSecureItem("gittr_lnbits_admin_key")) ||
+          undefined;
       } catch (error) {
         // Fallback to plaintext for backward compatibility
-        lnbitsUrl = localStorage.getItem("gittr_lnbits_url") || undefined;
+        lnbitsUrl =
+          lnbitsUrl || localStorage.getItem("gittr_lnbits_url") || undefined;
         lnbitsAdminKey =
-          localStorage.getItem("gittr_lnbits_admin_key") || undefined;
+          lnbitsAdminKey ||
+          localStorage.getItem("gittr_lnbits_admin_key") ||
+          undefined;
       }
     }
 

@@ -50,7 +50,7 @@ make --version || sudo apt-get install -y build-essential
 ### Step 1: Clone Repository
 
 ```bash
-git clone https://github.com/arbadacarbaYK/gittr.git  
+git clone https://github.com/arbadacarbaYK/gittr.git
 cd gittr
 ```
 
@@ -76,6 +76,7 @@ Edit `ui/.env.local` with your values. All configuration is in this file - domai
 If you run backend/bridge services from the repo root, there is also a root `.env.example` that mirrors the optional server-side variables.
 
 **Push paywall note (optional):**
+
 - Repo owners can set `Push Cost (sats)` in Repo Settings.
 - To enable non-zero Push Cost, owner must configure either `LNbits Invoice Key` or `Blink API Key` in `Settings -> Account`.
 - If you use LNbits keys, you must also set **LNbits instance URL** (the UI blocks save without it when a key is present).
@@ -86,11 +87,16 @@ If you run backend/bridge services from the repo root, there is also a root `.en
 - **Production:** If the Next.js process runs as a different Unix user than `git-nostr-bridge`, `$HOME/.config/git-nostr/...` can point at the wrong (or empty) SQLite file, so merges and pushes skip the paywall while the bridge still uses the real DB. Set `GIT_NOSTR_BRIDGE_DB` in `ui/.env.local` to the **absolute path** of the bridge’s SQLite file (same as `DbFile` in `git-nostr-bridge.json`). Resolution order is: `GIT_NOSTR_BRIDGE_DB`, then `/home/git-nostr/.config/...`, then `$HOME/.config/...`.
 - SSH push checks the same bridge DB grant before allowing `git-receive-pack`.
 
+**Lightning / zaps / bounties (product vs Nostr):** End-user credential needs (repo zaps, bounties, pay-to-merge, NIP-57 vs LNbits) are summarized in the in-app **Help** page under **Payments & Bounties** (table). Developers should also read `docs/NIPS_AND_EVENT_KINDS.md` (NIP-57 section).
+
+**Watch / follow list (kind `10018`):** Relays do not store “add one repo” deltas for this list. The app publishes **one replaceable `10018` per watch change** whose `a` tags are the **entire** current watched set (see NIP-51 and `docs/NIPS_AND_EVENT_KINDS.md` → NIP-51). Allow **`10018`** on any relay you expect to carry followed-repo lists (see relay `allowed_kinds` examples in `docs/NIP25_STARS_NIP51_FOLLOWING.md`).
+
 **GitHub OAuth Setup (Optional, for private repository access):**
 
 If you want users to be able to import and view files from private GitHub repositories, you need to set up GitHub OAuth:
 
 1. Create a GitHub OAuth App at https://github.com/settings/developers
+
    - **Application name**: Your app name (e.g., "gittr.space")
    - **Homepage URL**: Your domain (e.g., `https://gittr.space`)
    - **Authorization callback URL**: `https://yourdomain.com/api/github/callback` (or `http://localhost:3000/api/github/callback` for local dev)
@@ -98,6 +104,7 @@ If you want users to be able to import and view files from private GitHub reposi
 2. Copy the **Client ID** and **Client Secret** from the OAuth app settings
 
 3. Add to `ui/.env.local`:
+
    ```
    GITHUB_CLIENT_ID=your_client_id_here
    GITHUB_CLIENT_SECRET=your_client_secret_here
@@ -134,6 +141,7 @@ gittr includes a PWA manifest and service worker for installable app support.
 **If using Docker:** Skip Go installation - Go is already included in the Docker image. See "Docker Setup" section below.
 
 **Option 1: System-wide installation (requires sudo):**
+
 ```bash
 # Check latest Go version at https://go.dev/dl/
 wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
@@ -146,6 +154,7 @@ go version
 **Use this option if:** You have sudo access and want Go installed system-wide (available to all users). Works on both production servers and localhost.
 
 **Option 2: User-local installation (no sudo required):**
+
 ```bash
 # Check latest Go version at https://go.dev/dl/
 wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
@@ -163,6 +172,7 @@ go version
 **For Docker installations:** If you're using Docker, Go is already included in the Docker image, so you don't need to install it separately. See Docker setup instructions below.
 
 **Important:** After installing Go, you must either:
+
 - Run `export PATH=$PATH:/usr/local/go/bin` (Option 1) or `export PATH=$HOME/go-local/go/bin:$PATH` (Option 2) in your current terminal session, OR
 - Open a new terminal session (which will source `~/.bashrc` automatically)
 
@@ -178,7 +188,7 @@ sudo su - git-nostr
 ```bash
 # IMPORTANT: as git-nostr user
 cd ~
-git clone https://github.com/arbadacarbaYK/gittr.git 
+git clone https://github.com/arbadacarbaYK/gittr.git
 cd gittr/ui/gitnostr
 make git-nostr-bridge
 ```
@@ -197,21 +207,22 @@ Edit `~/.config/git-nostr/git-nostr-bridge.json`:
 
 ```json
 {
-    "repositoryDir": "/home/git-nostr/git-nostr-repositories",
-    "DbFile": "/home/git-nostr/.config/git-nostr/git-nostr-db.sqlite",
-    "relays": [
-        "wss://relay.noderunners.network",
-        "wss://relay.azzamo.net",
-        "wss://relay.damus.io",
-        "wss://nos.lol"
-    ],
-    "gitRepoOwners": []
+  "repositoryDir": "/home/git-nostr/git-nostr-repositories",
+  "DbFile": "/home/git-nostr/.config/git-nostr/git-nostr-db.sqlite",
+  "relays": [
+    "wss://relay.noderunners.network",
+    "wss://relay.azzamo.net",
+    "wss://relay.damus.io",
+    "wss://nos.lol"
+  ],
+  "gitRepoOwners": []
 }
 ```
 
 **Note:** Replace `/home/git-nostr` with the actual home directory path if different. The bridge needs Git installed (already in prerequisites) to create repositories.
 
-**IMPORTANT:** 
+**IMPORTANT:**
+
 - The `relays` array should match the relays in `ui/.env.local` (`NEXT_PUBLIC_NOSTR_RELAYS`).
 - Leave `gitRepoOwners` empty `[]` to allow ANY user to create repos (decentralized).
 
@@ -231,6 +242,7 @@ tail -f /tmp/git-nostr-bridge.log
 ```
 
 **What to expect in the logs:**
+
 - `relay connected: wss://...` - Successful relay connections
 - `relay connect failed: ...` - Some relays may fail (this is normal for Nostr)
 - `connected to X/Y relays: [...]` - Summary of connected relays
@@ -249,6 +261,7 @@ sudo nano /etc/ssh/sshd_config
 ```
 
 Add/verify:
+
 ```
 AllowUsers root git-nostr git
 PubkeyAuthentication yes
@@ -257,12 +270,14 @@ PermitUserEnvironment yes
 ```
 
 Optional compatibility alias for `git@...` URLs:
+
 ```
 Match User git
     AuthorizedKeysFile /etc/ssh/git-authorized_keys
 ```
 
 And create the compatibility key file:
+
 ```bash
 sudo cp /home/git-nostr/.ssh/authorized_keys /etc/ssh/git-authorized_keys
 sudo chown root:root /etc/ssh/git-authorized_keys
@@ -270,6 +285,7 @@ sudo chmod 644 /etc/ssh/git-authorized_keys
 ```
 
 Restart SSH:
+
 ```bash
 sudo systemctl restart sshd
 ```
@@ -356,12 +372,14 @@ sudo systemctl status gittr-frontend
 **Note:** No special dependencies are required for Telegram notifications. The platform uses the Telegram Bot API via HTTP requests (built into Node.js), so no additional npm packages or system dependencies are needed.
 
 After deployment, configure Telegram webhook:
+
 ```bash
 cd ui
 node configure-webhook.js gittr.space
 ```
 
 Verify webhook:
+
 ```bash
 curl https://gittr.space/api/telegram/webhook-status
 ```
@@ -393,10 +411,10 @@ server {
 server {
     listen 443 ssl http2;
     server_name gittr.space;
-    
+
     ssl_certificate /etc/letsencrypt/live/gittr.space/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/gittr.space/privkey.pem;
-    
+
     location ^~ /api/ {
         # Return 429 for throttled API traffic (instead of default 503)
         limit_req_status 429;
@@ -437,10 +455,10 @@ server {
 server {
     listen 443 ssl http2;
     server_name git.gittr.space;
-    
+
     ssl_certificate /etc/letsencrypt/live/git.gittr.space/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/git.gittr.space/privkey.pem;
-    
+
     # Git bridge HTTP service (git-nostr-bridge)
     # Default port is 8080, adjust if your bridge uses a different port
     location / {
@@ -450,7 +468,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
-        
+
         # Git smart HTTP protocol requires these headers
         proxy_buffering off;
         proxy_request_buffering off;
@@ -478,6 +496,7 @@ This will automatically update the nginx config with SSL certificates.
 **You DON'T need a git subdomain.** Use the same domain (`gittr.space`) for both web and SSH.
 
 **Configuration in `ui/.env.local`:**
+
 ```
 NEXT_PUBLIC_DOMAIN=gittr.space
 NEXT_PUBLIC_GIT_SSH_BASE=gittr.space
@@ -485,6 +504,7 @@ NEXT_PUBLIC_SITE_URL=https://gittr.space
 ```
 
 **Note:** `NEXT_PUBLIC_SITE_URL` is used for:
+
 - SEO metadata (sitemap, robots.txt, Open Graph tags)
 - GRASP server file fetching (internal API calls)
 - Defaults to `https://gittr.space` if not set
@@ -492,17 +512,20 @@ NEXT_PUBLIC_SITE_URL=https://gittr.space
 **Note:** The `git-nostr-bridge` service doesn't use these environment variables - it uses its own JSON config file (`~/.config/git-nostr/git-nostr-bridge.json`). The frontend uses `NEXT_PUBLIC_GIT_SSH_BASE` to construct clone URLs displayed to users.
 
 **How it works:**
+
 - Web server (nginx) handles HTTPS on port 443
 - SSH server (git-nostr-bridge) handles SSH on port 22
 - Different ports = no conflict
 
 **For terminal Git to work:**
+
 1. Bridge service must be running (Step 10)
 2. SSH port 22 must be accessible
 3. Users publish SSH keys via Settings → SSH Keys in the web UI
 4. Bridge automatically adds keys to `authorized_keys`
 
 **Test Git clone:**
+
 ```bash
 git clone git@gittr.space:npub1.../repo-name.git
 ```
@@ -532,16 +555,19 @@ sudo journalctl -u git-nostr-bridge -n 50
 ## Troubleshooting
 
 ### Frontend not starting
+
 - Check logs: `sudo journalctl -u gittr-frontend -n 100`
 - Verify `.env.local` exists and is configured
 - Check `WorkingDirectory` path in service file is correct
 
 ### Bridge not connecting to relays
+
 - Check `relays` array in `~/.config/git-nostr/git-nostr-bridge.json`
 - Verify relay URLs match those in `ui/.env.local`
 - Check logs: `sudo journalctl -u git-nostr-bridge -n 100`
 
 ### Git clone fails
+
 - Verify SSH key published via gittr.space UI
 - Check SSH server: `sudo systemctl status sshd`
 - Test SSH: `ssh git-nostr@gittr.space`
@@ -551,12 +577,14 @@ sudo journalctl -u git-nostr-bridge -n 50
 - Keep fail2ban thresholds practical for real users (avoid aggressive permanent bans for normal retries).
 
 ### Push paywall blocks pushes
+
 - If terminal shows `push payment required ...`, generate/pay invoice in repo UI via **Push to Nostr**, then retry `git push`.
 - After merging a PR with paywall enabled, pay the invoice in the on-screen QR modal (or use **Push to Nostr** afterward) so the merged state can reach the bridge.
 - If terminal shows `push payment authorization expired`, pay pending invoice (or create a new one) and push again.
 - Verify repo owner has configured `LNbits Invoice Key` or `Blink API Key` in Settings -> Account before setting non-zero Push Cost.
 
 ### Telegram webhook not working
+
 - Check webhook status: `curl https://gittr.space/api/telegram/webhook-status`
 - Verify bot is admin in channel with "Post Messages" permission
 - Check `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env.local`
@@ -566,27 +594,32 @@ sudo journalctl -u git-nostr-bridge -n 50
 If you're using Docker, you don't need to install Go or set up system users manually. The Docker image includes everything.
 
 ### Prerequisites for Docker
+
 - Docker and Docker Compose installed
 - Port 22 available (or change port mapping in `docker-compose.yml`)
 
 ### Docker Setup Steps
 
 1. **Edit the Dockerfile** (`ui/gitnostr/Dockerfile`):
+
    - Replace the `gitRepoOwners` array with your Nostr pubkey (hex format, NOT npub)
    - Update the `relays` array to match your `.env.local` configuration
 
 2. **Build and run the bridge container:**
+
 ```bash
 cd ui
 docker compose up -d git-nostr-bridge
 ```
 
 3. **Check logs:**
+
 ```bash
 docker logs -f git-nostr-bridge
 ```
 
 4. **Verify it's running:**
+
 ```bash
 docker ps | grep git-nostr-bridge
 ```

@@ -1,5 +1,6 @@
 // Zap tracking and history utilities
 // Tracks zaps sent and received, displays counts
+import { type Event } from "nostr-tools";
 import { nip19 } from "nostr-tools";
 
 // Helper to normalize pubkey/npub for comparison
@@ -23,6 +24,15 @@ function normalizePubkey(pubkey: string): string {
   }
 }
 
+function notifyZapsUpdated(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(new Event("gittr:zaps-updated"));
+  } catch {
+    /* ignore */
+  }
+}
+
 export interface ZapRecord {
   id: string; // Event ID or payment hash
   recipient: string; // pubkey/npub
@@ -34,6 +44,8 @@ export interface ZapRecord {
   contextId?: string; // repo/issue/PR ID
   invoice?: string;
   status: "pending" | "paid" | "failed";
+  /** `nip57` = kind 9735 zap receipt from relays; `gittr` or omitted = local gittr_zaps ledger */
+  source?: "gittr" | "nip57";
 }
 
 // Store zap in history
@@ -46,6 +58,7 @@ export function recordZap(zap: ZapRecord): void {
     // Keep only last 1000 zaps
     const recent = zaps.slice(-1000);
     localStorage.setItem("gittr_zaps", JSON.stringify(recent));
+    notifyZapsUpdated();
   } catch {}
 }
 
@@ -62,6 +75,7 @@ export function markZapPaid(zapId: string): void {
     if (!row) return;
     zaps[i] = { ...row, status: "paid" };
     localStorage.setItem("gittr_zaps", JSON.stringify(zaps));
+    notifyZapsUpdated();
   } catch {
     /* ignore */
   }
@@ -79,12 +93,15 @@ export function getZapCount(
     const zaps = JSON.parse(
       localStorage.getItem("gittr_zaps") || "[]"
     ) as ZapRecord[];
+    const recNorm = normalizePubkey(recipient);
+    const ctxNorm = contextId ? contextId.toLowerCase() : "";
     return zaps
       .filter(
         (z) =>
-          z.recipient === recipient &&
+          normalizePubkey(z.recipient) === recNorm &&
           z.status === "paid" &&
-          (!contextId || z.contextId === contextId) &&
+          (!ctxNorm ||
+            (z.contextId && z.contextId.toLowerCase() === ctxNorm)) &&
           (!type || z.type === type)
       )
       .reduce((sum, z) => sum + z.amount, 0);
@@ -127,4 +144,133 @@ export function getZapHistory(
 // Get total zap amount for a recipient/context
 export function getZapTotal(recipient: string, contextId?: string): number {
   return getZapCount(recipient, contextId);
+}
+
+/** Map NIP-57 zap receipt (kind 9735) to a ZapRecord for the Your Zaps UI */
+export function zapReceipt9735ToRecord(ev: Event): ZapRecord | null {
+  if (ev.kind !== 9735) return null;
+  const desc = ev.tags.find((t) => t[0] === "description")?.[1];
+  if (!desc) return null;
+  try {
+    const zr = JSON.parse(desc) as {
+      pubkey?: string;
+      content?: string;
+      tags?: string[][];
+    };
+    const amountTag = zr.tags?.find((t) => t[0] === "amount")?.[1];
+    const msat = amountTag ? parseInt(amountTag, 10) : 0;
+    const amountSats = msat > 0 ? Math.floor(msat / 1000) : 0;
+    const recipientTag = zr.tags?.find((t) => t[0] === "p")?.[1] || "";
+    const senderPub = zr.pubkey || "";
+    const content = (zr.content || "") as string;
+    const isRepoZap = /^Zap for .+\/.+/i.test(content.trim());
+    const ctx = content.match(/^Zap for (.+)/i)?.[1]?.trim();
+    return {
+      id: ev.id,
+      recipient: recipientTag,
+      sender: senderPub || undefined,
+      amount: amountSats,
+      comment: content,
+      createdAt: ev.created_at * 1000,
+      type: isRepoZap ? "repo" : "user",
+      contextId: isRepoZap ? ctx : undefined,
+      status: "paid",
+      source: "nip57",
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** URL entity/repo pairs to match `Zap for entity/repo` in NIP-57 receipt content */
+export function repoContextVariantsForMatch(
+  entity: string,
+  repo: string
+): string[] {
+  const out = new Set<string>();
+  const add = (e: string, r: string) => out.add(`${e}/${r}`.toLowerCase());
+  try {
+    add(entity, repo);
+    add(decodeURIComponent(entity), decodeURIComponent(repo));
+    add(decodeURIComponent(entity), repo);
+    add(entity, decodeURIComponent(repo));
+  } catch {
+    add(entity, repo);
+  }
+  return Array.from(out);
+}
+
+export function repoZapReceiptMatchesRepo(
+  receiptContext: string | undefined,
+  entity: string,
+  repo: string
+): boolean {
+  if (!receiptContext?.trim()) return false;
+  const c = receiptContext.trim().toLowerCase();
+  return repoContextVariantsForMatch(entity, repo).includes(c);
+}
+
+/**
+ * Repo header badge: sum NIP-57 receipts for this repo + local ledger rows that are not
+ * already represented by a receipt (same amount, time window, sender when known).
+ */
+export function computeRepoZapBadgeTotal(
+  ownerHex: string,
+  entity: string,
+  repo: string,
+  nip57Events: Event[]
+): { totalSats: number; networkSats: number; localExtraSats: number } {
+  if (!ownerHex) {
+    return { totalSats: 0, networkSats: 0, localExtraSats: 0 };
+  }
+
+  const recs = nip57Events
+    .map((ev) => zapReceipt9735ToRecord(ev))
+    .filter(
+      (r): r is ZapRecord =>
+        r != null &&
+        r.type === "repo" &&
+        repoZapReceiptMatchesRepo(r.contextId, entity, repo) &&
+        normalizePubkey(r.recipient) === ownerHex
+    );
+  const networkSats = recs.reduce((s, r) => s + r.amount, 0);
+
+  let localPaid: ZapRecord[] = [];
+  try {
+    const zaps = JSON.parse(
+      localStorage.getItem("gittr_zaps") || "[]"
+    ) as ZapRecord[];
+    const ownerNorm = ownerHex;
+    const ctxSet = new Set(repoContextVariantsForMatch(entity, repo));
+    localPaid = zaps.filter(
+      (z) =>
+        z.status === "paid" &&
+        z.type === "repo" &&
+        normalizePubkey(z.recipient) === ownerNorm &&
+        z.contextId &&
+        ctxSet.has(z.contextId.trim().toLowerCase())
+    );
+  } catch {
+    localPaid = [];
+  }
+
+  let localExtraSats = 0;
+  for (const L of localPaid) {
+    const dup = recs.some((R) => {
+      if (R.amount !== L.amount) return false;
+      if (Math.abs(R.createdAt - L.createdAt) > 25 * 60 * 1000) return false;
+      if (L.sender && R.sender) {
+        return normalizePubkey(L.sender) === normalizePubkey(R.sender);
+      }
+      if (!L.sender && !R.sender) return true;
+      return false;
+    });
+    if (!dup) localExtraSats += L.amount;
+  }
+
+  return {
+    totalSats: networkSats + localExtraSats,
+    networkSats,
+    localExtraSats,
+  };
 }

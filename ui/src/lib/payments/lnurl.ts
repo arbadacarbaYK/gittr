@@ -9,6 +9,10 @@ export interface LNURLPayResponse {
   metadata: string;
   tag: "payRequest";
   commentAllowed?: number; // Max comment length (0 = comments not allowed)
+  /** NIP-57: LNURL server can issue description-hash invoices and publish zap receipts */
+  allowsNostr?: boolean;
+  /** NIP-57: pubkey that will sign kind 9735 zap receipts */
+  nostrPubkey?: string;
 }
 
 export interface LNURLPayCallbackResponse {
@@ -191,4 +195,78 @@ export async function createInvoiceFromLNURL(
   }
 
   throw new Error("No invoice (pr) in LNURL callback response");
+}
+
+/** LUD-16 name@domain → HTTPS LNURL-pay discovery URL */
+export function lightningAddressToLnurlpHttps(lud16: string): string {
+  const [name, domain] = lud16.trim().split("@");
+  if (!name || !domain) {
+    throw new Error(`Invalid LUD-16 format: ${lud16}`);
+  }
+  return `https://${domain}/.well-known/lnurlp/${encodeURIComponent(name)}`;
+}
+
+/** NIP-57 `lnurl` tag: bech32 `lnurl` prefix over the UTF-8 bytes of the HTTPS LNURL-pay URL */
+export function encodeLnurlPayHttpsToBech32(httpsLnurlpUrl: string): string {
+  const utf8 = new TextEncoder().encode(httpsLnurlpUrl);
+  const words = bech32.toWords(utf8);
+  return bech32.encode("lnurl", words, 2000).toLowerCase();
+}
+
+/** Resolve HTTPS or bech32 LNURL-pay endpoint to canonical HTTPS URL string */
+export function lnurlPayInputToHttpsUrl(input: string): string {
+  const trimmed = input.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+  return decodeLNURL(trimmed);
+}
+
+/**
+ * NIP-57: request bolt11 using signed zap request (kind 9734) on the LNURL-pay callback.
+ * Caller must verify `allowsNostr` / `nostrPubkey` on the pay endpoint first.
+ */
+export async function createInvoiceFromLnurlZapRequest(params: {
+  callback: string;
+  amountMsat: number;
+  signedZapRequest9734: Record<string, unknown>;
+  lnurlBech32: string;
+}): Promise<string> {
+  const u = new URL(params.callback);
+  u.searchParams.set("amount", String(params.amountMsat));
+  u.searchParams.set(
+    "nostr",
+    encodeURIComponent(JSON.stringify(params.signedZapRequest9734))
+  );
+  u.searchParams.set("lnurl", encodeURIComponent(params.lnurlBech32));
+
+  const callbackResponse = await fetch(u.toString(), {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
+
+  if (!callbackResponse.ok) {
+    const errorText = await callbackResponse.text();
+    throw new Error(
+      `NIP-57 LNURL callback failed: ${
+        callbackResponse.status
+      } ${errorText.slice(0, 200)}`
+    );
+  }
+
+  const callbackData =
+    (await callbackResponse.json()) as LNURLPayCallbackResponse & {
+      status?: string;
+      reason?: string;
+    };
+
+  if (callbackData.status === "ERROR") {
+    throw new Error(callbackData.reason || "LNURL callback ERROR");
+  }
+
+  if (callbackData.pr) {
+    return callbackData.pr;
+  }
+
+  throw new Error("No invoice (pr) in NIP-57 LNURL callback response");
 }

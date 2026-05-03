@@ -6,14 +6,22 @@ import { Button } from "@/components/ui/button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import {
+  createInvoiceFromLnurlZapRequest,
+  encodeLnurlPayHttpsToBech32,
+  lightningAddressToLnurlpHttps,
+  lnurlPayInputToHttpsUrl,
+  resolveLNURL,
+} from "@/lib/payments/lnurl";
+import { buildUnsignedZapRequest9734 } from "@/lib/payments/nip57-zap";
+import {
   formatPaymentMessage,
   getPaymentSenderName,
 } from "@/lib/payments/payment-message";
+import { resolveRepoSendWallet } from "@/lib/payments/resolve-repo-wallet";
 import {
   type ZapRequest,
   type ZapSplit,
   createLNbitsZap,
-  createNWCZap,
 } from "@/lib/payments/zap";
 import { markZapPaid, recordZap } from "@/lib/payments/zap-tracker";
 
@@ -33,6 +41,10 @@ interface ZapButtonProps {
   modalExtra?: React.ReactNode; // extra content to show in the QR modal
   recipientMetadata?: { lud16?: string; lnurl?: string; nwcRecv?: string }; // Pre-resolved wallet (from repo config, etc.)
   label?: string; // Custom button label (defaults to "{amount} sats")
+  /** Repo zaps: use NIP-57 when the recipient LNURL-pay endpoint advertises `allowsNostr` */
+  nip57ProfileZap?: boolean;
+  /** Repo split zaps: resolve LNbits send keys repo-first (see resolveRepoSendWallet) */
+  splitSendContext?: { entity: string; repo: string };
 }
 
 export function ZapButton({
@@ -46,6 +58,8 @@ export function ZapButton({
   modalExtra,
   recipientMetadata: providedMetadata,
   label,
+  nip57ProfileZap = false,
+  splitSendContext,
 }: ZapButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +68,9 @@ export function ZapButton({
   const [showQR, setShowQR] = useState(false);
   const [paymentInvoice, setPaymentInvoice] = useState<string | null>(null);
   const [paymentHash, setPaymentHash] = useState<string | undefined>(undefined);
+  const [paymentTrackHint, setPaymentTrackHint] = useState<"default" | "nip57">(
+    "default"
+  );
   const [paymentAmount, setPaymentAmount] = useState<number>(amount);
   const [recipientMetadata, setRecipientMetadata] = useState<{
     lud16?: string;
@@ -67,11 +84,20 @@ export function ZapButton({
     pubkey && /^[0-9a-f]{64}$/i.test(pubkey) ? [pubkey] : [];
   const currentUserMetadata = useContributorMetadata(currentUserPubkeys);
 
+  const hasProvidedRecipientWallet = !!(
+    providedMetadata?.lud16?.trim() ||
+    providedMetadata?.lnurl?.trim() ||
+    providedMetadata?.nwcRecv?.trim()
+  );
+
   // Fetch recipient's Lightning address from Nostr profile (only if not provided)
   useEffect(() => {
-    // If metadata is already provided (e.g., from repo config), use it
-    if (providedMetadata) {
-      setRecipientMetadata(providedMetadata);
+    // If parent passed a usable receive hint (repo config / merged profile), use it
+    if (hasProvidedRecipientWallet) {
+      setRecipientMetadata({
+        lud16: providedMetadata?.lud16,
+        lnurl: providedMetadata?.lnurl,
+      });
       return;
     }
 
@@ -122,7 +148,13 @@ export function ZapButton({
     };
 
     fetchRecipientMetadata();
-  }, [recipient, subscribe, defaultRelays, providedMetadata]);
+  }, [
+    recipient,
+    subscribe,
+    defaultRelays,
+    providedMetadata,
+    hasProvidedRecipientWallet,
+  ]);
 
   const handleZap = async () => {
     const zapAmount = parseInt(customAmount) || amount;
@@ -137,6 +169,7 @@ export function ZapButton({
     setShowQR(true);
     setLoading(true);
     setError(null);
+    setPaymentTrackHint("default");
 
     try {
       // Format payment message: username + "via gittr.space ⚡⚡"
@@ -170,14 +203,23 @@ export function ZapButton({
       const hasLnbits = lnbitsUrl && lnbitsAdminKey;
 
       if (splits && splits.length > 0) {
-        // Use LNbits SplitPayments extension for splits
-        // Creates invoice from SOURCE wallet (owner's LNbits wallet)
-        // SplitPayments extension must be pre-configured in LNbits wallet
-        // When invoice is paid, LNbits automatically splits to configured targets
+        let lnbitsUrlOverride: string | undefined;
+        let lnbitsAdminKeyOverride: string | undefined;
+        if (splitSendContext?.entity && splitSendContext.repo) {
+          const sendWallet = await resolveRepoSendWallet(
+            splitSendContext.entity,
+            splitSendContext.repo
+          );
+          if (sendWallet.lnbitsUrl && sendWallet.lnbitsAdminKey) {
+            lnbitsUrlOverride = sendWallet.lnbitsUrl;
+            lnbitsAdminKeyOverride = sendWallet.lnbitsAdminKey;
+          }
+        }
         paymentResult = await createLNbitsZap({
           ...zapRequest,
           splits,
-          // For splits, we don't need recipient metadata - invoice comes from source wallet
+          lnbitsUrlOverride,
+          lnbitsAdminKeyOverride,
         });
       } else {
         // Create invoice from recipient's Lightning address (LNURL/LUD-16)
@@ -190,41 +232,122 @@ export function ZapButton({
           return;
         }
 
-        try {
-          const response = await fetch("/api/zap/create-invoice", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              recipient: recipient,
-              amount: zapAmount,
-              comment: paymentMessage, // Include comment for LNURL invoices
-              lud16: recipientMetadata.lud16,
-              lnurl: recipientMetadata.lnurl,
-            }),
-          });
-
-          if (!response.ok) {
-            const error = await response
-              .json()
-              .catch(() => ({ message: "Unknown error" }));
-            throw new Error(error.message || "Failed to create invoice");
+        const tryNip57Invoice = async (): Promise<{
+          invoice: string;
+          paymentHash: string;
+        } | null> => {
+          if (
+            !nip57ProfileZap ||
+            typeof window === "undefined" ||
+            !(
+              window as {
+                nostr?: { signEvent?: (e: unknown) => Promise<unknown> };
+              }
+            ).nostr?.signEvent ||
+            !pubkey ||
+            !/^[0-9a-f]{64}$/i.test(pubkey)
+          ) {
+            return null;
           }
+          try {
+            const ludOr =
+              recipientMetadata.lud16?.trim() ||
+              recipientMetadata.lnurl?.trim() ||
+              "";
+            const httpsPay = ludOr.includes("@")
+              ? lightningAddressToLnurlpHttps(ludOr)
+              : lnurlPayInputToHttpsUrl(ludOr);
+            const payMeta = await resolveLNURL(httpsPay);
+            if (
+              payMeta.allowsNostr !== true ||
+              !payMeta.nostrPubkey ||
+              !payMeta.callback
+            ) {
+              return null;
+            }
+            let recipientHex = recipient;
+            if (recipient.startsWith("npub")) {
+              recipientHex = (
+                nip19.decode(recipient).data as string
+              ).toLowerCase();
+            }
+            if (!/^[0-9a-f]{64}$/i.test(recipientHex)) return null;
 
-          const data = await response.json();
-          const invoice = data.paymentRequest;
-
-          if (!invoice || invoice.length < 50) {
-            throw new Error("Received invalid invoice");
+            const lnurlBech32 = encodeLnurlPayHttpsToBech32(httpsPay);
+            const relays =
+              defaultRelays && defaultRelays.length > 0
+                ? defaultRelays
+                : ["wss://relay.damus.io"];
+            const zapBody = (comment && comment.trim()) || paymentMessage;
+            const unsigned = buildUnsignedZapRequest9734({
+              senderPubkeyHex: pubkey,
+              recipientPubkeyHex: recipientHex,
+              amountMsat: zapAmount * 1000,
+              relays,
+              lnurlBech32,
+              content: zapBody,
+            });
+            const signed = (await (
+              window as {
+                nostr: { signEvent: (e: unknown) => Promise<unknown> };
+              }
+            ).nostr.signEvent(unsigned as never)) as Record<string, unknown>;
+            const invoice = await createInvoiceFromLnurlZapRequest({
+              callback: payMeta.callback,
+              amountMsat: zapAmount * 1000,
+              signedZapRequest9734: signed,
+              lnurlBech32,
+            });
+            setPaymentTrackHint("nip57");
+            return { invoice, paymentHash: "" };
+          } catch (nipErr: unknown) {
+            console.warn(
+              "[ZapButton] NIP-57 zap invoice not used:",
+              nipErr instanceof Error ? nipErr.message : nipErr
+            );
+            return null;
           }
+        };
 
-          paymentResult = { invoice, paymentHash: "" };
-        } catch (error: any) {
-          setError(
-            error.message || "Failed to create invoice. Please try again."
-          );
-          setPaymentInvoice(null);
-          setLoading(false);
-          return;
+        paymentResult = await tryNip57Invoice();
+
+        if (!paymentResult) {
+          try {
+            const response = await fetch("/api/zap/create-invoice", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                recipient: recipient,
+                amount: zapAmount,
+                comment: paymentMessage, // Include comment for LNURL invoices
+                lud16: recipientMetadata.lud16,
+                lnurl: recipientMetadata.lnurl,
+              }),
+            });
+
+            if (!response.ok) {
+              const error = await response
+                .json()
+                .catch(() => ({ message: "Unknown error" }));
+              throw new Error(error.message || "Failed to create invoice");
+            }
+
+            const data = await response.json();
+            const invoice = data.paymentRequest;
+
+            if (!invoice || invoice.length < 50) {
+              throw new Error("Received invalid invoice");
+            }
+
+            paymentResult = { invoice, paymentHash: "" };
+          } catch (error: any) {
+            setError(
+              error.message || "Failed to create invoice. Please try again."
+            );
+            setPaymentInvoice(null);
+            setLoading(false);
+            return;
+          }
         }
       }
 
@@ -245,7 +368,9 @@ export function ZapButton({
         );
       }
 
-      const zapId = `zap-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      const zapId = `zap-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 9)}`;
       pendingZapIdRef.current = zapId;
       const repoMatch = comment?.match(/^Zap for (.+)/);
       recordZap({
@@ -362,8 +487,10 @@ export function ZapButton({
             setShowQR(false);
             setPaymentInvoice(null);
             setPaymentHash(undefined);
+            setPaymentTrackHint("default");
             setError(null);
           }}
+          completionHint={paymentTrackHint}
         />
       )}
     </div>

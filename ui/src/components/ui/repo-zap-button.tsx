@@ -12,6 +12,7 @@ import {
 } from "@/lib/payments/zap-repo";
 
 import { User, Users } from "lucide-react";
+import { nip19 } from "nostr-tools";
 
 interface RepoZapButtonProps {
   repoId: string; // entity/repo
@@ -41,6 +42,22 @@ export function RepoZapButton({
   // Parse repoId to get entity and repo
   const [entity, repo] = repoId.split("/");
 
+  /** `metadataMap` keys are always lowercase hex */
+  const ownerHex = useMemo(() => {
+    if (!ownerPubkey) return "";
+    try {
+      if (ownerPubkey.startsWith("npub")) {
+        return (nip19.decode(ownerPubkey).data as string).toLowerCase();
+      }
+      if (/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+        return ownerPubkey.toLowerCase();
+      }
+    } catch {
+      return "";
+    }
+    return "";
+  }, [ownerPubkey]);
+
   // Get all contributor pubkeys (including owner)
   const contributorPubkeys = useMemo(() => {
     const pubkeys = contributors
@@ -56,6 +73,8 @@ export function RepoZapButton({
   // Fetch Nostr metadata for all contributors to get Lightning addresses
   const metadataMap = useContributorMetadata(contributorPubkeys);
 
+  const ownerProfileMeta = ownerHex ? metadataMap[ownerHex] : undefined;
+
   // Resolve repo receive wallet (priority: owner profile -> owner settings -> repo config)
   const [repoWallet, setRepoWallet] = useState<{
     lud16?: string;
@@ -69,12 +88,11 @@ export function RepoZapButton({
       setRepoWallet({ source: "none" });
       return;
     }
-    const ownerMeta = metadataMap[ownerPubkey];
     resolveRepoReceiveWallet(
       entity,
       repo,
-      ownerPubkey,
-      ownerMeta,
+      ownerHex || ownerPubkey,
+      ownerProfileMeta,
       currentUserPubkey || undefined
     )
       .then(setRepoWallet)
@@ -82,7 +100,14 @@ export function RepoZapButton({
         console.error("Failed to resolve repo wallet:", error);
         setRepoWallet({ source: "none" });
       });
-  }, [entity, repo, ownerPubkey, metadataMap, currentUserPubkey]);
+  }, [
+    entity,
+    repo,
+    ownerPubkey,
+    ownerHex,
+    ownerProfileMeta,
+    currentUserPubkey,
+  ]);
 
   // Filter contributors who have Lightning receive addresses
   const contributorsWithAddresses = useMemo(() => {
@@ -106,23 +131,42 @@ export function RepoZapButton({
     return undefined;
   }, [zapMode, contributorsWithAddresses]);
 
-  // Track if metadata has loaded to prevent flash of warning
-  const [metadataLoaded, setMetadataLoaded] = useState(false);
+  /** Same merge as `recipientMetadata` below — used so we never show a false "no wallet" while an invoice is possible */
+  const effectiveReceive = useMemo(() => {
+    if (repoWallet.source !== "none") {
+      return {
+        lud16: repoWallet.lud16,
+        lnurl: repoWallet.lnurl,
+        nwcRecv: repoWallet.nwcRecv,
+      };
+    }
+    return {
+      lud16: repoWallet.lud16 ?? ownerProfileMeta?.lud16,
+      lnurl: repoWallet.lnurl ?? ownerProfileMeta?.lnurl,
+      nwcRecv: repoWallet.nwcRecv ?? ownerProfileMeta?.nwcRecv,
+    };
+  }, [repoWallet, ownerProfileMeta]);
 
-  useEffect(() => {
-    // Set metadata as loaded after a short delay to allow resolution
-    const timer = setTimeout(() => setMetadataLoaded(true), 500);
-    return () => clearTimeout(timer);
-  }, [metadataMap]);
+  const hasEffectiveReceive = useMemo(() => {
+    return !!(
+      effectiveReceive.lud16?.trim() ||
+      effectiveReceive.lnurl?.trim() ||
+      effectiveReceive.nwcRecv?.trim()
+    );
+  }, [effectiveReceive]);
 
   const modalExtra = (
     <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-      {/* Show wallet warning inside modal, not outside - only after metadata has loaded to prevent flash */}
-      {metadataLoaded && repoWallet.source === "none" && (
-        <div className="text-xs text-yellow-400 mb-2 p-2 bg-yellow-900/20 rounded border border-yellow-700">
-          ⚠️ No receive wallet found. Configure one in Repo Settings → Payment
-          Configuration or ensure the owner has a Lightning address in their
-          Nostr profile.
+      {ownerHex && !hasEffectiveReceive && (
+        <div
+          className="text-xs text-slate-200 mb-2 p-2 bg-slate-800/80 rounded border border-slate-600"
+          role="note"
+        >
+          No Lightning receive address was found for this repository (owner
+          profile <code className="text-slate-300">lud16</code> /{" "}
+          <code className="text-slate-300">lnurl</code>, or Repo Settings →
+          Payment configuration). Without one, zaps cannot be routed to a
+          wallet.
         </div>
       )}
       {contributorsWithAddresses.length > 0 && (
@@ -222,16 +266,10 @@ export function RepoZapButton({
     </div>
   );
 
-  // Prepare recipient metadata with resolved wallet
+  // Prepare recipient metadata with resolved wallet (must match `effectiveReceive`)
   const recipientMetadata = useMemo(() => {
-    return {
-      lud16: repoWallet.lud16,
-      lnurl: repoWallet.lnurl,
-      nwcRecv: repoWallet.nwcRecv,
-      // Include owner's metadata as fallback if repo wallet not found
-      ...(repoWallet.source === "none" ? metadataMap[ownerPubkey] : {}),
-    };
-  }, [repoWallet, metadataMap, ownerPubkey]);
+    return { ...effectiveReceive };
+  }, [effectiveReceive]);
 
   return (
     <div className="space-y-2">
@@ -243,6 +281,8 @@ export function RepoZapButton({
         splits={zapMode === "auto-split" ? splitWeights : undefined}
         modalExtra={modalExtra}
         recipientMetadata={recipientMetadata}
+        nip57ProfileZap={zapMode === "owner-only"}
+        splitSendContext={entity && repo ? { entity, repo } : undefined}
       />
     </div>
   );

@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { KIND_ZAP } from "@/lib/nostr/events";
+import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import useSession from "@/lib/nostr/useSession";
-import { type ZapRecord, getZapHistory } from "@/lib/payments/zap-tracker";
 import {
-  formatDate24h,
-  formatDateTime24h,
-  formatTime24h,
-} from "@/lib/utils/date-format";
+  type ZapRecord,
+  getZapHistory,
+  zapReceipt9735ToRecord,
+} from "@/lib/payments/zap-tracker";
+import { formatDateTime24h } from "@/lib/utils/date-format";
 
 import {
   CheckCircle2,
@@ -20,7 +22,67 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
-import { nip19 } from "nostr-tools";
+import { type Event, type Filter, nip19 } from "nostr-tools";
+
+/** Repo zaps only: hide rows for repos the user deleted locally or archived. */
+function isRepoDeletedContext(contextId: string): boolean {
+  if (typeof window === "undefined" || !contextId) return false;
+  try {
+    const deletedRepos = JSON.parse(
+      localStorage.getItem("gittr_deleted_repos") || "[]"
+    ) as Array<{ entity: string; repo: string; deletedAt: number }>;
+    const deletedReposSet = new Set(
+      deletedRepos.map((d) => `${d.entity}/${d.repo}`.toLowerCase())
+    );
+
+    if (contextId.includes("/")) {
+      const repoKey = contextId.toLowerCase();
+      if (deletedReposSet.has(repoKey)) return true;
+
+      const repos = JSON.parse(
+        localStorage.getItem("gittr_repos") || "[]"
+      ) as any[];
+      const [entity, repoName] = contextId.split("/");
+      const repo = repos.find((r: any) => {
+        const rEntity = r.entity || "";
+        const rRepo = r.repo || r.slug || "";
+        return (
+          rEntity.toLowerCase() === (entity || "").toLowerCase() &&
+          rRepo.toLowerCase() === (repoName || "").toLowerCase()
+        );
+      });
+      if (repo && (repo.deleted === true || repo.archived === true)) {
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function dropLocalPendingIfNip57Receipt(
+  local: ZapRecord,
+  nip57Rows: ZapRecord[],
+  norm: (k: string) => string
+): boolean {
+  if (local.source === "nip57") return false;
+  if (local.status !== "pending") return false;
+  for (const n of nip57Rows) {
+    if (n.source !== "nip57") continue;
+    if (norm(local.recipient) !== norm(n.recipient)) continue;
+    if (local.sender && n.sender && norm(local.sender) !== norm(n.sender)) {
+      continue;
+    }
+    if (Math.abs(local.amount - n.amount) > 1) continue;
+    if (Math.abs(local.createdAt - n.createdAt) > 20 * 60 * 1000) continue;
+    if (local.contextId && n.contextId && local.contextId !== n.contextId) {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
 
 interface WalletBalance {
   label: string;
@@ -32,8 +94,9 @@ interface WalletBalance {
 
 export default function ZapsPage() {
   const { isLoggedIn } = useSession();
-  const { pubkey } = useNostrContext();
+  const { pubkey, subscribe, defaultRelays } = useNostrContext();
   const [zaps, setZaps] = useState<ZapRecord[]>([]);
+  const [nip57Receipts, setNip57Receipts] = useState<Event[]>([]);
   const [filter, setFilter] = useState<"all" | "sent" | "received">("all");
   const [statusFilter, setStatusFilter] = useState<
     "all" | "paid" | "pending" | "failed"
@@ -41,28 +104,8 @@ export default function ZapsPage() {
   const [walletBalances, setWalletBalances] = useState<WalletBalance[]>([]);
   const [mounted, setMounted] = useState(false);
 
-  // Calculate zap statistics
-  const zapStats = useMemo(() => {
-    const stats = {
-      total: zaps.length,
-      paid: zaps.filter((z) => z.status === "paid").length,
-      pending: zaps.filter((z) => z.status === "pending").length,
-      failed: zaps.filter((z) => z.status === "failed").length,
-      totalPaid: zaps
-        .filter((z) => z.status === "paid")
-        .reduce((sum, z) => sum + z.amount, 0),
-      totalPending: zaps
-        .filter((z) => z.status === "pending")
-        .reduce((sum, z) => sum + z.amount, 0),
-      totalFailed: zaps
-        .filter((z) => z.status === "failed")
-        .reduce((sum, z) => sum + z.amount, 0),
-    };
-    return stats;
-  }, [zaps]);
-
   // Helper to normalize pubkey/npub for comparison (synchronous)
-  const normalizePubkey = (key: string): string => {
+  const normalizePubkey = useCallback((key: string): string => {
     if (!key) return "";
     try {
       // If it's an npub, decode it
@@ -79,7 +122,7 @@ export default function ZapsPage() {
       // If decoding fails, try to use as-is (might be hex already)
       return key.toLowerCase();
     }
-  };
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -92,56 +135,13 @@ export default function ZapsPage() {
       return [];
     }
 
-    // Helper function to check if a repo is deleted
-    const isRepoDeleted = (contextId: string): boolean => {
-      if (!contextId) return false;
-
-      try {
-        // Load list of locally-deleted repos
-        const deletedRepos = JSON.parse(
-          localStorage.getItem("gittr_deleted_repos") || "[]"
-        ) as Array<{ entity: string; repo: string; deletedAt: number }>;
-        const deletedReposSet = new Set(
-          deletedRepos.map((d) => `${d.entity}/${d.repo}`.toLowerCase())
-        );
-
-        // For repo zaps, contextId is "entity/repo"
-        if (contextId.includes("/")) {
-          const repoKey = contextId.toLowerCase();
-          if (deletedReposSet.has(repoKey)) return true;
-
-          // Also check if repo exists and is marked as deleted
-          const repos = JSON.parse(
-            localStorage.getItem("gittr_repos") || "[]"
-          ) as any[];
-          const [entity, repoName] = contextId.split("/");
-          const repo = repos.find((r: any) => {
-            const rEntity = r.entity || "";
-            const rRepo = r.repo || r.slug || "";
-            return (
-              rEntity.toLowerCase() === (entity || "").toLowerCase() &&
-              rRepo.toLowerCase() === (repoName || "").toLowerCase()
-            );
-          });
-
-          if (repo && (repo.deleted === true || repo.archived === true)) {
-            return true;
-          }
-        }
-
-        return false;
-      } catch {
-        return false;
-      }
-    };
-
     let filtered = zaps;
 
     // Filter out zaps for deleted repos
     filtered = filtered.filter((z) => {
       // Only filter repo-type zaps (issues/PRs might still be valid even if repo is deleted)
       if (z.type === "repo" && z.contextId) {
-        return !isRepoDeleted(z.contextId);
+        return !isRepoDeletedContext(z.contextId);
       }
       return true; // Keep non-repo zaps and zaps without contextId
     });
@@ -152,6 +152,74 @@ export default function ZapsPage() {
     }
     return filtered.sort((a, b) => b.createdAt - a.createdAt);
   }, [zaps, statusFilter, mounted]);
+
+  const nip57AsRecords = useMemo(() => {
+    return nip57Receipts
+      .map((ev) => zapReceipt9735ToRecord(ev))
+      .filter((r): r is ZapRecord => r !== null);
+  }, [nip57Receipts]);
+
+  /** NIP-57 rows for current sent/received tab, excluding deleted-repo targets */
+  const nip57Scoped = useMemo(() => {
+    if (!mounted || typeof window === "undefined" || !pubkey) return [];
+    const norm = normalizePubkey;
+    const me = norm(pubkey);
+    let rows = nip57AsRecords;
+    if (filter === "sent") {
+      rows = rows.filter((z) => {
+        if (!z.sender) return false;
+        return norm(z.sender) === me;
+      });
+    } else if (filter === "received") {
+      rows = rows.filter((z) => norm(z.recipient) === me);
+    }
+    return rows.filter((z) => {
+      if (z.type === "repo" && z.contextId) {
+        return !isRepoDeletedContext(z.contextId);
+      }
+      return true;
+    });
+  }, [nip57AsRecords, pubkey, filter, mounted, normalizePubkey]);
+
+  const nip57VisibleByStatus = useMemo(() => {
+    if (statusFilter === "pending" || statusFilter === "failed") return [];
+    return nip57Scoped;
+  }, [nip57Scoped, statusFilter]);
+
+  const displayZaps = useMemo(() => {
+    const nip = nip57VisibleByStatus;
+    const locals = filteredZaps.filter(
+      (z) => !dropLocalPendingIfNip57Receipt(z, nip, normalizePubkey)
+    );
+    const merged = [...locals, ...nip];
+    merged.sort((a, b) => b.createdAt - a.createdAt);
+    const seen = new Set<string>();
+    return merged.filter((z) => {
+      if (seen.has(z.id)) return false;
+      seen.add(z.id);
+      return true;
+    });
+  }, [filteredZaps, nip57VisibleByStatus, normalizePubkey]);
+
+  const zapStats = useMemo(() => {
+    const paidGittr = zaps.filter((z) => z.status === "paid");
+    const pendingGittr = zaps.filter((z) => z.status === "pending");
+    const failedGittr = zaps.filter((z) => z.status === "failed");
+    const nipPaid = nip57Scoped;
+    const paidCount = paidGittr.length + nipPaid.length;
+    const totalPaidSats =
+      paidGittr.reduce((sum, z) => sum + z.amount, 0) +
+      nipPaid.reduce((sum, z) => sum + z.amount, 0);
+    return {
+      total: zaps.length + nipPaid.length,
+      paid: paidCount,
+      pending: pendingGittr.length,
+      failed: failedGittr.length,
+      totalPaid: totalPaidSats,
+      totalPending: pendingGittr.reduce((sum, z) => sum + z.amount, 0),
+      totalFailed: failedGittr.reduce((sum, z) => sum + z.amount, 0),
+    };
+  }, [zaps, nip57Scoped]);
 
   // Load zap history
   useEffect(() => {
@@ -201,6 +269,52 @@ export default function ZapsPage() {
       setZaps([]);
     }
   }, [mounted, isLoggedIn, pubkey, filter]);
+
+  // Live NIP-57 zap receipts (kind 9735) from relays — merged into the list above
+  useEffect(() => {
+    if (!mounted || !isLoggedIn || !pubkey || !subscribe) return;
+    setNip57Receipts([]);
+    const hex = normalizePubkey(pubkey);
+    const relays = getAllRelays(defaultRelays);
+    const filters: Filter[] =
+      filter === "all"
+        ? [
+            { kinds: [KIND_ZAP], "#p": [hex], limit: 500 },
+            { kinds: [KIND_ZAP], "#P": [hex], limit: 500 },
+          ]
+        : filter === "received"
+        ? [{ kinds: [KIND_ZAP], "#p": [hex], limit: 500 }]
+        : [{ kinds: [KIND_ZAP], "#P": [hex], limit: 500 }];
+
+    const collected = new Map<string, Event>();
+    const unsub = subscribe(
+      filters,
+      relays,
+      (event) => {
+        if (event.kind !== KIND_ZAP) return;
+        collected.set(event.id, event as Event);
+        setNip57Receipts(Array.from(collected.values()));
+      },
+      undefined,
+      undefined,
+      {}
+    );
+    return () => {
+      try {
+        unsub?.();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [
+    mounted,
+    isLoggedIn,
+    pubkey,
+    subscribe,
+    defaultRelays,
+    filter,
+    normalizePubkey,
+  ]);
 
   // Load wallet balances
   useEffect(() => {
@@ -406,13 +520,14 @@ export default function ZapsPage() {
       >
         <p className="font-medium text-slate-100">What this page shows</p>
         <p className="mt-1 text-slate-400">
-          Payments you start from gittr on <strong>this browser</strong> are
-          saved locally here. That is separate from Nostr{" "}
-          <strong>NIP-57</strong> zap receipts (the counters you see on notes and
-          profiles in Damus, Amethyst, and similar apps). Those live on relays;
-          gittr does not import them into this list yet. Rows may stay{" "}
-          <em>pending</em> until gittr can confirm payment (for example via your
-          LNbits connection when that applies).
+          <strong>LNbits-style</strong> payments (bounties, pay-to-merge, and
+          similar) stay on gittr&apos;s server-side flow so status updates stay
+          fast and reliable. <strong>Repository zaps</strong> to owners who
+          support NIP-57 use a real zap request and show up here as{" "}
+          <strong>Nostr receipts</strong> when relays deliver kind 9735. Rows
+          from this browser may stay <em>pending</em> until payment is confirmed
+          (for example via LNbits polling); when a matching Nostr receipt
+          arrives, the duplicate pending row is hidden.
         </p>
       </div>
 
@@ -443,7 +558,7 @@ export default function ZapsPage() {
       )}
 
       {/* Zap Statistics */}
-      {zaps.length > 0 && (
+      {(zaps.length > 0 || nip57Scoped.length > 0) && (
         <div className="border border-[#383B42] rounded p-4 mb-6 bg-[#171B21]">
           <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-purple-400" />
@@ -546,17 +661,17 @@ export default function ZapsPage() {
         </div>
       )}
 
-      {filteredZaps.length === 0 ? (
+      {displayZaps.length === 0 ? (
         <div className="border border-[#383B42] rounded p-8 text-center">
           <Zap className="h-12 w-12 text-gray-600 mx-auto mb-4" />
           <p className="text-gray-400 mb-2">
-            {zaps.length === 0
+            {zaps.length === 0 && nip57Scoped.length === 0
               ? "No zaps found."
               : `No ${
                   statusFilter === "all" ? "" : statusFilter + " "
                 }zaps found.`}
           </p>
-          {zaps.length === 0 && (
+          {zaps.length === 0 && nip57Scoped.length === 0 && (
             <Link href="/explore">
               <button className="mt-4 px-4 py-2 border border-purple-500 text-purple-400 rounded hover:bg-purple-900/20">
                 Explore Repositories
@@ -566,7 +681,7 @@ export default function ZapsPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filteredZaps.map((zap) => {
+          {displayZaps.map((zap) => {
             const contextLink = getZapContextLink(zap);
             const statusColor =
               zap.status === "paid"
@@ -591,6 +706,11 @@ export default function ZapsPage() {
                       <span className="text-sm text-gray-400">
                         {getZapTypeLabel(zap.type)}
                       </span>
+                      {zap.source === "nip57" && (
+                        <span className="text-xs rounded px-1.5 py-0.5 bg-violet-900/50 text-violet-200 border border-violet-700/60">
+                          Nostr
+                        </span>
+                      )}
                       <span className={`text-xs ${statusColor}`}>
                         {zap.status === "paid"
                           ? "✓ Paid"

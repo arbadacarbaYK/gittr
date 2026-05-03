@@ -42,6 +42,8 @@ interface PaymentQRProps {
     ownerLnbitsReadKey?: string;
     ownerBlinkApiKey?: string;
   };
+  /** Extra copy when the invoice was created via NIP-57 (no LNbits hash to poll) */
+  completionHint?: "default" | "nip57";
 }
 
 export function PaymentQR({
@@ -56,6 +58,7 @@ export function PaymentQR({
   extra,
   error,
   pushPaymentPoll,
+  completionHint = "default",
 }: PaymentQRProps) {
   const [copied, setCopied] = useState(false);
   const [nwcUri, setNwcUri] = useState<string | null>(propNwcUri || null);
@@ -553,7 +556,8 @@ export function PaymentQR({
           headers["x-owner-lnbits-url"] = pushPaymentPoll.ownerLnbitsUrl;
         }
         if (pushPaymentPoll.ownerLnbitsReadKey) {
-          headers["x-owner-lnbits-read-key"] = pushPaymentPoll.ownerLnbitsReadKey;
+          headers["x-owner-lnbits-read-key"] =
+            pushPaymentPoll.ownerLnbitsReadKey;
         }
         if (pushPaymentPoll.ownerBlinkApiKey) {
           headers["x-owner-blink-api-key"] = pushPaymentPoll.ownerBlinkApiKey;
@@ -618,7 +622,10 @@ export function PaymentQR({
       !!pushPaymentPoll?.ownerPubkey &&
       !!pushPaymentPoll?.repo &&
       !!pushPaymentPoll?.payerPubkey;
-    if ((shouldPollPushPaywall || (paymentHash && lnbitsUrl && lnbitsAdminKey)) && !paid) {
+    if (
+      (shouldPollPushPaywall || (paymentHash && lnbitsUrl && lnbitsAdminKey)) &&
+      !paid
+    ) {
       // Initial check
       checkPaymentStatus();
       // Poll every 3 seconds
@@ -802,11 +809,21 @@ export function PaymentQR({
                 <p className="font-medium text-slate-100">
                   When you have finished paying, close this window
                 </p>
-                <p className="mt-1 text-slate-400">
-                  This page cannot see whether your wallet completed the
-                  payment, so it will not update automatically. Use the X above or
-                  tap outside the dialog.
-                </p>
+                {completionHint === "nip57" ? (
+                  <p className="mt-1 text-slate-400">
+                    This dialog does not watch your wallet. After you pay, a
+                    Nostr zap receipt (kind 9735) may show up on relays and in{" "}
+                    <strong>Your Zaps</strong> once it propagates — that can
+                    take a little time and is not used to auto-close this
+                    window.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-slate-400">
+                    This page cannot see whether your wallet completed the
+                    payment, so it will not update automatically. Use the X
+                    above or tap outside the dialog.
+                  </p>
+                )}
               </div>
             )}
           </div>

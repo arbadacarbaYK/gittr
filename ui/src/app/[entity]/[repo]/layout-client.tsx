@@ -16,7 +16,7 @@ import {
   KIND_GIT_REPOSITORIES_LIST,
   parseGitRepositoriesListEvent,
 } from "@/lib/nostr/events";
-import { getZapTotal } from "@/lib/payments/zap-tracker";
+import { useRepoNip57ZapBadgeTotal } from "@/lib/nostr/useRepoNip57ZapBadgeTotal";
 import { canManageSettings, isOwner } from "@/lib/repo-permissions";
 import {
   type StoredContributor,
@@ -116,6 +116,9 @@ const MENU_ITEM_WIDTH = 130;
 const HEADER_RESERVED_WIDTH = 280;
 const FORCED_OVERFLOW_LINKS = new Set(["discussions", "insights", "settings"]);
 
+const WATCH_BUTTON_TITLE =
+  "Watch / unwatch: updates your local list and, with NIP-07, publishes one NIP-51 kind 10018 event (followed Git repos). The protocol is a full current list in that event’s `a` tags — not a separate “patch” per click. Well-behaved relays treat kind 10018 as a replaceable standard list (one live list per you), not an endless history of every edit. Star is different: it only bookmarks in this app for your Stars page unless we add NIP-25 later.";
+
 export default function RepoLayoutClient({
   children,
 }: {
@@ -142,7 +145,7 @@ export default function RepoLayoutClient({
   const [isWatching, setIsWatching] = useState(false);
   const [isStarred, setIsStarred] = useState(false);
   const [starCount, setStarCount] = useState<number>(0);
-  const [zapTotal, setZapTotal] = useState<number>(0);
+  const [forkCount, setForkCount] = useState<number>(0);
   const [issueCount, setIssueCount] = useState<number>(0);
   const [prCount, setPrCount] = useState<number>(0);
   const [showRepoQR, setShowRepoQR] = useState(false);
@@ -181,6 +184,26 @@ export default function RepoLayoutClient({
   const publicReadRaw = (repo as any)?.publicRead;
   const isPrivateRepo =
     publicReadRaw === false || publicReadRaw === "false" || publicReadRaw === 0;
+
+  const ownerHexForZaps = useMemo(() => {
+    if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) return "";
+    return ownerPubkey.toLowerCase();
+  }, [ownerPubkey]);
+
+  const zapBadge = useRepoNip57ZapBadgeTotal({
+    ownerHex: ownerHexForZaps,
+    entity: resolvedParams.entity,
+    repo: resolvedParams.repo,
+    subscribe,
+    defaultRelays,
+    enabled: mounted && !!ownerHexForZaps,
+  });
+
+  const zapBadgeTitle = useMemo(
+    () =>
+      `Tips to this repo’s owner: ${zapBadge.totalSats} sats — ${zapBadge.networkSats} from Nostr zap receipts (kind 9735) seen on your relays for this repo, plus ${zapBadge.localExtraSats} from this browser when not already counted in those receipts.`,
+    [zapBadge]
+  );
 
   // Helper function to generate href for repo links (avoids duplication)
   // Use consistent href on initial render to prevent hydration mismatches
@@ -226,6 +249,12 @@ export default function RepoLayoutClient({
         resolvedParams.repo
       );
       setRepo(foundRepo || null);
+      setForkCount(
+        foundRepo &&
+          typeof (foundRepo as { forks?: unknown }).forks === "number"
+          ? (foundRepo as { forks: number }).forks ?? 0
+          : 0
+      );
 
       // Check if current user is owner
       if (foundRepo && pubkey) {
@@ -618,7 +647,10 @@ export default function RepoLayoutClient({
       ],
       defaultRelays,
       (event) => {
-        if (!latestEvent || (event.created_at || 0) >= (latestEvent.created_at || 0)) {
+        if (
+          !latestEvent ||
+          (event.created_at || 0) >= (latestEvent.created_at || 0)
+        ) {
           latestEvent = event;
         }
       },
@@ -641,23 +673,6 @@ export default function RepoLayoutClient({
     ownerPubkey,
     repo,
     resolvedParams.repo,
-  ]);
-
-  // Update zap total badge (local tracker for now)
-  useEffect(() => {
-    try {
-      const contextId = `${resolvedParams.entity}/${resolvedParams.repo}`;
-      const total = pubkey ? getZapTotal(pubkey, contextId) : 0;
-      setZapTotal(total);
-    } catch {
-      setZapTotal(0);
-    }
-  }, [
-    resolvedParams.entity,
-    resolvedParams.repo,
-    pubkey,
-    isStarred,
-    isWatching,
   ]);
 
   // Dynamic counts for issues/PRs (only open items)
@@ -736,10 +751,20 @@ export default function RepoLayoutClient({
     try {
       const repoId = `${resolvedParams.entity}/${resolvedParams.repo}`;
       const repoIdentifier =
-        (repo as { repositoryName?: string; repo?: string; slug?: string } | null)
-          ?.repositoryName ||
-        (repo as { repositoryName?: string; repo?: string; slug?: string } | null)
-          ?.repo ||
+        (
+          repo as {
+            repositoryName?: string;
+            repo?: string;
+            slug?: string;
+          } | null
+        )?.repositoryName ||
+        (
+          repo as {
+            repositoryName?: string;
+            repo?: string;
+            slug?: string;
+          } | null
+        )?.repo ||
         resolvedParams.repo;
       const repoAddress =
         ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
@@ -762,7 +787,8 @@ export default function RepoLayoutClient({
         setIsWatching(true);
       }
 
-      // Publish canonical NIP-51 Git repositories list (kind 10018) when possible.
+      // NIP-51: kind 10018 is a *standard list* — clients publish the full set of `a`
+      // tags each time (replaceable per pubkey+kind), not a relay-level incremental API.
       if (
         repoAddress &&
         publish &&
@@ -787,14 +813,27 @@ export default function RepoLayoutClient({
           const watchedOwnerPubkey = found
             ? getRepoOwnerPubkey(found, watchedEntity)
             : watchedEntity;
-          if (!watchedOwnerPubkey || !/^[0-9a-f]{64}$/i.test(watchedOwnerPubkey)) {
+          if (
+            !watchedOwnerPubkey ||
+            !/^[0-9a-f]{64}$/i.test(watchedOwnerPubkey)
+          ) {
             return;
           }
           const watchedRepoIdentifier =
-            (found as { repositoryName?: string; repo?: string; slug?: string } | null)
-              ?.repositoryName ||
-            (found as { repositoryName?: string; repo?: string; slug?: string } | null)
-              ?.repo ||
+            (
+              found as {
+                repositoryName?: string;
+                repo?: string;
+                slug?: string;
+              } | null
+            )?.repositoryName ||
+            (
+              found as {
+                repositoryName?: string;
+                repo?: string;
+                slug?: string;
+              } | null
+            )?.repo ||
             watchedRepoName;
           watchedRepoAddresses.add(
             `30617:${watchedOwnerPubkey}:${watchedRepoIdentifier}`
@@ -808,7 +847,10 @@ export default function RepoLayoutClient({
         const unsignedEvent = {
           kind: KIND_GIT_REPOSITORIES_LIST,
           created_at: createdAt,
-          tags: Array.from(watchedRepoAddresses).map((address) => ["a", address]),
+          tags: Array.from(watchedRepoAddresses).map((address) => [
+            "a",
+            address,
+          ]),
           content: "",
           pubkey,
         };
@@ -818,7 +860,10 @@ export default function RepoLayoutClient({
             publish(signedEvent, defaultRelays);
           })
           .catch((error) => {
-            console.warn("[Repo Watch] Failed to publish kind 10018 list:", error);
+            console.warn(
+              "[Repo Watch] Failed to publish kind 10018 list:",
+              error
+            );
           });
       }
 
@@ -1082,24 +1127,29 @@ export default function RepoLayoutClient({
               Actions <ChevronDown className="ml-2 h-4 w-4 text-white" />
             </DropdownMenuTrigger>
             <DropdownMenuContent className="ml-8 mt-2">
-              <DropdownMenuItem key="watch" onClick={handleWatch}>
+              <DropdownMenuItem
+                key="watch"
+                title={WATCH_BUTTON_TITLE}
+                onClick={handleWatch}
+              >
                 <Eye className="mr-2 h-4 w-4" />{" "}
                 {isWatching ? "Unwatch" : "Watch"}
                 <Badge className="ml-2">{isWatching ? 1 : 0}</Badge>
               </DropdownMenuItem>
               <DropdownMenuItem
                 key="zaps"
+                title={zapBadgeTitle}
                 onClick={() => {
                   window.location.href = getRepoLink("", false) + "?zap=true";
                 }}
               >
                 <Zap className="mr-2 h-4 w-4" /> Zaps
-                <Badge className="ml-2">{zapTotal}</Badge>
+                <Badge className="ml-2">{zapBadge.totalSats}</Badge>
               </DropdownMenuItem>
               {/* Relays status not yet implemented */}
               <DropdownMenuItem key="fork" onClick={handleFork}>
                 <GitFork className="mr-2 h-4 w-4" /> Fork
-                <Badge className="ml-2">0</Badge>
+                <Badge className="ml-2">{forkCount}</Badge>
               </DropdownMenuItem>
               <DropdownMenuItem key="star" onClick={handleStar}>
                 <Star
@@ -1121,6 +1171,7 @@ export default function RepoLayoutClient({
               <Button
                 className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
                 variant="outline"
+                title={WATCH_BUTTON_TITLE}
                 onClick={handleWatch}
                 disabled={!mounted || !pubkey}
                 suppressHydrationWarning
@@ -1131,6 +1182,7 @@ export default function RepoLayoutClient({
               </Button>
               <a
                 href={getRepoLink("", false) + "?zap=true"}
+                title={zapBadgeTitle}
                 onClick={(e) => {
                   e.preventDefault();
                   window.location.href = getRepoLink("", false) + "?zap=true";
@@ -1141,7 +1193,7 @@ export default function RepoLayoutClient({
                   variant="outline"
                 >
                   <Zap className="mr-2 h-4 w-4" /> Zaps
-                  <Badge className="ml-2">{zapTotal}</Badge>
+                  <Badge className="ml-2">{zapBadge.totalSats}</Badge>
                 </Button>
               </a>
               {/* Relays status not yet implemented */}
@@ -1153,7 +1205,7 @@ export default function RepoLayoutClient({
                 suppressHydrationWarning
               >
                 <GitFork className="mr-2 h-4 w-4" /> Fork
-                <Badge className="ml-2">0</Badge>
+                <Badge className="ml-2">{forkCount}</Badge>
               </Button>
               <Button
                 className={`h-8 !border-[#383B42] bg-[#22262C] text-xs ${
@@ -1187,43 +1239,43 @@ export default function RepoLayoutClient({
           <div className="flex-1 overflow-x-auto">
             <ul className="my-4 flex items-center gap-x-4 min-w-max">
               {visiblePrimaryItems.map((item, index) => (
-                  <li
-                    key={`${item.name}-${item.link}-${index}`}
-                    className="flex-shrink-0"
-                  >
-                    <a
-                      href={getRepoLink(item.link || "", item.name === "Code")}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        window.location.href = getRepoLink(
-                          item.link || "",
+                <li
+                  key={`${item.name}-${item.link}-${index}`}
+                  className="flex-shrink-0"
+                >
+                  <a
+                    href={getRepoLink(item.link || "", item.name === "Code")}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      window.location.href = getRepoLink(
+                        item.link || "",
+                        item.name === "Code"
+                      );
+                    }}
+                    className={clsx(
+                      "flex items-center whitespace-nowrap border-b-2 border-transparent transition-all ease-in-out px-3 py-4 text-sm cursor-pointer",
+                      {
+                        "border-b-purple-600":
                           item.name === "Code"
-                        );
-                      }}
-                      className={clsx(
-                        "flex items-center whitespace-nowrap border-b-2 border-transparent transition-all ease-in-out px-3 py-4 text-sm cursor-pointer",
-                        {
-                          "border-b-purple-600":
-                            item.name === "Code"
-                              ? pathname ===
-                                `/${resolvedParams.entity}/${resolvedParams.repo}`
-                              : pathname.includes(
-                                  `/${resolvedParams.entity}/${resolvedParams.repo}/${item.link}`
-                                ),
-                        }
-                      )}
-                    >
-                      {item.icon}
-                      {item.name}{" "}
-                      {item.link === "issues" ? (
-                        <Badge className="ml-2">{issueCount}</Badge>
-                      ) : item.link === "pulls" ? (
-                        <Badge className="ml-2">{prCount}</Badge>
-                      ) : null}
-                    </a>
-                  </li>
-                ))}
+                            ? pathname ===
+                              `/${resolvedParams.entity}/${resolvedParams.repo}`
+                            : pathname.includes(
+                                `/${resolvedParams.entity}/${resolvedParams.repo}/${item.link}`
+                              ),
+                      }
+                    )}
+                  >
+                    {item.icon}
+                    {item.name}{" "}
+                    {item.link === "issues" ? (
+                      <Badge className="ml-2">{issueCount}</Badge>
+                    ) : item.link === "pulls" ? (
+                      <Badge className="ml-2">{prCount}</Badge>
+                    ) : null}
+                  </a>
+                </li>
+              ))}
             </ul>
           </div>
 
@@ -1248,41 +1300,41 @@ export default function RepoLayoutClient({
               }}
             >
               {overflowMenuItems.map((item, index) => (
-                  <DropdownMenuItem
-                    key={`${item.name}-${item.link}-${index}`}
-                    className="p-0"
-                    onSelect={(e) => {
+                <DropdownMenuItem
+                  key={`${item.name}-${item.link}-${index}`}
+                  className="p-0"
+                  onSelect={(e) => {
+                    e.preventDefault();
+                  }}
+                >
+                  <a
+                    href={getRepoLink(item.link || "", item.name === "Code")}
+                    onClick={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
+                      window.location.href = getRepoLink(
+                        item.link || "",
+                        item.name === "Code"
+                      );
                     }}
-                  >
-                    <a
-                      href={getRepoLink(item.link || "", item.name === "Code")}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        window.location.href = getRepoLink(
-                          item.link || "",
+                    className={clsx(
+                      "w-full flex h-9 items-center whitespace-nowrap border-transparent transition-all ease-in-out p-4 text-sm text-white hover:bg-purple-600",
+                      {
+                        "border-b-purple-600":
                           item.name === "Code"
-                        );
-                      }}
-                      className={clsx(
-                        "w-full flex h-9 items-center whitespace-nowrap border-transparent transition-all ease-in-out p-4 text-sm text-white hover:bg-purple-600",
-                        {
-                          "border-b-purple-600":
-                            item.name === "Code"
-                              ? pathname ===
-                                `/${resolvedParams.entity}/${resolvedParams.repo}`
-                              : pathname.includes(
-                                  `/${resolvedParams.entity}/${resolvedParams.repo}/${item.link}`
-                                ),
-                        }
-                      )}
-                    >
-                      {item.icon}
-                      {item.name}
-                    </a>
-                  </DropdownMenuItem>
-                ))}
+                            ? pathname ===
+                              `/${resolvedParams.entity}/${resolvedParams.repo}`
+                            : pathname.includes(
+                                `/${resolvedParams.entity}/${resolvedParams.repo}/${item.link}`
+                              ),
+                      }
+                    )}
+                  >
+                    {item.icon}
+                    {item.name}
+                  </a>
+                </DropdownMenuItem>
+              ))}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

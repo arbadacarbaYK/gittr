@@ -257,10 +257,10 @@ export default function HelpPage() {
             <li>
               •{" "}
               <Link
-                href="/settings/payments"
+                href="/settings/account"
                 className="text-cyan-400 hover:text-cyan-300"
               >
-                Payment Methods
+                Account &amp; payments
               </Link>
             </li>
           </ul>
@@ -469,8 +469,12 @@ export default function HelpPage() {
                 3. Set Up Payments (Optional)
               </h3>
               <p>
-                Go to Settings → Payments to configure LNbits, LNURL, or NWC for
-                receiving zaps and bounties.
+                Go to Settings → Account to configure LNbits (send/receive
+                keys), Lightning address (
+                <code className="text-gray-400">lud16</code> /{" "}
+                <code className="text-gray-400">lnurl</code> receive), or NWC.
+                Repository-specific overrides live under each repo&apos;s
+                Settings → Payment configuration.
               </p>
             </div>
           </div>
@@ -640,6 +644,32 @@ export default function HelpPage() {
                 <li>
                   <span className="text-red-400">Push Failed</span> -
                   Publication attempt failed
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">
+                Repo toolbar: Watch, Star, Zaps
+              </h3>
+              <ul className="list-disc list-inside space-y-1 ml-4 text-sm text-gray-300">
+                <li>
+                  <strong>Watch</strong> — saves to this browser and, with
+                  NIP-07, publishes your <strong>NIP-51 kind 10018</strong>{" "}
+                  followed-repos list. Each change sends <em>one</em> event
+                  whose <code className="text-gray-400">a</code> tags are the{" "}
+                  <em>full</em> current list (that is how the spec works; relays
+                  treat it as replaceable, not an endless log of micro-updates).
+                </li>
+                <li>
+                  <strong>Star</strong> — bookmarks in this app for your{" "}
+                  <strong>Stars</strong> page (local list + counter). It is not
+                  the same as Watch and is not the same as a NIP-25 reaction
+                  unless we wire that separately.
+                </li>
+                <li>
+                  <strong>Zaps</strong> — shortcut to tip; totals combine Nostr
+                  zap receipts and this device&apos;s ledger where relevant.
                 </li>
               </ul>
             </div>
@@ -1123,9 +1153,10 @@ export default function HelpPage() {
                 </p>
                 <ul className="text-sm text-yellow-100 list-disc list-inside space-y-1 ml-2">
                   <li>
-                    Repo owners must configure either <strong>LNbits Invoice
-                    Key</strong> or <strong>Blink API Key</strong> in Settings
-                    -&gt; Account before enabling non-zero Push Cost.
+                    Repo owners must configure either{" "}
+                    <strong>LNbits Invoice Key</strong> or{" "}
+                    <strong>Blink API Key</strong> in Settings -&gt; Account
+                    before enabling non-zero Push Cost.
                   </li>
                   <li>
                     If a repo has <strong>Push Cost (sats)</strong> above zero,
@@ -1137,7 +1168,10 @@ export default function HelpPage() {
                   </li>
                   <li>
                     For SSH pushes, if authorization is missing/expired the
-                    terminal may print a <code className="bg-gray-800 px-1 rounded">pending invoice (BOLT11)</code>{" "}
+                    terminal may print a{" "}
+                    <code className="bg-gray-800 px-1 rounded">
+                      pending invoice (BOLT11)
+                    </code>{" "}
                     directly. Pay it, then run{" "}
                     <code className="bg-gray-800 px-1 rounded">git push</code>{" "}
                     again.
@@ -1366,8 +1400,128 @@ export default function HelpPage() {
                 Zaps
               </h3>
               <p>
-                Zap repositories to support contributors. Zaps are split
-                automatically based on contributor weights.
+                Zap a repository to tip the owner (and optionally split among
+                contributors). <strong>Owner only</strong> resolves where the
+                invoice is paid <em>to</em> using the priority below. When the
+                LNURL-pay endpoint supports NIP-57, gittr requests a real zap
+                invoice. <strong>Split</strong> mode mints the invoice from{" "}
+                <strong>your</strong> LNbits wallet (repo payment config first,
+                then Settings → Account) plus the SplitPayments extension — it
+                does not rely on Nostr zap receipts for routing.
+              </p>
+
+              <div className="mt-4 overflow-x-auto rounded border border-slate-600">
+                <table className="w-full min-w-[640px] text-left text-sm text-gray-300">
+                  <thead className="bg-slate-800/80 text-slate-100">
+                    <tr>
+                      <th className="p-3 font-semibold">Flow</th>
+                      <th className="p-3 font-semibold">Payer (sender)</th>
+                      <th className="p-3 font-semibold">Recipient / repo</th>
+                      <th className="p-3 font-semibold">How gittr confirms</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700">
+                    <tr className="bg-slate-900/40">
+                      <td className="p-3 align-top font-medium text-white">
+                        Repo zap — Owner only
+                      </td>
+                      <td className="p-3 align-top">
+                        NIP-07 extension to sign a zap request when NIP-57 is
+                        available; any Lightning wallet to pay the invoice. Your{" "}
+                        <strong>LNbits / NWC send</strong> in Settings → Account
+                        is only for polling when gittr issued the invoice
+                        through the fallback server path.
+                      </td>
+                      <td className="p-3 align-top">
+                        <strong>Receive address priority:</strong> (1) owner
+                        Nostr kind 0{" "}
+                        <code className="text-gray-400">lud16</code> /{" "}
+                        <code className="text-gray-400">lnurl</code> / NWC
+                        receive, (2) if <em>you</em> are that owner, your
+                        Settings → Account receive fields, (3) else Repo →
+                        Payment configuration receive fields. LNURL must
+                        advertise{" "}
+                        <code className="text-gray-400">allowsNostr</code> for
+                        the NIP-57 path.
+                      </td>
+                      <td className="p-3 align-top">
+                        <strong>NIP-57:</strong> the page does not auto-detect
+                        your wallet; a kind 9735 receipt may appear in{" "}
+                        <strong>Your Zaps</strong> after relays gossip it.{" "}
+                        <strong>Fallback invoice</strong> (no NIP-57): same
+                        modal notice; LNbits keys in <em>your</em> account may
+                        allow polling when gittr created the invoice
+                        server-side.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 align-top font-medium text-white">
+                        Repo zap — Split
+                      </td>
+                      <td className="p-3 align-top">
+                        <strong>Send wallet priority:</strong> (1) Repo →
+                        Payment configuration LNbits URL + admin key if set, (2)
+                        otherwise Settings → Account. SplitPayments targets in
+                        that LNbits wallet must match contributor Lightning
+                        addresses.
+                      </td>
+                      <td className="p-3 align-top">
+                        Each included contributor needs a discoverable Lightning
+                        address (Nostr profile or linked identity).
+                      </td>
+                      <td className="p-3 align-top">
+                        LNbits invoice / wallet state — designed for reliable
+                        server-side settlement, not Nostr gossip latency.
+                      </td>
+                    </tr>
+                    <tr className="bg-slate-900/40">
+                      <td className="p-3 align-top font-medium text-white">
+                        Bounties
+                      </td>
+                      <td className="p-3 align-top">
+                        Bounty creator: <strong>LNbits URL + admin key</strong>{" "}
+                        in Settings → Account (creates withdraw links from that
+                        wallet).
+                      </td>
+                      <td className="p-3 align-top">
+                        PR author: Lightning address on their Nostr profile for
+                        claim payout.
+                      </td>
+                      <td className="p-3 align-top">
+                        LNbits withdraw link lifecycle (reserve, release, claim)
+                        — must stay fast and auditable on the server.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 align-top font-medium text-white">
+                        Pay-to-merge / push paywall
+                      </td>
+                      <td className="p-3 align-top">
+                        Payer uses the shown invoice; optional NWC / WebLN from
+                        Settings → Account.
+                      </td>
+                      <td className="p-3 align-top">
+                        Repo owner: keys under{" "}
+                        <strong>Repo → Payment configuration</strong> (and/or
+                        global account keys per push flow) so gittr / the bridge
+                        can verify settlement — see setup docs for the exact key
+                        types.
+                      </td>
+                      <td className="p-3 align-top">
+                        Server checks invoice / push policy — not NIP-57
+                        receipts.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <p className="mt-3 text-sm text-slate-400">
+                Rows above describe <strong>what each flow needs</strong>, not
+                every optional shortcut. <strong>Bounty creation</strong> always
+                uses the bounty creator&apos;s keys from{" "}
+                <strong>Settings → Account</strong> (not the repo&apos;s LNbits
+                send configuration).
               </p>
 
               <div className="mt-3 p-3 bg-purple-900/20 border border-purple-600/50 rounded">
