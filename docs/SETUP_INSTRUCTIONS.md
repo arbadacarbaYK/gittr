@@ -501,6 +501,47 @@ After the **`pages.gittr.space`** HTTP `server` block is in place and DNS resolv
 sudo certbot --nginx -d pages.gittr.space
 ```
 
+**Per-site links (`*.pages.gittr.space`):** The nsite gateway’s **Status** page links to hostnames like `{id}.pages.gittr.space`. The apex record **`pages`** alone is **not** enough: Firefox fails because those hostnames **do not resolve** until you add a **wildcard** DNS name and a **wildcard TLS** certificate.
+
+1. **Cloudflare** (zone `gittr.space`) → **DNS** → **Add record**  
+   - **Type:** A  
+   - **Name:** `*.pages` (this covers any `something.pages.gittr.space`)  
+   - **IPv4:** same server as `pages`  
+   - **Proxy:** **DNS only** (grey cloud) so Let’s Encrypt on **your nginx** can validate and serve HTTPS for arbitrary subdomains.
+
+2. **Wait for DNS**, then check: `dig +short randomtest.pages.gittr.space A` → should return your server IP.
+
+3. **Wildcard certificate** (HTTP-01 cannot issue `*.`; use **DNS-01** with Cloudflare):
+
+   ```bash
+   sudo apt install -y python3-certbot-dns-cloudflare
+   sudo install -d -m 700 /root/.secrets
+   sudo nano /root/.secrets/cloudflare.ini
+   ```
+
+   Put only (create a **Zone → DNS → Edit** API token in Cloudflare for `gittr.space`):
+
+   ```ini
+   dns_cloudflare_api_token = YOUR_TOKEN_HERE
+   ```
+
+   ```bash
+   sudo chmod 600 /root/.secrets/cloudflare.ini
+   sudo certbot certonly --dns-cloudflare --dns-cloudflare-credentials /root/.secrets/cloudflare.ini \
+     --cert-name pages-gittr-wildcard \
+     -d 'pages.gittr.space' -d '*.pages.gittr.space' \
+     --non-interactive --agree-tos --register-unsafely-without-email
+   ```
+
+4. **nginx:** In the `server { ... }` block that serves **gittr Pages**, set both names and point SSL to the new cert:
+
+   - `server_name pages.gittr.space *.pages.gittr.space;`
+   - `ssl_certificate` / `ssl_certificate_key` → `/etc/letsencrypt/live/pages-gittr-wildcard/fullchain.pem` and `privkey.pem` (adjust if you chose a different `--cert-name`).
+
+   Then: `sudo nginx -t && sudo systemctl reload nginx`.
+
+The built-in **Status** UI (table vs cards, search) comes from **upstream nsite-gateway**; changing it means **forking** that project or putting a **custom front** in front of the gateway—not something gittr’s Next.js app controls today.
+
 ### Step 14: Configure SSL Certificate
 
 ```bash
