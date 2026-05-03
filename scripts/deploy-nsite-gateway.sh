@@ -33,20 +33,24 @@ ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "mkdir -p '${REMOTE}/public'"
 scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/docker-compose.yml" "root@${HOST}:${REMOTE}/"
 scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/README.md" "root@${HOST}:${REMOTE}/"
 scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/.env.example" "root@${HOST}:${REMOTE}/"
+scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/gittr-pages.production.env" "root@${HOST}:${REMOTE}/"
 scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/nginx-pages.gittr.space.conf.example" "root@${HOST}:${REMOTE}/"
-scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/public/index.html" "root@${HOST}:${REMOTE}/public/"
+scp -i "$KEY" -q "$ROOT"/infra/nsite-gateway/public/* "root@${HOST}:${REMOTE}/public/"
 
-echo "🔧 Ensuring .env on server (never overwrites existing .env)..."
-ssh -i "$KEY" "root@${HOST}" "cd '${REMOTE}' && (test -f .env || cp .env.example .env)"
+echo "🔧 Installing Docker if missing (Debian/Ubuntu, non-interactive)..."
+ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" 'export DEBIAN_FRONTEND=noninteractive
+  if command -v docker >/dev/null 2>&1; then echo "Docker already installed"; exit 0; fi
+  apt-get update -qq
+  # Ubuntu 24.04+ uses docker-compose-v2 (provides `docker compose`); older releases use docker-compose-plugin
+  apt-get install -y -qq docker.io docker-compose-v2 || apt-get install -y -qq docker.io docker-compose-plugin
+  systemctl enable --now docker
+  docker --version
+'
 
-echo "🐳 Pulling image and restarting stack (requires Docker on server)..."
-ssh -i "$KEY" "root@${HOST}" "command -v docker >/dev/null 2>&1" || {
-  echo "❌ Docker not found on server. On Debian/Ubuntu:"
-  echo "   sudo apt update && sudo apt install -y docker.io docker-compose-plugin"
-  echo "   sudo systemctl enable --now docker"
-  exit 1
-}
+echo "🔧 Writing production .env on server (from gittr-pages.production.env)..."
+ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "install -m 0600 -T '${REMOTE}/gittr-pages.production.env' '${REMOTE}/.env'"
 
-ssh -i "$KEY" "root@${HOST}" "cd '${REMOTE}' && docker compose pull && docker compose up -d"
+echo "🐳 Pulling image and restarting stack..."
+ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "cd '${REMOTE}' && docker compose pull && docker compose up -d"
 
 echo "✅ nsite gateway should be listening on host port 3040 (proxy https://pages.gittr.space → 127.0.0.1:3040 per SETUP_INSTRUCTIONS.md)."

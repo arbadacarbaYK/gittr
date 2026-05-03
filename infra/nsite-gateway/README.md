@@ -32,6 +32,8 @@ Runs **[hzrd149/nsite-gateway](https://github.com/hzrd149/nsite-gateway)** in Do
 
 If you use a **private** `upload_to_hetzner.sh` (often gitignored), either **run this script once after every upload** or paste the block from the repo’s `upload_to_hetzner.sh` (search for `gittr Pages`) into your copy so production gets the gateway, not only GitHub.
 
+The **`public/`** folder must keep upstream **`styles.css`** and **`favicon.ico`** (the gateway reads them at startup). Only replace **`index.html`** for gittr Pages branding.
+
 ## Local quick start
 
 ```bash

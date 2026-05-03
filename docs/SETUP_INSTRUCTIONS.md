@@ -484,7 +484,8 @@ chmod +x scripts/deploy-nsite-gateway.sh
 ./scripts/deploy-nsite-gateway.sh YOUR_SERVER_IP
 ```
 
-**Server prerequisites:** Docker Engine + Compose plugin (`docker compose`). Example: `sudo apt install -y docker.io docker-compose-plugin` and `sudo systemctl enable --now docker`.
+**Server prerequisites:** Docker Engine + **`docker compose`**. On **Ubuntu 24.04** use `docker-compose-v2` (not always named `docker-compose-plugin`):  
+`sudo apt install -y docker.io docker-compose-v2` then `sudo systemctl enable --now docker`.
 
 If you keep a **private** `upload_to_hetzner.sh` (often gitignored), run **`./scripts/deploy-nsite-gateway.sh`** after each upload, or merge the `gittr Pages` block from the repo’s tracked `upload_to_hetzner.sh` into your copy.
 
