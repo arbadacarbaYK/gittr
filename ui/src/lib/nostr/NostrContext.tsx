@@ -24,6 +24,7 @@ import { nip19 } from "nostr-tools";
 import useLocalStorage from "../hooks/useLocalStorage";
 
 import { WEB_STORAGE_KEYS } from "./localStorage";
+import { getDefaultRelayUrls } from "./relay-env";
 import {
   RemoteSignerManager,
   loadStoredRemoteSignerSession,
@@ -49,46 +50,8 @@ declare global {
   }
 }
 
-// Get relays from environment variable (NEXT_PUBLIC_NOSTR_RELAYS)
-// NEXT_PUBLIC_NOSTR_RELAYS should be a comma-separated list: "wss://relay1.com,wss://relay2.com"
-// In Next.js, NEXT_PUBLIC_* vars are replaced at build time, so we can access them directly
-// If not set, falls back to minimal defaults (should be configured via .env.local)
-const getRelays = (): string[] => {
-  const envRelays = process.env.NEXT_PUBLIC_NOSTR_RELAYS;
-
-  // NOTE: console.log here runs at BUILD TIME (server-side), not in browser
-  // Browser-side logging happens in the Provider component below
-
-  if (envRelays && envRelays.trim().length > 0) {
-    const parsed = envRelays
-      .split(",")
-      .map((r) => {
-        const trimmed = r.trim();
-        // Fix common typos (wwss -> wss)
-        if (trimmed.startsWith("wwss://")) {
-          return trimmed.replace("wwss://", "wss://");
-        }
-        return trimmed;
-      })
-      .filter((r) => r.length > 0 && r.startsWith("wss://"))
-      // Remove duplicates
-      .filter((r, index, self) => self.indexOf(r) === index);
-
-    if (parsed.length > 0) {
-      return parsed;
-    }
-  }
-
-  // In dev, avoid default relays unless explicitly configured to reduce noise/lag
-  if (process.env.NODE_ENV === "development") {
-    return [];
-  }
-
-  // Minimal fallback - should not be used in production (configure via .env.local)
-  return ["wss://relay.damus.io"];
-};
-
-const defaultRelays = getRelays();
+// NEXT_PUBLIC_NOSTR_RELAYS — see getDefaultRelayUrls() in relay-env.ts
+const defaultRelays = getDefaultRelayUrls();
 const relayPool = new RelayPool(defaultRelays);
 
 const NostrContext = createContext<{
