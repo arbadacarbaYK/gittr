@@ -9,6 +9,7 @@ import { KIND_LABEL_OVERLAY, KIND_PULL_REQUEST } from "@/lib/nostr/events";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { loadStoredRepos } from "@/lib/repos/storage";
+import { repoAllowsUserToManagePRsAndIssues } from "@/lib/stats";
 import {
   formatDate24h,
   formatDateTime24h,
@@ -84,32 +85,11 @@ export default function PullsPage({}) {
         localStorage.getItem("gittr_repos") || "[]"
       ) as any[];
 
-      // Filter to only repos owned by the logged-in user
-      const userRepos = repos.filter((repo: any) => {
-        if (!currentUserPubkey) return false;
-        // Check if user owns this repo
-        const ownerPubkey =
-          repo.ownerPubkey ||
-          repo.contributors?.find((c: any) => c.weight === 100)?.pubkey ||
-          (repo.entity && /^[0-9a-f]{64}$/i.test(repo.entity)
-            ? repo.entity
-            : null);
-        if (!ownerPubkey) return false;
-        // Match by full pubkey or 8-char prefix
-        return (
-          ownerPubkey === currentUserPubkey ||
-          (ownerPubkey.length === 64 &&
-            ownerPubkey
-              .toLowerCase()
-              .startsWith(currentUserPubkey.slice(0, 8).toLowerCase())) ||
-          (currentUserPubkey.length === 64 &&
-            currentUserPubkey
-              .toLowerCase()
-              .startsWith(ownerPubkey.slice(0, 8).toLowerCase())) ||
-          (repo.entity &&
-            repo.entity === currentUserPubkey.slice(0, 8).toLowerCase())
-        );
-      });
+      const userRepos = repos.filter((repo: any) =>
+        currentUserPubkey
+          ? repoAllowsUserToManagePRsAndIssues(repo, currentUserPubkey)
+          : false
+      );
 
       // Load PRs from each repo owned by user
       userRepos.forEach((repo: any) => {
@@ -273,28 +253,9 @@ export default function PullsPage({}) {
     const fetchFromGitHub = async () => {
       try {
         const repos = loadStoredRepos();
-        const userRepos = repos.filter((repo: any) => {
-          const ownerPubkey =
-            repo.ownerPubkey ||
-            repo.contributors?.find((c: any) => c.weight === 100)?.pubkey ||
-            (repo.entity && /^[0-9a-f]{64}$/i.test(repo.entity)
-              ? repo.entity
-              : null);
-          if (!ownerPubkey) return false;
-          return (
-            ownerPubkey === currentUserPubkey ||
-            (ownerPubkey.length === 64 &&
-              ownerPubkey
-                .toLowerCase()
-                .startsWith(currentUserPubkey.slice(0, 8).toLowerCase())) ||
-            (currentUserPubkey.length === 64 &&
-              currentUserPubkey
-                .toLowerCase()
-                .startsWith(ownerPubkey.slice(0, 8).toLowerCase())) ||
-            (repo.entity &&
-              repo.entity === currentUserPubkey.slice(0, 8).toLowerCase())
-          );
-        });
+        const userRepos = repos.filter((repo: any) =>
+          repoAllowsUserToManagePRsAndIssues(repo, currentUserPubkey)
+        );
 
         // Fetch from GitHub for repos with sourceUrl
         for (const repo of userRepos) {
@@ -447,28 +408,9 @@ export default function PullsPage({}) {
       return;
 
     const repos = loadStoredRepos();
-    const userRepos = repos.filter((repo: any) => {
-      const ownerPubkey =
-        repo.ownerPubkey ||
-        repo.contributors?.find((c: any) => c.weight === 100)?.pubkey ||
-        (repo.entity && /^[0-9a-f]{64}$/i.test(repo.entity)
-          ? repo.entity
-          : null);
-      if (!ownerPubkey) return false;
-      return (
-        ownerPubkey === currentUserPubkey ||
-        (ownerPubkey.length === 64 &&
-          ownerPubkey
-            .toLowerCase()
-            .startsWith(currentUserPubkey.slice(0, 8).toLowerCase())) ||
-        (currentUserPubkey.length === 64 &&
-          currentUserPubkey
-            .toLowerCase()
-            .startsWith(ownerPubkey.slice(0, 8).toLowerCase())) ||
-        (repo.entity &&
-          repo.entity === currentUserPubkey.slice(0, 8).toLowerCase())
-      );
-    });
+    const userRepos = repos.filter((repo: any) =>
+      repoAllowsUserToManagePRsAndIssues(repo, currentUserPubkey)
+    );
 
     if (userRepos.length === 0) return;
 
@@ -903,6 +845,38 @@ export default function PullsPage({}) {
     return filtered;
   }, [allPRs, prType, search, currentUserPubkey]);
 
+  /** Open/closed totals: all PRs in managed repos (search only), not "Created" tab */
+  const prsForStatusCounts = useMemo(() => {
+    let filtered = [...allPRs];
+    if (search.trim()) {
+      const query = search.toLowerCase();
+      filtered = filtered.filter((pr) => {
+        let entityDisplay = pr.entity || "";
+        if (
+          entityDisplay &&
+          !entityDisplay.startsWith("npub") &&
+          /^[0-9a-f]{64}$/i.test(entityDisplay)
+        ) {
+          try {
+            entityDisplay =
+              nip19.npubEncode(entityDisplay).substring(0, 16) + "...";
+          } catch {
+            entityDisplay = entityDisplay.substring(0, 16) + "...";
+          }
+        } else if (entityDisplay && entityDisplay.startsWith("npub")) {
+          entityDisplay = entityDisplay.substring(0, 16) + "...";
+        }
+        return (
+          pr.title.toLowerCase().includes(query) ||
+          `${entityDisplay}/${pr.repo || ""}`.toLowerCase().includes(query) ||
+          (pr.author || "").toLowerCase().includes(query) ||
+          (pr.tags || []).some((tag) => tag.toLowerCase().includes(query))
+        );
+      });
+    }
+    return filtered;
+  }, [allPRs, search]);
+
   // Filter by status and sort for rendered list
   const filteredPRs = useMemo(() => {
     const filtered = prsForCurrentView.filter((pr) => {
@@ -919,12 +893,18 @@ export default function PullsPage({}) {
   }, [prsForCurrentView, prStatus]);
 
   const openCount = useMemo(
-    () => prsForCurrentView.filter((pr) => (pr.status || "open") === "open").length,
-    [prsForCurrentView]
+    () =>
+      prsForStatusCounts.filter((pr) => (pr.status || "open") === "open")
+        .length,
+    [prsForStatusCounts]
   );
   const closedCount = useMemo(
-    () => prsForCurrentView.filter((pr) => (pr.status || "open") !== "open").length,
-    [prsForCurrentView]
+    () =>
+      prsForStatusCounts.filter((pr) => {
+        const s = pr.status || "open";
+        return s === "closed" || s === "merged";
+      }).length,
+    [prsForStatusCounts]
   );
 
   // Collect all unique entity pubkeys for metadata fetching

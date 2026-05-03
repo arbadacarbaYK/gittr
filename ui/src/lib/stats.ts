@@ -625,6 +625,38 @@ export function getRecentActivity(
 }
 
 /**
+ * True if the user can manage PRs/issues for this repo (owner or maintainer).
+ * Matches the scope used by getOpenPRsAndIssues when userPubkey is set.
+ */
+export function repoAllowsUserToManagePRsAndIssues(
+  repo: any,
+  userPubkey: string
+): boolean {
+  const entity =
+    repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
+  const repoName =
+    repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
+  if (!entity || !repoName) return false;
+  if (isRepoDeleted(entity, repoName)) return false;
+
+  const normalizedPubkey = userPubkey.toLowerCase();
+  const isOwner =
+    repo.ownerPubkey && repo.ownerPubkey.toLowerCase() === normalizedPubkey;
+  if (isOwner) return true;
+
+  const contributor = repo.contributors?.find(
+    (c: any) => c.pubkey && c.pubkey.toLowerCase() === normalizedPubkey
+  );
+  const isMaintainer =
+    contributor &&
+    (contributor.role === "maintainer" ||
+      (contributor.weight &&
+        contributor.weight >= 50 &&
+        contributor.weight < 100));
+  return !!isMaintainer;
+}
+
+/**
  * Get open PRs and Issues statistics
  * @param userPubkey - Optional: filter to repos where user has write access (owner or maintainer only)
  *                      CRITICAL: Only shows repos where user can merge PRs/manage issues
@@ -677,36 +709,10 @@ export function getOpenPRsAndIssues(userPubkey?: string | null): {
     const repoName =
       repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
     if (!entity || !repoName) return;
-
-    // Skip if repo is deleted
     if (isRepoDeleted(entity, repoName)) return;
 
-    // If userPubkey provided, only include repos where user has WRITE access (owner or maintainer)
-    // This ensures users only see PRs/Issues from repos they can actually manage
-    if (userPubkey) {
-      const normalizedPubkey = userPubkey.toLowerCase();
-
-      // Check if owner
-      const isOwner =
-        repo.ownerPubkey && repo.ownerPubkey.toLowerCase() === normalizedPubkey;
-      if (isOwner) {
-        // Owner has write access, continue
-      } else {
-        // Check if maintainer (has write access but not owner)
-        const contributor = repo.contributors?.find(
-          (c: any) => c.pubkey && c.pubkey.toLowerCase() === normalizedPubkey
-        );
-        const isMaintainer =
-          contributor &&
-          (contributor.role === "maintainer" ||
-            (contributor.weight &&
-              contributor.weight >= 50 &&
-              contributor.weight < 100));
-        if (!isMaintainer) {
-          // User doesn't have write access, skip this repo
-          return;
-        }
-      }
+    if (userPubkey && !repoAllowsUserToManagePRsAndIssues(repo, userPubkey)) {
+      return;
     }
 
     // Get PRs
