@@ -572,7 +572,10 @@ This will automatically update the nginx config with SSL certificates.
 NEXT_PUBLIC_DOMAIN=gittr.space
 NEXT_PUBLIC_GIT_SSH_BASE=gittr.space
 NEXT_PUBLIC_SITE_URL=https://gittr.space
+NEXT_PUBLIC_GITTR_PAGES_URL=https://pages.gittr.space
 ```
+
+The optional **`NEXT_PUBLIC_GITTR_PAGES_URL`** (no trailing slash) powers the in-app **Pages** nav link and `/pages` hub; default in code is `https://pages.gittr.space` if unset.
 
 **Note:** `NEXT_PUBLIC_SITE_URL` is used for:
 

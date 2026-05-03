@@ -39,6 +39,10 @@ const HeaderConfig = {
       href: "/explore",
     },
     {
+      title: "Pages",
+      href: "/pages",
+    },
+    {
       title: "Bounty Hunt",
       href: "/bounty-hunt",
     },
