@@ -146,23 +146,95 @@ export function getZapTotal(recipient: string, contextId?: string): number {
   return getZapCount(recipient, contextId);
 }
 
+/** Millisats from embedded zap request (kind 9734) tags. */
+export function amountMsatFromZapRequestTags(
+  tags: string[][] | undefined
+): number {
+  if (!Array.isArray(tags)) return 0;
+  for (const t of tags) {
+    if (!Array.isArray(t) || t.length < 2) continue;
+    if (String(t[0]).toLowerCase() !== "amount") continue;
+    const v = String(t[1]).trim();
+    const n = parseInt(v, 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+}
+
+/**
+ * Satoshis from a BOLT11 invoice human-readable prefix (BOLT #11).
+ * Supports lnbc / lntb / lnbcrt. Returns 0 for "any amount" invoices (no numeric HRP).
+ */
+export function satoshisFromBolt11Invoice(bolt11: string | undefined): number {
+  if (!bolt11 || typeof bolt11 !== "string") return 0;
+  const lower = bolt11.trim().toLowerCase();
+  const m = lower.match(/^(lnbc|lntb|lnbcrt)(?:(\d+)([munp]?))?1/);
+  if (!m || !m[2]) return 0;
+  const num = parseInt(m[2], 10);
+  if (!Number.isFinite(num) || num <= 0) return 0;
+  const mult = m[3] || "";
+  const e =
+    mult === "m"
+      ? -3
+      : mult === "u"
+      ? -6
+      : mult === "n"
+      ? -9
+      : mult === "p"
+      ? -12
+      : 0;
+  return Math.round(num * Math.pow(10, 8 + e));
+}
+
+function parseEmbeddedZapRequestJson(
+  desc: string
+): { tags: string[][]; content: string; pubkey: string } | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(desc);
+  } catch {
+    return null;
+  }
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const tags = Array.isArray(o.tags) ? (o.tags as string[][]) : [];
+  const content = typeof o.content === "string" ? o.content : "";
+  const pubkey = typeof o.pubkey === "string" ? o.pubkey : "";
+  return { tags, content, pubkey };
+}
+
 /** Map NIP-57 zap receipt (kind 9735) to a ZapRecord for the Your Zaps UI */
 export function zapReceipt9735ToRecord(ev: Event): ZapRecord | null {
   if (ev.kind !== 9735) return null;
   const desc = ev.tags.find((t) => t[0] === "description")?.[1];
   if (!desc) return null;
+  const bolt11 = ev.tags.find((t) => t[0] === "bolt11")?.[1];
+  const outerRecipient = ev.tags.find((t) => t[0] === "p")?.[1]?.trim() || "";
+  const outerZapper = ev.tags.find((t) => t[0] === "P")?.[1]?.trim() || "";
+
   try {
-    const zr = JSON.parse(desc) as {
-      pubkey?: string;
-      content?: string;
-      tags?: string[][];
-    };
-    const amountTag = zr.tags?.find((t) => t[0] === "amount")?.[1];
-    const msat = amountTag ? parseInt(amountTag, 10) : 0;
-    const amountSats = msat > 0 ? Math.floor(msat / 1000) : 0;
-    const recipientTag = zr.tags?.find((t) => t[0] === "p")?.[1] || "";
-    const senderPub = zr.pubkey || "";
-    const content = (zr.content || "") as string;
+    const zr = parseEmbeddedZapRequestJson(desc);
+    if (!zr) return null;
+
+    const msat = amountMsatFromZapRequestTags(zr.tags);
+    let amountSats = msat > 0 ? Math.floor(msat / 1000) : 0;
+    if (amountSats <= 0 && bolt11) {
+      amountSats = satoshisFromBolt11Invoice(bolt11);
+    }
+
+    const innerRecipient =
+      zr.tags?.find((t) => t[0] === "p")?.[1]?.trim() || "";
+    const recipientTag = innerRecipient || outerRecipient;
+
+    const senderPub = (zr.pubkey || outerZapper || "").trim();
+    const content = zr.content || "";
     const isRepoZap = /^Zap for .+\/.+/i.test(content.trim());
     const ctx = content.match(/^Zap for (.+)/i)?.[1]?.trim();
     return {
