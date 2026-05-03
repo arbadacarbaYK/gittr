@@ -7,7 +7,6 @@
 services:
   nsite-gateway:
     image: ghcr.io/hzrd149/nsite-gateway:master
-    pull_policy: if_not_present
     restart: unless-stopped
     ports:
       - "3040:3000"
