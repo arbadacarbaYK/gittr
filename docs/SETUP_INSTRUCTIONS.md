@@ -477,10 +477,27 @@ server {
 }
 ```
 
+**gittr Pages (nsite gateway):** After DNS for **`pages.gittr.space`** points at this server, merge **`infra/nsite-gateway/nginx-pages.gittr.space.conf.example`** into `sites-available/gittr` (HTTP-only first). Deploy the gateway from your laptop (files under **`/opt/ngit/infra/nsite-gateway`**):
+
+```bash
+chmod +x scripts/deploy-nsite-gateway.sh
+./scripts/deploy-nsite-gateway.sh YOUR_SERVER_IP
+```
+
+**Server prerequisites:** Docker Engine + Compose plugin (`docker compose`). Example: `sudo apt install -y docker.io docker-compose-plugin` and `sudo systemctl enable --now docker`.
+
+If you keep a **private** `upload_to_hetzner.sh` (often gitignored), run **`./scripts/deploy-nsite-gateway.sh`** after each upload, or merge the `gittr Pages` block from the repo’s tracked `upload_to_hetzner.sh` into your copy.
+
 ```bash
 sudo ln -s /etc/nginx/sites-available/gittr /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
+```
+
+After the **`pages.gittr.space`** HTTP `server` block is in place and DNS resolves, obtain its certificate:
+
+```bash
+sudo certbot --nginx -d pages.gittr.space
 ```
 
 ### Step 14: Configure SSL Certificate
@@ -488,6 +505,8 @@ sudo systemctl reload nginx
 ```bash
 sudo apt install certbot python3-certbot-nginx
 sudo certbot --nginx -d gittr.space -d git.gittr.space
+# After adding the pages.gittr.space server block in nginx:
+# sudo certbot --nginx -d pages.gittr.space
 ```
 
 This will automatically update the nginx config with SSL certificates.
