@@ -370,9 +370,13 @@ export default function ArchitecturePage({
         repo
       );
       if (!files || files.length === 0) {
-        throw new Error(
-          "No files found in repository. The repository may be empty or not yet cloned by git-nostr-bridge."
+        setError(null);
+        setMermaidDiagram("");
+        setStatus(
+          "No file tree yet for this owner/repo on the bridge (empty clone, different branch, or not mirrored). Try another branch (?branch=…), open the repo’s Code tab from Gittr, then refresh. If you had this tab open before an update, hard-refresh (Ctrl+Shift+R) so the latest scripts load."
         );
+        setLoading(false);
+        return;
       }
 
       setStatus(`Analyzing ${files.length} files for architecture...`);
