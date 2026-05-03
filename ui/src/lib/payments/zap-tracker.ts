@@ -49,6 +49,24 @@ export function recordZap(zap: ZapRecord): void {
   } catch {}
 }
 
+/** When LNbits/push polling confirms payment, flip the matching pending row. */
+export function markZapPaid(zapId: string): void {
+  if (typeof window === "undefined" || !zapId) return;
+  try {
+    const zaps = JSON.parse(
+      localStorage.getItem("gittr_zaps") || "[]"
+    ) as ZapRecord[];
+    const i = zaps.findIndex((z) => z.id === zapId);
+    if (i === -1) return;
+    const row = zaps[i];
+    if (!row) return;
+    zaps[i] = { ...row, status: "paid" };
+    localStorage.setItem("gittr_zaps", JSON.stringify(zaps));
+  } catch {
+    /* ignore */
+  }
+}
+
 // Get zap count for a recipient/context
 export function getZapCount(
   recipient: string,

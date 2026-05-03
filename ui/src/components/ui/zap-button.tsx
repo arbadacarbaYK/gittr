@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
@@ -15,7 +15,7 @@ import {
   createLNbitsZap,
   createNWCZap,
 } from "@/lib/payments/zap";
-import { recordZap } from "@/lib/payments/zap-tracker";
+import { markZapPaid, recordZap } from "@/lib/payments/zap-tracker";
 
 import { Zap } from "lucide-react";
 import { nip19 } from "nostr-tools";
@@ -60,6 +60,7 @@ export function ZapButton({
     lnurl?: string;
   } | null>(null);
   const { pubkey, subscribe, defaultRelays } = useNostrContext();
+  const pendingZapIdRef = useRef<string | null>(null);
 
   // Get current user's metadata for payment message
   const currentUserPubkeys =
@@ -244,15 +245,18 @@ export function ZapButton({
         );
       }
 
+      const zapId = `zap-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      pendingZapIdRef.current = zapId;
+      const repoMatch = comment?.match(/^Zap for (.+)/);
       recordZap({
-        id: Date.now().toString(),
+        id: zapId,
         recipient,
         sender: pubkey || undefined, // Convert null to undefined
         amount: zapAmount,
         comment: zapRequest.comment,
         createdAt: Date.now(),
-        type: "user",
-        contextId: undefined,
+        type: repoMatch ? "repo" : "user",
+        contextId: repoMatch ? repoMatch[1] : undefined,
         invoice: paymentRequest,
         status: "pending",
       });
@@ -338,7 +342,8 @@ export function ZapButton({
           extra={modalExtra}
           error={error}
           onPaid={async () => {
-            // Only record accumulated zap when payment is confirmed
+            const id = pendingZapIdRef.current;
+            if (id) markZapPaid(id);
             const repoId = comment?.match(/Zap for (.+)/)?.[1];
             if (repoId && typeof window !== "undefined") {
               const { recordAccumulatedZap } = await import(
@@ -353,6 +358,7 @@ export function ZapButton({
             }
           }}
           onClose={() => {
+            pendingZapIdRef.current = null;
             setShowQR(false);
             setPaymentInvoice(null);
             setPaymentHash(undefined);

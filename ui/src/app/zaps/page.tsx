@@ -400,6 +400,22 @@ export default function ZapsPage() {
         </div>
       </div>
 
+      <div
+        className="mb-6 rounded-lg border border-slate-600 bg-slate-900/60 px-4 py-3 text-sm text-slate-300 leading-relaxed"
+        role="note"
+      >
+        <p className="font-medium text-slate-100">What this page shows</p>
+        <p className="mt-1 text-slate-400">
+          Payments you start from gittr on <strong>this browser</strong> are
+          saved locally here. That is separate from Nostr{" "}
+          <strong>NIP-57</strong> zap receipts (the counters you see on notes and
+          profiles in Damus, Amethyst, and similar apps). Those live on relays;
+          gittr does not import them into this list yet. Rows may stay{" "}
+          <em>pending</em> until gittr can confirm payment (for example via your
+          LNbits connection when that applies).
+        </p>
+      </div>
+
       {/* Wallet Balances */}
       {walletBalances.length > 0 && (
         <div className="border border-[#383B42] rounded p-4 mb-6 bg-[#171B21]">
