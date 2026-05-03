@@ -35,7 +35,9 @@ scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/README.md" "root@${HOST}:${REMOTE}/"
 scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/.env.example" "root@${HOST}:${REMOTE}/"
 scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/gittr-pages.production.env" "root@${HOST}:${REMOTE}/"
 scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/nginx-pages.gittr.space.conf.example" "root@${HOST}:${REMOTE}/"
+scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/expand-wildcard-cert.sh" "root@${HOST}:${REMOTE}/"
 scp -i "$KEY" -q "$ROOT"/infra/nsite-gateway/public/* "root@${HOST}:${REMOTE}/public/"
+ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "chmod +x '${REMOTE}/expand-wildcard-cert.sh' 2>/dev/null || true"
 
 echo "🔧 Installing Docker if missing (Debian/Ubuntu, non-interactive)..."
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" 'export DEBIAN_FRONTEND=noninteractive
