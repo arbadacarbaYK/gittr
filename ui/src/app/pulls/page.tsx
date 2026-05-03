@@ -36,6 +36,12 @@ import {
 import Link from "next/link";
 import { nip19 } from "nostr-tools";
 
+function normalizePrListStatus(s: string | undefined): "open" | "closed" {
+  const v = String(s || "open").toLowerCase().trim();
+  if (v === "closed" || v === "merged") return "closed";
+  return "open";
+}
+
 interface IPullRequestData {
   id: string;
   entity: string;
@@ -67,9 +73,9 @@ export default function PullsPage({}) {
     subscribe,
     defaultRelays,
   } = useNostrContext();
-  const [prType, setPrType] = useState<"created" | "assigned" | "mentioned">(
-    "created"
-  );
+  const [prType, setPrType] = useState<
+    "all" | "created" | "assigned" | "mentioned"
+  >("all");
 
   const [search, setSearch] = useState<string>("");
   const [allPRs, setAllPRs] = useState<IPullRequestData[]>([]);
@@ -739,111 +745,10 @@ export default function PullsPage({}) {
   const handlePRStatusOpen = useCallback(() => setPrStatus("open"), []);
   const handlePRStatusClosed = useCallback(() => setPrStatus("closed"), []);
 
+  const handlePRTypeAll = useCallback(() => setPrType("all"), []);
   const handlePRTypeCreated = useCallback(() => setPrType("created"), []);
   const handlePRTypeAssigned = useCallback(() => setPrType("assigned"), []);
   const handlePRTypeMentioned = useCallback(() => setPrType("mentioned"), []);
-
-  // Filter PRs by type/search first, then derive status counts from that same slice
-  const prsForCurrentView = useMemo(() => {
-    let filtered = [...allPRs];
-
-    // Filter by type (created/assigned/mentioned)
-    if (currentUserPubkey) {
-      if (prType === "created") {
-        // Match by full pubkey or by prefix (8-char entity display)
-        filtered = filtered.filter((pr) => {
-          const authorPubkey = pr.author || "";
-          const userPubkey = currentUserPubkey || "";
-          // Direct match
-          if (authorPubkey === userPubkey) return true;
-          // Match if either starts with the other's 8-char prefix
-          if (
-            authorPubkey
-              .toLowerCase()
-              .startsWith(userPubkey.slice(0, 8).toLowerCase())
-          )
-            return true;
-          if (
-            userPubkey
-              .toLowerCase()
-              .startsWith(authorPubkey.slice(0, 8).toLowerCase())
-          )
-            return true;
-          return false;
-        });
-      } else if (prType === "assigned") {
-        filtered = filtered.filter((pr) => {
-          const assignees = pr.assignees || [];
-          return assignees.some((a: string) => {
-            if (!a || !currentUserPubkey) return false;
-            // Direct match
-            if (a === currentUserPubkey) return true;
-            // Prefix match
-            if (
-              a
-                .toLowerCase()
-                .startsWith(currentUserPubkey.slice(0, 8).toLowerCase())
-            )
-              return true;
-            if (
-              currentUserPubkey
-                .toLowerCase()
-                .startsWith(a.slice(0, 8).toLowerCase())
-            )
-              return true;
-            return false;
-          });
-        });
-      } else if (prType === "mentioned") {
-        // Filter PRs where current user is mentioned in title or description
-        if (currentUserPubkey) {
-          const {
-            extractMentionedPubkeys,
-          } = require("@/lib/utils/mention-detection");
-          filtered = filtered.filter((pr) => {
-            const titleMentions = extractMentionedPubkeys(pr.title || "");
-            const descMentions = extractMentionedPubkeys(pr.description || "");
-            const allMentions = [...titleMentions, ...descMentions];
-            return allMentions.some(
-              (pubkey) =>
-                pubkey.toLowerCase() === currentUserPubkey.toLowerCase()
-            );
-          });
-        }
-      }
-    }
-
-    // Filter by search query
-    if (search.trim()) {
-      const query = search.toLowerCase();
-      filtered = filtered.filter((pr) => {
-        // Get entity display name - never use shortened pubkey
-        let entityDisplay = pr.entity || "";
-        if (
-          entityDisplay &&
-          !entityDisplay.startsWith("npub") &&
-          /^[0-9a-f]{64}$/i.test(entityDisplay)
-        ) {
-          try {
-            entityDisplay =
-              nip19.npubEncode(entityDisplay).substring(0, 16) + "...";
-          } catch {
-            entityDisplay = entityDisplay.substring(0, 16) + "...";
-          }
-        } else if (entityDisplay && entityDisplay.startsWith("npub")) {
-          entityDisplay = entityDisplay.substring(0, 16) + "...";
-        }
-        return (
-          pr.title.toLowerCase().includes(query) ||
-          `${entityDisplay}/${pr.repo || ""}`.toLowerCase().includes(query) ||
-          (pr.author || "").toLowerCase().includes(query) ||
-          (pr.tags || []).some((tag) => tag.toLowerCase().includes(query))
-        );
-      });
-    }
-
-    return filtered;
-  }, [allPRs, prType, search, currentUserPubkey]);
 
   /** Open/closed totals: all PRs in managed repos (search only), not "Created" tab */
   const prsForStatusCounts = useMemo(() => {
@@ -877,33 +782,97 @@ export default function PullsPage({}) {
     return filtered;
   }, [allPRs, search]);
 
+  /** Search-scoped list, optionally narrowed by Created / Assigned / Mentioned (default: all). */
+  const prsForTypedList = useMemo(() => {
+    let filtered = [...prsForStatusCounts];
+
+    if (currentUserPubkey && prType !== "all") {
+      if (prType === "created") {
+        filtered = filtered.filter((pr) => {
+          const authorPubkey = pr.author || "";
+          const userPubkey = currentUserPubkey || "";
+          if (authorPubkey === userPubkey) return true;
+          if (
+            authorPubkey
+              .toLowerCase()
+              .startsWith(userPubkey.slice(0, 8).toLowerCase())
+          )
+            return true;
+          if (
+            userPubkey
+              .toLowerCase()
+              .startsWith(authorPubkey.slice(0, 8).toLowerCase())
+          )
+            return true;
+          return false;
+        });
+      } else if (prType === "assigned") {
+        filtered = filtered.filter((pr) => {
+          const assignees = pr.assignees || [];
+          return assignees.some((a: string) => {
+            if (!a || !currentUserPubkey) return false;
+            if (a === currentUserPubkey) return true;
+            if (
+              a
+                .toLowerCase()
+                .startsWith(currentUserPubkey.slice(0, 8).toLowerCase())
+            )
+              return true;
+            if (
+              currentUserPubkey
+                .toLowerCase()
+                .startsWith(a.slice(0, 8).toLowerCase())
+            )
+              return true;
+            return false;
+          });
+        });
+      } else if (prType === "mentioned") {
+        const {
+          extractMentionedPubkeys,
+        } = require("@/lib/utils/mention-detection");
+        filtered = filtered.filter((pr) => {
+          const titleMentions = extractMentionedPubkeys(pr.title || "");
+          const descMentions = extractMentionedPubkeys(pr.description || "");
+          const allMentions = [...titleMentions, ...descMentions];
+          return allMentions.some(
+            (pubkey) =>
+              pubkey.toLowerCase() === currentUserPubkey.toLowerCase()
+          );
+        });
+      }
+    }
+
+    return filtered;
+  }, [prsForStatusCounts, prType, currentUserPubkey]);
+
   // Filter by status and sort for rendered list
   const filteredPRs = useMemo(() => {
-    const filtered = prsForCurrentView.filter((pr) => {
-      const status = pr.status || "open";
+    const filtered = prsForTypedList.filter((pr) => {
+      const bucket = normalizePrListStatus(pr.status);
       return prStatus === "open"
-        ? status === "open"
-        : status === "closed" || status === "merged";
+        ? bucket === "open"
+        : bucket === "closed";
     });
 
     // Sort by createdAt (newest first)
     filtered.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
     return filtered;
-  }, [prsForCurrentView, prStatus]);
+  }, [prsForTypedList, prStatus]);
 
   const openCount = useMemo(
     () =>
-      prsForStatusCounts.filter((pr) => (pr.status || "open") === "open")
-        .length,
+      prsForStatusCounts.filter(
+        (pr) => normalizePrListStatus(pr.status) === "open"
+      ).length,
     [prsForStatusCounts]
   );
   const closedCount = useMemo(
     () =>
-      prsForStatusCounts.filter((pr) => {
-        const s = pr.status || "open";
-        return s === "closed" || s === "merged";
-      }).length,
+      prsForStatusCounts.filter(
+        (pr) => normalizePrListStatus(pr.status) === "closed"
+      ).length,
     [prsForStatusCounts]
   );
 
@@ -930,6 +899,18 @@ export default function PullsPage({}) {
             type="button"
             className={clsx(
               "relative w-full rounded-l-md py-1.5 font-semibold text-zinc-300 border border-purple-500/50 focus:z-10",
+              {
+                "bg-purple-600 text-zinc-50": prType === `all`,
+              }
+            )}
+            onClick={handlePRTypeAll}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            className={clsx(
+              "relative -ml-px w-full py-1.5 font-semibold text-zinc-300 border border-purple-500/50 focus:z-10",
               {
                 "bg-purple-600 text-zinc-50": prType === `created`,
               }
@@ -1069,7 +1050,7 @@ export default function PullsPage({}) {
                           {item.title}
                         </Link>
                         {/* Review Status Badge */}
-                        {item.status === "open" &&
+                        {normalizePrListStatus(item.status) === "open" &&
                           (item.reviewApprovals ||
                             item.reviewChangeRequests ||
                             item.requiredApprovals) && (

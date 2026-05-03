@@ -35,6 +35,14 @@ import {
 import Link from "next/link";
 import { nip19 } from "nostr-tools";
 
+function normalizeIssueListStatus(
+  s: string | undefined
+): "open" | "closed" {
+  const v = String(s || "open").toLowerCase().trim();
+  if (v === "closed" || v === "done" || v === "resolved") return "closed";
+  return "open";
+}
+
 interface IIssueData {
   id: string;
   entity: string;
@@ -63,8 +71,8 @@ export default function IssuesPage({}) {
     defaultRelays,
   } = useNostrContext();
   const [issueType, setIssueType] = useState<
-    "created" | "assigned" | "mentioned"
-  >("created");
+    "all" | "created" | "assigned" | "mentioned"
+  >("all");
 
   const [search, setSearch] = useState<string>("");
   const [allIssues, setAllIssues] = useState<IIssueData[]>([]);
@@ -680,6 +688,7 @@ export default function IssuesPage({}) {
     []
   );
 
+  const handleIssueTypeAll = useCallback(() => setIssueType("all"), []);
   const handleIssueTypeCreated = useCallback(() => setIssueType("created"), []);
   const handleIssueTypeAssigned = useCallback(
     () => setIssueType("assigned"),
@@ -689,112 +698,6 @@ export default function IssuesPage({}) {
     () => setIssueType("mentioned"),
     []
   );
-
-  // Filter issues by type/search first, then derive status counts from that same slice
-  const issuesForCurrentView = useMemo(() => {
-    let filtered = [...allIssues];
-
-    // Filter by type (created/assigned/mentioned)
-    if (currentUserPubkey) {
-      if (issueType === "created") {
-        // Match by full pubkey or by prefix (8-char entity display)
-        filtered = filtered.filter((issue) => {
-          const authorPubkey = issue.author || "";
-          const userPubkey = currentUserPubkey || "";
-          // Direct match
-          if (authorPubkey === userPubkey) return true;
-          // Match if either starts with the other's 8-char prefix
-          if (
-            authorPubkey
-              .toLowerCase()
-              .startsWith(userPubkey.slice(0, 8).toLowerCase())
-          )
-            return true;
-          if (
-            userPubkey
-              .toLowerCase()
-              .startsWith(authorPubkey.slice(0, 8).toLowerCase())
-          )
-            return true;
-          return false;
-        });
-      } else if (issueType === "assigned") {
-        filtered = filtered.filter((issue) => {
-          const assignees = issue.assignees || [];
-          return assignees.some((a: string) => {
-            if (!a || !currentUserPubkey) return false;
-            // Direct match
-            if (a === currentUserPubkey) return true;
-            // Prefix match
-            if (
-              a
-                .toLowerCase()
-                .startsWith(currentUserPubkey.slice(0, 8).toLowerCase())
-            )
-              return true;
-            if (
-              currentUserPubkey
-                .toLowerCase()
-                .startsWith(a.slice(0, 8).toLowerCase())
-            )
-              return true;
-            return false;
-          });
-        });
-      } else if (issueType === "mentioned") {
-        // Filter issues where current user is mentioned in title or description
-        if (currentUserPubkey) {
-          const {
-            extractMentionedPubkeys,
-          } = require("@/lib/utils/mention-detection");
-          filtered = filtered.filter((issue) => {
-            const titleMentions = extractMentionedPubkeys(issue.title || "");
-            const descMentions = extractMentionedPubkeys(
-              issue.description || ""
-            );
-            const allMentions = [...titleMentions, ...descMentions];
-            return allMentions.some(
-              (pubkey) =>
-                pubkey.toLowerCase() === currentUserPubkey.toLowerCase()
-            );
-          });
-        }
-      }
-    }
-
-    // Filter by search query
-    if (search.trim()) {
-      const query = search.toLowerCase();
-      filtered = filtered.filter((issue) => {
-        // Get entity display name - never use shortened pubkey
-        let entityDisplay = issue.entity || "";
-        if (
-          entityDisplay &&
-          !entityDisplay.startsWith("npub") &&
-          /^[0-9a-f]{64}$/i.test(entityDisplay)
-        ) {
-          try {
-            entityDisplay =
-              nip19.npubEncode(entityDisplay).substring(0, 16) + "...";
-          } catch {
-            entityDisplay = entityDisplay.substring(0, 16) + "...";
-          }
-        } else if (entityDisplay && entityDisplay.startsWith("npub")) {
-          entityDisplay = entityDisplay.substring(0, 16) + "...";
-        }
-        return (
-          issue.title.toLowerCase().includes(query) ||
-          `${entityDisplay}/${issue.repo || ""}`
-            .toLowerCase()
-            .includes(query) ||
-          (issue.author || "").toLowerCase().includes(query) ||
-          (issue.tags || []).some((tag) => tag.toLowerCase().includes(query))
-        );
-      });
-    }
-
-    return filtered;
-  }, [allIssues, issueType, search, currentUserPubkey]);
 
   /** Open/closed totals for the page header: all issues in managed repos (search only), not "Created" tab */
   const issuesForStatusCounts = useMemo(() => {
@@ -830,29 +733,99 @@ export default function IssuesPage({}) {
     return filtered;
   }, [allIssues, search]);
 
+  /** Search-scoped list, optionally narrowed by Created / Assigned / Mentioned (default: all). */
+  const issuesForTypedList = useMemo(() => {
+    let filtered = [...issuesForStatusCounts];
+
+    if (currentUserPubkey && issueType !== "all") {
+      if (issueType === "created") {
+        filtered = filtered.filter((issue) => {
+          const authorPubkey = issue.author || "";
+          const userPubkey = currentUserPubkey || "";
+          if (authorPubkey === userPubkey) return true;
+          if (
+            authorPubkey
+              .toLowerCase()
+              .startsWith(userPubkey.slice(0, 8).toLowerCase())
+          )
+            return true;
+          if (
+            userPubkey
+              .toLowerCase()
+              .startsWith(authorPubkey.slice(0, 8).toLowerCase())
+          )
+            return true;
+          return false;
+        });
+      } else if (issueType === "assigned") {
+        filtered = filtered.filter((issue) => {
+          const assignees = issue.assignees || [];
+          return assignees.some((a: string) => {
+            if (!a || !currentUserPubkey) return false;
+            if (a === currentUserPubkey) return true;
+            if (
+              a
+                .toLowerCase()
+                .startsWith(currentUserPubkey.slice(0, 8).toLowerCase())
+            )
+              return true;
+            if (
+              currentUserPubkey
+                .toLowerCase()
+                .startsWith(a.slice(0, 8).toLowerCase())
+            )
+              return true;
+            return false;
+          });
+        });
+      } else if (issueType === "mentioned") {
+        const {
+          extractMentionedPubkeys,
+        } = require("@/lib/utils/mention-detection");
+        filtered = filtered.filter((issue) => {
+          const titleMentions = extractMentionedPubkeys(issue.title || "");
+          const descMentions = extractMentionedPubkeys(
+            issue.description || ""
+          );
+          const allMentions = [...titleMentions, ...descMentions];
+          return allMentions.some(
+            (pubkey) =>
+              pubkey.toLowerCase() === currentUserPubkey.toLowerCase()
+          );
+        });
+      }
+    }
+
+    return filtered;
+  }, [issuesForStatusCounts, issueType, currentUserPubkey]);
+
   // Filter by status and sort for rendered list
   const filteredIssues = useMemo(() => {
-    const filtered = issuesForCurrentView.filter((issue) => {
-      const status = issue.status || "open";
-      return issueStatus === "open" ? status === "open" : status === "closed";
+    const filtered = issuesForTypedList.filter((issue) => {
+      const bucket = normalizeIssueListStatus(issue.status);
+      return issueStatus === "open"
+        ? bucket === "open"
+        : bucket === "closed";
     });
 
     // Sort by createdAt (newest first)
     filtered.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
     return filtered;
-  }, [issuesForCurrentView, issueStatus]);
+  }, [issuesForTypedList, issueStatus]);
 
   const openCount = useMemo(
     () =>
-      issuesForStatusCounts.filter((i) => (i.status || "open") === "open")
-        .length,
+      issuesForStatusCounts.filter(
+        (i) => normalizeIssueListStatus(i.status) === "open"
+      ).length,
     [issuesForStatusCounts]
   );
   const closedCount = useMemo(
     () =>
-      issuesForStatusCounts.filter((i) => (i.status || "open") === "closed")
-        .length,
+      issuesForStatusCounts.filter(
+        (i) => normalizeIssueListStatus(i.status) === "closed"
+      ).length,
     [issuesForStatusCounts]
   );
 
@@ -879,6 +852,18 @@ export default function IssuesPage({}) {
             type="button"
             className={clsx(
               "relative w-full rounded-l-md py-1.5 font-semibold text-zinc-300 border border-purple-500/50 focus:z-10",
+              {
+                "bg-purple-600 text-zinc-50": issueType === `all`,
+              }
+            )}
+            onClick={handleIssueTypeAll}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            className={clsx(
+              "relative -ml-px w-full py-1.5 font-semibold text-zinc-300 border border-purple-500/50 focus:z-10",
               {
                 "bg-purple-600 text-zinc-50": issueType === `created`,
               }
