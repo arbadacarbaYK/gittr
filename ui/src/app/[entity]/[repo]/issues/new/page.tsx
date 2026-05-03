@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +45,7 @@ import {
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import { extractMentionedPubkeys } from "@/lib/utils/mention-detection";
+import { GITTR_PAGES_ISSUE_PREFILL_KEY } from "@/lib/gittr-pages/gittr-pages-issue-draft";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { Check, ChevronDown, Coins, Edit, Settings, X } from "lucide-react";
@@ -202,6 +210,32 @@ export default function RepoIssueNewPage() {
       setRepoContributors([]);
     }
   }, [params]);
+
+  // Prefill title/body from gittr Pages sidebar ("Open issue with manifest draft")
+  useLayoutEffect(() => {
+    const entity = (params?.entity as string) || "";
+    const repo = (params?.repo as string) || "";
+    if (!entity || !repo || typeof window === "undefined") return;
+    const raw = sessionStorage.getItem(GITTR_PAGES_ISSUE_PREFILL_KEY);
+    if (!raw) return;
+    try {
+      const data = JSON.parse(raw) as {
+        entity: string;
+        repo: string;
+        title: string;
+        body: string;
+      };
+      if (data.entity !== entity || data.repo !== repo) return;
+      const apply = () => {
+        if (titleRef.current) titleRef.current.value = data.title;
+        if (commentRef.current) commentRef.current.value = data.body;
+        sessionStorage.removeItem(GITTR_PAGES_ISSUE_PREFILL_KEY);
+      };
+      requestAnimationFrame(apply);
+    } catch {
+      sessionStorage.removeItem(GITTR_PAGES_ISSUE_PREFILL_KEY);
+    }
+  }, [params?.entity, params?.repo]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent<HTMLFormElement>) => {

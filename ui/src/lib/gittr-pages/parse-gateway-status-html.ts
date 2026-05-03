@@ -1,3 +1,5 @@
+import { dedupeGatewaySitesForDirectory } from "./dedupe-gateway-sites";
+
 export type GatewayStatusSiteRow = {
   title: string;
   siteUrl: string;
@@ -105,7 +107,7 @@ export function parseGatewayStatusHtml(
     });
   }
 
-  return out;
+  return dedupeGatewaySitesForDirectory(out);
 }
 
 export function parseGatewayStatusMeta(html: string): {

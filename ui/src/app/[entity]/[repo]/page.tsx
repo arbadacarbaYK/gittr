@@ -50,7 +50,8 @@ import useSession from "@/lib/nostr/useSession";
 import { RepoGittrPagesPanel } from "@/components/ui/repo-gittr-pages-panel";
 import {
   buildGittrPagesReadmeAppend,
-  readmeHasGittrPagesSection,
+  upsertGittrPagesReadmeSection,
+  validateReadmeGittrPagesBlock,
 } from "@/lib/gittr-pages/readme-section";
 import { buildNsiteSiteUrl, slugToNsiteDTag } from "@/lib/nsite/nsite-url";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
@@ -410,6 +411,8 @@ export default function RepoCodePage() {
   }, [resolvedParams.entity]);
 
   const [repoOwnerPubkey, setRepoOwnerPubkey] = useState<string | null>(null);
+  /** When true, Push to Nostr refreshes the README gittr Pages block before push; when false, push requires a valid block or stops. */
+  const [gittrPagesAutoReadme, setGittrPagesAutoReadme] = useState(false);
   const [bridgeFiles, setBridgeFiles] = useState<RepoFileEntry[] | null>(null);
   // CRITICAL: Ensure files is always an array to prevent mobile hydration issues
   // Prefer repoData files; fall back to bridge-loaded files for view-only repos
@@ -2629,15 +2632,10 @@ export default function RepoCodePage() {
   const appendGittrPagesReadmeBlock = useCallback(
     async (args: {
       namedUrl: string;
-      rootUrl: string;
       dTag: string;
       isOwnerSession: boolean;
     }) => {
-      const section = buildGittrPagesReadmeAppend(
-        args.namedUrl,
-        args.rootUrl,
-        args.dTag
-      );
+      const section = buildGittrPagesReadmeAppend(args.namedUrl, args.dTag);
       if (!args.isOwnerSession) {
         try {
           await navigator.clipboard.writeText(section.trimStart());
@@ -2656,13 +2654,11 @@ export default function RepoCodePage() {
         return;
       }
       const cur = (current.readme || "").trimEnd();
-      if (readmeHasGittrPagesSection(cur)) {
-        alert(
-          "README already has the gittr Pages block (between <!-- gittr-pages:begin --> and <!-- gittr-pages:end -->). Edit or remove that section to change it."
-        );
-        return;
-      }
-      const nextReadme = cur ? `${cur}\n${section}` : section.trimStart();
+      const nextReadme = upsertGittrPagesReadmeSection(
+        cur,
+        args.namedUrl,
+        args.dTag
+      );
       markRepoAsEdited(decodedRepo, resolvedParams.entity);
       setRepoData((prev: any) =>
         prev ? { ...prev, readme: nextReadme, hasUnpushedEdits: true } : prev
@@ -2686,7 +2682,7 @@ export default function RepoCodePage() {
         console.error("Failed to persist README", e);
       }
       alert(
-        "README updated with gittr Pages links.\n\nUse Push to Nostr again so everyone sees it on relays."
+        "README gittr Pages block updated.\n\nUse Push to Nostr so everyone sees it on relays."
       );
     },
     [decodedRepo, resolvedParams.entity]
@@ -15354,7 +15350,6 @@ export default function RepoCodePage() {
                   ).toLowerCase();
                   let gittrPagesUrls: {
                     namedUrl: string;
-                    rootUrl: string;
                     dTag: string;
                   } | null = null;
                   if (/^[0-9a-f]{64}$/.test(ownerHexForPages)) {
@@ -15364,11 +15359,6 @@ export default function RepoCodePage() {
                         pagesBaseForSidebar,
                         ownerHexForPages,
                         { kind: "named", dTag }
-                      ),
-                      rootUrl: buildNsiteSiteUrl(
-                        pagesBaseForSidebar,
-                        ownerHexForPages,
-                        { kind: "root" }
                       ),
                       dTag,
                     };
@@ -17165,17 +17155,9 @@ export default function RepoCodePage() {
                               href={gittrPagesUrls.namedUrl}
                               rel="noopener noreferrer"
                               target="_blank"
+                              title="Canonical site for this repo (NIP-5A named host)"
                             >
-                              Live ({gittrPagesUrls.dTag})
-                            </a>
-                            <span className="mx-1.5 text-zinc-600">·</span>
-                            <a
-                              className="text-violet-400/90 underline-offset-2 hover:underline"
-                              href={gittrPagesUrls.rootUrl}
-                              rel="noopener noreferrer"
-                              target="_blank"
-                            >
-                              Root URL
+                              Live site ({gittrPagesUrls.dTag})
                             </a>
                             <span className="mx-1.5 text-zinc-600">·</span>
                             <Link
@@ -17315,6 +17297,102 @@ export default function RepoCodePage() {
                                       );
                                       setIsPushing(false);
                                       return;
+                                    }
+
+                                    // gittr Pages: README block (optional auto-maintain vs validate before push)
+                                    if (repoIsOwner) {
+                                      const pagesBaseForPush = (
+                                        process.env
+                                          .NEXT_PUBLIC_GITTR_PAGES_URL ||
+                                        "https://pages.gittr.space"
+                                      ).replace(/\/$/, "");
+                                      const ownerHexForPush = (
+                                        repoOwnerPubkey ||
+                                        entityPubkey ||
+                                        repo.ownerPubkey ||
+                                        currentUserPubkey ||
+                                        ""
+                                      ).toLowerCase();
+                                      if (/^[0-9a-f]{64}$/.test(ownerHexForPush)) {
+                                        const dTagPush =
+                                          slugToNsiteDTag(decodedRepo);
+                                        const namedUrlPush = buildNsiteSiteUrl(
+                                          pagesBaseForPush,
+                                          ownerHexForPush,
+                                          { kind: "named", dTag: dTagPush }
+                                        );
+                                        const readmeBeforePush = String(
+                                          repoDataRef.current?.readme ??
+                                            repo.readme ??
+                                            ""
+                                        );
+                                        if (gittrPagesAutoReadme) {
+                                          const nextRm =
+                                            upsertGittrPagesReadmeSection(
+                                              readmeBeforePush,
+                                              namedUrlPush,
+                                              dTagPush
+                                            );
+                                          if (nextRm !== readmeBeforePush) {
+                                            markRepoAsEdited(
+                                              decodedRepo,
+                                              resolvedParams.entity
+                                            );
+                                            setRepoData((prev: any) =>
+                                              prev
+                                                ? {
+                                                    ...prev,
+                                                    readme: nextRm,
+                                                    hasUnpushedEdits: true,
+                                                  }
+                                                : prev
+                                            );
+                                            try {
+                                              const repos =
+                                                loadStoredRepos();
+                                              const idx = repos.findIndex(
+                                                (r: any) =>
+                                                  (r.slug === decodedRepo ||
+                                                    r.repo === decodedRepo) &&
+                                                  r.entity ===
+                                                    resolvedParams.entity
+                                              );
+                                              if (idx >= 0) {
+                                                repos[idx] = {
+                                                  ...(repos[
+                                                    idx
+                                                  ] as StoredRepo),
+                                                  readme: nextRm,
+                                                  hasUnpushedEdits: true,
+                                                } as StoredRepo;
+                                                saveStoredRepos(repos);
+                                              }
+                                            } catch (e) {
+                                              console.error(
+                                                "Failed to persist README before push",
+                                                e
+                                              );
+                                            }
+                                          }
+                                        } else {
+                                          const chk =
+                                            validateReadmeGittrPagesBlock(
+                                              readmeBeforePush,
+                                              namedUrlPush
+                                            );
+                                          if (!chk.ok) {
+                                            alert(
+                                              `Push paused — gittr Pages README:\n\n${chk.message}\n\nEnable “Let gittr update README for Pages on push” in the gittr Pages box, or fix the README block, then try again.`
+                                            );
+                                            window.removeEventListener(
+                                              "beforeunload",
+                                              beforeUnloadHandler
+                                            );
+                                            setIsPushing(false);
+                                            return;
+                                          }
+                                        }
+                                      }
                                     }
 
                                     // Track progress messages for user feedback
@@ -17615,15 +17693,24 @@ export default function RepoCodePage() {
                                 canManageGittrPagesReadme &&
                                 repoIsOwner && (
                                   <RepoGittrPagesPanel
-                                    dTag={gittrPagesUrls.dTag}
-                                    namedUrl={gittrPagesUrls.namedUrl}
-                                    rootUrl={gittrPagesUrls.rootUrl}
                                     canManageReadme
                                     isOwnerSession
+                                    autoReadmeOnPush={gittrPagesAutoReadme}
+                                    onAutoReadmeOnPushChange={setGittrPagesAutoReadme}
+                                    issueDraft={
+                                      gittrPagesUrls
+                                        ? {
+                                            entity: resolvedParams.entity,
+                                            repo: resolvedParams.repo,
+                                            ownerPubkeyHex: ownerHexForPages,
+                                            namedUrl: gittrPagesUrls.namedUrl,
+                                            dTag: gittrPagesUrls.dTag,
+                                          }
+                                        : null
+                                    }
                                     onAppendReadme={() => {
                                       void appendGittrPagesReadmeBlock({
                                         namedUrl: gittrPagesUrls.namedUrl,
-                                        rootUrl: gittrPagesUrls.rootUrl,
                                         dTag: gittrPagesUrls.dTag,
                                         isOwnerSession: true,
                                       });
@@ -17660,15 +17747,22 @@ export default function RepoCodePage() {
                           canManageGittrPagesReadme &&
                           !repoIsOwner && (
                             <RepoGittrPagesPanel
-                              dTag={gittrPagesUrls.dTag}
-                              namedUrl={gittrPagesUrls.namedUrl}
-                              rootUrl={gittrPagesUrls.rootUrl}
                               canManageReadme
                               isOwnerSession={false}
+                              issueDraft={
+                                gittrPagesUrls
+                                  ? {
+                                      entity: resolvedParams.entity,
+                                      repo: resolvedParams.repo,
+                                      ownerPubkeyHex: ownerHexForPages,
+                                      namedUrl: gittrPagesUrls.namedUrl,
+                                      dTag: gittrPagesUrls.dTag,
+                                    }
+                                  : null
+                              }
                               onAppendReadme={() => {
                                 void appendGittrPagesReadmeBlock({
                                   namedUrl: gittrPagesUrls.namedUrl,
-                                  rootUrl: gittrPagesUrls.rootUrl,
                                   dTag: gittrPagesUrls.dTag,
                                   isOwnerSession: false,
                                 });

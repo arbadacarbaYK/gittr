@@ -1,15 +1,8 @@
 /**
- * Optional live snapshot for Pages directory cards.
- * Uses image.thum.io as a passive screenshot URL (no API key). Sites must be HTTPS.
- * Set NEXT_PUBLIC_PAGES_CARD_PREVIEW=0 to disable (privacy / fewer third-party requests).
+ * Card snapshot backgrounds were served via image.thum.io, which often returns a
+ * 200 OK “sign up for paid account” image — unusable as a subtle background.
+ * Previews are disabled until a paid-capable or first-party screenshot path exists.
  */
-export function pagesCardPreviewUrl(siteUrl: string): string | null {
-  if (process.env.NEXT_PUBLIC_PAGES_CARD_PREVIEW === "0") {
-    return null;
-  }
-  const u = siteUrl.trim();
-  if (!u.startsWith("https://")) {
-    return null;
-  }
-  return `https://image.thum.io/get/width/720/crop/900/noanimate/${u}`;
+export function pagesCardPreviewUrl(_siteUrl: string): string | null {
+  return null;
 }

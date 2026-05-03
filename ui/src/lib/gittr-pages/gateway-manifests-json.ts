@@ -1,3 +1,4 @@
+import { dedupeGatewaySitesForDirectory } from "./dedupe-gateway-sites";
 import type { GatewayStatusSiteRow } from "./parse-gateway-status-html";
 
 export type GatewayManifestsJsonPayload = {
@@ -85,10 +86,11 @@ export function parseGatewayManifestsJson(
     });
   }
 
+  const sitesDeduped = dedupeGatewaySitesForDirectory(sites);
   return {
-    sites,
+    sites: sitesDeduped,
     meta: {
-      siteCount: siteCount ?? sites.length,
+      siteCount: sitesDeduped.length,
       generatedAt,
     },
   };

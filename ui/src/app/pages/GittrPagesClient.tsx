@@ -8,7 +8,6 @@ import {
   cardAuthorPrimary,
   cardAuthorTooltip,
 } from "@/lib/gittr-pages/author-card-label";
-import { pagesCardPreviewUrl } from "@/lib/gittr-pages/card-preview-url";
 import type { GatewayStatusSiteRow } from "@/lib/gittr-pages/parse-gateway-status-html";
 import { cn } from "@/lib/utils";
 
@@ -156,7 +155,7 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
         ) : null}
       </div>
 
-      <div className="mx-auto mt-8 max-w-5xl px-4 pb-16">
+      <div className="mx-auto mt-8 w-full max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
         <div className="mb-8 rounded-xl border border-[#383B42] bg-[#0E1116]/90 p-4 shadow-lg shadow-black/20">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
@@ -220,11 +219,10 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
           </p>
         )}
 
-        <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
           {loading
             ? Array.from({ length: 6 }).map((_, i) => <CardSkeleton key={i} />)
             : filtered.map((s) => {
-                const previewUrl = pagesCardPreviewUrl(s.siteUrl);
                 const authorPrimary = cardAuthorPrimary(s);
                 const authorTip = cardAuthorTooltip(s);
                 return (
@@ -235,44 +233,24 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
                         "hover:-translate-y-0.5 hover:border-[var(--color-accent-primary)]/50 hover:shadow-lg hover:shadow-[var(--color-accent-primary)]/5"
                       )}
                     >
-                      {previewUrl ? (
-                        <>
-                          {/* Remote snapshot; disable Next/Image (unknown hosts). */}
-                          <img
-                            alt=""
-                            aria-hidden
-                            className="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover object-top opacity-[0.2] transition duration-300 group-hover:opacity-[0.26]"
-                            decoding="async"
-                            loading="lazy"
-                            src={previewUrl}
-                            onError={(e) => {
-                              e.currentTarget.remove();
-                            }}
-                          />
-                          <div
-                            aria-hidden
-                            className="absolute inset-0 z-[1] bg-gradient-to-b from-[#0a0c10]/94 via-[#0e1116]/88 to-[#0e1116]/96"
-                          />
-                        </>
-                      ) : null}
                       <div className="relative z-10 flex h-full flex-col p-5">
                         <h2 className="line-clamp-2 text-lg font-semibold leading-snug text-white">
                           {s.title}
                         </h2>
                         {authorPrimary ? (
                           <p
-                            className="mt-2 truncate text-sm text-gray-400"
+                            className="mt-2 truncate text-sm text-[var(--color-accent-primary)]"
                             title={authorTip || undefined}
                           >
                             {authorPrimary}
                           </p>
                         ) : null}
                         {s.description ? (
-                          <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-gray-300">
+                          <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-[var(--color-accent-primary)]">
                             {s.description}
                           </p>
                         ) : null}
-                        <p className="mt-3 text-xs text-gray-500">
+                        <p className="mt-3 text-xs text-gray-400">
                           {s.pathCount} path{s.pathCount === 1 ? "" : "s"} ·{" "}
                           {s.hits} hit{s.hits === 1 ? "" : "s"}
                           {s.updatedLabel ? ` · ${s.updatedLabel}` : ""}

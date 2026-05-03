@@ -62,7 +62,7 @@ export async function GET() {
       manifestsUrl,
       source: "html" as const,
       sites,
-      meta,
+      meta: { ...meta, siteCount: sites.length },
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
