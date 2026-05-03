@@ -826,6 +826,27 @@ export function PaymentQR({
                 )}
               </div>
             )}
+
+            {invoice && !error && !paid && onPaid && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full mt-3 border-emerald-700/60 text-emerald-200 hover:bg-emerald-950/40"
+                onClick={() => {
+                  if (hasTriggeredOnPaidRef.current) return;
+                  hasTriggeredOnPaidRef.current = true;
+                  setPaid(true);
+                  setPaymentStatus("paid");
+                  if (pollingIntervalRef.current) {
+                    clearInterval(pollingIntervalRef.current);
+                    pollingIntervalRef.current = null;
+                  }
+                  onPaid();
+                }}
+              >
+                I&apos;ve paid — mark this zap in gittr
+              </Button>
+            )}
           </div>
         )}
       </div>

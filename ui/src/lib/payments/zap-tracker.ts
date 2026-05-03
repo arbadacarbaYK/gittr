@@ -307,29 +307,36 @@ export function computeRepoZapBadgeTotal(
     );
   const networkSats = recs.reduce((s, r) => s + r.amount, 0);
 
-  let localPaid: ZapRecord[] = [];
+  /** Pending rows only count toward the badge for a short window (invoice flows often stay pending until relay receipt or manual confirm). */
+  const PENDING_BADGE_MAX_AGE_MS = 72 * 60 * 60 * 1000;
+
+  let localLedgerRows: ZapRecord[] = [];
   try {
     const zaps = JSON.parse(
       localStorage.getItem("gittr_zaps") || "[]"
     ) as ZapRecord[];
     const ownerNorm = ownerHex;
     const ctxSet = new Set(repoContextVariantsForMatch(entity, repo));
-    localPaid = zaps.filter(
-      (z) =>
-        z.status === "paid" &&
+    const now = Date.now();
+    localLedgerRows = zaps.filter((z) => {
+      const pendingFresh =
+        z.status === "pending" && z.createdAt > now - PENDING_BADGE_MAX_AGE_MS;
+      if (!(z.status === "paid" || pendingFresh)) return false;
+      return (
         z.type === "repo" &&
         normalizePubkey(z.recipient) === ownerNorm &&
-        z.contextId &&
+        !!z.contextId &&
         ctxSet.has(z.contextId.trim().toLowerCase())
-    );
+      );
+    });
   } catch {
-    localPaid = [];
+    localLedgerRows = [];
   }
 
   let localExtraSats = 0;
-  for (const L of localPaid) {
+  for (const L of localLedgerRows) {
     const dup = recs.some((R) => {
-      if (R.amount !== L.amount) return false;
+      if (Math.abs(R.amount - L.amount) > 1) return false;
       if (Math.abs(R.createdAt - L.createdAt) > 25 * 60 * 1000) return false;
       if (L.sender && R.sender) {
         return normalizePubkey(L.sender) === normalizePubkey(R.sender);

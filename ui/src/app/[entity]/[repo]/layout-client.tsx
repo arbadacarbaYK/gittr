@@ -201,7 +201,7 @@ export default function RepoLayoutClient({
 
   const zapBadgeTitle = useMemo(
     () =>
-      `Tips to this repo’s owner: ${zapBadge.totalSats} sats — ${zapBadge.networkSats} from Nostr zap receipts (kind 9735) seen on your relays for this repo, plus ${zapBadge.localExtraSats} from this browser when not already counted in those receipts.`,
+      `Tips to this repo’s owner: ${zapBadge.totalSats} sats — ${zapBadge.networkSats} from Nostr zap receipts (kind 9735) seen on your relays for this repo, plus ${zapBadge.localExtraSats} from this browser (paid or a fresh unpaid invoice in the last 72h), not double-counted when a receipt matches the same zap.`,
     [zapBadge]
   );
 
