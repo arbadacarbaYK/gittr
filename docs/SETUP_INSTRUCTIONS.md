@@ -533,10 +533,19 @@ sudo certbot --nginx -d pages.gittr.space
      --non-interactive --agree-tos --register-unsafely-without-email
    ```
 
-4. **nginx:** In the `server { ... }` block that serves **gittr Pages**, set both names and point SSL to the new cert:
+   **Easier (keeps the same cert name `pages.gittr.space` nginx already uses):** on the server run **`/opt/ngit/infra/nsite-gateway/expand-wildcard-cert.sh`** (from this repo: `infra/nsite-gateway/expand-wildcard-cert.sh`) after `cloudflare.ini` exists — it uses **`certbot --expand`** so paths stay **`/etc/letsencrypt/live/pages.gittr.space/`**.
+
+4. **nginx:** In **both** the **443** and **80** `server` blocks for gittr Pages, set:
 
    - `server_name pages.gittr.space *.pages.gittr.space;`
-   - `ssl_certificate` / `ssl_certificate_key` → `/etc/letsencrypt/live/pages-gittr-wildcard/fullchain.pem` and `privkey.pem` (adjust if you chose a different `--cert-name`).
+
+   For **port 80**, replace Certbot’s `if ($host = pages...) { return 301 ... }` + `return 404` combo (it breaks subdomains) with a single redirect:
+
+   ```nginx
+   return 301 https://$host$request_uri;
+   ```
+
+   SSL paths stay **`/etc/letsencrypt/live/pages.gittr.space/...`** if you used **`--expand`** as above.
 
    Then: `sudo nginx -t && sudo systemctl reload nginx`.
 
