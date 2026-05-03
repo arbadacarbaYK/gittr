@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>gittr — nsite gateway</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0c0c0f;
+        --fg: #e8e8ec;
+        --muted: #9898a4;
+        --accent: #7c9cff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        text-align: center;
+      }
+      h1 {
+        font-weight: 600;
+        font-size: 1.5rem;
+        letter-spacing: -0.02em;
+        margin: 0 0 0.5rem;
+      }
+      p {
+        max-width: 36rem;
+        color: var(--muted);
+        line-height: 1.55;
+        margin: 0 0 1.25rem;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      nav {
+        display: flex;
+        gap: 1.25rem;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>gittr nsite gateway</h1>
+    <p>
+      This host serves
+      <a href="https://github.com/nostr-protocol/nips/blob/master/5A.md">NIP-5A</a>
+      static sites (Blossom blobs + manifest events). Use an
+      <code>npub</code>
+      subdomain or the paths documented in the upstream gateway README.
+    </p>
+    <nav>
+      <a href="/status">Status</a>
+      <a href="https://gittr.space">gittr</a>
+      <a href="https://github.com/hzrd149/nsite-gateway">nsite-gateway</a>
+    </nav>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+# gittr-hosted nsite gateway (upstream hzrd149/nsite-gateway).
+# Does not affect the main Next.js app; run from this directory only.
+#
+# Quick start: cp .env.example .env && docker compose up
+# UI: http://localhost:3040  (override NSITE_PORT in .env only if you change mapping)
+
+services:
+  nsite-gateway:
+    image: ghcr.io/hzrd149/nsite-gateway:master
+    pull_policy: if_not_present
+    restart: unless-stopped
+    ports:
+      - "3040:3000"
+    env_file:
+      - .env
+    environment:
+      NSITE_HOST: 0.0.0.0
+      NSITE_PORT: "3000"
+      CACHE_PATH: /cache/nsite-gateway.kv
+    volumes:
+      - nsite_gateway_kv:/cache
+      # Branded landing: replaces gateway default homepage (see upstream README).
+      - ./public:/app/public:ro
+
+volumes:
+  nsite_gateway_kv:

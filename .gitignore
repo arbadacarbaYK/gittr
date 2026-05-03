@@ -53,3 +53,6 @@ Nip34*.md
 # (never commit real lists; use *.example.txt in repo for format hints)
 nostr-pushed-repos.txt
 gittr_nostr_repos_*.txt
+
+# Local planning (nsite gateway + gittr Pages; not shipped in git)
+NSITE_GATEWAY_PLAN.local.md
