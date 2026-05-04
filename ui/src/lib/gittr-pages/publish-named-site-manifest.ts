@@ -8,7 +8,7 @@ import {
 
 import {
   manifestUploadContentType,
-  unwrapJsonEncodedUtf8ArtifactIfNeeded,
+  normalizeBlossomUploadBytes,
 } from "@/lib/gittr-pages/blossom-upload-mime";
 import { getEventHash } from "nostr-tools";
 
@@ -429,7 +429,7 @@ export async function publishNamedSiteManifest(
     if (!bytes || bytes.length === 0) {
       continue;
     }
-    bytes = unwrapJsonEncodedUtf8ArtifactIfNeeded(file.path, bytes);
+    bytes = normalizeBlossomUploadBytes(file.path, bytes);
     if (bytes.length > MAX_FILE_BYTES) {
       return {
         ok: false,

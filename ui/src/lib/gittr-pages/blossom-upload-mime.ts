@@ -6,12 +6,8 @@ function extOf(path: string): string {
   return i >= 0 ? n.slice(i).toLowerCase() : "";
 }
 
-function utf8DecodeStrict(bytes: Uint8Array): string | null {
-  try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return null;
-  }
+function utf8DecodeLenient(bytes: Uint8Array): string {
+  return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
 }
 
 function trimBom(s: string): string {
@@ -38,8 +34,7 @@ export function unwrapJsonEncodedUtf8ArtifactIfNeeded(
 ): Uint8Array {
   const ext = extOf(filePath);
   if (ext !== ".js" && ext !== ".mjs" && ext !== ".cjs") return bytes;
-  const text = utf8DecodeStrict(bytes);
-  if (!text) return bytes;
+  const text = utf8DecodeLenient(bytes);
   const trimmed = trimBom(text).trim();
   // JSON.stringify(script) produces a JSON document whose first non-whitespace char is ".
   if (!trimmed.startsWith('"')) return bytes;
@@ -54,10 +49,71 @@ export function unwrapJsonEncodedUtf8ArtifactIfNeeded(
   return new TextEncoder().encode(parsed);
 }
 
+/**
+ * File bytes were sometimes pasted as a full **GitHub contents API** JSON object
+ * (`{ "encoding": "base64", "content": "..." }`). That is valid JSON; nostr.build
+ * then expects `application/json` unless we decode to the real file bytes.
+ */
+export function unwrapGitHubContentsApiJsonBlob(bytes: Uint8Array): Uint8Array {
+  const text = utf8DecodeLenient(bytes);
+  const t = trimBom(text).trim();
+  if (!t.startsWith("{")) return bytes;
+  let o: unknown;
+  try {
+    o = JSON.parse(t);
+  } catch {
+    return bytes;
+  }
+  if (!o || typeof o !== "object" || Array.isArray(o)) return bytes;
+  const rec = o as Record<string, unknown>;
+  if (rec.type === "dir") return bytes;
+  if (rec.encoding !== "base64" || typeof rec.content !== "string") return bytes;
+  const raw = rec.content as string;
+  if (!raw.length) return bytes;
+  try {
+    const clean = raw.replace(/\s/g, "");
+    const bin = atob(clean);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) {
+      out[i] = bin.charCodeAt(i) & 0xff;
+    }
+    return out.length > 0 ? out : bytes;
+  } catch {
+    return bytes;
+  }
+}
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.byteLength !== b.byteLength) return false;
+  for (let i = 0; i < a.byteLength; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Undo common double-wrapping (GitHub API JSON → optional JSON.stringify(script))
+ * before hashing and uploading to Blossom.
+ */
+export function normalizeBlossomUploadBytes(
+  filePath: string,
+  bytes: Uint8Array
+): Uint8Array {
+  let b = bytes;
+  for (let i = 0; i < 6; i++) {
+    const step = unwrapJsonEncodedUtf8ArtifactIfNeeded(
+      filePath,
+      unwrapGitHubContentsApiJsonBlob(b)
+    );
+    if (sameBytes(step, b)) break;
+    b = step;
+  }
+  return b;
+}
+
 /** True when the whole buffer is one JSON value (object, array, string, number, bool, null). */
 export function isStrictJsonUtf8Document(bytes: Uint8Array): boolean {
-  const text = utf8DecodeStrict(bytes);
-  if (!text) return false;
+  const text = utf8DecodeLenient(bytes);
   const t = trimBom(text).trim();
   if (!t) return false;
   try {
@@ -104,7 +160,7 @@ export function reconcileBlossomUpstreamContentType(
     }
     return sanitizedMime;
   }
-  const text = utf8DecodeStrict(bytes);
+  const text = utf8DecodeLenient(bytes);
   if (
     text &&
     (main === "application/json" || main === "text/json") &&
