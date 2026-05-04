@@ -70,7 +70,9 @@ export function isStrictJsonUtf8Document(bytes: Uint8Array): boolean {
 
 /**
  * Content-Type for upstream Blossom PUT. Hosts (e.g. nostr.build) validate MIME against
- * sniffed bytes: JSON bodies must use application/json; real scripts use application/javascript.
+ * sniffed bytes: JSON bodies must use application/json. Real scripts: use legacy
+ * text/javascript — some public Blossoms allowlist that type but return 415 for
+ * application/javascript (seen in production after switching away from text/javascript).
  */
 export function manifestUploadContentType(
   filePath: string,
@@ -108,14 +110,22 @@ export function reconcileBlossomUpstreamContentType(
     (main === "application/json" || main === "text/json") &&
     looksLikeJavaScriptOrModuleText(text)
   ) {
-    return "application/javascript; charset=utf-8";
+    return "text/javascript";
+  }
+  // nostr.build: allowlist often includes text/javascript but rejects application/javascript.
+  if (
+    text &&
+    (main === "application/javascript" || main === "text/ecmascript") &&
+    looksLikeJavaScriptOrModuleText(text)
+  ) {
+    return "text/javascript";
   }
   return sanitizedMime;
 }
 
 /**
  * Path-based MIME fallback (after JSON sniff misses).
- * Use application/javascript for .js (IANA / libmagic), not legacy text/javascript.
+ * Scripts: text/javascript — matches common Blossom allowlists (nostr.build 415s on application/javascript).
  */
 export function guessManifestFileContentType(filePath: string): string {
   const n = normalizeFilePath(filePath).toLowerCase();
@@ -132,7 +142,7 @@ export function guessManifestFileContentType(filePath: string): string {
     case ".js":
     case ".mjs":
     case ".cjs":
-      return "application/javascript; charset=utf-8";
+      return "text/javascript";
     case ".json":
       return "application/json; charset=utf-8";
     case ".map":
