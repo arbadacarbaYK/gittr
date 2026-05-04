@@ -56,7 +56,7 @@ type RepoGittrPagesPanelProps = {
   canChainNostrRefetch?: boolean;
   /** Update README gittr Pages block then trigger Push to Nostr (same session). */
   onReadmeThenPush?: () => void | Promise<void>;
-  /** Optional: refetch from relays first (reload), then README + Push — use when local may be stale. */
+  /** Optional: refetch from relays first (reload), then Push Page — use when local may be stale. */
   onRefetchThenReadmeThenPush?: () => void;
   /** Owner: show checklist (site file, readme, push state) vs manual manifest outside gittr. */
   pagesReadiness?: GittrPagesReadiness | null;
@@ -397,7 +397,7 @@ export function RepoGittrPagesPanel({
               <li>
                 Files — main panel; refetch only if this copy may lag relays.
               </li>
-              <li>README — tap the row above or use README + Push.</li>
+              <li>README — tap the row above or use Push Page.</li>
               <li>Push — button under this card (tree + README).</li>
               <li>Manifest — Publish or any NIP-5A workflow you like.</li>
             </ul>
@@ -466,7 +466,7 @@ export function RepoGittrPagesPanel({
                 >
                   <Upload className="h-4 w-4 shrink-0" aria-hidden />
                   <span className="min-w-0 text-left font-medium">
-                    {manifestBusy ? "Publishing…" : "Push Manifest"}
+                    {manifestBusy ? "Push Manifest…" : "Push Manifest"}
                   </span>
                 </Button>
               ) : null}
@@ -548,7 +548,7 @@ export function RepoGittrPagesPanel({
                   >
                     <RefreshCw className="h-4 w-4 shrink-0" aria-hidden />
                     <span className="min-w-0 text-left font-medium">
-                      Refetch → README + Push
+                      Refetch → Push Page
                     </span>
                   </Button>
                 ) : null}
