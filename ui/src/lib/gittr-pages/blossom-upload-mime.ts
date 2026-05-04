@@ -66,7 +66,9 @@ function encodingLower(rec: Record<string, unknown>): string {
   return typeof e === "string" ? e.trim().toLowerCase() : "";
 }
 
-function bytesFromGitFileContentShape(rec: Record<string, unknown>): Uint8Array | null {
+function bytesFromGitFileContentShape(
+  rec: Record<string, unknown>
+): Uint8Array | null {
   const content = rec.content;
   if (typeof content !== "string" || !content.length) return null;
   const isBinary = rec.isBinary === true;
@@ -91,7 +93,9 @@ function bytesFromGitFileContentShape(rec: Record<string, unknown>): Uint8Array 
  * stored verbatim as the "file" body, the whole blob is JSON (Blossom: expect
  * `application/json`) but we must upload the **decoded** file bytes instead.
  */
-function tryUnwrapGitFileContentRecord(rec: Record<string, unknown>): Uint8Array | null {
+function tryUnwrapGitFileContentRecord(
+  rec: Record<string, unknown>
+): Uint8Array | null {
   if (typeof rec.content !== "string" || !rec.content.length) return null;
   if ("error" in rec) return null;
   // Full GitHub repo “contents” blob (different unwrap path); avoid mistaking for file-content.
@@ -267,14 +271,17 @@ export function reconcileBlossomUpstreamContentType(
     }
     return sanitizedMime;
   }
-  const text = utf8DecodeLenient(bytes);
-  if (
-    text &&
-    (main === "application/json" || main === "text/json") &&
-    looksLikeJavaScriptOrModuleText(text)
-  ) {
-    return "text/javascript";
+  /**
+   * Never downgrade `application/json` → `text/javascript` on the server.
+   * Blossom (nostr.build) may sniff bytes as JSON while our `JSON.parse` check
+   * misses edge cases; the client then retries with `application/json`. If we
+   * rewrite back to `text/javascript` because the body *looks* like JS, the same
+   * 400 “expected application/json” repeats forever.
+   */
+  if (main === "application/json" || main === "text/json") {
+    return sanitizedMime;
   }
+  const text = utf8DecodeLenient(bytes);
   // nostr.build: allowlist often includes text/javascript but rejects application/javascript.
   if (
     text &&
