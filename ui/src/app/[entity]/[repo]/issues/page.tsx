@@ -136,9 +136,11 @@ export default function RepoIssuesPage({
       loadIssues();
     };
     window.addEventListener("gittr:issue-created", handleIssueCreated);
+    window.addEventListener("gittr:issue-updated", handleIssueCreated);
 
     return () => {
       window.removeEventListener("gittr:issue-created", handleIssueCreated);
+      window.removeEventListener("gittr:issue-updated", handleIssueCreated);
     };
   }, [loadIssues]);
 

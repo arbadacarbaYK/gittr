@@ -61,6 +61,7 @@ import {
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import { extractMentionedPubkeys } from "@/lib/utils/mention-detection";
+import { findIssueRowIndexByRouteParam } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import {
@@ -191,17 +192,13 @@ export default function IssueDetailPage({
     try {
       const key = getRepoStorageKey("gittr_issues", entity, repo);
       const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
-      const idParam = decodeURIComponent(id);
-      const issueData = issues.find(
-        (i) =>
-          i.id === idParam ||
-          (i.number != null && String(i.number) === idParam) ||
-          String(issues.indexOf(i) + 1) === idParam
-      );
+      const rowIdx = findIssueRowIndexByRouteParam(issues, id);
+      const issueData = rowIdx >= 0 ? issues[rowIdx] : undefined;
 
       if (issueData) {
         setIssue({
           id: issueData.id || id,
+          number: (issueData as { number?: string }).number,
           title: issueData.title || "",
           description: issueData.description || "",
           author: issueData.author || "unknown",
@@ -224,9 +221,14 @@ export default function IssueDetailPage({
           entity,
           repo
         );
+        const ownerPk = getRepoOwnerPubkey(repoData, entity);
+        const userPk = currentUserPubkey?.toLowerCase();
         setIsOwner(
-          repoData?.entity === currentUserPubkey ||
-            repoData?.ownerPubkey === currentUserPubkey
+          Boolean(
+            userPk &&
+              ownerPk &&
+              ownerPk.toLowerCase() === userPk
+          )
         );
 
         // Get owner pubkey for display name
@@ -454,9 +456,14 @@ export default function IssueDetailPage({
     try {
       const key = getRepoStorageKey("gittr_issues", entity, repo);
       const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
+      const rowIdx = findIssueRowIndexByRouteParam(issues, id);
+      if (rowIdx < 0) {
+        console.error("Issue row not found for close/reopen", { id });
+        return;
+      }
       const newStatus = issue.status === "open" ? "closed" : "open";
-      const updated = issues.map((i) =>
-        i.id === issue.id ? { ...i, status: newStatus } : i
+      const updated = issues.map((i, j) =>
+        j === rowIdx ? { ...i, status: newStatus } : i
       );
       localStorage.setItem(key, JSON.stringify(updated));
 
@@ -495,8 +502,8 @@ export default function IssueDetailPage({
               console.log("Bounty withdraw link deleted successfully");
 
               // Remove bounty data from issue
-              const updatedWithoutBounty = updated.map((i) =>
-                i.id === issue.id
+              const updatedWithoutBounty = updated.map((i, j) =>
+                j === rowIdx
                   ? {
                       ...i,
                       bountyAmount: undefined,
@@ -650,8 +657,10 @@ export default function IssueDetailPage({
 
         const key = getRepoStorageKey("gittr_issues", entity, repo);
         const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
-        const updated = issues.map((i) =>
-          i.id === issue.id
+        const rowIdx = findIssueRowIndexByRouteParam(issues, id);
+        if (rowIdx < 0) return;
+        const updated = issues.map((i, j) =>
+          j === rowIdx
             ? { ...i, assignees: [...(i.assignees || []), pubkey] }
             : i
         );
@@ -676,8 +685,10 @@ export default function IssueDetailPage({
       try {
         const key = getRepoStorageKey("gittr_issues", entity, repo);
         const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
-        const updated = issues.map((i) =>
-          i.id === issue.id
+        const rowIdx = findIssueRowIndexByRouteParam(issues, id);
+        if (rowIdx < 0) return;
+        const updated = issues.map((i, j) =>
+          j === rowIdx
             ? {
                 ...i,
                 assignees: (i.assignees || []).filter((a) => a !== pubkey),
@@ -703,12 +714,14 @@ export default function IssueDetailPage({
       try {
         const key = getRepoStorageKey("gittr_issues", entity, repo);
         const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
-        const updated = issues.map((i) => {
+        const rowIdx = findIssueRowIndexByRouteParam(issues, id);
+        if (rowIdx < 0) return;
+        const updated = issues.map((i, j) => {
           const labels = i.labels || [];
           const newLabels = labels.includes(label)
             ? labels.filter((l) => l !== label)
             : [...labels, label];
-          return i.id === issue.id ? { ...i, labels: newLabels } : i;
+          return j === rowIdx ? { ...i, labels: newLabels } : i;
         });
         const nextIssue = {
           ...issue,
@@ -809,8 +822,10 @@ export default function IssueDetailPage({
       try {
         const key = getRepoStorageKey("gittr_issues", entity, repo);
         const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
-        const updated = issues.map((i) =>
-          i.id === issue.id
+        const rowIdx = findIssueRowIndexByRouteParam(issues, id);
+        if (rowIdx < 0) return;
+        const updated = issues.map((i, j) =>
+          j === rowIdx
             ? {
                 ...i,
                 bountyWithdrawId: withdrawId,

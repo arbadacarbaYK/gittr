@@ -17816,6 +17816,7 @@ export default function RepoCodePage() {
                                           repo?.nostrEventId
                                       ),
                                       namedUrl: gittrPagesUrls.namedUrl,
+                                      dTag: gittrPagesUrls.dTag,
                                     }}
                                     chainActionsDisabled={
                                       isPushing || isRefetching

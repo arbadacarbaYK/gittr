@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -33,6 +33,7 @@ export type GittrPagesReadiness = {
   hasUnpushedEdits: boolean;
   hasEverPushedToNostr: boolean;
   namedUrl: string;
+  dTag: string;
 };
 
 function hasGittrPagesEntryFile(
@@ -109,6 +110,44 @@ export function RepoGittrPagesPanel({
     pagesReadiness && readmeOk && siteOk && !pagesReadiness.hasUnpushedEdits
   );
 
+  const [gatewayListsSite, setGatewayListsSite] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!pagesReadiness?.namedUrl) {
+      setGatewayListsSite(null);
+      return;
+    }
+    let cancelled = false;
+    const want = pagesReadiness.namedUrl.replace(/\/$/, "").toLowerCase();
+    const dTag = pagesReadiness.dTag?.toLowerCase() || "";
+    (async () => {
+      try {
+        const res = await fetch("/api/gittr-pages/status-sites");
+        if (!res.ok) {
+          if (!cancelled) setGatewayListsSite(null);
+          return;
+        }
+        const data = (await res.json()) as {
+          sites?: Array<{ siteUrl?: string }>;
+        };
+        const sites = Array.isArray(data.sites) ? data.sites : [];
+        const hit = sites.some((s) => {
+          const u = (s.siteUrl || "").replace(/\/$/, "").toLowerCase();
+          return (
+            u === want ||
+            (dTag && (u.includes(dTag) || u.endsWith(`${dTag}.pages.gittr.space`)))
+          );
+        });
+        if (!cancelled) setGatewayListsSite(hit);
+      } catch {
+        if (!cancelled) setGatewayListsSite(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pagesReadiness?.namedUrl, pagesReadiness?.dTag]);
+
   return (
     <details className="group mt-3 rounded-lg border border-violet-900/35 bg-violet-950/15 open:bg-violet-950/20">
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-semibold text-white [&::-webkit-details-marker]:hidden">
@@ -119,13 +158,16 @@ export function RepoGittrPagesPanel({
 
       <div className="flow-root space-y-3 border-t border-violet-900/25 px-3 pb-3 pt-2">
         <p className="text-[11px] leading-snug text-zinc-400">
-          <strong className="text-zinc-300">Outside gittr:</strong> blob upload +{" "}
-          kind <code className="text-zinc-500">35128</code> manifest (your NIP-5A
-          / nsite signer). <strong className="text-zinc-300">Inside gittr:</strong>{" "}
-          you only sign and push repo + README metadata; the checklist below
-          tracks that. Issues are for your notes — they are{" "}
-          <strong className="text-zinc-300">not</strong> pull requests (use PRs
-          only when you have branch/file diffs).
+          <strong className="text-zinc-300">What gittr signs today:</strong> repo
+          tree + README to Nostr (same as always).{" "}
+          <strong className="text-zinc-300">What still uses any nsite signer:</strong>{" "}
+          Blossom blobs + kind <code className="text-zinc-500">35128</code> — the
+          gateway only lists your site after that hits relays; the{" "}
+          <strong className="text-zinc-300">Live site</strong> link is the target
+          URL and may show “Site not found” until then (not a timer — it updates
+          when the directory sees you).{" "}
+          <strong className="text-zinc-300">Issues</strong> are optional notes
+          only; closing them does not publish the manifest.
         </p>
 
         {pagesReadiness && isOwnerSession ? (
@@ -182,11 +224,22 @@ export function RepoGittrPagesPanel({
                     : "Not published yet — push the repo when site + README rows look good."}
                 </span>
               </li>
-              <li className="flex gap-2 text-zinc-500">
-                <Circle className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
-                <span>
-                  <strong className="text-zinc-400">Manifest 35128</strong> — always
-                  manual outside this app (gateway reads relays after you publish).
+              <li className="flex gap-2">
+                {gatewayListsSite === true ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                ) : gatewayListsSite === false ? (
+                  <Circle className="h-3.5 w-3.5 shrink-0 text-amber-500/90" />
+                ) : (
+                  <Circle className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
+                )}
+                <span className={gatewayListsSite === false ? "text-amber-100/90" : ""}>
+                  <strong className="text-zinc-200">Gateway lists this site</strong>{" "}
+                  —{" "}
+                  {gatewayListsSite === true
+                    ? "pages.gittr.space directory includes this named URL (manifest + blobs reached the gateway)."
+                    : gatewayListsSite === false
+                    ? "Not in the directory yet — publish 35128 + blobs with your signer; “Site not found” on the live link is expected until this turns green."
+                    : "Checking directory… if this stays grey, the status API may be unreachable."}
                 </span>
               </li>
             </ul>
@@ -195,7 +248,7 @@ export function RepoGittrPagesPanel({
                 Gittr-side steps look good — use{" "}
                 <strong className="text-white">Push to Nostr</strong> above only
                 if you still need to publish new edits; otherwise continue with
-                blobs + 35128 in your nsite tool.
+                blobs + 35128 (any nsite-compatible signer you use).
               </p>
             ) : (
               <p className="mt-2 border-t border-violet-800/30 pt-2 text-zinc-500">
