@@ -462,12 +462,8 @@ export async function publishNamedSiteManifest(
       };
     }
 
-    const uploadPayload = JSON.stringify({
-      authEvent: signedAuth,
-      contentBase64: bytesToBase64(bytes),
-      sha256,
-      contentType: manifestUploadContentType(file.path, bytes),
-    });
+    let contentType = manifestUploadContentType(file.path, bytes);
+    let blossomJsonMimeRetried = false;
 
     let uploadOk = false;
     let lastUploadErr = "";
@@ -478,6 +474,13 @@ export async function publishNamedSiteManifest(
         );
         await new Promise((r) => setTimeout(r, 400 * attempt));
       }
+
+      const uploadPayload = JSON.stringify({
+        authEvent: signedAuth,
+        contentBase64: bytesToBase64(bytes),
+        sha256,
+        contentType,
+      });
 
       const proxyRes = await fetch("/api/gittr-pages/blossom-proxy-upload", {
         method: "POST",
@@ -506,6 +509,23 @@ export async function publishNamedSiteManifest(
       lastUploadErr = `Blossom upload failed for ${webPath}: ${
         proxyJson.error || proxyRes.status
       }${proxyJson.reason ? ` (${proxyJson.reason})` : ""}${detail}`;
+
+      const blossomWantsJsonMime =
+        proxyRes.status === 400 &&
+        !blossomJsonMimeRetried &&
+        contentType !== "application/json" &&
+        (String(proxyJson.reason ?? "").includes("expected application/json") ||
+          String(proxyJson.body ?? "").includes("expected application/json"));
+
+      if (blossomWantsJsonMime) {
+        blossomJsonMimeRetried = true;
+        contentType = "application/json";
+        onProgress?.(
+          `${webPath}: Blossom MIME check expects application/json — retrying once with that Content-Type…`
+        );
+        attempt--;
+        continue;
+      }
 
       const retryable =
         proxyRes.status === 502 ||

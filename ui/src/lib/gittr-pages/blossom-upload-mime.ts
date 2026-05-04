@@ -207,10 +207,21 @@ export function normalizeBlossomUploadBytes(
   return b;
 }
 
+/** Strip common anti-XSSI / JSONP prefixes before JSON.parse (Blossom may sniff JSON after these). */
+function stripJsonAntiPrefix(s: string): string {
+  return s
+    .replace(/^\s*while\s*\(\s*0\s*\)\s*;\s*/i, "")
+    .replace(/^\s*while\s*\(\s*1\s*\)\s*;\s*/i, "")
+    .replace(/^\s*\)\s*\]\s*}\s*'\s*/, "")
+    .trim();
+}
+
 /** True when the whole buffer is one JSON value (object, array, string, number, bool, null). */
 export function isStrictJsonUtf8Document(bytes: Uint8Array): boolean {
   const text = utf8DecodeLenient(stripTrailingNul(bytes));
-  const t = trimBom(text).trim();
+  let t = trimBom(text).trim();
+  if (!t) return false;
+  t = stripJsonAntiPrefix(t);
   if (!t) return false;
   try {
     JSON.parse(t);
