@@ -17,6 +17,9 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # Manifest publish → Blossom proxy can run >60s on slow upstream; default 60s causes nginx 502
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
         
         # Cache headers for social media link previews (metadata)
         # Allow social media crawlers to cache metadata, but ensure fresh content

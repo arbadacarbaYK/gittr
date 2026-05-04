@@ -1,7 +1,12 @@
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 
+/** Large uploads + slow upstream (Blossom); avoid platform default cutting the handler short. */
+export const maxDuration = 120;
+export const dynamic = "force-dynamic";
+
 const MAX_BYTES = 4 * 1024 * 1024;
+const UPSTREAM_TIMEOUT_MS = 110_000;
 
 function blossomOrigin(): string {
   const raw = (
@@ -115,35 +120,56 @@ export async function POST(req: Request) {
     Buffer.from(JSON.stringify(body.authEvent), "utf8").toString("base64url");
 
   const uploadUrl = `${origin}/upload`;
+  const bodyBytes = new Uint8Array(buf);
+  const len = bodyBytes.byteLength;
+
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), UPSTREAM_TIMEOUT_MS);
+
   let upstream: Response;
   try {
     upstream = await fetch(uploadUrl, {
       method: "PUT",
+      signal: ac.signal,
       headers: {
         Authorization: authHeader,
         "X-SHA-256": sha256,
         "Content-Type": "application/octet-stream",
+        // BUD-02 / blossom-server: Content-Length is required; set explicitly for all runtimes.
+        "Content-Length": String(len),
       },
-      body: new Uint8Array(buf),
+      body: bodyBytes,
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
+    console.error("[blossom-proxy-upload] upstream fetch error:", message);
     return NextResponse.json(
       { error: `Upstream fetch failed: ${message}` },
       { status: 502 }
     );
+  } finally {
+    clearTimeout(timer);
   }
 
   const reason = upstream.headers.get("x-reason");
   if (!upstream.ok) {
     const text = await upstream.text().catch(() => "");
+    const st = upstream.status;
+    console.error(
+      "[blossom-proxy-upload] Blossom non-OK:",
+      st,
+      reason || "",
+      text.slice(0, 200)
+    );
+    // Forward 4xx/5xx from Blossom so the client can distinguish 401 vs 503 vs 502.
+    const outStatus = st >= 400 && st < 600 ? st : 502;
     return NextResponse.json(
       {
-        error: `Blossom returned ${upstream.status}`,
+        error: `Blossom returned ${st}`,
         reason: reason || undefined,
         body: text.slice(0, 500),
       },
-      { status: 502 }
+      { status: outStatus }
     );
   }
 

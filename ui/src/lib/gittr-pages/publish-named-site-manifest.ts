@@ -106,6 +106,24 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
+/** BUD-11 optional `server` tag — hostname of configured Blossom (lowercase domain only). */
+function blossomServerTagForAuth(): string[] | undefined {
+  try {
+    const raw = (
+      typeof process !== "undefined" && process.env.NEXT_PUBLIC_BLOSSOM_URL
+        ? process.env.NEXT_PUBLIC_BLOSSOM_URL
+        : ""
+    ).trim();
+    const base = raw.length > 0 ? raw : "https://blossom.band";
+    const u = base.startsWith("http") ? base : `https://${base}`;
+    const host = new URL(u.replace(/\/$/, "")).hostname;
+    if (host) return ["server", host.toLowerCase()];
+  } catch {
+    /* ignore */
+  }
+  return undefined;
+}
+
 function buildUnsignedBlossomUploadAuth(params: {
   pubkeyHex: string;
   sha256Hex: string;
@@ -120,15 +138,18 @@ function buildUnsignedBlossomUploadAuth(params: {
   sig: string;
 } {
   const now = Math.floor(Date.now() / 1000);
+  const tags: string[][] = [
+    ["t", "upload"],
+    ["expiration", String(now + (params.expiresInSeconds ?? 900))],
+    ["x", params.sha256Hex.toLowerCase()],
+  ];
+  const srv = blossomServerTagForAuth();
+  if (srv) tags.push(srv);
   return {
     kind: 24242,
     created_at: now,
     pubkey: params.pubkeyHex.toLowerCase(),
-    tags: [
-      ["t", "upload"],
-      ["expiration", String(now + (params.expiresInSeconds ?? 900))],
-      ["x", params.sha256Hex.toLowerCase()],
-    ],
+    tags,
     content: "gittr Pages: upload static site file (Blossom)",
     id: "",
     sig: "",
@@ -436,33 +457,63 @@ export async function publishNamedSiteManifest(
       };
     }
 
-    const proxyRes = await fetch("/api/gittr-pages/blossom-proxy-upload", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        authEvent: signedAuth,
-        contentBase64: bytesToBase64(bytes),
-        sha256,
-      }),
+    const uploadPayload = JSON.stringify({
+      authEvent: signedAuth,
+      contentBase64: bytesToBase64(bytes),
+      sha256,
     });
 
-    const proxyJson = (await proxyRes.json().catch(() => ({}))) as {
-      error?: string;
-      reason?: string;
-    };
-    if (!proxyRes.ok) {
-      return {
-        ok: false,
-        error: `Blossom upload failed for ${webPath}: ${
-          proxyJson.error || proxyRes.status
-        }${proxyJson.reason ? ` (${proxyJson.reason})` : ""}`,
+    let uploadOk = false;
+    let lastUploadErr = "";
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt > 0) {
+        onProgress?.(
+          `Blossom upload retry ${attempt}/3 for ${webPath} (transient error)…`
+        );
+        await new Promise((r) => setTimeout(r, 400 * attempt));
+      }
+
+      const proxyRes = await fetch("/api/gittr-pages/blossom-proxy-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: uploadPayload,
+      });
+
+      const proxyJson = (await proxyRes.json().catch(() => ({}))) as {
+        error?: string;
+        reason?: string;
+        body?: string;
       };
+
+      if (proxyRes.ok) {
+        uploads.push({ webPath, sha256 });
+        totalBytes += bytes.length;
+        count++;
+        onProgress?.(`Uploaded ${webPath} (${count}/${manifestPaths.length})`);
+        uploadOk = true;
+        break;
+      }
+
+      const detail = proxyJson.body
+        ? ` — ${String(proxyJson.body).slice(0, 160)}`
+        : "";
+      lastUploadErr = `Blossom upload failed for ${webPath}: ${
+        proxyJson.error || proxyRes.status
+      }${proxyJson.reason ? ` (${proxyJson.reason})` : ""}${detail}`;
+
+      const retryable =
+        proxyRes.status === 502 ||
+        proxyRes.status === 503 ||
+        proxyRes.status === 504 ||
+        proxyRes.status === 429;
+      if (!retryable) {
+        return { ok: false, error: lastUploadErr };
+      }
     }
 
-    uploads.push({ webPath, sha256 });
-    totalBytes += bytes.length;
-    count++;
-    onProgress?.(`Uploaded ${webPath} (${count}/${manifestPaths.length})`);
+    if (!uploadOk) {
+      return { ok: false, error: lastUploadErr };
+    }
   }
 
   if (uploads.length === 0) {
