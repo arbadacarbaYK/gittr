@@ -1,4 +1,8 @@
 import {
+  gittrPagesBlossomOrigin,
+  gittrPagesBlossomServerTag,
+} from "@/lib/gittr-pages/gittr-pages-blossom-origin";
+import {
   isStrictJsonUtf8Document,
   manifestUploadContentType,
   normalizeBlossomUploadBytes,
@@ -14,9 +18,16 @@ import {
 
 import { getEventHash } from "nostr-tools";
 
-const MAX_FILE_BYTES = 3_500_000;
-const MAX_TOTAL_BYTES = 12_000_000;
-const MAX_FILES = 120;
+/** Must stay ≤ `MAX_BYTES` in `blossom-proxy-upload` (currently 4 MiB per POST body). */
+const MAX_FILE_BYTES = 4 * 1024 * 1024;
+/** One publish run: sum of all uploaded static bytes (browser + JSON payload budget). */
+const MAX_TOTAL_BYTES = 256 * 1024 * 1024;
+/**
+ * One publish run: how many static paths we attempt. Each file triggers a NIP-07 sign for kind 24242.
+ * Large values mean many extension prompts in one session.
+ */
+const MAX_FILES = 2000;
+const KIND_BLOSSOM_SERVER_LIST = 10063;
 
 const SKIP_PATH_PREFIXES = [
   "node_modules/",
@@ -112,27 +123,71 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
-/** BUD-11 optional `server` tag — hostname of configured Blossom (lowercase domain only). */
-function blossomServerTagForAuth(): string[] | undefined {
+function normalizeServerUrl(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
   try {
-    const raw = (
-      typeof process !== "undefined" && process.env.NEXT_PUBLIC_BLOSSOM_URL
-        ? process.env.NEXT_PUBLIC_BLOSSOM_URL
-        : ""
-    ).trim();
-    const base = raw.length > 0 ? raw : "https://blossom.band";
-    const u = base.startsWith("http") ? base : `https://${base}`;
-    const host = new URL(u.replace(/\/$/, "")).hostname;
-    if (host) return ["server", host.toLowerCase()];
+    const withProto = /^https?:\/\//i.test(trimmed)
+      ? trimmed
+      : `https://${trimmed}`;
+    const u = new URL(withProto);
+    if (!u.hostname) return null;
+    return `${u.protocol}//${u.host}${u.pathname}`.replace(/\/$/, "");
   } catch {
-    /* ignore */
+    return null;
   }
-  return undefined;
+}
+
+async function readLatestBlossomServerListEvent(
+  subscribe: PublishNamedSiteManifestOptions["subscribe"],
+  relays: string[],
+  authorHex: string,
+  timeoutMs = 2500
+): Promise<{ created_at?: number; tags?: unknown } | null> {
+  return new Promise((resolve) => {
+    let latest: { created_at?: number; tags?: unknown } | null = null;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try {
+        unsub?.();
+      } catch {
+        /* ignore */
+      }
+      resolve(latest);
+    };
+    const unsub = subscribe(
+      [{ kinds: [KIND_BLOSSOM_SERVER_LIST], authors: [authorHex], limit: 20 }],
+      relays,
+      (event: any) => {
+        const ts = Number(event?.created_at ?? 0);
+        const currentTs = Number(latest?.created_at ?? 0);
+        if (!latest || ts > currentTs) latest = event;
+      },
+      timeoutMs
+    );
+    setTimeout(finish, timeoutMs);
+  });
+}
+
+/** Cap BUD-11 upload token lifetime (batch publishes need headroom for many PUTs). */
+const BLOSSOM_BATCH_AUTH_MAX_SEC = 7200;
+const BLOSSOM_BATCH_AUTH_BASE_SEC = 600;
+const BLOSSOM_BATCH_AUTH_PER_HASH_SEC = 45;
+
+function blossomBatchAuthTtlSeconds(hashCount: number): number {
+  const n = Math.max(0, hashCount);
+  return Math.min(
+    BLOSSOM_BATCH_AUTH_MAX_SEC,
+    BLOSSOM_BATCH_AUTH_BASE_SEC + n * BLOSSOM_BATCH_AUTH_PER_HASH_SEC
+  );
 }
 
 function buildUnsignedBlossomUploadAuth(params: {
   pubkeyHex: string;
-  sha256Hex: string;
+  /** One or many blob hashes — one `x` tag each (BUD-11 / hzrd149 blossom-server). */
+  sha256Hex: string | string[];
   expiresInSeconds?: number;
 }): {
   kind: number;
@@ -144,19 +199,36 @@ function buildUnsignedBlossomUploadAuth(params: {
   sig: string;
 } {
   const now = Math.floor(Date.now() / 1000);
+  const raw = Array.isArray(params.sha256Hex)
+    ? params.sha256Hex
+    : [params.sha256Hex];
+  const uniq = Array.from(
+    new Set(raw.map((h) => String(h).toLowerCase()))
+  ).sort();
   const tags: string[][] = [
     ["t", "upload"],
-    ["expiration", String(now + (params.expiresInSeconds ?? 900))],
-    ["x", params.sha256Hex.toLowerCase()],
+    [
+      "expiration",
+      String(
+        now +
+          (params.expiresInSeconds ??
+            blossomBatchAuthTtlSeconds(uniq.length))
+      ),
+    ],
+    ...uniq.map((h) => ["x", h] as string[]),
   ];
-  const srv = blossomServerTagForAuth();
+  const srv = gittrPagesBlossomServerTag();
   if (srv) tags.push(srv);
+  const n = uniq.length;
   return {
     kind: 24242,
     created_at: now,
     pubkey: params.pubkeyHex.toLowerCase(),
     tags,
-    content: "gittr Pages: upload static site file (Blossom)",
+    content:
+      n <= 1
+        ? "gittr Pages: Blossom upload (Blossom)"
+        : `gittr Pages: Blossom batch upload (${n} blobs)`,
     id: "",
     sig: "",
   };
@@ -408,7 +480,14 @@ export type PublishNamedSiteManifestOptions = {
 };
 
 export type PublishNamedSiteManifestResult =
-  | { ok: true; manifestEventId: string; pathCount: number; confirmed: boolean }
+  | {
+      ok: true;
+      manifestEventId: string;
+      pathCount: number;
+      confirmed: boolean;
+      serverListEventId?: string;
+      serverListConfirmed?: boolean;
+    }
   | { ok: false; error: string };
 
 /**
@@ -507,12 +586,20 @@ export async function publishNamedSiteManifest(
     )} MB total)…`
   );
 
-  let count = 0;
+  type Staged = {
+    file: MergedManifestFile;
+    bytes: Uint8Array;
+    sha256: string;
+    webPath: string;
+  };
+  const staged: Staged[] = [];
+  let stagedBytes = 0;
+
   for (const file of manifestPaths) {
-    if (count >= MAX_FILES) {
+    if (staged.length >= MAX_FILES) {
       return {
         ok: false,
-        error: `Too many static files (>${MAX_FILES}). Remove large trees from the manifest set.`,
+        error: `Too many static files for one publish (>${MAX_FILES}). Exclude heavy trees (e.g. vendor) from the Pages set or split into smaller publishes.`,
       };
     }
     let bytes = await resolveManifestFileBytes(file, resolveCtx);
@@ -532,7 +619,7 @@ export async function publishNamedSiteManifest(
         error: `File too large for Blossom upload: ${file.path} (${bytes.length} bytes). Max per file is ${MAX_FILE_BYTES}.`,
       };
     }
-    if (totalBytes + bytes.length > MAX_TOTAL_BYTES) {
+    if (stagedBytes + bytes.length > MAX_TOTAL_BYTES) {
       return {
         ok: false,
         error: `Total static payload exceeds ${MAX_TOTAL_BYTES} bytes. Trim assets or use fewer files.`,
@@ -541,23 +628,53 @@ export async function publishNamedSiteManifest(
 
     const sha256 = await sha256Hex(bytes);
     const webPath = toWebAbsolutePath(file.path);
+    staged.push({ file, bytes, sha256, webPath });
+    stagedBytes += bytes.length;
+  }
 
-    let auth = buildUnsignedBlossomUploadAuth({
-      pubkeyHex: signerPk,
-      sha256Hex: sha256,
-    });
-    auth.id = getEventHash(auth);
-    let signedAuth: typeof auth;
-    try {
-      signedAuth = (await window.nostr.signEvent(auth)) as typeof auth;
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return {
-        ok: false,
-        error: `Blossom auth signing cancelled or failed: ${msg}`,
-      };
-    }
+  if (staged.length === 0) {
+    return {
+      ok: false,
+      error:
+        "No file bytes could be read for upload. Check file contents in storage.",
+    };
+  }
+  if (
+    !staged.some(
+      (s) => s.webPath.replace(/\/+/g, "/").toLowerCase() === "/index.html"
+    )
+  ) {
+    return {
+      ok: false,
+      error:
+        "index.html was not included in uploadable files (empty or unreadable after processing). Fix the file content and retry.",
+    };
+  }
 
+  const allHashes = staged.map((s) => s.sha256);
+  const distinctHashCount = new Set(allHashes).size;
+  onProgress?.(
+    `Signing one Blossom upload token (kind 24242) for ${staged.length} file(s)…`
+  );
+  let auth = buildUnsignedBlossomUploadAuth({
+    pubkeyHex: signerPk,
+    sha256Hex: allHashes,
+    expiresInSeconds: blossomBatchAuthTtlSeconds(distinctHashCount),
+  });
+  auth.id = getEventHash(auth);
+  let signedAuth: typeof auth;
+  try {
+    signedAuth = (await window.nostr.signEvent(auth)) as typeof auth;
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      ok: false,
+      error: `Blossom auth signing cancelled or failed: ${msg}`,
+    };
+  }
+
+  let uploadOrdinal = 0;
+  for (const { file, bytes, sha256, webPath } of staged) {
     let contentType = manifestUploadContentType(file.path, bytes);
     let blossomJsonMimeRetried = false;
 
@@ -594,8 +711,10 @@ export async function publishNamedSiteManifest(
       if (proxyRes.ok) {
         uploads.push({ webPath, sha256 });
         totalBytes += bytes.length;
-        count++;
-        onProgress?.(`Uploaded ${webPath} (${count}/${manifestPaths.length})`);
+        uploadOrdinal++;
+        onProgress?.(
+          `Uploaded ${webPath} (${uploadOrdinal}/${staged.length})`
+        );
         uploadOk = true;
         break;
       }
@@ -661,14 +780,7 @@ export async function publishNamedSiteManifest(
     };
   }
 
-  const blossomConfigured = (
-    process.env.NEXT_PUBLIC_BLOSSOM_URL || "https://blossom.band"
-  )
-    .trim()
-    .replace(/\/$/, "");
-  const serverTagUrl = blossomConfigured.startsWith("http")
-    ? blossomConfigured
-    : `https://${blossomConfigured}`;
+  const serverTagUrl = gittrPagesBlossomOrigin();
 
   const tags: string[][] = [
     ["d", dTag],
@@ -723,10 +835,65 @@ export async function publishNamedSiteManifest(
     return { ok: false, error: "Manifest event missing id after signing." };
   }
 
+  const blossomOrigin = normalizeServerUrl(gittrPagesBlossomOrigin());
+  let serverListEventId: string | undefined;
+  let serverListConfirmed: boolean | undefined;
+  if (blossomOrigin) {
+    onProgress?.("Updating Blossom server list (kind 10063)…");
+    const latestList = await readLatestBlossomServerListEvent(
+      subscribe,
+      defaultRelays,
+      signerPk
+    );
+    const existingServerTags = Array.isArray(latestList?.tags)
+      ? latestList.tags
+      : [];
+    const mergedServers = [
+      blossomOrigin,
+      ...existingServerTags
+        .filter(
+          (t): t is string[] =>
+            Array.isArray(t) && t[0] === "server" && typeof t[1] === "string"
+        )
+        .map((t) => normalizeServerUrl(t[1] ?? ""))
+        .filter((v): v is string => Boolean(v)),
+    ];
+    const dedupedServers = Array.from(new Set(mergedServers)).slice(0, 20);
+    const serverListEvent = {
+      kind: KIND_BLOSSOM_SERVER_LIST,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: dedupedServers.map((url) => ["server", url]),
+      content: "",
+      pubkey: signerPk,
+      id: "",
+      sig: "",
+    };
+    serverListEvent.id = getEventHash(serverListEvent);
+    try {
+      const signedServerList = (await window.nostr.signEvent(
+        serverListEvent
+      )) as typeof serverListEvent;
+      const serverListPub = await publishWithConfirmation(
+        publish as (e: unknown, r: string[]) => void,
+        subscribe as any,
+        signedServerList,
+        defaultRelays,
+        12000
+      );
+      serverListEventId = signedServerList.id;
+      serverListConfirmed = serverListPub.confirmed;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      onProgress?.(`Skipped Blossom server-list update: ${msg}`);
+    }
+  }
+
   return {
     ok: true,
     manifestEventId: manifest.id,
     pathCount: uploads.length,
     confirmed: pub.confirmed,
+    serverListEventId,
+    serverListConfirmed,
   };
 }

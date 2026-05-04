@@ -40,6 +40,7 @@ import {
   type GitHubContributor,
   mapGithubContributors,
 } from "@/lib/github-mapping";
+import { gittrPagesPushPreconditionsMet } from "@/lib/gittr-pages/pages-preconditions";
 import { publishNamedSiteManifest } from "@/lib/gittr-pages/publish-named-site-manifest";
 import {
   buildGittrPagesReadmeAppend,
@@ -2176,17 +2177,21 @@ export default function RepoCodePage() {
       // CRITICAL: Check separate files storage key first (for optimized storage)
       // This should happen for ALL repos, not just those without sourceUrl
       let filesArray: RepoFileEntry[] = [];
-      if (repo.files && Array.isArray(repo.files) && repo.files.length > 0) {
-        filesArray = repo.files; // Use files from repo object if available
-      } else {
-        // Always try loading from separate storage key, even if repo has sourceUrl
-        // This fixes the issue where repos with sourceUrl weren't loading files from localStorage
-        filesArray = loadRepoFiles(resolvedParams.entity, resolvedParams.repo);
-        if (filesArray.length > 0) {
-          console.log(
-            `✅ [File Load] Loaded ${filesArray.length} files from separate storage key`
-          );
-        }
+      const indexedFirst = loadRepoFiles(
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
+      if (indexedFirst.length > 0) {
+        filesArray = indexedFirst;
+        console.log(
+          `✅ [File Load] Loaded ${filesArray.length} files from separate storage key`
+        );
+      } else if (
+        repo.files &&
+        Array.isArray(repo.files) &&
+        repo.files.length > 0
+      ) {
+        filesArray = repo.files;
       }
       // Ensure files is always an array, never undefined
 
@@ -2580,19 +2585,20 @@ export default function RepoCodePage() {
           resolvedParams.repo
         );
         if (updatedRepo) {
-          // Reload files from storage
+          // Reload files from storage — prefer `gittr_files` when present so README sync matches the editor.
           let filesArray: RepoFileEntry[] = [];
-          if (
+          const indexedFiles = loadRepoFiles(
+            resolvedParams.entity,
+            resolvedParams.repo
+          );
+          if (indexedFiles.length > 0) {
+            filesArray = indexedFiles;
+          } else if (
             updatedRepo.files &&
             Array.isArray(updatedRepo.files) &&
             updatedRepo.files.length > 0
           ) {
             filesArray = updatedRepo.files;
-          } else {
-            filesArray = loadRepoFiles(
-              resolvedParams.entity,
-              resolvedParams.repo
-            );
           }
 
           // Update repoData with new files
@@ -9126,7 +9132,25 @@ export default function RepoCodePage() {
           }
         }
 
-        // Fallback: try to get from localStorage files
+        // Fallback: separate `gittr_files` storage (authoritative for local edits)
+        const normPath = (p: string) =>
+          String(p || "")
+            .replace(/^\//, "")
+            .toLowerCase();
+        const want = normPath(readmeFile.path);
+        const fromIndexed = loadRepoFiles(
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        const indexedMatch = fromIndexed.find(
+          (f) => normPath(f.path || "") === want
+        );
+        if (indexedMatch && (indexedMatch as any).content) {
+          setCurrentFolderReadme(String((indexedMatch as any).content));
+          setLoadingFolderReadme(false);
+          return;
+        }
+
         const repos = loadStoredRepos();
         const repo = findRepoByEntityAndName(
           repos,
@@ -9135,7 +9159,7 @@ export default function RepoCodePage() {
         );
         if (repo?.files) {
           const fileData = repo.files.find(
-            (f: any) => f.path === readmeFile.path
+            (f: any) => normPath(f.path) === want
           );
           if (fileData && (fileData as any).content) {
             setCurrentFolderReadme((fileData as any).content);
@@ -12734,7 +12758,10 @@ export default function RepoCodePage() {
   return (
     <div className="mt-4">
       <div className="grid grid-cols-1 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-        <div className="col-span-1 lg:col-span-4 xl:col-span-5">
+        <div
+          id="gittr-repo-main"
+          className="col-span-1 lg:col-span-4 xl:col-span-5"
+        >
           <div className="flex justify-between flex-row">
             <div>
               <div className="flex items-center  gap-4 text-sm">
@@ -15503,6 +15530,22 @@ export default function RepoCodePage() {
                       )
                   );
 
+                  let gittrPagesPushBlocked = false;
+                  if (
+                    gittrPagesUrls &&
+                    repoIsOwner &&
+                    canManageGittrPagesReadme
+                  ) {
+                    gittrPagesPushBlocked = !gittrPagesPushPreconditionsMet({
+                      files: (repoData?.files || repo?.files || []) as Array<{
+                        path?: string;
+                      }>,
+                      readme: String(repoData?.readme ?? repo?.readme ?? ""),
+                      autoReadmeOnPush: gittrPagesAutoReadme,
+                      namedUrl: gittrPagesUrls.namedUrl,
+                    });
+                  }
+
                   let status = getRepoStatus(repo);
 
                   // CRITICAL: Reset "pushing" status if it's been stuck for more than 5 minutes
@@ -17292,6 +17335,211 @@ export default function RepoCodePage() {
                           </div>
                         ) : null}
 
+                        {gittrPagesUrls &&
+                          canManageGittrPagesReadme &&
+                          repoIsOwner && (
+                            <RepoGittrPagesPanel
+                              canManageReadme
+                              isOwnerSession
+                              autoReadmeOnPush={gittrPagesAutoReadme}
+                              onAutoReadmeOnPushChange={setGittrPagesAutoReadme}
+                              onFocusSiteFiles={() => {
+                                document
+                                  .getElementById("gittr-repo-main")
+                                  ?.scrollIntoView({
+                                    behavior: "smooth",
+                                    block: "start",
+                                  });
+                              }}
+                              pagesReadiness={{
+                                files: (repoData?.files ||
+                                  repo?.files ||
+                                  []) as Array<{ path?: string }>,
+                                readme: String(
+                                  repoData?.readme ?? repo?.readme ?? ""
+                                ),
+                                autoReadmeOnPush: gittrPagesAutoReadme,
+                                hasUnpushedEdits: Boolean(
+                                  repo?.hasUnpushedEdits
+                                ),
+                                hasEverPushedToNostr: Boolean(
+                                  repo?.lastNostrEventId || repo?.nostrEventId
+                                ),
+                                namedUrl: gittrPagesUrls.namedUrl,
+                                dTag: gittrPagesUrls.dTag,
+                              }}
+                              chainActionsDisabled={isPushing || isRefetching}
+                              canChainNostrRefetch={
+                                showRefetchButton && !hasSourceUrl
+                              }
+                              onReadmeThenPush={() => {
+                                void appendGittrPagesReadmeBlock({
+                                  namedUrl: gittrPagesUrls.namedUrl,
+                                  dTag: gittrPagesUrls.dTag,
+                                  isOwnerSession: true,
+                                  silent: true,
+                                  schedulePushClick: true,
+                                });
+                              }}
+                              onRefetchThenReadmeThenPush={() => {
+                                const refetchEl = refetchButtonRef.current;
+                                if (!refetchEl) {
+                                  alert(
+                                    "Refetch control is not available on this screen."
+                                  );
+                                  return;
+                                }
+                                if (refetchEl.disabled) {
+                                  alert(
+                                    "Wait until push/refetch finishes, then try again."
+                                  );
+                                  return;
+                                }
+                                try {
+                                  sessionStorage.setItem(
+                                    GITTR_CHAIN_README_PUSH_AFTER_REFETCH_KEY,
+                                    JSON.stringify({
+                                      v: 1,
+                                      entity: resolvedParams.entity,
+                                      decodedRepo,
+                                      namedUrl: gittrPagesUrls.namedUrl,
+                                      dTag: gittrPagesUrls.dTag,
+                                    })
+                                  );
+                                } catch {
+                                  alert(
+                                    "Could not start chain (storage blocked?)."
+                                  );
+                                  return;
+                                }
+                                refetchEl.click();
+                              }}
+                              issueDraft={
+                                gittrPagesUrls
+                                  ? {
+                                      entity: resolvedParams.entity,
+                                      repo: resolvedParams.repo,
+                                      ownerPubkeyHex: ownerHexForPages,
+                                      namedUrl: gittrPagesUrls.namedUrl,
+                                      dTag: gittrPagesUrls.dTag,
+                                    }
+                                  : null
+                              }
+                              onAppendReadme={() => {
+                                void appendGittrPagesReadmeBlock({
+                                  namedUrl: gittrPagesUrls.namedUrl,
+                                  dTag: gittrPagesUrls.dTag,
+                                  isOwnerSession: true,
+                                });
+                              }}
+                              onPublishNamedSiteManifest={async () => {
+                                if (!gittrPagesUrls) return;
+                                if (
+                                  !publish ||
+                                  !subscribe ||
+                                  !defaultRelays?.length
+                                ) {
+                                  alert(
+                                    "Nostr is not ready (publish / subscribe / relays). Check your connection and try again."
+                                  );
+                                  return;
+                                }
+                                const title = String(
+                                  repoData?.name ||
+                                    repo?.name ||
+                                    decodedRepo ||
+                                    "Site"
+                                ).slice(0, 200);
+                                const descRaw =
+                                  (typeof repoData?.description === "string"
+                                    ? repoData.description
+                                    : null) ||
+                                  (typeof repo?.description === "string"
+                                    ? repo.description
+                                    : "");
+                                const desc =
+                                  descRaw && descRaw.trim().length > 0
+                                    ? descRaw
+                                    : undefined;
+                                const cloneList =
+                                  ((repoData as { clone?: string[] })?.clone as
+                                    | string[]
+                                    | undefined) ||
+                                  ((repo as { clone?: string[] })?.clone as
+                                    | string[]
+                                    | undefined);
+                                const sourceUrl =
+                                  cloneList?.find(
+                                    (u) =>
+                                      typeof u === "string" &&
+                                      (u.startsWith("https://") ||
+                                        u.startsWith("http://"))
+                                  ) || undefined;
+                                const gitSourceUrl =
+                                  (typeof repoData?.sourceUrl === "string" &&
+                                  repoData.sourceUrl.trim().length > 0
+                                    ? repoData.sourceUrl.trim()
+                                    : undefined) ||
+                                  (typeof sourceUrl === "string" &&
+                                  sourceUrl.startsWith("https://")
+                                    ? sourceUrl.trim()
+                                    : undefined);
+                                const defaultBranchForManifest =
+                                  (selectedBranch && selectedBranch.trim()) ||
+                                  (repoData?.defaultBranch &&
+                                    String(repoData.defaultBranch).trim()) ||
+                                  (typeof (repo as { defaultBranch?: string })
+                                    ?.defaultBranch === "string" &&
+                                    (
+                                      repo as { defaultBranch: string }
+                                    ).defaultBranch.trim()) ||
+                                  "main";
+                                const r = await publishNamedSiteManifest({
+                                  entity: resolvedParams.entity,
+                                  repo: resolvedParams.repo,
+                                  ownerPubkeyHex: ownerHexForPages,
+                                  dTag: gittrPagesUrls.dTag,
+                                  siteTitle: title,
+                                  siteDescription: desc,
+                                  sourceUrl,
+                                  gitSourceUrl,
+                                  defaultBranch: defaultBranchForManifest,
+                                  publish,
+                                  subscribe,
+                                  defaultRelays,
+                                  onProgress: (m) =>
+                                    console.log(`[gittr Pages manifest] ${m}`),
+                                });
+                                if (r.ok) {
+                                  const serverListLine = r.serverListEventId
+                                    ? `\nBlossom server list (kind 10063): ${
+                                        r.serverListEventId
+                                      }\nServer-list relay confirmation: ${
+                                        r.serverListConfirmed
+                                          ? "yes"
+                                          : "pending — relays may need a moment"
+                                      }`
+                                    : "";
+                                  alert(
+                                    `Pages manifest published.\n\nEvent id:\n${
+                                      r.manifestEventId
+                                    }\n\nFiles in manifest: ${
+                                      r.pathCount
+                                    }\nRelay confirmation: ${
+                                      r.confirmed
+                                        ? "yes"
+                                        : "pending — check /pages shortly"
+                                    }${serverListLine}\n\nThe live URL may lag until the gateway sees relays.`
+                                  );
+                                } else {
+                                  alert(
+                                    `Manifest publish failed:\n\n${r.error}`
+                                  );
+                                }
+                              }}
+                            />
+                          )}
+
                         {/* Push to Nostr button */}
                         {repoIsOwner &&
                           currentUserPubkey &&
@@ -17305,7 +17553,25 @@ export default function RepoCodePage() {
                                 size="sm"
                                 variant="outline"
                                 disabled={isPushing || isRefetching}
+                                title={
+                                  gittrPagesPushBlocked
+                                    ? "Add a site entry file and README gittr Pages block (or enable auto README on push)."
+                                    : undefined
+                                }
+                                className={
+                                  gittrPagesPushBlocked &&
+                                  !isPushing &&
+                                  !isRefetching
+                                    ? "w-full opacity-45"
+                                    : "w-full"
+                                }
                                 onClick={async () => {
+                                  if (gittrPagesPushBlocked) {
+                                    alert(
+                                      "Push is waiting on gittr Pages checks:\n\n• Site entry file (e.g. index.html) in the repo tree\n• README gittr Pages block with this repo’s live URL — tap the README row in gittr Pages, or enable “Let gittr update README for Pages on push”\n\nFix those, then push again."
+                                    );
+                                    return;
+                                  }
                                   if (
                                     !currentUserPubkey ||
                                     !publish ||
@@ -17816,208 +18082,12 @@ export default function RepoCodePage() {
                                     setIsPushing(false);
                                   }
                                 }}
-                                className="w-full"
                               >
                                 <Upload className="h-4 w-4 mr-2" />
                                 {isPushing
                                   ? "Pushing to Nostr..."
                                   : "Push to Nostr"}
                               </Button>
-                              {gittrPagesUrls &&
-                                canManageGittrPagesReadme &&
-                                repoIsOwner && (
-                                  <RepoGittrPagesPanel
-                                    canManageReadme
-                                    isOwnerSession
-                                    autoReadmeOnPush={gittrPagesAutoReadme}
-                                    onAutoReadmeOnPushChange={
-                                      setGittrPagesAutoReadme
-                                    }
-                                    pagesReadiness={{
-                                      files: (repoData?.files ||
-                                        repo?.files ||
-                                        []) as Array<{ path?: string }>,
-                                      readme: String(
-                                        repoData?.readme ?? repo?.readme ?? ""
-                                      ),
-                                      autoReadmeOnPush: gittrPagesAutoReadme,
-                                      hasUnpushedEdits: Boolean(
-                                        repo?.hasUnpushedEdits
-                                      ),
-                                      hasEverPushedToNostr: Boolean(
-                                        repo?.lastNostrEventId ||
-                                          repo?.nostrEventId
-                                      ),
-                                      namedUrl: gittrPagesUrls.namedUrl,
-                                      dTag: gittrPagesUrls.dTag,
-                                    }}
-                                    chainActionsDisabled={
-                                      isPushing || isRefetching
-                                    }
-                                    canChainNostrRefetch={
-                                      showRefetchButton && !hasSourceUrl
-                                    }
-                                    onReadmeThenPush={() => {
-                                      void appendGittrPagesReadmeBlock({
-                                        namedUrl: gittrPagesUrls.namedUrl,
-                                        dTag: gittrPagesUrls.dTag,
-                                        isOwnerSession: true,
-                                        silent: true,
-                                        schedulePushClick: true,
-                                      });
-                                    }}
-                                    onRefetchThenReadmeThenPush={() => {
-                                      const refetchEl =
-                                        refetchButtonRef.current;
-                                      if (!refetchEl) {
-                                        alert(
-                                          "Refetch control is not available on this screen."
-                                        );
-                                        return;
-                                      }
-                                      if (refetchEl.disabled) {
-                                        alert(
-                                          "Wait until push/refetch finishes, then try again."
-                                        );
-                                        return;
-                                      }
-                                      try {
-                                        sessionStorage.setItem(
-                                          GITTR_CHAIN_README_PUSH_AFTER_REFETCH_KEY,
-                                          JSON.stringify({
-                                            v: 1,
-                                            entity: resolvedParams.entity,
-                                            decodedRepo,
-                                            namedUrl: gittrPagesUrls.namedUrl,
-                                            dTag: gittrPagesUrls.dTag,
-                                          })
-                                        );
-                                      } catch {
-                                        alert(
-                                          "Could not start chain (storage blocked?)."
-                                        );
-                                        return;
-                                      }
-                                      refetchEl.click();
-                                    }}
-                                    issueDraft={
-                                      gittrPagesUrls
-                                        ? {
-                                            entity: resolvedParams.entity,
-                                            repo: resolvedParams.repo,
-                                            ownerPubkeyHex: ownerHexForPages,
-                                            namedUrl: gittrPagesUrls.namedUrl,
-                                            dTag: gittrPagesUrls.dTag,
-                                          }
-                                        : null
-                                    }
-                                    onAppendReadme={() => {
-                                      void appendGittrPagesReadmeBlock({
-                                        namedUrl: gittrPagesUrls.namedUrl,
-                                        dTag: gittrPagesUrls.dTag,
-                                        isOwnerSession: true,
-                                      });
-                                    }}
-                                    onPublishNamedSiteManifest={async () => {
-                                      if (!gittrPagesUrls) return;
-                                      if (
-                                        !publish ||
-                                        !subscribe ||
-                                        !defaultRelays?.length
-                                      ) {
-                                        alert(
-                                          "Nostr is not ready (publish / subscribe / relays). Check your connection and try again."
-                                        );
-                                        return;
-                                      }
-                                      const title = String(
-                                        repoData?.name ||
-                                          repo?.name ||
-                                          decodedRepo ||
-                                          "Site"
-                                      ).slice(0, 200);
-                                      const descRaw =
-                                        (typeof repoData?.description ===
-                                        "string"
-                                          ? repoData.description
-                                          : null) ||
-                                        (typeof repo?.description === "string"
-                                          ? repo.description
-                                          : "");
-                                      const desc =
-                                        descRaw && descRaw.trim().length > 0
-                                          ? descRaw
-                                          : undefined;
-                                      const cloneList =
-                                        ((repoData as { clone?: string[] })
-                                          ?.clone as string[] | undefined) ||
-                                        ((repo as { clone?: string[] })
-                                          ?.clone as string[] | undefined);
-                                      const sourceUrl =
-                                        cloneList?.find(
-                                          (u) =>
-                                            typeof u === "string" &&
-                                            (u.startsWith("https://") ||
-                                              u.startsWith("http://"))
-                                        ) || undefined;
-                                      const gitSourceUrl =
-                                        (typeof repoData?.sourceUrl ===
-                                          "string" &&
-                                        repoData.sourceUrl.trim().length > 0
-                                          ? repoData.sourceUrl.trim()
-                                          : undefined) ||
-                                        (typeof sourceUrl === "string" &&
-                                        sourceUrl.startsWith("https://")
-                                          ? sourceUrl.trim()
-                                          : undefined);
-                                      const defaultBranchForManifest =
-                                        (selectedBranch &&
-                                          selectedBranch.trim()) ||
-                                        (repoData?.defaultBranch &&
-                                        String(repoData.defaultBranch).trim()) ||
-                                        (typeof (repo as { defaultBranch?: string })
-                                          ?.defaultBranch === "string" &&
-                                        (repo as { defaultBranch: string })
-                                          .defaultBranch.trim()) ||
-                                        "main";
-                                      const r = await publishNamedSiteManifest({
-                                        entity: resolvedParams.entity,
-                                        repo: resolvedParams.repo,
-                                        ownerPubkeyHex: ownerHexForPages,
-                                        dTag: gittrPagesUrls.dTag,
-                                        siteTitle: title,
-                                        siteDescription: desc,
-                                        sourceUrl,
-                                        gitSourceUrl,
-                                        defaultBranch: defaultBranchForManifest,
-                                        publish,
-                                        subscribe,
-                                        defaultRelays,
-                                        onProgress: (m) =>
-                                          console.log(
-                                            `[gittr Pages manifest] ${m}`
-                                          ),
-                                      });
-                                      if (r.ok) {
-                                        alert(
-                                          `Pages manifest published.\n\nEvent id:\n${
-                                            r.manifestEventId
-                                          }\n\nFiles in manifest: ${
-                                            r.pathCount
-                                          }\nRelay confirmation: ${
-                                            r.confirmed
-                                              ? "yes"
-                                              : "pending — check /pages shortly"
-                                          }\n\nThe live URL may lag until the gateway sees relays.`
-                                        );
-                                      } else {
-                                        alert(
-                                          `Manifest publish failed:\n\n${r.error}`
-                                        );
-                                      }
-                                    }}
-                                  />
-                                )}
                               <PushPaywallStatus
                                 entity={resolvedParams.entity}
                                 repo={resolvedParams.repo}

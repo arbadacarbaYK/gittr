@@ -37,8 +37,22 @@ export function syncReadmeTextIntoRepoFiles(
   readmeText: string
 ): { updated: boolean; path?: string } {
   if (typeof window === "undefined") return { updated: false };
-  const files = loadRepoFiles(entity, repoName);
-  if (!files.length) return { updated: false };
+  let files = loadRepoFiles(entity, repoName);
+  if (!files.length) {
+    const entry = {
+      path: "README.md",
+      type: "file",
+      content: readmeText,
+      isBinary: false,
+    } as RepoFileEntry & { content?: string };
+    saveRepoFiles(entity, repoName, [entry as RepoFileEntry]);
+    try {
+      window.dispatchEvent(new Event("gittr:repo-updated"));
+    } catch {
+      /* ignore */
+    }
+    return { updated: true, path: "README.md" };
+  }
 
   let idx = -1;
   for (let i = 0; i < files.length; i++) {
@@ -49,7 +63,22 @@ export function syncReadmeTextIntoRepoFiles(
       break;
     }
   }
-  if (idx < 0) return { updated: false };
+  if (idx < 0) {
+    const entry = {
+      path: "README.md",
+      type: "file",
+      content: readmeText,
+      isBinary: false,
+    } as RepoFileEntry & { content?: string };
+    const nextFiles = [...files, entry as RepoFileEntry];
+    saveRepoFiles(entity, repoName, nextFiles);
+    try {
+      window.dispatchEvent(new Event("gittr:repo-updated"));
+    } catch {
+      /* ignore */
+    }
+    return { updated: true, path: "README.md" };
+  }
 
   const prev = files[idx]!;
   const nextEntry = {

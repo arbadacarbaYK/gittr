@@ -1,3 +1,8 @@
+import {
+  gittrPagesBlossomOrigin,
+  isMediaOnlyNostrBuildBlossom,
+  rawGittrPagesBlossomEnvOrigin,
+} from "@/lib/gittr-pages/gittr-pages-blossom-origin";
 import { reconcileBlossomUpstreamContentType } from "@/lib/gittr-pages/blossom-upload-mime";
 
 import { createHash } from "crypto";
@@ -9,14 +14,6 @@ export const dynamic = "force-dynamic";
 
 const MAX_BYTES = 4 * 1024 * 1024;
 const UPSTREAM_TIMEOUT_MS = 110_000;
-
-function blossomOrigin(): string {
-  const raw = (
-    process.env.NEXT_PUBLIC_BLOSSOM_URL || "https://blossom.band"
-  ).trim();
-  const withProto = raw.startsWith("http") ? raw : `https://${raw}`;
-  return withProto.replace(/\/$/, "");
-}
 
 type AuthEvent = {
   kind?: unknown;
@@ -135,7 +132,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const origin = blossomOrigin();
+  const origin = gittrPagesBlossomOrigin();
   const authHeader =
     "Nostr " +
     Buffer.from(JSON.stringify(body.authEvent), "utf8").toString("base64url");
@@ -189,19 +186,18 @@ export async function POST(req: Request) {
     // Forward 4xx/5xx from Blossom so the client can distinguish 401 vs 503 vs 502.
     const outStatus = st >= 400 && st < 600 ? st : 502;
     let hint: string | undefined;
-    try {
-      const host = new URL(uploadUrl).hostname.toLowerCase();
-      if (
-        st === 415 &&
-        (host === "nostr.build" ||
-          host.endsWith(".nostr.build") ||
-          host.includes("nostr.build"))
-      ) {
+    if (st === 415) {
+      const bodyHasNostr = text.toLowerCase().includes("nostr.build");
+      const envLooksNostr = isMediaOnlyNostrBuildBlossom(
+        rawGittrPagesBlossomEnvOrigin()
+      );
+      if (bodyHasNostr || envLooksNostr) {
         hint =
-          "Use a Blossom that accepts your static files: set NEXT_PUBLIC_BLOSSOM_URL=https://blossom.band (recommended) or your own NIP-96 server, then yarn build && restart gittr-frontend. See SETUP_INSTRUCTIONS → Publish Pages / Blossom.";
+          "415 = this Blossom rejected the file type. Messages often say “nostr.build” even when the upload URL is blossom.band — that domain is their Blossom stack. Free tiers are usually media-only; .js / site assets may need a paid plan (nostr.build / getnb.me) or a self-hosted Blossom (e.g. hzrd149/blossom) with HTML/JS allowed. Set NEXT_PUBLIC_BLOSSOM_URL or NEXT_PUBLIC_GITTR_PAGES_BLOSSOM_URL to that origin, yarn build, restart gittr-frontend — see SETUP_INSTRUCTIONS (Publish Pages / Blossom).";
+      } else {
+        hint =
+          "415 = upstream rejected Content-Type / bytes for this path. Try another NIP-96 Blossom that allowlists your file types, or self-host Blossom — see SETUP_INSTRUCTIONS (Publish Pages / Blossom).";
       }
-    } catch {
-      /* ignore */
     }
     return NextResponse.json(
       {
