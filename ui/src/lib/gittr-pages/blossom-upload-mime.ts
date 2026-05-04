@@ -10,6 +10,13 @@ function utf8DecodeLenient(bytes: Uint8Array): string {
   return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
 }
 
+/** Trim NUL padding some storage paths append after JSON text. */
+function stripTrailingNul(bytes: Uint8Array): Uint8Array {
+  let end = bytes.byteLength;
+  while (end > 0 && bytes[end - 1] === 0) end--;
+  return end === bytes.byteLength ? bytes : bytes.slice(0, end);
+}
+
 function trimBom(s: string): string {
   if (s.length && s.charCodeAt(0) === 0xfeff) return s.slice(1);
   return s;
@@ -84,8 +91,25 @@ function bytesFromGitFileContentShape(rec: Record<string, unknown>): Uint8Array 
  * stored verbatim as the "file" body, the whole blob is JSON (Blossom: expect
  * `application/json`) but we must upload the **decoded** file bytes instead.
  */
+function tryUnwrapGitFileContentRecord(rec: Record<string, unknown>): Uint8Array | null {
+  if (typeof rec.content !== "string" || !rec.content.length) return null;
+  if ("error" in rec) return null;
+  // Full GitHub repo “contents” blob (different unwrap path); avoid mistaking for file-content.
+  if (
+    typeof rec.sha === "string" &&
+    rec.type === "file" &&
+    typeof rec.encoding === "string" &&
+    !("isBinary" in rec)
+  ) {
+    return null;
+  }
+  const inner = bytesFromGitFileContentShape(rec);
+  return inner && inner.length > 0 ? inner : null;
+}
+
 export function unwrapGitFileContentJsonWrapper(bytes: Uint8Array): Uint8Array {
-  const text = utf8DecodeLenient(bytes);
+  const trimmedBytes = stripTrailingNul(bytes);
+  const text = utf8DecodeLenient(trimmedBytes);
   const t = trimBom(text).trim();
   if (!t.startsWith("{")) return bytes;
   let o: unknown;
@@ -96,15 +120,21 @@ export function unwrapGitFileContentJsonWrapper(bytes: Uint8Array): Uint8Array {
   }
   if (!o || typeof o !== "object" || Array.isArray(o)) return bytes;
   const rec = o as Record<string, unknown>;
-  if (typeof rec.content !== "string") return bytes;
-  // Match /api/nostr/repo/file-content and /api/git/file-content success shape (not `{ error }`).
-  const looksLikeFileContentApi =
+  // Strict: /api/nostr/repo/file-content and /api/git/file-content success shape.
+  const looksStrict =
     typeof rec.path === "string" &&
     typeof rec.branch === "string" &&
     (rec.isBinary === true || rec.isBinary === false);
-  if (!looksLikeFileContentApi) return bytes;
-  const inner = bytesFromGitFileContentShape(rec);
-  return inner && inner.length > 0 ? inner : bytes;
+  if (looksStrict) {
+    const inner = tryUnwrapGitFileContentRecord(rec);
+    return inner ?? bytes;
+  }
+  // Relaxed: `{ content, isBinary }` only (path/branch omitted in some persisted trees).
+  if (rec.isBinary === true || rec.isBinary === false) {
+    const inner = tryUnwrapGitFileContentRecord(rec);
+    if (inner) return inner;
+  }
+  return bytes;
 }
 
 export function unwrapGitHubContentsApiJsonBlob(bytes: Uint8Array): Uint8Array {
@@ -168,7 +198,7 @@ export function normalizeBlossomUploadBytes(
   filePath: string,
   bytes: Uint8Array
 ): Uint8Array {
-  let b = bytes;
+  let b = stripTrailingNul(bytes);
   for (let i = 0; i < 8; i++) {
     const step = unwrapBlossomPayloadOneRound(filePath, b);
     if (sameBytes(step, b)) break;
@@ -179,7 +209,7 @@ export function normalizeBlossomUploadBytes(
 
 /** True when the whole buffer is one JSON value (object, array, string, number, bool, null). */
 export function isStrictJsonUtf8Document(bytes: Uint8Array): boolean {
-  const text = utf8DecodeLenient(bytes);
+  const text = utf8DecodeLenient(stripTrailingNul(bytes));
   const t = trimBom(text).trim();
   if (!t) return false;
   try {
