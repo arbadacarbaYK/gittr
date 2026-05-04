@@ -1,4 +1,5 @@
 import {
+  isStrictJsonUtf8Document,
   manifestUploadContentType,
   normalizeBlossomUploadBytes,
 } from "@/lib/gittr-pages/blossom-upload-mime";
@@ -279,6 +280,7 @@ async function fetchFileFromBridgeWithRepoFallback(
 
 /**
  * Resolve file bytes: localStorage → optional direct HTTPS URL → git source proxy → bridge file API.
+ * `skipLocal`: manifest publish can refetch from git/bridge when browser storage has a JSON blob on a `.js` path.
  */
 async function resolveManifestFileBytes(
   file: MergedManifestFile,
@@ -289,10 +291,13 @@ async function resolveManifestFileBytes(
     repo: string;
     /** Route / URL repo segment when it differs from `repo` (storage / bridge primary). */
     urlRepoSegment?: string;
+    skipLocal?: boolean;
   }
 ): Promise<Uint8Array | null> {
-  const local = repoFileContentToBytes(file.content, file.isBinary);
-  if (local && local.length > 0) return local;
+  if (!ctx.skipLocal) {
+    const local = repoFileContentToBytes(file.content, file.isBinary);
+    if (local && local.length > 0) return local;
+  }
 
   if (file.remoteUrl) {
     try {
@@ -328,6 +333,52 @@ async function resolveManifestFileBytes(
   }
 
   return null;
+}
+
+/**
+ * Browser `gittr_files` often wins over git/bridge. If someone pasted JSON (activity feed, API
+ * response) into `app-calendar.js`, local storage stays a JSON document while the bridge has
+ * real JS — Blossom then returns 400 (MIME vs bytes). When normalized local bytes are strict
+ * JSON on a script extension and a remote source exists, load bytes without localStorage.
+ */
+async function preferRemoteWhenScriptPathLooksLikeJsonDocument(
+  file: MergedManifestFile,
+  ctx: {
+    gitSourceUrl?: string;
+    defaultBranch: string;
+    ownerPubkeyHex: string;
+    repo: string;
+    urlRepoSegment?: string;
+  },
+  normalizedBytes: Uint8Array,
+  onProgress?: (message: string) => void
+): Promise<Uint8Array> {
+  const ext = extOf(file.path).toLowerCase();
+  if (ext !== ".js" && ext !== ".mjs" && ext !== ".cjs") return normalizedBytes;
+  if (!isStrictJsonUtf8Document(normalizedBytes)) return normalizedBytes;
+
+  const hasRemote =
+    (typeof file.remoteUrl === "string" &&
+      file.remoteUrl.trim().startsWith("http")) ||
+    (ctx.gitSourceUrl && /^https:\/\//i.test(ctx.gitSourceUrl.trim())) ||
+    /^[0-9a-f]{64}$/i.test(ctx.ownerPubkeyHex);
+  if (!hasRemote) return normalizedBytes;
+
+  const remote = await resolveManifestFileBytes(file, {
+    ...ctx,
+    skipLocal: true,
+  });
+  if (!remote || remote.length === 0) return normalizedBytes;
+
+  const normRemote = normalizeBlossomUploadBytes(file.path, remote);
+  if (isStrictJsonUtf8Document(normRemote)) return normalizedBytes;
+
+  onProgress?.(
+    `${normalizeFilePath(
+      file.path
+    )}: editor storage looked like JSON on a script path — using git/bridge (or file URL) instead for Blossom.`
+  );
+  return normRemote;
 }
 
 export type PublishNamedSiteManifestOptions = {
@@ -469,6 +520,12 @@ export async function publishNamedSiteManifest(
       continue;
     }
     bytes = normalizeBlossomUploadBytes(file.path, bytes);
+    bytes = await preferRemoteWhenScriptPathLooksLikeJsonDocument(
+      file,
+      resolveCtx,
+      bytes,
+      onProgress
+    );
     if (bytes.length > MAX_FILE_BYTES) {
       return {
         ok: false,
