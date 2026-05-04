@@ -135,13 +135,21 @@ function buildUnsignedBlossomUploadAuth(params: {
   };
 }
 
+type MergedManifestFile = {
+  path: string;
+  content: string;
+  isBinary?: boolean;
+  /** e.g. raw.githubusercontent.com — used when local `content` is empty */
+  remoteUrl?: string;
+};
+
 function mergeRepoFilesForManifest(
   entity: string,
   repo: string
-): Array<{ path: string; content: string; isBinary?: boolean }> {
+): MergedManifestFile[] {
   const files = loadRepoFiles(entity, repo);
   const overrides = loadRepoOverrides(entity, repo);
-  const out: Array<{ path: string; content: string; isBinary?: boolean }> = [];
+  const out: MergedManifestFile[] = [];
   for (const f of files) {
     const path = normalizeFilePath(f.path || "");
     if (!path) continue;
@@ -151,13 +159,122 @@ function mergeRepoFilesForManifest(
       (f as { content?: string }).content ??
       "";
     const content = typeof o === "string" ? o : String(o);
+    const url = (f as { url?: string }).url;
     out.push({
       path,
       content,
       isBinary: f.isBinary,
+      remoteUrl:
+        typeof url === "string" && url.trim().startsWith("http")
+          ? url.trim()
+          : undefined,
     });
   }
   return out;
+}
+
+type GitFileContentJson = {
+  content?: string;
+  isBinary?: boolean;
+};
+
+function bytesFromGitFileContentJson(data: GitFileContentJson): Uint8Array | null {
+  if (typeof data.content !== "string" || !data.content.length) return null;
+  if (data.isBinary) {
+    return repoFileContentToBytes(data.content, true);
+  }
+  return new TextEncoder().encode(data.content);
+}
+
+async function fetchFileFromGitSource(
+  path: string,
+  gitSourceUrl: string,
+  branch: string
+): Promise<Uint8Array | null> {
+  const qs = new URLSearchParams({
+    sourceUrl: gitSourceUrl,
+    path: normalizeFilePath(path),
+    branch,
+  });
+  const res = await fetch(`/api/git/file-content?${qs.toString()}`);
+  if (!res.ok) return null;
+  try {
+    const data = (await res.json()) as GitFileContentJson;
+    return bytesFromGitFileContentJson(data);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchFileFromBridge(
+  path: string,
+  ownerPubkeyHex: string,
+  repo: string,
+  branch: string
+): Promise<Uint8Array | null> {
+  const qs = new URLSearchParams({
+    ownerPubkey: ownerPubkeyHex,
+    repo,
+    path: normalizeFilePath(path),
+    branch,
+  });
+  const res = await fetch(`/api/nostr/repo/file-content?${qs.toString()}`);
+  if (!res.ok) return null;
+  try {
+    const data = (await res.json()) as GitFileContentJson;
+    return bytesFromGitFileContentJson(data);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve file bytes: localStorage → optional direct HTTPS URL → git source proxy → bridge file API.
+ */
+async function resolveManifestFileBytes(
+  file: MergedManifestFile,
+  ctx: {
+    gitSourceUrl?: string;
+    defaultBranch: string;
+    ownerPubkeyHex: string;
+    repo: string;
+  }
+): Promise<Uint8Array | null> {
+  const local = repoFileContentToBytes(file.content, file.isBinary);
+  if (local && local.length > 0) return local;
+
+  if (file.remoteUrl) {
+    try {
+      const r = await fetch(file.remoteUrl, { credentials: "omit" });
+      if (r.ok) {
+        const buf = new Uint8Array(await r.arrayBuffer());
+        if (buf.length > 0) return buf;
+      }
+    } catch {
+      /* CORS or offline */
+    }
+  }
+
+  if (ctx.gitSourceUrl && /^https:\/\//i.test(ctx.gitSourceUrl.trim())) {
+    const fromGit = await fetchFileFromGitSource(
+      file.path,
+      ctx.gitSourceUrl.trim(),
+      ctx.defaultBranch
+    );
+    if (fromGit && fromGit.length > 0) return fromGit;
+  }
+
+  if (/^[0-9a-f]{64}$/i.test(ctx.ownerPubkeyHex)) {
+    const fromBridge = await fetchFileFromBridge(
+      file.path,
+      ctx.ownerPubkeyHex.toLowerCase(),
+      ctx.repo,
+      ctx.defaultBranch
+    );
+    if (fromBridge && fromBridge.length > 0) return fromBridge;
+  }
+
+  return null;
 }
 
 export type PublishNamedSiteManifestOptions = {
@@ -169,6 +286,10 @@ export type PublishNamedSiteManifestOptions = {
   siteDescription?: string;
   /** Optional https URL for NIP-5A source tag (e.g. git remote web). */
   sourceUrl?: string;
+  /** Repo import URL (GitHub/GitLab) — used to load file bytes when localStorage has metadata only. */
+  gitSourceUrl?: string;
+  /** Branch for git/bridge file-content APIs (default main). */
+  defaultBranch?: string;
   publish: (event: unknown, relays: string[]) => void;
   subscribe: (
     filters: unknown[],
@@ -201,11 +322,18 @@ export async function publishNamedSiteManifest(
     siteTitle,
     siteDescription,
     sourceUrl,
+    gitSourceUrl,
+    defaultBranch: defaultBranchOpt,
     publish,
     subscribe,
     defaultRelays,
     onProgress,
   } = opts;
+
+  const defaultBranch =
+    typeof defaultBranchOpt === "string" && defaultBranchOpt.trim()
+      ? defaultBranchOpt.trim()
+      : "main";
 
   if (typeof window === "undefined") {
     return { ok: false, error: "Publish manifest runs in the browser only." };
@@ -224,14 +352,19 @@ export async function publishNamedSiteManifest(
   }
 
   const merged = mergeRepoFilesForManifest(entity, repo);
-  const candidates = merged.filter(
-    (f) => isGittrPagesManifestPath(f.path) && f.content !== undefined
-  );
+  const resolveCtx = {
+    gitSourceUrl: gitSourceUrl?.trim() || undefined,
+    defaultBranch,
+    ownerPubkeyHex,
+    repo,
+  };
+
+  const manifestPaths = merged.filter((f) => isGittrPagesManifestPath(f.path));
 
   const uploads: Array<{ webPath: string; sha256: string }> = [];
   let totalBytes = 0;
 
-  const indexPath = candidates.find(
+  const indexPath = manifestPaths.find(
     (c) =>
       toWebAbsolutePath(c.path).toLowerCase() === "/index.html" ||
       normalizeFilePath(c.path).toLowerCase() === "index.html"
@@ -243,35 +376,31 @@ export async function publishNamedSiteManifest(
         "Missing index.html in this repo’s file list. Add a root index.html (or refetch) before publishing the manifest.",
     };
   }
-  const indexProbe = repoFileContentToBytes(
-    indexPath.content,
-    indexPath.isBinary
-  );
+  onProgress?.("Loading index.html (local, GitHub, or bridge)…");
+  const indexProbe = await resolveManifestFileBytes(indexPath, resolveCtx);
   if (!indexProbe || indexProbe.length === 0) {
     return {
       ok: false,
       error:
-        "index.html has no readable bytes in this browser. Open the file in the editor, or push/refetch so file content is loaded locally, then try again.",
+        "index.html has no readable bytes. Gittr only had file metadata (e.g. GitHub RAW link) in this browser. Fix: ensure the repo has a **GitHub/GitLab source URL** stored (imported repo) or open **index.html** once so content loads locally, then retry. This flow also loads bytes via /api/git/file-content when that source URL is set.",
     };
   }
 
   onProgress?.(
-    `Preparing ${
-      candidates.length
-    } file(s) for Blossom (max ${MAX_FILES}, ${Math.round(
+    `Preparing ${manifestPaths.length} path(s) for Blossom (max ${MAX_FILES}, ${Math.round(
       MAX_TOTAL_BYTES / 1e6
     )} MB total)…`
   );
 
   let count = 0;
-  for (const file of candidates) {
+  for (const file of manifestPaths) {
     if (count >= MAX_FILES) {
       return {
         ok: false,
         error: `Too many static files (>${MAX_FILES}). Remove large trees from the manifest set.`,
       };
     }
-    const bytes = repoFileContentToBytes(file.content, file.isBinary);
+    const bytes = await resolveManifestFileBytes(file, resolveCtx);
     if (!bytes || bytes.length === 0) {
       continue;
     }
@@ -333,7 +462,7 @@ export async function publishNamedSiteManifest(
     uploads.push({ webPath, sha256 });
     totalBytes += bytes.length;
     count++;
-    onProgress?.(`Uploaded ${webPath} (${count}/${candidates.length})`);
+    onProgress?.(`Uploaded ${webPath} (${count}/${manifestPaths.length})`);
   }
 
   if (uploads.length === 0) {

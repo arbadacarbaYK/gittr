@@ -17960,6 +17960,26 @@ export default function RepoCodePage() {
                                             (u.startsWith("https://") ||
                                               u.startsWith("http://"))
                                         ) || undefined;
+                                      const gitSourceUrl =
+                                        (typeof repoData?.sourceUrl ===
+                                          "string" &&
+                                        repoData.sourceUrl.trim().length > 0
+                                          ? repoData.sourceUrl.trim()
+                                          : undefined) ||
+                                        (typeof sourceUrl === "string" &&
+                                        sourceUrl.startsWith("https://")
+                                          ? sourceUrl.trim()
+                                          : undefined);
+                                      const defaultBranchForManifest =
+                                        (selectedBranch &&
+                                          selectedBranch.trim()) ||
+                                        (repoData?.defaultBranch &&
+                                        String(repoData.defaultBranch).trim()) ||
+                                        (typeof (repo as { defaultBranch?: string })
+                                          ?.defaultBranch === "string" &&
+                                        (repo as { defaultBranch: string })
+                                          .defaultBranch.trim()) ||
+                                        "main";
                                       const r = await publishNamedSiteManifest({
                                         entity: resolvedParams.entity,
                                         repo: resolvedParams.repo,
@@ -17968,6 +17988,8 @@ export default function RepoCodePage() {
                                         siteTitle: title,
                                         siteDescription: desc,
                                         sourceUrl,
+                                        gitSourceUrl,
+                                        defaultBranch: defaultBranchForManifest,
                                         publish,
                                         subscribe,
                                         defaultRelays,
