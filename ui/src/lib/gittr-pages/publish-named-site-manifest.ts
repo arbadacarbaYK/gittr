@@ -23,8 +23,9 @@ const MAX_FILE_BYTES = 4 * 1024 * 1024;
 /** One publish run: sum of all uploaded static bytes (browser + JSON payload budget). */
 const MAX_TOTAL_BYTES = 256 * 1024 * 1024;
 /**
- * One publish run: how many static paths we attempt. Each file triggers a NIP-07 sign for kind 24242.
- * Large values mean many extension prompts in one session.
+ * One publish run: how many static paths we attempt. Blossom uploads reuse one
+ * signed kind 24242 auth (all `x` tags in that event). Large values still mean
+ * more PUTs and time, not more NIP-07 prompts for uploads.
  */
 const MAX_FILES = 2000;
 const KIND_BLOSSOM_SERVER_LIST = 10063;
