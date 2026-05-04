@@ -58,6 +58,14 @@ export function getRepoStorageKey(
   return `${prefix}__${normalizedEntity}__${repo}`;
 }
 
+/**
+ * Fuzzy match for repo slug across URL segments, GitHub import names, and bridge:
+ * case-insensitive; hyphens and underscores equivalent (e.g. `foo-bar` vs `foo_bar`).
+ */
+export function normalizeRepoSlugForMatch(repo: string): string {
+  return repo.trim().toLowerCase().replace(/-/g, "_").replace(/_+/g, "_");
+}
+
 function issueStableMergeKey(row: unknown): string {
   if (!row || typeof row !== "object") return `invalid:${String(row)}`;
   const r = row as Record<string, unknown>;

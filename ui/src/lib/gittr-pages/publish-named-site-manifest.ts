@@ -1,15 +1,16 @@
+import {
+  manifestUploadContentType,
+  normalizeBlossomUploadBytes,
+} from "@/lib/gittr-pages/blossom-upload-mime";
 import { KIND_NSITE_NAMED } from "@/lib/nostr/events";
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import {
   loadRepoFiles,
   loadRepoOverrides,
   normalizeFilePath,
+  resolveRepoStorageAlias,
 } from "@/lib/repos/storage";
 
-import {
-  manifestUploadContentType,
-  normalizeBlossomUploadBytes,
-} from "@/lib/gittr-pages/blossom-upload-mime";
 import { getEventHash } from "nostr-tools";
 
 const MAX_FILE_BYTES = 3_500_000;
@@ -203,7 +204,9 @@ type GitFileContentJson = {
   isBinary?: boolean;
 };
 
-function bytesFromGitFileContentJson(data: GitFileContentJson): Uint8Array | null {
+function bytesFromGitFileContentJson(
+  data: GitFileContentJson
+): Uint8Array | null {
   if (typeof data.content !== "string" || !data.content.length) return null;
   if (data.isBinary) {
     return repoFileContentToBytes(data.content, true);
@@ -253,6 +256,27 @@ async function fetchFileFromBridge(
   }
 }
 
+/** Bridge may index `repo` under the stored slug while the URL uses a pretty variant — try both. */
+async function fetchFileFromBridgeWithRepoFallback(
+  path: string,
+  ownerPubkeyHex: string,
+  primaryRepo: string,
+  urlRepoSegment: string,
+  branch: string
+): Promise<Uint8Array | null> {
+  const first = await fetchFileFromBridge(
+    path,
+    ownerPubkeyHex,
+    primaryRepo,
+    branch
+  );
+  if (first && first.length > 0) return first;
+  if (primaryRepo !== urlRepoSegment) {
+    return fetchFileFromBridge(path, ownerPubkeyHex, urlRepoSegment, branch);
+  }
+  return null;
+}
+
 /**
  * Resolve file bytes: localStorage → optional direct HTTPS URL → git source proxy → bridge file API.
  */
@@ -263,6 +287,8 @@ async function resolveManifestFileBytes(
     defaultBranch: string;
     ownerPubkeyHex: string;
     repo: string;
+    /** Route / URL repo segment when it differs from `repo` (storage / bridge primary). */
+    urlRepoSegment?: string;
   }
 ): Promise<Uint8Array | null> {
   const local = repoFileContentToBytes(file.content, file.isBinary);
@@ -290,10 +316,12 @@ async function resolveManifestFileBytes(
   }
 
   if (/^[0-9a-f]{64}$/i.test(ctx.ownerPubkeyHex)) {
-    const fromBridge = await fetchFileFromBridge(
+    const urlSeg = ctx.urlRepoSegment ?? ctx.repo;
+    const fromBridge = await fetchFileFromBridgeWithRepoFallback(
       file.path,
       ctx.ownerPubkeyHex.toLowerCase(),
       ctx.repo,
+      urlSeg,
       ctx.defaultBranch
     );
     if (fromBridge && fromBridge.length > 0) return fromBridge;
@@ -376,12 +404,21 @@ export async function publishNamedSiteManifest(
     };
   }
 
-  const merged = mergeRepoFilesForManifest(entity, repo);
+  const urlRepoSegment = repo;
+  const storageRepo = resolveRepoStorageAlias(entity, urlRepoSegment);
+  if (storageRepo !== urlRepoSegment) {
+    onProgress?.(
+      `Using stored repo key "${storageRepo}" for files/bridge (URL segment "${urlRepoSegment}").`
+    );
+  }
+
+  const merged = mergeRepoFilesForManifest(entity, storageRepo);
   const resolveCtx = {
     gitSourceUrl: gitSourceUrl?.trim() || undefined,
     defaultBranch,
     ownerPubkeyHex,
-    repo,
+    repo: storageRepo,
+    urlRepoSegment,
   };
 
   const manifestPaths = merged.filter((f) => isGittrPagesManifestPath(f.path));
@@ -412,7 +449,9 @@ export async function publishNamedSiteManifest(
   }
 
   onProgress?.(
-    `Preparing ${manifestPaths.length} path(s) for Blossom (max ${MAX_FILES}, ${Math.round(
+    `Preparing ${
+      manifestPaths.length
+    } path(s) for Blossom (max ${MAX_FILES}, ${Math.round(
       MAX_TOTAL_BYTES / 1e6
     )} MB total)…`
   );

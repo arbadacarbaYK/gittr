@@ -1,4 +1,8 @@
-import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
+import {
+  getRepoStorageKey,
+  normalizeEntityForStorage,
+  normalizeRepoSlugForMatch,
+} from "@/lib/utils/entity-normalizer";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { markRepoAsEdited } from "@/lib/utils/repo-status";
@@ -61,6 +65,8 @@ export interface StoredContributor {
 export interface StoredRepo {
   entity: string;
   repo?: string;
+  /** Some imports (e.g. GitHub) keep the upstream repo label separately from `repo`. */
+  repositoryName?: string;
   slug?: string;
   name?: string;
   ownerPubkey?: string;
@@ -628,6 +634,58 @@ export const isGitHostContributor = (
   value: StoredContributor
 ): value is StoredContributor & { login: string } =>
   typeof value.login === "string";
+
+function primaryRepoLabelFromStored(r: StoredRepo): string {
+  if (typeof r.repositoryName === "string" && r.repositoryName.trim()) {
+    return r.repositoryName.trim();
+  }
+  if (typeof r.repo === "string" && r.repo.trim()) return r.repo.trim();
+  if (typeof r.name === "string" && r.name.trim()) return r.name.trim();
+  if (typeof r.slug === "string" && r.slug.trim()) {
+    const s = r.slug.trim();
+    const i = s.lastIndexOf("/");
+    return i >= 0 ? s.slice(i + 1) : s;
+  }
+  return "";
+}
+
+function repoHasIndexedStorage(entity: string, repo: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (loadRepoFiles(entity, repo).length > 0) return true;
+    if (Object.keys(loadRepoOverrides(entity, repo)).length > 0) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+/**
+ * URL / route `repo` may use hyphens while GitHub import or bridge used underscores (or vice versa).
+ * Returns the repo string that actually has `gittr_files` / overrides keys and matches bridge DB.
+ */
+export function resolveRepoStorageAlias(
+  entity: string,
+  urlRepoSegment: string
+): string {
+  if (typeof window === "undefined") return urlRepoSegment;
+  if (repoHasIndexedStorage(entity, urlRepoSegment)) return urlRepoSegment;
+
+  const repos = loadStoredRepos();
+  const target = normalizeRepoSlugForMatch(urlRepoSegment);
+  const ne = normalizeEntityForStorage(entity);
+  let fallback: string | null = null;
+
+  for (const r of repos) {
+    const rName = primaryRepoLabelFromStored(r);
+    if (!rName || normalizeRepoSlugForMatch(rName) !== target) continue;
+    const re = normalizeEntityForStorage(r.entity || "");
+    if (re !== ne) continue;
+    if (repoHasIndexedStorage(entity, rName)) return rName;
+    if (!fallback) fallback = rName;
+  }
+  return fallback ?? urlRepoSegment;
+}
 
 // File storage helpers (for optimized storage when files are large)
 export const loadRepoFiles = (
