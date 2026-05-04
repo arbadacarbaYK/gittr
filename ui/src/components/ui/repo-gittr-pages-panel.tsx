@@ -3,6 +3,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   isMediaOnlyNostrBuildBlossom,
   rawGittrPagesBlossomEnvOrigin,
@@ -56,12 +57,19 @@ type RepoGittrPagesPanelProps = {
   canChainNostrRefetch?: boolean;
   /** Update README gittr Pages block then trigger Push to Nostr (same session). */
   onReadmeThenPush?: () => void | Promise<void>;
-  /** Optional: refetch from relays first (reload), then Push Page — use when local may be stale. */
+  /** Optional: refetch from relays first (reload), then Re/push Page — use when local may be stale. */
   onRefetchThenReadmeThenPush?: () => void;
   /** Owner: show checklist (site file, readme, push state) vs manual manifest outside gittr. */
   pagesReadiness?: GittrPagesReadiness | null;
   /** Scroll/focus main repo file area (e.g. add index.html). */
   onFocusSiteFiles?: () => void;
+  /** Owner: optional custom Pages `d` tag (normalized); empty = use repo slug. */
+  pagesSiteSlug?: string | null;
+  onCommitPagesSiteSlug?: (
+    raw: string | null
+  ) => Promise<
+    { ok: true } | { ok: false; message: string; suggestions?: string[] }
+  >;
 };
 
 const btnMultiline = cn(
@@ -139,6 +147,8 @@ export function RepoGittrPagesPanel({
   onRefetchThenReadmeThenPush,
   pagesReadiness = null,
   onFocusSiteFiles,
+  pagesSiteSlug = null,
+  onCommitPagesSiteSlug,
 }: RepoGittrPagesPanelProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -149,6 +159,14 @@ export function RepoGittrPagesPanel({
   const [manifestBusy, setManifestBusy] = useState(false);
   /** Keep “Steps & links” closed by default; user opens when needed. */
   const [stepsLinksOpen, setStepsLinksOpen] = useState(false);
+  const [slugDraft, setSlugDraft] = useState("");
+  const [slugError, setSlugError] = useState<string | null>(null);
+  const [slugSuggestions, setSlugSuggestions] = useState<string[]>([]);
+  const [slugBusy, setSlugBusy] = useState(false);
+
+  useEffect(() => {
+    setSlugDraft(pagesSiteSlug ?? "");
+  }, [pagesSiteSlug]);
 
   const readmeOk = Boolean(
     pagesReadiness &&
@@ -172,6 +190,10 @@ export function RepoGittrPagesPanel({
   );
   const gittrStepsReady = Boolean(
     pagesReadiness && readmeOk && siteOk && !pagesReadiness.hasUnpushedEdits
+  );
+  /** Manifest should match what is already on relays — require a site tree and a clean push state. */
+  const manifestPublishBlocked = Boolean(
+    pagesReadiness && (!siteOk || pagesReadiness.hasUnpushedEdits)
   );
 
   const [gatewayListsSite, setGatewayListsSite] = useState<boolean | null>(
@@ -276,6 +298,42 @@ export function RepoGittrPagesPanel({
         ) : null}
 
         {pagesReadiness && isOwnerSession ? (
+          <div className="rounded-xl border border-zinc-700/40 bg-zinc-950/40 px-3 py-2.5">
+            <SectionLabel>Order of steps</SectionLabel>
+            <ol className="mt-1.5 list-decimal space-y-1.5 pl-4 text-[10px] leading-relaxed text-zinc-400">
+              <li>
+                Site files in the repo tree (e.g.{" "}
+                <code className="text-zinc-300">index.html</code>).
+              </li>
+              <li>
+                <span className="font-medium text-zinc-300">Push to Nostr</span>{" "}
+                — button <span className="text-zinc-500">above</span> this card.
+                Ships repo + files to relays (two signatures). Do this again
+                after you change HTML or assets.
+              </li>
+              <li>
+                <span className="font-medium text-zinc-300">Re/push Page</span>{" "}
+                — refreshes the README Pages block for the live URL, then runs
+                that same push. Use after URL/slug changes, or if the README
+                block is wrong. If you only edited site files and use{" "}
+                <span className="font-medium text-zinc-300">
+                  Auto-update README on push
+                </span>
+                , step 2 alone is enough.
+              </li>
+              <li>
+                <span className="font-medium text-zinc-300">Push Manifest</span>{" "}
+                — enabled when step 1 is OK and there are{" "}
+                <span className="font-medium text-zinc-300">
+                  no unpushed edits
+                </span>{" "}
+                (so the gateway matches what you already pushed).
+              </li>
+            </ol>
+          </div>
+        ) : null}
+
+        {pagesReadiness && isOwnerSession ? (
           <div
             className={cn(
               "overflow-hidden rounded-xl border",
@@ -347,7 +405,8 @@ export function RepoGittrPagesPanel({
                     ? openManifestIssue
                     : onPublishNamedSiteManifest &&
                       gatewayListsSite === false &&
-                      !chainActionsDisabled
+                      !chainActionsDisabled &&
+                      !manifestPublishBlocked
                     ? () => {
                         void (async () => {
                           setManifestBusy(true);
@@ -360,7 +419,14 @@ export function RepoGittrPagesPanel({
                       }
                     : undefined
                 }
-                disabled={manifestBusy || chainActionsDisabled}
+                disabled={
+                  manifestBusy ||
+                  chainActionsDisabled ||
+                  (Boolean(
+                    onPublishNamedSiteManifest && gatewayListsSite === false
+                  ) &&
+                    manifestPublishBlocked)
+                }
               />
               <ChecklistRow
                 ok={pushClean}
@@ -374,6 +440,115 @@ export function RepoGittrPagesPanel({
                     : "Not pushed yet."
                 }
               />
+            </div>
+          </div>
+        ) : null}
+
+        {isOwnerSession && pagesReadiness && onCommitPagesSiteSlug ? (
+          <div className="space-y-2 rounded-xl border border-violet-800/25 bg-violet-950/[0.08] p-3">
+            <SectionLabel>Site name (URL segment)</SectionLabel>
+            <p className="text-[10px] leading-relaxed text-zinc-500">
+              Optional short name for the Pages host segment (stored on this
+              device). Names like shop, donate, or login are blocked. It must be
+              unique among your repos here; if taken, try a suffix such as{" "}
+              <span className="text-zinc-400">mything-2</span>. Leave empty and
+              save to use the repo slug again. After you save, the{" "}
+              <span className="font-medium text-zinc-400">Live site</span> link
+              above is the canonical URL (same one README, push, and manifest
+              use) — use that to open or share, not a draft in this field.
+            </p>
+            <Input
+              value={slugDraft}
+              onChange={(e) => {
+                setSlugDraft(e.target.value);
+                setSlugError(null);
+              }}
+              placeholder="(repo slug)"
+              disabled={slugBusy || chainActionsDisabled}
+              className="h-9 border-violet-800/40 bg-black/30 text-xs text-zinc-100"
+              maxLength={32}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+            />
+            {slugError ? (
+              <p className="text-[10px] text-rose-300/95">{slugError}</p>
+            ) : null}
+            {slugSuggestions.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {slugSuggestions.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="rounded border border-violet-800/40 bg-violet-950/40 px-2 py-0.5 text-[10px] text-violet-200 hover:bg-violet-900/50"
+                    onClick={() => {
+                      setSlugDraft(s);
+                      setSlugError(null);
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={slugBusy || chainActionsDisabled}
+                className="border-violet-600/40 text-xs text-violet-50"
+                onClick={() => {
+                  void (async () => {
+                    setSlugBusy(true);
+                    setSlugError(null);
+                    setSlugSuggestions([]);
+                    try {
+                      const res = await onCommitPagesSiteSlug(
+                        slugDraft.trim() === "" ? null : slugDraft
+                      );
+                      if (!res.ok) {
+                        setSlugError(res.message);
+                        setSlugSuggestions(res.suggestions ?? []);
+                      }
+                    } finally {
+                      setSlugBusy(false);
+                    }
+                  })();
+                }}
+              >
+                {slugBusy ? "Saving…" : "Save"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={
+                  slugBusy ||
+                  chainActionsDisabled ||
+                  (!(pagesSiteSlug ?? "").trim() && !slugDraft.trim())
+                }
+                className="text-xs text-zinc-400"
+                onClick={() => {
+                  setSlugDraft("");
+                  void (async () => {
+                    setSlugBusy(true);
+                    setSlugError(null);
+                    setSlugSuggestions([]);
+                    try {
+                      const res = await onCommitPagesSiteSlug(null);
+                      if (!res.ok) {
+                        setSlugError(res.message);
+                        setSlugSuggestions(res.suggestions ?? []);
+                      }
+                    } finally {
+                      setSlugBusy(false);
+                    }
+                  })();
+                }}
+              >
+                Clear custom
+              </Button>
             </div>
           </div>
         ) : null}
@@ -393,14 +568,17 @@ export function RepoGittrPagesPanel({
             Steps &amp; links
           </summary>
           <div className="border-t border-violet-900/15 px-2.5 py-2 text-[10px] leading-relaxed text-zinc-500">
-            <ul className="space-y-1.5">
+            <ol className="list-decimal space-y-1.5 pl-4">
               <li>
                 Files — main panel; refetch only if this copy may lag relays.
               </li>
-              <li>README — tap the row above or use Push Page.</li>
-              <li>Push — button under this card (tree + README).</li>
-              <li>Manifest — Publish or any NIP-5A workflow you like.</li>
-            </ul>
+              <li>Push to Nostr — sidebar above “Order of steps”.</li>
+              <li>README — checklist row or Re/push Page below.</li>
+              <li>
+                Manifest — Push Manifest when readiness allows (no unpushed
+                edits).
+              </li>
+            </ol>
             <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-zinc-800/60 pt-2">
               <a
                 className="text-violet-400 underline-offset-2 hover:underline"
@@ -448,7 +626,16 @@ export function RepoGittrPagesPanel({
                   type="button"
                   size="sm"
                   variant="outline"
-                  disabled={manifestBusy || chainActionsDisabled}
+                  disabled={
+                    manifestBusy ||
+                    chainActionsDisabled ||
+                    manifestPublishBlocked
+                  }
+                  title={
+                    manifestPublishBlocked
+                      ? "Add a site entry file and Push to Nostr first (no unpushed edits), then publish the manifest."
+                      : undefined
+                  }
                   className={cn(
                     btnMultiline,
                     "border-amber-700/45 bg-amber-950/20 text-amber-50 hover:bg-amber-950/35"
@@ -531,7 +718,7 @@ export function RepoGittrPagesPanel({
                 >
                   <Upload className="h-4 w-4 shrink-0" aria-hidden />
                   <span className="min-w-0 text-left font-medium">
-                    Push Page
+                    Re/push Page
                   </span>
                 </Button>
                 {canChainNostrRefetch && onRefetchThenReadmeThenPush ? (
@@ -548,7 +735,7 @@ export function RepoGittrPagesPanel({
                   >
                     <RefreshCw className="h-4 w-4 shrink-0" aria-hidden />
                     <span className="min-w-0 text-left font-medium">
-                      Refetch → Push Page
+                      Refetch → Re/push Page
                     </span>
                   </Button>
                 ) : null}

@@ -41,6 +41,10 @@ import {
   mapGithubContributors,
 } from "@/lib/github-mapping";
 import { gittrPagesPushPreconditionsMet } from "@/lib/gittr-pages/pages-preconditions";
+import {
+  evaluatePagesSiteSlugInput,
+  resolveRepoPagesDTag,
+} from "@/lib/gittr-pages/pages-public-slug";
 import { publishNamedSiteManifest } from "@/lib/gittr-pages/publish-named-site-manifest";
 import {
   buildGittrPagesReadmeAppend,
@@ -2719,6 +2723,82 @@ export default function RepoCodePage() {
       }
     },
     [decodedRepo, resolvedParams.entity, resolvedParams.repo]
+  );
+
+  const commitRepoPagesSiteSlug = useCallback(
+    async (
+      raw: string | null
+    ): Promise<
+      { ok: true } | { ok: false; message: string; suggestions?: string[] }
+    > => {
+      const ownerPk = (
+        repoDataRef.current?.ownerPubkey ||
+        repoOwnerPubkey ||
+        entityPubkey ||
+        currentUserPubkey ||
+        ""
+      ).toLowerCase();
+      if (!/^[0-9a-f]{64}$/i.test(ownerPk)) {
+        return { ok: false, message: "Owner pubkey is not available yet." };
+      }
+      const repos = loadStoredRepos();
+      const ev = evaluatePagesSiteSlugInput({
+        raw,
+        decodedRepoSlug: decodedRepo,
+        ownerPubkeyHex: ownerPk,
+        repos,
+        entity: resolvedParams.entity,
+      });
+      if (!ev.ok) {
+        return {
+          ok: false,
+          message: ev.message,
+          suggestions: ev.suggestions,
+        };
+      }
+      markRepoAsEdited(decodedRepo, resolvedParams.entity);
+      setRepoData((prev: any) => {
+        if (!prev) return prev;
+        const next = { ...prev, hasUnpushedEdits: true } as StoredRepo;
+        if (ev.stored === undefined) {
+          delete (next as { pagesSiteSlug?: string }).pagesSiteSlug;
+        } else {
+          next.pagesSiteSlug = ev.stored;
+        }
+        return next;
+      });
+      try {
+        const idx = repos.findIndex(
+          (r: any) =>
+            (r.slug === decodedRepo || r.repo === decodedRepo) &&
+            r.entity === resolvedParams.entity
+        );
+        if (idx >= 0) {
+          const row = {
+            ...(repos[idx] as StoredRepo),
+            hasUnpushedEdits: true,
+          } as StoredRepo;
+          if (ev.stored === undefined) {
+            delete (row as { pagesSiteSlug?: string }).pagesSiteSlug;
+          } else {
+            row.pagesSiteSlug = ev.stored;
+          }
+          repos[idx] = row;
+          saveStoredRepos(repos);
+        }
+      } catch (e) {
+        console.error(e);
+        return { ok: false, message: "Could not save to local storage." };
+      }
+      return { ok: true };
+    },
+    [
+      decodedRepo,
+      resolvedParams.entity,
+      repoOwnerPubkey,
+      entityPubkey,
+      currentUserPubkey,
+    ]
   );
 
   useEffect(() => {
@@ -15502,7 +15582,14 @@ export default function RepoCodePage() {
                     dTag: string;
                   } | null = null;
                   if (/^[0-9a-f]{64}$/.test(ownerHexForPages)) {
-                    const dTag = slugToNsiteDTag(decodedRepo);
+                    const dTag = resolveRepoPagesDTag(decodedRepo, {
+                      pagesSiteSlug:
+                        (repoData as StoredRepo | null | undefined)
+                          ?.pagesSiteSlug ?? repo.pagesSiteSlug,
+                      repo: repo.repo,
+                      slug: repo.slug,
+                      name: repo.name,
+                    });
                     gittrPagesUrls = {
                       namedUrl: buildNsiteSiteUrl(
                         pagesBaseForSidebar,
@@ -17310,236 +17397,6 @@ export default function RepoCodePage() {
                           </>
                         )}
 
-                        {gittrPagesUrls ? (
-                          <div className="mb-3 rounded-md border border-violet-900/25 bg-violet-950/10 px-2.5 py-2 text-[11px] text-zinc-400">
-                            <span className="font-medium text-zinc-300">
-                              gittr Pages
-                            </span>
-                            <span className="mx-1.5 text-zinc-600">·</span>
-                            <a
-                              className="text-violet-400 underline-offset-2 hover:underline"
-                              href={gittrPagesUrls.namedUrl}
-                              rel="noopener noreferrer"
-                              target="_blank"
-                              title="Canonical site for this repo (NIP-5A named host)"
-                            >
-                              Live site ({gittrPagesUrls.dTag})
-                            </a>
-                            <span className="mx-1.5 text-zinc-600">·</span>
-                            <Link
-                              className="text-violet-400 underline-offset-2 hover:underline"
-                              href="/pages"
-                            >
-                              Directory
-                            </Link>
-                          </div>
-                        ) : null}
-
-                        {gittrPagesUrls &&
-                          canManageGittrPagesReadme &&
-                          repoIsOwner && (
-                            <RepoGittrPagesPanel
-                              canManageReadme
-                              isOwnerSession
-                              autoReadmeOnPush={gittrPagesAutoReadme}
-                              onAutoReadmeOnPushChange={setGittrPagesAutoReadme}
-                              onFocusSiteFiles={() => {
-                                document
-                                  .getElementById("gittr-repo-main")
-                                  ?.scrollIntoView({
-                                    behavior: "smooth",
-                                    block: "start",
-                                  });
-                              }}
-                              pagesReadiness={{
-                                files: (repoData?.files ||
-                                  repo?.files ||
-                                  []) as Array<{ path?: string }>,
-                                readme: String(
-                                  repoData?.readme ?? repo?.readme ?? ""
-                                ),
-                                autoReadmeOnPush: gittrPagesAutoReadme,
-                                hasUnpushedEdits: Boolean(
-                                  repo?.hasUnpushedEdits
-                                ),
-                                hasEverPushedToNostr: Boolean(
-                                  repo?.lastNostrEventId || repo?.nostrEventId
-                                ),
-                                namedUrl: gittrPagesUrls.namedUrl,
-                                dTag: gittrPagesUrls.dTag,
-                              }}
-                              chainActionsDisabled={isPushing || isRefetching}
-                              canChainNostrRefetch={
-                                showRefetchButton && !hasSourceUrl
-                              }
-                              onReadmeThenPush={() => {
-                                void appendGittrPagesReadmeBlock({
-                                  namedUrl: gittrPagesUrls.namedUrl,
-                                  dTag: gittrPagesUrls.dTag,
-                                  isOwnerSession: true,
-                                  silent: true,
-                                  schedulePushClick: true,
-                                });
-                              }}
-                              onRefetchThenReadmeThenPush={() => {
-                                const refetchEl = refetchButtonRef.current;
-                                if (!refetchEl) {
-                                  alert(
-                                    "Refetch control is not available on this screen."
-                                  );
-                                  return;
-                                }
-                                if (refetchEl.disabled) {
-                                  alert(
-                                    "Wait until push/refetch finishes, then try again."
-                                  );
-                                  return;
-                                }
-                                try {
-                                  sessionStorage.setItem(
-                                    GITTR_CHAIN_README_PUSH_AFTER_REFETCH_KEY,
-                                    JSON.stringify({
-                                      v: 1,
-                                      entity: resolvedParams.entity,
-                                      decodedRepo,
-                                      namedUrl: gittrPagesUrls.namedUrl,
-                                      dTag: gittrPagesUrls.dTag,
-                                    })
-                                  );
-                                } catch {
-                                  alert(
-                                    "Could not start chain (storage blocked?)."
-                                  );
-                                  return;
-                                }
-                                refetchEl.click();
-                              }}
-                              issueDraft={
-                                gittrPagesUrls
-                                  ? {
-                                      entity: resolvedParams.entity,
-                                      repo: resolvedParams.repo,
-                                      ownerPubkeyHex: ownerHexForPages,
-                                      namedUrl: gittrPagesUrls.namedUrl,
-                                      dTag: gittrPagesUrls.dTag,
-                                    }
-                                  : null
-                              }
-                              onAppendReadme={() => {
-                                void appendGittrPagesReadmeBlock({
-                                  namedUrl: gittrPagesUrls.namedUrl,
-                                  dTag: gittrPagesUrls.dTag,
-                                  isOwnerSession: true,
-                                });
-                              }}
-                              onPublishNamedSiteManifest={async () => {
-                                if (!gittrPagesUrls) return;
-                                if (
-                                  !publish ||
-                                  !subscribe ||
-                                  !defaultRelays?.length
-                                ) {
-                                  alert(
-                                    "Nostr is not ready (publish / subscribe / relays). Check your connection and try again."
-                                  );
-                                  return;
-                                }
-                                const title = String(
-                                  repoData?.name ||
-                                    repo?.name ||
-                                    decodedRepo ||
-                                    "Site"
-                                ).slice(0, 200);
-                                const descRaw =
-                                  (typeof repoData?.description === "string"
-                                    ? repoData.description
-                                    : null) ||
-                                  (typeof repo?.description === "string"
-                                    ? repo.description
-                                    : "");
-                                const desc =
-                                  descRaw && descRaw.trim().length > 0
-                                    ? descRaw
-                                    : undefined;
-                                const cloneList =
-                                  ((repoData as { clone?: string[] })?.clone as
-                                    | string[]
-                                    | undefined) ||
-                                  ((repo as { clone?: string[] })?.clone as
-                                    | string[]
-                                    | undefined);
-                                const sourceUrl =
-                                  cloneList?.find(
-                                    (u) =>
-                                      typeof u === "string" &&
-                                      (u.startsWith("https://") ||
-                                        u.startsWith("http://"))
-                                  ) || undefined;
-                                const gitSourceUrl =
-                                  (typeof repoData?.sourceUrl === "string" &&
-                                  repoData.sourceUrl.trim().length > 0
-                                    ? repoData.sourceUrl.trim()
-                                    : undefined) ||
-                                  (typeof sourceUrl === "string" &&
-                                  sourceUrl.startsWith("https://")
-                                    ? sourceUrl.trim()
-                                    : undefined);
-                                const defaultBranchForManifest =
-                                  (selectedBranch && selectedBranch.trim()) ||
-                                  (repoData?.defaultBranch &&
-                                    String(repoData.defaultBranch).trim()) ||
-                                  (typeof (repo as { defaultBranch?: string })
-                                    ?.defaultBranch === "string" &&
-                                    (
-                                      repo as { defaultBranch: string }
-                                    ).defaultBranch.trim()) ||
-                                  "main";
-                                const r = await publishNamedSiteManifest({
-                                  entity: resolvedParams.entity,
-                                  repo: resolvedParams.repo,
-                                  ownerPubkeyHex: ownerHexForPages,
-                                  dTag: gittrPagesUrls.dTag,
-                                  siteTitle: title,
-                                  siteDescription: desc,
-                                  sourceUrl,
-                                  gitSourceUrl,
-                                  defaultBranch: defaultBranchForManifest,
-                                  publish,
-                                  subscribe,
-                                  defaultRelays,
-                                  onProgress: (m) =>
-                                    console.log(`[gittr Pages manifest] ${m}`),
-                                });
-                                if (r.ok) {
-                                  const serverListLine = r.serverListEventId
-                                    ? `\nBlossom server list (kind 10063): ${
-                                        r.serverListEventId
-                                      }\nServer-list relay confirmation: ${
-                                        r.serverListConfirmed
-                                          ? "yes"
-                                          : "pending — relays may need a moment"
-                                      }`
-                                    : "";
-                                  alert(
-                                    `Pages manifest published.\n\nEvent id:\n${
-                                      r.manifestEventId
-                                    }\n\nFiles in manifest: ${
-                                      r.pathCount
-                                    }\nRelay confirmation: ${
-                                      r.confirmed
-                                        ? "yes"
-                                        : "pending — check /pages shortly"
-                                    }${serverListLine}\n\nThe live URL may lag until the gateway sees relays.`
-                                  );
-                                } else {
-                                  alert(
-                                    `Manifest publish failed:\n\n${r.error}`
-                                  );
-                                }
-                              }}
-                            />
-                          )}
-
                         {/* Push to Nostr button */}
                         {repoIsOwner &&
                           currentUserPubkey &&
@@ -17705,8 +17562,18 @@ export default function RepoCodePage() {
                                       if (
                                         /^[0-9a-f]{64}$/.test(ownerHexForPush)
                                       ) {
-                                        const dTagPush =
-                                          slugToNsiteDTag(decodedRepo);
+                                        const dTagPush = resolveRepoPagesDTag(
+                                          decodedRepo,
+                                          {
+                                            pagesSiteSlug:
+                                              repoDataRef.current
+                                                ?.pagesSiteSlug ??
+                                              repo.pagesSiteSlug,
+                                            repo: repo.repo,
+                                            slug: repo.slug,
+                                            name: repo.name,
+                                          }
+                                        );
                                         const namedUrlPush = buildNsiteSiteUrl(
                                           pagesBaseForPush,
                                           ownerHexForPush,
@@ -18114,6 +17981,241 @@ export default function RepoCodePage() {
                               )}
                             </>
                           )}
+                        {gittrPagesUrls ? (
+                          <div className="mb-3 rounded-md border border-violet-900/25 bg-violet-950/10 px-2.5 py-2 text-[11px] text-zinc-400">
+                            <span className="font-medium text-zinc-300">
+                              gittr Pages
+                            </span>
+                            <span className="mx-1.5 text-zinc-600">·</span>
+                            <a
+                              className="text-violet-400 underline-offset-2 hover:underline"
+                              href={gittrPagesUrls.namedUrl}
+                              rel="noopener noreferrer"
+                              target="_blank"
+                              title="Canonical site for this repo (NIP-5A named host)"
+                            >
+                              Live site ({gittrPagesUrls.dTag})
+                            </a>
+                            <span className="mx-1.5 text-zinc-600">·</span>
+                            <Link
+                              className="text-violet-400 underline-offset-2 hover:underline"
+                              href="/pages"
+                            >
+                              Directory
+                            </Link>
+                          </div>
+                        ) : null}
+
+                        {gittrPagesUrls &&
+                          canManageGittrPagesReadme &&
+                          repoIsOwner && (
+                            <RepoGittrPagesPanel
+                              canManageReadme
+                              isOwnerSession
+                              pagesSiteSlug={
+                                (repoData as StoredRepo | null | undefined)
+                                  ?.pagesSiteSlug ?? repo.pagesSiteSlug
+                              }
+                              onCommitPagesSiteSlug={commitRepoPagesSiteSlug}
+                              autoReadmeOnPush={gittrPagesAutoReadme}
+                              onAutoReadmeOnPushChange={setGittrPagesAutoReadme}
+                              onFocusSiteFiles={() => {
+                                document
+                                  .getElementById("gittr-repo-main")
+                                  ?.scrollIntoView({
+                                    behavior: "smooth",
+                                    block: "start",
+                                  });
+                              }}
+                              pagesReadiness={{
+                                files: (repoData?.files ||
+                                  repo?.files ||
+                                  []) as Array<{ path?: string }>,
+                                readme: String(
+                                  repoData?.readme ?? repo?.readme ?? ""
+                                ),
+                                autoReadmeOnPush: gittrPagesAutoReadme,
+                                hasUnpushedEdits: Boolean(
+                                  repo?.hasUnpushedEdits
+                                ),
+                                hasEverPushedToNostr: Boolean(
+                                  repo?.lastNostrEventId || repo?.nostrEventId
+                                ),
+                                namedUrl: gittrPagesUrls.namedUrl,
+                                dTag: gittrPagesUrls.dTag,
+                              }}
+                              chainActionsDisabled={isPushing || isRefetching}
+                              canChainNostrRefetch={
+                                showRefetchButton && !hasSourceUrl
+                              }
+                              onReadmeThenPush={() => {
+                                void appendGittrPagesReadmeBlock({
+                                  namedUrl: gittrPagesUrls.namedUrl,
+                                  dTag: gittrPagesUrls.dTag,
+                                  isOwnerSession: true,
+                                  silent: true,
+                                  schedulePushClick: true,
+                                });
+                              }}
+                              onRefetchThenReadmeThenPush={() => {
+                                const refetchEl = refetchButtonRef.current;
+                                if (!refetchEl) {
+                                  alert(
+                                    "Refetch control is not available on this screen."
+                                  );
+                                  return;
+                                }
+                                if (refetchEl.disabled) {
+                                  alert(
+                                    "Wait until push/refetch finishes, then try again."
+                                  );
+                                  return;
+                                }
+                                try {
+                                  sessionStorage.setItem(
+                                    GITTR_CHAIN_README_PUSH_AFTER_REFETCH_KEY,
+                                    JSON.stringify({
+                                      v: 1,
+                                      entity: resolvedParams.entity,
+                                      decodedRepo,
+                                      namedUrl: gittrPagesUrls.namedUrl,
+                                      dTag: gittrPagesUrls.dTag,
+                                    })
+                                  );
+                                } catch {
+                                  alert(
+                                    "Could not start chain (storage blocked?)."
+                                  );
+                                  return;
+                                }
+                                refetchEl.click();
+                              }}
+                              issueDraft={
+                                gittrPagesUrls
+                                  ? {
+                                      entity: resolvedParams.entity,
+                                      repo: resolvedParams.repo,
+                                      ownerPubkeyHex: ownerHexForPages,
+                                      namedUrl: gittrPagesUrls.namedUrl,
+                                      dTag: gittrPagesUrls.dTag,
+                                    }
+                                  : null
+                              }
+                              onAppendReadme={() => {
+                                void appendGittrPagesReadmeBlock({
+                                  namedUrl: gittrPagesUrls.namedUrl,
+                                  dTag: gittrPagesUrls.dTag,
+                                  isOwnerSession: true,
+                                });
+                              }}
+                              onPublishNamedSiteManifest={async () => {
+                                if (!gittrPagesUrls) return;
+                                if (
+                                  !publish ||
+                                  !subscribe ||
+                                  !defaultRelays?.length
+                                ) {
+                                  alert(
+                                    "Nostr is not ready (publish / subscribe / relays). Check your connection and try again."
+                                  );
+                                  return;
+                                }
+                                const title = String(
+                                  repoData?.name ||
+                                    repo?.name ||
+                                    decodedRepo ||
+                                    "Site"
+                                ).slice(0, 200);
+                                const descRaw =
+                                  (typeof repoData?.description === "string"
+                                    ? repoData.description
+                                    : null) ||
+                                  (typeof repo?.description === "string"
+                                    ? repo.description
+                                    : "");
+                                const desc =
+                                  descRaw && descRaw.trim().length > 0
+                                    ? descRaw
+                                    : undefined;
+                                const cloneList =
+                                  ((repoData as { clone?: string[] })?.clone as
+                                    | string[]
+                                    | undefined) ||
+                                  ((repo as { clone?: string[] })?.clone as
+                                    | string[]
+                                    | undefined);
+                                const sourceUrl =
+                                  cloneList?.find(
+                                    (u) =>
+                                      typeof u === "string" &&
+                                      (u.startsWith("https://") ||
+                                        u.startsWith("http://"))
+                                  ) || undefined;
+                                const gitSourceUrl =
+                                  (typeof repoData?.sourceUrl === "string" &&
+                                  repoData.sourceUrl.trim().length > 0
+                                    ? repoData.sourceUrl.trim()
+                                    : undefined) ||
+                                  (typeof sourceUrl === "string" &&
+                                  sourceUrl.startsWith("https://")
+                                    ? sourceUrl.trim()
+                                    : undefined);
+                                const defaultBranchForManifest =
+                                  (selectedBranch && selectedBranch.trim()) ||
+                                  (repoData?.defaultBranch &&
+                                    String(repoData.defaultBranch).trim()) ||
+                                  (typeof (repo as { defaultBranch?: string })
+                                    ?.defaultBranch === "string" &&
+                                    (
+                                      repo as { defaultBranch: string }
+                                    ).defaultBranch.trim()) ||
+                                  "main";
+                                const r = await publishNamedSiteManifest({
+                                  entity: resolvedParams.entity,
+                                  repo: resolvedParams.repo,
+                                  ownerPubkeyHex: ownerHexForPages,
+                                  dTag: gittrPagesUrls.dTag,
+                                  siteTitle: title,
+                                  siteDescription: desc,
+                                  sourceUrl,
+                                  gitSourceUrl,
+                                  defaultBranch: defaultBranchForManifest,
+                                  publish,
+                                  subscribe,
+                                  defaultRelays,
+                                  onProgress: (m) =>
+                                    console.log(`[gittr Pages manifest] ${m}`),
+                                });
+                                if (r.ok) {
+                                  const serverListLine = r.serverListEventId
+                                    ? `\nBlossom server list (kind 10063): ${
+                                        r.serverListEventId
+                                      }\nServer-list relay confirmation: ${
+                                        r.serverListConfirmed
+                                          ? "yes"
+                                          : "pending — relays may need a moment"
+                                      }`
+                                    : "";
+                                  alert(
+                                    `Pages manifest published.\n\nEvent id:\n${
+                                      r.manifestEventId
+                                    }\n\nFiles in manifest: ${
+                                      r.pathCount
+                                    }\nRelay confirmation: ${
+                                      r.confirmed
+                                        ? "yes"
+                                        : "pending — check /pages shortly"
+                                    }${serverListLine}\n\nThe live URL may lag until the gateway sees relays.`
+                                  );
+                                } else {
+                                  alert(
+                                    `Manifest publish failed:\n\n${r.error}`
+                                  );
+                                }
+                              }}
+                            />
+                          )}
+
                         {gittrPagesUrls &&
                           canManageGittrPagesReadme &&
                           !repoIsOwner && (

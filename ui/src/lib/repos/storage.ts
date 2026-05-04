@@ -105,6 +105,11 @@ export interface StoredRepo {
   publicRead?: boolean; // NIP-34: Repository privacy (read access)
   publicWrite?: boolean; // NIP-34: Repository privacy (write access)
   pushCostSats?: number; // Optional repo-level push paywall cost in sats
+  /**
+   * Optional gittr Pages named-site segment (NIP-5A `d` tag, 1–13 chars).
+   * When set (after normalization), live URLs use this instead of the repo slug.
+   */
+  pagesSiteSlug?: string;
 }
 
 const hasLocalChanges = (repo: StoredRepo): boolean =>
