@@ -270,25 +270,19 @@ AuthorizedKeysFile .ssh/authorized_keys
 PermitUserEnvironment yes
 ```
 
-Optional compatibility alias for `git@...` URLs:
+**`git@host` vs keys:** On gittr, `git` and `git-nostr` share the same UID and home (`/home/git-nostr`). The bridge **only** refreshes **`/home/git-nostr/.ssh/authorized_keys`**. If `sshd` uses a **separate** `Match User git` → `/etc/ssh/git-authorized_keys`, that copy **does not auto-update** when users add keys in the UI — they see **password prompts** after pubkey auth finds no match. Prefer pointing `git` at the live file:
 
 ```
 Match User git
-    AuthorizedKeysFile /etc/ssh/git-authorized_keys
+    AuthorizedKeysFile /home/git-nostr/.ssh/authorized_keys
 ```
 
-And create the compatibility key file:
-
-```bash
-sudo cp /home/git-nostr/.ssh/authorized_keys /etc/ssh/git-authorized_keys
-sudo chown root:root /etc/ssh/git-authorized_keys
-sudo chmod 644 /etc/ssh/git-authorized_keys
-```
+(Legacy setups used a copied `/etc/ssh/git-authorized_keys`; if you keep that, you must **`sudo cp /home/git-nostr/.ssh/authorized_keys /etc/ssh/git-authorized_keys`** after every new key or bridge restart, or keys will be missing for `git@…` clones.)
 
 Restart SSH:
 
 ```bash
-sudo systemctl restart sshd
+sudo sshd -t && sudo systemctl reload ssh
 ```
 
 ### Step 10: Set Up Bridge Service
