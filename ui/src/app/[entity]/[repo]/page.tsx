@@ -30,6 +30,7 @@ import { MermaidRenderer } from "@/components/ui/mermaid-renderer";
 import { PaymentQR } from "@/components/ui/payment-qr";
 import { PushPaywallStatus } from "@/components/ui/push-paywall-status";
 import { RelayDisplay } from "@/components/ui/relay-display";
+import { RepoGittrPagesPanel } from "@/components/ui/repo-gittr-pages-panel";
 import { RepoLinks } from "@/components/ui/repo-links";
 import { RepoZapButton } from "@/components/ui/repo-zap-button";
 import { SSHGitHelp } from "@/components/ui/ssh-git-help";
@@ -39,6 +40,13 @@ import {
   type GitHubContributor,
   mapGithubContributors,
 } from "@/lib/github-mapping";
+import { publishNamedSiteManifest } from "@/lib/gittr-pages/publish-named-site-manifest";
+import {
+  buildGittrPagesReadmeAppend,
+  upsertGittrPagesReadmeSection,
+  validateReadmeGittrPagesBlock,
+} from "@/lib/gittr-pages/readme-section";
+import { syncReadmeTextIntoRepoFiles } from "@/lib/gittr-pages/sync-readme-to-files";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
@@ -47,16 +55,6 @@ import {
   useContributorMetadata,
 } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
-import { RepoGittrPagesPanel } from "@/components/ui/repo-gittr-pages-panel";
-import {
-  buildGittrPagesReadmeAppend,
-  upsertGittrPagesReadmeSection,
-  validateReadmeGittrPagesBlock,
-} from "@/lib/gittr-pages/readme-section";
-
-/** After Nostr refetch (full reload), resume README gittr block + Push to Nostr. */
-const GITTR_CHAIN_README_PUSH_AFTER_REFETCH_KEY =
-  "gittr_chain_readme_push_after_refetch_v1";
 import { buildNsiteSiteUrl, slugToNsiteDTag } from "@/lib/nsite/nsite-url";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { hasPrivateRepoAccess, hasWriteAccess } from "@/lib/repo-permissions";
@@ -144,6 +142,10 @@ import { nip19 } from "nostr-tools";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
+
+/** After Nostr refetch (full reload), resume README gittr block + Push to Nostr. */
+const GITTR_CHAIN_README_PUSH_AFTER_REFETCH_KEY =
+  "gittr_chain_readme_push_after_refetch_v1";
 
 const normalizeHeadingText = (value: string): string => {
   return value
@@ -2690,6 +2692,15 @@ export default function RepoCodePage() {
       } catch (e) {
         console.error("Failed to persist README", e);
       }
+      try {
+        syncReadmeTextIntoRepoFiles(
+          resolvedParams.entity,
+          resolvedParams.repo,
+          nextReadme
+        );
+      } catch (e) {
+        console.error("Failed to sync README.md into file storage", e);
+      }
       if (!args.silent) {
         alert(
           "README gittr Pages block updated.\n\nUse Push to Nostr so everyone sees it on relays."
@@ -2701,7 +2712,7 @@ export default function RepoCodePage() {
         }, 200);
       }
     },
-    [decodedRepo, resolvedParams.entity]
+    [decodedRepo, resolvedParams.entity, resolvedParams.repo]
   );
 
   useEffect(() => {
@@ -2778,6 +2789,15 @@ export default function RepoCodePage() {
       }
     } catch (e) {
       console.error("Failed to persist README after refetch chain", e);
+    }
+    try {
+      syncReadmeTextIntoRepoFiles(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        nextReadme
+      );
+    } catch (e) {
+      console.error("Failed to sync README.md after refetch chain", e);
     }
     setTimeout(() => {
       pushToNostrButtonRef.current?.click();
@@ -17416,7 +17436,9 @@ export default function RepoCodePage() {
                                         currentUserPubkey ||
                                         ""
                                       ).toLowerCase();
-                                      if (/^[0-9a-f]{64}$/.test(ownerHexForPush)) {
+                                      if (
+                                        /^[0-9a-f]{64}$/.test(ownerHexForPush)
+                                      ) {
                                         const dTagPush =
                                           slugToNsiteDTag(decodedRepo);
                                         const namedUrlPush = buildNsiteSiteUrl(
@@ -17451,8 +17473,7 @@ export default function RepoCodePage() {
                                                 : prev
                                             );
                                             try {
-                                              const repos =
-                                                loadStoredRepos();
+                                              const repos = loadStoredRepos();
                                               const idx = repos.findIndex(
                                                 (r: any) =>
                                                   (r.slug === decodedRepo ||
@@ -17462,9 +17483,7 @@ export default function RepoCodePage() {
                                               );
                                               if (idx >= 0) {
                                                 repos[idx] = {
-                                                  ...(repos[
-                                                    idx
-                                                  ] as StoredRepo),
+                                                  ...(repos[idx] as StoredRepo),
                                                   readme: nextRm,
                                                   hasUnpushedEdits: true,
                                                 } as StoredRepo;
@@ -17473,6 +17492,18 @@ export default function RepoCodePage() {
                                             } catch (e) {
                                               console.error(
                                                 "Failed to persist README before push",
+                                                e
+                                              );
+                                            }
+                                            try {
+                                              syncReadmeTextIntoRepoFiles(
+                                                resolvedParams.entity,
+                                                resolvedParams.repo,
+                                                nextRm
+                                              );
+                                            } catch (e) {
+                                              console.error(
+                                                "Failed to sync README.md before push",
                                                 e
                                               );
                                             }
@@ -17799,7 +17830,9 @@ export default function RepoCodePage() {
                                     canManageReadme
                                     isOwnerSession
                                     autoReadmeOnPush={gittrPagesAutoReadme}
-                                    onAutoReadmeOnPushChange={setGittrPagesAutoReadme}
+                                    onAutoReadmeOnPushChange={
+                                      setGittrPagesAutoReadme
+                                    }
                                     pagesReadiness={{
                                       files: (repoData?.files ||
                                         repo?.files ||
@@ -17834,7 +17867,8 @@ export default function RepoCodePage() {
                                       });
                                     }}
                                     onRefetchThenReadmeThenPush={() => {
-                                      const refetchEl = refetchButtonRef.current;
+                                      const refetchEl =
+                                        refetchButtonRef.current;
                                       if (!refetchEl) {
                                         alert(
                                           "Refetch control is not available on this screen."
@@ -17883,6 +17917,82 @@ export default function RepoCodePage() {
                                         dTag: gittrPagesUrls.dTag,
                                         isOwnerSession: true,
                                       });
+                                    }}
+                                    onPublishNamedSiteManifest={async () => {
+                                      if (!gittrPagesUrls) return;
+                                      if (
+                                        !publish ||
+                                        !subscribe ||
+                                        !defaultRelays?.length
+                                      ) {
+                                        alert(
+                                          "Nostr is not ready (publish / subscribe / relays). Check your connection and try again."
+                                        );
+                                        return;
+                                      }
+                                      const title = String(
+                                        repoData?.name ||
+                                          repo?.name ||
+                                          decodedRepo ||
+                                          "Site"
+                                      ).slice(0, 200);
+                                      const descRaw =
+                                        (typeof repoData?.description ===
+                                        "string"
+                                          ? repoData.description
+                                          : null) ||
+                                        (typeof repo?.description === "string"
+                                          ? repo.description
+                                          : "");
+                                      const desc =
+                                        descRaw && descRaw.trim().length > 0
+                                          ? descRaw
+                                          : undefined;
+                                      const cloneList =
+                                        ((repoData as { clone?: string[] })
+                                          ?.clone as string[] | undefined) ||
+                                        ((repo as { clone?: string[] })
+                                          ?.clone as string[] | undefined);
+                                      const sourceUrl =
+                                        cloneList?.find(
+                                          (u) =>
+                                            typeof u === "string" &&
+                                            (u.startsWith("https://") ||
+                                              u.startsWith("http://"))
+                                        ) || undefined;
+                                      const r = await publishNamedSiteManifest({
+                                        entity: resolvedParams.entity,
+                                        repo: resolvedParams.repo,
+                                        ownerPubkeyHex: ownerHexForPages,
+                                        dTag: gittrPagesUrls.dTag,
+                                        siteTitle: title,
+                                        siteDescription: desc,
+                                        sourceUrl,
+                                        publish,
+                                        subscribe,
+                                        defaultRelays,
+                                        onProgress: (m) =>
+                                          console.log(
+                                            `[gittr Pages manifest] ${m}`
+                                          ),
+                                      });
+                                      if (r.ok) {
+                                        alert(
+                                          `Pages manifest published.\n\nEvent id:\n${
+                                            r.manifestEventId
+                                          }\n\nFiles in manifest: ${
+                                            r.pathCount
+                                          }\nRelay confirmation: ${
+                                            r.confirmed
+                                              ? "yes"
+                                              : "pending — check /pages shortly"
+                                          }\n\nThe live URL may lag until the gateway sees relays.`
+                                        );
+                                      } else {
+                                        alert(
+                                          `Manifest publish failed:\n\n${r.error}`
+                                        );
+                                      }
                                     }}
                                   />
                                 )}

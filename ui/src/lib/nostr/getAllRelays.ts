@@ -1,7 +1,7 @@
 /**
  * Helper to get all relays (default + user relays from localStorage)
  * This ensures user-configured relays are used for metadata fetching, explore, and profile pages
- * 
+ *
  * In development mode, skips user relays to avoid connection spam and improve dev server performance
  */
 

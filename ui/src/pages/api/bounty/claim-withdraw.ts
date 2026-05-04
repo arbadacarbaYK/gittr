@@ -224,7 +224,7 @@ export default async function handler(
     return res.status(500).json({
       status: "error",
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-      message: (error ).message || "Failed to claim withdraw link",
+      message: error.message || "Failed to claim withdraw link",
     });
   }
 }

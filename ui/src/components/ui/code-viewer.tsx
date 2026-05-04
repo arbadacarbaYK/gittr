@@ -658,7 +658,7 @@ export function CodeViewer({
       if (hasNip07 && window.nostr && !privateKey) {
         try {
           console.log("🔐 [Code Snippet] Signing with NIP-07...");
-          snippetEvent = await window.nostr.signEvent(snippetEvent );
+          snippetEvent = await window.nostr.signEvent(snippetEvent);
           console.log("✅ [Code Snippet] Event signed with NIP-07");
         } catch (e: any) {
           console.error("Failed to sign with NIP-07:", e);

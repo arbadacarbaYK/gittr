@@ -606,10 +606,10 @@ export default function RepositoriesPage() {
         const repoForValidation = {
           repositoryName: r.repositoryName || r.repo || r.slug || r.name || "",
           entity: r.entity || "",
-          ownerPubkey: (r ).ownerPubkey || "",
+          ownerPubkey: r.ownerPubkey || "",
         };
 
-        const eventId = (r ).nostrEventId || (r ).lastNostrEventId;
+        const eventId = r.nostrEventId || r.lastNostrEventId;
 
         if (isRepoCorrupted(repoForValidation, eventId)) {
           return false; // Remove corrupted repos
@@ -1522,17 +1522,17 @@ export default function RepositoriesPage() {
             // Always use entity derived from event.pubkey (the actual owner)
             // Remove any entity field from repoData if it exists
             // This prevents other Nostr clients from publishing corrupted entity values
-            if ((repoData ).entity) {
+            if (repoData.entity) {
               console.warn(
                 "⚠️ [Repositories] Ignoring entity from repoData (using event.pubkey instead):",
                 {
-                  repoDataEntity: (repoData ).entity,
+                  repoDataEntity: repoData.entity,
                   correctEntity: entity,
                   eventId: event.id.slice(0, 8),
                 }
               );
             }
-            const { entity: _, ...cleanRepoData } = repoData ;
+            const { entity: _, ...cleanRepoData } = repoData;
 
             // Merge ALL metadata from Nostr event
             const repo: any = {
@@ -1771,11 +1771,10 @@ export default function RepositoriesPage() {
                 repositoryName:
                   r.repositoryName || r.repo || r.slug || r.name || "",
                 entity: r.entity || "",
-                ownerPubkey: (r ).ownerPubkey || "",
+                ownerPubkey: r.ownerPubkey || "",
               };
 
-              const eventId =
-                (r ).nostrEventId || (r ).lastNostrEventId;
+              const eventId = r.nostrEventId || r.lastNostrEventId;
 
               if (isRepoCorrupted(repoForValidation, eventId)) {
                 // Silently remove - don't spam console
@@ -1968,7 +1967,7 @@ export default function RepositoriesPage() {
             repo: r.repo,
             slug: r.slug,
             name: r.name,
-            ownerPubkey: (r ).ownerPubkey?.slice(0, 16),
+            ownerPubkey: r.ownerPubkey?.slice(0, 16),
           }))
         );
       } else {
@@ -1989,9 +1988,9 @@ export default function RepositoriesPage() {
             "❌ [Repositories] Excluding repo with corrupted entity 'gittr.space':",
             {
               repo: repoName,
-              ownerPubkey: (r ).ownerPubkey?.slice(0, 16),
-              nostrEventId: (r ).nostrEventId?.slice(0, 16),
-              lastNostrEventId: (r ).lastNostrEventId?.slice(0, 16),
+              ownerPubkey: r.ownerPubkey?.slice(0, 16),
+              nostrEventId: r.nostrEventId?.slice(0, 16),
+              lastNostrEventId: r.lastNostrEventId?.slice(0, 16),
             }
           );
           return false; // Always exclude - these are corrupted
@@ -2017,7 +2016,7 @@ export default function RepositoriesPage() {
             {
               repo: repoName,
               entity: r.entity,
-              ownerPubkey: (r ).ownerPubkey?.slice(0, 16),
+              ownerPubkey: r.ownerPubkey?.slice(0, 16),
             }
           );
           return false; // Only npub format is valid
@@ -2042,9 +2041,9 @@ export default function RepositoriesPage() {
             entityLength: r.entity?.length,
             entityIsNpub: r.entity?.startsWith("npub"),
             decodedEntityPubkey: decodedEntityPubkey?.slice(0, 16),
-            ownerPubkey: (r ).ownerPubkey?.slice(0, 16),
-            ownerPubkeyLength: (r ).ownerPubkey?.length,
-            ownerPubkeyIs64Char: (r ).ownerPubkey?.length === 64,
+            ownerPubkey: r.ownerPubkey?.slice(0, 16),
+            ownerPubkeyLength: r.ownerPubkey?.length,
+            ownerPubkeyIs64Char: r.ownerPubkey?.length === 64,
             currentUserPubkey: pubkey?.slice(0, 16),
             currentUserPubkeyLength: pubkey?.length,
             hasContributors: !!(
@@ -2058,11 +2057,8 @@ export default function RepositoriesPage() {
         }
 
         // Priority 1: Check direct ownerPubkey match (most reliable)
-        if (
-          (r ).ownerPubkey &&
-          typeof (r ).ownerPubkey === "string"
-        ) {
-          const ownerPubkey = (r ).ownerPubkey;
+        if (r.ownerPubkey && typeof r.ownerPubkey === "string") {
+          const ownerPubkey = r.ownerPubkey;
           if (ownerPubkey.toLowerCase() === pubkey.toLowerCase()) {
             if (isTides)
               console.log(
@@ -2074,7 +2070,7 @@ export default function RepositoriesPage() {
         }
 
         // Priority 2: Check getRepoOwnerPubkey (uses ownerPubkey or contributors)
-        const repoOwnerPubkey = getRepoOwnerPubkey(r , r.entity);
+        const repoOwnerPubkey = getRepoOwnerPubkey(r, r.entity);
         if (
           repoOwnerPubkey &&
           repoOwnerPubkey.toLowerCase() === pubkey.toLowerCase()
@@ -2173,7 +2169,7 @@ export default function RepositoriesPage() {
             {
               entity: r.entity,
               repoOwnerPubkey: repoOwnerPubkey?.slice(0, 16),
-              directOwnerPubkey: (r ).ownerPubkey?.slice(0, 16),
+              directOwnerPubkey: r.ownerPubkey?.slice(0, 16),
               currentUser: pubkey.slice(0, 16),
               hasContributors: !!(
                 r.contributors && Array.isArray(r.contributors)
@@ -3100,7 +3096,7 @@ export default function RepositoriesPage() {
             // CRITICAL: For URLs and bridge operations, use repositoryName from Nostr event (exact name used by git-nostr-bridge)
             // Priority: repositoryName > repo > slug
             // For display, use original name (r.name)
-            const rAny = r ;
+            const rAny = r;
             const repoForUrl =
               rAny?.repositoryName || r.repo || r.slug || "unnamed-repo";
             const displayName = r.name || repoForUrl; // CRITICAL: Use original name for display
@@ -3305,7 +3301,7 @@ export default function RepositoriesPage() {
 
                               const ownerPubkey =
                                 getRepoOwnerPubkey(r as StoredRepo, entity) ||
-                                (r ).ownerPubkey ||
+                                r.ownerPubkey ||
                                 "";
                               const paymentAuth =
                                 await ensurePushPaymentAuthorization({
@@ -3396,24 +3392,22 @@ export default function RepositoriesPage() {
                         </Button>
                       )}
                     <div className="opacity-70 text-xs sm:text-sm whitespace-nowrap">
-                      {(r ).lastNostrEventCreatedAt ? (
+                      {r.lastNostrEventCreatedAt ? (
                         <>
                           <span className="hidden sm:inline">Last push: </span>
-                          {formatDateTime24h(
-                            (r ).lastNostrEventCreatedAt * 1000
-                          )}
+                          {formatDateTime24h(r.lastNostrEventCreatedAt * 1000)}
                         </>
-                      ) : (r ).lastPushAttempt ? (
+                      ) : r.lastPushAttempt ? (
                         <>
                           <span className="hidden sm:inline">
                             Push attempted:{" "}
                           </span>
-                          {formatDateTime24h((r ).lastPushAttempt)}
+                          {formatDateTime24h(r.lastPushAttempt)}
                         </>
-                      ) : (r ).lastModifiedAt ? (
+                      ) : r.lastModifiedAt ? (
                         <>
                           <span className="hidden sm:inline">Modified: </span>
-                          {formatDateTime24h((r ).lastModifiedAt)}
+                          {formatDateTime24h(r.lastModifiedAt)}
                         </>
                       ) : (
                         <>

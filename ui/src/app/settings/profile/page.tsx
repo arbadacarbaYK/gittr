@@ -523,7 +523,7 @@ export default function ProfilePage() {
         console.log("🔐 [Profile Settings] Using NIP-07 to sign event...");
         setUpdateStatus("Waiting for NIP-07 extension to sign...");
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        event = await window.nostr.signEvent(event );
+        event = await window.nostr.signEvent(event);
         console.log("✅ [Profile Settings] Event signed with NIP-07");
       } else if (privateKey) {
         // Use private key (fallback)

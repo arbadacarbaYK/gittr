@@ -2,10 +2,9 @@
  * Bridge Push Authentication Helper
  * Provides NIP-98 style auth for the UI using NIP-07 signer
  */
-
 import { getEventHash } from "nostr-tools";
 
-const BRIDGE_URL = process.env.NEXT_PUBLIC_BRIDGE_URL || '';
+const BRIDGE_URL = process.env.NEXT_PUBLIC_BRIDGE_URL || "";
 const AUTH_CACHE_TTL_SECONDS = 240; // Keep below backend 5 minute expiry window
 
 type CachedBridgeAuth = {
@@ -66,7 +65,7 @@ function writeCachedAuth(auth: CachedBridgeAuth): void {
  * @param signer - NIP-07 signer function (window.nostr.signEvent)
  */
 export async function getBridgeAuthHeaders(
-  pubkey: string, 
+  pubkey: string,
   signer: (event: any) => Promise<any>
 ): Promise<Headers> {
   const normalizedPubkey = pubkey.toLowerCase();
@@ -78,7 +77,9 @@ export async function getBridgeAuthHeaders(
   }
 
   // Step 1: Get challenge from bridge
-  const challengeRes = await fetch(`${BRIDGE_URL}/api/nostr/repo/push-challenge`);
+  const challengeRes = await fetch(
+    `${BRIDGE_URL}/api/nostr/repo/push-challenge`
+  );
   if (!challengeRes.ok) {
     throw new Error(`Failed to get challenge: ${challengeRes.status}`);
   }
@@ -91,7 +92,7 @@ export async function getBridgeAuthHeaders(
     kind: 24242,
     created_at,
     tags: [["challenge", challenge]],
-    content: "gittr bridge auth"
+    content: "gittr bridge auth",
   };
 
   // Get the event hash and sign using NIP-07
@@ -102,10 +103,12 @@ export async function getBridgeAuthHeaders(
   const authPayload = {
     pubkey: normalizedPubkey,
     sig: signed.sig,
-    created_at
+    created_at,
   };
 
-  const authHeader = Buffer.from(JSON.stringify(authPayload)).toString("base64");
+  const authHeader = Buffer.from(JSON.stringify(authPayload)).toString(
+    "base64"
+  );
   writeCachedAuth({
     pubkey: normalizedPubkey,
     created_at,
@@ -113,7 +116,7 @@ export async function getBridgeAuthHeaders(
   });
 
   return new Headers({
-    "Authorization": `Nostr ${authHeader}`
+    Authorization: `Nostr ${authHeader}`,
   });
 }
 
@@ -121,7 +124,9 @@ export async function getBridgeAuthHeaders(
  * Get challenge from bridge (for debugging/custom implementations)
  */
 export async function getBridgeChallenge(): Promise<string> {
-  const challengeRes = await fetch(`${BRIDGE_URL}/api/nostr/repo/push-challenge`);
+  const challengeRes = await fetch(
+    `${BRIDGE_URL}/api/nostr/repo/push-challenge`
+  );
   if (!challengeRes.ok) {
     throw new Error(`Failed to get challenge: ${challengeRes.status}`);
   }

@@ -36,7 +36,7 @@ export function PushPaywallStatus({
           )}`
         );
         if (!res.ok) return;
-        const json = (await res.json());
+        const json = await res.json();
         const next: PushPaywallStatusData = {
           pushCostSats:
             typeof json.pushCostSats === "number" ? json.pushCostSats : 0,

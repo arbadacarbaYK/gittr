@@ -1,12 +1,15 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import {
   GITTR_PAGES_ISSUE_PREFILL_KEY,
-  buildGittrPagesManifestIssueDraft,
   type GittrPagesIssueDraftInput,
+  buildGittrPagesManifestIssueDraft,
 } from "@/lib/gittr-pages/gittr-pages-issue-draft";
 import { validateReadmeGittrPagesBlock } from "@/lib/gittr-pages/readme-section";
+import { cn } from "@/lib/utils";
 
 import {
   BookOpen,
@@ -21,9 +24,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-
-import { cn } from "@/lib/utils";
 
 /** Live sidebar status for “what gittr can help with” vs fully manual steps outside gittr. */
 export type GittrPagesReadiness = {
@@ -58,6 +58,8 @@ type RepoGittrPagesPanelProps = {
   onAutoReadmeOnPushChange?: (value: boolean) => void;
   onAppendReadme: () => void | Promise<void>;
   issueDraft?: GittrPagesIssueDraftInput | null;
+  /** Owner: upload static files to Blossom (NIP-07) then publish kind 35128 to relays. */
+  onPublishNamedSiteManifest?: () => void | Promise<void>;
   /** Disables chained README / refetch actions while push or refetch is in flight. */
   chainActionsDisabled?: boolean;
   /** Show “refetch Nostr → README → push” when the repo sidebar exposes Nostr refetch. */
@@ -82,6 +84,7 @@ export function RepoGittrPagesPanel({
   onAutoReadmeOnPushChange,
   onAppendReadme,
   issueDraft,
+  onPublishNamedSiteManifest,
   chainActionsDisabled = false,
   canChainNostrRefetch = false,
   onReadmeThenPush,
@@ -90,6 +93,7 @@ export function RepoGittrPagesPanel({
 }: RepoGittrPagesPanelProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [manifestBusy, setManifestBusy] = useState(false);
 
   const readmeOk =
     pagesReadiness &&
@@ -110,7 +114,9 @@ export function RepoGittrPagesPanel({
     pagesReadiness && readmeOk && siteOk && !pagesReadiness.hasUnpushedEdits
   );
 
-  const [gatewayListsSite, setGatewayListsSite] = useState<boolean | null>(null);
+  const [gatewayListsSite, setGatewayListsSite] = useState<boolean | null>(
+    null
+  );
 
   useEffect(() => {
     if (!pagesReadiness?.namedUrl) {
@@ -135,7 +141,8 @@ export function RepoGittrPagesPanel({
           const u = (s.siteUrl || "").replace(/\/$/, "").toLowerCase();
           return (
             u === want ||
-            (dTag && (u.includes(dTag) || u.endsWith(`${dTag}.pages.gittr.space`)))
+            (dTag &&
+              (u.includes(dTag) || u.endsWith(`${dTag}.pages.gittr.space`)))
           );
         });
         if (!cancelled) setGatewayListsSite(hit);
@@ -158,14 +165,16 @@ export function RepoGittrPagesPanel({
 
       <div className="flow-root space-y-3 border-t border-violet-900/25 px-3 pb-3 pt-2">
         <p className="text-[11px] leading-snug text-zinc-400">
-          <strong className="text-zinc-300">What gittr signs today:</strong> repo
-          tree + README to Nostr (same as always).{" "}
-          <strong className="text-zinc-300">What still uses any nsite signer:</strong>{" "}
-          Blossom blobs + kind <code className="text-zinc-500">35128</code> — the
-          gateway only lists your site after that hits relays; the{" "}
-          <strong className="text-zinc-300">Live site</strong> link is the target
-          URL and may show “Site not found” until then (not a timer — it updates
-          when the directory sees you).{" "}
+          <strong className="text-zinc-300">What gittr signs today:</strong>{" "}
+          repo tree + README to Nostr (same as always).{" "}
+          <strong className="text-zinc-300">Named Pages manifest:</strong>{" "}
+          owners can use{" "}
+          <strong className="text-zinc-300">Publish Pages manifest</strong>{" "}
+          below — Blossom uploads (via gittr proxy) + kind{" "}
+          <code className="text-zinc-500">35128</code> with NIP-07 (several sign
+          prompts). The gateway lists the site after relays see that event. The{" "}
+          <strong className="text-zinc-300">Live site</strong> link may show
+          “Site not found” until then.{" "}
           <strong className="text-zinc-300">Issues</strong> are optional notes
           only; closing them does not publish the manifest.
         </p>
@@ -179,7 +188,9 @@ export function RepoGittrPagesPanel({
                 : "border-violet-800/40 bg-violet-950/25 text-zinc-300"
             )}
           >
-            <p className="mb-2 font-medium text-zinc-200">Status (gittr can help)</p>
+            <p className="mb-2 font-medium text-zinc-200">
+              Status (gittr can help)
+            </p>
             <ul className="space-y-2">
               <li className="flex gap-2">
                 {siteOk ? (
@@ -216,7 +227,8 @@ export function RepoGittrPagesPanel({
                   <Circle className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
                 )}
                 <span>
-                  <strong className="text-zinc-200">Metadata on relays</strong> —{" "}
+                  <strong className="text-zinc-200">Metadata on relays</strong>{" "}
+                  —{" "}
                   {pushClean
                     ? "Nothing pending — last Push to Nostr is reflected locally."
                     : pagesReadiness.hasUnpushedEdits
@@ -232,8 +244,14 @@ export function RepoGittrPagesPanel({
                 ) : (
                   <Circle className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
                 )}
-                <span className={gatewayListsSite === false ? "text-amber-100/90" : ""}>
-                  <strong className="text-zinc-200">Gateway lists this site</strong>{" "}
+                <span
+                  className={
+                    gatewayListsSite === false ? "text-amber-100/90" : ""
+                  }
+                >
+                  <strong className="text-zinc-200">
+                    Gateway lists this site
+                  </strong>{" "}
                   —{" "}
                   {gatewayListsSite === true
                     ? "pages.gittr.space directory includes this named URL (manifest + blobs reached the gateway)."
@@ -245,16 +263,17 @@ export function RepoGittrPagesPanel({
             </ul>
             {gittrStepsReady ? (
               <p className="mt-2 border-t border-emerald-800/40 pt-2 text-emerald-100/95">
-                Gittr-side steps look good — use{" "}
-                <strong className="text-white">Push to Nostr</strong> above only
-                if you still need to publish new edits; otherwise continue with
-                blobs + 35128 (any nsite-compatible signer you use).
+                Gittr-side repo + README steps look good — use{" "}
+                <strong className="text-white">Push to Nostr</strong> above if
+                you still have unpublished edits; then run{" "}
+                <strong className="text-white">Publish Pages manifest</strong>{" "}
+                when you are ready for the gateway (Blossom + 35128).
               </p>
             ) : (
               <p className="mt-2 border-t border-violet-800/30 pt-2 text-zinc-500">
                 Use the buttons below for README shortcuts;{" "}
-                <strong className="text-zinc-400">Push to Nostr</strong> stays in
-                Repository Status above.
+                <strong className="text-zinc-400">Push to Nostr</strong> stays
+                in Repository Status above.
               </p>
             )}
           </div>
@@ -269,9 +288,9 @@ export function RepoGittrPagesPanel({
             <ol className="list-decimal space-y-1.5 pl-3 marker:text-zinc-600">
               <li>
                 Site files in this repo — edit here;{" "}
-                <strong className="text-zinc-400">Refetch from Nostr</strong> only
-                if this copy might be behind relays (optional after your own push
-                in this tab).
+                <strong className="text-zinc-400">Refetch from Nostr</strong>{" "}
+                only if this copy might be behind relays (optional after your
+                own push in this tab).
               </li>
               <li>
                 README Pages block —{" "}
@@ -279,23 +298,27 @@ export function RepoGittrPagesPanel({
                 separate README button / “update on push” checkbox then Push.
               </li>
               <li>
-                <strong className="text-zinc-400">Push to Nostr</strong> — repo +
-                readme metadata (included in the shortcut above).
+                <strong className="text-zinc-400">Push to Nostr</strong> — repo
+                + readme metadata (included in the shortcut above).
               </li>
               <li>
-                <strong className="text-zinc-400">35128</strong> manifest + blobs
-                — still in your NIP-5A / nsite tool, not this UI.
+                <strong className="text-zinc-400">35128</strong> manifest +
+                Blossom blobs — use{" "}
+                <strong className="text-zinc-400">
+                  Publish Pages manifest
+                </strong>{" "}
+                (owner, NIP-07) or any other NIP-5A tool you prefer.
               </li>
             </ol>
             <p className="text-zinc-600">
-              <strong className="text-zinc-500">Default path:</strong> fix files →{" "}
-              <strong className="text-zinc-400">README + Push</strong> (same session;
-              push already saved event IDs here).{" "}
+              <strong className="text-zinc-500">Default path:</strong> fix files
+              → <strong className="text-zinc-400">README + Push</strong> (same
+              session; push already saved event IDs here).{" "}
               <strong className="text-zinc-500">Optional chain:</strong> refetch
               first only when you need relays as read truth, then README + Push.{" "}
-              <strong className="text-zinc-500">You still run:</strong> Blossom /
-              blob upload + <code className="text-zinc-400">35128</code> with your
-              signer (gateway reads relays).
+              Then{" "}
+              <strong className="text-zinc-400">Publish Pages manifest</strong>{" "}
+              so the gateway can serve the live URL.
             </p>
             <ul className="space-y-1">
               <li>
@@ -320,6 +343,45 @@ export function RepoGittrPagesPanel({
             </ul>
           </div>
         </details>
+
+        {isOwnerSession && onPublishNamedSiteManifest ? (
+          <div className="space-y-1.5 border-t border-violet-900/25 pt-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={manifestBusy || chainActionsDisabled}
+              className={cn(
+                btnMultiline,
+                "border-amber-700/50 bg-amber-950/25 text-amber-100 hover:bg-amber-950/40"
+              )}
+              onClick={() => {
+                void (async () => {
+                  setManifestBusy(true);
+                  try {
+                    await onPublishNamedSiteManifest();
+                  } finally {
+                    setManifestBusy(false);
+                  }
+                })();
+              }}
+            >
+              <Upload className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="min-w-0 text-left font-medium">
+                {manifestBusy
+                  ? "Publishing manifest (sign prompts)…"
+                  : "Publish Pages manifest (Blossom + kind 35128)"}
+              </span>
+            </Button>
+            <p className="text-[10px] leading-snug text-zinc-600">
+              Uses{" "}
+              <code className="text-zinc-500">NEXT_PUBLIC_BLOSSOM_URL</code>{" "}
+              (via gittr proxy). You will get one NIP-07 prompt per file, then
+              one for the manifest. Large binary trees may exceed limits — keep
+              the site lean or host heavy assets elsewhere.
+            </p>
+          </div>
+        ) : null}
 
         {issueDraft ? (
           <div className="space-y-1.5">
@@ -360,8 +422,8 @@ export function RepoGittrPagesPanel({
             </Button>
             <p className="text-[10px] leading-snug text-zinc-600">
               Opens this repo’s gittr issue composer with a pre-filled tracking
-              note + JSON skeleton (kind <code className="text-zinc-500">35128</code>{" "}
-              placeholders).
+              note + JSON skeleton (kind{" "}
+              <code className="text-zinc-500">35128</code> placeholders).
             </p>
           </div>
         ) : null}
@@ -382,10 +444,11 @@ export function RepoGittrPagesPanel({
                     Let gittr update README for Pages on push
                   </span>
                   <span className="mt-1 block text-[10px] font-normal leading-snug text-zinc-500">
-                    Before <strong className="text-zinc-400">Push to Nostr</strong>,
-                    refresh the fenced gittr Pages block with this repo’s live URL.
-                    If you turn this off, push stops unless that block already
-                    contains the correct URL.
+                    Before{" "}
+                    <strong className="text-zinc-400">Push to Nostr</strong>,
+                    refresh the fenced gittr Pages block with this repo’s live
+                    URL. If you turn this off, push stops unless that block
+                    already contains the correct URL.
                   </span>
                 </span>
               </label>
@@ -448,9 +511,10 @@ export function RepoGittrPagesPanel({
                 {canChainNostrRefetch && onRefetchThenReadmeThenPush ? (
                   <>
                     <p className="text-[10px] leading-snug text-zinc-500">
-                      Optional — only if this browser should re-read the repo from
-                      relays before updating README and pushing (stale tree,
-                      edits elsewhere, or you want to match relay state exactly).
+                      Optional — only if this browser should re-read the repo
+                      from relays before updating README and pushing (stale
+                      tree, edits elsewhere, or you want to match relay state
+                      exactly).
                     </p>
                     <Button
                       type="button"
@@ -480,15 +544,19 @@ export function RepoGittrPagesPanel({
               <p className="text-[10px] text-zinc-600">
                 {onReadmeThenPush ? (
                   <>
-                    Same <strong className="text-zinc-400">Push to Nostr</strong>{" "}
-                    as the main button (signatures / payment if needed). Kind{" "}
-                    <code className="text-zinc-400">35128</code> stays outside this
-                    app. Relay gossip matters for other clients — not for forcing
-                    a refetch on this device right after your own push.
+                    Same{" "}
+                    <strong className="text-zinc-400">Push to Nostr</strong> as
+                    the main button (signatures / payment if needed). Use{" "}
+                    <strong className="text-zinc-400">
+                      Publish Pages manifest
+                    </strong>{" "}
+                    for Blossom + kind{" "}
+                    <code className="text-zinc-400">35128</code>.
                   </>
                 ) : (
                   <>
-                    Then use <strong className="text-zinc-400">Push to Nostr</strong>{" "}
+                    Then use{" "}
+                    <strong className="text-zinc-400">Push to Nostr</strong>{" "}
                     again so everyone sees the README on relays (republish).
                   </>
                 )}

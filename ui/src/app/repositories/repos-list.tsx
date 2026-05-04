@@ -253,7 +253,7 @@ export function ReposList({
           const ownerPubkey = repo.entity
             ? getRepoOwnerPubkey(repo, repo.entity)
             : null;
-          const repoDataAny = repo ;
+          const repoDataAny = repo;
           let repoName =
             repoDataAny?.repositoryName || repo.repo || repo.slug || repo.name;
 
@@ -329,7 +329,7 @@ export function ReposList({
         "❌ [ReposList] Excluding repo with corrupted entity 'gittr.space':",
         {
           repo: repoName,
-          ownerPubkey: (r ).ownerPubkey?.slice(0, 16),
+          ownerPubkey: r.ownerPubkey?.slice(0, 16),
         }
       );
       return false; // Always exclude - these are corrupted
@@ -344,7 +344,7 @@ export function ReposList({
         {
           repo: repoName,
           entity: r.entity,
-          ownerPubkey: (r ).ownerPubkey?.slice(0, 16),
+          ownerPubkey: r.ownerPubkey?.slice(0, 16),
         }
       );
       return false; // Only npub format is valid
@@ -354,15 +354,12 @@ export function ReposList({
     if (!pubkey) return false; // Not logged in = no repos
 
     // Priority 1: Check direct ownerPubkey match (most reliable)
-    if (
-      (r ).ownerPubkey &&
-      (r ).ownerPubkey.toLowerCase() === pubkey.toLowerCase()
-    ) {
+    if (r.ownerPubkey && r.ownerPubkey.toLowerCase() === pubkey.toLowerCase()) {
       return true;
     }
 
     // Priority 2: Check via getRepoOwnerPubkey (uses ownerPubkey or contributors)
-    const repoOwnerPubkey = getRepoOwnerPubkey(r , r.entity);
+    const repoOwnerPubkey = getRepoOwnerPubkey(r, r.entity);
     if (
       repoOwnerPubkey &&
       repoOwnerPubkey.toLowerCase() === pubkey.toLowerCase()
@@ -389,8 +386,8 @@ export function ReposList({
           if (entityPubkey.toLowerCase() === pubkey.toLowerCase()) {
             // Additional check: ensure ownerPubkey matches if it exists
             if (
-              (r ).ownerPubkey &&
-              (r ).ownerPubkey.toLowerCase() !== pubkey.toLowerCase()
+              r.ownerPubkey &&
+              r.ownerPubkey.toLowerCase() !== pubkey.toLowerCase()
             )
               return false;
             return true;
@@ -476,9 +473,7 @@ export function ReposList({
   // Filter, sort, and deduplicate repos (use filteredRepos from above)
   const filtered = filteredRepos.filter((r) => {
     // CRITICAL: Filter out corrupted repos FIRST (before any other checks)
-    if (
-      isRepoCorrupted(r, (r ).nostrEventId || (r ).lastNostrEventId)
-    ) {
+    if (isRepoCorrupted(r, r.nostrEventId || r.lastNostrEventId)) {
       return false; // Never show corrupted repos
     }
 
@@ -486,15 +481,14 @@ export function ReposList({
     if (isRepoDeleted(r)) return false;
 
     // Skip if owner marked as deleted/archived on Nostr
-    if ((r ).deleted === true || (r ).archived === true)
-      return false;
+    if (r.deleted === true || r.archived === true) return false;
 
     // CRITICAL: "Your repositories" should ONLY show repos owned by the current user
     if (!pubkey) return false;
 
     const repoName = r.repo || r.slug || r.name || "";
-    const repoOwnerPubkey = getRepoOwnerPubkey(r , r.entity);
-    const directOwnerPubkey = (r ).ownerPubkey;
+    const repoOwnerPubkey = getRepoOwnerPubkey(r, r.entity);
+    const directOwnerPubkey = r.ownerPubkey;
 
     // Priority 1: Check direct ownerPubkey match (most reliable)
     if (
@@ -576,12 +570,12 @@ export function ReposList({
     }
 
     // If same status, sort by date (newest first)
-    const aLatest = (a ).lastNostrEventCreatedAt
-      ? (a ).lastNostrEventCreatedAt * 1000
-      : (a ).updatedAt || a.createdAt || 0;
-    const bLatest = (b ).lastNostrEventCreatedAt
-      ? (b ).lastNostrEventCreatedAt * 1000
-      : (b ).updatedAt || b.createdAt || 0;
+    const aLatest = a.lastNostrEventCreatedAt
+      ? a.lastNostrEventCreatedAt * 1000
+      : a.updatedAt || a.createdAt || 0;
+    const bLatest = b.lastNostrEventCreatedAt
+      ? b.lastNostrEventCreatedAt * 1000
+      : b.updatedAt || b.createdAt || 0;
 
     if (aLatest !== bLatest) {
       return bLatest - aLatest; // Newest first
@@ -829,9 +823,7 @@ export function ReposList({
                         }
 
                         const ownerPubkey =
-                          getRepoOwnerPubkey(r, entity) ||
-                          (r ).ownerPubkey ||
-                          "";
+                          getRepoOwnerPubkey(r, entity) || r.ownerPubkey || "";
                         const paymentAuth =
                           await ensurePushPaymentAuthorization({
                             entity,
@@ -929,7 +921,7 @@ export function ReposList({
                     ownerPubkey={
                       (
                         getRepoOwnerPubkey(r, entity) ||
-                        (r ).ownerPubkey ||
+                        r.ownerPubkey ||
                         ""
                       ).toLowerCase() as string
                     }
@@ -937,22 +929,15 @@ export function ReposList({
                   />
                 </div>
                 <div className="opacity-70 text-sm whitespace-nowrap">
-                  {(r ).lastNostrEventCreatedAt ? (
+                  {r.lastNostrEventCreatedAt ? (
                     <>
                       Last push:{" "}
-                      {formatDateTime24h(
-                        (r ).lastNostrEventCreatedAt * 1000
-                      )}
+                      {formatDateTime24h(r.lastNostrEventCreatedAt * 1000)}
                     </>
-                  ) : (r ).lastPushAttempt ? (
-                    <>
-                      Push attempted:{" "}
-                      {formatDateTime24h((r ).lastPushAttempt)}
-                    </>
-                  ) : (r ).lastModifiedAt ? (
-                    <>
-                      Modified: {formatDateTime24h((r ).lastModifiedAt)}
-                    </>
+                  ) : r.lastPushAttempt ? (
+                    <>Push attempted: {formatDateTime24h(r.lastPushAttempt)}</>
+                  ) : r.lastModifiedAt ? (
+                    <>Modified: {formatDateTime24h(r.lastModifiedAt)}</>
                   ) : (
                     <>Created: {formatDateTime24h(r.createdAt)}</>
                   )}

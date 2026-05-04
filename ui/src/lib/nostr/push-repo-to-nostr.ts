@@ -678,10 +678,8 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         if (!bridgeContent || bridgeContent === "") {
           // Try file.data (alternative field name)
           bridgeContent =
-            (file ).data &&
-            typeof (file ).data === "string" &&
-            (file ).data.length > 0
-              ? (file ).data
+            file.data && typeof file.data === "string" && file.data.length > 0
+              ? file.data
               : undefined;
         }
 
@@ -1900,7 +1898,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             if (repo.branches.length === 0) return [];
             // Check if first element is a string (old format)
             if (typeof repo.branches[0] === "string") {
-              return (repo.branches ).map((name) => ({ name }));
+              return repo.branches.map((name) => ({ name }));
             }
             // Otherwise, filter to ensure correct format
             const result: Array<{ name: string; commit?: string }> = [];

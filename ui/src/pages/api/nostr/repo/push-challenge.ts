@@ -1,5 +1,6 @@
-import type { NextApiRequest, NextApiResponse } from "next";
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
+
+import type { NextApiRequest, NextApiResponse } from "next";
 
 export default async function handler(
   req: NextApiRequest,
@@ -8,14 +9,20 @@ export default async function handler(
   const rateLimitResult = await rateLimiters.pushChallenge(req as any);
   if (rateLimitResult) {
     const body = await rateLimitResult.json();
-    res.setHeader("Retry-After", rateLimitResult.headers.get("Retry-After") ?? "60");
+    res.setHeader(
+      "Retry-After",
+      rateLimitResult.headers.get("Retry-After") ?? "60"
+    );
     return res.status(429).json(body);
   }
 
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Nostr-Pubkey, X-Nostr-Signature");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, X-Nostr-Pubkey, X-Nostr-Signature"
+    );
     res.status(204).end();
     return;
   }
@@ -31,8 +38,8 @@ export default async function handler(
     instructions: [
       "Sign this challenge with your Nostr private key",
       "Include the signature in Authorization header: Nostr <base64-encoded-{pubkey, sig, created_at}>",
-      "Or use X-Nostr-Pubkey and X-Nostr-Signature headers directly"
-    ]
+      "Or use X-Nostr-Pubkey and X-Nostr-Signature headers directly",
+    ],
   };
 
   res.setHeader("Access-Control-Allow-Origin", "*");

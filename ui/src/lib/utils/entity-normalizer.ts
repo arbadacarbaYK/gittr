@@ -58,37 +58,112 @@ export function getRepoStorageKey(
   return `${prefix}__${normalizedEntity}__${repo}`;
 }
 
+function issueStableMergeKey(row: unknown): string {
+  if (!row || typeof row !== "object") return `invalid:${String(row)}`;
+  const r = row as Record<string, unknown>;
+  const id = r.id;
+  if (typeof id === "string" && /^[0-9a-f]{64}$/i.test(id)) {
+    return id.toLowerCase();
+  }
+  const num = r.number;
+  if (typeof num === "string" || typeof num === "number") {
+    return `num:${String(num)}`;
+  }
+  return `anon:${JSON.stringify(row).slice(0, 120)}`;
+}
+
+/** All localStorage keys that may hold this repo's gittr-only issues (hex vs npub routes). */
+export function collectGittrIssuesStorageKeys(
+  entity: string,
+  repo: string
+): string[] {
+  const seen = new Set<string>();
+  const add = (k: string) => {
+    if (k) seen.add(k);
+  };
+  const canonical = getRepoStorageKey("gittr_issues", entity, repo);
+  add(canonical);
+  add(`gittr_issues__${entity}__${repo}`);
+  if (/^[0-9a-f]{64}$/i.test(entity)) {
+    const hex = entity.toLowerCase();
+    add(`gittr_issues__${hex}__${repo}`);
+    try {
+      add(`gittr_issues__${nip19.npubEncode(hex)}__${repo}`);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (entity.startsWith("npub")) {
+    try {
+      const d = nip19.decode(entity);
+      if (d.type === "npub" && typeof d.data === "string") {
+        add(`gittr_issues__${(d.data as string).toLowerCase()}__${repo}`);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return [...seen];
+}
+
+function readIssuesArrayRaw(storageKey: string): unknown[] {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    const list = raw ? (JSON.parse(raw) as unknown[]) : [];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Read per-repo issues from localStorage using the canonical key (npub-normalized entity).
- * If empty, migrates from the legacy key `gittr_issues__${entity}__${repo}` used by older
- * issue creation (e.g. hex entity in URL) so list + detail stay in sync.
+ * Merges rows from legacy keys (hex entity in URL vs npub route, older single-key writes)
+ * so list, detail, and close/reopen always see one combined list and one canonical bucket.
  */
 export function readRepoIssuesFromLocalStorage(
   entity: string,
   repo: string
 ): unknown[] {
-  const key = getRepoStorageKey("gittr_issues", entity, repo);
-  let list: unknown[] = [];
-  try {
-    const raw = localStorage.getItem(key);
-    list = raw ? (JSON.parse(raw) as unknown[]) : [];
-    if (!Array.isArray(list)) list = [];
-  } catch {
-    list = [];
+  if (typeof window === "undefined") return [];
+  const canonicalKey = getRepoStorageKey("gittr_issues", entity, repo);
+  const keys = collectGittrIssuesStorageKeys(entity, repo);
+  const merged = new Map<string, unknown>();
+
+  for (const k of keys) {
+    for (const row of readIssuesArrayRaw(k)) {
+      merged.set(issueStableMergeKey(row), row);
+    }
   }
-  if (list.length > 0) return list;
-  const legacyKey = `gittr_issues__${entity}__${repo}`;
-  if (legacyKey === key) return list;
+
+  const out = Array.from(merged.values()) as Array<Record<string, unknown>>;
+  out.sort((a, b) => {
+    const na = parseInt(String(a.number ?? "0"), 10) || 0;
+    const nb = parseInt(String(b.number ?? "0"), 10) || 0;
+    return na - nb;
+  });
+
+  const sortForCompare = (list: unknown[]) =>
+    [...list].sort((a, b) =>
+      issueStableMergeKey(a).localeCompare(issueStableMergeKey(b))
+    );
+
   try {
-    const rawL = localStorage.getItem(legacyKey);
-    const legacy = rawL ? (JSON.parse(rawL) as unknown[]) : [];
-    if (Array.isArray(legacy) && legacy.length > 0) {
-      localStorage.setItem(key, JSON.stringify(legacy));
-      localStorage.removeItem(legacyKey);
-      return legacy;
+    const prev = readIssuesArrayRaw(canonicalKey);
+    const changed =
+      JSON.stringify(sortForCompare(out)) !==
+      JSON.stringify(sortForCompare(prev));
+    if (changed && out.length >= 0) {
+      localStorage.setItem(canonicalKey, JSON.stringify(out));
+      for (const k of keys) {
+        if (k !== canonicalKey) {
+          localStorage.removeItem(k);
+        }
+      }
     }
   } catch {
-    /* ignore */
+    /* quota or private mode */
   }
-  return [];
+
+  return out;
 }

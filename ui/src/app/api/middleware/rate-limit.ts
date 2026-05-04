@@ -245,7 +245,12 @@ const pushPerPubkeyStore: RateLimitStore = {};
 export function checkPushPerPubkey(pubkey: string): {
   limited: boolean;
   retryAfter?: number;
-  body?: { error: string; retryAfter: number; retry_after: number; window_seconds: number };
+  body?: {
+    error: string;
+    retryAfter: number;
+    retry_after: number;
+    window_seconds: number;
+  };
 } {
   const key = `push_pubkey_${pubkey.toLowerCase()}`;
   const now = Date.now();

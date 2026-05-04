@@ -4,15 +4,25 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { type Discussion, loadDiscussions } from "@/lib/discussions/storage";
-import { KIND_LONG_FORM } from "@/lib/nostr/events";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { KIND_LONG_FORM } from "@/lib/nostr/events";
 import { formatDate24h } from "@/lib/utils/date-format";
 
 import { MessageCircle, Plus } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
-function parseLongFormEvent(ev: { id: string; pubkey: string; created_at: number; content: string; tags: string[][] }, entity: string, repo: string): Discussion {
+function parseLongFormEvent(
+  ev: {
+    id: string;
+    pubkey: string;
+    created_at: number;
+    content: string;
+    tags: string[][];
+  },
+  entity: string,
+  repo: string
+): Discussion {
   const tag = (name: string) => ev.tags.find((t) => t[0] === name)?.[1];
   const title = tag("title") ?? "";
   const category = tag("category") ?? tag("t");
@@ -41,7 +51,10 @@ export default function DiscussionsPage() {
   const [discussions, setDiscussions] = useState<Discussion[]>([]);
   const [fromNostr, setFromNostr] = useState<Discussion[]>([]);
 
-  const repoScope = useMemo(() => (entity && repo ? `${entity}/${repo}` : ""), [entity, repo]);
+  const repoScope = useMemo(
+    () => (entity && repo ? `${entity}/${repo}` : ""),
+    [entity, repo]
+  );
 
   useEffect(() => {
     setMounted(true);
@@ -63,7 +76,9 @@ export default function DiscussionsPage() {
           const next = parseLongFormEvent(ev as any, entity, repo);
           const byId = new Map(prev.map((d) => [d.id, d]));
           byId.set(ev.id, next);
-          return Array.from(byId.values()).sort((a, b) => b.createdAt - a.createdAt);
+          return Array.from(byId.values()).sort(
+            (a, b) => b.createdAt - a.createdAt
+          );
         });
       }
     );
@@ -74,8 +89,15 @@ export default function DiscussionsPage() {
     if (!mounted) return;
     refreshDiscussions();
     const handleDiscussionCreated = () => refreshDiscussions();
-    window.addEventListener("gittr:discussion-created", handleDiscussionCreated);
-    return () => window.removeEventListener("gittr:discussion-created", handleDiscussionCreated);
+    window.addEventListener(
+      "gittr:discussion-created",
+      handleDiscussionCreated
+    );
+    return () =>
+      window.removeEventListener(
+        "gittr:discussion-created",
+        handleDiscussionCreated
+      );
   }, [refreshDiscussions, mounted]);
 
   const merged = useMemo(() => {

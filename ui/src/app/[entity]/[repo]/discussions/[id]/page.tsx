@@ -14,11 +14,11 @@ import {
   loadDiscussionById,
   persistDiscussion,
 } from "@/lib/discussions/storage";
-import { createCommentEvent } from "@/lib/nostr/events";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+import { createCommentEvent } from "@/lib/nostr/events";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
+import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 
 import { ArrowLeft, MessageCircle, Reply } from "lucide-react";
@@ -38,7 +38,11 @@ export default function DiscussionDetailPage({
   params: Promise<{ entity: string; repo: string; id: string }>;
 }) {
   const resolvedParams = use(params);
-  const { pubkey: currentUserPubkey, publish, defaultRelays } = useNostrContext();
+  const {
+    pubkey: currentUserPubkey,
+    publish,
+    defaultRelays,
+  } = useNostrContext();
   const [discussion, setDiscussion] = useState<Discussion | null>(null);
   const [loading, setLoading] = useState(true);
   const [replyContent, setReplyContent] = useState("");
@@ -82,7 +86,9 @@ export default function DiscussionDetailPage({
     if (!replyContent.trim() || !discussion || !currentUserPubkey) return;
 
     try {
-      let commentId = `comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      let commentId = `comment-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
       const newComment: DiscussionComment = {
         id: commentId,
         author: currentUserPubkey,
@@ -96,7 +102,9 @@ export default function DiscussionDetailPage({
           const privateKey = await getNostrPrivateKey();
           if (privateKey) {
             const parentComment = replyParentId
-              ? discussion.comments.find((comment) => comment.id === replyParentId)
+              ? discussion.comments.find(
+                  (comment) => comment.id === replyParentId
+                )
               : null;
             const commentEvent = createCommentEvent(
               {
@@ -124,14 +132,21 @@ export default function DiscussionDetailPage({
         }
       }
 
-      const updatedComments: DiscussionComment[] = [...discussion.comments, newComment];
+      const updatedComments: DiscussionComment[] = [
+        ...discussion.comments,
+        newComment,
+      ];
       const updatedDiscussion: Discussion = {
         ...discussion,
         comments: updatedComments,
         commentCount: updatedComments.length,
       };
 
-      persistDiscussion(resolvedParams.entity, resolvedParams.repo, updatedDiscussion);
+      persistDiscussion(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        updatedDiscussion
+      );
       setDiscussion(updatedDiscussion);
       setReplyContent("");
       setReplyingTo(null);
@@ -141,7 +156,16 @@ export default function DiscussionDetailPage({
       console.error("Failed to add comment:", error);
       alert("Failed to add comment: " + (error as Error).message);
     }
-  }, [discussion, currentUserPubkey, publish, defaultRelays, resolvedParams.entity, resolvedParams.repo, replyContent, replyParentId]);
+  }, [
+    discussion,
+    currentUserPubkey,
+    publish,
+    defaultRelays,
+    resolvedParams.entity,
+    resolvedParams.repo,
+    replyContent,
+    replyParentId,
+  ]);
 
   const startReply = (parentId?: string, authorPubkey?: string) => {
     setReplyParentId(parentId || null);

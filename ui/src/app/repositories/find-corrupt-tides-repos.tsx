@@ -1,7 +1,7 @@
 /**
  * Utility script to find corrupt "tides" repos with entity "gittr.space"
  * Run this in browser console to identify the Nostr event IDs causing the issue
- * 
+ *
  * Usage: findCorruptTidesRepos() in browser console
  */
 
@@ -11,13 +11,13 @@ export function findCorruptTidesRepos(): {
   corruptRepos: any[];
   eventIds: string[];
 } {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     console.error("This script must be run in the browser");
     return {
       corruptCount: 0,
       validCount: 0,
       corruptRepos: [],
-      eventIds: []
+      eventIds: [],
     };
   }
 
@@ -28,11 +28,15 @@ export function findCorruptTidesRepos(): {
   });
 
   console.log(`🔍 Found ${tidesRepos.length} "tides" repos in localStorage`);
-  
-  const corruptRepos = tidesRepos.filter((r: any) => r.entity === "gittr.space");
+
+  const corruptRepos = tidesRepos.filter(
+    (r: any) => r.entity === "gittr.space"
+  );
   const validRepos = tidesRepos.filter((r: any) => r.entity !== "gittr.space");
 
-  console.log(`❌ Corrupt repos (entity="gittr.space"): ${corruptRepos.length}`);
+  console.log(
+    `❌ Corrupt repos (entity="gittr.space"): ${corruptRepos.length}`
+  );
   console.log(`✅ Valid repos: ${validRepos.length}`);
 
   if (corruptRepos.length > 0) {
@@ -45,12 +49,14 @@ export function findCorruptTidesRepos(): {
         nostrEventId: r.nostrEventId,
         lastNostrEventId: r.lastNostrEventId,
         syncedFromNostr: r.syncedFromNostr,
-        createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : "unknown",
+        createdAt: r.createdAt
+          ? new Date(r.createdAt).toISOString()
+          : "unknown",
         contributors: r.contributors?.map((c: any) => ({
           pubkey: c.pubkey?.slice(0, 16) + "...",
           weight: c.weight,
-          role: c.role
-        }))
+          role: c.role,
+        })),
       });
     });
 
@@ -70,7 +76,7 @@ export function findCorruptTidesRepos(): {
       corruptCount: corruptRepos.length,
       validCount: validRepos.length,
       corruptRepos,
-      eventIds: Array.from(eventIds)
+      eventIds: Array.from(eventIds),
     };
   } else {
     console.log("✅ No corrupt tides repos found!");
@@ -78,13 +84,12 @@ export function findCorruptTidesRepos(): {
       corruptCount: 0,
       validCount: validRepos.length,
       corruptRepos: [],
-      eventIds: []
+      eventIds: [],
     };
   }
 }
 
 // Make it available globally for console access
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   (window as any).findCorruptTidesRepos = findCorruptTidesRepos;
 }
-

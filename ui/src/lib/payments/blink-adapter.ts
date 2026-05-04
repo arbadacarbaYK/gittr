@@ -27,7 +27,10 @@ async function blinkGraphqlRequest<T>(
   }
   const json = (await resp.json()) as BlinkResponse<T>;
   if (json.errors?.length) {
-    const msg = json.errors.map((e) => e.message).filter(Boolean).join("; ");
+    const msg = json.errors
+      .map((e) => e.message)
+      .filter(Boolean)
+      .join("; ");
     throw new Error(msg || "Blink GraphQL error");
   }
   if (!json.data) {
@@ -140,6 +143,8 @@ export async function isBlinkInvoicePaid(params: {
   }>(params.apiKey, query, {
     input: { paymentHash: params.paymentHash },
   });
-  const status = (data.lnInvoicePaymentStatusByHash?.status || "").toUpperCase();
+  const status = (
+    data.lnInvoicePaymentStatusByHash?.status || ""
+  ).toUpperCase();
   return status === "PAID";
 }

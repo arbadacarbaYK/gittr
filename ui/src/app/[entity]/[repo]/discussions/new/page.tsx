@@ -85,7 +85,9 @@ export default function NewDiscussionPage() {
 
       try {
         const now = Math.floor(Date.now() / 1000);
-        const identifier = `${entity}/${repo}/${now}-${Math.random().toString(36).slice(2, 10)}`;
+        const identifier = `${entity}/${repo}/${now}-${Math.random()
+          .toString(36)
+          .slice(2, 10)}`;
 
         let discussionEvent: Event | null = null;
 
@@ -97,7 +99,8 @@ export default function NewDiscussionPage() {
             const { getPublicKey } = await import("nostr-tools");
             const authorPubkey = privateKey
               ? getPublicKey(privateKey)
-              : (await (hasNip07 ? window.nostr.getPublicKey() : null)) ?? currentUserPubkey;
+              : (await (hasNip07 ? window.nostr.getPublicKey() : null)) ??
+                currentUserPubkey;
 
             if (hasNip07 && window.nostr) {
               const unsignedEvent = {
@@ -110,7 +113,12 @@ export default function NewDiscussionPage() {
                   ["published_at", String(now)],
                   ["repo", `${entity}/${repo}`],
                   ["status", "open"],
-                  ...(selectedCategory ? [["t", selectedCategory], ["category", selectedCategory]] : []),
+                  ...(selectedCategory
+                    ? [
+                        ["t", selectedCategory],
+                        ["category", selectedCategory],
+                      ]
+                    : []),
                 ],
                 content: description,
                 pubkey: authorPubkey,
@@ -133,7 +141,10 @@ export default function NewDiscussionPage() {
 
             if (discussionEvent && publish) {
               publish(discussionEvent, defaultRelays);
-              console.log("✅ Published discussion (NIP-23 30023) to Nostr:", discussionEvent.id);
+              console.log(
+                "✅ Published discussion (NIP-23 30023) to Nostr:",
+                discussionEvent.id
+              );
             }
           } catch (err) {
             console.error("Failed to publish discussion to Nostr:", err);
@@ -161,7 +172,9 @@ export default function NewDiscussionPage() {
         try {
           appendDiscussion(entity, repo, newDiscussion);
           window.dispatchEvent(
-            new CustomEvent("gittr:discussion-created", { detail: newDiscussion })
+            new CustomEvent("gittr:discussion-created", {
+              detail: newDiscussion,
+            })
           );
         } catch (err) {
           console.error("Failed to save discussion locally:", err);
