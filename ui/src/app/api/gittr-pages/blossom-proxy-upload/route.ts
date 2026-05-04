@@ -1,3 +1,4 @@
+import { reconcileBlossomUpstreamContentType } from "@/lib/gittr-pages/blossom-upload-mime";
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 
@@ -141,7 +142,10 @@ export async function POST(req: Request) {
   const uploadUrl = `${origin}/upload`;
   const bodyBytes = new Uint8Array(buf);
   const len = bodyBytes.byteLength;
-  const mime = upstreamContentType(body.contentType);
+  const mime = reconcileBlossomUpstreamContentType(
+    upstreamContentType(body.contentType),
+    bodyBytes
+  );
 
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), UPSTREAM_TIMEOUT_MS);

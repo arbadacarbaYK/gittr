@@ -6,6 +6,10 @@ import {
   normalizeFilePath,
 } from "@/lib/repos/storage";
 
+import {
+  manifestUploadContentType,
+  unwrapJsonEncodedUtf8ArtifactIfNeeded,
+} from "@/lib/gittr-pages/blossom-upload-mime";
 import { getEventHash } from "nostr-tools";
 
 const MAX_FILE_BYTES = 3_500_000;
@@ -52,66 +56,6 @@ const STATIC_EXT = new Set([
 function extOf(path: string): string {
   const i = path.lastIndexOf(".");
   return i >= 0 ? path.slice(i).toLowerCase() : "";
-}
-
-/**
- * Content-Type for the upstream Blossom PUT. Public hosts (e.g. nostr.build) return
- * 415 if every file is sent as application/octet-stream — they gate on MIME.
- */
-function guessManifestFileContentType(filePath: string): string {
-  const n = normalizeFilePath(filePath).toLowerCase();
-  if (n === "robots.txt" || n.endsWith("/robots.txt")) {
-    return "text/plain; charset=utf-8";
-  }
-  const ext = extOf(n);
-  switch (ext) {
-    case ".html":
-    case ".htm":
-      return "text/html; charset=utf-8";
-    case ".css":
-      return "text/css; charset=utf-8";
-    case ".js":
-    case ".mjs":
-    case ".cjs":
-      return "text/javascript";
-    case ".json":
-      return "application/json; charset=utf-8";
-    case ".map":
-      return "application/json";
-    case ".webmanifest":
-      return "application/manifest+json";
-    case ".txt":
-      return "text/plain; charset=utf-8";
-    case ".md":
-      return "text/markdown; charset=utf-8";
-    case ".svg":
-      return "image/svg+xml";
-    case ".png":
-      return "image/png";
-    case ".jpg":
-    case ".jpeg":
-      return "image/jpeg";
-    case ".gif":
-      return "image/gif";
-    case ".webp":
-      return "image/webp";
-    case ".ico":
-      return "image/vnd.microsoft.icon";
-    case ".woff":
-      return "font/woff";
-    case ".woff2":
-      return "font/woff2";
-    case ".ttf":
-      return "font/ttf";
-    case ".otf":
-      return "font/otf";
-    case ".xml":
-      return "application/xml; charset=utf-8";
-    case ".wasm":
-      return "application/wasm";
-    default:
-      return "application/octet-stream";
-  }
 }
 
 export function isGittrPagesManifestPath(path: string): boolean {
@@ -481,10 +425,11 @@ export async function publishNamedSiteManifest(
         error: `Too many static files (>${MAX_FILES}). Remove large trees from the manifest set.`,
       };
     }
-    const bytes = await resolveManifestFileBytes(file, resolveCtx);
+    let bytes = await resolveManifestFileBytes(file, resolveCtx);
     if (!bytes || bytes.length === 0) {
       continue;
     }
+    bytes = unwrapJsonEncodedUtf8ArtifactIfNeeded(file.path, bytes);
     if (bytes.length > MAX_FILE_BYTES) {
       return {
         ok: false,
@@ -521,7 +466,7 @@ export async function publishNamedSiteManifest(
       authEvent: signedAuth,
       contentBase64: bytesToBase64(bytes),
       sha256,
-      contentType: guessManifestFileContentType(file.path),
+      contentType: manifestUploadContentType(file.path, bytes),
     });
 
     let uploadOk = false;
