@@ -604,7 +604,8 @@ The optional **`NEXT_PUBLIC_GITTR_PAGES_URL`** (no trailing slash) powers the in
 1. Bridge service must be running (Step 10)
 2. SSH port 22 must be accessible
 3. Users publish SSH keys via Settings → SSH Keys in the web UI
-4. Bridge automatically adds keys to `authorized_keys`
+4. Bridge automatically adds keys to `/home/git-nostr/.ssh/authorized_keys`
+5. **`git@` and sshd:** After deploy (or when `git@` asks for a password despite keys in the UI), run `SSH_DEPLOY_KEY=~/.ssh/your_key ./scripts/ensure-sshd-git-live-authorized-keys.sh <host>` so `Match User git` in `sshd_config` does **not** point at a stale `/etc/ssh/git-authorized_keys` copy. Without that, new keys can work for `git-nostr@` but **`git@` falls back to password auth**. If you use a local `upload_to_hetzner.sh` (often gitignored), merge a call to that script at the end of your upload flow, or set `SKIP_SSHD_GIT_KEYS_FIX=1` there only if you intentionally manage `sshd_config` elsewhere.
 
 **Test Git clone:**
 

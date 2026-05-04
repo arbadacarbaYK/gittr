@@ -1037,6 +1037,18 @@ export default function SSHKeysPage() {
                 The git-nostr-bridge listens for your SSH key events and updates
                 authorized_keys
               </li>
+              <li>
+                If <code className="text-xs">git clone git@…</code> asks for a
+                password after you added a key, your client is not using the
+                right private key — try{" "}
+                <code className="text-xs">
+                  GIT_SSH_COMMAND=&apos;ssh -o IdentitiesOnly=yes -i
+                  ~/.ssh/your_key&apos; git clone …
+                </code>{" "}
+                or use <code className="text-xs">git-nostr@</code> instead of{" "}
+                <code className="text-xs">git@</code> (see SSH guide in repo /
+                Help).
+              </li>
               <li>Use one SSH key for all your repositories (like GitHub)</li>
               <li>You can generate a key here or use an existing one</li>
               <li>
