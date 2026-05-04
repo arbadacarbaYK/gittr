@@ -198,7 +198,7 @@ export async function POST(req: Request) {
           host.includes("nostr.build"))
       ) {
         hint =
-          "nostr.build’s Blossom often returns 415 for static site files (e.g. .js) — it is geared to media uploads, not full Pages trees. Set NEXT_PUBLIC_BLOSSOM_URL to https://blossom.band (gittr default) or your own NIP-96 Blossom (e.g. hzrd149/blossom), then rebuild and restart the frontend; see SETUP_INSTRUCTIONS.md (gittr Pages / Blossom).";
+          "Use a Blossom that accepts your static files: set NEXT_PUBLIC_BLOSSOM_URL=https://blossom.band (recommended) or your own NIP-96 server, then yarn build && restart gittr-frontend. See SETUP_INSTRUCTIONS → Publish Pages / Blossom.";
       }
     } catch {
       /* ignore */

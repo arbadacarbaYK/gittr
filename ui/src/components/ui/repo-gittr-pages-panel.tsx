@@ -77,6 +77,23 @@ const btnMultiline = cn(
   "!h-auto min-h-9 w-full items-start justify-start gap-2 whitespace-normal py-2.5 text-left text-xs font-normal leading-snug"
 );
 
+function configuredBlossomUploadBase(): string {
+  const raw = (process.env.NEXT_PUBLIC_BLOSSOM_URL || "").trim();
+  if (!raw) return "https://blossom.band";
+  const withProto = raw.startsWith("http") ? raw : `https://${raw}`;
+  return withProto.replace(/\/$/, "");
+}
+
+/** Some public Blossoms are media-only; static `.js` for Pages then gets HTTP 415. */
+function blossomHostMayRejectStaticScripts(base: string): boolean {
+  try {
+    const h = new URL(base).hostname.toLowerCase();
+    return h === "nostr.build" || h.endsWith(".nostr.build");
+  } catch {
+    return false;
+  }
+}
+
 export function RepoGittrPagesPanel({
   canManageReadme,
   isOwnerSession,
@@ -93,6 +110,10 @@ export function RepoGittrPagesPanel({
 }: RepoGittrPagesPanelProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const blossomUploadBase = configuredBlossomUploadBase();
+  const blossomStaticSiteWarning =
+    Boolean(onPublishNamedSiteManifest) &&
+    blossomHostMayRejectStaticScripts(blossomUploadBase);
   const [manifestBusy, setManifestBusy] = useState(false);
 
   const readmeOk =
@@ -164,6 +185,30 @@ export function RepoGittrPagesPanel({
       </summary>
 
       <div className="flow-root space-y-3 border-t border-violet-900/25 px-3 pb-3 pt-2">
+        {blossomStaticSiteWarning ? (
+          <p className="rounded-md border border-amber-800/45 bg-amber-950/35 px-2 py-2 text-[10px] leading-snug text-amber-100/95">
+            <strong className="text-amber-200">Upload host:</strong> this build
+            sends Pages files to{" "}
+            <code className="break-all text-amber-50/90">
+              {blossomUploadBase}
+            </code>
+            . For full static sites (HTML, JS, CSS), set{" "}
+            <code className="text-amber-50/90">NEXT_PUBLIC_BLOSSOM_URL</code> to{" "}
+            <code className="text-amber-50/90">https://blossom.band</code> (or
+            your own NIP-96 Blossom), run{" "}
+            <code className="text-amber-50/90">yarn build</code>, restart{" "}
+            <code className="text-amber-50/90">gittr-frontend</code>. See{" "}
+            <Link
+              className="font-medium text-amber-200 underline underline-offset-2 hover:text-amber-50"
+              href="/help"
+            >
+              Help
+            </Link>{" "}
+            and{" "}
+            <strong className="text-amber-200">SETUP_INSTRUCTIONS.md</strong>{" "}
+            (Publish Pages / Blossom).
+          </p>
+        ) : null}
         <p className="text-[11px] leading-snug text-zinc-400">
           <strong className="text-zinc-300">What gittr signs today:</strong>{" "}
           repo tree + README to Nostr (same as always).{" "}
