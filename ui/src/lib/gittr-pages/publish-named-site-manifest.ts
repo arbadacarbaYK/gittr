@@ -588,6 +588,7 @@ export async function publishNamedSiteManifest(
         error?: string;
         reason?: string;
         body?: string;
+        hint?: string;
       };
 
       if (proxyRes.ok) {
@@ -602,9 +603,12 @@ export async function publishNamedSiteManifest(
       const detail = proxyJson.body
         ? ` — ${String(proxyJson.body).slice(0, 160)}`
         : "";
+      const hintTail = proxyJson.hint
+        ? `\n\n${String(proxyJson.hint).slice(0, 520)}`
+        : "";
       lastUploadErr = `Blossom upload failed for ${webPath}: ${
         proxyJson.error || proxyRes.status
-      }${proxyJson.reason ? ` (${proxyJson.reason})` : ""}${detail}`;
+      }${proxyJson.reason ? ` (${proxyJson.reason})` : ""}${detail}${hintTail}`;
 
       const blossomWantsJsonMime =
         proxyRes.status === 400 &&

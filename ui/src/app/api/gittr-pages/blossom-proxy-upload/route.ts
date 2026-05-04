@@ -1,4 +1,5 @@
 import { reconcileBlossomUpstreamContentType } from "@/lib/gittr-pages/blossom-upload-mime";
+
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 
@@ -187,11 +188,27 @@ export async function POST(req: Request) {
     );
     // Forward 4xx/5xx from Blossom so the client can distinguish 401 vs 503 vs 502.
     const outStatus = st >= 400 && st < 600 ? st : 502;
+    let hint: string | undefined;
+    try {
+      const host = new URL(uploadUrl).hostname.toLowerCase();
+      if (
+        st === 415 &&
+        (host === "nostr.build" ||
+          host.endsWith(".nostr.build") ||
+          host.includes("nostr.build"))
+      ) {
+        hint =
+          "nostr.build’s Blossom often returns 415 for static site files (e.g. .js) — it is geared to media uploads, not full Pages trees. Set NEXT_PUBLIC_BLOSSOM_URL to https://blossom.band (gittr default) or your own NIP-96 Blossom (e.g. hzrd149/blossom), then rebuild and restart the frontend; see SETUP_INSTRUCTIONS.md (gittr Pages / Blossom).";
+      }
+    } catch {
+      /* ignore */
+    }
     return NextResponse.json(
       {
         error: `Blossom returned ${st}`,
         reason: reason || undefined,
         body: text.slice(0, 500),
+        hint,
       },
       { status: outStatus }
     );
