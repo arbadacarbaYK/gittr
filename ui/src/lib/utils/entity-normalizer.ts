@@ -57,3 +57,38 @@ export function getRepoStorageKey(
   const normalizedEntity = normalizeEntityForStorage(entity);
   return `${prefix}__${normalizedEntity}__${repo}`;
 }
+
+/**
+ * Read per-repo issues from localStorage using the canonical key (npub-normalized entity).
+ * If empty, migrates from the legacy key `gittr_issues__${entity}__${repo}` used by older
+ * issue creation (e.g. hex entity in URL) so list + detail stay in sync.
+ */
+export function readRepoIssuesFromLocalStorage(
+  entity: string,
+  repo: string
+): unknown[] {
+  const key = getRepoStorageKey("gittr_issues", entity, repo);
+  let list: unknown[] = [];
+  try {
+    const raw = localStorage.getItem(key);
+    list = raw ? (JSON.parse(raw) as unknown[]) : [];
+    if (!Array.isArray(list)) list = [];
+  } catch {
+    list = [];
+  }
+  if (list.length > 0) return list;
+  const legacyKey = `gittr_issues__${entity}__${repo}`;
+  if (legacyKey === key) return list;
+  try {
+    const rawL = localStorage.getItem(legacyKey);
+    const legacy = rawL ? (JSON.parse(rawL) as unknown[]) : [];
+    if (Array.isArray(legacy) && legacy.length > 0) {
+      localStorage.setItem(key, JSON.stringify(legacy));
+      localStorage.removeItem(legacyKey);
+      return legacy;
+    }
+  } catch {
+    /* ignore */
+  }
+  return [];
+}

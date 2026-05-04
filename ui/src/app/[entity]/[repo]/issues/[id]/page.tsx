@@ -51,7 +51,10 @@ import {
   formatDateTime24h,
   formatTime24h,
 } from "@/lib/utils/date-format";
-import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
+import {
+  getRepoStorageKey,
+  readRepoIssuesFromLocalStorage,
+} from "@/lib/utils/entity-normalizer";
 import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
@@ -80,6 +83,8 @@ import remarkGfm from "remark-gfm";
 
 interface Issue {
   id: string;
+  /** Display number used in /issues/[id] URLs from the list view */
+  number?: string;
   title: string;
   description: string;
   author: string;
@@ -185,12 +190,13 @@ export default function IssueDetailPage({
   useEffect(() => {
     try {
       const key = getRepoStorageKey("gittr_issues", entity, repo);
-      const issuesRaw = localStorage.getItem(key);
-      const issues: Issue[] = issuesRaw
-        ? (JSON.parse(issuesRaw) as Issue[])
-        : [];
+      const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
+      const idParam = decodeURIComponent(id);
       const issueData = issues.find(
-        (i) => i.id === id || String(issues.indexOf(i) + 1) === id
+        (i) =>
+          i.id === idParam ||
+          (i.number != null && String(i.number) === idParam) ||
+          String(issues.indexOf(i) + 1) === idParam
       );
 
       if (issueData) {
@@ -447,10 +453,7 @@ export default function IssueDetailPage({
 
     try {
       const key = getRepoStorageKey("gittr_issues", entity, repo);
-      const issuesRaw = localStorage.getItem(key);
-      const issues: Issue[] = issuesRaw
-        ? (JSON.parse(issuesRaw) as Issue[])
-        : [];
+      const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
       const newStatus = issue.status === "open" ? "closed" : "open";
       const updated = issues.map((i) =>
         i.id === issue.id ? { ...i, status: newStatus } : i
@@ -646,10 +649,7 @@ export default function IssueDetailPage({
         }
 
         const key = getRepoStorageKey("gittr_issues", entity, repo);
-        const issuesRaw = localStorage.getItem(key);
-        const issues: Issue[] = issuesRaw
-          ? (JSON.parse(issuesRaw) as Issue[])
-          : [];
+        const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
         const updated = issues.map((i) =>
           i.id === issue.id
             ? { ...i, assignees: [...(i.assignees || []), pubkey] }
@@ -675,10 +675,7 @@ export default function IssueDetailPage({
 
       try {
         const key = getRepoStorageKey("gittr_issues", entity, repo);
-        const issuesRaw = localStorage.getItem(key);
-        const issues: Issue[] = issuesRaw
-          ? (JSON.parse(issuesRaw) as Issue[])
-          : [];
+        const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
         const updated = issues.map((i) =>
           i.id === issue.id
             ? {
@@ -705,10 +702,7 @@ export default function IssueDetailPage({
 
       try {
         const key = getRepoStorageKey("gittr_issues", entity, repo);
-        const issuesRaw = localStorage.getItem(key);
-        const issues: Issue[] = issuesRaw
-          ? (JSON.parse(issuesRaw) as Issue[])
-          : [];
+        const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
         const updated = issues.map((i) => {
           const labels = i.labels || [];
           const newLabels = labels.includes(label)
@@ -814,10 +808,7 @@ export default function IssueDetailPage({
 
       try {
         const key = getRepoStorageKey("gittr_issues", entity, repo);
-        const issuesRaw = localStorage.getItem(key);
-        const issues: Issue[] = issuesRaw
-          ? (JSON.parse(issuesRaw) as Issue[])
-          : [];
+        const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
         const updated = issues.map((i) =>
           i.id === issue.id
             ? {

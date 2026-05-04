@@ -46,6 +46,7 @@ import {
 } from "@/lib/utils/entity-resolver";
 import { extractMentionedPubkeys } from "@/lib/utils/mention-detection";
 import { GITTR_PAGES_ISSUE_PREFILL_KEY } from "@/lib/gittr-pages/gittr-pages-issue-draft";
+import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { Check, ChevronDown, Coins, Edit, Settings, X } from "lucide-react";
@@ -490,8 +491,10 @@ export default function RepoIssueNewPage() {
 
         // Store locally (use double underscore to match issues page)
         try {
-          const key = `gittr_issues__${entity}__${repo}`;
-          const existingIssues = JSON.parse(localStorage.getItem(key) || "[]");
+          const key = getRepoStorageKey("gittr_issues", entity, repo);
+          const existingIssues = JSON.parse(
+            localStorage.getItem(key) || "[]"
+          ) as any[];
 
           // Calculate next issue number based on existing issues
           const maxNumber = existingIssues.reduce((max: number, issue: any) => {

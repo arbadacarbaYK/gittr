@@ -18,7 +18,10 @@ import {
   formatDateTime24h,
   formatTime24h,
 } from "@/lib/utils/date-format";
-import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
+import {
+  getRepoStorageKey,
+  readRepoIssuesFromLocalStorage,
+} from "@/lib/utils/entity-normalizer";
 import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
@@ -86,7 +89,10 @@ export default function RepoIssuesPage({
         resolvedParams.entity,
         resolvedParams.repo
       );
-      const list = JSON.parse(localStorage.getItem(key) || "[]");
+      const list = readRepoIssuesFromLocalStorage(
+        resolvedParams.entity,
+        resolvedParams.repo
+      ) as any[];
       const openN = list.filter(
         (it: any) => normalizeIssueListStatus(it.status) === "open"
       ).length;
@@ -264,9 +270,10 @@ export default function RepoIssuesPage({
                 resolvedParams.entity,
                 resolvedParams.repo
               );
-              const existingIssues = JSON.parse(
-                localStorage.getItem(key) || "[]"
-              );
+              const existingIssues = readRepoIssuesFromLocalStorage(
+                resolvedParams.entity,
+                resolvedParams.repo
+              ) as any[];
 
               // Check if issue already exists
               const existingIndex = existingIssues.findIndex(
@@ -367,7 +374,10 @@ export default function RepoIssuesPage({
         resolvedParams.entity,
         resolvedParams.repo
       );
-      const allIssues = JSON.parse(localStorage.getItem(issuesKey) || "[]");
+      const allIssues = readRepoIssuesFromLocalStorage(
+        resolvedParams.entity,
+        resolvedParams.repo
+      ) as any[];
       const issueEventIds = allIssues
         .map((issue: any) => issue.nostrEventId || issue.id)
         .filter(Boolean);
@@ -394,7 +404,10 @@ export default function RepoIssuesPage({
             if (!rootTag || !rootTag[1]) return;
 
             const issueEventId = rootTag[1];
-            const issues = JSON.parse(localStorage.getItem(issuesKey) || "[]");
+            const issues = readRepoIssuesFromLocalStorage(
+              resolvedParams.entity,
+              resolvedParams.repo
+            ) as any[];
             const issueIndex = issues.findIndex(
               (i: any) => (i.nostrEventId || i.id) === issueEventId
             );

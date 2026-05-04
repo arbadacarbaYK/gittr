@@ -6,10 +6,13 @@ import {
   buildGittrPagesManifestIssueDraft,
   type GittrPagesIssueDraftInput,
 } from "@/lib/gittr-pages/gittr-pages-issue-draft";
+import { validateReadmeGittrPagesBlock } from "@/lib/gittr-pages/readme-section";
 
 import {
   BookOpen,
+  CheckCircle2,
   ChevronDown,
+  Circle,
   ExternalLink,
   FileText,
   Globe,
@@ -21,6 +24,31 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { cn } from "@/lib/utils";
+
+/** Live sidebar status for “what gittr can help with” vs fully manual steps outside gittr. */
+export type GittrPagesReadiness = {
+  files?: Array<{ path?: string }>;
+  readme: string;
+  autoReadmeOnPush: boolean;
+  hasUnpushedEdits: boolean;
+  hasEverPushedToNostr: boolean;
+  namedUrl: string;
+};
+
+function hasGittrPagesEntryFile(
+  files: Array<{ path?: string }> | undefined
+): boolean {
+  if (!files?.length) return false;
+  return files.some((f) => {
+    const p = (f.path || "").replace(/^\//, "").toLowerCase();
+    return (
+      p === "index.html" ||
+      p.endsWith("/index.html") ||
+      p === "404.html" ||
+      p === "index.md"
+    );
+  });
+}
 
 type RepoGittrPagesPanelProps = {
   canManageReadme: boolean;
@@ -37,6 +65,8 @@ type RepoGittrPagesPanelProps = {
   onReadmeThenPush?: () => void | Promise<void>;
   /** Optional: refetch from relays first (reload), then README + Push — use when local may be stale. */
   onRefetchThenReadmeThenPush?: () => void;
+  /** Owner: show checklist (site file, readme, push state) vs manual manifest outside gittr. */
+  pagesReadiness?: GittrPagesReadiness | null;
 };
 
 /** Sidebar buttons: top-align so multi-line labels never sit on the next control. */
@@ -55,9 +85,29 @@ export function RepoGittrPagesPanel({
   canChainNostrRefetch = false,
   onReadmeThenPush,
   onRefetchThenReadmeThenPush,
+  pagesReadiness = null,
 }: RepoGittrPagesPanelProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+
+  const readmeOk =
+    pagesReadiness &&
+    (pagesReadiness.autoReadmeOnPush ||
+      validateReadmeGittrPagesBlock(
+        pagesReadiness.readme,
+        pagesReadiness.namedUrl
+      ).ok);
+  const siteOk = pagesReadiness && hasGittrPagesEntryFile(pagesReadiness.files);
+  const pushClean =
+    pagesReadiness &&
+    pagesReadiness.hasEverPushedToNostr &&
+    !pagesReadiness.hasUnpushedEdits;
+  const pushNeeded =
+    pagesReadiness &&
+    (pagesReadiness.hasUnpushedEdits || !pagesReadiness.hasEverPushedToNostr);
+  const gittrStepsReady = Boolean(
+    pagesReadiness && readmeOk && siteOk && !pagesReadiness.hasUnpushedEdits
+  );
 
   return (
     <details className="group mt-3 rounded-lg border border-violet-900/35 bg-violet-950/15 open:bg-violet-950/20">
@@ -69,15 +119,93 @@ export function RepoGittrPagesPanel({
 
       <div className="flow-root space-y-3 border-t border-violet-900/25 px-3 pb-3 pt-2">
         <p className="text-[11px] leading-snug text-zinc-400">
-          Live URL above after NIP-5A manifest on relays. README here only adds
-          the link in the readme — not the manifest. After{" "}
-          <strong className="text-zinc-300">Push to Nostr</strong> from this
-          tab, gittr already stores your event IDs locally: you can go straight
-          to <strong className="text-zinc-300">README + Push</strong> for the
-          next readme change — no need to wait for gossip on relays for this
-          browser. Refetch is for when you want relays as the read source
-          (stale copy, edits on another device, or sanity-check).
+          <strong className="text-zinc-300">Outside gittr:</strong> blob upload +{" "}
+          kind <code className="text-zinc-500">35128</code> manifest (your NIP-5A
+          / nsite signer). <strong className="text-zinc-300">Inside gittr:</strong>{" "}
+          you only sign and push repo + README metadata; the checklist below
+          tracks that. Issues are for your notes — they are{" "}
+          <strong className="text-zinc-300">not</strong> pull requests (use PRs
+          only when you have branch/file diffs).
         </p>
+
+        {pagesReadiness && isOwnerSession ? (
+          <div
+            className={cn(
+              "rounded-md border px-2 py-2 text-[10px] leading-snug",
+              gittrStepsReady
+                ? "border-emerald-800/50 bg-emerald-950/20 text-emerald-100/90"
+                : "border-violet-800/40 bg-violet-950/25 text-zinc-300"
+            )}
+          >
+            <p className="mb-2 font-medium text-zinc-200">Status (gittr can help)</p>
+            <ul className="space-y-2">
+              <li className="flex gap-2">
+                {siteOk ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                ) : (
+                  <Circle className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
+                )}
+                <span>
+                  <strong className="text-zinc-200">Site entry file</strong> —{" "}
+                  {siteOk
+                    ? "Found something like index.html in this repo."
+                    : "Add index.html (or similar) to the repo tree so the site has a root page."}
+                </span>
+              </li>
+              <li className="flex gap-2">
+                {readmeOk ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                ) : (
+                  <Circle className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
+                )}
+                <span>
+                  <strong className="text-zinc-200">README + live URL</strong> —{" "}
+                  {readmeOk
+                    ? "Valid fenced block or auto-update on push is on."
+                    : "Turn on auto-update or add the fenced gittr Pages block with this repo’s live URL."}
+                </span>
+              </li>
+              <li className="flex gap-2">
+                {pushClean ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                ) : pushNeeded ? (
+                  <Circle className="h-3.5 w-3.5 shrink-0 text-amber-500/90" />
+                ) : (
+                  <Circle className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
+                )}
+                <span>
+                  <strong className="text-zinc-200">Metadata on relays</strong> —{" "}
+                  {pushClean
+                    ? "Nothing pending — last Push to Nostr is reflected locally."
+                    : pagesReadiness.hasUnpushedEdits
+                    ? "You have unpublished edits — use Push to Nostr in Repository Status when ready."
+                    : "Not published yet — push the repo when site + README rows look good."}
+                </span>
+              </li>
+              <li className="flex gap-2 text-zinc-500">
+                <Circle className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
+                <span>
+                  <strong className="text-zinc-400">Manifest 35128</strong> — always
+                  manual outside this app (gateway reads relays after you publish).
+                </span>
+              </li>
+            </ul>
+            {gittrStepsReady ? (
+              <p className="mt-2 border-t border-emerald-800/40 pt-2 text-emerald-100/95">
+                Gittr-side steps look good — use{" "}
+                <strong className="text-white">Push to Nostr</strong> above only
+                if you still need to publish new edits; otherwise continue with
+                blobs + 35128 in your nsite tool.
+              </p>
+            ) : (
+              <p className="mt-2 border-t border-violet-800/30 pt-2 text-zinc-500">
+                Use the buttons below for README shortcuts;{" "}
+                <strong className="text-zinc-400">Push to Nostr</strong> stays in
+                Repository Status above.
+              </p>
+            )}
+          </div>
+        ) : null}
 
         <details className="group/sub rounded-md border border-violet-900/20 bg-violet-950/10">
           <summary className="flex cursor-pointer list-none items-center gap-1 px-2 py-1.5 text-[11px] font-medium text-violet-300/90 hover:text-violet-200 [&::-webkit-details-marker]:hidden">

@@ -17800,6 +17800,23 @@ export default function RepoCodePage() {
                                     isOwnerSession
                                     autoReadmeOnPush={gittrPagesAutoReadme}
                                     onAutoReadmeOnPushChange={setGittrPagesAutoReadme}
+                                    pagesReadiness={{
+                                      files: (repoData?.files ||
+                                        repo?.files ||
+                                        []) as Array<{ path?: string }>,
+                                      readme: String(
+                                        repoData?.readme ?? repo?.readme ?? ""
+                                      ),
+                                      autoReadmeOnPush: gittrPagesAutoReadme,
+                                      hasUnpushedEdits: Boolean(
+                                        repo?.hasUnpushedEdits
+                                      ),
+                                      hasEverPushedToNostr: Boolean(
+                                        repo?.lastNostrEventId ||
+                                          repo?.nostrEventId
+                                      ),
+                                      namedUrl: gittrPagesUrls.namedUrl,
+                                    }}
                                     chainActionsDisabled={
                                       isPushing || isRefetching
                                     }
