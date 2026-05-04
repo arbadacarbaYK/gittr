@@ -85,39 +85,34 @@ If you run backend/bridge services from the repo root, there is also a root `.en
 - **Merge to Nostr** (post-merge automatic repo-state push) uses the same authorization: if paywall applies, the merge flow opens the invoice QR before the bridge push can complete.
 - **Push Cost in repo settings** must be written to the bridge SQLite table `RepositoryPushPolicy` (not only `localStorage`). Saving repo settings now calls `POST /api/nostr/repo/push-policy-sync` with your signed kind **30617** so the paywall amount matches what `/api/nostr/repo/push-payment` enforces. NIP-07-only users previously skipped publishing settings (`privateKey` was required); that is fixed—sign with the extension when saving. If you set Push Cost before this change, open **Repo → Settings**, verify the value, and **Save** once after upgrading so the bridge row is created/updated.
 - **Production:** If the Next.js process runs as a different Unix user than `git-nostr-bridge`, `$HOME/.config/git-nostr/...` can point at the wrong (or empty) SQLite file, so merges and pushes skip the paywall while the bridge still uses the real DB. Set `GIT_NOSTR_BRIDGE_DB` in `ui/.env.local` to the **absolute path** of the bridge’s SQLite file (same as `DbFile` in `git-nostr-bridge.json`). Resolution order is: `GIT_NOSTR_BRIDGE_DB`, then `/home/git-nostr/.config/...`, then `$HOME/.config/...`.
-- **`GET /api/nostr/repo/files` (file tree for Code, Architecture, Dependencies):** Next.js reads bare repos from disk at `repositoryDir/{ownerHex}/{repo}.git`. If `GIT_NOSTR_BRIDGE_REPOS_DIR` / `REPOS_DIR` / `GITNOSTR_REPOS_DIR` is unset, the handler reads `repositoryDir` from `git-nostr-bridge.json` — **`/home/git-nostr/.config/...` is tried before `$HOME/.config/...`** so a root-owned `next start` still finds the same tree as the bridge. Set **`GIT_NOSTR_BRIDGE_REPOS_DIR`** explicitly if you use a non-standard path. Architecture/Dependencies reuse the **browser `gittr_files__…` cache** written when the Code tab loads the tree; that cache must be written for **all viewers on public repos** (not only the owner), or those tabs stay empty when `/api/nostr/repo/files` is wrong or slow.
+- `**GET /api/nostr/repo/files` (file tree for Code, Architecture, Dependencies):** Next.js reads bare repos from disk at `repositoryDir/{ownerHex}/{repo}.git`. If `GIT_NOSTR_BRIDGE_REPOS_DIR` / `REPOS_DIR` / `GITNOSTR_REPOS_DIR` is unset, the handler reads `repositoryDir` from `git-nostr-bridge.json` — `**/home/git-nostr/.config/...` is tried before `$HOME/.config/...`** so a root-owned `next start` still finds the same tree as the bridge. Set `**GIT_NOSTR_BRIDGE_REPOS_DIR**` explicitly if you use a non-standard path. Architecture/Dependencies reuse the **browser `gittr_files__…` cache** written when the Code tab loads the tree; that cache must be written for **all viewers on public repos** (not only the owner), or those tabs stay empty when `/api/nostr/repo/files` is wrong or slow.
 - SSH push checks the same bridge DB grant before allowing `git-receive-pack`.
 
 **Lightning / zaps / bounties (product vs Nostr):** End-user credential needs (repo zaps, bounties, pay-to-merge, NIP-57 vs LNbits) are summarized in the in-app **Help** page under **Payments & Bounties** (table). Developers should also read `docs/NIPS_AND_EVENT_KINDS.md` (NIP-57 section).
 
-**Watch / follow list (kind `10018`):** Relays do not store “add one repo” deltas for this list. The app publishes **one replaceable `10018` per watch change** whose `a` tags are the **entire** current watched set (see NIP-51 and `docs/NIPS_AND_EVENT_KINDS.md` → NIP-51). Allow **`10018`** on any relay you expect to carry followed-repo lists (see relay `allowed_kinds` examples in `docs/NIP25_STARS_NIP51_FOLLOWING.md`).
+**Watch / follow list (kind `10018`):** Relays do not store “add one repo” deltas for this list. The app publishes **one replaceable `10018` per watch change** whose `a` tags are the **entire** current watched set (see NIP-51 and `docs/NIPS_AND_EVENT_KINDS.md` → NIP-51). Allow `**10018`** on any relay you expect to carry followed-repo lists (see relay `allowed_kinds` examples in `docs/NIP25_STARS_NIP51_FOLLOWING.md`).
 
 **GitHub OAuth Setup (Optional, for private repository access):**
 
 If you want users to be able to import and view files from private GitHub repositories, you need to set up GitHub OAuth:
 
-1. Create a GitHub OAuth App at https://github.com/settings/developers
-
-   - **Application name**: Your app name (e.g., "gittr.space")
-   - **Homepage URL**: Your domain (e.g., `https://gittr.space`)
-   - **Authorization callback URL**: `https://yourdomain.com/api/github/callback` (or `http://localhost:3000/api/github/callback` for local dev)
-
+1. Create a GitHub OAuth App at [https://github.com/settings/developers](https://github.com/settings/developers)
+  - **Application name**: Your app name (e.g., "gittr.space")
+  - **Homepage URL**: Your domain (e.g., `https://gittr.space`)
+  - **Authorization callback URL**: `https://yourdomain.com/api/github/callback` (or `http://localhost:3000/api/github/callback` for local dev)
 2. Copy the **Client ID** and **Client Secret** from the OAuth app settings
-
 3. Add to `ui/.env.local`:
-
-   ```
+  ```
    GITHUB_CLIENT_ID=your_client_id_here
    GITHUB_CLIENT_SECRET=your_client_secret_here
    GITHUB_REDIRECT_URI=https://yourdomain.com/api/github/callback
-   ```
-
+  ```
 4. Users can then connect their GitHub account via Settings → SSH Keys → Connect GitHub, which enables:
-   - Importing private repositories
-   - Viewing file content from private repositories
-   - The OAuth token is stored securely in browser localStorage (never sent to server except for API calls)
+  - Importing private repositories
+  - Viewing file content from private repositories
+  - The OAuth token is stored securely in browser localStorage (never sent to server except for API calls)
 
-See [`ui/GITHUB_OAUTH_SETUP.md`](../ui/GITHUB_OAUTH_SETUP.md) for detailed instructions.
+See `[ui/GITHUB_OAUTH_SETUP.md](../ui/GITHUB_OAUTH_SETUP.md)` for detailed instructions.
 
 ### Step 4: Build Frontend
 
@@ -270,14 +265,14 @@ AuthorizedKeysFile .ssh/authorized_keys
 PermitUserEnvironment yes
 ```
 
-**`git@host` vs keys:** On gittr, `git` and `git-nostr` share the same UID and home (`/home/git-nostr`). The bridge **only** refreshes **`/home/git-nostr/.ssh/authorized_keys`**. If `sshd` uses a **separate** `Match User git` → `/etc/ssh/git-authorized_keys`, that copy **does not auto-update** when users add keys in the UI — they see **password prompts** after pubkey auth finds no match. Prefer pointing `git` at the live file:
+`**git@host` vs keys:** On gittr, `git` and `git-nostr` share the same UID and home (`/home/git-nostr`). The bridge **only** refreshes `**/home/git-nostr/.ssh/authorized_keys`**. If `sshd` uses a **separate** `Match User git` → `/etc/ssh/git-authorized_keys`, that copy **does not auto-update** when users add keys in the UI — they see **password prompts** after pubkey auth finds no match. Prefer pointing `git` at the live file:
 
 ```
 Match User git
     AuthorizedKeysFile /home/git-nostr/.ssh/authorized_keys
 ```
 
-(Legacy setups used a copied `/etc/ssh/git-authorized_keys`; if you keep that, you must **`sudo cp /home/git-nostr/.ssh/authorized_keys /etc/ssh/git-authorized_keys`** after every new key or bridge restart, or keys will be missing for `git@…` clones.)
+(Legacy setups used a copied `/etc/ssh/git-authorized_keys`; if you keep that, you must `**sudo cp /home/git-nostr/.ssh/authorized_keys /etc/ssh/git-authorized_keys**` after every new key or bridge restart, or keys will be missing for `git@…` clones.)
 
 Restart SSH:
 
@@ -471,17 +466,17 @@ server {
 }
 ```
 
-**gittr Pages (nsite gateway):** After DNS for **`pages.gittr.space`** points at this server, merge **`infra/nsite-gateway/nginx-pages.gittr.space.conf.example`** into `sites-available/gittr` (HTTP-only first). Deploy the gateway from your laptop (files under **`/opt/ngit/infra/nsite-gateway`**):
+**gittr Pages (nsite gateway):** After DNS for `**pages.gittr.space`** points at this server, merge `**infra/nsite-gateway/nginx-pages.gittr.space.conf.example**` into `sites-available/gittr` (HTTP-only first). Deploy the gateway from your laptop (files under `**/opt/ngit/infra/nsite-gateway**`):
 
 ```bash
 chmod +x scripts/deploy-nsite-gateway.sh
 ./scripts/deploy-nsite-gateway.sh your.gateway.host
 ```
 
-**Server prerequisites:** Docker Engine + **`docker compose`**. On **Ubuntu 24.04** use `docker-compose-v2` (not always named `docker-compose-plugin`):  
+**Server prerequisites:** Docker Engine + `**docker compose`**. On **Ubuntu 24.04** use `docker-compose-v2` (not always named `docker-compose-plugin`):  
 `sudo apt install -y docker.io docker-compose-v2` then `sudo systemctl enable --now docker`.
 
-After the main app is on the server, whenever **`infra/nsite-gateway`** or **`infra/gittr-nsite-gateway`** change, run **`./scripts/deploy-nsite-gateway.sh`** from your laptop (pass your SSH target as the first argument; see script header). That syncs gateway files and rebuilds the Docker stack (including **`/status/manifests.json`**).
+After the main app is on the server, whenever `**infra/nsite-gateway`** or `**infra/gittr-nsite-gateway**` change, run `**./scripts/deploy-nsite-gateway.sh**` from your laptop (pass your SSH target as the first argument; see script header). That syncs gateway files and rebuilds the Docker stack (including `**/status/manifests.json**`).
 
 ```bash
 sudo ln -s /etc/nginx/sites-available/gittr /etc/nginx/sites-enabled/
@@ -489,61 +484,35 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-After the **`pages.gittr.space`** HTTP `server` block is in place and DNS resolves, obtain its certificate:
+After the `**pages.gittr.space**` HTTP `server` block is in place and DNS resolves, obtain its certificate:
 
 ```bash
 sudo certbot --nginx -d pages.gittr.space
 ```
 
-**Per-site links (`*.pages.gittr.space`):** The nsite gateway’s **Status** page links to hostnames like `{id}.pages.gittr.space`. The apex record **`pages`** alone is **not** enough: Firefox fails because those hostnames **do not resolve** until you add a **wildcard** DNS name and a **wildcard TLS** certificate.
+**Per-site links (`*.pages.gittr.space`):** The nsite gateway’s **Status** page links to hostnames like `{id}.pages.gittr.space`. The apex record `**pages`** alone is **not** enough: Firefox fails because those hostnames **do not resolve** until you add a **wildcard** DNS name and a **wildcard TLS** certificate.
 
-1. **Cloudflare** (zone `gittr.space`) → **DNS** → **Add record**  
-   - **Type:** A  
-   - **Name:** `*.pages` (this covers any `something.pages.gittr.space`)  
-   - **IPv4:** same server as `pages`  
-   - **Proxy:** **DNS only** (grey cloud) so Let’s Encrypt on **your nginx** can validate and serve HTTPS for arbitrary subdomains.
-
+1. **Cloudflare** (zone `gittr.space`) → **DNS** → **Add record**
+  - **Type:** A  
+  - **Name:** `*.pages` (this covers any `something.pages.gittr.space`)  
+  - **IPv4:** same server as `pages`  
+  - **Proxy:** **DNS only** (grey cloud) so Let’s Encrypt on **your nginx** can validate and serve HTTPS for arbitrary subdomains.
 2. **Wait for DNS**, then check: `dig +short randomtest.pages.gittr.space A` → should return your server IP.
-
 3. **Wildcard certificate** (HTTP-01 cannot issue `*.`; use **DNS-01** with Cloudflare):
-
-   ```bash
+  ```bash
    sudo apt install -y python3-certbot-dns-cloudflare
    sudo install -d -m 700 /root/.secrets
    sudo nano /root/.secrets/cloudflare.ini
-   ```
-
+  ```
    Put only (create a **Zone → DNS → Edit** API token in Cloudflare for `gittr.space`):
-
-   ```ini
-   dns_cloudflare_api_token = YOUR_TOKEN_HERE
-   ```
-
-   ```bash
-   sudo chmod 600 /root/.secrets/cloudflare.ini
-   sudo certbot certonly --dns-cloudflare --dns-cloudflare-credentials /root/.secrets/cloudflare.ini \
-     --cert-name pages-gittr-wildcard \
-     -d 'pages.gittr.space' -d '*.pages.gittr.space' \
-     --non-interactive --agree-tos --register-unsafely-without-email
-   ```
-
-   **Easier (keeps the same cert name `pages.gittr.space` nginx already uses):** on the server run **`/opt/ngit/infra/nsite-gateway/expand-wildcard-cert.sh`** (from this repo: `infra/nsite-gateway/expand-wildcard-cert.sh`) after `cloudflare.ini` exists — it uses **`certbot --expand`** so paths stay **`/etc/letsencrypt/live/pages.gittr.space/`**.
-
+   **Easier (keeps the same cert name `pages.gittr.space` nginx already uses):** on the server run `**/opt/ngit/infra/nsite-gateway/expand-wildcard-cert.sh`** (from this repo: `infra/nsite-gateway/expand-wildcard-cert.sh`) after `cloudflare.ini` exists — it uses `**certbot --expand**` so paths stay `**/etc/letsencrypt/live/pages.gittr.space/**`.
 4. **nginx:** In **both** the **443** and **80** `server` blocks for gittr Pages, set:
-
-   - `server_name pages.gittr.space *.pages.gittr.space;`
-
+  - `server_name pages.gittr.space *.pages.gittr.space;`
    For **port 80**, replace Certbot’s `if ($host = pages...) { return 301 ... }` + `return 404` combo (it breaks subdomains) with a single redirect:
-
-   ```nginx
-   return 301 https://$host$request_uri;
-   ```
-
-   SSL paths stay **`/etc/letsencrypt/live/pages.gittr.space/...`** if you used **`--expand`** as above.
-
+   SSL paths stay `**/etc/letsencrypt/live/pages.gittr.space/...`** if you used `**--expand**` as above.
    Then: `sudo nginx -t && sudo systemctl reload nginx`.
 
-**gittr gateway overlay:** The repo ships **`infra/gittr-nsite-gateway`** (Docker build clones upstream **hzrd149/nsite-gateway** at image build time, applies our overlay) adding **`GET /status/manifests.json`**. On **your server**, from **`infra/nsite-gateway`**, run `docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml up -d --build` so gittr’s **`/pages`** app can consume JSON instead of scraping HTML. See **`infra/gittr-nsite-gateway/README.md`**. Production uses **your** `pages.gittr.space` host only; a separate GitHub fork of upstream is **optional** for maintainers who want it, not required for users or traffic.
+**gittr gateway overlay:** The repo ships `**infra/gittr-nsite-gateway`** (Docker build clones upstream **hzrd149/nsite-gateway** at image build time, applies our overlay) adding `**GET /status/manifests.json`**. On **your server**, from `**infra/nsite-gateway`**, run `docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml up -d --build` so gittr’s `**/pages**` app can consume JSON instead of scraping HTML. See `**infra/gittr-nsite-gateway/README.md**`. Production uses **your** `pages.gittr.space` host only; a separate GitHub fork of upstream is **optional** for maintainers who want it, not required for users or traffic.
 
 ### Step 14: Configure SSL Certificate
 
@@ -569,19 +538,19 @@ NEXT_PUBLIC_SITE_URL=https://gittr.space
 NEXT_PUBLIC_GITTR_PAGES_URL=https://pages.gittr.space
 ```
 
-The optional **`NEXT_PUBLIC_GITTR_PAGES_URL`** (no trailing slash) powers the in-app **Pages** nav link (opens `/pages` in a **new tab** from the header so your current view stays open), the **`/pages`** directory (loads published sites from the gateway: prefers **`/status/manifests.json`** from the **gittr nsite-gateway fork**, otherwise parses **`/status`** HTML), and owner-repo hints for **Publish as gittr Pages**; default in code is `https://pages.gittr.space` if unset. The Next.js route **`GET /api/gittr-pages/status-sites`** (cached ~2 minutes) must reach the gateway from the app server.
+The optional `**NEXT_PUBLIC_GITTR_PAGES_URL**` (no trailing slash) powers the in-app **Pages** nav link (opens `/pages` in a **new tab** from the header so your current view stays open), the `**/pages`** directory (loads published sites from the gateway: prefers `**/status/manifests.json**` from the **gittr nsite-gateway fork**, otherwise parses `**/status`** HTML), and owner-repo hints for **Publish as gittr Pages**; default in code is `https://pages.gittr.space` if unset. The Next.js route `**GET /api/gittr-pages/status-sites`** (cached ~2 minutes) must reach the gateway from the app server.
 
 **Pages directory cards:** live snapshot backgrounds are **disabled** (image.thum.io often returned a valid image that was only a “paid account” banner, so cards looked broken). Cards use a solid theme background. The list is **deduplicated** for the UI: same author + same description, **portal** + npub-style site labels, or identical titles are merged; the card **title** prefers a real site title, otherwise the gateway **description** (e.g. “Sweet 🍭”) instead of the raw `portal` / npub hostname label when that reads better. Author lines use a **short label** with the **full npub in the tooltip** when we have hex.
 
-**Repo sidebar (gittr Pages):** when the owner pubkey is known, viewers see **Live site** (canonical NIP-5A URL for that repo: base36 + short repo tag) and **Directory** (`/pages`). **Owners and maintainers** get **Add gittr Pages links to README** (owners: updates or inserts the fenced gittr Pages block with that URL; maintainers: copies the snippet). When an owner uses that control (or the auto-readme-on-push path), gittr also writes the same body into **`README.md` in separate file storage** if that file exists in the local tree, so the file editor and **Push to Nostr** / bridge file payloads stay aligned with `repo.readme`. Owners can enable **“Let gittr update README for Pages on push”** (off by default): when on, **Push to Nostr** refreshes that README block before signing; when off, push is blocked unless the README already contains a valid fenced block including the live URL. The NIP-5A **site manifest on relays** (not `manifest.json` in git) is what the gateway serves; README handling is separate. The **`/pages`** directory deduplicates by site hostname so duplicate gateway rows do not show twice. After changing README, the owner must **Push to Nostr** again so relays pick up the doc for all clients.
+**Repo sidebar (gittr Pages):** when the owner pubkey is known, viewers see **Live site** (canonical NIP-5A URL for that repo: base36 + short repo tag) and **Directory** (`/pages`). **Owners and maintainers** get **Add gittr Pages links to README** (owners: updates or inserts the fenced gittr Pages block with that URL; maintainers: copies the snippet). When an owner uses that control (or the auto-readme-on-push path), gittr also writes the same body into `**README.md` in separate file storage** if that file exists in the local tree, so the file editor and **Push to Nostr** / bridge file payloads stay aligned with `repo.readme`. Owners can enable **“Let gittr update README for Pages on push”** (off by default): when on, **Push to Nostr** refreshes that README block before signing; when off, push is blocked unless the README already contains a valid fenced block including the live URL. The NIP-5A **site manifest on relays** (not `manifest.json` in git) is what the gateway serves; README handling is separate. The `**/pages`** directory deduplicates by site hostname so duplicate gateway rows do not show twice. After changing README, the owner must **Push to Nostr** again so relays pick up the doc for all clients.
 
 **Owner shortcuts:** **README + Push to Nostr** is the default after local edits: it updates the fenced Pages block then triggers the existing **Push to Nostr** button (signatures / Lightning paywall unchanged). After a successful push, this tab already has **event IDs in local storage** — you do **not** need to refetch from relays before the next **README + Push** for this browser; relay gossip mainly matters for **other** clients and devices. **Refetch Nostr → README + Push** (when **Refetch from Nostr** is shown) is **optional**: use it when you want relays as the read source of truth (stale local tree, edits elsewhere, verification). It sets a small `sessionStorage` marker, runs refetch, and after the reload applies the README block then triggers Push.
 
-**Publish Pages manifest (Blossom + kind 35128):** Owners get **Publish Pages manifest** in the **gittr Pages** sidebar. The client signs **NIP-07** kind **24242** tokens per file, then **`POST /api/gittr-pages/blossom-proxy-upload`** forwards **`PUT /upload`** to **`NEXT_PUBLIC_BLOSSOM_URL`** (default `https://blossom.band`) so the browser avoids cross-origin limits to the CDN. After uploads, the client signs and publishes the **named-site manifest** (kind **35128**) to the app’s relays. Size limits apply (see route + `publish-named-site-manifest.ts`). You can still use any other NIP-5A tool instead. **File bytes for upload** are resolved in order: inline content in browser storage, optional per-file `url` (e.g. GitHub raw — may fail from the browser due to CORS), then same-origin **`GET /api/git/file-content`** using the repo’s stored **`sourceUrl`** and branch, then **`GET /api/nostr/repo/file-content`** for bridge-backed trees — so a **RAW** link in the UI alone is not required; what matters is that the server can read the tree (import URL + branch, or bridge).
+**Publish Pages manifest (Blossom + kind 35128):** Owners get **Publish Pages manifest** in the **gittr Pages** sidebar. The client signs **NIP-07** kind **24242** tokens per file, then `**POST /api/gittr-pages/blossom-proxy-upload`** forwards `**PUT /upload**` to `**NEXT_PUBLIC_BLOSSOM_URL**` (default `https://blossom.band`) so the browser avoids cross-origin limits to the CDN. After uploads, the client signs and publishes the **named-site manifest** (kind **35128**) to the app’s relays. Size limits apply (see route + `publish-named-site-manifest.ts`). You can still use any other NIP-5A tool instead. **File bytes for upload** are resolved in order: inline content in browser storage, optional per-file `url` (e.g. GitHub raw — may fail from the browser due to CORS), then same-origin `**GET /api/git/file-content`** using the repo’s stored `**sourceUrl**` and branch, then `**GET /api/nostr/repo/file-content**` for bridge-backed trees — so a **RAW** link in the UI alone is not required; what matters is that the server can read the tree (import URL + branch, or bridge).
 
-**Blossom MIME (415 / 400):** Public Blossom (e.g. nostr.build) **sniffs bytes** and compares them to the **`Content-Type`** on **`PUT /upload`**. Sending **`application/octet-stream`** can cause **415**; some hosts **allowlist** script types as **`text/javascript`** (not **`application/javascript`**). If the stored “file” is still **JSON**—either **`JSON.stringify(source)`** or a full **GitHub contents API** blob with **`encoding: base64`** and a **`content`** field—Blossom expects **`application/json`** for that blob unless you **decode** it to real asset bytes first. **`normalizeBlossomUploadBytes`** in **`blossom-upload-mime.ts`** unwraps those shapes (looping), then **`manifestUploadContentType`** picks **`application/json`** vs path MIME; **`blossom-proxy-upload`** **reconciles** client `contentType` vs decoded bytes. If a type still fails, try another **`NEXT_PUBLIC_BLOSSOM_URL`** or refetch file content from git/bridge so storage is not an API wrapper.
+**Blossom MIME (415 / 400):** Public Blossom (e.g. nostr.build) **sniffs bytes** and compares them to the **`Content-Type`** on **`PUT /upload`**. Sending **`application/octet-stream`** can cause **415**; some hosts **allowlist** script types as **`text/javascript`** (not **`application/javascript`**). If the stored “file” is still **JSON**—**`JSON.stringify(source)`**, a **GitHub contents API** blob (`encoding` + **`content`**), or the **`{ content, isBinary, path, branch }`** JSON from **`/api/git/file-content`** / **`/api/nostr/repo/file-content`** saved verbatim as the file body—Blossom expects **`application/json`** for that blob unless you **decode** it to real asset bytes first. **`normalizeBlossomUploadBytes`** in **`blossom-upload-mime.ts`** unwraps those shapes (looping), then **`manifestUploadContentType`** picks **`application/json`** vs path MIME; **`blossom-proxy-upload`** **reconciles** client `contentType` vs decoded bytes. If a type still fails, try another **`NEXT_PUBLIC_BLOSSOM_URL`** or refetch file content from git/bridge so storage is not an API wrapper.
 
-**Nginx and long uploads:** If **`/api/gittr-pages/blossom-proxy-upload`** returns **502** with no JSON body, nginx may be timing out the Next.js upstream before the handler finishes — add **`proxy_read_timeout`** / **`proxy_send_timeout`** (e.g. 180s) on the **`proxy_pass`** block that serves **`/api/`** (see production `sites-available/gittr` and **`nginx.gittr.conf.example`**).
+**Nginx and long uploads:** If `**/api/gittr-pages/blossom-proxy-upload`** returns **502** with no JSON body, nginx may be timing out the Next.js upstream before the handler finishes — add `**proxy_read_timeout`** / `**proxy_send_timeout**` (e.g. 180s) on the `**proxy_pass**` block that serves `**/api/**` (see production `sites-available/gittr` and `**nginx.gittr.conf.example**`).
 
 **End-to-end order (nothing or partially wrong):** (1) Fix **site files** in the repo (e.g. `index.html` and assets) locally until the tree is correct — **Refetch from Nostr** only if this copy might be behind what relays have. (2) Optionally fix the **README** gittr Pages fenced block (**README + Push**, or button / checkbox before push). (3) **Push to Nostr** so repo + README metadata are on relays. (4) **Publish Pages manifest** (or external nsite tooling): kind **35128** plus Blossom blobs so the gateway can resolve paths. Wrong README does not substitute for a missing manifest; wrong HTML in the repo must be fixed in step 1 before step 4 can reference it.
 
@@ -609,7 +578,7 @@ The optional **`NEXT_PUBLIC_GITTR_PAGES_URL`** (no trailing slash) powers the in
 2. SSH port 22 must be accessible
 3. Users publish SSH keys via Settings → SSH Keys in the web UI
 4. Bridge automatically adds keys to `/home/git-nostr/.ssh/authorized_keys`
-5. **`git@` and sshd:** After deploy (or when `git@` asks for a password despite keys in the UI), run `SSH_DEPLOY_KEY=~/.ssh/your_key ./scripts/ensure-sshd-git-live-authorized-keys.sh <host>` so `Match User git` in `sshd_config` does **not** point at a stale `/etc/ssh/git-authorized_keys` copy. Without that, new keys can work for `git-nostr@` but **`git@` falls back to password auth**. If you use a local `upload_to_hetzner.sh` (often gitignored), merge a call to that script at the end of your upload flow, or set `SKIP_SSHD_GIT_KEYS_FIX=1` there only if you intentionally manage `sshd_config` elsewhere.
+5. `**git@` and sshd:** After deploy (or when `git@` asks for a password despite keys in the UI), run `SSH_DEPLOY_KEY=~/.ssh/your_key ./scripts/ensure-sshd-git-live-authorized-keys.sh <host>` so `Match User git` in `sshd_config` does **not** point at a stale `/etc/ssh/git-authorized_keys` copy. Without that, new keys can work for `git-nostr@` but `**git@` falls back to password auth**. If you use a local `upload_to_hetzner.sh` (often gitignored), merge a call to that script at the end of your upload flow, or set `SKIP_SSHD_GIT_KEYS_FIX=1` there only if you intentionally manage `sshd_config` elsewhere.
 
 **Test Git clone:**
 
@@ -688,10 +657,8 @@ If you're using Docker, you don't need to install Go or set up system users manu
 ### Docker Setup Steps
 
 1. **Edit the Dockerfile** (`ui/gitnostr/Dockerfile`):
-
-   - Replace the `gitRepoOwners` array with your Nostr pubkey (hex format, NOT npub)
-   - Update the `relays` array to match your `.env.local` configuration
-
+  - Replace the `gitRepoOwners` array with your Nostr pubkey (hex format, NOT npub)
+  - Update the `relays` array to match your `.env.local` configuration
 2. **Build and run the bridge container:**
 
 ```bash
@@ -699,13 +666,13 @@ cd ui
 docker compose up -d git-nostr-bridge
 ```
 
-3. **Check logs:**
+1. **Check logs:**
 
 ```bash
 docker logs -f git-nostr-bridge
 ```
 
-4. **Verify it's running:**
+1. **Verify it's running:**
 
 ```bash
 docker ps | grep git-nostr-bridge

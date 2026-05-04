@@ -54,6 +54,59 @@ export function unwrapJsonEncodedUtf8ArtifactIfNeeded(
  * (`{ "encoding": "base64", "content": "..." }`). That is valid JSON; nostr.build
  * then expects `application/json` unless we decode to the real file bytes.
  */
+function encodingLower(rec: Record<string, unknown>): string {
+  const e = rec.encoding;
+  return typeof e === "string" ? e.trim().toLowerCase() : "";
+}
+
+function bytesFromGitFileContentShape(rec: Record<string, unknown>): Uint8Array | null {
+  const content = rec.content;
+  if (typeof content !== "string" || !content.length) return null;
+  const isBinary = rec.isBinary === true;
+  if (isBinary) {
+    try {
+      const clean = content.replace(/\s/g, "");
+      const bin = atob(clean);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) {
+        out[i] = bin.charCodeAt(i) & 0xff;
+      }
+      return out.length > 0 ? out : null;
+    } catch {
+      return null;
+    }
+  }
+  return new TextEncoder().encode(content);
+}
+
+/**
+ * Same-origin **file-content** APIs return `{ content, isBinary? }`. If that JSON was
+ * stored verbatim as the "file" body, the whole blob is JSON (Blossom: expect
+ * `application/json`) but we must upload the **decoded** file bytes instead.
+ */
+export function unwrapGitFileContentJsonWrapper(bytes: Uint8Array): Uint8Array {
+  const text = utf8DecodeLenient(bytes);
+  const t = trimBom(text).trim();
+  if (!t.startsWith("{")) return bytes;
+  let o: unknown;
+  try {
+    o = JSON.parse(t);
+  } catch {
+    return bytes;
+  }
+  if (!o || typeof o !== "object" || Array.isArray(o)) return bytes;
+  const rec = o as Record<string, unknown>;
+  if (typeof rec.content !== "string") return bytes;
+  // Match /api/nostr/repo/file-content and /api/git/file-content success shape (not `{ error }`).
+  const looksLikeFileContentApi =
+    typeof rec.path === "string" &&
+    typeof rec.branch === "string" &&
+    (rec.isBinary === true || rec.isBinary === false);
+  if (!looksLikeFileContentApi) return bytes;
+  const inner = bytesFromGitFileContentShape(rec);
+  return inner && inner.length > 0 ? inner : bytes;
+}
+
 export function unwrapGitHubContentsApiJsonBlob(bytes: Uint8Array): Uint8Array {
   const text = utf8DecodeLenient(bytes);
   const t = trimBom(text).trim();
@@ -67,20 +120,26 @@ export function unwrapGitHubContentsApiJsonBlob(bytes: Uint8Array): Uint8Array {
   if (!o || typeof o !== "object" || Array.isArray(o)) return bytes;
   const rec = o as Record<string, unknown>;
   if (rec.type === "dir") return bytes;
-  if (rec.encoding !== "base64" || typeof rec.content !== "string") return bytes;
-  const raw = rec.content as string;
-  if (!raw.length) return bytes;
-  try {
-    const clean = raw.replace(/\s/g, "");
-    const bin = atob(clean);
-    const out = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) {
-      out[i] = bin.charCodeAt(i) & 0xff;
+  const enc = encodingLower(rec);
+  const raw = rec.content;
+  if (typeof raw !== "string" || !raw.length) return bytes;
+  if (enc === "base64") {
+    try {
+      const clean = raw.replace(/\s/g, "");
+      const bin = atob(clean);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) {
+        out[i] = bin.charCodeAt(i) & 0xff;
+      }
+      return out.length > 0 ? out : bytes;
+    } catch {
+      return bytes;
     }
-    return out.length > 0 ? out : bytes;
-  } catch {
-    return bytes;
   }
+  if ((enc === "utf-8" || enc === "utf8") && rec.type === "file") {
+    return new TextEncoder().encode(raw);
+  }
+  return bytes;
 }
 
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
@@ -95,16 +154,23 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
  * Undo common double-wrapping (GitHub API JSON → optional JSON.stringify(script))
  * before hashing and uploading to Blossom.
  */
+function unwrapBlossomPayloadOneRound(
+  filePath: string,
+  bytes: Uint8Array
+): Uint8Array {
+  let x = unwrapGitHubContentsApiJsonBlob(bytes);
+  x = unwrapGitFileContentJsonWrapper(x);
+  x = unwrapJsonEncodedUtf8ArtifactIfNeeded(filePath, x);
+  return x;
+}
+
 export function normalizeBlossomUploadBytes(
   filePath: string,
   bytes: Uint8Array
 ): Uint8Array {
   let b = bytes;
-  for (let i = 0; i < 6; i++) {
-    const step = unwrapJsonEncodedUtf8ArtifactIfNeeded(
-      filePath,
-      unwrapGitHubContentsApiJsonBlob(b)
-    );
+  for (let i = 0; i < 8; i++) {
+    const step = unwrapBlossomPayloadOneRound(filePath, b);
     if (sameBytes(step, b)) break;
     b = step;
   }
