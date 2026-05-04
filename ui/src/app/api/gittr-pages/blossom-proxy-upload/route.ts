@@ -55,6 +55,23 @@ function validateAuthEvent(
   return { ok: true };
 }
 
+/** Safe Content-Type for upstream PUT (Blossom storage rules are MIME-sensitive). */
+function upstreamContentType(candidate: unknown): string {
+  const fallback = "application/octet-stream";
+  if (typeof candidate !== "string") return fallback;
+  const raw = candidate.trim().slice(0, 128);
+  if (!raw) return fallback;
+  const head = raw.split(";")[0];
+  if (!head) return fallback;
+  const main = head.trim().toLowerCase();
+  if (
+    !/^[a-z0-9][a-z0-9._+-]{0,127}\/[a-z0-9][a-z0-9._+-]{0,127}$/.test(main)
+  ) {
+    return fallback;
+  }
+  return raw.length <= 128 ? raw : main;
+}
+
 /**
  * Server-side PUT to the configured Blossom origin (avoids browser CORS to the CDN).
  * Client must sign kind 24242 with NIP-07 and send the full signed event + body + sha256.
@@ -64,6 +81,8 @@ export async function POST(req: Request) {
     authEvent: AuthEvent;
     contentBase64: string;
     sha256: string;
+    /** IANA MIME for this blob; required for hosts that reject octet-stream on .js etc. */
+    contentType?: string;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -122,6 +141,7 @@ export async function POST(req: Request) {
   const uploadUrl = `${origin}/upload`;
   const bodyBytes = new Uint8Array(buf);
   const len = bodyBytes.byteLength;
+  const mime = upstreamContentType(body.contentType);
 
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), UPSTREAM_TIMEOUT_MS);
@@ -134,7 +154,7 @@ export async function POST(req: Request) {
       headers: {
         Authorization: authHeader,
         "X-SHA-256": sha256,
-        "Content-Type": "application/octet-stream",
+        "Content-Type": mime,
         // BUD-02 / blossom-server: Content-Length is required; set explicitly for all runtimes.
         "Content-Length": String(len),
       },
