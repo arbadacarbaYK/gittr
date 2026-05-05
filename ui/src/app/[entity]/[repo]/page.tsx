@@ -40,7 +40,10 @@ import {
   type GitHubContributor,
   mapGithubContributors,
 } from "@/lib/github-mapping";
-import { gittrPagesPushPreconditionsMet } from "@/lib/gittr-pages/pages-preconditions";
+import {
+  gittrPagesPushPreconditionsMet,
+  hasGittrPagesEntryFile,
+} from "@/lib/gittr-pages/pages-preconditions";
 import {
   evaluatePagesSiteSlugInput,
   resolveRepoPagesDTag,
@@ -2672,6 +2675,13 @@ export default function RepoCodePage() {
       const current = repoDataRef.current;
       if (!current) {
         alert("Repository is still loading — try again in a moment.");
+        return;
+      }
+      const siteFiles = (current.files || []) as Array<{ path?: string }>;
+      if (!hasGittrPagesEntryFile(siteFiles)) {
+        alert(
+          "README update is blocked: this repo has no static page entry file in root (for example index.html). Add one first."
+        );
         return;
       }
       const cur = (current.readme || "").trimEnd();
