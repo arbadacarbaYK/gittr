@@ -427,6 +427,9 @@ export default function RepoCodePage() {
   const [repoOwnerPubkey, setRepoOwnerPubkey] = useState<string | null>(null);
   /** When true, Push to Nostr refreshes the README gittr Pages block before push; when false, push requires a valid block or stops. */
   const [gittrPagesAutoReadme, setGittrPagesAutoReadme] = useState(false);
+  const [pagesSiteListedByGateway, setPagesSiteListedByGateway] = useState<
+    boolean | null
+  >(null);
   const [bridgeFiles, setBridgeFiles] = useState<RepoFileEntry[] | null>(null);
   // CRITICAL: Ensure files is always an array to prevent mobile hydration issues
   // Prefer repoData files; fall back to bridge-loaded files for view-only repos
@@ -490,6 +493,87 @@ export default function RepoCodePage() {
       }
     }
   }, [repoData?.ownerPubkey, resolvedParams.entity, decodedRepo, mounted]);
+
+  const candidateGittrPagesUrls = useMemo(() => {
+    if (!mounted) return null;
+    const repos = loadStoredRepos();
+    const repoFromStorage = findRepoByEntityAndName(
+      repos,
+      resolvedParams.entity,
+      decodedRepo
+    );
+    const repoForPages = repoData || repoFromStorage;
+    if (!repoForPages) return null;
+    const ownerHexForPages = (
+      repoForPages.ownerPubkey ||
+      repoOwnerPubkey ||
+      entityPubkey ||
+      ""
+    ).toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(ownerHexForPages)) return null;
+    const pagesBaseForSidebar = (
+      process.env.NEXT_PUBLIC_GITTR_PAGES_URL || "https://pages.gittr.space"
+    ).replace(/\/$/, "");
+    const dTag = resolveRepoPagesDTag(decodedRepo, {
+      pagesSiteSlug: repoData?.pagesSiteSlug ?? repoForPages.pagesSiteSlug,
+      repo: repoForPages.repo,
+      slug: repoForPages.slug,
+      name: repoForPages.name,
+    });
+    return {
+      namedUrl: buildNsiteSiteUrl(pagesBaseForSidebar, ownerHexForPages, {
+        kind: "named",
+        dTag,
+      }),
+      dTag,
+    };
+  }, [
+    mounted,
+    resolvedParams.entity,
+    decodedRepo,
+    repoData,
+    repoOwnerPubkey,
+    entityPubkey,
+  ]);
+
+  useEffect(() => {
+    if (!candidateGittrPagesUrls?.namedUrl) {
+      setPagesSiteListedByGateway(null);
+      return;
+    }
+    let cancelled = false;
+    const want = candidateGittrPagesUrls.namedUrl
+      .replace(/\/$/, "")
+      .toLowerCase();
+    const dTag = candidateGittrPagesUrls.dTag.toLowerCase();
+    (async () => {
+      try {
+        const res = await fetch("/api/gittr-pages/status-sites");
+        if (!res.ok) {
+          if (!cancelled) setPagesSiteListedByGateway(null);
+          return;
+        }
+        const data = (await res.json()) as {
+          sites?: Array<{ siteUrl?: string }>;
+        };
+        const sites = Array.isArray(data.sites) ? data.sites : [];
+        const hit = sites.some((s) => {
+          const u = (s.siteUrl || "").replace(/\/$/, "").toLowerCase();
+          return (
+            u === want ||
+            (dTag &&
+              (u.includes(dTag) || u.endsWith(`${dTag}.pages.gittr.space`)))
+          );
+        });
+        if (!cancelled) setPagesSiteListedByGateway(hit);
+      } catch {
+        if (!cancelled) setPagesSiteListedByGateway(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [candidateGittrPagesUrls?.namedUrl, candidateGittrPagesUrls?.dTag]);
 
   const repoIsOwner = useMemo(() => {
     if (!currentUserPubkey) return false;
@@ -17991,7 +18075,7 @@ export default function RepoCodePage() {
                               )}
                             </>
                           )}
-                        {gittrPagesUrls ? (
+                        {gittrPagesUrls && pagesSiteListedByGateway === true ? (
                           <div className="mb-3 rounded-md border border-violet-900/25 bg-violet-950/10 px-2.5 py-2 text-[11px] text-zinc-400">
                             <span className="font-medium text-zinc-300">
                               gittr Pages
