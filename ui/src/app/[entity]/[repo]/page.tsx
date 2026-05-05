@@ -40,10 +40,7 @@ import {
   type GitHubContributor,
   mapGithubContributors,
 } from "@/lib/github-mapping";
-import {
-  gittrPagesPushPreconditionsMet,
-  hasGittrPagesEntryFile,
-} from "@/lib/gittr-pages/pages-preconditions";
+import { hasGittrPagesEntryFile } from "@/lib/gittr-pages/pages-preconditions";
 import {
   evaluatePagesSiteSlugInput,
   resolveRepoPagesDTag,
@@ -80,6 +77,7 @@ import {
   loadRepoFiles,
   loadRepoOverrides,
   loadStoredRepos,
+  resolveRepoStorageAlias,
   saveRepoDeletedPaths,
   saveRepoFiles,
   saveRepoOverrides,
@@ -659,7 +657,34 @@ export default function RepoCodePage() {
       // persisted, so visitors never populated that key and those tabs always failed.
       if (!ownerOrLocalEdits && isPrivateRepoListing) return;
       try {
-        saveRepoFiles(resolvedParams.entity, resolvedParams.repo, files);
+        const storageRepo = resolveRepoStorageAlias(
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        const existingIndexed = loadRepoFiles(
+          resolvedParams.entity,
+          storageRepo
+        );
+        const existingInMemory = Array.isArray(currentRepo?.files)
+          ? currentRepo.files.length
+          : 0;
+        const existingCount = Math.max(
+          existingIndexed.length,
+          existingInMemory
+        );
+        if (
+          context === "[Bridge Fetch]" &&
+          existingCount > 0 &&
+          files.length > 0 &&
+          files.length < existingCount
+        ) {
+          console.warn(
+            `⏭️ ${context} Skipping persist: got ${files.length} file(s) but storage/UI already has ${existingCount} (avoid wiping tree).`
+          );
+          return;
+        }
+
+        saveRepoFiles(resolvedParams.entity, storageRepo, files);
         console.log(
           `✅ ${context} Saved ${files.length} files to separate storage key`
         );
@@ -681,11 +706,11 @@ export default function RepoCodePage() {
             }
             if (cleanupResult.clearedKeys > 0) {
               try {
-                saveRepoFiles(
+                const storageRepoRetry = resolveRepoStorageAlias(
                   resolvedParams.entity,
-                  resolvedParams.repo,
-                  files
+                  resolvedParams.repo
                 );
+                saveRepoFiles(resolvedParams.entity, storageRepoRetry, files);
                 console.log(
                   `✅ ${context} Saved ${files.length} files after clearing ${cleanupResult.clearedKeys} foreign keys`
                 );
@@ -703,11 +728,11 @@ export default function RepoCodePage() {
             });
             if (cleanupResult.clearedKeys > 0) {
               try {
-                saveRepoFiles(
+                const storageRepoRetry = resolveRepoStorageAlias(
                   resolvedParams.entity,
-                  resolvedParams.repo,
-                  files
+                  resolvedParams.repo
                 );
+                saveRepoFiles(resolvedParams.entity, storageRepoRetry, files);
                 console.log(
                   `✅ ${context} Saved ${files.length} files after clearing ${cleanupResult.clearedKeys} non-local keys`
                 );
@@ -896,6 +921,25 @@ export default function RepoCodePage() {
         if (!response.ok) return;
         const data = await response.json();
         if (!Array.isArray(data.files) || data.files.length === 0) return;
+
+        const storageRepo = resolveRepoStorageAlias(
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        const indexedCount = loadRepoFiles(
+          resolvedParams.entity,
+          storageRepo
+        ).length;
+        const refCount = Array.isArray(repoDataRef.current?.files)
+          ? repoDataRef.current.files.length
+          : 0;
+        const existingCount = Math.max(indexedCount, refCount);
+        if (existingCount > 0 && data.files.length < existingCount) {
+          console.warn(
+            `⏭️ [Bridge Fetch] Ignoring partial response (${data.files.length} < ${existingCount}) to avoid wiping file tree`
+          );
+          return;
+        }
 
         setBridgeFiles(data.files);
         setRepoData((prev: any) => {
@@ -2268,10 +2312,23 @@ export default function RepoCodePage() {
       // CRITICAL: Check separate files storage key first (for optimized storage)
       // This should happen for ALL repos, not just those without sourceUrl
       let filesArray: RepoFileEntry[] = [];
-      const indexedFirst = loadRepoFiles(
+      const storageRepoForLoad = resolveRepoStorageAlias(
         resolvedParams.entity,
         resolvedParams.repo
       );
+      let indexedFirst = loadRepoFiles(
+        resolvedParams.entity,
+        storageRepoForLoad
+      );
+      if (
+        indexedFirst.length === 0 &&
+        storageRepoForLoad !== resolvedParams.repo
+      ) {
+        indexedFirst = loadRepoFiles(
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+      }
       if (indexedFirst.length > 0) {
         filesArray = indexedFirst;
         console.log(
@@ -15711,22 +15768,6 @@ export default function RepoCodePage() {
                       )
                   );
 
-                  let gittrPagesPushBlocked = false;
-                  if (
-                    gittrPagesUrls &&
-                    repoIsOwner &&
-                    canManageGittrPagesReadme
-                  ) {
-                    gittrPagesPushBlocked = !gittrPagesPushPreconditionsMet({
-                      files: (repoData?.files || repo?.files || []) as Array<{
-                        path?: string;
-                      }>,
-                      readme: String(repoData?.readme ?? repo?.readme ?? ""),
-                      autoReadmeOnPush: gittrPagesAutoReadme,
-                      namedUrl: gittrPagesUrls.namedUrl,
-                    });
-                  }
-
                   let status = getRepoStatus(repo);
 
                   // CRITICAL: Reset "pushing" status if it's been stuck for more than 5 minutes
@@ -17504,25 +17545,8 @@ export default function RepoCodePage() {
                                 size="sm"
                                 variant="outline"
                                 disabled={isPushing || isRefetching}
-                                title={
-                                  gittrPagesPushBlocked
-                                    ? "Add a site entry file and README gittr Pages block (or enable auto README on push)."
-                                    : undefined
-                                }
-                                className={
-                                  gittrPagesPushBlocked &&
-                                  !isPushing &&
-                                  !isRefetching
-                                    ? "w-full opacity-45"
-                                    : "w-full"
-                                }
+                                className="w-full"
                                 onClick={async () => {
-                                  if (gittrPagesPushBlocked) {
-                                    alert(
-                                      "Push is waiting on gittr Pages checks:\n\n• Site entry file (e.g. index.html) in the repo tree\n• README gittr Pages block with this repo’s live URL — tap the README row in gittr Pages, or enable “Let gittr update README for Pages on push”\n\nFix those, then push again."
-                                    );
-                                    return;
-                                  }
                                   if (
                                     !currentUserPubkey ||
                                     !publish ||

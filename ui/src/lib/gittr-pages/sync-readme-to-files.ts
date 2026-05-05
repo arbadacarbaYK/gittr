@@ -40,20 +40,19 @@ export function syncReadmeTextIntoRepoFiles(
   if (typeof window === "undefined") return { updated: false };
   const repoAlias = resolveRepoStorageAlias(entity, repoName);
   let files = loadRepoFiles(entity, repoAlias);
+  if (!files.length && repoAlias !== repoName) {
+    files = loadRepoFiles(entity, repoName);
+  }
+  /**
+   * Never persist a README-only tree when separate storage is empty: that
+   * wipes the real multi-file tree in UI (bridge/refetch timing, alias keys).
+   * README updates still land in `repo.readme` / push path from callers.
+   */
   if (!files.length) {
-    const entry = {
-      path: "README.md",
-      type: "file",
-      content: readmeText,
-      isBinary: false,
-    } as RepoFileEntry & { content?: string };
-    saveRepoFiles(entity, repoAlias, [entry as RepoFileEntry]);
-    try {
-      window.dispatchEvent(new Event("gittr:repo-updated"));
-    } catch {
-      /* ignore */
-    }
-    return { updated: true, path: "README.md" };
+    console.warn(
+      "[syncReadmeTextIntoRepoFiles] Skipping storage write: no files in gittr_files (avoid README-only wipe)."
+    );
+    return { updated: false };
   }
 
   let idx = -1;
