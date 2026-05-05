@@ -49,7 +49,6 @@ import { publishNamedSiteManifest } from "@/lib/gittr-pages/publish-named-site-m
 import {
   buildGittrPagesReadmeAppend,
   upsertGittrPagesReadmeSection,
-  validateReadmeGittrPagesBlock,
 } from "@/lib/gittr-pages/readme-section";
 import { syncReadmeTextIntoRepoFiles } from "@/lib/gittr-pages/sync-readme-to-files";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
@@ -423,7 +422,7 @@ export default function RepoCodePage() {
   }, [resolvedParams.entity]);
 
   const [repoOwnerPubkey, setRepoOwnerPubkey] = useState<string | null>(null);
-  /** When true, Push to Nostr refreshes the README gittr Pages block before push; when false, push requires a valid block or stops. */
+  /** When true, Push to Nostr refreshes the README gittr Pages block before push; when false, push proceeds without enforcing that block. */
   const [gittrPagesAutoReadme, setGittrPagesAutoReadme] = useState(false);
   const [pagesSiteListedByGateway, setPagesSiteListedByGateway] = useState<
     boolean | null
@@ -17758,23 +17757,6 @@ export default function RepoCodePage() {
                                                 e
                                               );
                                             }
-                                          }
-                                        } else {
-                                          const chk =
-                                            validateReadmeGittrPagesBlock(
-                                              readmeBeforePush,
-                                              namedUrlPush
-                                            );
-                                          if (!chk.ok) {
-                                            alert(
-                                              `Push paused — gittr Pages README:\n\n${chk.message}\n\nEnable “Let gittr update README for Pages on push” in the gittr Pages box, or fix the README block, then try again.`
-                                            );
-                                            window.removeEventListener(
-                                              "beforeunload",
-                                              beforeUnloadHandler
-                                            );
-                                            setIsPushing(false);
-                                            return;
                                           }
                                         }
                                       }
