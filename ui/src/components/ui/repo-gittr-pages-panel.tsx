@@ -230,6 +230,12 @@ export function RepoGittrPagesPanel({
   }, [pagesReadiness?.namedUrl, pagesReadiness?.dTag]);
 
   const openManifestIssue = () => {
+    if (!hasGittrPagesEntryFile(pagesReadiness?.files)) {
+      alert(
+        "Cannot create/push manifest yet: this repo has no static page entry file in root (for example index.html). Add one first."
+      );
+      return;
+    }
     if (!issueDraft) return;
     const { title, body } = buildGittrPagesManifestIssueDraft(issueDraft);
     try {
@@ -370,12 +376,10 @@ export function RepoGittrPagesPanel({
 
         {isOwnerSession && pagesReadiness && onCommitPagesSiteSlug ? (
           <div className="space-y-2 rounded-xl border border-violet-800/25 bg-violet-950/[0.08] p-3">
-            <SectionLabel>Site name (URL segment)</SectionLabel>
+            <SectionLabel>Site name</SectionLabel>
             <p className="text-[10px] leading-relaxed text-zinc-500">
-              Optional short URL tag for this repo. Reserved names are blocked.
-              If taken, use a suffix like{" "}
-              <span className="text-zinc-400">name-2</span>. Empty = repo slug.
-              Note: this is only the <code>d</code> tag part, not the full host.
+              Optional short display name for your page listing; it does not
+              change the real live URL.
             </p>
             {pagesReadiness?.namedUrl ? (
               <div className="flex items-center gap-1.5 text-[10px]">
@@ -553,6 +557,12 @@ export function RepoGittrPagesPanel({
                   )}
                   onClick={() => {
                     void (async () => {
+                      if (!hasGittrPagesEntryFile(pagesReadiness?.files)) {
+                        alert(
+                          "Cannot push manifest yet: this repo has no static page entry file in root (for example index.html). Add one first."
+                        );
+                        return;
+                      }
                       setManifestBusy(true);
                       try {
                         await onPublishNamedSiteManifest();

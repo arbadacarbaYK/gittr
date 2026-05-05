@@ -493,11 +493,15 @@ export default function PRDetailPage({
         },
       });
       if (pushResult.success) {
-        alert("Push payment authorized and merged repository state was pushed.");
+        alert(
+          "Push payment authorized and merged repository state was pushed."
+        );
         router.refresh();
       } else {
         alert(
-          `Payment was confirmed, but push still failed: ${pushResult.error || "unknown push failure"}`
+          `Payment was confirmed, but push still failed: ${
+            pushResult.error || "unknown push failure"
+          }`
         );
       }
     } catch (error) {
@@ -1389,7 +1393,14 @@ export default function PRDetailPage({
       let repoStatePushError = "";
       /** If true, we opened the push-invoice modal — must not router.refresh() yet or the page remount wipes modal state. */
       let deferRefreshForMergePushInvoice = false;
-      if (publish && subscribe && defaultRelays?.length > 0 && currentUserPubkey) {
+      /** Show one explicit transition message so users expect follow-up signature prompts. */
+      let notifiedMergeRepushStart = false;
+      if (
+        publish &&
+        subscribe &&
+        defaultRelays?.length > 0 &&
+        currentUserPubkey
+      ) {
         try {
           const resolvedOwnerPubkey =
             (repo ? getRepoOwnerPubkey(repo, resolvedParams.entity) : null) ||
@@ -1432,28 +1443,37 @@ export default function PRDetailPage({
                   "push payment required - invoice opened for authorization";
               }
             } else {
-          const pushResult = await pushRepoToNostr({
-            repoSlug: resolvedParams.repo,
-            entity: resolvedParams.entity,
-            publish,
-            subscribe,
-            defaultRelays,
-            privateKey: privateKey || undefined,
-            pubkey: currentUserPubkey,
-            onProgress: (message) => {
-              console.log(`[Merge Push ${resolvedParams.repo}] ${message}`);
-            },
-          });
-          repoStatePushed = !!pushResult.success;
-          if (!pushResult.success) {
-            repoStatePushError = pushResult.error || "unknown push failure";
-          }
+              if (!notifiedMergeRepushStart) {
+                notifiedMergeRepushStart = true;
+                alert(
+                  "Pull request merged.\n\nNext step: pushing merged repo state to Nostr now.\nPlease stay on this page and complete all signature prompts."
+                );
+              }
+              const pushResult = await pushRepoToNostr({
+                repoSlug: resolvedParams.repo,
+                entity: resolvedParams.entity,
+                publish,
+                subscribe,
+                defaultRelays,
+                privateKey: privateKey || undefined,
+                pubkey: currentUserPubkey,
+                onProgress: (message) => {
+                  console.log(`[Merge Push ${resolvedParams.repo}] ${message}`);
+                },
+              });
+              repoStatePushed = !!pushResult.success;
+              if (!pushResult.success) {
+                repoStatePushError = pushResult.error || "unknown push failure";
+              }
             }
           }
         } catch (pushError) {
           repoStatePushError =
             pushError instanceof Error ? pushError.message : String(pushError);
-          console.error("Failed to push merged repo state to Nostr:", pushError);
+          console.error(
+            "Failed to push merged repo state to Nostr:",
+            pushError
+          );
         }
       } else {
         repoStatePushError =
@@ -1477,14 +1497,20 @@ export default function PRDetailPage({
           "[Merge] Push paywall: invoice modal open — refresh deferred until payment completes or modal closes."
         );
       } else if (mergeStatusPublished && repoStatePushed) {
-        alert("Pull request merged and pushed to Nostr successfully.");
+        alert(
+          "Pull request merged and repush to Nostr completed successfully (including required signatures)."
+        );
       } else if (!mergeStatusPublished && repoStatePushed) {
         alert(
-          `Pull request merged and repository state was pushed, but merge status event was not published (${mergeStatusSkippedReason || "unknown reason"}).`
+          `Pull request merged and repository repush completed, but merge status event was not published (${
+            mergeStatusSkippedReason || "unknown reason"
+          }).`
         );
       } else if (mergeStatusPublished && !repoStatePushed) {
         alert(
-          `Pull request merged and merge status was published, but repository state was not pushed to Nostr (${repoStatePushError || "unknown push failure"}). Please run Push to Nostr for this repo.`
+          `Pull request merged and merge status was published, but repository repush did not complete (${
+            repoStatePushError || "unknown push failure"
+          }). Please run Push to Nostr for this repo.`
         );
       } else {
         alert(
