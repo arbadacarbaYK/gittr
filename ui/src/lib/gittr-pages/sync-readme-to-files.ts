@@ -2,6 +2,7 @@ import {
   type RepoFileEntry,
   loadRepoFiles,
   normalizeFilePath,
+  resolveRepoStorageAlias,
   saveRepoFiles,
 } from "../repos/storage";
 
@@ -37,7 +38,8 @@ export function syncReadmeTextIntoRepoFiles(
   readmeText: string
 ): { updated: boolean; path?: string } {
   if (typeof window === "undefined") return { updated: false };
-  let files = loadRepoFiles(entity, repoName);
+  const repoAlias = resolveRepoStorageAlias(entity, repoName);
+  let files = loadRepoFiles(entity, repoAlias);
   if (!files.length) {
     const entry = {
       path: "README.md",
@@ -45,7 +47,7 @@ export function syncReadmeTextIntoRepoFiles(
       content: readmeText,
       isBinary: false,
     } as RepoFileEntry & { content?: string };
-    saveRepoFiles(entity, repoName, [entry as RepoFileEntry]);
+    saveRepoFiles(entity, repoAlias, [entry as RepoFileEntry]);
     try {
       window.dispatchEvent(new Event("gittr:repo-updated"));
     } catch {
@@ -71,7 +73,7 @@ export function syncReadmeTextIntoRepoFiles(
       isBinary: false,
     } as RepoFileEntry & { content?: string };
     const nextFiles = [...files, entry as RepoFileEntry];
-    saveRepoFiles(entity, repoName, nextFiles);
+    saveRepoFiles(entity, repoAlias, nextFiles);
     try {
       window.dispatchEvent(new Event("gittr:repo-updated"));
     } catch {
@@ -90,7 +92,7 @@ export function syncReadmeTextIntoRepoFiles(
 
   const nextFiles = [...files];
   nextFiles[idx] = nextEntry as RepoFileEntry;
-  saveRepoFiles(entity, repoName, nextFiles);
+  saveRepoFiles(entity, repoAlias, nextFiles);
   try {
     window.dispatchEvent(new Event("gittr:repo-updated"));
   } catch {

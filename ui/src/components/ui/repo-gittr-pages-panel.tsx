@@ -22,7 +22,6 @@ import {
   CheckCircle2,
   ChevronDown,
   Circle,
-  ExternalLink,
   FileText,
   Globe,
   RefreshCw,
@@ -80,11 +79,10 @@ function ChecklistRow(props: {
   ok: boolean;
   warning?: boolean;
   title: string;
-  description: string;
   onClick?: () => void;
   disabled?: boolean;
 }) {
-  const { ok, warning, title, description, onClick, disabled } = props;
+  const { ok, warning, title, onClick, disabled } = props;
   const interactive = Boolean(onClick) && !disabled;
   const Icon = ok ? CheckCircle2 : Circle;
   const iconClass = ok
@@ -96,19 +94,14 @@ function ChecklistRow(props: {
   const body = (
     <>
       <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", iconClass)} aria-hidden />
-      <span className="min-w-0 flex-1 text-left">
-        <span className="text-xs font-medium tracking-tight text-zinc-100">
-          {title}
-        </span>
-        <span className="mt-0.5 block text-[10px] leading-relaxed text-zinc-500">
-          {description}
-        </span>
+      <span className="min-w-0 flex-1 text-xs font-medium tracking-tight text-zinc-100">
+        {title}
       </span>
     </>
   );
 
   const rowClass = cn(
-    "flex w-full gap-2.5 rounded-lg px-2 py-2 text-left transition-colors",
+    "flex w-full gap-2 rounded-lg px-2 py-1.5 text-left transition-colors",
     interactive &&
       "cursor-pointer text-zinc-200 hover:bg-white/[0.04] focus-visible:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-500/50",
     !interactive && "cursor-default"
@@ -157,12 +150,11 @@ export function RepoGittrPagesPanel({
     Boolean(onPublishNamedSiteManifest) &&
     isMediaOnlyNostrBuildBlossom(blossomUploadBase);
   const [manifestBusy, setManifestBusy] = useState(false);
-  /** Keep “Steps & links” closed by default; user opens when needed. */
-  const [stepsLinksOpen, setStepsLinksOpen] = useState(false);
   const [slugDraft, setSlugDraft] = useState("");
   const [slugError, setSlugError] = useState<string | null>(null);
   const [slugSuggestions, setSlugSuggestions] = useState<string[]>([]);
   const [slugBusy, setSlugBusy] = useState(false);
+  const [urlCopied, setUrlCopied] = useState(false);
 
   useEffect(() => {
     setSlugDraft(pagesSiteSlug ?? "");
@@ -298,42 +290,6 @@ export function RepoGittrPagesPanel({
         ) : null}
 
         {pagesReadiness && isOwnerSession ? (
-          <div className="rounded-xl border border-zinc-700/40 bg-zinc-950/40 px-3 py-2.5">
-            <SectionLabel>Order of steps</SectionLabel>
-            <ol className="mt-1.5 list-decimal space-y-1.5 pl-4 text-[10px] leading-relaxed text-zinc-400">
-              <li>
-                Site files in the repo tree (e.g.{" "}
-                <code className="text-zinc-300">index.html</code>).
-              </li>
-              <li>
-                <span className="font-medium text-zinc-300">Push to Nostr</span>{" "}
-                — button <span className="text-zinc-500">above</span> this card.
-                Ships repo + files to relays (two signatures). Do this again
-                after you change HTML or assets.
-              </li>
-              <li>
-                <span className="font-medium text-zinc-300">Re/push Page</span>{" "}
-                — refreshes the README Pages block for the live URL, then runs
-                that same push. Use after URL/slug changes, or if the README
-                block is wrong. If you only edited site files and use{" "}
-                <span className="font-medium text-zinc-300">
-                  Auto-update README on push
-                </span>
-                , step 2 alone is enough.
-              </li>
-              <li>
-                <span className="font-medium text-zinc-300">Push Manifest</span>{" "}
-                — enabled when step 1 is OK and there are{" "}
-                <span className="font-medium text-zinc-300">
-                  no unpushed edits
-                </span>{" "}
-                (so the gateway matches what you already pushed).
-              </li>
-            </ol>
-          </div>
-        ) : null}
-
-        {pagesReadiness && isOwnerSession ? (
           <div
             className={cn(
               "overflow-hidden rounded-xl border",
@@ -342,25 +298,10 @@ export function RepoGittrPagesPanel({
                 : "border-violet-800/30 bg-black/20"
             )}
           >
-            <div
-              className={cn(
-                "border-b px-3 py-2",
-                gittrStepsReady
-                  ? "border-emerald-800/25 bg-emerald-950/20"
-                  : "border-violet-800/20 bg-violet-950/15"
-              )}
-            >
-              <p className="text-[11px] font-medium text-zinc-200">Readiness</p>
-            </div>
             <div className="divide-y divide-zinc-800/80 px-1 py-0.5">
               <ChecklistRow
                 ok={siteOk}
                 title="Site entry"
-                description={
-                  siteOk
-                    ? "Root file present."
-                    : "Need index.html (or similar)."
-                }
                 onClick={
                   onFocusSiteFiles ? () => onFocusSiteFiles() : undefined
                 }
@@ -368,9 +309,6 @@ export function RepoGittrPagesPanel({
               <ChecklistRow
                 ok={readmeOk}
                 title="README & live URL"
-                description={
-                  readmeOk ? "OK." : "Pages block or auto-update on push."
-                }
                 onClick={
                   canManageReadme
                     ? () => {
@@ -391,13 +329,6 @@ export function RepoGittrPagesPanel({
                 ok={gatewayListsSite === true}
                 warning={gatewayListsSite === false}
                 title="Directory"
-                description={
-                  gatewayListsSite === true
-                    ? "Listed."
-                    : gatewayListsSite === false
-                    ? "Not listed yet."
-                    : "Checking…"
-                }
                 onClick={
                   issueDraft &&
                   gatewayListsSite !== true &&
@@ -432,13 +363,6 @@ export function RepoGittrPagesPanel({
                 ok={pushClean}
                 warning={pushNeeded}
                 title="Relays"
-                description={
-                  pushClean
-                    ? "Synced."
-                    : pagesReadiness.hasUnpushedEdits
-                    ? "Unpushed edits."
-                    : "Not pushed yet."
-                }
               />
             </div>
           </div>
@@ -448,15 +372,48 @@ export function RepoGittrPagesPanel({
           <div className="space-y-2 rounded-xl border border-violet-800/25 bg-violet-950/[0.08] p-3">
             <SectionLabel>Site name (URL segment)</SectionLabel>
             <p className="text-[10px] leading-relaxed text-zinc-500">
-              Optional short name for the Pages host segment (stored on this
-              device). Names like shop, donate, or login are blocked. It must be
-              unique among your repos here; if taken, try a suffix such as{" "}
-              <span className="text-zinc-400">mything-2</span>. Leave empty and
-              save to use the repo slug again. After you save, the{" "}
-              <span className="font-medium text-zinc-400">Live site</span> link
-              above is the canonical URL (same one README, push, and manifest
-              use) — use that to open or share, not a draft in this field.
+              Optional short URL tag for this repo. Reserved names are blocked.
+              If taken, use a suffix like{" "}
+              <span className="text-zinc-400">name-2</span>. Empty = repo slug.
+              Note: this is only the <code>d</code> tag part, not the full host.
             </p>
+            {pagesReadiness?.namedUrl ? (
+              <div className="flex items-center gap-1.5 text-[10px]">
+                <a
+                  href={pagesReadiness.namedUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="min-w-0 flex-1 truncate text-violet-300 underline-offset-2 hover:underline"
+                  title={pagesReadiness.namedUrl}
+                >
+                  {pagesReadiness.namedUrl}
+                </a>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-[10px] text-zinc-400 hover:text-zinc-100"
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        await navigator.clipboard.writeText(
+                          pagesReadiness.namedUrl
+                        );
+                        setUrlCopied(true);
+                        setTimeout(() => setUrlCopied(false), 1200);
+                      } catch {
+                        window.prompt(
+                          "Copy live URL:",
+                          pagesReadiness.namedUrl
+                        );
+                      }
+                    })();
+                  }}
+                >
+                  {urlCopied ? "Copied" : "Copy"}
+                </Button>
+              </div>
+            ) : null}
             <Input
               value={slugDraft}
               onChange={(e) => {
@@ -552,52 +509,6 @@ export function RepoGittrPagesPanel({
             </div>
           </div>
         ) : null}
-
-        <details
-          className="group/sub overflow-hidden rounded-lg border border-violet-900/20 bg-zinc-950/30"
-          open={stepsLinksOpen}
-          onToggle={(e) => setStepsLinksOpen(e.currentTarget.open)}
-        >
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-2 text-[11px] font-medium text-violet-200/90 hover:bg-white/[0.03] [&::-webkit-details-marker]:hidden">
-            <ChevronDown
-              className={cn(
-                "h-3.5 w-3.5 shrink-0 text-zinc-500 transition duration-200",
-                stepsLinksOpen && "rotate-180"
-              )}
-            />
-            Steps &amp; links
-          </summary>
-          <div className="border-t border-violet-900/15 px-2.5 py-2 text-[10px] leading-relaxed text-zinc-500">
-            <ol className="list-decimal space-y-1.5 pl-4">
-              <li>
-                Files — main panel; refetch only if this copy may lag relays.
-              </li>
-              <li>Push to Nostr — sidebar above “Order of steps”.</li>
-              <li>README — checklist row or Re/push Page below.</li>
-              <li>
-                Manifest — Push Manifest when readiness allows (no unpushed
-                edits).
-              </li>
-            </ol>
-            <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-zinc-800/60 pt-2">
-              <a
-                className="text-violet-400 underline-offset-2 hover:underline"
-                href="https://github.com/nostr-protocol/nips/blob/master/5A.md"
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                NIP-5A
-                <ExternalLink className="mb-0.5 ml-0.5 inline h-3 w-3" />
-              </a>
-              <Link
-                className="text-violet-400 underline-offset-2 hover:underline"
-                href="/pages"
-              >
-                /pages
-              </Link>
-            </p>
-          </div>
-        </details>
 
         {(isOwnerSession && onPublishNamedSiteManifest) || issueDraft ? (
           <div className="space-y-2 rounded-xl border border-amber-900/20 bg-amber-950/[0.07] p-3">
