@@ -1,3 +1,4 @@
+import { fetchGittrPagesSitemapEntries } from "@/lib/seo/gittr-pages-sitemap";
 import { fetchSitemapRepoPathsFromNostr } from "@/lib/seo/nostr-sitemap-repos";
 
 import { existsSync, readFileSync } from "fs";
@@ -56,6 +57,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "monthly",
       priority: 0.7,
     },
+    {
+      url: `${baseUrl}/pages`,
+      lastModified: new Date(),
+      changeFrequency: "hourly",
+      priority: 0.55,
+    },
   ];
 
   const fromNostr = await fetchSitemapRepoPathsFromNostr();
@@ -84,5 +91,26 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     };
   });
 
-  return [...staticPages, ...repoPages];
+  const pagesBase =
+    process.env.NEXT_PUBLIC_GITTR_PAGES_URL || "https://pages.gittr.space";
+  const gittrPagesEntries = await fetchGittrPagesSitemapEntries(pagesBase);
+  const used = new Set<string>([
+    ...staticPages.map((e) => e.url),
+    ...repoPages.map((e) => e.url),
+  ]);
+  const room = Math.max(0, MAX_SITEMAP_URLS - used.size);
+  const gittrPagesSitemap: MetadataRoute.Sitemap = [];
+  for (const row of gittrPagesEntries) {
+    if (gittrPagesSitemap.length >= room) break;
+    if (used.has(row.url)) continue;
+    used.add(row.url);
+    gittrPagesSitemap.push({
+      url: row.url,
+      lastModified: row.lastModified,
+      changeFrequency: "weekly" as const,
+      priority: 0.5,
+    });
+  }
+
+  return [...staticPages, ...repoPages, ...gittrPagesSitemap];
 }
