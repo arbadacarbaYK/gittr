@@ -1,0 +1,134 @@
+import type { FC } from "@hono/hono/jsx";
+import { formatAgeFromUnix } from "../helpers/format.ts";
+import { naddrEncode, neventEncode } from "applesauce-core/helpers";
+import { NAMED_SITE_MANIFEST_KIND } from "../helpers/site-manifest.ts";
+
+export type StatusSite = {
+  key: string;
+  pubkey: string;
+  identifier: string;
+  title?: string;
+  description?: string;
+  pathCount: number;
+  manifestId: string;
+  createdAt: number;
+  hostname?: string;
+  href?: string;
+  npub: string;
+  authorName?: string;
+  hits?: number;
+  snapshotCount: number;
+  latestSnapshotId?: string;
+  latestSnapshotCreatedAt?: number;
+};
+
+function pluralize(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function formatTimestamp(createdAt: number): string {
+  return new Date(createdAt * 1000).toISOString().replace(".000Z", "Z");
+}
+
+/** Match manifests.json: show the newer of manifest publish time vs latest snapshot. */
+function siteDisplayUpdatedAt(site: StatusSite): number {
+  return Math.max(site.createdAt, site.latestSnapshotCreatedAt ?? 0);
+}
+
+const SiteRow: FC<{ site: StatusSite }> = ({ site }) => {
+  const label = site.title || site.identifier ||
+    site.npub.slice(0, 8) + "..." + site.npub.slice(-4);
+  const statusAddress = site.identifier
+    ? naddrEncode({
+      pubkey: site.pubkey,
+      identifier: site.identifier,
+      kind: NAMED_SITE_MANIFEST_KIND,
+    })
+    : site.npub;
+  const statusHref = `/status/${statusAddress}`;
+  const latestSnapshotHref = site.latestSnapshotId
+    ? `/status/${neventEncode({ id: site.latestSnapshotId })}`
+    : undefined;
+  const updatedAt = siteDisplayUpdatedAt(site);
+  return (
+    <tr>
+      <td data-label="site">
+        {site.href ? <a href={site.href}>{label}</a> : label}
+      </td>
+      <td data-label="author">
+        <span title={site.pubkey}>
+          {site.authorName ||
+            site.npub.slice(0, 8) + "..." + site.npub.slice(-4)}
+        </span>
+      </td>
+      <td data-label="paths">
+        <a href={statusHref}>{pluralize(site.pathCount, "path", "paths")}</a>
+      </td>
+      <td data-label="snapshots">
+        {site.snapshotCount > 0
+          ? (
+            latestSnapshotHref
+              ? <a href={latestSnapshotHref}>{site.snapshotCount}</a>
+              : site.snapshotCount
+          )
+          : 0}
+      </td>
+      <td data-label="hits">{site.hits ?? 0}</td>
+      <td data-label="updated" title={formatTimestamp(updatedAt)}>
+        {formatAgeFromUnix(updatedAt)}
+      </td>
+    </tr>
+  );
+};
+
+export const StatusPage: FC<{ sites: StatusSite[]; host: string }> = (
+  { sites, host },
+) => {
+  const generatedAt = new Date().toISOString().replace(".000Z", "Z");
+  return (
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Gateway status</title>
+        <link rel="stylesheet" href="/styles.css" />
+      </head>
+      <body>
+        <main class="wide">
+          <header>
+            <h1>Known sites</h1>
+            <a href="/">&larr; back to gateway</a>
+            <p class="meta">
+              {pluralize(sites.length, "site", "sites")} available through {host}
+              {" "}
+              | generated {generatedAt}
+            </p>
+          </header>
+          <table>
+            <thead>
+              <tr>
+                <th>site</th>
+                <th>author</th>
+                <th>paths</th>
+                <th>snapshots</th>
+                <th>hits</th>
+                <th>updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sites.length === 0
+                ? (
+                  <tr>
+                    <td colspan={6}>No sites available through this gateway yet.</td>
+                  </tr>
+                )
+                : (
+                  sites.map((site) => <SiteRow key={site.key} site={site} />)
+                )}
+            </tbody>
+          </table>
+        </main>
+      </body>
+    </html>
+  );
+};

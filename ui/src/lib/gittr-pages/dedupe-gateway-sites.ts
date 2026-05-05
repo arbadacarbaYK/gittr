@@ -54,6 +54,23 @@ function pickBaseRow(a: GatewayStatusSiteRow, b: GatewayStatusSiteRow): GatewayS
   return rowTitleDisplayQuality(a.title) >= rowTitleDisplayQuality(b.title) ? a : b;
 }
 
+function rowUpdatedTimeMs(row: GatewayStatusSiteRow): number {
+  const iso = row.updatedIso?.trim();
+  if (!iso) return 0;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+/** When merging duplicate gateway rows, keep stats from `pickBaseRow` but surface the newest published time. */
+function pickNewerByGatewayTime(a: GatewayStatusSiteRow, b: GatewayStatusSiteRow): GatewayStatusSiteRow {
+  const ma = rowUpdatedTimeMs(a);
+  const mb = rowUpdatedTimeMs(b);
+  if (ma !== mb) return ma >= mb ? a : b;
+  if (a.updatedIso?.trim() && !b.updatedIso?.trim()) return a;
+  if (b.updatedIso?.trim() && !a.updatedIso?.trim()) return b;
+  return a;
+}
+
 function mergeable(a: GatewayStatusSiteRow, b: GatewayStatusSiteRow): boolean {
   const pa = normalizeAuthorPk(a.authorPubkeyHex);
   const pb = normalizeAuthorPk(b.authorPubkeyHex);
@@ -79,7 +96,8 @@ function mergeable(a: GatewayStatusSiteRow, b: GatewayStatusSiteRow): boolean {
 function mergePair(a: GatewayStatusSiteRow, b: GatewayStatusSiteRow): GatewayStatusSiteRow {
   const base = pickBaseRow(a, b);
   const title = chooseDisplayHeading([a, b]);
-  return { ...base, title };
+  const newer = pickNewerByGatewayTime(a, b);
+  return { ...base, title, updatedIso: newer.updatedIso, updatedLabel: newer.updatedLabel };
 }
 
 /**

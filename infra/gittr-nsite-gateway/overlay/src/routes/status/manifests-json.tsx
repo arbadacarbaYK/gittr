@@ -89,7 +89,9 @@ export async function statusManifestsJsonRoute(c: Context) {
           })
         : site.npub;
       const pathsStatusUrl = `${base}/status/${statusAddress}`;
-      const ts = site.latestSnapshotCreatedAt ?? site.createdAt;
+      // Manifest-only republish updates createdAt but not snapshot events; prefer the newer of the two.
+      const latestSnap = site.latestSnapshotCreatedAt ?? 0;
+      const ts = Math.max(site.createdAt, latestSnap);
       return {
         title:
           site.title?.trim() ||

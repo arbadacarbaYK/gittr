@@ -512,7 +512,7 @@ sudo certbot --nginx -d pages.gittr.space
    SSL paths stay `**/etc/letsencrypt/live/pages.gittr.space/...`** if you used `**--expand**` as above.
    Then: `sudo nginx -t && sudo systemctl reload nginx`.
 
-**gittr gateway overlay:** The repo ships `**infra/gittr-nsite-gateway`** (Docker build clones upstream **hzrd149/nsite-gateway** at image build time, applies our overlay) adding `**GET /status/manifests.json`**. On **your server**, from `**infra/nsite-gateway`**, run `docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml up -d --build` so gittr’s `**/pages**` app can consume JSON instead of scraping HTML. See `**infra/gittr-nsite-gateway/README.md**`. Production uses **your** `pages.gittr.space` host only; a separate GitHub fork of upstream is **optional** for maintainers who want it, not required for users or traffic.
+**gittr gateway overlay:** The repo ships `**infra/gittr-nsite-gateway`** (Docker build clones upstream **hzrd149/nsite-gateway** at image build time, applies our overlay) adding `**GET /status/manifests.json`**. On **your server**, from `**infra/nsite-gateway`**, run `docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml up -d --build` so gittr’s `**/pages**` app can consume JSON instead of scraping HTML. See `**infra/gittr-nsite-gateway/README.md**`. Production uses **your** `pages.gittr.space` host only; a separate GitHub fork of upstream is **optional** for maintainers who want it, not required for users or traffic. The overlay fixes **listing the latest push**: status uses **max(manifest `created_at`, latest snapshot time)**, and **`site-index`** keeps the **newest manifest** per address so out-of-order relay data cannot show stale metadata.
 
 ### Step 14: Configure SSL Certificate
 

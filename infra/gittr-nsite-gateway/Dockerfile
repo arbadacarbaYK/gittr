@@ -18,8 +18,10 @@ COPY --from=upstream /src/deno.json /src/deno.lock /src/main.ts ./
 COPY --from=upstream /src/src ./src
 COPY --from=upstream /src/public ./public
 
+COPY overlay/src/helpers/site-index.ts ./src/helpers/site-index.ts
 COPY overlay/src/routes/status/index.ts ./src/routes/status/index.ts
 COPY overlay/src/routes/status/manifests-json.tsx ./src/routes/status/manifests-json.tsx
+COPY overlay/src/pages/status.tsx ./src/pages/status.tsx
 
 RUN deno cache --frozen --unstable-kv main.ts
 

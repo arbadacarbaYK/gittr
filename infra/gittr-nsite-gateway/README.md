@@ -7,6 +7,7 @@ Upstream project: **[hzrd149/nsite-gateway](https://github.com/hzrd149/nsite-gat
 ## What gittr adds
 
 - **`GET /status/manifests.json`** — same data as the HTML status page, as JSON, so gittr’s **`/pages`** and **`GET /api/gittr-pages/status-sites`** can use a proper API instead of parsing HTML.
+- **Correct “updated” time** — the HTML `/status` table and `manifests.json` use **max(manifest `created_at`, latest snapshot `created_at`)**. Upstream preferred only the latest snapshot when present, so a **manifest-only** republish (new kind 35128, no new snapshot event) still looked like the first upload. The overlay also indexes the **newest manifest per site address** by time, so relay/event order cannot replace a newer manifest with an older one.
 
 ## What you actually do on the server
 
