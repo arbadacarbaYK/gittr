@@ -6,13 +6,14 @@ export function hasGittrPagesEntryFile(
 ): boolean {
   if (!files?.length) return false;
   return files.some((f) => {
-    const p = (f.path || "").replace(/^\//, "").toLowerCase();
-    return (
-      p === "index.html" ||
-      p.endsWith("/index.html") ||
-      p === "404.html" ||
-      p === "index.md"
-    );
+    const p = (f.path || "")
+      .replace(/^[./]+/, "")
+      .replace(/^\//, "")
+      .trim()
+      .toLowerCase();
+    // Root-level only: nested docs/site index files must not unlock Pages actions.
+    if (!p || p.includes("/")) return false;
+    return p === "index.html" || p === "404.html" || p === "index.md";
   });
 }
 
