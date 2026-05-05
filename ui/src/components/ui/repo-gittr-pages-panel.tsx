@@ -368,7 +368,7 @@ export function RepoGittrPagesPanel({
               <ChecklistRow
                 ok={pushClean}
                 warning={pushNeeded}
-                title="Relays"
+                title="Repo pushed"
               />
             </div>
           </div>

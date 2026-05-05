@@ -46,7 +46,7 @@ On the repo **Code** page, open **gittr Pages**. If there is **no** amber button
 1. **Working tree** — Edit/add site files here (at least something that serves as \`/index.html\`). Use **Refetch from Nostr** only when this browser’s copy might not match relays (stale, edits on another device, sanity-check). After **you** push from this tab, gittr already stores event IDs locally — you do **not** need refetch before the next readme/site push for this session.
 2. **README + live URL** — Sidebar **gittr Pages**: **README + Push to Nostr** is the usual one-shot after local edits; or the separate README button / “update on push” then **Push to Nostr**. README is separate from the gateway manifest.
 3. **Push to Nostr** — Publishes repo + readme metadata (same as the shortcut’s push step).
-4. **NIP-5A manifest (kind 35128)** — In gittr, owners use **Publish Pages manifest** in the repo sidebar (Blossom + 35128, NIP-07). Alternatively, upload blobs and publish with any **NIP-5A / nsite** tool. The gateway reads relays, not this issue text.
+4. **NIP-5A manifest (kind 35128)** — In gittr, owners use **Publish Pages manifest** in the repo sidebar (Blossom + 35128, NIP-07). Alternatively, upload blobs and publish with any **NIP-5A / nsite** tool. **nsite-gateway** status UI reads optional \`relay\` tags on the manifest (one \`wss://…\` per tag); gittr **Push Manifest** adds those from your configured relay list.
 
 **Intended live URL (named site):**  
 ${namedUrl}

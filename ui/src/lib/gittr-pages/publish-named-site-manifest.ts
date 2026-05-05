@@ -1,12 +1,12 @@
 import {
-  gittrPagesBlossomOrigin,
-  gittrPagesBlossomServerTag,
-} from "@/lib/gittr-pages/gittr-pages-blossom-origin";
-import {
   isStrictJsonUtf8Document,
   manifestUploadContentType,
   normalizeBlossomUploadBytes,
 } from "@/lib/gittr-pages/blossom-upload-mime";
+import {
+  gittrPagesBlossomOrigin,
+  gittrPagesBlossomServerTag,
+} from "@/lib/gittr-pages/gittr-pages-blossom-origin";
 import { KIND_NSITE_NAMED } from "@/lib/nostr/events";
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import {
@@ -139,6 +139,32 @@ function normalizeServerUrl(raw: string): string | null {
   }
 }
 
+/**
+ * nsite-gateway status pages use applesauce `getRelaysFromList`, which only
+ * reads `["relay", "wss://…"]` tags (singular `relay`). Optional in NIP-5A but
+ * improves gateway diagnostics and hints where to (re)fetch the manifest.
+ */
+const MAX_MANIFEST_RELAY_TAGS = 25;
+
+function relayTagsForNsiteManifest(relays: string[]): string[][] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of relays) {
+    const t = String(raw ?? "").trim();
+    if (!t) continue;
+    const withWs =
+      t.startsWith("wss://") || t.startsWith("ws://")
+        ? t
+        : `wss://${t.replace(/^\/\//, "")}`;
+    const key = withWs.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    urls.push(withWs);
+    if (urls.length >= MAX_MANIFEST_RELAY_TAGS) break;
+  }
+  return urls.map((url) => ["relay", url]);
+}
+
 async function readLatestBlossomServerListEvent(
   subscribe: PublishNamedSiteManifestOptions["subscribe"],
   relays: string[],
@@ -212,8 +238,7 @@ function buildUnsignedBlossomUploadAuth(params: {
       "expiration",
       String(
         now +
-          (params.expiresInSeconds ??
-            blossomBatchAuthTtlSeconds(uniq.length))
+          (params.expiresInSeconds ?? blossomBatchAuthTtlSeconds(uniq.length))
       ),
     ],
     ...uniq.map((h) => ["x", h] as string[]),
@@ -713,9 +738,7 @@ export async function publishNamedSiteManifest(
         uploads.push({ webPath, sha256 });
         totalBytes += bytes.length;
         uploadOrdinal++;
-        onProgress?.(
-          `Uploaded ${webPath} (${uploadOrdinal}/${staged.length})`
-        );
+        onProgress?.(`Uploaded ${webPath} (${uploadOrdinal}/${staged.length})`);
         uploadOk = true;
         break;
       }
@@ -794,6 +817,9 @@ export async function publishNamedSiteManifest(
   }
   if (sourceUrl?.trim() && /^https?:\/\//i.test(sourceUrl.trim())) {
     tags.push(["source", sourceUrl.trim()]);
+  }
+  for (const pair of relayTagsForNsiteManifest(defaultRelays)) {
+    tags.push(pair);
   }
 
   let manifest: {
