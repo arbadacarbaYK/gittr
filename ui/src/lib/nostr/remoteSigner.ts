@@ -52,6 +52,7 @@ interface RemoteSignerDeps {
 }
 
 interface PendingRequest {
+  method: string;
   resolve: (value: any) => void;
   reject: (reason?: any) => void;
   timeout: ReturnType<typeof setTimeout>;
@@ -426,11 +427,29 @@ export class RemoteSignerManager {
         event.content
       );
       const message = JSON.parse(plaintext);
-      const pending = message?.id ? this.pending.get(message.id) : undefined;
+      let pending = message?.id ? this.pending.get(message.id) : undefined;
+      // Some signers may return connect ack without request id.
+      if (!pending && message?.result === "ack") {
+        for (const [, p] of this.pending) {
+          if (p.method === "connect") {
+            pending = p;
+            break;
+          }
+        }
+      }
       if (!pending) {
         return;
       }
-      this.pending.delete(message.id);
+      if (message?.id && this.pending.has(message.id)) {
+        this.pending.delete(message.id);
+      } else {
+        for (const [pid, p] of this.pending) {
+          if (p === pending) {
+            this.pending.delete(pid);
+            break;
+          }
+        }
+      }
       clearTimeout(pending.timeout);
       if (message.error) {
         pending.reject(new Error(message.error));
@@ -476,7 +495,7 @@ export class RemoteSignerManager {
         this.pending.delete(id);
         reject(new Error(`Remote signer request ${method} timed out`));
       }, timeoutMs);
-      this.pending.set(id, { resolve, reject, timeout });
+      this.pending.set(id, { method, resolve, reject, timeout });
     });
   }
 
