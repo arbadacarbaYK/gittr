@@ -1,4 +1,4 @@
-# gitnostr by @spearson78
+# gitnostr by @spearson78 (gittr fork)
 
 A proof of concept integration of git and nostr providing
 
@@ -67,6 +67,8 @@ git-nostr-bridge will then react to these events and update the DB and create an
 **Go version 1.20+ is required**
 **It is recommended to use a local private relay for testing. Testing was performed using https://github.com/scsibug/nostr-rs-relay**
 
+**gittr.space:** To install **only** the bridge (outside the gittr monorepo), clone **`https://github.com/arbadacarbaYK/gitnostr`** — this fork has the paywall, NIP-34 state, and other changes gittr expects. The [original repo](https://github.com/spearson78/gitnostr) is kept as upstream attribution; **do not use it for gittr production builds** or you will be missing those features. Inside gittr, build from **`gittr/ui/gitnostr/`** (this directory).
+
 ## git-nostr-bridge
 
 **These instructions are needed if you intend to host git repositories. If another nostr user has configured a git-nostr-bridge for you then follwo the git-nostr-cli instructions below.**
@@ -80,10 +82,10 @@ sudo useradd --create-home git-nostr
 sudo su - git-nostr
 ```
 
-Clone the gitnostr repository and build the bridge components
+Clone the **gittr-maintained** gitnostr fork and build the bridge components
 
 ```bash
-git clone https://github.com/spearson78/gitnostr
+git clone https://github.com/arbadacarbaYK/gitnostr.git
 cd gitnostr
 make git-nostr-bridge
 ```
@@ -137,10 +139,10 @@ Your git-nostr-bridge is now ready for use
 
 **Watch out for a conflict with the gn command from https://gn.googlesource.com **
 
-Clone the gitnostr repository and build the cli components
+Clone the **gittr-maintained** gitnostr fork and build the cli components
 
 ```bash
-git clone https://github.com/spearson78/gitnostr
+git clone https://github.com/arbadacarbaYK/gitnostr.git
 cd gitnostr
 make git-nostr-cli
 ```

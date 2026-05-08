@@ -291,7 +291,7 @@ The `gitnostr` Go components (`ui/gitnostr/`) are licensed under the **MIT Licen
 
 - Built upon [NostrGit](https://github.com/NostrGit/NostrGit) UI (forked from original)
 - Uses [nostr-relaypool](https://github.com/adamritter/nostr-relaypool) for relay management
-- Uses [gitnostr](https://github.com/spearson78/gitnostr) Go components for Git operations
+- Based on [gitnostr](https://github.com/spearson78/gitnostr) (upstream); **clone/build the bridge for gittr from** [**arbadacarbaYK/gitnostr**](https://github.com/arbadacarbaYK/gitnostr) **or use `ui/gitnostr/` in this repo** (same fork, includes gittr-specific changes)
 - Implements [GRASP Protocol](https://ngit.dev/grasp/) for distributed Git hosting (newer than original NostrGit)
 - Inspired by GitHub's developer experience
 
