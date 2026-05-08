@@ -258,7 +258,8 @@ export class RemoteSignerManager {
       await this.ensureRelays(session.relays);
       await this.startSubscription(session);
 
-      const connectParams = [session.remotePubkey];
+      // NIP-46 connect params: [client-pubkey, optional-secret, optional-perms]
+      const connectParams = [session.clientPubkey];
       if (session.secret) {
         connectParams.push(session.secret);
       }
