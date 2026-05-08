@@ -60,6 +60,8 @@ interface PendingRequest {
 
 const STORAGE_KEY = WEB_STORAGE_KEYS.REMOTE_SIGNER_SESSION;
 const REQUEST_TIMEOUT_MS = 15000;
+const CONNECT_TIMEOUT_MS = 25000;
+const CONNECT_RETRY_DELAYS_MS = [0, 1200, 2500];
 
 const randomRequestId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -269,7 +271,37 @@ export class RemoteSignerManager {
       if (session.permissions && session.permissions.length > 0) {
         connectParams.push(session.permissions.join(","));
       }
-      await this.sendRequest(session, "connect", connectParams, 20000);
+      let connectErr: unknown;
+      for (let i = 0; i < CONNECT_RETRY_DELAYS_MS.length; i++) {
+        const delay = CONNECT_RETRY_DELAYS_MS[i] ?? 0;
+        if (delay > 0) {
+          await new Promise((r) => setTimeout(r, delay));
+        }
+        try {
+          console.log("[RemoteSigner] Sending connect request", {
+            attempt: i + 1,
+            relayCount: session.relays.length,
+            remotePubkey: `${session.remotePubkey.slice(0, 12)}…`,
+          });
+          await this.sendRequest(
+            session,
+            "connect",
+            connectParams,
+            CONNECT_TIMEOUT_MS
+          );
+          connectErr = undefined;
+          break;
+        } catch (err) {
+          connectErr = err;
+          console.warn(
+            `[RemoteSigner] connect attempt ${i + 1} failed:`,
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+      if (connectErr) {
+        throw connectErr;
+      }
 
       const remotePubkeyHex = await this.sendRequest(
         session,
@@ -434,6 +466,12 @@ export class RemoteSignerManager {
       );
       if (!hasPendingConnect) return;
     }
+    console.log("[RemoteSigner] Received response event", {
+      eventId: event.id?.slice?.(0, 12),
+      author: event.pubkey?.slice?.(0, 12),
+      hasPTagForClient: isForClient,
+      pendingCount: this.pending.size,
+    });
     // Decrypt payload
     try {
       const plaintext = await nip04.decrypt(
@@ -442,6 +480,11 @@ export class RemoteSignerManager {
         event.content
       );
       const message = JSON.parse(plaintext);
+      console.log("[RemoteSigner] Decrypted response payload", {
+        id: message?.id,
+        hasError: !!message?.error,
+        resultType: typeof message?.result,
+      });
       let pending = message?.id ? this.pending.get(message.id) : undefined;
       // Some signers may return connect ack without request id.
       if (!pending && message?.result === "ack") {
@@ -472,7 +515,11 @@ export class RemoteSignerManager {
         pending.resolve(message.result);
       }
     } catch (error) {
-      console.error("[RemoteSigner] Failed to decrypt response:", error);
+      console.error("[RemoteSigner] Failed to decrypt response:", {
+        eventId: event.id,
+        author: event.pubkey,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
