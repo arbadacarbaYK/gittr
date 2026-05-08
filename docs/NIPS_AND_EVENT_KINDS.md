@@ -64,7 +64,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - **`bunker://`**: URI host = **remote signer’s** hex pubkey. The client may generate a fresh ephemeral keypair per session.
   - **`nostrconnect://`**: URI host = **client** pubkey for this pairing; the **signer’s** pubkey is learned from the **first inbound** decryptable kind `24133` (subscribe `#p` = client pubkey). The `secret` query param (when 64-hex) carries the **client private key** so the same QR works for “show QR” flows without losing state.
 - **Relays**: At least one relay in the URI (and in the app relay set) must deliver `24133` between client and signer; flaky relay sets cause “paired but nothing happens” symptoms.
-- **Implementation**: `ui/src/lib/nostr/remoteSigner.ts`, bootstrap in `ui/src/lib/nostr/NostrContext.tsx`, UI in `ui/src/app/login/page.tsx`. Full guide: [`docs/NIP46_REMOTE_SIGNER_INTEGRATION.md`](./NIP46_REMOTE_SIGNER_INTEGRATION.md).
+- **Implementation**: `ui/src/lib/nostr/remoteSigner.ts`, bootstrap in `ui/src/lib/nostr/NostrContext.tsx`, UI in `ui/src/app/login/page.tsx`. Full guide: [`docs/NIP46_REMOTE_SIGNER_INTEGRATION.md`](./NIP46_REMOTE_SIGNER_INTEGRATION.md). Snippets + pitfall summary for other implementers: [gittr-helper-tools `nip46-remote-signer`](https://github.com/arbadacarbaYK/gittr-helper-tools/tree/main/snippets/nip46-remote-signer).
 - **Event kind**: **`24133`** — NIP-46 request/response envelope (not to be confused with pure in-browser NIP-07 extensions, which skip `24133` and sign locally).
 - **Also supported**: Classic **NIP-07** browser extensions (Alby, nos2x, Flamingo, etc.) remain a separate code path from NIP-46 but fulfill the same “user signs events” role from the app’s perspective.
 
