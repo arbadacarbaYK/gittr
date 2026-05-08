@@ -217,16 +217,16 @@ nano .env.local  # or use your preferred editor
 
 Edit `ui/.env.local` and add:
 ```bash
-GITHUB_CLIENT_ID=Ov23li30sCPC7AVEUT8V
-GITHUB_CLIENT_SECRET=your_actual_secret_here
+GITHUB_CLIENT_ID=your_github_oauth_client_id
+GITHUB_CLIENT_SECRET=your_github_oauth_client_secret
 ```
 
 ### Step 4: (Optional) Configure LNbits Defaults
 
 If you want to provide default LNbits configuration for users:
 ```bash
-LNBITS_URL=https://bitcoindelta.club
-LNBITS_ADMIN_KEY=your_admin_key_here
+LNBITS_URL=https://lnbits.example.com
+LNBITS_ADMIN_KEY=your_lnbits_admin_invoice_or_admin_key
 ```
 
 **Why**: These provide fallback defaults for server-side operations (bounty payments, split zaps). Users can override these in Settings → Account with their own credentials.
@@ -258,6 +258,7 @@ When deploying to production (Vercel, Railway, Render, etc.):
    - Never commit `.env` or `.env.local` files
    - Use different GitHub OAuth apps for dev/production
    - Rotate secrets if accidentally exposed
+   - Keep **deploy scripts**, **server IPs**, and **real OAuth client IDs** out of public docs; use placeholders in README examples (forkers copy what they see)
 
 ## 📋 Quick Reference
 

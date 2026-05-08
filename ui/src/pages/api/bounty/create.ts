@@ -1,5 +1,6 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { resolveLnbitsUrl } from "@/lib/payments/lnbits-url";
 import {
   validatePaymentAmount,
   validateTextContent,
@@ -71,11 +72,23 @@ export default async function handler(
 
   // Get LNbits admin key from request body (user config) or environment
   const finalLnbitsAdminKey =
-    lnbitsAdminKey ||
-    process.env.LNBITS_ADMIN_KEY ||
-    "239e3298fcd5477789155194e9a85678";
-  const finalLnbitsUrl =
-    lnbitsUrl || process.env.LNBITS_URL || "https://bitcoindelta.club";
+    lnbitsAdminKey || process.env.LNBITS_ADMIN_KEY || "";
+  const finalLnbitsUrl = resolveLnbitsUrl(lnbitsUrl);
+
+  if (!finalLnbitsUrl) {
+    return res.status(400).json({
+      status: "missing_lnbits_url",
+      message:
+        "LNbits URL required in request or set LNBITS_URL for the server.",
+    });
+  }
+
+  if (!finalLnbitsAdminKey) {
+    return res.status(400).json({
+      status: "missing_lnbits_key",
+      message: "LNbits admin key required",
+    });
+  }
 
   try {
     // Create invoice via LNbits

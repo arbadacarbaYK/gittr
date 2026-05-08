@@ -4,6 +4,7 @@ import {
   createWithdrawLink,
   listWithdrawLinks,
 } from "@/lib/payments/lnbits-adapter";
+import { resolveLnbitsUrl } from "@/lib/payments/lnbits-url";
 import { validatePaymentAmount } from "@/lib/security/input-validation";
 
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -63,8 +64,15 @@ export default async function handler(
   // Get LNbits admin key from request body (user config) or environment
   const finalLnbitsAdminKey =
     lnbitsAdminKey || process.env.LNBITS_ADMIN_KEY || "";
-  const finalLnbitsUrl =
-    lnbitsUrl || process.env.LNBITS_URL || "https://bitcoindelta.club";
+  const finalLnbitsUrl = resolveLnbitsUrl(lnbitsUrl);
+
+  if (!finalLnbitsUrl) {
+    return res.status(400).json({
+      status: "missing_lnbits_url",
+      message:
+        "LNbits URL required in request or set LNBITS_URL for the server.",
+    });
+  }
 
   if (!finalLnbitsAdminKey) {
     return res.status(400).json({
@@ -246,7 +254,7 @@ export default async function handler(
     }
 
     // Construct the shareable withdraw link URL
-    // Format: https://bitcoindelta.club/withdraw/{withdrawId}
+    // Format: https://<your-lnbits>/withdraw/{withdrawId}
     const withdrawUrl = `${finalLnbitsUrl.replace(
       /\/$/,
       ""

@@ -1,6 +1,6 @@
 # Production Setup Instructions
 
-Complete step-by-step guide for setting up gittr.space on a production server.
+Step-by-step guide for running this stack on **your** server. Paths like `/opt/ngit` and domains like `gittr.space` are **examples**—substitute your own deploy directory, DNS, and keys. Do not commit real **IPs**, **SSH keys**, **OAuth secrets**, or **LNbits admin keys** to a public fork; use `.env.example` and private deploy tooling only.
 
 ## Prerequisites
 

@@ -9,6 +9,7 @@ import {
   createInvoiceFromLNURL,
   createInvoiceFromLightningAddress,
 } from "@/lib/payments/lnurl";
+import { resolveLnbitsUrl } from "@/lib/payments/lnbits-url";
 import {
   validateLNURL,
   validateLightningAddress,
@@ -112,30 +113,20 @@ export default async function handler(
     }
   }
 
-  // Validate LNbits URL format
-  let lnbitsUrl =
-    req.body?.lnbitsUrl ||
-    process.env.LNBITS_URL ||
-    "https://bitcoindelta.club";
-  if (
-    typeof lnbitsUrl !== "string" ||
-    (!lnbitsUrl.startsWith("http://") && !lnbitsUrl.startsWith("https://"))
-  ) {
-    return res
-      .status(400)
-      .json({
-        status: "invalid_lnbits_url",
-        message: "Invalid LNbits URL format",
-      });
+  let lnbitsUrl = resolveLnbitsUrl(req.body?.lnbitsUrl);
+  if (!lnbitsUrl) {
+    return res.status(400).json({
+      status: "missing_lnbits_url",
+      message: "LNbits URL required (body lnbitsUrl or LNBITS_URL).",
+    });
   }
-  // Normalize URL (remove trailing slash)
-  lnbitsUrl = lnbitsUrl.replace(/\/$/, "");
 
   // Get LNbits admin key from request body (user config) or environment
-  const lnbitsAdminKey =
+  const lnbitsAdminKey = (
     req.body?.lnbitsAdminKey ||
     process.env.LNBITS_ADMIN_KEY ||
-    "239e3298fcd5477789155194e9a85678";
+    ""
+  ).trim();
 
   // Validate admin key format (should be hex string)
   if (

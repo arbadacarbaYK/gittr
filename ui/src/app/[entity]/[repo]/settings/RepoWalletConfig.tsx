@@ -168,7 +168,7 @@ export default function RepoWalletConfig({
                   setConfig({ ...config, lnbitsUrl: normalized });
                 }
               }}
-              placeholder="bitcoindelta.club or https://..."
+              placeholder="lnbits.example.com or https://..."
               className="mt-1"
             />
           </div>

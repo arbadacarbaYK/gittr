@@ -97,7 +97,7 @@ interface Issue {
   bountyAmount?: number;
   bountyWithdrawId?: string; // Withdraw link ID (needed to claim the link)
   bountyLnurl?: string; // LNURL-withdraw link (replaces bountyInvoice/bountyPaymentHash)
-  bountyWithdrawUrl?: string; // Shareable URL for claiming the bounty (e.g., https://bitcoindelta.club/withdraw/{id})
+  bountyWithdrawUrl?: string; // Shareable URL for claiming the bounty (e.g. https://<your-lnbits>/withdraw/{id})
   bountyStatus?: "pending" | "paid" | "released";
   bountyCreator?: string; // Pubkey of the user who created the bounty
 }

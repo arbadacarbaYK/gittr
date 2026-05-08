@@ -206,9 +206,8 @@ export default function SponsorsPage() {
               : null;
           const lnbitsUrl =
             typeof window !== "undefined"
-              ? localStorage.getItem("gittr_lnbits_url") ||
-                "https://bitcoindelta.club"
-              : "https://bitcoindelta.club";
+              ? (localStorage.getItem("gittr_lnbits_url") || "").trim()
+              : "";
 
           // Check status of each bounty (redeemed/unredeemed)
           // Sort: unredeemed first, then by date (newest first)
@@ -217,10 +216,13 @@ export default function SponsorsPage() {
               // Check if withdraw link is used/redeemed
               // We'll check this by calling an API endpoint
               try {
+                if (!lnbitsUrl || !lnbitsInvoiceKey) {
+                  return bounty;
+                }
                 const params = new URLSearchParams({
                   withdrawId: bounty.withdrawId,
-                  ...(lnbitsInvoiceKey ? { lnbitsInvoiceKey } : {}),
-                  ...(lnbitsUrl ? { lnbitsUrl } : {}),
+                  lnbitsInvoiceKey,
+                  lnbitsUrl,
                 });
                 const response = await fetch(
                   `/api/bounty/check-withdraw?${params}`

@@ -2,8 +2,8 @@
  * LNbits API Adapter
  *
  * Supports both:
- * - LNbits v0.12.12 (bitcoindelta.club) - Legacy API
- * - LNbits latest (azzamo.online) - New API
+ * - LNbits v0.12.x line — legacy API shapes
+ * - LNbits current releases — newer API shapes
  *
  * Automatically detects version and adapts API calls accordingly
  */

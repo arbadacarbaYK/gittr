@@ -1,4 +1,5 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { resolveLnbitsUrl } from "@/lib/payments/lnbits-url";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -32,12 +33,17 @@ export default async function handler(
       .json({ status: "missing_withdraw_id", message: "Missing withdrawId" });
   }
 
-  const finalLnbitsUrl =
-    (lnbitsUrl as string) ||
-    process.env.LNBITS_URL ||
-    "https://bitcoindelta.club";
+  const finalLnbitsUrl = resolveLnbitsUrl(lnbitsUrl as string);
   const finalLnbitsInvoiceKey =
     (lnbitsInvoiceKey as string) || process.env.LNBITS_INVOICE_KEY || "";
+
+  if (!finalLnbitsUrl) {
+    return res.status(400).json({
+      status: "missing_lnbits_url",
+      message:
+        "LNbits URL required (query lnbitsUrl or set LNBITS_URL on the server).",
+    });
+  }
 
   // If invoice key not provided, try to get from request body (for POST) or return error
   // For GET requests, we need it in query params

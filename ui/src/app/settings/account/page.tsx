@@ -787,7 +787,7 @@ export default function AccountSettingsPage() {
               isValid={validation.lnbitsUrl}
               showError={showValidation}
               onValidateBlur={() => showValidation && validateAll()}
-              helpText="Your LNbits instance URL (for split payments and bounties). Examples: bitcoindelta.club (v0.12.12) or azzamo.online (latest). https:// will be added automatically. The system automatically detects and supports both API versions."
+              helpText="Your LNbits instance URL (for split payments and bounties). Use your own host (e.g. lnbits.example.com). Older LNbits v0.12.x and current APIs are auto-detected. https:// is added if you omit the scheme."
             />
             <InputField
               label="LNbits Admin Key"

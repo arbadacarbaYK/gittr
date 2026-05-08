@@ -5,6 +5,7 @@ import {
   createPayment,
   getWithdrawLink,
 } from "@/lib/payments/lnbits-adapter";
+import { resolveLnbitsUrl } from "@/lib/payments/lnbits-url";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -56,8 +57,15 @@ export default async function handler(
 
   const finalLnbitsAdminKey =
     lnbitsAdminKey || process.env.LNBITS_ADMIN_KEY || "";
-  const finalLnbitsUrl =
-    lnbitsUrl || process.env.LNBITS_URL || "https://bitcoindelta.club";
+  const finalLnbitsUrl = resolveLnbitsUrl(lnbitsUrl);
+
+  if (!finalLnbitsUrl) {
+    return res.status(400).json({
+      status: "missing_lnbits_url",
+      message:
+        "LNbits URL required in request or set LNBITS_URL for the server.",
+    });
+  }
 
   if (!finalLnbitsAdminKey) {
     return res.status(400).json({

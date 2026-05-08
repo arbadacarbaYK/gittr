@@ -1,4 +1,5 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { resolveLnbitsUrl } from "@/lib/payments/lnbits-url";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -62,14 +63,8 @@ export default async function handler(
 
   // Get LNbits admin key from request body (user config) or environment
   const finalLnbitsAdminKey =
-    lnbitsAdminKey ||
-    process.env.LNBITS_ADMIN_KEY ||
-    "239e3298fcd5477789155194e9a85678";
-  const finalLnbitsUrl = (
-    lnbitsUrl ||
-    process.env.LNBITS_URL ||
-    "https://bitcoindelta.club"
-  ).replace(/\/$/, "");
+    lnbitsAdminKey || process.env.LNBITS_ADMIN_KEY || "";
+  const finalLnbitsUrl = resolveLnbitsUrl(lnbitsUrl);
 
   try {
     // Validate LNbits config
@@ -77,7 +72,7 @@ export default async function handler(
       return res.status(400).json({
         status: "error",
         message:
-          "LNbits not configured. Please set LNbits URL and admin key in Settings → Account",
+          "LNbits not configured. Please set LNbits URL and admin key in Settings → Account, and/or set LNBITS_URL / LNBITS_ADMIN_KEY on the server.",
       });
     }
 

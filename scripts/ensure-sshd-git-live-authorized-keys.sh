@@ -4,10 +4,10 @@
 # manual copy and goes stale → pubkey never matches → SSH asks for a password.
 #
 # Usage: ./scripts/ensure-sshd-git-live-authorized-keys.sh <host>
-# Env:   SSH_DEPLOY_KEY=~/.ssh/your_key (default: ~/.ssh/id_ed25519_hetzner_new)
+# Env:   SSH_DEPLOY_KEY=~/.ssh/your_key (default: ~/.ssh/id_ed25519)
 set -euo pipefail
 HOST="${1:?usage: $0 <ssh_host_or_ip>}"
-KEY="${SSH_DEPLOY_KEY:-$HOME/.ssh/id_ed25519_hetzner_new}"
+KEY="${SSH_DEPLOY_KEY:-$HOME/.ssh/id_ed25519}"
 eval KEY="$KEY"
 
 ssh -i "$KEY" -o BatchMode=yes -o ConnectTimeout=20 "root@$HOST" bash -se <<'REMOTE'
