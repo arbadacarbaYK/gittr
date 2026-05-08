@@ -34,6 +34,7 @@
     "node-fetch": "^3.3.1",
     "nostr-relaypool": "^0.5.5",
     "nostr-tools": "^1.7.4",
+    "nostr-tools-v2": "npm:nostr-tools@^2.23.3",
     "qrcode.react": "^4.2.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",

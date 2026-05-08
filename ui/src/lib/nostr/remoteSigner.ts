@@ -8,6 +8,7 @@ import {
   signEvent,
 } from "nostr-tools";
 import type { Event as NostrEvent } from "nostr-tools";
+import { nip44 as nip44v2 } from "nostr-tools-v2";
 
 import { WEB_STORAGE_KEYS } from "./localStorage";
 
@@ -72,6 +73,64 @@ const bytesToHex = (bytes: Uint8Array) =>
   Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+
+const hexToBytes = (hex: string): Uint8Array => {
+  const clean = hex.trim().toLowerCase();
+  if (!/^[0-9a-f]+$/i.test(clean) || clean.length % 2 !== 0) {
+    throw new Error("Invalid hex string");
+  }
+  const out = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+};
+
+function encryptForRemoteSigner(
+  clientSecretKey: string,
+  remotePubkey: string,
+  plaintext: string
+): Promise<string> {
+  try {
+    const conversationKey = nip44v2.getConversationKey(
+      hexToBytes(clientSecretKey),
+      remotePubkey
+    );
+    return Promise.resolve(nip44v2.encrypt(plaintext, conversationKey));
+  } catch (error) {
+    console.warn(
+      "[RemoteSigner] nip44 encrypt failed, falling back to nip04:",
+      error
+    );
+    return nip04.encrypt(clientSecretKey, remotePubkey, plaintext);
+  }
+}
+
+async function decryptFromRemoteSigner(
+  clientSecretKey: string,
+  remotePubkey: string,
+  ciphertext: string
+): Promise<string> {
+  try {
+    const conversationKey = nip44v2.getConversationKey(
+      hexToBytes(clientSecretKey),
+      remotePubkey
+    );
+    return nip44v2.decrypt(ciphertext, conversationKey);
+  } catch (nip44Err) {
+    try {
+      return await nip04.decrypt(clientSecretKey, remotePubkey, ciphertext);
+    } catch (nip04Err) {
+      throw new Error(
+        `Decrypt failed (nip44: ${
+          nip44Err instanceof Error ? nip44Err.message : String(nip44Err)
+        }; nip04: ${
+          nip04Err instanceof Error ? nip04Err.message : String(nip04Err)
+        })`
+      );
+    }
+  }
+}
 
 /**
  * Parse bunker:// or nostrconnect:// tokens
@@ -508,7 +567,7 @@ export class RemoteSignerManager {
     });
     // Decrypt payload
     try {
-      const plaintext = await nip04.decrypt(
+      const plaintext = await decryptFromRemoteSigner(
         session.clientSecretKey,
         event.pubkey,
         event.content
@@ -570,7 +629,7 @@ export class RemoteSignerManager {
       method,
       params,
     });
-    const ciphertext = await nip04.encrypt(
+    const ciphertext = await encryptForRemoteSigner(
       session.clientSecretKey,
       session.remotePubkey,
       payload
