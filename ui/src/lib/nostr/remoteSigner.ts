@@ -488,14 +488,15 @@ export class RemoteSignerManager {
     };
     requestEvent.id = getEventHash(requestEvent);
     requestEvent.sig = signEvent(requestEvent, session.clientSecretKey);
-    this.deps.publish(requestEvent, session.relays);
-
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`Remote signer request ${method} timed out`));
       }, timeoutMs);
       this.pending.set(id, { method, resolve, reject, timeout });
+      // Publish only after pending handler is registered; otherwise a fast signer
+      // response can arrive before we track `id`, causing dropped acks/timeouts.
+      this.deps.publish(requestEvent, session.relays);
     });
   }
 
