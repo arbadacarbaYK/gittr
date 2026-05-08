@@ -11,7 +11,8 @@ import { Html5Qrcode } from "html5-qrcode";
 import { Camera, Puzzle, Scan, Shield, X } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { nip05, nip19 } from "nostr-tools";
+import { generatePrivateKey, getPublicKey, nip05, nip19 } from "nostr-tools";
+import { QRCodeSVG } from "qrcode.react";
 
 export default function Login() {
   const { setAuthor, remoteSigner } = useNostrContext();
@@ -36,6 +37,10 @@ export default function Login() {
   const [remoteError, setRemoteError] = useState<string | null>(null);
   const [remoteBusy, setRemoteBusy] = useState(false);
   const [showQRScanner, setShowQRScanner] = useState(false);
+  const [showPairingQR, setShowPairingQR] = useState(false);
+  const [generatedNostrConnect, setGeneratedNostrConnect] = useState("");
+  /** Latest nostrconnect URI from Show QR (state can lag one frame behind Pair & Login). */
+  const latestNostrConnectRef = useRef("");
   const qrScannerRef = useRef<Html5Qrcode | null>(null);
   const qrScanAreaRef = useRef<HTMLDivElement>(null);
 
@@ -93,46 +98,83 @@ export default function Login() {
 
   const remoteSession = remoteSigner?.getSession();
 
-  const handleRemoteConnect = useCallback(async () => {
-    if (!remoteSigner) {
-      setRemoteError(
-        "Remote signer manager not ready yet. Please try again in a moment."
-      );
-      return;
+  const createNostrConnectToken = useCallback(() => {
+    if (typeof window === "undefined" || !window.crypto?.getRandomValues) {
+      throw new Error("Unable to generate token in this browser");
     }
-    if (!remoteToken.trim()) {
-      setRemoteError("Paste a bunker:// or nostrconnect:// token.");
-      return;
-    }
-    setRemoteBusy(true);
-    setRemoteError(null);
-    try {
-      const result = await remoteSigner.connect(remoteToken.trim());
-      // After successful pairing, log the user in with their pubkey
-      if (result?.npub && setAuthor) {
-        setAuthor(result.npub);
-      } else {
-        // Fallback: get pubkey from session and convert to npub
-        const session = remoteSigner?.getSession();
-        if (session?.userPubkey && setAuthor) {
-          const npub = nip19.npubEncode(session.userPubkey);
-          setAuthor(npub);
-        }
+    const secret = generatePrivateKey();
+    const relays = [
+      "wss://nostr.oxtr.dev/",
+      "wss://theforest.nostr1.com/",
+      "wss://relay.primal.net/",
+    ];
+    const tempClientPubkey = getPublicKey(secret);
+    const query = new URLSearchParams();
+    relays.forEach((relay) => query.append("relay", relay));
+    query.set("secret", secret);
+    query.set("name", "gittr");
+    query.set(
+      "perms",
+      "get_public_key,sign_event,nip04_encrypt,nip04_decrypt,nip44_encrypt,nip44_decrypt"
+    );
+    return `nostrconnect://${tempClientPubkey}?${query.toString()}`;
+  }, []);
+
+  const runRemoteConnect = useCallback(
+    async (tokenToUse: string) => {
+      if (!remoteSigner) {
+        setRemoteError(
+          "Remote signer manager not ready yet. Please try again in a moment."
+        );
+        return;
       }
-      setRemoteBusy(false);
-      setRemoteModalOpen(false);
-      setRemoteToken("");
-      router.push("/");
-    } catch (error: any) {
-      console.error("[Login] Remote signer pairing failed:", error);
-      setRemoteBusy(false);
-      setRemoteError(error?.message || "Unable to pair with remote signer");
-    }
-  }, [remoteSigner, remoteToken, router, setAuthor]);
+      const token = tokenToUse.trim();
+      if (!token) {
+        setRemoteError("Paste a bunker:// or nostrconnect:// token.");
+        return;
+      }
+      setRemoteBusy(true);
+      setRemoteError(null);
+      try {
+        const result = await remoteSigner.connect(token);
+        if (result?.npub && setAuthor) {
+          setAuthor(result.npub);
+        } else {
+          const session = remoteSigner?.getSession();
+          if (session?.userPubkey && setAuthor) {
+            const npub = nip19.npubEncode(session.userPubkey);
+            setAuthor(npub);
+          }
+        }
+        setRemoteBusy(false);
+        setRemoteModalOpen(false);
+        setRemoteToken("");
+        setGeneratedNostrConnect("");
+        setShowPairingQR(false);
+        latestNostrConnectRef.current = "";
+        router.push("/");
+      } catch (error: any) {
+        console.error("[Login] Remote signer pairing failed:", error);
+        setRemoteBusy(false);
+        setRemoteError(error?.message || "Unable to pair with remote signer");
+      }
+    },
+    [remoteSigner, router, setAuthor]
+  );
+
+  const handleRemoteConnect = useCallback(() => {
+    const token =
+      remoteToken.trim() ||
+      generatedNostrConnect.trim() ||
+      latestNostrConnectRef.current.trim();
+    return runRemoteConnect(token);
+  }, [runRemoteConnect, remoteToken, generatedNostrConnect]);
 
   const handleRemoteDisconnect = useCallback(() => {
     remoteSigner?.disconnect();
     setRemoteToken("");
+    setGeneratedNostrConnect("");
+    latestNostrConnectRef.current = "";
     setRemoteError(null);
   }, [remoteSigner]);
 
@@ -588,11 +630,40 @@ export default function Login() {
                   type="button"
                   variant="outline"
                   size="sm"
+                  disabled={remoteBusy}
+                  onClick={() => {
+                    try {
+                      const token = createNostrConnectToken();
+                      latestNostrConnectRef.current = token;
+                      setGeneratedNostrConnect(token);
+                      setRemoteToken(token);
+                      setShowPairingQR(true);
+                      setShowQRScanner(false);
+                      setRemoteError(null);
+                      // Start NIP-46 immediately so relays are subscribed before Amber sends.
+                      void runRemoteConnect(token);
+                    } catch (error: any) {
+                      setRemoteError(
+                        error?.message ||
+                          "Unable to generate nostrconnect token"
+                      );
+                    }
+                  }}
+                  className="flex items-center gap-1.5"
+                >
+                  <Scan className="h-3.5 w-3.5" />
+                  Show QR
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={async () => {
                     if (showQRScanner) {
                       await stopQRScanner();
                       setShowQRScanner(false);
                     } else {
+                      setShowPairingQR(false);
                       await startQRScanner();
                     }
                   }}
@@ -611,7 +682,53 @@ export default function Login() {
                   )}
                 </Button>
               </div>
-              {showQRScanner ? (
+              {showPairingQR ? (
+                <div className="space-y-3 rounded-lg border border-purple-800/40 bg-purple-950/20 p-3">
+                  <p className="text-xs text-purple-200">
+                    Gittr is already listening — scan this QR with Amber and
+                    approve. Use{" "}
+                    <span className="font-semibold">Create new</span> when Amber
+                    asks. You can tap{" "}
+                    <span className="font-semibold">Pair &amp; Login</span>{" "}
+                    again only if pairing got stuck.
+                  </p>
+                  <div className="flex justify-center rounded-lg bg-white p-3">
+                    <QRCodeSVG
+                      value={generatedNostrConnect || remoteToken}
+                      size={220}
+                      includeMargin={true}
+                      bgColor="#ffffff"
+                      fgColor="#000000"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(
+                            generatedNostrConnect || remoteToken
+                          );
+                        } catch (err) {
+                          console.warn("[Login] Failed to copy token", err);
+                        }
+                      }}
+                    >
+                      Copy Token
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="flex-1"
+                      onClick={() => setShowPairingQR(false)}
+                    >
+                      Hide QR
+                    </Button>
+                  </div>
+                </div>
+              ) : showQRScanner ? (
                 <div
                   ref={qrScanAreaRef}
                   id="qr-scanner-container"

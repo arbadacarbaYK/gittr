@@ -78,9 +78,18 @@ export const useNostrContext = () => {
 const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const addRelay = useCallback((url: string) => {
     try {
-      const relay = relayPool.addOrGetRelay(url);
-      // Note: Relays auto-connect when added, but we need to ensure they're tracked
-      // The status will be updated by the relay pool internally (0=closed, 1=connecting, 2=open)
+      const relay: any = relayPool.addOrGetRelay(url);
+      // Force an active connect attempt for relays used by remote signer pairing.
+      // Relying on lazy/implicit connect can leave relay status stuck closed and
+      // cause NIP-46 pairing requests to time out.
+      try {
+        relay?.connect?.();
+      } catch (connectError) {
+        console.warn(
+          `[NostrContext] Relay connect() failed for ${url}:`,
+          connectError
+        );
+      }
       console.log(`[NostrContext] Added relay to pool: ${url}`);
       return relay;
     } catch (error) {
@@ -184,6 +193,7 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       subscribe: subscribeFn,
       addRelay,
       removeRelay,
+      getRelayStatuses: () => relayPool.getRelayStatuses(),
     });
 
     setRemoteSignerInitialized(true);
