@@ -272,6 +272,7 @@ export class RemoteSignerManager {
         connectParams.push(session.permissions.join(","));
       }
       let connectErr: unknown;
+      let connectAcked = false;
       for (let i = 0; i < CONNECT_RETRY_DELAYS_MS.length; i++) {
         const delay = CONNECT_RETRY_DELAYS_MS[i] ?? 0;
         if (delay > 0) {
@@ -290,6 +291,7 @@ export class RemoteSignerManager {
             CONNECT_TIMEOUT_MS
           );
           connectErr = undefined;
+          connectAcked = true;
           break;
         } catch (err) {
           connectErr = err;
@@ -300,14 +302,46 @@ export class RemoteSignerManager {
         }
       }
       if (connectErr) {
-        throw connectErr;
+        const msg =
+          connectErr instanceof Error ? connectErr.message : String(connectErr);
+        // Compatibility: some signers establish pairing but don't return connect result.
+        // Continue with get_public_key probe instead of hard-failing on connect timeout.
+        if (/connect timed out|request connect timed out|timed out/i.test(msg)) {
+          console.warn(
+            "[RemoteSigner] connect timed out; continuing with get_public_key probe"
+          );
+        } else {
+          throw connectErr;
+        }
       }
 
-      const remotePubkeyHex = await this.sendRequest(
-        session,
-        "get_public_key",
-        []
-      );
+      let remotePubkeyHex: unknown;
+      let pubkeyErr: unknown;
+      for (let i = 0; i < CONNECT_RETRY_DELAYS_MS.length; i++) {
+        const delay = CONNECT_RETRY_DELAYS_MS[i] ?? 0;
+        if (delay > 0) {
+          await new Promise((r) => setTimeout(r, delay));
+        }
+        try {
+          remotePubkeyHex = await this.sendRequest(
+            session,
+            "get_public_key",
+            [],
+            CONNECT_TIMEOUT_MS
+          );
+          pubkeyErr = undefined;
+          break;
+        } catch (err) {
+          pubkeyErr = err;
+          console.warn(
+            `[RemoteSigner] get_public_key attempt ${i + 1} failed:`,
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+      if (pubkeyErr) {
+        throw pubkeyErr;
+      }
       if (!remotePubkeyHex || typeof remotePubkeyHex !== "string") {
         throw new Error("Remote signer did not return a pubkey");
       }
