@@ -450,16 +450,16 @@ export class RemoteSignerManager {
       session.remotePubkey,
       payload
     );
-    const unsignedEvent: any = {
+    const requestEvent: any = {
       kind: 24133,
       created_at: Math.floor(Date.now() / 1000),
       content: ciphertext,
       tags: [["p", session.remotePubkey]],
       pubkey: getPublicKey(session.clientSecretKey),
     };
-    unsignedEvent.id = getEventHash(unsignedEvent);
-    const signed = signEvent(unsignedEvent, session.clientSecretKey);
-    this.deps.publish(signed, session.relays);
+    requestEvent.id = getEventHash(requestEvent);
+    requestEvent.sig = signEvent(requestEvent, session.clientSecretKey);
+    this.deps.publish(requestEvent, session.relays);
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
