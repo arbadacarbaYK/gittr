@@ -3,7 +3,7 @@
  *
  * Handles finding repositories by entity/repo with support for:
  * - npub format (Grasp protocol standard)
- * - NIP-05 identifiers (e.g., geek@primal.net) - for compatibility with gitworkshop.dev
+ * - NIP-05 identifiers (e.g., user@example.com) - for compatibility with gitworkshop.dev
  * - 8-char pubkey prefixes
  * - Full 64-char pubkeys
  * - ownerPubkey matching

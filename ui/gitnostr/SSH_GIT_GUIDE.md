@@ -35,14 +35,14 @@ If you're using `gittr.space`:
 The bridge supports multiple formats for the owner identifier in clone URLs:
 
 ```bash
-# Using npub (recommended, per NIP-34 specification)
-git clone git@gittr.space:npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/repo-name.git
+# Using npub (recommended, per NIP-34 specification) — use the npub from your repo page
+git clone git@gittr.space:<YOUR_NPUB>/repo-name.git
 
 # Using NIP-05 (human-readable)
-git clone git@gittr.space:geek@primal.net/repo-name.git
+git clone git@gittr.space:alice@example.com/repo-name.git
 
 # Using hex pubkey (64-char)
-git clone git@gittr.space:daa41bedb68591363bf4407f687cb9789cc543ed024bb77c22d2c84d88f54153/repo-name.git
+git clone git@gittr.space:0000000000000000000000000000000000000000000000000000000000000001/repo-name.git
 ```
 
 All three formats resolve to the same repository.
@@ -361,6 +361,6 @@ gittr does **not** use a shell password for Git over SSH. A password prompt almo
 
 ## See Also
 
-- **[Main gittr.space SSH Git Guide](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FSSH_GIT_GUIDE.md)** - Complete user-facing guide for gittr.space with web UI workflows
+- **[SSH & Git guide (gittr docs)](https://github.com/arbadacarbaYK/gittr/blob/main/docs/SSH_GIT_GUIDE.md)** — user-facing guide with web UI workflows (same content as on a hosted instance)
 - [git-nostr-bridge README](README.md) - Setup and configuration instructions
 - [git-nostr-cli Usage](README.md#git-nostr-cli-gn) - Command-line tool documentation

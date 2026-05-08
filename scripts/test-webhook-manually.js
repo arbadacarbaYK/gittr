@@ -51,7 +51,7 @@ async function main() {
         type: "channel"
       },
       date: Math.floor(Date.now() / 1000),
-      text: "Verifying that I control the following Nostr public key: \"npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc\""
+      text: 'Verifying that I control the following Nostr public key: "<YOUR_NPUB>"'
     }
   };
 

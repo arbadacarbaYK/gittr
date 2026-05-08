@@ -448,7 +448,7 @@ export default function RepoCodePage() {
     ) {
       setRepoOwnerPubkey((repoData as any).ownerPubkey.toLowerCase());
     } else if (mounted) {
-      // CRITICAL: Support NIP-05 format (e.g., geek@primal.net) for gitworkshop.dev compatibility
+      // CRITICAL: Support NIP-05 format (e.g., user@example.com) for gitworkshop.dev compatibility
       const isNip05 = resolvedParams.entity.includes("@");
 
       if (isNip05) {

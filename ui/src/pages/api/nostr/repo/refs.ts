@@ -11,7 +11,7 @@ const execAsync = promisify(exec);
 
 /**
  * Resolves an entity (npub, NIP-05, or hex pubkey) to a full 64-char hex pubkey
- * This allows bridge API endpoints to accept NIP-05 format (e.g., geek@primal.net)
+ * This allows bridge API endpoints to accept NIP-05 format (e.g., user@example.com)
  * for compatibility with gitworkshop.dev
  */
 async function resolveOwnerPubkey(
@@ -132,7 +132,7 @@ export default async function handler(
   }
 
   // CRITICAL: Resolve ownerPubkey (supports hex, npub, or NIP-05 format)
-  // This allows gitworkshop.dev to use NIP-05 format (e.g., geek@primal.net)
+  // This allows gitworkshop.dev to use NIP-05 format (e.g., user@example.com)
   const resolved = await resolveOwnerPubkey(ownerPubkeyInput);
   if (resolved.error || !resolved.pubkey) {
     return res.status(400).json({

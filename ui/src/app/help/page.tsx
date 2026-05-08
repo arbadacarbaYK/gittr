@@ -1222,7 +1222,7 @@ export default function HelpPage() {
                 For complete documentation on SSH and Git operations:
               </p>
               <a
-                href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FSSH_GIT_GUIDE.md"
+                href="https://github.com/arbadacarbaYK/gittr/blob/main/docs/SSH_GIT_GUIDE.md"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-purple-400 hover:text-purple-300 underline text-sm"
@@ -2078,13 +2078,13 @@ export default function HelpPage() {
               <ul className="space-y-2">
                 <li>
                   <a
-                    href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr"
+                    href="https://gittr.space"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-purple-400 hover:text-purple-300 flex items-center gap-2"
                   >
                     <Github className="h-4 w-4" />
-                    gittr.space Repository
+                    gittr.space (live)
                   </a>
                 </li>
                 <li>
@@ -2122,18 +2122,18 @@ export default function HelpPage() {
                 Need More Help?
               </h3>
               <p>
-                If you have questions or hit issues, use the{" "}
+                If you have questions or hit issues, see the{" "}
                 <a
-                  href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr"
+                  href="https://github.com/arbadacarbaYK/gittr"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-purple-400 hover:text-purple-300"
                 >
-                  gittr repository on gittr.space
+                  gittr
                 </a>{" "}
-                first, and also check these references:{" "}
+                source repo, plus{" "}
                 <a
-                  href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr"
+                  href="https://github.com/arbadacarbaYK/gitnostr"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-purple-400 hover:text-purple-300"
@@ -2142,7 +2142,7 @@ export default function HelpPage() {
                 </a>{" "}
                 and{" "}
                 <a
-                  href="https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-helper-tools"
+                  href="https://github.com/arbadacarbaYK/gittr-helper-tools"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-purple-400 hover:text-purple-300"

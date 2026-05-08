@@ -17,14 +17,14 @@ This guide explains how to use SSH to create, add, and modify files in gittr.spa
 gittr.space supports multiple formats for the owner identifier in clone URLs:
 
 ```bash
-# Using npub (recommended, per NIP-34 specification)
-git clone git@git.gittr.space:npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/repo-name.git
+# Using npub (recommended, per NIP-34 specification) — use the npub from your repo page
+git clone git@git.gittr.space:<YOUR_NPUB>/repo-name.git
 
 # Using NIP-05 (human-readable)
-git clone git@git.gittr.space:geek@primal.net/repo-name.git
+git clone git@git.gittr.space:alice@example.com/repo-name.git
 
 # Using hex pubkey (64-char)
-git clone git@git.gittr.space:daa41bedb68591363bf4407f687cb9789cc543ed024bb77c22d2c84d88f54153/repo-name.git
+git clone git@git.gittr.space:0000000000000000000000000000000000000000000000000000000000000001/repo-name.git
 ```
 
 All three formats resolve to the same repository.

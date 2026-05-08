@@ -11,8 +11,8 @@ This will hopefully form part of a solution for creating a decentralized version
 ## Documentation
 
 - **[SSH & Git Access Guide](SSH_GIT_GUIDE.md)** - Complete guide for using SSH with git-nostr-bridge (cloning, pushing, pulling, permissions)
-- **[Main gittr.space SSH Git Guide](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FSSH_GIT_GUIDE.md)** - User-facing guide with web UI workflows and complete examples
-- **[CLI Push Example](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FCLI_PUSH_EXAMPLE.md)** - HTTP API examples for pushing repositories programmatically
+- **[SSH & Git guide](https://github.com/arbadacarbaYK/gittr/blob/main/docs/SSH_GIT_GUIDE.md)** — user-facing workflows and examples
+- **[CLI push example](https://github.com/arbadacarbaYK/gittr/blob/main/docs/CLI_PUSH_EXAMPLE.md)** — HTTP API examples for pushing repositories programmatically
 - **[README](README.md)** - Setup and configuration instructions (this file)
 
 I chose to build on top of the existing git tooling to allow the client side dev tools to remain largely unchanged for daily work (standard git commands work including push and pull)

@@ -5,7 +5,7 @@ import { nip05, nip19 } from "nostr-tools";
  * API endpoint to resolve NIP-05 identifiers to npub format for git.gittr.space URLs
  *
  * This endpoint is used by nginx to resolve NIP-05 format URLs like:
- * https://git.gittr.space/geek@primal.net/nostr-hypermedia.git
+ * https://git.gittr.space/user@example.com/repo-name.git
  *
  * It resolves the NIP-05 to an npub and redirects to:
  * https://git.gittr.space/npub1.../nostr-hypermedia.git
@@ -26,8 +26,8 @@ export default async function handler(
   }
 
   // Extract entity and repo from query params or path
-  // Format: ?entity=geek@primal.net&repo=nostr-hypermedia.git
-  // Or from path: /api/git/nip05-resolve/geek@primal.net/nostr-hypermedia.git
+  // Format: ?entity=user@example.com&repo=repo-name.git
+  // Or from path: /api/git/nip05-resolve/user@example.com/repo-name.git
   const { entity, repo } = req.query;
 
   let entityStr = typeof entity === "string" ? entity : "";

@@ -1588,7 +1588,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
 
     // Priority 3: If we have npub, show shortened npub (not pubkey prefix)
     if (params.entity.startsWith("npub")) {
-      // Show first 16 chars of npub: "npub1n2ph08n4pqz..."
+      // Show first 16 chars of npub: "npub1xxxxxxxx…"
       return params.entity.substring(0, 16) + "...";
     }
 

@@ -6,12 +6,12 @@ This document explains how to configure nginx to support NIP-05 format URLs for 
 
 other clients may try to access repos using NIP-05 format:
 ```
-https://git.gittr.space/geek@primal.net/nostr-hypermedia.git
+https://git.gittr.space/alice@example.com/my-repo.git
 ```
 
 But git.gittr.space only supports npub format:
 ```
-https://git.gittr.space/npub1.../nostr-hypermedia.git
+https://git.gittr.space/<npub>/my-repo.git
 ```
 
 ## Solution
@@ -34,7 +34,7 @@ server {
     ssl_prefer_server_ciphers on;
     
     # CRITICAL: Intercept NIP-05 format URLs (containing @) and proxy to Next.js resolver
-    # Format: /geek@primal.net/nostr-hypermedia.git
+    # Format: /user@domain.example/repo-name.git
     location ~ ^/([^/]+@[^/]+)/(.+)$ {
         # Proxy to Next.js resolver endpoint
         proxy_pass http://127.0.0.1:3000/api/git/nip05-resolve?entity=$1&repo=$2;
@@ -65,11 +65,11 @@ server {
 
 ## How It Works
 
-1. **NIP-05 URL arrives**: `https://git.gittr.space/geek@primal.net/nostr-hypermedia.git`
+1. **NIP-05 URL arrives**: `https://git.gittr.space/alice@example.com/my-repo.git`
 2. **Nginx intercepts**: The regex `^/([^/]+@[^/]+)/(.+)$` matches URLs with "@" in the first segment
-3. **Proxies to Next.js**: Forwards to `http://127.0.0.1:3000/api/git/nip05-resolve?entity=geek@primal.net&repo=nostr-hypermedia.git`
+3. **Proxies to Next.js**: Forwards to `http://127.0.0.1:3000/api/git/nip05-resolve?entity=alice@example.com&repo=my-repo.git`
 4. **Next.js resolves**: The API endpoint resolves NIP-05 to npub using `nip05.queryProfile()`
-5. **Redirects**: Returns 301 redirect to `https://git.gittr.space/npub1.../nostr-hypermedia.git`
+5. **Redirects**: Returns 301 redirect to `https://git.gittr.space/<resolved-npub>/my-repo.git`
 6. **Git client follows redirect**: Git automatically follows the redirect and clones from the npub URL
 
 ## Testing
@@ -83,7 +83,7 @@ sudo systemctl reload nginx  # Reload nginx
 
 Test the resolver endpoint:
 ```bash
-curl -I "https://git.gittr.space/geek@primal.net/nostr-hypermedia.git"
+curl -I "https://git.gittr.space/alice@example.com/my-repo.git"
 # Should return 301 redirect to npub format URL
 ```
 

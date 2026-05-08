@@ -750,9 +750,9 @@ cp /path/to/gittr/ui/.env.local "$BACKUP_DIR/"
 
 ## Additional Resources
 
-- **[SETUP_INSTRUCTIONS.md](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FSETUP_INSTRUCTIONS.md)**: Detailed setup instructions with Docker options
-- **[GIT_NOSTR_BRIDGE_SETUP.md](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FGIT_NOSTR_BRIDGE_SETUP.md)**: Detailed bridge setup guide
-- **[GRASP_RELAY_SETUP.md](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?path=docs&file=docs%2FGRASP_RELAY_SETUP.md)**: Setting up relay instance (Grasp protocol)
+- **[SETUP_INSTRUCTIONS.md](./SETUP_INSTRUCTIONS.md)**: Detailed setup instructions with Docker options
+- **[GIT_NOSTR_BRIDGE_SETUP.md](./GIT_NOSTR_BRIDGE_SETUP.md)**: Detailed bridge setup guide
+- **[GRASP_RELAY_SETUP.md](./GRASP_RELAY_SETUP.md)**: Setting up relay instance (Grasp protocol)
 
 ---
 
