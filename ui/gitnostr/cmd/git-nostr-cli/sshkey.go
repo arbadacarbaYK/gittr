@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/nbd-wtf/go-nostr"
-	"github.com/spearson78/gitnostr/protocol"
+	"github.com/arbadacarbaYK/gitnostr/protocol"
 )
 
 func sshKeyAdd(cfg Config, pool *nostr.RelayPool) {

@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/spearson78/gitnostr"
+	"github.com/arbadacarbaYK/gitnostr"
 )
 
 type Config struct {

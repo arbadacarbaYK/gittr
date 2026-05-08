@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/nbd-wtf/go-nostr"
-	"github.com/spearson78/gitnostr"
-	"github.com/spearson78/gitnostr/protocol"
+	"github.com/arbadacarbaYK/gitnostr"
+	"github.com/arbadacarbaYK/gitnostr/protocol"
 )
 
 func repoCreate(cfg Config, pool *nostr.RelayPool) {
