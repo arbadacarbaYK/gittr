@@ -92,7 +92,14 @@ export function parseRemoteSignerUri(input: string): RemoteSignerConfig {
     if (relays.length === 0) {
       throw new Error("Remote signer token missing relay query param");
     }
-    const secret = params.get("secret") || undefined;
+    const secret = params.get("secret")?.trim() || undefined;
+    // Security hardening: signer-initiated bunker URIs should include a secret
+    // to prevent relay-level hijacking/race attacks during pairing.
+    if (!secret) {
+      throw new Error(
+        "Security: bunker:// token requires a secret parameter"
+      );
+    }
     const label = params.get("name") || params.get("label") || undefined;
     return {
       remotePubkey: pubkeyPart.toLowerCase(),
@@ -472,6 +479,13 @@ export class RemoteSignerManager {
 
   private applyNip07Adapter() {
     if (typeof window === "undefined") return;
+    // Prefer native NIP-07 extension when available; use remote adapter only
+    // when there is no extension provider in the browser.
+    if (this.originalNostr) {
+      window.nostr = this.originalNostr;
+      this.adapter = undefined;
+      return;
+    }
     const adapter = createRemoteNip07Adapter(this);
     this.adapter = adapter;
     window.nostr = adapter;
