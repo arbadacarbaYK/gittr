@@ -258,7 +258,9 @@ export class RemoteSignerManager {
       await this.ensureRelays(session.relays);
       await this.startSubscription(session);
 
-      // NIP-46 connect params: [client-pubkey, optional-secret, optional-perms]
+      // NIP-46 connect params: [client_pubkey, optional_secret, optional_perms]
+      // We previously sent remote pubkey as first param, which breaks some signers
+      // (Amber may ACK connect but not establish request permissions for follow-ups).
       const connectParams = [session.clientPubkey];
       if (session.secret) {
         connectParams.push(session.secret);
