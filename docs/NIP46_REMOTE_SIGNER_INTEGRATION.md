@@ -36,7 +36,7 @@ We use `html5-qrcode` (version `^2.3.8`) for QR code scanning in the browser.
 - **`nostrconnect://`**: The host in the URI is the **client’s** pubkey (gittr’s key for this pairing). The signer’s pubkey is **unknown** until the first inbound kind `24133` after the user approves on the phone. Gittr therefore:
   1. Subscribes with `{ kinds: [24133], "#p": [clientPubkey] }` (no `authors` filter) until the first decryptable reply.
   2. Sets `remotePubkey` to that event’s author and continues with normal NIP-46 `connect` / `get_public_key`.
-- **Show QR in gittr** encodes the client private key in the `secret` query param so the same URI can be pasted into **Pair & Login** without extra hidden state. Users should tap **Pair & Login** immediately so relays are subscribed **before** Amber sends the first reply.
+- **Show QR in gittr** encodes the client private key in the `secret` query param (when using 64-hex secrets) and **starts the NIP-46 session immediately** (subscribe + pending `connect`) so relays are listening **before** the phone sends the first reply. **Pair & Login** reads the latest generated token from a ref so React state cannot lag one frame behind. Avoid pressing Pair & Login with an **empty** token: paste a full URI or use **Show QR** first.
 
 The code uses `ParsedRemoteSignerUri` (`mode: "bunker" | "nostrconnect"`) in `parseRemoteSignerUri()` — see `ui/src/lib/nostr/remoteSigner.ts`.
 

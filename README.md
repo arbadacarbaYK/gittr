@@ -324,13 +324,14 @@ Interop note: gittr now enforces required NIP-34 tags for issue/patch/PR events,
 - NIP-01 (Basic Protocol), NIP-11 (Relay Info), NIP-19 (bech32), NIP-22 (Comments), NIP-25 (Reactions/Stars)
 - NIP-33/34 (Replaceable Events - Repository announcements)
 - NIP-32 (Labeling overlays), NIP-51 (Lists, including followed Git repositories)
-- NIP-46 (Remote Signer/NIP-07), NIP-57 (Lightning Zaps), NIP-96 (Blossom file storage)
+- NIP-46 (remote signer: `bunker://` + `nostrconnect://`, kind `24133`, NIP-07 adapter) — [integration guide](docs/NIP46_REMOTE_SIGNER_INTEGRATION.md); NIP-57 (Lightning Zaps), NIP-96 (Blossom file storage)
 - NIP-C0 (Code Snippets)
 
 **Event Kinds:**
 - **Kind 50** – Repository permissions (original gitnostr protocol)
 - **Kind 51** – Repository metadata (legacy, read-only support)
 - **Kind 52** – SSH keys
+- **Kind 24133 (NIP-46)** – Remote signer encrypted RPC (browser ↔ signer)
 - **Kind 1111 (NIP-22)** – Comments (issue/PR comments)
 - **Kind 1337 (NIP-C0)** – Code snippets
 - **Kind 1618 (NIP-34)** – Pull requests
