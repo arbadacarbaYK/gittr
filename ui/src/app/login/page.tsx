@@ -39,6 +39,20 @@ export default function Login() {
   const qrScannerRef = useRef<Html5Qrcode | null>(null);
   const qrScanAreaRef = useRef<HTMLDivElement>(null);
 
+  const requestCameraAccess = useCallback(async () => {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices) {
+      throw new Error("Camera API not available in this browser");
+    }
+    if (!navigator.mediaDevices.getUserMedia) {
+      throw new Error("Camera access is not supported on this browser");
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+    });
+    // We only need the permission grant here; Html5Qrcode opens its own stream.
+    stream.getTracks().forEach((track) => track.stop());
+  }, []);
+
   // TODO : setAuthor needs to be tweaked (don't remove but tweak *_*)
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -151,6 +165,9 @@ export default function Login() {
       }
 
       try {
+        // Mobile Chrome is more reliable when permission is explicitly requested first.
+        await requestCameraAccess();
+
         // Stop any existing scanner first
         if (qrScannerRef.current) {
           await qrScannerRef.current.stop().catch(() => {});
@@ -160,8 +177,17 @@ export default function Login() {
         const scanner = new Html5Qrcode("qr-scanner-container");
         qrScannerRef.current = scanner;
 
+        const cameras = await Html5Qrcode.getCameras().catch(() => []);
+        const preferredCamera =
+          cameras.find((camera) =>
+            /back|rear|environment/i.test(camera.label || "")
+          ) || cameras[0];
+        const cameraSource = preferredCamera?.id
+          ? preferredCamera.id
+          : { facingMode: "environment" };
+
         await scanner.start(
-          { facingMode: "environment" }, // Use back camera on mobile
+          cameraSource,
           {
             fps: 10,
             qrbox: { width: 250, height: 250 },
@@ -198,10 +224,23 @@ export default function Login() {
         );
       } catch (error: any) {
         console.error("[Login] Failed to start QR scanner:", error);
+        const msg = String(error?.message || error || "");
+        const denied =
+          /NotAllowedError|Permission denied|Permission dismissed|permission/i.test(
+            msg
+          );
+        const insecure =
+          /secure context|Only secure origins|https/i.test(msg) &&
+          typeof window !== "undefined" &&
+          window.location.protocol !== "https:";
         setRemoteError(
-          `Camera access failed: ${
-            error.message || "Please allow camera permissions"
-          }`
+          denied
+            ? "Camera access denied. In Chrome: tap the lock icon in the address bar, allow Camera, then try Scan QR again."
+            : insecure
+            ? "Camera access requires HTTPS. Open gittr over https:// and try again."
+            : `Camera access failed: ${
+                error.message || "Please allow camera permissions"
+              }`
         );
         setShowQRScanner(false);
         if (qrScannerRef.current) {
@@ -209,7 +248,7 @@ export default function Login() {
         }
       }
     }, 100); // Small delay to ensure DOM is ready
-  }, [stopQRScanner]);
+  }, [requestCameraAccess, stopQRScanner]);
 
   // Cleanup scanner on unmount or modal close
   useEffect(() => {
