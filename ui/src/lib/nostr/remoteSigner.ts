@@ -403,7 +403,14 @@ export class RemoteSignerManager {
       [
         {
           kinds: [24133],
+          authors: [session.remotePubkey],
           "#p": [session.clientPubkey],
+        },
+        // Compatibility: some signers reply without correct `p` tags.
+        // Keep this constrained to the signer pubkey.
+        {
+          kinds: [24133],
+          authors: [session.remotePubkey],
         },
       ],
       session.relays,
@@ -415,10 +422,18 @@ export class RemoteSignerManager {
     const session = this.session;
     if (!session) return;
     if (!event || event.kind !== 24133) return;
+    if (event.pubkey !== session.remotePubkey) return;
     const pTags = event.tags
       ?.filter((tag: any) => Array.isArray(tag) && tag[0] === "p")
       .map((tag: any) => tag[1]);
-    if (!pTags || !pTags.includes(session.clientPubkey)) return;
+    const isForClient = !!pTags?.includes(session.clientPubkey);
+    // If this is not clearly for this client, only allow it while waiting for connect ack.
+    if (!isForClient) {
+      const hasPendingConnect = [...this.pending.values()].some(
+        (p) => p.method === "connect"
+      );
+      if (!hasPendingConnect) return;
+    }
     // Decrypt payload
     try {
       const plaintext = await nip04.decrypt(
