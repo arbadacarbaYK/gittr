@@ -45,7 +45,9 @@ const nextConfig = {
           },
           {
             key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=()'
+            // Allow QR scanning for NIP-46 pairing on /login while keeping
+            // microphone/geolocation denied site-wide.
+            value: 'camera=(self), microphone=(), geolocation=()'
           },
           {
             key: 'Content-Security-Policy',
