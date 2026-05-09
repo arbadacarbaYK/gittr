@@ -1,4 +1,5 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { normalizeSiteUrl } from "@/lib/utils/public-site-url";
 
 import type { NextApiRequest, NextApiResponse } from "next";
 
@@ -884,8 +885,10 @@ export default async function handler(
               // Forward the request to the bridge API
               // Note: This is a server-side API route, so we need to construct the full URL
               // Use environment variable or default to localhost for development
-              const baseUrl =
-                process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+              const baseUrl = normalizeSiteUrl(
+                process.env.NEXT_PUBLIC_SITE_URL,
+                "http://localhost:3000"
+              );
               const fullBridgeUrl = `${baseUrl}${bridgeUrl}`;
 
               console.log(

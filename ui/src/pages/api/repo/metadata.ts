@@ -1,6 +1,7 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
+import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -63,7 +64,7 @@ export default async function handler(
     // For now, return basic metadata structure
     // The actual description and icon will be resolved client-side
     // But we can provide a fast response with what we know
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space";
+    const baseUrl = getPublicSiteUrl();
 
     // Try to resolve icon URL (fast - just constructs URL)
     let iconUrl = `${baseUrl}/opengraph-image`; // Default fallback

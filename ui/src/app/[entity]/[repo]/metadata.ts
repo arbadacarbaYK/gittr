@@ -2,6 +2,7 @@ import {
   resolveRepoIconForMetadata,
   resolveUserIconForMetadata,
 } from "@/lib/utils/metadata-icon-resolver";
+import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 import { normalizeSocialImageUrl } from "@/lib/utils/social-image";
 
 import { type Metadata } from "next";
@@ -170,7 +171,7 @@ export async function generateMetadata({
 
   try {
     const resolvedParams = await params;
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space";
+    const baseUrl = getPublicSiteUrl();
 
     // Safely decode repo name - handle invalid percent-encoding gracefully
     let decodedRepo: string;
@@ -379,7 +380,7 @@ export async function generateMetadata({
   } catch (error) {
     // If metadata generation fails, return basic metadata to prevent page crash
     console.error("[Metadata] Error generating metadata:", error);
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space";
+    const baseUrl = getPublicSiteUrl();
     const resolvedParams = await params;
 
     // Safely decode repo name in error handler too

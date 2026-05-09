@@ -1,10 +1,13 @@
 // server component wrapper that exports metadata
 // and imports the client layout component
+import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
+
 import { type Metadata } from "next";
 
 import ClientLayout from "./layout-client";
 
 const DEV_CACHE_BUST = "dev-2026-01-15-01";
+const siteUrl = getPublicSiteUrl();
 
 export const metadata: Metadata = {
   title: {
@@ -25,13 +28,11 @@ export const metadata: Metadata = {
   authors: [{ name: "gittr" }],
   creator: "gittr",
   publisher: "gittr",
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space"
-  ),
+  metadataBase: new URL(siteUrl),
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space",
+    url: siteUrl,
     siteName: "gittr",
     title: "gittr - Decentralized Git Hosting on Nostr",
     description:
@@ -64,7 +65,7 @@ export const metadata: Metadata = {
     },
   },
   alternates: {
-    canonical: process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space",
+    canonical: siteUrl,
   },
 };
 

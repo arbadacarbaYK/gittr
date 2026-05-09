@@ -1,4 +1,5 @@
 import { resolveUserIconForMetadata } from "@/lib/utils/metadata-icon-resolver";
+import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 import { normalizeSocialImageUrl } from "@/lib/utils/social-image";
 
 import { type Metadata } from "next";
@@ -18,7 +19,7 @@ export async function generateMetadata({
   console.log("[Metadata] ===== generateMetadata for [entity] CALLED =====");
 
   const resolvedParams = await params;
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space";
+  const baseUrl = getPublicSiteUrl();
 
   console.log("[Metadata] Entity:", resolvedParams.entity);
 

@@ -1,7 +1,9 @@
+import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
+
 import { type MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space";
+  const baseUrl = getPublicSiteUrl();
 
   return {
     rules: [

@@ -1,3 +1,5 @@
+import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
+
 import { type Metadata } from "next";
 import { nip19 } from "nostr-tools";
 
@@ -6,7 +8,7 @@ export async function generateMetadata({
 }: {
   params: { entity: string };
 }): Promise<Metadata> {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space";
+  const baseUrl = getPublicSiteUrl();
 
   // Try to decode npub to get pubkey
   let pubkey: string | null = null;

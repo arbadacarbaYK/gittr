@@ -1,4 +1,8 @@
+import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
+
 import { type Metadata } from "next";
+
+const siteUrl = getPublicSiteUrl();
 
 // Default metadata for the site
 // Next.js App Router will pick this up automatically
@@ -21,13 +25,11 @@ export const metadata: Metadata = {
   authors: [{ name: "gittr" }],
   creator: "gittr",
   publisher: "gittr",
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space"
-  ),
+  metadataBase: new URL(siteUrl),
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space",
+    url: siteUrl,
     siteName: "gittr",
     title: "gittr - Decentralized Git Hosting on Nostr",
     description:
@@ -60,7 +62,7 @@ export const metadata: Metadata = {
     },
   },
   alternates: {
-    canonical: process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space",
+    canonical: siteUrl,
   },
   manifest: "/site.webmanifest",
 };

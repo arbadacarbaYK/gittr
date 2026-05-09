@@ -1,5 +1,6 @@
 import { fetchGittrPagesSitemapEntries } from "@/lib/seo/gittr-pages-sitemap";
 import { fetchSitemapRepoPathsFromNostr } from "@/lib/seo/nostr-sitemap-repos";
+import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 
 import { existsSync, readFileSync } from "fs";
 import { type MetadataRoute } from "next";
@@ -36,7 +37,7 @@ function loadNostrPushedRepoPaths(): string[] {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space";
+  const baseUrl = getPublicSiteUrl();
 
   const staticPages: MetadataRoute.Sitemap = [
     {
