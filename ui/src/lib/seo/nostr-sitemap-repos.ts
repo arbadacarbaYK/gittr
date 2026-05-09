@@ -1,3 +1,4 @@
+import { isPublisherBlocklisted } from "@/lib/moderation/publisher-blocklist";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getDefaultRelayUrls } from "@/lib/nostr/relay-env";
 
@@ -139,6 +140,7 @@ export async function fetchSitemapRepoPathsFromNostr(): Promise<
     }
 
     for (const ev of kind51ByKey.values()) {
+      if (isPublisherBlocklisted(ev.pubkey)) continue;
       if (deletedIds.has(ev.id)) continue;
       const name = parseKind51RepoName(ev.content);
       if (!name) continue;

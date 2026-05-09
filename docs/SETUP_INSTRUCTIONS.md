@@ -14,6 +14,9 @@ npm --version
 # Check Git
 git --version
 
+# Used by the UI for /api/import-git, /api/git/repo-files (tree listing), and
+# self-hosted raw file reads in /api/git/file-content — git must be on the server PATH.
+
 # Check SSH server
 sudo systemctl status sshd || sudo systemctl status ssh
 
@@ -74,6 +77,8 @@ cp .env.example .env.local
 Edit `ui/.env.local` with your values. All configuration is in this file - domain, relays, Blossom URL, GitHub Platform Token (optional), etc. are already set with working defaults.
 
 If you run backend/bridge services from the repo root, there is also a root `.env.example` that mirrors the optional server-side variables.
+
+**Publisher blocklist (optional, moderation):** Set `NEXT_PUBLIC_PUBLISHER_BLOCKLIST` and/or `PUBLISHER_BLOCKLIST` to a comma/space/semicolon-separated list of **64-hex pubkeys** and/or **`npub1…`** values. Matching publishers are omitted from Nostr-driven repo sync into listings, **Explore**, **Home** (recent + top stats fallbacks), **Repositories** list, **Apps** (NIP-82), the **`/api/gittr-pages/status-sites`** payload (Published pages UI), and **sitemap** repo/pages URLs (including optional **`nostr-pushed-repos.txt`** merge lines). Relays still carry their events; this only affects gittr’s UI and SEO surfaces. Rebuild/restart the Next app after changing env.
 
 **Push paywall note (optional):**
 

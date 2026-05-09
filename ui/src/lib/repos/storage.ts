@@ -708,15 +708,47 @@ export const loadRepoFiles = (
   }
 };
 
+function evictLargestOtherRepoFileKeys(
+  keepKey: string,
+  maxRemovals: number
+): number {
+  const entries: { key: string; len: number }[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key || !key.startsWith("gittr_files__") || key === keepKey) continue;
+    const raw = localStorage.getItem(key);
+    entries.push({ key, len: raw ? raw.length : 0 });
+  }
+  entries.sort((a, b) => b.len - a.len);
+  let removed = 0;
+  for (const { key } of entries) {
+    if (removed >= maxRemovals) break;
+    try {
+      localStorage.removeItem(key);
+      removed++;
+    } catch {
+      /* ignore */
+    }
+  }
+  if (removed > 0) {
+    console.log(
+      `🧹 [Storage] Evicted ${removed} other gittr_files key(s) (largest first) to free quota`
+    );
+  }
+  return removed;
+}
+
 export const saveRepoFiles = (
   entity: string,
   repo: string,
   files: RepoFileEntry[]
-): void => {
-  if (typeof window === "undefined") return;
+): boolean => {
+  if (typeof window === "undefined") return false;
   const filesKey = getRepoStorageKey("gittr_files", entity, repo);
+  const payload = JSON.stringify(files);
   try {
-    localStorage.setItem(filesKey, JSON.stringify(files));
+    localStorage.setItem(filesKey, payload);
+    return true;
   } catch (error: any) {
     if (
       error.name === "QuotaExceededError" ||
@@ -726,13 +758,11 @@ export const saveRepoFiles = (
         `❌ [Storage] Quota exceeded when saving files for ${entity}/${repo}. Attempting cleanup...`
       );
 
-      // Try to clean up old file storage keys (older than 30 days)
       try {
         const now = Date.now();
         const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
         let cleanedCount = 0;
 
-        // Find all gittr_files keys
         const allKeys: string[] = [];
         for (let i = 0; i < localStorage.length; i++) {
           const key = localStorage.key(i);
@@ -741,7 +771,6 @@ export const saveRepoFiles = (
           }
         }
 
-        // Try to get last modified time from repos (if available)
         const repos = loadStoredRepos();
         const repoMap = new Map<string, number>();
         repos.forEach((r: any) => {
@@ -755,7 +784,6 @@ export const saveRepoFiles = (
           repoMap.set(key, lastActivity);
         });
 
-        // Remove old file storage keys
         for (const key of allKeys) {
           const lastActivity = repoMap.get(key) || 0;
           if (lastActivity < thirtyDaysAgo) {
@@ -763,7 +791,7 @@ export const saveRepoFiles = (
               localStorage.removeItem(key);
               cleanedCount++;
             } catch (e) {
-              // Ignore errors during cleanup
+              /* ignore */
             }
           }
         }
@@ -772,31 +800,43 @@ export const saveRepoFiles = (
           console.log(
             `🧹 [Storage] Cleaned up ${cleanedCount} old file storage keys`
           );
-          // Retry saving
           try {
-            localStorage.setItem(filesKey, JSON.stringify(files));
+            localStorage.setItem(filesKey, payload);
             console.log(`✅ [Storage] Successfully saved files after cleanup`);
-            return;
-          } catch (e2: any) {
-            console.error(
-              `❌ [Storage] Still quota exceeded after cleanup:`,
-              e2
-            );
-            return;
+            return true;
+          } catch {
+            /* fall through to size-based eviction */
           }
-        } else {
-          console.error(
-            `❌ [Storage] No old files to clean up - quota still exceeded`
-          );
-          return;
         }
+
+        let evicted = 0;
+        for (let round = 0; round < 8; round++) {
+          try {
+            localStorage.setItem(filesKey, payload);
+            if (evicted > 0) {
+              console.log(
+                `✅ [Storage] Saved files after evicting ${evicted} other file-tree key(s)`
+              );
+            }
+            return true;
+          } catch {
+            const n = evictLargestOtherRepoFileKeys(filesKey, 12);
+            if (n === 0) break;
+            evicted += n;
+          }
+        }
+
+        console.error(
+          `❌ [Storage] Quota still exceeded after cleanup (evicted ${evicted} keys by size)`
+        );
+        return false;
       } catch (cleanupError) {
         console.error(`❌ [Storage] Cleanup failed:`, cleanupError);
-        return;
+        return false;
       }
     } else {
       console.error("❌ [Storage] Failed to save repo files:", error);
-      return;
+      return false;
     }
   }
 };

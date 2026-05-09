@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  Children,
   type ReactNode,
+  isValidElement,
   startTransition,
   useCallback,
   useEffect,
@@ -71,7 +73,6 @@ import {
   clearNonLocalReposFromStorage,
   estimateLocalStorageSize,
   isGitHostContributor,
-  loadDeletedRepos, // NOTE: Currently unused - overrides are loaded for display but editing uses addPendingEdit (PR system)
   loadRepoDeletedPaths,
   loadRepoFiles,
   loadRepoOverrides,
@@ -92,7 +93,9 @@ import {
 } from "@/lib/utils/entity-resolver";
 import {
   type FetchStatus,
+  addUpstreamSourceToCloneUrls,
   fetchFilesFromMultipleSources,
+  isRefetchableUpstreamSourceUrl,
   parseGitSource,
 } from "@/lib/utils/git-source-fetcher";
 import {
@@ -151,6 +154,32 @@ import remarkGfm from "remark-gfm";
 /** After Nostr refetch (full reload), resume README gittr block + Push to Nostr. */
 const GITTR_CHAIN_README_PUSH_AFTER_REFETCH_KEY =
   "gittr_chain_readme_push_after_refetch_v1";
+
+/** Merge IndexedDB/local `loadRepoFiles` into a repo row from `loadStoredRepos` (files are stored separately). */
+function mergeStoredRepoWithFilesFromStorage(
+  base: StoredRepo,
+  entity: string,
+  repoSlug: string,
+  preserveFromRef?: RepoFileEntry[] | null
+): StoredRepo {
+  const storageAlias = resolveRepoStorageAlias(entity, repoSlug);
+  let files: RepoFileEntry[] = loadRepoFiles(entity, storageAlias);
+  if (files.length === 0 && storageAlias !== repoSlug) {
+    files = loadRepoFiles(entity, repoSlug);
+  }
+  if (
+    files.length === 0 &&
+    preserveFromRef &&
+    Array.isArray(preserveFromRef) &&
+    preserveFromRef.length > 0
+  ) {
+    files = preserveFromRef;
+  }
+  if (files.length === 0 && base.files && Array.isArray(base.files)) {
+    files = base.files;
+  }
+  return { ...base, files };
+}
 
 const normalizeHeadingText = (value: string): string => {
   return value
@@ -282,6 +311,74 @@ const createMarkdownHeadingComponents = (
     h5: buildHeading(5),
     h6: buildHeading(6),
   };
+};
+
+/** Prefer live `repoData` fields but keep `sourceUrl` / `clone` / etc. from localStorage when state is sparse (e.g. foreign repo view). */
+function mergeRepoStateWithStorage<T extends object>(
+  repoData: T | null | undefined,
+  repoFromStorage: T | null | undefined
+): T | null {
+  if (repoData && repoFromStorage) {
+    return { ...repoFromStorage, ...repoData };
+  }
+  return repoData ?? repoFromStorage ?? null;
+}
+
+/**
+ * react-markdown emits <pre><code> for fences; CopyableCodeBlock adds its own <pre>.
+ * Stripping the outer pre and replacing block-code paragraphs with <div> avoids invalid nesting and hydration issues.
+ */
+function reactSubtreeHasBlockMarkdownCode(node: unknown): boolean {
+  if (!isValidElement(node)) return false;
+  const props = node.props as { inline?: boolean; children?: ReactNode };
+  if (props?.inline === false) return true;
+  return Children.toArray(props?.children).some(
+    reactSubtreeHasBlockMarkdownCode
+  );
+}
+
+const markdownProseCodeSafeComponents = {
+  pre: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  p: ({ node, children, ...props }: any) => {
+    const checkForBlockCode = (child: any): boolean => {
+      if (!child) return false;
+      if (child.type === "element" && child.tagName === "code") {
+        const className = child.properties?.className || "";
+        const cn = Array.isArray(className) ? className.join(" ") : className;
+        if (typeof cn === "string" && cn.includes("language-")) {
+          return true;
+        }
+        const value = child.children?.[0]?.value;
+        if (typeof value === "string" && value.includes("\n")) {
+          return true;
+        }
+      }
+      if (
+        child.type === "element" &&
+        (child.tagName === "div" ||
+          child.tagName === "iframe" ||
+          child.tagName === "img" ||
+          child.tagName === "pre")
+      ) {
+        return true;
+      }
+      if (child.children && Array.isArray(child.children)) {
+        return child.children.some(checkForBlockCode);
+      }
+      return false;
+    };
+
+    const hasBlockCode = node?.children?.some(checkForBlockCode);
+    const childrenArray = Children.toArray(children);
+    const hasBlockElement = childrenArray.some(
+      reactSubtreeHasBlockMarkdownCode
+    );
+
+    if (hasBlockCode || hasBlockElement) {
+      return <div {...props}>{children}</div>;
+    }
+    return <p {...props}>{children}</p>;
+  },
 };
 
 const normalizeRepoEntityForRoute = (
@@ -499,7 +596,7 @@ export default function RepoCodePage() {
       resolvedParams.entity,
       decodedRepo
     );
-    const repoForPages = repoData || repoFromStorage;
+    const repoForPages = mergeRepoStateWithStorage(repoData, repoFromStorage);
     if (!repoForPages) return null;
     const ownerHexForPages = (
       repoForPages.ownerPubkey ||
@@ -683,10 +780,16 @@ export default function RepoCodePage() {
           return;
         }
 
-        saveRepoFiles(resolvedParams.entity, storageRepo, files);
-        console.log(
-          `✅ ${context} Saved ${files.length} files to separate storage key`
-        );
+        const saved = saveRepoFiles(resolvedParams.entity, storageRepo, files);
+        if (saved) {
+          console.log(
+            `✅ ${context} Saved ${files.length} files to separate storage key`
+          );
+        } else {
+          console.warn(
+            `⚠️ ${context} File tree not persisted (localStorage full or quota). ${files.length} files remain in memory for this session.`
+          );
+        }
       } catch (e: any) {
         if (e.name === "QuotaExceededError" || e.message?.includes("quota")) {
           if (effectiveUserPubkey) {
@@ -704,44 +807,42 @@ export default function RepoCodePage() {
               );
             }
             if (cleanupResult.clearedKeys > 0) {
-              try {
-                const storageRepoRetry = resolveRepoStorageAlias(
-                  resolvedParams.entity,
-                  resolvedParams.repo
-                );
-                saveRepoFiles(resolvedParams.entity, storageRepoRetry, files);
+              const storageRepoRetry = resolveRepoStorageAlias(
+                resolvedParams.entity,
+                resolvedParams.repo
+              );
+              if (
+                saveRepoFiles(resolvedParams.entity, storageRepoRetry, files)
+              ) {
                 console.log(
                   `✅ ${context} Saved ${files.length} files after clearing ${cleanupResult.clearedKeys} foreign keys`
                 );
                 return;
-              } catch (retryError) {
-                console.error(
-                  `❌ ${context} Retry failed after clearing foreign repos:`,
-                  retryError
-                );
               }
+              console.error(
+                `❌ ${context} Retry failed after clearing foreign repos (quota)`
+              );
             }
           } else {
             const cleanupResult = clearNonLocalReposFromStorage({
               preserveWithMetadata: true,
             });
             if (cleanupResult.clearedKeys > 0) {
-              try {
-                const storageRepoRetry = resolveRepoStorageAlias(
-                  resolvedParams.entity,
-                  resolvedParams.repo
-                );
-                saveRepoFiles(resolvedParams.entity, storageRepoRetry, files);
+              const storageRepoRetry = resolveRepoStorageAlias(
+                resolvedParams.entity,
+                resolvedParams.repo
+              );
+              if (
+                saveRepoFiles(resolvedParams.entity, storageRepoRetry, files)
+              ) {
                 console.log(
                   `✅ ${context} Saved ${files.length} files after clearing ${cleanupResult.clearedKeys} non-local keys`
                 );
                 return;
-              } catch (retryError) {
-                console.error(
-                  `❌ ${context} Retry failed after clearing non-local repos:`,
-                  retryError
-                );
               }
+              console.error(
+                `❌ ${context} Retry failed after clearing non-local repos (quota)`
+              );
             }
           }
           console.error(
@@ -2651,60 +2752,12 @@ export default function RepoCodePage() {
             console.error("Failed to fetch repo:", error);
           }
         })();
-      } else {
-        // Repo not in localStorage - check if it's marked as deleted first
-        const deletedRepos = loadDeletedRepos();
-        const isDeleted = deletedRepos.some((d) => {
-          const entityMatch =
-            d.entity.toLowerCase() === resolvedParams.entity.toLowerCase();
-          const repoMatch =
-            d.repo.toLowerCase() === resolvedParams.repo.toLowerCase();
-          return entityMatch && repoMatch;
-        });
-
-        if (isDeleted) {
-          console.log(
-            "⏭️ [Foreign Repo] Repo is marked as deleted, showing deleted message"
-          );
-          setRepoData({
-            entity: resolvedParams.entity,
-            repo: resolvedParams.repo,
-            readme: "",
-            files: [],
-            name: resolvedParams.repo,
-            description: "This repository has been deleted.",
-            contributors: [],
-            defaultBranch: "main",
-          } as StoredRepo & { deleted?: boolean });
-          repoProcessedRef.current = repoKey;
-          return;
-        }
-
-        // Repo not in localStorage - create minimal repoData so page can render
-        // The Nostr query in the separate useEffect will resolve ownerPubkey
-        console.log(
-          "⚠️ [Foreign Repo] Repo not found in localStorage, creating minimal repoData:",
-          `entity=${resolvedParams.entity}, repo=${resolvedParams.repo}`
-        );
-
-        // Mark as processed to prevent re-running
-        repoProcessedRef.current = repoKey;
-
-        // Create minimal repoData with empty files - files will be fetched from Nostr if available
-        setRepoData({
-          entity: resolvedParams.entity,
-          repo: resolvedParams.repo,
-          readme: "",
-          files: [],
-          name: resolvedParams.repo,
-          description: "",
-          contributors: resolvedOwnerPubkey
-            ? [{ pubkey: resolvedOwnerPubkey, weight: 100 }]
-            : [],
-          defaultBranch: "main",
-        });
-        setSelectedBranch("main");
       }
+      // NOTE: Do not use an `else` here. The previous `else` was incorrectly tied to the
+      // `filesArray/readme/sourceUrl` import condition; when the repo existed but that
+      // condition was false (e.g. files already in `gittr_files` or a readme present), it
+      // overwrote the full `setRepoData` above with an empty "minimal" repo and hid files
+      // until a full reload.
       // Load local overrides and deletions
       try {
         const savedOverrides = loadRepoOverrides(
@@ -3162,9 +3215,7 @@ export default function RepoCodePage() {
         if (
           matchingRepo.sourceUrl &&
           typeof matchingRepo.sourceUrl === "string" &&
-          (matchingRepo.sourceUrl.includes("github.com") ||
-            matchingRepo.sourceUrl.includes("gitlab.com") ||
-            matchingRepo.sourceUrl.includes("codeberg.org"))
+          isRefetchableUpstreamSourceUrl(matchingRepo.sourceUrl)
         ) {
           console.log(
             "✅ [effectiveSourceUrl] Found sourceUrl in localStorage:",
@@ -3184,9 +3235,7 @@ export default function RepoCodePage() {
             (url: string) =>
               url &&
               typeof url === "string" &&
-              (url.includes("github.com") ||
-                url.includes("gitlab.com") ||
-                url.includes("codeberg.org"))
+              isRefetchableUpstreamSourceUrl(url)
           );
           if (gitHubCloneUrl) {
             // Remove .git suffix and convert SSH to HTTPS if needed
@@ -3218,9 +3267,7 @@ export default function RepoCodePage() {
       if (
         repoData.sourceUrl &&
         typeof repoData.sourceUrl === "string" &&
-        (repoData.sourceUrl.includes("github.com") ||
-          repoData.sourceUrl.includes("gitlab.com") ||
-          repoData.sourceUrl.includes("codeberg.org"))
+        isRefetchableUpstreamSourceUrl(repoData.sourceUrl)
       ) {
         console.log(
           "✅ [effectiveSourceUrl] Found sourceUrl in repoData:",
@@ -3237,9 +3284,7 @@ export default function RepoCodePage() {
           (url: string) =>
             url &&
             typeof url === "string" &&
-            (url.includes("github.com") ||
-              url.includes("gitlab.com") ||
-              url.includes("codeberg.org"))
+            isRefetchableUpstreamSourceUrl(url)
         );
         if (gitHubCloneUrl) {
           // Remove .git suffix and convert SSH to HTTPS if needed
@@ -3339,11 +3384,7 @@ export default function RepoCodePage() {
               "🔍 [effectiveSourceUrl] Found source tag:",
               foundSourceUrl
             );
-            if (
-              foundSourceUrl.includes("github.com") ||
-              foundSourceUrl.includes("gitlab.com") ||
-              foundSourceUrl.includes("codeberg.org")
-            ) {
+            if (isRefetchableUpstreamSourceUrl(foundSourceUrl)) {
               console.log(
                 "✅ [effectiveSourceUrl] Setting effectiveSourceUrl to:",
                 foundSourceUrl
@@ -3733,11 +3774,8 @@ export default function RepoCodePage() {
             Array.isArray(matchingRepo.clone) &&
             matchingRepo.clone.length > 0
           ) {
-            const gitCloneUrl = matchingRepo.clone.find(
-              (url: string) =>
-                url.includes("github.com") ||
-                url.includes("gitlab.com") ||
-                url.includes("codeberg.org")
+            const gitCloneUrl = matchingRepo.clone.find((url: string) =>
+              isRefetchableUpstreamSourceUrl(url)
             );
             if (gitCloneUrl) {
               sourceUrl = gitCloneUrl.replace(/\.git$/, "");
@@ -3807,15 +3845,17 @@ export default function RepoCodePage() {
         ) {
           cloneUrl = `https://${cloneUrl}`;
         }
-        // Add .git suffix if not present (for GitHub/Codeberg/GitLab)
-        const sourceUrlMatch = cloneUrl.match(
-          /(github\.com|codeberg\.org|gitlab\.com)\/([^\/]+)\/([^\/]+)/i
+        const isBigThree = Boolean(
+          cloneUrl.match(
+            /(github\.com|codeberg\.org|gitlab\.com)\/([^\/]+)\/([^\/]+)/i
+          )
         );
-        if (sourceUrlMatch) {
+        const isGenericUpstream =
+          !isBigThree && isRefetchableUpstreamSourceUrl(cloneUrl);
+        if (isBigThree || isGenericUpstream) {
           if (!cloneUrl.endsWith(".git")) {
             cloneUrl = `${cloneUrl}.git`;
           }
-          // Check if already in list (case-insensitive)
           const alreadyIncluded = initialCloneUrls.some(
             (url) =>
               url.toLowerCase() === cloneUrl.toLowerCase() ||
@@ -5669,9 +5709,7 @@ export default function RepoCodePage() {
                   // CRITICAL: Update effectiveSourceUrl immediately so button text updates
                   if (
                     sourceUrlFromEvent &&
-                    (sourceUrlFromEvent.includes("github.com") ||
-                      sourceUrlFromEvent.includes("gitlab.com") ||
-                      sourceUrlFromEvent.includes("codeberg.org"))
+                    isRefetchableUpstreamSourceUrl(sourceUrlFromEvent)
                   ) {
                     setEffectiveSourceUrl(sourceUrlFromEvent);
                   }
@@ -5733,13 +5771,8 @@ export default function RepoCodePage() {
                     Array.isArray(eventRepoData.clone) &&
                     eventRepoData.clone.length > 0
                   ) {
-                    // CRITICAL: Only use GitHub/GitLab/Codeberg clone URLs as sourceUrl
-                    // Nostr git servers (gittr.space, etc.) are handled by multi-source fetcher, not fetchGithubRaw
                     const gitCloneUrl = eventRepoData.clone.find(
-                      (url: string) =>
-                        url.includes("codeberg.org") ||
-                        url.includes("github.com") ||
-                        url.includes("gitlab.com")
+                      (url: string) => isRefetchableUpstreamSourceUrl(url)
                     );
                     if (gitCloneUrl) {
                       // Remove .git suffix and convert SSH to HTTPS if needed
@@ -5766,6 +5799,11 @@ export default function RepoCodePage() {
                             isGitHub: gitCloneUrl.includes("github.com"),
                             isGitLab: gitCloneUrl.includes("gitlab.com"),
                             isCodeberg: gitCloneUrl.includes("codeberg.org"),
+                            isSelfHosted:
+                              isRefetchableUpstreamSourceUrl(gitCloneUrl) &&
+                              !gitCloneUrl.includes("github.com") &&
+                              !gitCloneUrl.includes("gitlab.com") &&
+                              !gitCloneUrl.includes("codeberg.org"),
                             previousSourceUrl: prev.sourceUrl || "none",
                           }
                         );
@@ -5786,7 +5824,7 @@ export default function RepoCodePage() {
                       });
                     } else {
                       console.log(
-                        "ℹ️ [File Fetch] Event has clone URLs but none are GitHub/GitLab/Codeberg - will use multi-source fetcher for Nostr git servers"
+                        "ℹ️ [File Fetch] Event has clone URLs but none are refetchable upstream (GitHub/GitLab/Codeberg/HTTPS forge) - will use multi-source fetcher for Nostr git servers"
                       );
                     }
                   } else {
@@ -5971,15 +6009,14 @@ export default function RepoCodePage() {
                   console.error("❌ [File Fetch] Error reading clone URLs:", e);
                 }
 
-                console.log(
-                  `📋 [File Fetch] NIP-34: Total ${cloneUrls.length} unique clone URLs collected`
-                );
-
-                // CRITICAL: If we have a sourceUrl but it's not in clone URLs, add it!
-                // This handles cases where the repo exists on GitHub/Codeberg/GitLab but the clone URL wasn't in the NIP-34 event
-                // Check both repoDataRef and localStorage for sourceUrl
+                // CRITICAL: If we have an upstream sourceUrl (GitHub, self-hosted, etc.) but it's not in clone URLs, add it.
+                // NIP-34 events often list GRASP clone URLs only; viewers still need the forge URL to fetch tree via /api/git.
                 let sourceUrl =
-                  currentData?.sourceUrl || currentData?.forkedFrom;
+                  sourceUrlFromEvent ||
+                  currentData?.sourceUrl ||
+                  currentData?.forkedFrom ||
+                  eventRepoData?.sourceUrl ||
+                  eventRepoData?.forkedFrom;
                 if (!sourceUrl && typeof window !== "undefined") {
                   try {
                     const repos = loadStoredRepos();
@@ -6012,17 +6049,11 @@ export default function RepoCodePage() {
                   }
                 }
 
-                if (sourceUrl && !cloneUrls.includes(sourceUrl)) {
-                  const sourceUrlMatch = sourceUrl.match(
-                    /(github\.com|codeberg\.org|gitlab\.com)\/([^\/]+)\/([^\/]+)/i
-                  );
-                  if (sourceUrlMatch) {
-                    console.log(
-                      `✅ [File Fetch] Adding sourceUrl to clone URLs: ${sourceUrl}`
-                    );
-                    cloneUrls.push(sourceUrl);
-                  }
-                }
+                addUpstreamSourceToCloneUrls(cloneUrls, sourceUrl);
+
+                console.log(
+                  `📋 [File Fetch] NIP-34: Total ${cloneUrls.length} unique clone URLs collected`
+                );
 
                 // CRITICAL: Expand Nostr git clone URLs to try other known git servers
                 // If we have one Nostr git URL (e.g., relay.ngit.dev), also try other known servers
@@ -6103,11 +6134,25 @@ export default function RepoCodePage() {
                   filesArray.length > 0;
                 const hasAttempted =
                   fileFetchAttemptedRef.current === repoKeyWithBranch;
+                const hasCloneUrlsForEose = cloneUrls.length > 0;
+                // Match initial multi-source guard: never skip just because a fetch is in flight
+                // when we still have zero files — the first run may only have Nostr clone URLs;
+                // EOSE adds upstream sourceUrl (e.g. self-hosted git) required for a successful tree.
+                if (
+                  fileFetchInProgressRef.current &&
+                  !hasFiles &&
+                  hasCloneUrlsForEose
+                ) {
+                  console.log(
+                    "🔄 [File Fetch] EOSE: clearing isInProgress (no files yet; clone list now includes event URLs):",
+                    repoKeyWithBranch
+                  );
+                  fileFetchInProgressRef.current = false;
+                }
                 const isInProgress = fileFetchInProgressRef.current;
 
-                // Only skip if: (attempted AND has files) OR (truly in progress)
-                // This allows retry if attempted but no files yet (files undefined or empty array)
-                if ((hasAttempted && hasFiles) || isInProgress) {
+                // Only skip if we already have files (duplicate work). Same as initial clone-url fetch.
+                if ((hasAttempted && hasFiles) || (isInProgress && hasFiles)) {
                   console.log(
                     "⏭️ [File Fetch] Already attempted or in progress, skipping EOSE clone URLs fetch:",
                     repoKeyWithBranch,
@@ -6620,6 +6665,14 @@ export default function RepoCodePage() {
             } catch (e) {
               console.error("❌ [File Fetch] Error reading clone URLs:", e);
             }
+
+            const upstreamForTimeout =
+              sourceUrlFromEvent ||
+              currentData?.sourceUrl ||
+              currentData?.forkedFrom ||
+              eventRepoData?.sourceUrl ||
+              eventRepoData?.forkedFrom;
+            addUpstreamSourceToCloneUrls(cloneUrls, upstreamForTimeout);
 
             console.log(
               `📋 [File Fetch] NIP-34: Total ${cloneUrls.length} unique clone URLs collected:`,
@@ -7233,6 +7286,14 @@ export default function RepoCodePage() {
                   );
                 }
 
+                const upstreamForBridgeRetry =
+                  sourceUrlFromEvent ||
+                  currentData?.sourceUrl ||
+                  currentData?.forkedFrom ||
+                  eventRepoData?.sourceUrl ||
+                  eventRepoData?.forkedFrom;
+                addUpstreamSourceToCloneUrls(cloneUrls, upstreamForBridgeRetry);
+
                 console.log(
                   `📋 [File Fetch] NIP-34: Total ${cloneUrls.length} unique clone URLs collected for multi-source fetch`
                 );
@@ -7555,12 +7616,8 @@ export default function RepoCodePage() {
                       Array.isArray(matchingRepo.clone) &&
                       matchingRepo.clone.length > 0
                     ) {
-                      // Only use GitHub/GitLab/Codeberg clone URLs
-                      const cloneUrl = matchingRepo.clone.find(
-                        (url: string) =>
-                          url.includes("github.com") ||
-                          url.includes("gitlab.com") ||
-                          url.includes("codeberg.org")
+                      const cloneUrl = matchingRepo.clone.find((url: string) =>
+                        isRefetchableUpstreamSourceUrl(url)
                       );
                       if (cloneUrl) {
                         // Remove .git suffix and use as sourceUrl
@@ -7603,7 +7660,9 @@ export default function RepoCodePage() {
                   sourceUrlFromEvent ||
                   sourceUrlFromStorage ||
                   currentData?.sourceUrl ||
-                  currentData?.forkedFrom;
+                  currentData?.forkedFrom ||
+                  eventRepoData?.sourceUrl ||
+                  eventRepoData?.forkedFrom;
 
                 // NIP-34: Try fetching from all clone URLs (multi-source fetching)
                 // Get clone URLs from event, localStorage, or repoData
@@ -7701,6 +7760,8 @@ export default function RepoCodePage() {
                     e
                   );
                 }
+
+                addUpstreamSourceToCloneUrls(cloneUrls, sourceUrl);
 
                 console.log(
                   `📋 [File Fetch] NIP-34: Total ${cloneUrls.length} unique clone URLs collected`
@@ -10829,15 +10890,12 @@ export default function RepoCodePage() {
             }
           );
 
-          // NEW: If we have a GitHub/GitLab/Codeberg source URL, fetch latest content directly
           const sourceUrlForFetch =
             effectiveSourceUrl || repoData?.sourceUrl || null;
 
           if (
             sourceUrlForFetch &&
-            (sourceUrlForFetch.includes("github.com") ||
-              sourceUrlForFetch.includes("gitlab.com") ||
-              sourceUrlForFetch.includes("codeberg.org"))
+            isRefetchableUpstreamSourceUrl(sourceUrlForFetch)
           ) {
             try {
               const branchToUse =
@@ -10938,9 +10996,7 @@ export default function RepoCodePage() {
 
     if (
       sourceUrlForPriorityFetch &&
-      (sourceUrlForPriorityFetch.includes("github.com") ||
-        sourceUrlForPriorityFetch.includes("gitlab.com") ||
-        sourceUrlForPriorityFetch.includes("codeberg.org"))
+      isRefetchableUpstreamSourceUrl(sourceUrlForPriorityFetch)
     ) {
       try {
         const branchToUse = selectedBranch || repoData?.defaultBranch || "main";
@@ -11368,11 +11424,8 @@ export default function RepoCodePage() {
         ((repoData as any)?.clone &&
         Array.isArray((repoData as any).clone) &&
         (repoData as any).clone.length > 0
-          ? (repoData as any).clone.find(
-              (url: string) =>
-                url.includes("github.com") ||
-                url.includes("gitlab.com") ||
-                url.includes("codeberg.org")
+          ? (repoData as any).clone.find((url: string) =>
+              isRefetchableUpstreamSourceUrl(url)
             )
           : null);
 
@@ -11415,11 +11468,8 @@ export default function RepoCodePage() {
               Array.isArray(matchingRepo.clone) &&
               matchingRepo.clone.length > 0
             ) {
-              const gitCloneUrl = matchingRepo.clone.find(
-                (url: string) =>
-                  url.includes("github.com") ||
-                  url.includes("gitlab.com") ||
-                  url.includes("codeberg.org")
+              const gitCloneUrl = matchingRepo.clone.find((url: string) =>
+                isRefetchableUpstreamSourceUrl(url)
               );
               if (gitCloneUrl) {
                 // CRITICAL: Normalize SSH URLs (git@host:path) to HTTPS format
@@ -14240,6 +14290,7 @@ export default function RepoCodePage() {
                     rehypePlugins={[rehypeRaw]}
                     components={{
                       ...readmeHeadingComponents,
+                      ...markdownProseCodeSafeComponents,
                       img: ({ node, ...props }) => {
                         // Transform relative image paths to absolute URLs
                         let imageSrc = props.src || "";
@@ -14987,103 +15038,7 @@ export default function RepoCodePage() {
                           rehypePlugins={[rehypeRaw]}
                           components={{
                             ...fileHeadingComponents,
-                            p: ({ node, children, ...props }: any) => {
-                              // CRITICAL: Check if paragraph contains code elements that will render as blocks
-                              // ReactMarkdown wraps code blocks in paragraphs, but CopyableCodeBlock renders as div/pre
-                              // This creates invalid HTML: <p><div><pre>...</pre></div></p>
-
-                              // Recursively check AST node for code elements with language classes (block code)
-                              const checkForBlockCode = (
-                                child: any
-                              ): boolean => {
-                                if (!child) return false;
-
-                                // Check if this is a code element with language class (block code)
-                                if (
-                                  child.type === "element" &&
-                                  child.tagName === "code"
-                                ) {
-                                  const className =
-                                    child.properties?.className || "";
-                                  if (
-                                    typeof className === "string" &&
-                                    className.includes("language-")
-                                  ) {
-                                    return true;
-                                  }
-                                }
-
-                                // Check for other block-level elements
-                                if (
-                                  child.type === "element" &&
-                                  (child.tagName === "div" ||
-                                    child.tagName === "iframe" ||
-                                    child.tagName === "img" ||
-                                    child.tagName === "pre")
-                                ) {
-                                  return true;
-                                }
-
-                                // Recursively check children
-                                if (
-                                  child.children &&
-                                  Array.isArray(child.children)
-                                ) {
-                                  return child.children.some(checkForBlockCode);
-                                }
-
-                                return false;
-                              };
-
-                              const hasBlockCode =
-                                node?.children?.some(checkForBlockCode);
-
-                              // Check React children for CopyableCodeBlock components or div/pre elements
-                              // IMPORTANT: We need to check if ANY child will render as a block-level element
-                              const childrenArray = Array.isArray(children)
-                                ? children
-                                : [children];
-                              const hasBlockElement = childrenArray.some(
-                                (child: any) => {
-                                  if (!child || typeof child !== "object")
-                                    return false;
-
-                                  // Check if it's CopyableCodeBlock component
-                                  if (child.type) {
-                                    const componentName =
-                                      child.type.name ||
-                                      child.type.displayName ||
-                                      "";
-                                    if (componentName === "CopyableCodeBlock") {
-                                      // CopyableCodeBlock renders as div/pre when inline is false or undefined
-                                      // Default is inline=false, so we need to check the actual prop value
-                                      // If inline is explicitly true, it renders as <code> (inline)
-                                      // Otherwise, it renders as <div><pre> (block)
-                                      if (child.props?.inline !== true) {
-                                        return true; // Block-level rendering
-                                      }
-                                    }
-
-                                    // Check if it's already a div or pre element
-                                    if (
-                                      child.type === "div" ||
-                                      child.type === "pre"
-                                    ) {
-                                      return true;
-                                    }
-                                  }
-
-                                  return false;
-                                }
-                              );
-
-                              // If paragraph contains block-level code or other block elements, render as div
-                              if (hasBlockCode || hasBlockElement) {
-                                return <div {...props}>{children}</div>;
-                              }
-
-                              return <p {...props}>{children}</p>;
-                            },
+                            ...markdownProseCodeSafeComponents,
                             img: ({ node, ...props }) => {
                               // Transform relative image paths to absolute URLs
                               let imageSrc = props.src || "";
@@ -15671,7 +15626,10 @@ export default function RepoCodePage() {
                     decodedRepo
                   );
                   // Prefer repoData state over localStorage (it's updated after bridge checks)
-                  const repo = repoData || repoFromStorage;
+                  const repo = mergeRepoStateWithStorage(
+                    repoData,
+                    repoFromStorage
+                  );
 
                   // Check ownership even if repo is not in localStorage
                   const ownsByRepoRecord =
@@ -15803,9 +15761,7 @@ export default function RepoCodePage() {
                         (url: string) =>
                           url &&
                           typeof url === "string" &&
-                          (url.includes("github.com") ||
-                            url.includes("gitlab.com") ||
-                            url.includes("codeberg.org"))
+                          isRefetchableUpstreamSourceUrl(url)
                       )) ||
                     (repo.clone &&
                       Array.isArray(repo.clone) &&
@@ -15813,27 +15769,19 @@ export default function RepoCodePage() {
                         (url: string) =>
                           url &&
                           typeof url === "string" &&
-                          (url.includes("github.com") ||
-                            url.includes("gitlab.com") ||
-                            url.includes("codeberg.org"))
+                          isRefetchableUpstreamSourceUrl(url)
                       ));
 
                   const hasSourceUrl =
                     (effectiveSourceUrl &&
                       typeof effectiveSourceUrl === "string" &&
-                      (effectiveSourceUrl.includes("github.com") ||
-                        effectiveSourceUrl.includes("gitlab.com") ||
-                        effectiveSourceUrl.includes("codeberg.org"))) ||
+                      isRefetchableUpstreamSourceUrl(effectiveSourceUrl)) ||
                     (repoData?.sourceUrl &&
                       typeof repoData.sourceUrl === "string" &&
-                      (repoData.sourceUrl.includes("github.com") ||
-                        repoData.sourceUrl.includes("gitlab.com") ||
-                        repoData.sourceUrl.includes("codeberg.org"))) ||
+                      isRefetchableUpstreamSourceUrl(repoData.sourceUrl)) ||
                     (repo.sourceUrl &&
                       typeof repo.sourceUrl === "string" &&
-                      (repo.sourceUrl.includes("github.com") ||
-                        repo.sourceUrl.includes("gitlab.com") ||
-                        repo.sourceUrl.includes("codeberg.org"))) ||
+                      isRefetchableUpstreamSourceUrl(repo.sourceUrl)) ||
                     hasCloneUrl;
 
                   // Debug logging
@@ -15955,11 +15903,8 @@ export default function RepoCodePage() {
                                 ) {
                                   for (const cloneUrl of repo.clone) {
                                     if (typeof cloneUrl === "string") {
-                                      // Check for GitHub/GitLab/Codeberg URLs
                                       if (
-                                        cloneUrl.includes("github.com") ||
-                                        cloneUrl.includes("gitlab.com") ||
-                                        cloneUrl.includes("codeberg.org")
+                                        isRefetchableUpstreamSourceUrl(cloneUrl)
                                       ) {
                                         // Convert clone URL to source URL (remove .git, convert git@ to https://)
                                         let sourceUrl = cloneUrl.replace(
@@ -16073,15 +16018,12 @@ export default function RepoCodePage() {
                                   }
                                 }
 
-                                // Check if we have a valid sourceUrl (GitHub/GitLab/Codeberg)
                                 const hasEffectiveSourceUrl =
                                   effectiveSourceUrl &&
                                   typeof effectiveSourceUrl === "string" &&
-                                  (effectiveSourceUrl.includes("github.com") ||
-                                    effectiveSourceUrl.includes("gitlab.com") ||
-                                    effectiveSourceUrl.includes(
-                                      "codeberg.org"
-                                    ));
+                                  isRefetchableUpstreamSourceUrl(
+                                    effectiveSourceUrl
+                                  );
 
                                 // Handle refetch for GitHub/GitLab/Codeberg repos
                                 if (hasEffectiveSourceUrl) {
@@ -16478,15 +16420,9 @@ export default function RepoCodePage() {
                                       // CRITICAL: Update effectiveSourceUrl state immediately so button text updates
                                       if (
                                         updatedSourceUrl &&
-                                        (updatedSourceUrl.includes(
-                                          "github.com"
-                                        ) ||
-                                          updatedSourceUrl.includes(
-                                            "gitlab.com"
-                                          ) ||
-                                          updatedSourceUrl.includes(
-                                            "codeberg.org"
-                                          ))
+                                        isRefetchableUpstreamSourceUrl(
+                                          updatedSourceUrl
+                                        )
                                       ) {
                                         setEffectiveSourceUrl(updatedSourceUrl);
                                       }
@@ -17919,7 +17855,14 @@ export default function RepoCodePage() {
                                             resolvedParams.repo
                                           );
                                         if (updatedRepo) {
-                                          setRepoData(updatedRepo);
+                                          setRepoData(
+                                            mergeStoredRepoWithFilesFromStorage(
+                                              updatedRepo,
+                                              resolvedParams.entity,
+                                              resolvedParams.repo,
+                                              repoDataRef.current?.files
+                                            )
+                                          );
 
                                           // Check bridge and update status
                                           // CRITICAL: Bridge processes events asynchronously from Nostr relays
@@ -17987,7 +17930,15 @@ export default function RepoCodePage() {
                                                       repoName
                                                     );
                                                   if (finalRepo) {
-                                                    setRepoData(finalRepo);
+                                                    setRepoData(
+                                                      mergeStoredRepoWithFilesFromStorage(
+                                                        finalRepo,
+                                                        entity,
+                                                        repoName,
+                                                        repoDataRef.current
+                                                          ?.files
+                                                      )
+                                                    );
                                                   }
                                                 } else if (attempt < 3) {
                                                   // Retry up to 3 times (total 12 seconds)

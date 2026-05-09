@@ -220,14 +220,14 @@ function NewRepoPageContent() {
           // For imports, use GitHub repo name but keep user's Nostr pubkey as entity
           const entity = entityInfo.entitySlug; // Use npub format (GRASP protocol standard)
           const repo = importedRepoSlug; // Use slugified version
-          const exists = repos.some((r: any) => {
-            const found = findRepoByEntityAndName<StoredRepo>(
-              [r],
-              entity,
-              repo
-            );
-            return found !== undefined || r.slug === repo;
-          });
+          // Only treat as duplicate for the same entity+repo (never match slug alone:
+          // another cached repo can share a slug under a different entity and would
+          // incorrectly block imports).
+          const duplicateIdx = repos.findIndex(
+            (r: any) =>
+              findRepoByEntityAndName<StoredRepo>([r], entity, repo) !==
+              undefined
+          );
           // Ensure current user (owner) is ALWAYS in contributors array with pubkey for icon resolution
           // GitHub contributors won't have pubkeys, but we add the current user as owner
           const contributors: Array<{
@@ -300,8 +300,8 @@ function NewRepoPageContent() {
             name: originalRepoName, // CRITICAL: Preserve original GitHub name (with dots) for display
             // Always set ownerPubkey for reliable ownership detection
             ownerPubkey: pubkey || undefined,
-            sourceUrl: url,
-            forkedFrom: url,
+            sourceUrl: normalizedUrl,
+            forkedFrom: normalizedUrl,
             readme: d.readme,
             fileCount: fileCount, // CRITICAL: Only store fileCount, not full files array (prevents quota exceeded)
             description: d.description,
@@ -351,10 +351,13 @@ function NewRepoPageContent() {
             return;
           }
 
-          localStorage.setItem(
-            "gittr_repos",
-            JSON.stringify(exists ? repos : [rec, ...repos])
-          );
+          const nextRepos =
+            duplicateIdx >= 0
+              ? repos.map((r: StoredRepo, i: number) =>
+                  i === duplicateIdx ? { ...r, ...rec } : r
+                )
+              : [rec, ...repos];
+          localStorage.setItem("gittr_repos", JSON.stringify(nextRepos));
 
           // Dispatch event to update repositories page
           window.dispatchEvent(new CustomEvent("gittr:repo-created"));
@@ -369,9 +372,10 @@ function NewRepoPageContent() {
                     repositoryName: repo,
                     publicRead: true,
                     publicWrite: false,
-                    description: d.description || `Imported from ${url}`,
-                    sourceUrl: url,
-                    forkedFrom: url,
+                    description:
+                      d.description || `Imported from ${normalizedUrl}`,
+                    sourceUrl: normalizedUrl,
+                    forkedFrom: normalizedUrl,
                     readme: d.readme,
                     files: d.files,
                     stars: d.stars,
@@ -431,14 +435,11 @@ function NewRepoPageContent() {
 
       try {
         const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
-        const exists = repos.some((r: any) => {
-          const found = findRepoByEntityAndName<StoredRepo>(
-            [r],
-            entity,
-            repoSlug
-          );
-          return found !== undefined || r.slug === repoSlug;
-        });
+        const duplicateIdx = repos.findIndex(
+          (r: any) =>
+            findRepoByEntityAndName<StoredRepo>([r], entity, repoSlug) !==
+            undefined
+        );
         // If forking, copy source repo files/readme/metadata
         const isFork = !!(forkEntity && forkRepo && forkSource);
 
@@ -632,10 +633,13 @@ function NewRepoPageContent() {
           return;
         }
 
-        localStorage.setItem(
-          "gittr_repos",
-          JSON.stringify(exists ? repos : [rec, ...repos])
-        );
+        const nextRepos =
+          duplicateIdx >= 0
+            ? repos.map((r: StoredRepo, i: number) =>
+                i === duplicateIdx ? { ...r, ...rec } : r
+              )
+            : [rec, ...repos];
+        localStorage.setItem("gittr_repos", JSON.stringify(nextRepos));
 
         // Dispatch event to update repositories page
         window.dispatchEvent(new CustomEvent("gittr:repo-created"));

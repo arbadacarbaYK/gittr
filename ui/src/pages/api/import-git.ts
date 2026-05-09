@@ -82,6 +82,20 @@ function parseGitUrl(
   return null;
 }
 
+/** Many hosts require an explicit `.git` suffix; try it if the first clone fails. */
+function buildCloneAttemptUrls(cloneUrl: string): string[] {
+  const out: string[] = [cloneUrl];
+  if (cloneUrl.startsWith("https://") || cloneUrl.startsWith("http://")) {
+    const trimmed = cloneUrl.replace(/\/+$/, "");
+    if (!trimmed.endsWith(".git")) {
+      out.push(`${trimmed}.git`);
+    }
+  } else if (cloneUrl.startsWith("git@") && !cloneUrl.endsWith(".git")) {
+    out.push(`${cloneUrl}.git`);
+  }
+  return out;
+}
+
 /**
  * Clone repository to temporary directory and extract files
  */
@@ -103,9 +117,6 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
   );
 
   try {
-    // Create temp directory
-    fs.mkdirSync(tempDir, { recursive: true });
-
     // Normalize URL for git clone
     let cloneUrl = sourceUrl;
     if (sourceUrl.startsWith("git@")) {
@@ -122,20 +133,48 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
       cloneUrl = `https://${sourceUrl}`;
     }
 
-    console.log(`🔍 [Import Git] Cloning ${cloneUrl} to ${tempDir}`);
+    const attemptUrls = [...new Set(buildCloneAttemptUrls(cloneUrl))];
+    console.log(`🔍 [Import Git] Clone attempts: ${attemptUrls.join(" | ")}`);
 
-    // Clone repository (shallow clone for speed)
-    const { stdout, stderr } = await execAsync(
-      `git clone --depth 1 "${cloneUrl}" "${tempDir}"`,
-      { timeout: 60000 } // 60 second timeout
-    );
+    let stderr = "";
+    let cloneOk = false;
+    let lastCloneError: unknown = null;
 
-    if (
-      stderr &&
-      !stderr.includes("Cloning into") &&
-      !stderr.includes("warning")
-    ) {
-      console.warn("Git clone stderr:", stderr);
+    for (const attempt of attemptUrls) {
+      try {
+        if (fs.existsSync(tempDir)) {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+        fs.mkdirSync(tempDir, { recursive: true });
+        const result = await execAsync(
+          `git clone --depth 1 "${attempt}" "${tempDir}"`,
+          { timeout: 60000 }
+        );
+        stderr = result.stderr || "";
+        if (
+          stderr &&
+          !stderr.includes("Cloning into") &&
+          !stderr.includes("warning")
+        ) {
+          console.warn("Git clone stderr:", stderr);
+        }
+        cloneOk = true;
+        break;
+      } catch (err) {
+        lastCloneError = err;
+        console.warn(`⚠️ [Import Git] Clone failed for ${attempt}:`, err);
+      }
+    }
+
+    if (!cloneOk) {
+      console.error(
+        "❌ [Import Git] All clone attempts failed:",
+        attemptUrls,
+        lastCloneError
+      );
+      throw lastCloneError instanceof Error
+        ? lastCloneError
+        : new Error(String(lastCloneError));
     }
 
     // Get default branch

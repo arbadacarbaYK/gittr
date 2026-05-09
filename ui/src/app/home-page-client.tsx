@@ -7,6 +7,10 @@ import { BoltSnow } from "@/components/ui/bolt-snow";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ZapButton } from "@/components/ui/zap-button";
 import { type Activity, backfillActivities } from "@/lib/activity-tracking";
+import {
+  isPublisherBlocklisted,
+  isRepoFromBlocklistedOwner,
+} from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
@@ -382,6 +386,7 @@ export default function HomePage() {
           try {
             // Collect NIP-34 events for later processing (to pick latest)
             if (event.kind === KIND_REPOSITORY_NIP34) {
+              if (isPublisherBlocklisted(event.pubkey)) return;
               const dTag = event.tags?.find(
                 (t: any) => Array.isArray(t) && t[0] === "d"
               );
@@ -400,6 +405,7 @@ export default function HomePage() {
               event.kind === KIND_REPOSITORY ||
               event.kind === KIND_REPOSITORY_NIP34
             ) {
+              if (isPublisherBlocklisted(event.pubkey)) return;
               try {
                 let repoData;
                 if (event.kind === KIND_REPOSITORY_NIP34) {
@@ -524,6 +530,7 @@ export default function HomePage() {
                       );
                       const latestEvent = eventList[0]?.event;
                       if (!latestEvent) return;
+                      if (isPublisherBlocklisted(latestEvent.pubkey)) return;
 
                       // Update with latest event
                       try {
@@ -1094,6 +1101,8 @@ export default function HomePage() {
       if (isTestRepo || isProfileRepo) {
         return false; // Filter out test/profile repos
       }
+
+      if (isRepoFromBlocklistedOwner(r)) return false;
 
       return true;
     });

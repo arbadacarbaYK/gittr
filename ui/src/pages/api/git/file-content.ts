@@ -839,6 +839,125 @@ export default async function handler(
           details: fetchError.message,
         });
       }
+    } else if (
+      (() => {
+        try {
+          let u = String(sourceUrl).trim();
+          if (u.startsWith("git@")) {
+            const m = u.match(/^git@([^:]+):(.+)$/);
+            if (m) u = `https://${m[1]}/${m[2]}`;
+          }
+          const parsed = new URL(u);
+          const host = parsed.hostname.toLowerCase();
+          if (
+            host === "localhost" ||
+            host === "127.0.0.1" ||
+            host.endsWith(".local")
+          ) {
+            return false;
+          }
+          const parts = parsed.pathname.split("/").filter(Boolean);
+          if (parts.length < 2) return false;
+          if (
+            /^github\.com$/i.test(host) ||
+            /^gitlab\.com$/i.test(host) ||
+            /^codeberg\.org$/i.test(host)
+          ) {
+            return false;
+          }
+          const owner = parts[0];
+          if (!owner || /^npub1[a-z0-9]+$/i.test(owner)) return false;
+          return true;
+        } catch {
+          return false;
+        }
+      })()
+    ) {
+      // Gitea / Forgejo / many self-hosted forges: /owner/repo/raw/branch/{ref}/{path}
+      let normalized = String(sourceUrl).trim();
+      if (normalized.startsWith("git@")) {
+        const m = normalized.match(/^git@([^:]+):(.+)$/);
+        if (m) normalized = `https://${m[1]}/${m[2]}`;
+      }
+      const parsed = new URL(normalized);
+      const parts = parsed.pathname.split("/").filter(Boolean);
+      const owner = parts[0] as string;
+      const repoFile = (parts[parts.length - 1] as string).replace(
+        /\.git$/i,
+        ""
+      );
+      const host = parsed.hostname;
+      const branchStr: string = Array.isArray(branch)
+        ? branch[0] || "main"
+        : typeof branch === "string"
+        ? branch
+        : "main";
+      const filePathStr: string = Array.isArray(filePath)
+        ? filePath[0] || ""
+        : typeof filePath === "string"
+        ? filePath
+        : "";
+      if (!filePathStr) {
+        return res.status(400).json({ error: "path is required" });
+      }
+      const base = `${parsed.protocol}//${host}`;
+      const rawCandidates = [
+        `${base}/${owner}/${repoFile}/raw/branch/${encodeURIComponent(
+          branchStr
+        )}/${encodePathSegments(filePathStr)}`,
+        `${base}/${owner}/${repoFile}/raw/${encodeURIComponent(
+          branchStr
+        )}/${encodePathSegments(filePathStr)}`,
+      ];
+      let lastStatus = 400;
+      for (const rawUrl of rawCandidates) {
+        console.log(`🔍 [Git API] Self-hosted raw URL try: ${rawUrl}`);
+        try {
+          const response = await fetch(rawUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (compatible; gittr-space/1.0)",
+              Accept: "*/*",
+            } as any,
+            redirect: "follow",
+          });
+          lastStatus = response.status;
+          if (response.ok) {
+            const contentType = response.headers.get("content-type") || "";
+            const isBinary =
+              !contentType.startsWith("text/") &&
+              !contentType.includes("json") &&
+              !contentType.includes("xml") &&
+              !contentType.includes("javascript") &&
+              !contentType.includes("css") &&
+              !contentType.includes("markdown");
+            if (isBinary) {
+              const arrayBuffer = await response.arrayBuffer();
+              const base64 = Buffer.from(arrayBuffer).toString("base64");
+              return res.status(200).json({
+                content: base64,
+                isBinary: true,
+                path: filePath,
+                branch,
+              });
+            }
+            const txt = await response.text();
+            return res.status(200).json({
+              content: txt,
+              isBinary: false,
+              path: filePath,
+              branch,
+            });
+          }
+        } catch (e: any) {
+          console.warn(`⚠️ [Git API] Self-hosted fetch failed:`, e?.message);
+        }
+      }
+      return res.status(lastStatus === 404 ? 404 : 502).json({
+        error: "Failed to fetch file from self-hosted git server",
+        status: lastStatus,
+        path: filePath,
+        branch,
+      });
     } else {
       // Check if it's a GRASP server - these use the bridge API
       const { isGraspServer } = require("@/lib/utils/grasp-servers");
@@ -949,7 +1068,7 @@ export default async function handler(
 
       return res.status(400).json({
         error:
-          "Unsupported git server. Only GitHub, GitLab, Codeberg, and GRASP servers are supported.",
+          "Unsupported git server. Only GitHub, GitLab, Codeberg, self-hosted (Gitea-style raw), and GRASP servers are supported.",
         sourceUrl,
       });
     }

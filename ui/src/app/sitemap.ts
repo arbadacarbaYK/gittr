@@ -1,3 +1,4 @@
+import { filterRepoPathLinesByPublisherBlocklist } from "@/lib/moderation/publisher-blocklist";
 import { fetchGittrPagesSitemapEntries } from "@/lib/seo/gittr-pages-sitemap";
 import { fetchSitemapRepoPathsFromNostr } from "@/lib/seo/nostr-sitemap-repos";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
@@ -67,7 +68,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   const fromNostr = await fetchSitemapRepoPathsFromNostr();
-  const fromFile = loadNostrPushedRepoPaths();
+  const fromFile = filterRepoPathLinesByPublisherBlocklist(
+    loadNostrPushedRepoPaths()
+  );
 
   const pathToModified = new Map<string, number>(fromNostr);
   const now = Date.now();

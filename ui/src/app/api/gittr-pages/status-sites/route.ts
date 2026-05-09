@@ -3,6 +3,7 @@ import {
   parseGatewayStatusHtml,
   parseGatewayStatusMeta,
 } from "@/lib/gittr-pages/parse-gateway-status-html";
+import { filterGatewaySitesByPublisherBlocklist } from "@/lib/moderation/publisher-blocklist";
 
 import { NextResponse } from "next/server";
 
@@ -26,13 +27,17 @@ export async function GET() {
     if (jsonRes.ok) {
       const raw = await jsonRes.json();
       const { sites, meta } = parseGatewayManifestsJson(raw, base);
+      const sitesFiltered = filterGatewaySitesByPublisherBlocklist(sites);
       return NextResponse.json({
         pagesBase: base,
         statusUrl,
         manifestsUrl,
         source: "json" as const,
-        sites,
-        meta,
+        sites: sitesFiltered,
+        meta: {
+          ...meta,
+          siteCount: sitesFiltered.length,
+        },
       });
     }
 
@@ -53,7 +58,9 @@ export async function GET() {
     }
 
     const html = await res.text();
-    const sites = parseGatewayStatusHtml(html, base);
+    const sites = filterGatewaySitesByPublisherBlocklist(
+      parseGatewayStatusHtml(html, base)
+    );
     const meta = parseGatewayStatusMeta(html);
 
     return NextResponse.json({

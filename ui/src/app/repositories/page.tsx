@@ -13,6 +13,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getUserActivities } from "@/lib/activity-tracking";
+import {
+  isPublisherBlocklisted,
+  isRepoFromBlocklistedOwner,
+} from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
@@ -716,6 +720,8 @@ export default function RepositoriesPage() {
         if ((r as any).deleted === true || (r as any).archived === true)
           return false;
 
+        if (isRepoFromBlocklistedOwner(r)) return false;
+
         return true;
       });
 
@@ -916,6 +922,7 @@ export default function RepositoriesPage() {
         // CRITICAL: For NIP-34 replaceable events, collect ALL events first
         // Don't process immediately - wait for EOSE to pick the latest one
         if ((event.kind as number) === KIND_REPOSITORY_NIP34) {
+          if (isPublisherBlocklisted(event.pubkey)) return;
           const dTag = event.tags?.find(
             (t: any) => Array.isArray(t) && t[0] === "d"
           );
@@ -944,6 +951,7 @@ export default function RepositoriesPage() {
           (event.kind as number) === KIND_REPOSITORY ||
           (event.kind as number) === KIND_REPOSITORY_NIP34
         ) {
+          if (isPublisherBlocklisted(event.pubkey)) return;
           try {
             let repoData: any;
             if ((event.kind as number) === KIND_REPOSITORY_NIP34) {

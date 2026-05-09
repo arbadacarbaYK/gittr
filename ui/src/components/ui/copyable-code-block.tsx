@@ -131,3 +131,5 @@ export function CopyableCodeBlock({
     </div>
   );
 }
+
+CopyableCodeBlock.displayName = "CopyableCodeBlock";

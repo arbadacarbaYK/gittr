@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
+import { isPublisherBlocklisted } from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   parseGitHubRepoSpec,
@@ -348,6 +349,7 @@ export function AppsDirectoryClient() {
       relays,
       (event: NostrEventLike) => {
         if (cancelled) return;
+        if (isPublisherBlocklisted(event.pubkey)) return;
         if (event.kind === KIND_SOFTWARE_APPLICATION) {
           rawAppEventsRef.current.push(event);
           const map = dedupeSoftwareApps(rawAppEventsRef.current);

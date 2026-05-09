@@ -18,7 +18,101 @@ export type GitSourceType =
   | "github" // GitHub: https://github.com/user/repo.git
   | "codeberg" // Codeberg: https://codeberg.org/user/repo.git
   | "gitlab" // GitLab: https://gitlab.com/user/repo.git
+  | "self-hosted-git" // Gitea/Forgejo/self-hosted: https://git.example.com/owner/repo.git
   | "unknown"; // Unknown git server
+
+/**
+ * True for https(s) remotes that look like host/owner/repo where owner is not an npub path.
+ * Used to include self-hosted forges in clone lists and refetch.
+ */
+export function isGenericHttpsGitRemoteUrl(raw: string): boolean {
+  if (!raw || typeof raw !== "string") return false;
+  try {
+    let u = raw.trim();
+    const sshMatch = u.match(/^git@([^:]+):(.+)$/);
+    if (sshMatch) {
+      const [, host, path] = sshMatch;
+      u = `https://${host}/${path}`;
+    } else if (u.startsWith("git://")) {
+      u = u.replace(/^git:\/\//, "https://");
+    }
+    if (!/^https?:\/\//i.test(u)) {
+      u = `https://${u}`;
+    }
+    const parsed = new URL(u);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return false;
+    }
+    const host = parsed.hostname.toLowerCase();
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host.endsWith(".local") ||
+      host === "0.0.0.0"
+    ) {
+      return false;
+    }
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    if (parts.length < 2) return false;
+    const ownerSeg = parts[0];
+    if (!ownerSeg || /^npub1[a-z0-9]+$/i.test(ownerSeg)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Upstream URLs we can refetch or list via server-side git (GitHub/GitLab/Codeberg or generic HTTPS). */
+export function isRefetchableUpstreamSourceUrl(raw: string): boolean {
+  if (!raw || typeof raw !== "string") return false;
+  const t = raw.trim();
+  if (
+    t.includes("github.com") ||
+    t.includes("gitlab.com") ||
+    t.includes("codeberg.org")
+  ) {
+    return true;
+  }
+  return isGenericHttpsGitRemoteUrl(t);
+}
+
+/**
+ * Normalize a refetchable upstream (GitHub, self-hosted HTTPS, etc.) to a HTTPS .git URL
+ * and append to cloneUrls if not already represented (ignores .git suffix and case).
+ */
+export function addUpstreamSourceToCloneUrls(
+  cloneUrls: string[],
+  rawSource: string | undefined | null
+): void {
+  if (!rawSource || typeof rawSource !== "string") return;
+  const trimmed = rawSource.trim();
+  if (!isRefetchableUpstreamSourceUrl(trimmed)) return;
+
+  let cloneUrl = trimmed;
+  const sshMatch = cloneUrl.match(/^git@([^:]+):(.+)$/);
+  if (sshMatch) {
+    cloneUrl = `https://${sshMatch[1]}/${sshMatch[2]}`;
+  } else if (
+    !cloneUrl.startsWith("http://") &&
+    !cloneUrl.startsWith("https://")
+  ) {
+    cloneUrl = `https://${cloneUrl}`;
+  }
+  if (!cloneUrl.endsWith(".git")) {
+    cloneUrl = `${cloneUrl}.git`;
+  }
+
+  const norm = (u: string) => {
+    let s = u.trim();
+    const m = s.match(/^git@([^:]+):(.+)$/);
+    if (m) s = `https://${m[1]}/${m[2]}`;
+    return s.replace(/\.git$/i, "").toLowerCase();
+  };
+
+  const n = norm(cloneUrl);
+  if (cloneUrls.some((u) => norm(u) === n)) return;
+  cloneUrls.push(cloneUrl);
+}
 
 export interface GitSource {
   type: GitSourceType;
@@ -234,6 +328,31 @@ export function parseGitSource(cloneUrl: string): GitSource {
       owner,
       repo,
     };
+  }
+
+  // Self-hosted / Gitea / Forgejo: https://git.example.com/owner/repo
+  const selfHostedMatch = url.match(
+    /^https?:\/\/([^\/]+)\/([^\/]+)\/([^\/]+)$/i
+  );
+  if (selfHostedMatch) {
+    const [, host, ownerSeg, repoSeg] = selfHostedMatch;
+    if (
+      host &&
+      ownerSeg &&
+      repoSeg &&
+      !/^github\.com$/i.test(host) &&
+      !/^gitlab\.com$/i.test(host) &&
+      !/^codeberg\.org$/i.test(host) &&
+      !/^npub1[a-z0-9]+$/i.test(ownerSeg)
+    ) {
+      return {
+        type: "self-hosted-git",
+        url: normalizedUrl,
+        displayName: host,
+        owner: ownerSeg,
+        repo: repoSeg.replace(/\.git$/i, ""),
+      };
+    }
   }
 
   // Unknown source
@@ -1233,6 +1352,31 @@ async function fetchFromNostrGit(
   }
 }
 
+async function fetchFromSelfHostedGit(
+  sourceUrl: string,
+  branch: string
+): Promise<Array<{ type: string; path: string; size?: number }> | null> {
+  try {
+    const params = new URLSearchParams({
+      sourceUrl,
+      branch: branch || "main",
+    });
+    const res = await fetch(`/api/git/repo-files?${params.toString()}`);
+    if (!res.ok) {
+      console.warn(
+        `⚠️ [Git Source] repo-files API failed: ${res.status} for ${sourceUrl}`
+      );
+      return null;
+    }
+    const data = await res.json();
+    if (!data.files || !Array.isArray(data.files)) return null;
+    return data.files;
+  } catch (e) {
+    console.warn("⚠️ [Git Source] fetchFromSelfHostedGit error:", e);
+    return null;
+  }
+}
+
 /**
  * Fetch files from a single git source
  * @param eventPublisherPubkey - Optional: event publisher's pubkey (for bridge API when source is nostr-git)
@@ -1278,6 +1422,12 @@ export async function fetchFilesFromSource(
           source.url,
           eventPublisherPubkey
         );
+      }
+      break;
+
+    case "self-hosted-git":
+      if (source.url) {
+        return await fetchFromSelfHostedGit(source.url, branch);
       }
       break;
 

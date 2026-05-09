@@ -9,6 +9,10 @@ import {
   useState,
 } from "react";
 
+import {
+  isPublisherBlocklisted,
+  isRepoFromBlocklistedOwner,
+} from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
@@ -843,6 +847,8 @@ function ExplorePageContent() {
             return false;
           }
 
+          if (isRepoFromBlocklistedOwner(r)) return false;
+
           return true;
         });
 
@@ -1075,6 +1081,7 @@ function ExplorePageContent() {
         // CRITICAL: For NIP-34 replaceable events, collect ALL events first
         // Don't process immediately - wait for EOSE to pick the latest one
         if (event.kind === KIND_REPOSITORY_NIP34) {
+          if (isPublisherBlocklisted(event.pubkey)) return;
           const dTag = event.tags?.find(
             (t: any) => Array.isArray(t) && t[0] === "d"
           );
@@ -1159,6 +1166,7 @@ function ExplorePageContent() {
           event.kind === KIND_REPOSITORY ||
           event.kind === KIND_REPOSITORY_NIP34
         ) {
+          if (isPublisherBlocklisted(event.pubkey)) return;
           try {
             // NIP-34 uses tags for metadata, content is empty
             // gitnostr uses JSON in content

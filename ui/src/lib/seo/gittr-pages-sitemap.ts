@@ -1,4 +1,5 @@
 import { parseGatewayManifestsJson } from "@/lib/gittr-pages/gateway-manifests-json";
+import { filterGatewaySitesByPublisherBlocklist } from "@/lib/moderation/publisher-blocklist";
 import { getPagesHostname } from "@/lib/nsite/nsite-url";
 
 const FETCH_TIMEOUT_MS = 25_000;
@@ -67,9 +68,10 @@ export async function fetchGittrPagesSitemapEntries(
     }
     const raw: unknown = await res.json();
     const { sites } = parseGatewayManifestsJson(raw, pagesBase);
+    const sitesFiltered = filterGatewaySitesByPublisherBlocklist(sites);
     const out: Array<{ url: string; lastModified: Date }> = [];
 
-    for (const s of sites) {
+    for (const s of sitesFiltered) {
       if (out.length >= MAX_PAGES_URLS) break;
       let host: string;
       try {

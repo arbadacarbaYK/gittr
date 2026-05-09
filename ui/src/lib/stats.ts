@@ -5,7 +5,12 @@
  * CRITICAL: New functions count from Nostr events (network source of truth)
  * Old functions use localStorage (kept for fallback)
  */
-import { type Activity, ActivityType, getActivities } from "./activity-tracking";
+import {
+  type Activity,
+  ActivityType,
+  getActivities,
+} from "./activity-tracking";
+import { isPublisherBlocklisted } from "./moderation/publisher-blocklist";
 import {
   KIND_ISSUE,
   KIND_PULL_REQUEST,
@@ -169,7 +174,11 @@ export function getTopRepos(
 
   // Sort by activity count DESCENDING (highest first) - show repos with most activity at top
   const result = Array.from(repoMap.values())
-    .filter((repo) => repo.activityCount > 0) // Only repos with at least 1 activity (not just repo_created)
+    .filter(
+      (repo) =>
+        repo.activityCount > 0 &&
+        !isPublisherBlocklisted(resolveEntityToPubkey(repo.entity) || undefined)
+    )
     .sort((a, b) => {
       // Sort by activity count DESCENDING (highest first)
       if (b.activityCount !== a.activityCount) {
@@ -228,6 +237,7 @@ export function getTopDevsByPRs(count = 10): UserStats[] {
   });
 
   return Array.from(userMap.values())
+    .filter((u) => !isPublisherBlocklisted(u.pubkey))
     .sort((a, b) => b.prMergedCount - a.prMergedCount)
     .slice(0, count);
 }
@@ -260,6 +270,7 @@ export function getTopBountyTakers(count = 10): UserStats[] {
   });
 
   return Array.from(userMap.values())
+    .filter((u) => !isPublisherBlocklisted(u.pubkey))
     .sort((a, b) => b.bountyClaimedCount - a.bountyClaimedCount)
     .slice(0, count);
 }
@@ -353,6 +364,7 @@ export function getTopUsers(
   });
 
   return Array.from(userMap.values())
+    .filter((u) => !isPublisherBlocklisted(u.pubkey))
     .sort((a, b) => b.activityCount - a.activityCount)
     .slice(0, count);
 }
@@ -1035,7 +1047,7 @@ export function countRepoActivitiesFromNostr(
             if (!repoMap.has(repoId)) {
               repoMap.set(repoId, {
                 repoId,
-                repoName: repoName ,
+                repoName: repoName,
                 entity: event.pubkey,
                 activityCount: 0,
                 prCount: 0,
@@ -1057,7 +1069,7 @@ export function countRepoActivitiesFromNostr(
             const repoId = `${event.pubkey}/${repoName}`;
             const existing = repoMap.get(repoId) || {
               repoId,
-              repoName: repoName ,
+              repoName: repoName,
               entity: event.pubkey,
               activityCount: 0,
               prCount: 0,
@@ -1089,7 +1101,7 @@ export function countRepoActivitiesFromNostr(
               const repoId = `${ownerPubkey}/${repoName}`;
               const existing = repoMap.get(repoId) || {
                 repoId,
-                repoName: repoName ,
+                repoName: repoName,
                 entity: ownerPubkey,
                 activityCount: 0,
                 prCount: 0,
@@ -1125,7 +1137,7 @@ export function countRepoActivitiesFromNostr(
                 const repoId = `${ownerPubkey}/${repoName}`;
                 const existing = repoMap.get(repoId) || {
                   repoId,
-                  repoName: repoName ,
+                  repoName: repoName,
                   entity: ownerPubkey,
                   activityCount: 0,
                   prCount: 0,
@@ -1158,7 +1170,7 @@ export function countRepoActivitiesFromNostr(
               const repoId = `${ownerPubkey}/${repoName}`;
               const existing = repoMap.get(repoId) || {
                 repoId,
-                repoName: repoName ,
+                repoName: repoName,
                 entity: ownerPubkey,
                 activityCount: 0,
                 prCount: 0,
@@ -1194,7 +1206,7 @@ export function countRepoActivitiesFromNostr(
                 const repoId = `${ownerPubkey}/${repoName}`;
                 const existing = repoMap.get(repoId) || {
                   repoId,
-                  repoName: repoName ,
+                  repoName: repoName,
                   entity: ownerPubkey,
                   activityCount: 0,
                   prCount: 0,
@@ -1504,7 +1516,9 @@ export async function getTopReposFromNostr(
 
     // Debug: Log all repos with activity
     const allReposWithActivity = Array.from(repoMap.values()).filter(
-      (repo) => repo.activityCount > 0
+      (repo) =>
+        repo.activityCount > 0 &&
+        !isPublisherBlocklisted(resolveEntityToPubkey(repo.entity) || undefined)
     );
     console.log(
       `📊 [getTopReposFromNostr] Total repos in map: ${repoMap.size}, repos with activity: ${allReposWithActivity.length}`
@@ -1584,6 +1598,7 @@ export async function getTopUsersFromNostr(
     90
   ); // Last 90 days
   return Array.from(userMap.values())
+    .filter((u) => !isPublisherBlocklisted(u.pubkey))
     .sort((a, b) => b.activityCount - a.activityCount)
     .slice(0, count);
 }
