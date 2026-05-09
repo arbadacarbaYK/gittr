@@ -56,6 +56,12 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 - **Event Kind**: `30617` (KIND_REPOSITORY_NIP34)
 - **Tags**: `d` (identifier), `name`, `description`, `clone[]`, `relay[]`, etc.
 
+### NIP-82 (draft): Software applications
+
+- **Purpose**: Describe installable software on Nostr: application metadata (`32267`), releases (`30063`), and file assets (`3063`) with hashes and optional URLs (e.g. Blossom or HTTPS). Same event family used by **Zapstore**.
+- **Usage in gittr**: The **`/apps`** directory subscribes to these kinds and merges **`wss://relay.zapstore.dev`** with `NEXT_PUBLIC_NOSTR_RELAYS` (and user relays) so listings resolve like Zapstore. Download uses the **`url`** on kind `3063` when present (typical for APKs). Gittr does **not** host APKs for this view unless the publisher pointed `url` at your infrastructure. Cards show **kind 0** profile names (and **`p`** attribution tags when present), optional **`license`** (SPDX), and **GitHub stars/forks** when `repository` is a **github.com** URL (server **`POST /api/github/public-repo-stats`**, uses **`GITHUB_PLATFORM_TOKEN`** if set).
+- **Implementation**: `ui/src/lib/nostr/nip82-software.ts`, `ui/src/lib/nostr/software-catalog-relays.ts`, `ui/src/app/apps/`.
+
 ### NIP-46: Remote signer (NIP-07 compatibility)
 
 - **Purpose**: Let a **remote** device or app (Amber, Nowser, LNbits remote signer, self-hosted bunker, etc.) sign on behalf of the user. Traffic is **JSON-RPC over encrypted kind `24133`** events (NIP-04 / NIP-44). The web app can expose a **NIP-07-shaped** `window.nostr` adapter so existing `signEvent` / `nip04` / `nip44` call sites work unchanged.

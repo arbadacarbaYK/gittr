@@ -44,6 +44,10 @@ const HeaderConfig = {
       openInNewTab: true,
     },
     {
+      title: "Apps",
+      href: "/apps",
+    },
+    {
       title: "Bounty Hunt",
       href: "/bounty-hunt",
     },
