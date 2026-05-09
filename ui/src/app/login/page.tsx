@@ -699,7 +699,7 @@ export default function Login() {
                     <span className="font-semibold">Pair &amp; Login</span>{" "}
                     again only if pairing got stuck.
                   </p>
-                  <div className="flex justify-center rounded-lg bg-white p-3">
+                  <div className="mx-auto inline-flex rounded-lg bg-white p-3">
                     <QRCodeSVG
                       value={generatedNostrConnect || remoteToken}
                       size={220}
