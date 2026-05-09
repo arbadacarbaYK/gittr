@@ -100,6 +100,10 @@ import {
   parseGitSource,
 } from "@/lib/utils/git-source-fetcher";
 import {
+  normalizeGithubSourceUrl,
+  pickHttpSourceUrl,
+} from "@/lib/utils/normalize-github-source-url";
+import {
   isRepoCorrupted,
   validateRepoForForkOrSign,
 } from "@/lib/utils/repo-corruption-check";
@@ -4131,15 +4135,13 @@ export default function RepoCodePage() {
                           successfulSources: [
                             {
                               source: status.source,
-                              sourceUrl:
-                                status.source.url || status.source.displayName,
+                              sourceUrl: pickHttpSourceUrl(status.source),
                               files: status.files,
                             },
                           ],
                           // Keep first source for backward compatibility
                           successfulSource: status.source,
-                          successfulSourceUrl:
-                            status.source.url || status.source.displayName,
+                          successfulSourceUrl: pickHttpSourceUrl(status.source),
                         }
                       : {
                           // Create minimal repoData if it doesn't exist yet
@@ -4147,14 +4149,12 @@ export default function RepoCodePage() {
                           successfulSources: [
                             {
                               source: status.source,
-                              sourceUrl:
-                                status.source.url || status.source.displayName,
+                              sourceUrl: pickHttpSourceUrl(status.source),
                               files: status.files,
                             },
                           ],
                           successfulSource: status.source,
-                          successfulSourceUrl:
-                            status.source.url || status.source.displayName,
+                          successfulSourceUrl: pickHttpSourceUrl(status.source),
                         };
                     // CRITICAL: Update ref immediately so subsequent checks see the new files
                     if (updated && repoDataRef) {
@@ -4191,9 +4191,7 @@ export default function RepoCodePage() {
                   const existingSources = prev?.successfulSources || [];
                   // Check if this source is already in the list
                   const alreadyExists = existingSources.some(
-                    (s: any) =>
-                      s.sourceUrl ===
-                      (status.source.url || status.source.displayName)
+                    (s: any) => s.sourceUrl === pickHttpSourceUrl(status.source)
                   );
 
                   if (!alreadyExists) {
@@ -4205,8 +4203,7 @@ export default function RepoCodePage() {
                             ...existingSources,
                             {
                               source: status.source,
-                              sourceUrl:
-                                status.source.url || status.source.displayName,
+                              sourceUrl: pickHttpSourceUrl(status.source),
                               files: status.files,
                             },
                           ],
@@ -4254,7 +4251,7 @@ export default function RepoCodePage() {
             // Also collect all successful sources for fallback during file opening
             const successfulSourcesArray = successfulStatuses.map((s: any) => ({
               source: s.source,
-              sourceUrl: s.source.url || s.source.displayName,
+              sourceUrl: pickHttpSourceUrl(s.source),
               files: s.files,
             }));
 
@@ -4280,9 +4277,9 @@ export default function RepoCodePage() {
                         : prev.successfulSources,
                     // Keep first source for backward compatibility
                     successfulSource: successfulStatuses[0]?.source,
-                    successfulSourceUrl:
-                      successfulStatuses[0]?.source?.url ||
-                      successfulStatuses[0]?.source?.displayName,
+                    successfulSourceUrl: pickHttpSourceUrl(
+                      successfulStatuses[0]?.source
+                    ),
                   }
                 : prev
             );
@@ -4290,7 +4287,7 @@ export default function RepoCodePage() {
             // Files already exist, but update successful sources array with all completed sources
             const successfulSourcesArray = successfulStatuses.map((s: any) => ({
               source: s.source,
-              sourceUrl: s.source.url || s.source.displayName,
+              sourceUrl: pickHttpSourceUrl(s.source),
               files: s.files,
             }));
 
@@ -6422,7 +6419,7 @@ export default function RepoCodePage() {
                       const successfulSourcesArray = successfulStatuses.map(
                         (s) => ({
                           source: s.source,
-                          sourceUrl: s.source.url || s.source.displayName,
+                          sourceUrl: pickHttpSourceUrl(s.source),
                           files: s.files,
                         })
                       );
@@ -6439,9 +6436,9 @@ export default function RepoCodePage() {
                                   : prev.successfulSources,
                               // Keep first source for backward compatibility
                               successfulSource: successfulStatuses[0]?.source,
-                              successfulSourceUrl:
-                                successfulStatuses[0]?.source?.url ||
-                                successfulStatuses[0]?.source?.displayName,
+                              successfulSourceUrl: pickHttpSourceUrl(
+                                successfulStatuses[0]?.source
+                              ),
                             }
                           : prev
                       );
@@ -6450,7 +6447,7 @@ export default function RepoCodePage() {
                       const successfulSourcesArray = successfulStatuses.map(
                         (s) => ({
                           source: s.source,
-                          sourceUrl: s.source.url || s.source.displayName,
+                          sourceUrl: pickHttpSourceUrl(s.source),
                           files: s.files,
                         })
                       );
@@ -15513,12 +15510,12 @@ export default function RepoCodePage() {
             >
               <p className="text-xs text-gray-400 mb-1">Git Server</p>
               <a
-                href={repoData.sourceUrl}
+                href={normalizeGithubSourceUrl(repoData.sourceUrl)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-purple-400 hover:text-purple-300 hover:underline break-all"
               >
-                {repoData.sourceUrl
+                {normalizeGithubSourceUrl(repoData.sourceUrl)
                   .replace(/^https?:\/\//, "")
                   .replace(/\.git$/, "")}
               </a>

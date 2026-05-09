@@ -27,6 +27,7 @@ import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
 } from "@/lib/utils/entity-resolver";
+import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
 
 import Link from "next/link";
@@ -1796,8 +1797,14 @@ function ExplorePageContent() {
               // CRITICAL: Use human-readable name from event content if available, otherwise use repositoryName
               name: repoData.name || repoData.repositoryName,
               description: repoData.description,
-              sourceUrl: repoData.sourceUrl || existingRepo?.sourceUrl,
-              forkedFrom: repoData.forkedFrom || existingRepo?.forkedFrom,
+              sourceUrl: (() => {
+                const raw = repoData.sourceUrl || existingRepo?.sourceUrl;
+                return raw ? normalizeGithubSourceUrl(String(raw)) : raw;
+              })(),
+              forkedFrom: (() => {
+                const raw = repoData.forkedFrom || existingRepo?.forkedFrom;
+                return raw ? normalizeGithubSourceUrl(String(raw)) : raw;
+              })(),
               readme: repoData.readme || existingRepo?.readme,
               // CRITICAL: Only use files from event if they exist and are an array with items
               // Don't overwrite existing files with empty array from event

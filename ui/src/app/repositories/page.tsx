@@ -35,6 +35,7 @@ import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 import {
   isRepoCorrupted,
   validateRepoForForkOrSign,
@@ -1490,6 +1491,10 @@ export default function RepositoriesPage() {
             }
             // Note: We don't use Nostr git server URLs (gittr.space, etc.) as sourceUrl
             // Those are handled by the multi-source fetcher or git-nostr-bridge
+
+            if (finalSourceUrl && typeof finalSourceUrl === "string") {
+              finalSourceUrl = normalizeGithubSourceUrl(finalSourceUrl);
+            }
 
             // CRITICAL: Validate entity is not a domain name
             if (

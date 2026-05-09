@@ -11,6 +11,7 @@ import {
 import useSession from "@/lib/nostr/useSession";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 import { validateRepoForForkOrSign } from "@/lib/utils/repo-corruption-check";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
@@ -300,8 +301,8 @@ function NewRepoPageContent() {
             name: originalRepoName, // CRITICAL: Preserve original GitHub name (with dots) for display
             // Always set ownerPubkey for reliable ownership detection
             ownerPubkey: pubkey || undefined,
-            sourceUrl: normalizedUrl,
-            forkedFrom: normalizedUrl,
+            sourceUrl: normalizeGithubSourceUrl(normalizedUrl),
+            forkedFrom: normalizeGithubSourceUrl(normalizedUrl),
             readme: d.readme,
             fileCount: fileCount, // CRITICAL: Only store fileCount, not full files array (prevents quota exceeded)
             description: d.description,

@@ -1,5 +1,6 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 
 import { exec } from "child_process";
 import * as fs from "fs";
@@ -228,7 +229,7 @@ export default async function handler(
   }
 
   const sourceUrlRaw = req.query.sourceUrl;
-  const sourceUrl =
+  let sourceUrl =
     typeof sourceUrlRaw === "string"
       ? sourceUrlRaw
       : Array.isArray(sourceUrlRaw)
@@ -246,6 +247,8 @@ export default async function handler(
   if (!sourceUrl || typeof sourceUrl !== "string") {
     return res.status(400).json({ message: "sourceUrl required" });
   }
+
+  sourceUrl = normalizeGithubSourceUrl(sourceUrl.trim());
 
   if (!isSafeRemoteUrl(sourceUrl)) {
     return res.status(400).json({ message: "invalid or blocked remote URL" });

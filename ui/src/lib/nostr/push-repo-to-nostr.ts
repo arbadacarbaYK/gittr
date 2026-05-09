@@ -6,8 +6,10 @@ import {
   type StoredRepo,
   loadRepoOverrides,
   loadStoredRepos,
+  saveStoredRepos,
 } from "../repos/storage";
 import { getGraspServers } from "../utils/grasp-servers";
+import { normalizeGithubSourceUrl } from "../utils/normalize-github-source-url";
 import { setRepoStatus } from "../utils/repo-status";
 
 import {
@@ -177,6 +179,32 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
 
     if (!repo) {
       throw new Error("Repository not found");
+    }
+
+    // Repair bare "owner/repo" or malformed https://OWNER/repo stored as sourceUrl (breaks file-content + UI)
+    if (repo.sourceUrl && typeof repo.sourceUrl === "string") {
+      const fixed = normalizeGithubSourceUrl(repo.sourceUrl.trim());
+      if (fixed && fixed !== repo.sourceUrl) {
+        console.warn(
+          `[Push Repo] Repaired sourceUrl: ${repo.sourceUrl} → ${fixed}`
+        );
+        (repo as { sourceUrl?: string }).sourceUrl = fixed;
+        const idx = repos.findIndex(
+          (r: any) =>
+            (r.slug === repoSlug || r.repo === repoSlug) && r.entity === entity
+        );
+        if (idx >= 0) {
+          (repos[idx] as { sourceUrl?: string }).sourceUrl = fixed;
+          try {
+            saveStoredRepos(repos);
+          } catch (e) {
+            console.warn(
+              "[Push Repo] Could not persist repaired sourceUrl:",
+              e
+            );
+          }
+        }
+      }
     }
 
     // CRITICAL: Use repositoryName from repo data (exact name used by git-nostr-bridge)

@@ -1,4 +1,5 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 import { normalizeSiteUrl } from "@/lib/utils/public-site-url";
 
 import type { NextApiRequest, NextApiResponse } from "next";
@@ -37,10 +38,23 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { sourceUrl, path: filePath, branch = "main", githubToken } = req.query;
+  const {
+    sourceUrl: sourceUrlRaw,
+    path: filePath,
+    branch = "main",
+    githubToken,
+  } = req.query;
 
-  // Validate inputs
-  if (!sourceUrl || typeof sourceUrl !== "string") {
+  const sourceUrlParam =
+    typeof sourceUrlRaw === "string"
+      ? sourceUrlRaw.trim()
+      : Array.isArray(sourceUrlRaw)
+      ? String(sourceUrlRaw[0] || "").trim()
+      : "";
+
+  // Validate inputs (accept bare "owner/repo" and repair malformed https://OWNER/repo)
+  const sourceUrl = normalizeGithubSourceUrl(sourceUrlParam);
+  if (!sourceUrl) {
     return res.status(400).json({ error: "sourceUrl is required" });
   }
 
