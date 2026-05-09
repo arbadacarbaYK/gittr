@@ -38,7 +38,7 @@ export const metadata: Metadata = {
       "A truly censorship-resistant alternative to GitHub built on Nostr.",
     images: [
       {
-        url: "/logo.svg",
+        url: "/opengraph-image",
         width: 1200,
         height: 630,
         alt: "gittr logo",
@@ -50,7 +50,7 @@ export const metadata: Metadata = {
     title: "gittr - Decentralized Git Hosting on Nostr",
     description:
       "A truly censorship-resistant alternative to GitHub built on Nostr.",
-    images: ["/logo.svg"],
+    images: ["/opengraph-image"],
   },
   robots: {
     index: true,

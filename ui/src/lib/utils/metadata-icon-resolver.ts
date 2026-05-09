@@ -84,8 +84,8 @@ export async function resolveRepoIconForMetadata(
     )}&branch=main`;
   }
 
-  // Fallback to platform default
-  return `${baseUrl}/logo.svg`;
+  // Fallback to platform default social card image (PNG endpoint, crawler-safe)
+  return `${baseUrl}/opengraph-image`;
 }
 
 /**
@@ -103,7 +103,7 @@ export async function resolveUserIconForMetadata(
   const ownerPubkey = resolveEntityToPubkey(entity);
 
   if (!ownerPubkey) {
-    return `${baseUrl}/logo.svg`;
+    return `${baseUrl}/opengraph-image`;
   }
 
   try {
@@ -129,5 +129,5 @@ export async function resolveUserIconForMetadata(
     );
   }
 
-  return `${baseUrl}/logo.svg`;
+  return `${baseUrl}/opengraph-image`;
 }

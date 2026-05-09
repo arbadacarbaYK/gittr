@@ -42,7 +42,7 @@ export async function generateMetadata({
       siteName: "gittr",
       images: [
         {
-          url: "/logo.svg",
+          url: "/opengraph-image",
           width: 1200,
           height: 630,
           alt: "gittr logo",
@@ -53,7 +53,7 @@ export async function generateMetadata({
       card: "summary",
       title,
       description: `View ${displayName}'s repositories on gittr`,
-      images: ["/logo.svg"],
+      images: ["/opengraph-image"],
     },
     alternates: {
       canonical: url,

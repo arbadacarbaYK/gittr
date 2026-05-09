@@ -2,6 +2,7 @@ import {
   resolveRepoIconForMetadata,
   resolveUserIconForMetadata,
 } from "@/lib/utils/metadata-icon-resolver";
+import { normalizeSocialImageUrl } from "@/lib/utils/social-image";
 
 import { type Metadata } from "next";
 import { nip19 } from "nostr-tools";
@@ -269,7 +270,7 @@ export async function generateMetadata({
 
     // Resolve repository icon URL for Open Graph (also non-blocking)
     // Priority: repo logo -> owner profile picture -> default logo
-    let iconUrl = `${baseUrl}/logo.svg`; // Default fallback
+    let iconUrl = `${baseUrl}/opengraph-image`; // Default fallback
     const iconUrlPromise = (async () => {
       try {
         // Try repo logo first
@@ -287,14 +288,14 @@ export async function generateMetadata({
         }
 
         // If repo logo is just the default, try owner profile picture
-        if (resolvedIcon === `${baseUrl}/logo.svg` && ownerPubkey) {
+        if (resolvedIcon === `${baseUrl}/opengraph-image` && ownerPubkey) {
           try {
             const ownerIcon = await resolveUserIconForMetadata(
               resolvedParams.entity,
               baseUrl,
               800
             );
-            if (ownerIcon !== `${baseUrl}/logo.svg`) {
+            if (ownerIcon !== `${baseUrl}/opengraph-image`) {
               resolvedIcon = ownerIcon;
             }
           } catch (error) {
@@ -310,7 +311,7 @@ export async function generateMetadata({
           "[Metadata] Failed to resolve repo icon, using default:",
           error
         );
-        return `${baseUrl}/logo.svg`;
+        return `${baseUrl}/opengraph-image`;
       }
     })();
 
@@ -318,11 +319,13 @@ export async function generateMetadata({
     const [repoDescription, resolvedIconUrl] = await Promise.race([
       Promise.all([repoDescriptionPromise, iconUrlPromise]),
       new Promise<[string | null, string]>((resolve) =>
-        setTimeout(() => resolve([null, `${baseUrl}/logo.svg`]), 2000)
+        setTimeout(() => resolve([null, `${baseUrl}/opengraph-image`]), 2000)
       ),
-    ]).catch(() => [null, `${baseUrl}/logo.svg`] as [string | null, string]);
+    ]).catch(
+      () => [null, `${baseUrl}/opengraph-image`] as [string | null, string]
+    );
 
-    iconUrl = resolvedIconUrl || iconUrl;
+    iconUrl = normalizeSocialImageUrl(resolvedIconUrl || iconUrl, baseUrl);
 
     // Build description text - use repo description if available, otherwise generic
     const description = repoDescription
@@ -402,7 +405,7 @@ export async function generateMetadata({
         siteName: "gittr",
         images: [
           {
-            url: `${baseUrl}/logo.svg`,
+            url: `${baseUrl}/opengraph-image`,
             width: 1200,
             height: 630,
             alt: `${decodedRepo} repository on gittr`,
@@ -413,7 +416,7 @@ export async function generateMetadata({
         card: "summary_large_image",
         title,
         description: `Repository ${title} on gittr - Decentralized Git Hosting on Nostr`,
-        images: [`${baseUrl}/logo.svg`],
+        images: [`${baseUrl}/opengraph-image`],
       },
     };
   }

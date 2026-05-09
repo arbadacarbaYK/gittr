@@ -66,7 +66,7 @@ export default async function handler(
     const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://gittr.space";
 
     // Try to resolve icon URL (fast - just constructs URL)
-    let iconUrl = `${baseUrl}/logo.svg`; // Default fallback
+    let iconUrl = `${baseUrl}/opengraph-image`; // Default fallback
 
     if (ownerPubkey) {
       // Try repo logo first

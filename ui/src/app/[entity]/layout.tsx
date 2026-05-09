@@ -1,4 +1,5 @@
 import { resolveUserIconForMetadata } from "@/lib/utils/metadata-icon-resolver";
+import { normalizeSocialImageUrl } from "@/lib/utils/social-image";
 
 import { type Metadata } from "next";
 import { nip19 } from "nostr-tools";
@@ -114,7 +115,7 @@ export async function generateMetadata({
     : `Profile for ${actualName} on gittr - Decentralized Git Hosting on Nostr`;
 
   // Resolve user icon (profile picture or default)
-  let iconUrl = `${baseUrl}/logo.svg`; // Default fallback
+  let iconUrl = `${baseUrl}/opengraph-image`; // Default fallback
   try {
     // Try user's picture from metadata first
     if (userMetadata?.picture && userMetadata.picture.startsWith("http")) {
@@ -140,9 +141,7 @@ export async function generateMetadata({
   }
 
   // Ensure iconUrl is absolute
-  if (!iconUrl.startsWith("http")) {
-    iconUrl = `${baseUrl}${iconUrl.startsWith("/") ? "" : "/"}${iconUrl}`;
-  }
+  iconUrl = normalizeSocialImageUrl(iconUrl, baseUrl);
 
   console.log("[Metadata] Final metadata:", {
     title: actualName,
