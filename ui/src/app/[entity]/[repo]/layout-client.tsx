@@ -16,6 +16,13 @@ import {
   KIND_GIT_REPOSITORIES_LIST,
   parseGitRepositoriesListEvent,
 } from "@/lib/nostr/events";
+import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
+import {
+  aggregateRepoStarReactions,
+  publishStarReaction,
+  removeStarReaction,
+} from "@/lib/nostr/repo-stars";
 import { useRepoNip57ZapBadgeTotal } from "@/lib/nostr/useRepoNip57ZapBadgeTotal";
 import { canManageSettings, isOwner } from "@/lib/repo-permissions";
 import {
@@ -51,7 +58,11 @@ import {
   Zap,
 } from "lucide-react";
 import { useParams, usePathname, useSearchParams } from "next/navigation";
-import { type UnsignedEvent, nip19 } from "nostr-tools";
+import {
+  type Event as NostrEvent,
+  type UnsignedEvent,
+  nip19,
+} from "nostr-tools";
 
 const menuItems = [
   {
@@ -117,7 +128,7 @@ const HEADER_RESERVED_WIDTH = 280;
 const FORCED_OVERFLOW_LINKS = new Set(["discussions", "insights", "settings"]);
 
 const WATCH_BUTTON_TITLE =
-  "Watch / unwatch: updates your local list and, with NIP-07, publishes one NIP-51 kind 10018 event (followed Git repos). The protocol is a full current list in that event’s `a` tags — not a separate “patch” per click. Well-behaved relays treat kind 10018 as a replaceable standard list (one live list per you), not an endless history of every edit. Star is different: it only bookmarks in this app for your Stars page unless we add NIP-25 later.";
+  "Watch / unwatch: followed repos (NIP-51 kind 10018). Separate from Star: NIP-25 kind 7 on the repo’s 30617 event, which is what your Stars page lists.";
 
 export default function RepoLayoutClient({
   children,
@@ -143,8 +154,8 @@ export default function RepoLayoutClient({
   const [windowWidth, setWindowWidth] = useState(1920);
   const { pubkey, publish, subscribe, defaultRelays } = useNostrContext();
   const [isWatching, setIsWatching] = useState(false);
-  const [isStarred, setIsStarred] = useState(false);
-  const [starCount, setStarCount] = useState<number>(0);
+  const [githubStarCount, setGithubStarCount] = useState<number | null>(null);
+  const [nostrStarEvents, setNostrStarEvents] = useState<NostrEvent[]>([]);
   const [forkCount, setForkCount] = useState<number>(0);
   const [issueCount, setIssueCount] = useState<number>(0);
   const [prCount, setPrCount] = useState<number>(0);
@@ -198,6 +209,87 @@ export default function RepoLayoutClient({
     defaultRelays,
     enabled: mounted && !!ownerHexForZaps,
   });
+
+  const repoNostrEventId = useMemo(() => {
+    if (!repo) return null;
+    const id = repo.lastNostrEventId || repo.nostrEventId;
+    return typeof id === "string" && /^[0-9a-f]{64}$/i.test(id) ? id : null;
+  }, [repo]);
+
+  const githubSpec = useMemo(() => {
+    const u = repo?.sourceUrl?.trim();
+    if (!u) return null;
+    return parseGitHubRepoSpec(u);
+  }, [repo?.sourceUrl]);
+
+  const nostrStarsAgg = useMemo(
+    () => aggregateRepoStarReactions(nostrStarEvents),
+    [nostrStarEvents]
+  );
+  const nostrStarCount = nostrStarsAgg.count;
+  const isNostrStarred =
+    !!pubkey && nostrStarsAgg.starers.includes(pubkey.toLowerCase());
+
+  const importStarSnapshot =
+    typeof repo?.stars === "number" && Number.isFinite(repo.stars)
+      ? repo.stars
+      : null;
+
+  const hasUpstreamSourceUrl = !!repo?.sourceUrl?.trim();
+
+  const sourceStarsDisplay = useMemo(() => {
+    // Repos visible before "push to Nostr" (import-only, no 30617 id): hide source/GitHub row.
+    if (!repoNostrEventId) {
+      return null;
+    }
+    if (githubSpec && githubStarCount !== null) {
+      return {
+        label: "GitHub",
+        value: githubStarCount,
+        href: `https://github.com/${githubSpec.owner}/${githubSpec.repo}/stargazers`,
+        title: "Stargazers on GitHub (live)",
+      } as const;
+    }
+    // No upstream URL → nothing to attribute; avoid bogus "Import 0" from local `stars`.
+    if (!hasUpstreamSourceUrl) {
+      return null;
+    }
+    if (
+      importStarSnapshot !== null &&
+      importStarSnapshot > 0 &&
+      githubSpec
+    ) {
+      return {
+        label: "GitHub",
+        value: importStarSnapshot,
+        href: `https://github.com/${githubSpec.owner}/${githubSpec.repo}/stargazers`,
+        title: "Stars from last import (GitHub link for reference)",
+      } as const;
+    }
+    if (importStarSnapshot !== null && importStarSnapshot > 0) {
+      return {
+        label: "Import",
+        value: importStarSnapshot,
+        href: null,
+        title: "Stars count from last import or snapshot (not live)",
+      } as const;
+    }
+    return null;
+  }, [
+    repoNostrEventId,
+    githubSpec,
+    githubStarCount,
+    importStarSnapshot,
+    hasUpstreamSourceUrl,
+  ]);
+
+  const nostrStarButtonTitle = useMemo(
+    () =>
+      repoNostrEventId
+        ? "Stars on Nostr (NIP-25)."
+        : "Needs a published 30617 event on Nostr before you can star here.",
+    [repoNostrEventId]
+  );
 
   const zapBadgeTitle = useMemo(
     () =>
@@ -598,7 +690,7 @@ export default function RepoLayoutClient({
     };
   }, [mounted, loadRepoAndLogo]);
 
-  // Load watch/star state from localStorage and star count from repo data
+  // Load watch list from localStorage (NIP-51 kind 10018 is canonical on relays)
   useEffect(() => {
     if (!pubkey) return;
     try {
@@ -606,16 +698,79 @@ export default function RepoLayoutClient({
       const watched = JSON.parse(
         localStorage.getItem("gittr_watched_repos") || "[]"
       ) as string[];
-      const starred = JSON.parse(
-        localStorage.getItem("gittr_starred_repos") || "[]"
-      ) as string[];
       setIsWatching(watched.includes(repoId));
-      setIsStarred(starred.includes(repoId));
-
-      // Get star count from repo data
-      setStarCount(repo?.stars || 0);
     } catch {}
   }, [resolvedParams.entity, resolvedParams.repo, pubkey, repo]);
+
+  // Live GitHub star count when `sourceUrl` points at github.com
+  useEffect(() => {
+    if (!mounted || !githubSpec) {
+      setGithubStarCount(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/github/public-repo-stats", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            repos: [{ owner: githubSpec.owner, repo: githubSpec.repo }],
+          }),
+        });
+        if (!r.ok) return;
+        const j = (await r.json()) as {
+          stats?: Record<string, { stars?: number }>;
+        };
+        const stat = j.stats?.[`${githubSpec.owner}/${githubSpec.repo}`];
+        if (!cancelled && typeof stat?.stars === "number") {
+          setGithubStarCount(stat.stars);
+        }
+      } catch {
+        if (!cancelled) setGithubStarCount(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, githubSpec?.owner, githubSpec?.repo]);
+
+  // NIP-25 kind 7 reactions (#e = repo 30617 event, #k = 30617)
+  useEffect(() => {
+    if (!mounted || !subscribe || !defaultRelays?.length || !repoNostrEventId) {
+      setNostrStarEvents([]);
+      return;
+    }
+    setNostrStarEvents([]);
+    const collected = new Map<string, NostrEvent>();
+    const relays = getAllRelays(defaultRelays);
+    const unsub = subscribe(
+      [
+        {
+          kinds: [7],
+          "#e": [repoNostrEventId],
+          "#k": ["30617"],
+          limit: 500,
+        },
+      ],
+      relays,
+      (event) => {
+        if (event.kind !== 7) return;
+        collected.set(event.id, event as NostrEvent);
+        setNostrStarEvents(Array.from(collected.values()));
+      },
+      undefined,
+      undefined,
+      {}
+    );
+    return () => {
+      try {
+        unsub?.();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [mounted, subscribe, defaultRelays, repoNostrEventId]);
 
   // Sync watch state from canonical NIP-51 list (kind 10018)
   useEffect(() => {
@@ -883,71 +1038,89 @@ export default function RepoLayoutClient({
     defaultRelays,
   ]);
 
-  const handleStar = useCallback(() => {
-    if (!pubkey) return;
-    try {
-      const repoId = `${resolvedParams.entity}/${resolvedParams.repo}`;
-      const starred = JSON.parse(
-        localStorage.getItem("gittr_starred_repos") || "[]"
-      ) as string[];
+  const mergeNostrStarEvent = useCallback((ev: NostrEvent) => {
+    setNostrStarEvents((prev) => {
+      const m = new Map(prev.map((e) => [e.id, e]));
+      m.set(ev.id, ev);
+      return Array.from(m.values());
+    });
+  }, []);
 
-      // Update repos list to increment/decrement star count
-      const repos = JSON.parse(
-        localStorage.getItem("gittr_repos") || "[]"
-      ) as any[];
-      const repoIndex = repos.findIndex((r) => {
-        const found = findRepoByEntityAndName(
-          [r],
-          resolvedParams.entity,
-          resolvedParams.repo
-        );
-        return found !== undefined;
-      });
+  const handleNostrStar = useCallback(async () => {
+    if (
+      !pubkey ||
+      !repoNostrEventId ||
+      !ownerPubkey ||
+      !/^[0-9a-f]{64}$/i.test(ownerPubkey)
+    ) {
+      return;
+    }
+    if (typeof window === "undefined" || !window.nostr?.signEvent) return;
+    if (!publish) return;
 
-      if (isStarred) {
-        // Unstar: remove from starred list and decrement count
-        localStorage.setItem(
-          "gittr_starred_repos",
-          JSON.stringify(starred.filter((r) => r !== repoId))
-        );
-        setIsStarred(false);
-        if (repoIndex >= 0) {
-          repos[repoIndex].stars = Math.max(
-            0,
-            (repos[repoIndex].stars || 0) - 1
-          );
-          setStarCount(repos[repoIndex].stars);
-        }
-      } else {
-        // Star: add to starred list and increment count
-        localStorage.setItem(
-          "gittr_starred_repos",
-          JSON.stringify([...starred, repoId])
-        );
-        setIsStarred(true);
-        if (repoIndex >= 0) {
-          repos[repoIndex].stars = (repos[repoIndex].stars || 0) + 1;
-          setStarCount(repos[repoIndex].stars);
-        } else {
-          // Repo not found in repos list, create minimal entry
-          repos.push({
-            slug: repoId,
-            entity: resolvedParams.entity,
-            repo: resolvedParams.repo,
-            name: resolvedParams.repo,
-            stars: 1,
-          });
-          setStarCount(1);
-        }
-      }
+    const wn = window.nostr;
+    const getSigner = async () => ({
+      signEvent: (e: Parameters<typeof wn.signEvent>[0]) => wn.signEvent(e),
+    });
+    const doPublish = (event: NostrEvent) => {
+      publish(event, defaultRelays);
+    };
+    const ownerHex = ownerPubkey.toLowerCase();
+    const repoId = `${resolvedParams.entity}/${resolvedParams.repo}`;
 
-      localStorage.setItem("gittr_repos", JSON.stringify(repos));
-      // Notify repo pages to refresh their counters
-      if (typeof window !== "undefined") {
+    const syncLocalStarsIndex = (add: boolean) => {
+      if (typeof window === "undefined") return;
+      try {
+        const starred = JSON.parse(
+          localStorage.getItem("gittr_starred_repos") || "[]"
+        ) as string[];
+        const next = add
+          ? starred.includes(repoId)
+            ? starred
+            : [...starred, repoId]
+          : starred.filter((r) => r !== repoId);
+        localStorage.setItem("gittr_starred_repos", JSON.stringify(next));
+        window.dispatchEvent(new Event("gittr:stars-updated"));
         window.dispatchEvent(new Event("gittr:repos-updated"));
+      } catch {
+        /* ignore */
       }
-    } catch {}
-  }, [resolvedParams.entity, resolvedParams.repo, isStarred, pubkey]);
+    };
+
+    if (isNostrStarred) {
+      const r = await removeStarReaction(
+        repoNostrEventId,
+        ownerHex,
+        doPublish,
+        getSigner
+      );
+      if (r.success && r.signedEvent) {
+        mergeNostrStarEvent(r.signedEvent);
+        syncLocalStarsIndex(false);
+      }
+    } else {
+      const r = await publishStarReaction(
+        repoNostrEventId,
+        ownerHex,
+        doPublish,
+        getSigner
+      );
+      if (r.success && r.signedEvent) {
+        mergeNostrStarEvent(r.signedEvent);
+        syncLocalStarsIndex(true);
+      }
+    }
+  }, [
+    pubkey,
+    repoNostrEventId,
+    ownerPubkey,
+    isNostrStarred,
+    publish,
+    defaultRelays,
+    mergeNostrStarEvent,
+    resolvedParams.entity,
+    resolvedParams.repo,
+  ]);
 
   const handleFork = useCallback(() => {
     // Fork functionality - navigate to fork page or show modal
@@ -1151,15 +1324,37 @@ export default function RepoLayoutClient({
                 <GitFork className="mr-2 h-4 w-4" /> Fork
                 <Badge className="ml-2">{forkCount}</Badge>
               </DropdownMenuItem>
-              <DropdownMenuItem key="star" onClick={handleStar}>
+              <DropdownMenuItem
+                key="nostr-star"
+                title={nostrStarButtonTitle}
+                disabled={!pubkey || !repoNostrEventId}
+                onClick={() => {
+                  void handleNostrStar();
+                }}
+              >
                 <Star
                   className={`mr-2 h-4 w-4 ${
-                    isStarred ? "text-yellow-500 fill-yellow-500" : ""
+                    isNostrStarred ? "text-yellow-500 fill-yellow-500" : ""
                   }`}
                 />{" "}
-                {isStarred ? "Starred" : "Star"}
-                <Badge className="ml-2">{starCount}</Badge>
+                Star
+                <Badge className="ml-2">{nostrStarCount}</Badge>
               </DropdownMenuItem>
+              {sourceStarsDisplay ? (
+                <DropdownMenuItem
+                  key="source-stars"
+                  className="opacity-100"
+                  disabled={!sourceStarsDisplay.href}
+                  onClick={() => {
+                    if (sourceStarsDisplay.href)
+                      window.open(sourceStarsDisplay.href, "_blank");
+                  }}
+                >
+                  <Star className="mr-2 h-4 w-4" />
+                  {sourceStarsDisplay.label}
+                  <Badge className="ml-2">{sourceStarsDisplay.value}</Badge>
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem key="share" onClick={() => setShowRepoQR(true)}>
                 <Share2 className="mr-2 h-4 w-4" /> Share
               </DropdownMenuItem>
@@ -1209,21 +1404,56 @@ export default function RepoLayoutClient({
               </Button>
               <Button
                 className={`h-8 !border-[#383B42] bg-[#22262C] text-xs ${
-                  isStarred ? "hover:bg-[#22262C]" : ""
+                  isNostrStarred ? "hover:bg-[#22262C]" : ""
                 }`}
                 variant="outline"
-                onClick={handleStar}
-                disabled={!mounted || !pubkey}
+                title={nostrStarButtonTitle}
+                onClick={() => {
+                  void handleNostrStar();
+                }}
+                disabled={!mounted || !pubkey || !repoNostrEventId}
                 suppressHydrationWarning
               >
                 <Star
                   className={`mr-2 h-4 w-4 ${
-                    isStarred ? "text-yellow-500 fill-yellow-500" : ""
+                    isNostrStarred ? "text-yellow-500 fill-yellow-500" : ""
                   }`}
                 />{" "}
-                {isStarred ? "Starred" : "Star"}
-                <Badge className="ml-2">{starCount}</Badge>
+                Star
+                <Badge className="ml-2">{nostrStarCount}</Badge>
               </Button>
+              {sourceStarsDisplay ? (
+                sourceStarsDisplay.href ? (
+                  <a
+                    href={sourceStarsDisplay.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={sourceStarsDisplay.title}
+                  >
+                    <Button
+                      className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
+                      variant="outline"
+                      type="button"
+                    >
+                      <Star className="mr-2 h-4 w-4" />
+                      {sourceStarsDisplay.label}
+                      <Badge className="ml-2">{sourceStarsDisplay.value}</Badge>
+                    </Button>
+                  </a>
+                ) : (
+                  <Button
+                    className="h-8 !border-[#383B42] bg-[#22262C] text-xs cursor-default"
+                    variant="outline"
+                    type="button"
+                    title={sourceStarsDisplay.title}
+                    disabled
+                  >
+                    <Star className="mr-2 h-4 w-4" />
+                    {sourceStarsDisplay.label}
+                    <Badge className="ml-2">{sourceStarsDisplay.value}</Badge>
+                  </Button>
+                )
+              ) : null}
               <Button
                 className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
                 variant="outline"

@@ -139,83 +139,21 @@ export async function removeStarReaction(
 
 ### Querying Star Counts
 
-Aggregate star counts by querying all Kind 7 reactions for a repository:
+Implementation: `ui/src/lib/nostr/repo-stars.ts`.
 
-```typescript
-export async function queryRepoStars(
-  subscribe: (filters: Filter[], onEvent: (event: Event) => void) => () => void,
-  repoEventId: string
-): Promise<{ count: number; starers: string[] }> {
-  return new Promise((resolve) => {
-    const starers = new Set<string>();
+- **`aggregateRepoStarReactions(events)`** — per pubkey, the **latest** kind `7` wins; `+` / `⭐` count as starred, `-` removes that user’s star.
+- **`queryRepoStars(subscribe, relays, repoEventId, opts?)`** — one-shot query using **`subscribe(filters, relays, onEvent, maxDelayms?, onEose?, options?)`** (same as `NostrContext` / `nostr-relaypool`), not a two-argument subscribe.
+- **Repo header** uses a live subscription: `#e` = current `30617` event id, `#k` = `30617`.
 
-    const filters: Filter[] = [
-      {
-        kinds: [KIND_REACTION], // 7
-        "#e": [repoEventId], // Reactions to this repo event
-        "#k": ["30617"], // Reactions to Kind 30617 events
-      },
-    ];
+When the repo is re-published, the `30617` event id may change; reactions on an **old** id will not appear until aggregation supports `a`-tag matching (possible follow-up).
 
-    const unsubscribe = subscribe(filters, (event: Event) => {
-      // Only count positive reactions (stars)
-      if (event.content === "+" || event.content === "⭐") {
-        starers.add(event.pubkey);
-      }
-      // Negative reactions ("-") are ignored (they cancel out)
-    });
+### UI integration (gittr repo header)
 
-    // Wait for events to come in, then resolve
-    setTimeout(() => {
-      unsubscribe();
-      resolve({
-        count: starers.size,
-        starers: Array.from(starers),
-      });
-    }, 2000); // 2 second timeout
-  });
-}
-```
+Concepts in the repo header:
 
-### UI Integration
-
-```typescript
-// ui/src/app/[entity]/[repo]/layout.tsx
-
-const handleStar = useCallback(async () => {
-  if (!pubkey) return;
-
-  const repoEventId = repo?.nostrEventId || repo?.lastNostrEventId;
-  const repoOwnerPubkey = ownerPubkey || repo?.ownerPubkey;
-
-  if (isStarred) {
-    // Unstar: publish negative reaction
-    await removeStarReaction(repoEventId, repoOwnerPubkey, publish, getSigner);
-    setIsStarred(false);
-  } else {
-    // Star: publish positive reaction
-    await publishStarReaction(repoEventId, repoOwnerPubkey, publish, getSigner);
-    setIsStarred(true);
-  }
-
-  // Query aggregated star count
-  if (repoEventId) {
-    const { count } = await queryRepoStars(subscribe, repoEventId);
-    setStarCount(count);
-  }
-}, [isStarred, pubkey, repo, ownerPubkey, publish, subscribe]);
-
-// Query star count when repo loads
-useEffect(() => {
-  if (!repo) return;
-  const repoEventId = repo?.nostrEventId || repo?.lastNostrEventId;
-  if (!repoEventId) return;
-
-  queryRepoStars(subscribe, repoEventId).then(({ count }) => {
-    setStarCount(count);
-  });
-}, [repo, subscribe]);
-```
+1. **Star** — NIP-25 kind `7` on the current repo 30617 event (`publishStarReaction` / `removeStarReaction`). The **Stars** page lists your kind `7` reactions with `#k` `30617` from relays (matched to `gittr_repos` by event id). `gittr_starred_repos` is updated in the background when you star/unstar so the list stays usable offline and before relays echo.
+2. **GitHub / Import** — live GitHub stargazer **count** when `sourceUrl` is GitHub; otherwise an **Import** snapshot from stored `repo.stars` if present. This is display-only, not “your GitHub stars” OAuth.
+3. **Watch** — NIP-51 kind `10018` followed repos; separate from Star.
 
 ## NIP-51: Followed repositories (kind 10018)
 

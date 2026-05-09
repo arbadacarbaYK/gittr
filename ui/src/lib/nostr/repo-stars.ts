@@ -3,41 +3,112 @@ import { type Event, type Filter } from "nostr-tools";
 
 import { KIND_REACTION } from "./events";
 
+export type RelaySubscribeFn = (
+  filters: Filter[],
+  relays: string[],
+  onEvent: (event: Event, isAfterEose: boolean, relayURL?: string) => void,
+  maxDelayms?: number,
+  onEose?: (relayUrl: string, minCreatedAt: number) => void,
+  options?: Record<string, unknown>
+) => (() => void) | undefined;
+
+/** Latest reaction per pubkey wins; + / ⭐ count as starred, - removes. */
+export function aggregateRepoStarReactions(events: Event[]): {
+  count: number;
+  starers: string[];
+} {
+  const byPub = new Map<string, Event>();
+  for (const event of events) {
+    if (event.kind !== KIND_REACTION) continue;
+    const pk = event.pubkey.toLowerCase();
+    const prev = byPub.get(pk);
+    if (!prev || (event.created_at || 0) >= (prev.created_at || 0)) {
+      byPub.set(pk, event);
+    }
+  }
+  const starers = new Set<string>();
+  for (const ev of byPub.values()) {
+    if (ev.content === "+" || ev.content === "⭐") {
+      starers.add(ev.pubkey.toLowerCase());
+    }
+  }
+  return { count: starers.size, starers: Array.from(starers) };
+}
+
 /**
- * Query star reactions for a repository from Nostr relays
- * Returns aggregated star count and list of users who starred
+ * From the current user's kind 7 reactions with `#k` 30617, return each `#e`
+ * target id that is **currently** starred (latest event per target wins; `-` clears).
+ */
+export function aggregateMyStarredRepoEventIds(
+  events: Event[],
+  myPubkey: string
+): string[] {
+  const pk = myPubkey.toLowerCase();
+  const byTarget = new Map<string, Event>();
+  for (const ev of events) {
+    if (ev.kind !== KIND_REACTION) continue;
+    if (ev.pubkey.toLowerCase() !== pk) continue;
+    const kTag = ev.tags.find((t) => t[0] === "k")?.[1];
+    if (kTag !== "30617") continue;
+    const eid = ev.tags.find((t) => t[0] === "e")?.[1];
+    if (!eid || !/^[0-9a-f]{64}$/i.test(eid)) continue;
+    const prev = byTarget.get(eid);
+    if (!prev || (ev.created_at || 0) >= (prev.created_at || 0)) {
+      byTarget.set(eid, ev);
+    }
+  }
+  const out: string[] = [];
+  for (const [eid, ev] of byTarget) {
+    if (ev.content === "+" || ev.content === "⭐") out.push(eid);
+  }
+  return out;
+}
+
+/**
+ * One-shot query: subscribe until EOSE (or timeout), then aggregate stars.
  */
 export async function queryRepoStars(
-  subscribe: (filters: Filter[], onEvent: (event: Event) => void) => () => void,
-  repoEventId: string
+  subscribe: RelaySubscribeFn,
+  relays: string[],
+  repoEventId: string,
+  opts?: { timeoutMs?: number }
 ): Promise<{ count: number; starers: string[] }> {
+  const collected: Event[] = [];
+  const filters: Filter[] = [
+    {
+      kinds: [KIND_REACTION],
+      "#e": [repoEventId],
+      "#k": ["30617"],
+      limit: 500,
+    },
+  ];
+
   return new Promise((resolve) => {
-    const starers = new Set<string>();
-
-    const filters: Filter[] = [
-      {
-        kinds: [KIND_REACTION],
-        "#e": [repoEventId], // Reactions to this repo event
-        "#k": ["30617"], // Reactions to kind 30617 events
-      },
-    ];
-
-    const unsubscribe = subscribe(filters, (event: Event) => {
-      // Only count positive reactions (stars)
-      // Normalize pubkey to lowercase to prevent case-sensitivity issues
-      if (event.content === "+" || event.content === "⭐") {
-        starers.add(event.pubkey.toLowerCase());
+    let finished = false;
+    const finish = (unsub?: () => void) => {
+      if (finished) return;
+      finished = true;
+      try {
+        unsub?.();
+      } catch {
+        /* ignore */
       }
-    });
+      resolve(aggregateRepoStarReactions(collected));
+    };
 
-    // Wait a bit for events to come in, then resolve
-    setTimeout(() => {
-      unsubscribe();
-      resolve({
-        count: starers.size,
-        starers: Array.from(starers),
-      });
-    }, 2000); // 2 second timeout for querying
+    const unsub = subscribe(
+      filters,
+      relays,
+      (event: Event) => {
+        if (event.kind === KIND_REACTION) collected.push(event);
+      },
+      undefined,
+      () => finish(unsub as () => void),
+      {}
+    );
+
+    const timeoutMs = opts?.timeoutMs ?? 8000;
+    setTimeout(() => finish(unsub as () => void), timeoutMs);
   });
 }
 
@@ -47,9 +118,14 @@ export async function queryRepoStars(
 export async function publishStarReaction(
   repoEventId: string,
   repoOwnerPubkey: string,
-  publish: (event: Event) => Promise<void>,
+  publish: (event: Event) => void | Promise<void>,
   getSigner: () => Promise<{ signEvent: (event: any) => Promise<any> }>
-): Promise<{ success: boolean; eventId?: string; error?: string }> {
+): Promise<{
+  success: boolean;
+  eventId?: string;
+  signedEvent?: Event;
+  error?: string;
+}> {
   try {
     const signer = await getSigner();
 
@@ -75,6 +151,7 @@ export async function publishStarReaction(
     return {
       success: true,
       eventId: signedEvent.id,
+      signedEvent: signedEvent as Event,
     };
   } catch (error: any) {
     console.error("[Repo Stars] Failed to publish star reaction:", error);
@@ -92,9 +169,9 @@ export async function publishStarReaction(
 export async function removeStarReaction(
   repoEventId: string,
   repoOwnerPubkey: string,
-  publish: (event: Event) => Promise<void>,
+  publish: (event: Event) => void | Promise<void>,
   getSigner: () => Promise<{ signEvent: (event: any) => Promise<any> }>
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; signedEvent?: Event; error?: string }> {
   try {
     const signer = await getSigner();
 
@@ -114,7 +191,7 @@ export async function removeStarReaction(
     const signedEvent = await signer.signEvent(unsignedEvent);
     await publish(signedEvent);
 
-    return { success: true };
+    return { success: true, signedEvent: signedEvent as Event };
   } catch (error: any) {
     console.error("[Repo Stars] Failed to remove star reaction:", error);
     return {

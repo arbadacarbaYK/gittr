@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import { aggregateMyStarredRepoEventIds } from "@/lib/nostr/repo-stars";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 
 import { Star } from "lucide-react";
 import Link from "next/link";
-import { nip19 } from "nostr-tools";
+import { type Event as NostrEvent, nip19 } from "nostr-tools";
 
 type StarredRepo = {
   slug: string;
@@ -23,8 +26,10 @@ type StarredRepo = {
 
 export default function StarsPage() {
   const { isLoggedIn } = useSession();
-  const [starredRepos, setStarredRepos] = useState<StarredRepo[]>([]);
+  const { pubkey, subscribe, defaultRelays } = useNostrContext();
+  const [myStarEvents, setMyStarEvents] = useState<NostrEvent[]>([]);
   const [allRepos, setAllRepos] = useState<any[]>([]);
+  const [repoListVersion, setRepoListVersion] = useState(0);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -32,97 +37,161 @@ export default function StarsPage() {
   }, []);
 
   useEffect(() => {
-    if (!isLoggedIn) return;
+    const bump = () => setRepoListVersion((v) => v + 1);
+    if (typeof window === "undefined") return;
+    window.addEventListener("gittr:repos-updated", bump);
+    window.addEventListener("gittr:stars-updated", bump);
+    return () => {
+      window.removeEventListener("gittr:repos-updated", bump);
+      window.removeEventListener("gittr:stars-updated", bump);
+    };
+  }, []);
 
+  useEffect(() => {
+    if (!isLoggedIn) return;
     try {
-      // Get starred repo IDs
-      const starred = JSON.parse(
+      setAllRepos(
+        JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[]
+      );
+    } catch {
+      setAllRepos([]);
+    }
+  }, [isLoggedIn, repoListVersion]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !pubkey || !subscribe || !defaultRelays?.length) {
+      setMyStarEvents([]);
+      return;
+    }
+    setMyStarEvents([]);
+    const collected = new Map<string, NostrEvent>();
+    const relays = getAllRelays(defaultRelays);
+    const unsub = subscribe(
+      [
+        {
+          kinds: [7],
+          authors: [pubkey],
+          "#k": ["30617"],
+          limit: 500,
+        },
+      ],
+      relays,
+      (event) => {
+        if (event.kind !== 7) return;
+        collected.set(event.id, event as NostrEvent);
+        setMyStarEvents(Array.from(collected.values()));
+      },
+      undefined,
+      undefined,
+      {}
+    );
+    return () => {
+      try {
+        unsub?.();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [isLoggedIn, pubkey, subscribe, defaultRelays]);
+
+  const starredRepos = useMemo(() => {
+    if (!isLoggedIn || !pubkey) return [];
+
+    let localStarredIds: string[] = [];
+    try {
+      localStarredIds = JSON.parse(
         localStorage.getItem("gittr_starred_repos") || "[]"
       ) as string[];
+    } catch {
+      localStarredIds = [];
+    }
 
-      // Get all repos to find matching ones
-      const repos = JSON.parse(
-        localStorage.getItem("gittr_repos") || "[]"
-      ) as any[];
-      setAllRepos(repos);
+    const deletedRepos = JSON.parse(
+      localStorage.getItem("gittr_deleted_repos") || "[]"
+    ) as Array<{ entity: string; repo: string; deletedAt: number }>;
+    const deletedReposSet = new Set(
+      deletedRepos.map((d) => `${d.entity}/${d.repo}`.toLowerCase())
+    );
 
-      // Load list of locally-deleted repos
-      const deletedRepos = JSON.parse(
-        localStorage.getItem("gittr_deleted_repos") || "[]"
-      ) as Array<{ entity: string; repo: string; deletedAt: number }>;
-      const deletedReposSet = new Set(
-        deletedRepos.map((d) => `${d.entity}/${d.repo}`.toLowerCase())
-      );
+    const isRepoDeleted = (r: any): boolean => {
+      const repo = r.repo || r.slug || "";
+      const entity = r.entity || "";
+      const repoKey = `${entity}/${repo}`.toLowerCase();
+      if (deletedReposSet.has(repoKey)) return true;
+      if (r.deleted === true || r.archived === true) return true;
+      return false;
+    };
 
-      // Helper function to check if a repo is deleted
-      const isRepoDeleted = (r: any): boolean => {
-        const repo = r.repo || r.slug || "";
-        const entity = r.entity || "";
+    const nostrIds = new Set(
+      aggregateMyStarredRepoEventIds(myStarEvents, pubkey)
+    );
+    const byKey = new Map<string, StarredRepo>();
 
-        // Check direct match by entity/repo
-        const repoKey = `${entity}/${repo}`.toLowerCase();
-        if (deletedReposSet.has(repoKey)) return true;
-
-        // Check if marked as deleted/archived on Nostr
-        if (r.deleted === true || r.archived === true) return true;
-
-        return false;
-      };
-
-      // Match starred IDs with repos, filtering out deleted ones
-      const matched: StarredRepo[] = [];
-      starred.forEach((starredId) => {
-        const repo = repos.find((r: any) => {
-          const repoId =
-            r.entity && r.repo ? `${r.entity}/${r.repo}` : r.slug || "";
-          return repoId === starredId || r.slug === starredId;
-        });
-
-        // Skip if repo is deleted
-        if (repo && isRepoDeleted(repo)) {
-          return; // Skip deleted repos
-        }
-
-        if (repo) {
-          matched.push({
-            slug: repo.slug || starredId,
-            entity: repo.entity,
-            repo: repo.repo,
-            name: repo.name || repo.repo || starredId,
-            sourceUrl: repo.sourceUrl,
-            createdAt: repo.createdAt,
-            entityDisplayName: repo.entityDisplayName,
-            logoUrl: repo.logoUrl,
+    for (const r of allRepos) {
+      if (isRepoDeleted(r)) continue;
+      const eid = r.nostrEventId || r.lastNostrEventId;
+      const entity = r.entity || "";
+      const repoName = r.repo || r.slug || "";
+      if (!entity || !repoName) continue;
+      const key = `${entity}/${repoName}`.toLowerCase();
+      if (eid && nostrIds.has(eid)) {
+        if (!byKey.has(key)) {
+          byKey.set(key, {
+            slug: r.slug || `${entity}/${repoName}`,
+            entity,
+            repo: repoName,
+            name: r.name || repoName,
+            sourceUrl: r.sourceUrl,
+            createdAt: r.createdAt,
+            entityDisplayName: r.entityDisplayName,
+            logoUrl: r.logoUrl,
           });
-        } else {
-          // If repo not found, check if it's in deleted list before creating minimal entry
-          const [entity, repoName] = starredId.split("/");
-          const repoKey = `${entity}/${repoName || starredId}`.toLowerCase();
-          if (!deletedReposSet.has(repoKey)) {
-            matched.push({
-              slug: starredId,
-              entity,
-              repo: repoName || starredId,
-              name: repoName || starredId,
-            });
-          }
         }
+      }
+    }
+
+    for (const starredId of localStarredIds) {
+      const key = starredId.toLowerCase();
+      if (byKey.has(key)) continue;
+
+      const repo = allRepos.find((r: any) => {
+        const rid = r.entity && r.repo ? `${r.entity}/${r.repo}` : r.slug || "";
+        return rid === starredId || r.slug === starredId;
       });
 
-      setStarredRepos(matched);
-    } catch (error) {
-      console.error("Failed to load starred repos:", error);
-      setStarredRepos([]);
+      if (repo && !isRepoDeleted(repo)) {
+        byKey.set(key, {
+          slug: repo.slug || starredId,
+          entity: repo.entity,
+          repo: repo.repo,
+          name: repo.name || repo.repo || starredId,
+          sourceUrl: repo.sourceUrl,
+          createdAt: repo.createdAt,
+          entityDisplayName: repo.entityDisplayName,
+          logoUrl: repo.logoUrl,
+        });
+      } else {
+        const [entity, repoName] = starredId.split("/");
+        const repoKey = `${entity}/${repoName || starredId}`.toLowerCase();
+        if (!deletedReposSet.has(repoKey)) {
+          byKey.set(key, {
+            slug: starredId,
+            entity,
+            repo: repoName || starredId,
+            name: repoName || starredId,
+          });
+        }
+      }
     }
-  }, [isLoggedIn]);
 
-  // Get owner metadata for avatars - resolve to full pubkeys
+    return Array.from(byKey.values());
+  }, [isLoggedIn, pubkey, myStarEvents, allRepos]);
+
   const ownerPubkeys = useMemo(() => {
     if (typeof window === "undefined") return [];
     const pubkeys = new Set<string>();
     for (const repo of starredRepos) {
       if (!repo.entity || repo.entity === "user") continue;
-      // Try to resolve to full pubkey
       try {
         const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
         const matchingRepo = repos.find(
@@ -153,12 +222,10 @@ export default function StarsPage() {
 
   const ownerMetadata = useContributorMetadata(ownerPubkeys);
 
-  // Resolve repo icon - use full pubkey for metadata lookup
   const getRepoIcon = (repo: StarredRepo): string | null => {
     if (repo.logoUrl) return repo.logoUrl;
     if (typeof window === "undefined") return null;
 
-    // Find matching repo to get ownerPubkey
     try {
       const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
       const matchingRepo = repos.find(
@@ -172,7 +239,6 @@ export default function StarsPage() {
         matchingRepo?.ownerPubkey &&
         /^[0-9a-f]{64}$/i.test(matchingRepo.ownerPubkey)
       ) {
-        // Normalize to lowercase for metadata lookup
         const normalizedKey = matchingRepo.ownerPubkey.toLowerCase();
         const meta =
           ownerMetadata[normalizedKey] ||
@@ -180,7 +246,6 @@ export default function StarsPage() {
         if (meta?.picture) return meta.picture;
       }
 
-      // Also check for logo files in repo
       if (matchingRepo?.files && Array.isArray(matchingRepo.files)) {
         const logoFiles = matchingRepo.files
           .map((f: any) => f.path)
@@ -223,9 +288,7 @@ export default function StarsPage() {
       }
     } catch {}
 
-    // Fallback: try entity directly
     if (repo.entity && /^[0-9a-f]{64}$/i.test(repo.entity)) {
-      // Normalize to lowercase for metadata lookup
       const normalizedKey = repo.entity.toLowerCase();
       const meta = ownerMetadata[normalizedKey] || ownerMetadata[repo.entity];
       if (meta?.picture) return meta.picture;
@@ -260,12 +323,18 @@ export default function StarsPage() {
         <Star className="h-6 w-6 text-yellow-500 fill-yellow-500" />
         Your Stars
       </h1>
+      <p className="text-sm text-gray-400 mb-6 max-w-2xl">
+        Repos you star with NIP-25 (kind 7,{" "}
+        <code className="text-gray-300">#k</code> 30617) on relays. Entries are
+        matched to repos stored in this browser (by 30617 event id). The local
+        list updates when you star or unstar on a repo page.
+      </p>
 
       {starredRepos.length === 0 ? (
         <div className="border border-[#383B42] rounded p-8 text-center">
           <Star className="h-12 w-12 text-gray-600 mx-auto mb-4" />
           <p className="text-gray-400 mb-2">
-            You haven't starred any repositories yet.
+            You haven&apos;t starred any repositories on Nostr yet.
           </p>
           <Link href="/explore">
             <Button variant="outline" className="mt-4">
@@ -306,6 +375,11 @@ export default function StarsPage() {
                       {repo.entityDisplayName || entity || "Unknown"} /{" "}
                       {repoSlug}
                     </div>
+                    {repo.sourceUrl ? (
+                      <div className="text-xs text-gray-500 truncate mt-0.5">
+                        {repo.sourceUrl.replace(/^https?:\/\//, "")}
+                      </div>
+                    ) : null}
                   </div>
                   <Star className="h-4 w-4 text-yellow-500 fill-yellow-500 flex-shrink-0" />
                 </div>
