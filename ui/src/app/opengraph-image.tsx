@@ -1,6 +1,10 @@
 import { ImageResponse } from "next/og";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import sharp from "sharp";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
+
 export const alt = "gittr - Decentralized Git Hosting on Nostr";
 export const size = {
   width: 1200,
@@ -8,7 +12,24 @@ export const size = {
 };
 export const contentType = "image/png";
 
-export default function OpenGraphImage() {
+async function logoPngDataUrl(): Promise<string | null> {
+  try {
+    const cwd = process.cwd();
+    const svgPath = join(cwd, "public", "logo.svg");
+    const svgBuffer = await readFile(svgPath);
+    const pngBuffer = await sharp(svgBuffer)
+      .resize(220, 220, { fit: "contain" })
+      .png()
+      .toBuffer();
+    return `data:image/png;base64,${pngBuffer.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
+export default async function OpenGraphImage() {
+  const logoSrc = await logoPngDataUrl();
+
   return new ImageResponse(
     (
       <div
@@ -25,6 +46,15 @@ export default function OpenGraphImage() {
           fontFamily: "Arial, sans-serif",
         }}
       >
+        {logoSrc ? (
+          <img
+            src={logoSrc}
+            width={220}
+            height={220}
+            alt=""
+            style={{ marginBottom: 8 }}
+          />
+        ) : null}
         <div
           style={{
             display: "flex",

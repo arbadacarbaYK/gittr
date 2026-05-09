@@ -84,6 +84,7 @@ import {
   saveStoredRepos,
 } from "@/lib/repos/storage";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import { sanitizeContributors } from "@/lib/utils/contributors";
 import { formatDate24h } from "@/lib/utils/date-format";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
@@ -16469,6 +16470,11 @@ export default function RepoCodePage() {
                                           links.length > 0
                                             ? links
                                             : prev?.links,
+                                        releases: coalesceMetadataList(
+                                          importData.releases,
+                                          (prev as { releases?: unknown[] })
+                                            ?.releases
+                                        ) as unknown[],
                                       }));
 
                                       // CRITICAL: Also save files to separate storage key (for optimized storage)
@@ -17452,7 +17458,7 @@ export default function RepoCodePage() {
                                 : "Refetch from Nostr"}
                             </Button>
                             <p className="text-xs text-gray-500 mt-1 mb-2 px-1">
-                              ⚠️ This will completely overwrite your local
+                              ⚠️ Refetch will completely overwrite your local
                               repository with the latest version from{" "}
                               {hasSourceUrl
                                 ? `the source (${

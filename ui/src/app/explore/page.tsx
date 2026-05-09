@@ -22,6 +22,7 @@ import {
 } from "@/lib/nostr/useContributorMetadata";
 import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 import { loadStoredRepos } from "@/lib/repos/storage";
+import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
@@ -1828,7 +1829,10 @@ function ExplorePageContent() {
               defaultBranch:
                 repoData.defaultBranch || existingRepo?.defaultBranch,
               branches: repoData.branches || existingRepo?.branches,
-              releases: repoData.releases || existingRepo?.releases,
+              releases: coalesceMetadataList(
+                repoData.releases,
+                existingRepo?.releases
+              ),
               logoUrl: existingRepo?.logoUrl,
               createdAt: existingRepo?.createdAt || event.created_at * 1000, // Keep in milliseconds for compatibility
               updatedAt: event.created_at * 1000, // Track when repo was last updated from Nostr (in milliseconds)

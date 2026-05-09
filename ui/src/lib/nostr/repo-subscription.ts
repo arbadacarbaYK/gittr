@@ -2,6 +2,8 @@
 // Subscribes to repository events and syncs local storage
 import { useEffect } from "react";
 
+import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
+
 import { useNostrContext } from "./NostrContext";
 import { KIND_REPOSITORY } from "./events";
 
@@ -76,7 +78,10 @@ export function useRepoSubscription(options: RepoSubscriptionOptions = {}) {
               defaultBranch:
                 repoData.defaultBranch || existingRepo?.defaultBranch,
               branches: repoData.branches || existingRepo?.branches,
-              releases: repoData.releases || existingRepo?.releases,
+              releases: coalesceMetadataList(
+                repoData.releases,
+                existingRepo?.releases
+              ),
               logoUrl: existingRepo?.logoUrl, // Preserve local-only data
               createdAt: existingRepo?.createdAt || event.created_at * 1000,
               updatedAt: event.created_at * 1000,

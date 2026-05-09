@@ -20,6 +20,62 @@ import {
   storeRepoEventId,
 } from "./publish-with-confirmation";
 
+/** GitHub `/api/import` uses `tag_name` + `body`; NIP-34 events use `tag` + `description`. */
+function normalizeOneReleaseForNip34(r: unknown): {
+  tag: string;
+  name: string;
+  description?: string;
+  createdAt?: number;
+} | null {
+  if (typeof r !== "object" || r === null) return null;
+  const o = r as Record<string, unknown>;
+  const tag =
+    (typeof o.tag === "string" && o.tag.trim()) ||
+    (typeof o.tag_name === "string" && o.tag_name.trim()) ||
+    "";
+  if (!tag) return null;
+  const nameRaw =
+    typeof o.name === "string" && o.name.trim() ? o.name.trim() : tag;
+  const description =
+    (typeof o.description === "string" && o.description) ||
+    (typeof o.body === "string" && o.body) ||
+    undefined;
+  let createdAt: number | undefined;
+  if (typeof o.createdAt === "number" && Number.isFinite(o.createdAt)) {
+    const v = o.createdAt;
+    createdAt = v > 1_000_000_000_000 ? Math.floor(v / 1000) : Math.floor(v);
+  } else if (
+    typeof o.published_at === "string" &&
+    o.published_at.trim().length > 0
+  ) {
+    const ms = Date.parse(o.published_at);
+    if (!Number.isNaN(ms)) createdAt = Math.floor(ms / 1000);
+  }
+  return { tag, name: nameRaw || tag, description, createdAt };
+}
+
+function normalizeReleasesForRepositoryEvent(
+  releases: unknown[] | undefined
+): Array<{
+  tag: string;
+  name: string;
+  description?: string;
+  createdAt?: number;
+}> {
+  if (!Array.isArray(releases)) return [];
+  const out: Array<{
+    tag: string;
+    name: string;
+    description?: string;
+    createdAt?: number;
+  }> = [];
+  for (const r of releases) {
+    const n = normalizeOneReleaseForNip34(r);
+    if (n) out.push(n);
+  }
+  return out;
+}
+
 export interface BridgeFilePayload {
   path: string;
   content?: string;
@@ -1914,22 +1970,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             }
             return result;
           })(),
-          releases: Array.isArray(repo.releases)
-            ? repo.releases.filter(
-                (
-                  r
-                ): r is {
-                  tag: string;
-                  name: string;
-                  description?: string;
-                  createdAt?: number;
-                } =>
-                  typeof r === "object" &&
-                  r !== null &&
-                  "tag" in r &&
-                  "name" in r
-              )
-            : [],
+          releases: normalizeReleasesForRepositoryEvent(repo.releases),
           logoUrl: repo.logoUrl,
           requiredApprovals: repo.requiredApprovals,
           pushCostSats:

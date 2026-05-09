@@ -31,6 +31,7 @@ import {
   saveStoredRepos,
 } from "@/lib/repos/storage";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
@@ -1596,7 +1597,10 @@ export default function RepositoriesPage() {
               defaultBranch:
                 repoData.defaultBranch || existingRepo?.defaultBranch,
               branches: repoData.branches || existingRepo?.branches,
-              releases: repoData.releases || existingRepo?.releases,
+              releases: coalesceMetadataList(
+                repoData.releases,
+                existingRepo?.releases
+              ),
               logoUrl: existingRepo?.logoUrl, // Preserve local-only
               createdAt: existingRepo?.createdAt || event.created_at * 1000,
               // CRITICAL: Preserve deletion markers from Nostr (owner's deletion request)

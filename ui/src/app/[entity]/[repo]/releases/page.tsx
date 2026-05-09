@@ -142,7 +142,17 @@ export default function RepoReleasesPage({
       );
       if (rec) {
         const repoWithReleases = rec as StoredRepo & { releases?: Release[] };
-        setReleases(repoWithReleases.releases || []);
+        const raw = repoWithReleases.releases || [];
+        // NIP-34 events use `tag`; GitHub import uses `tag_name` — normalize for this UI.
+        setReleases(
+          raw.map((r: Release & { tag?: string }) => ({
+            ...r,
+            tag_name:
+              (r.tag_name && String(r.tag_name)) ||
+              (typeof r.tag === "string" ? r.tag : "") ||
+              "",
+          }))
+        );
         setTags(
           rec.tags
             ?.map((t: string | { name: string }) =>
