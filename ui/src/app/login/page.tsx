@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { rememberNostrConnectClientKey } from "@/lib/nostr/remoteSigner";
 import { LoginType, checkType } from "@/lib/utils";
 
 import { Html5Qrcode } from "html5-qrcode";
@@ -102,16 +103,22 @@ export default function Login() {
     if (typeof window === "undefined" || !window.crypto?.getRandomValues) {
       throw new Error("Unable to generate token in this browser");
     }
-    const secret = generatePrivateKey();
+    const clientSecretKey = generatePrivateKey();
     const relays = [
       "wss://nostr.oxtr.dev/",
       "wss://theforest.nostr1.com/",
       "wss://relay.primal.net/",
     ];
-    const tempClientPubkey = getPublicKey(secret);
+    const tempClientPubkey = getPublicKey(clientSecretKey);
+    const challengeBytes = new Uint8Array(8);
+    window.crypto.getRandomValues(challengeBytes);
+    const challengeSecret = Array.from(challengeBytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    rememberNostrConnectClientKey(tempClientPubkey, clientSecretKey);
     const query = new URLSearchParams();
     relays.forEach((relay) => query.append("relay", relay));
-    query.set("secret", secret);
+    query.set("secret", challengeSecret);
     query.set("name", "gittr");
     query.set(
       "perms",

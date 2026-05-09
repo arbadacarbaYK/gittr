@@ -120,6 +120,90 @@ const bytesToHex = (bytes: Uint8Array) =>
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 
+type NostrConnectClientKeyEntry = {
+  clientPubkey: string;
+  clientSecretKey: string;
+  createdAt: number;
+};
+
+const NOSTRCONNECT_KEY_TTL_MS = 30 * 60 * 1000;
+
+const loadNostrConnectClientKeyMap = (): Record<
+  string,
+  NostrConnectClientKeyEntry
+> => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(WEB_STORAGE_KEYS.NOSTRCONNECT_CLIENT_KEYS);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed as Record<string, NostrConnectClientKeyEntry>;
+  } catch {
+    return {};
+  }
+};
+
+const persistNostrConnectClientKeyMap = (
+  map: Record<string, NostrConnectClientKeyEntry>
+) => {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(
+      WEB_STORAGE_KEYS.NOSTRCONNECT_CLIENT_KEYS,
+      JSON.stringify(map)
+    );
+  } catch {
+    // Ignore storage errors (quota/private mode).
+  }
+};
+
+export function rememberNostrConnectClientKey(
+  clientPubkey: string,
+  clientSecretKey: string
+) {
+  if (!HEX_64_RE.test(clientPubkey) || !HEX_64_RE.test(clientSecretKey)) return;
+  const normalizedPubkey = clientPubkey.toLowerCase();
+  const normalizedSecret = clientSecretKey.toLowerCase();
+  const map = loadNostrConnectClientKeyMap();
+  const now = Date.now();
+  for (const [pubkey, entry] of Object.entries(map)) {
+    if (
+      !entry ||
+      typeof entry.createdAt !== "number" ||
+      now - entry.createdAt > NOSTRCONNECT_KEY_TTL_MS
+    ) {
+      delete map[pubkey];
+    }
+  }
+  map[normalizedPubkey] = {
+    clientPubkey: normalizedPubkey,
+    clientSecretKey: normalizedSecret,
+    createdAt: now,
+  };
+  persistNostrConnectClientKeyMap(map);
+}
+
+function getStoredNostrConnectClientKey(
+  clientPubkey: string
+): string | undefined {
+  if (!HEX_64_RE.test(clientPubkey)) return undefined;
+  const normalizedPubkey = clientPubkey.toLowerCase();
+  const map = loadNostrConnectClientKeyMap();
+  const entry = map[normalizedPubkey];
+  if (!entry) return undefined;
+  if (
+    typeof entry.createdAt !== "number" ||
+    Date.now() - entry.createdAt > NOSTRCONNECT_KEY_TTL_MS ||
+    !HEX_64_RE.test(entry.clientSecretKey || "")
+  ) {
+    delete map[normalizedPubkey];
+    persistNostrConnectClientKeyMap(map);
+    return undefined;
+  }
+  return entry.clientSecretKey.toLowerCase();
+}
+
 const normalizeRelayUrl = (url: string) =>
   url.trim().toLowerCase().replace(/\/+$/, "");
 
@@ -207,9 +291,7 @@ export function parseRemoteSignerUri(input: string): ParsedRemoteSignerUri {
     // Security hardening: signer-initiated bunker URIs should include a secret
     // to prevent relay-level hijacking/race attacks during pairing.
     if (!secret) {
-      throw new Error(
-        "Security: bunker:// token requires a secret parameter"
-      );
+      throw new Error("Security: bunker:// token requires a secret parameter");
     }
     const label = params.get("name") || params.get("label") || undefined;
     return {
@@ -265,6 +347,15 @@ export function loadStoredRemoteSignerSession(): RemoteSignerSession | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as RemoteSignerSession;
     if (!parsed.remotePubkey || !parsed.clientSecretKey || !parsed.userPubkey) {
+      return null;
+    }
+    // One-shot migration: old nostrconnect sessions embedded client private key in `secret`.
+    if (
+      typeof parsed.secret === "string" &&
+      HEX_64_RE.test(parsed.secret) &&
+      parsed.secret.toLowerCase() === parsed.clientSecretKey.toLowerCase()
+    ) {
+      localStorage.removeItem(STORAGE_KEY);
       return null;
     }
     return parsed;
@@ -359,10 +450,8 @@ export class RemoteSignerManager {
     const previousSession = loadStoredRemoteSignerSession();
     const sessionMatchesConfig =
       config.mode === "bunker"
-        ? (s: RemoteSignerSession) =>
-            s.remotePubkey === config.remotePubkey
-        : (s: RemoteSignerSession) =>
-            s.clientPubkey === config.clientPubkey;
+        ? (s: RemoteSignerSession) => s.remotePubkey === config.remotePubkey
+        : (s: RemoteSignerSession) => s.clientPubkey === config.clientPubkey;
     const previousUserPubkey =
       previousSession &&
       sessionMatchesConfig(previousSession) &&
@@ -400,13 +489,15 @@ export class RemoteSignerManager {
       session.clientSecretKey = generatedClientSecret;
       session.clientPubkey = getPublicKey(session.clientSecretKey);
     } else {
-      const sk = config.secret?.trim();
-      if (!sk || !HEX_64_RE.test(sk)) {
+      const storedClientSecret = getStoredNostrConnectClientKey(
+        config.clientPubkey
+      );
+      if (!storedClientSecret) {
         throw new Error(
-          "nostrconnect token must include a 64-character hex secret (private key). Tap Show QR again to generate a fresh pairing code."
+          "No local nostrconnect client key found for this token. Generate a fresh token via Show QR and pair again."
         );
       }
-      session.clientSecretKey = sk.toLowerCase();
+      session.clientSecretKey = storedClientSecret;
       session.clientPubkey = getPublicKey(session.clientSecretKey);
       if (session.clientPubkey !== config.clientPubkey) {
         throw new Error(
@@ -508,7 +599,9 @@ export class RemoteSignerManager {
           connectErr instanceof Error ? connectErr.message : String(connectErr);
         // Compatibility: some signers establish pairing but don't return connect result.
         // Continue with get_public_key probe instead of hard-failing on connect timeout.
-        if (/connect timed out|request connect timed out|timed out/i.test(msg)) {
+        if (
+          /connect timed out|request connect timed out|timed out/i.test(msg)
+        ) {
           console.warn(
             "[RemoteSigner] connect timed out; continuing with get_public_key probe"
           );
@@ -543,16 +636,17 @@ export class RemoteSignerManager {
         }
       }
       if (pubkeyErr) {
+        if (config.mode === "nostrconnect") {
+          throw pubkeyErr;
+        }
         const pubkeyErrMsg =
           pubkeyErr instanceof Error ? pubkeyErr.message : String(pubkeyErr);
         if (
           /no permission|timed out/i.test(pubkeyErrMsg) &&
-          (
-            pubkeyFromConnect ||
+          (pubkeyFromConnect ||
             this.pairingPubkeyHint ||
             knownUserPubkey ||
-            bunkerSignerPubkeyFallback
-          )
+            bunkerSignerPubkeyFallback)
         ) {
           remotePubkeyHex =
             pubkeyFromConnect ||
@@ -564,6 +658,11 @@ export class RemoteSignerManager {
         }
       }
       if (!remotePubkeyHex || typeof remotePubkeyHex !== "string") {
+        if (config.mode === "nostrconnect") {
+          throw new Error(
+            "Remote signer did not return get_public_key for nostrconnect session"
+          );
+        }
         if (
           pubkeyFromConnect ||
           this.pairingPubkeyHint ||
@@ -730,12 +829,12 @@ export class RemoteSignerManager {
     const openByNorm = new Set(
       this.deps
         .getRelayStatuses()
-        .filter(([url, state]) => state === 1 && wanted.has(normalizeRelayUrl(url)))
+        .filter(
+          ([url, state]) => state === 1 && wanted.has(normalizeRelayUrl(url))
+        )
         .map(([url]) => normalizeRelayUrl(url))
     );
-    return relays.filter((relay) =>
-      openByNorm.has(normalizeRelayUrl(relay))
-    );
+    return relays.filter((relay) => openByNorm.has(normalizeRelayUrl(relay)));
   }
 
   private async publishWithRelayRetry(
@@ -779,7 +878,9 @@ export class RemoteSignerManager {
     }
     if (lastError) throw lastError;
     throw new Error(
-      `No bunker relay connected (OPEN) for request publish (${sessionRelays.join(", ")})`
+      `No bunker relay connected (OPEN) for request publish (${sessionRelays.join(
+        ", "
+      )})`
     );
   }
 
@@ -789,9 +890,10 @@ export class RemoteSignerManager {
   ) {
     this.unsubscribe?.();
     this.directUnsubscribe?.();
-    const relays = relaysOverride && relaysOverride.length > 0
-      ? relaysOverride
-      : session.relays;
+    const relays =
+      relaysOverride && relaysOverride.length > 0
+        ? relaysOverride
+        : session.relays;
     const wideNostrConnect =
       !!session.nostrConnectPairing &&
       (!session.remotePubkey || session.remotePubkey.length === 0);
@@ -816,10 +918,8 @@ export class RemoteSignerManager {
 
     // Keep legacy app relaypool subscription (best-effort).
     try {
-      this.unsubscribe = this.deps.subscribe(
-        filters,
-        relays,
-        (event) => this.handleIncomingEvent(event)
+      this.unsubscribe = this.deps.subscribe(filters, relays, (event) =>
+        this.handleIncomingEvent(event)
       );
     } catch (error) {
       console.warn("[RemoteSigner] relaypool subscribe failed:", error);
@@ -890,7 +990,11 @@ export class RemoteSignerManager {
         event.pubkey,
         event.content
       );
+      const message = JSON.parse(plaintext);
       if (wideNostrConnect) {
+        if (!session.secret || message?.result !== session.secret) {
+          return;
+        }
         session.remotePubkey = String(event.pubkey).toLowerCase();
         session.nostrConnectPairing = false;
         this.nostrConnectSignerResolved?.();
@@ -899,7 +1003,6 @@ export class RemoteSignerManager {
           this.getOpenRelays(session.relays)
         );
       }
-      const message = JSON.parse(plaintext);
       const hintedPubkey = extractHexPubkey(message?.result);
       if (hintedPubkey) {
         this.pairingPubkeyHint = hintedPubkey;
@@ -917,8 +1020,8 @@ export class RemoteSignerManager {
         message?.error === undefined || message?.error === null
           ? ""
           : typeof message.error === "string"
-            ? message.error
-            : String(message.error);
+          ? message.error
+          : String(message.error);
       // Amber (and some signers) may use a session-scoped JSON-RPC id that does not
       // match our per-request id, so strict pending.get(message.id) never resolves.
       if (!pending && message?.id && pendingConnectList.length === 1) {
@@ -961,14 +1064,21 @@ export class RemoteSignerManager {
           (typeof result?.pubkey === "string" && HEX_64_RE.test(result.pubkey));
         if (pendingConnect && maybeAck) {
           pending = pendingConnect;
-          if (typeof result === "object" && result?.pubkey && !message?.result) {
+          if (
+            typeof result === "object" &&
+            result?.pubkey &&
+            !message?.result
+          ) {
             message.result = result.pubkey;
           } else if (result === true || result === "ok") {
             message.result = "ack";
           }
         } else if (pendingGetPubkey && maybePubkey) {
           pending = pendingGetPubkey;
-          if (typeof result === "object" && typeof result?.pubkey === "string") {
+          if (
+            typeof result === "object" &&
+            typeof result?.pubkey === "string"
+          ) {
             message.result = result.pubkey;
           }
         }
@@ -1101,11 +1211,14 @@ export class RemoteSignerManager {
               );
               try {
                 this.directPool.publish(session.relays, fallbackEvent);
-                console.log("[RemoteSigner] Published fallback via direct pool", {
-                  eventId: fallbackEvent.id,
-                  method,
-                  relays: session.relays,
-                });
+                console.log(
+                  "[RemoteSigner] Published fallback via direct pool",
+                  {
+                    eventId: fallbackEvent.id,
+                    method,
+                    relays: session.relays,
+                  }
+                );
               } catch {
                 // ignore direct publish errors for fallback envelope
               }
