@@ -194,6 +194,39 @@ export function parseGitSource(cloneUrl: string): GitSource {
         );
       }
     }
+  } else if (
+    /^[^@\s]+@[^:]+:.+$/.test(cloneUrl.trim()) &&
+    !cloneUrl.includes("://")
+  ) {
+    // Generic SSH remote (not only git@): e.g. ubuntu@melvin.me:www/melvin.me/public/git/sync/20260509
+    // Valid for `git clone`; NIP-34 often uses HTTPS/nostr — this is an upstream mirror the publisher chose.
+    const m = cloneUrl.trim().match(/^([^@\s]+)@([^:]+):(.+)$/);
+    if (m) {
+      const sshUser = m[1];
+      const sshHost = m[2];
+      const sshPath = m[3];
+      if (!sshUser || !sshHost || !sshPath) {
+        /* fall through */
+      } else {
+        const repoLeaf =
+          sshPath
+            .replace(/\/+$/, "")
+            .replace(/\.git$/i, "")
+            .split("/")
+            .filter(Boolean)
+            .pop() || sshPath;
+        console.log(
+          `🔄 [Git Source] user@host:path SSH remote → self-hosted-git (${sshHost}, repo leaf: ${repoLeaf})`
+        );
+        return {
+          type: "self-hosted-git",
+          url: cloneUrl.trim(),
+          displayName: sshHost,
+          owner: sshUser,
+          repo: repoLeaf,
+        };
+      }
+    }
   }
 
   // Remove .git suffix if present

@@ -11,6 +11,13 @@ import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
+/** user@host:path/to/repo — git accepts it; not the same as git@ only */
+function isSshStyleGitRemote(url: string): boolean {
+  const t = url.trim();
+  if (!t || t.includes("://")) return false;
+  return /^[^@\s]+@[^:]+:.+$/.test(t);
+}
+
 type Data = {
   ok?: boolean;
   files?: Array<{ type: string; path: string; size?: number }>;
@@ -37,6 +44,9 @@ function normalizeCloneUrl(sourceUrl: string): string {
   if (cloneUrl.startsWith("git@")) {
     return cloneUrl;
   }
+  if (isSshStyleGitRemote(cloneUrl)) {
+    return cloneUrl;
+  }
   if (cloneUrl.startsWith("git://")) {
     return cloneUrl.replace(/^git:\/\//, "https://");
   }
@@ -48,14 +58,20 @@ function normalizeCloneUrl(sourceUrl: string): string {
 
 function isSafeRemoteUrl(url: string): boolean {
   try {
-    const u = new URL(
-      url.startsWith("git@")
+    const t = url.trim();
+    const previewForParse =
+      t.startsWith("git@") && t.match(/^git@([^:]+):(.+)$/)
         ? (() => {
-            const m = url.match(/^git@([^:]+):(.+)$/);
-            return m ? `https://${m[1]}/${m[2]}` : url;
+            const m = t.match(/^git@([^:]+):(.+)$/);
+            return m ? `https://${m[1]}/${m[2]}` : normalizeCloneUrl(t);
           })()
-        : normalizeCloneUrl(url)
-    );
+        : isSshStyleGitRemote(t)
+        ? (() => {
+            const m = t.match(/^[^@]+@([^:]+):(.+)$/);
+            return m ? `https://${m[1]}/${m[2]}` : normalizeCloneUrl(t);
+          })()
+        : normalizeCloneUrl(t);
+    const u = new URL(previewForParse);
     if (u.protocol !== "http:" && u.protocol !== "https:") return false;
     const h = u.hostname.toLowerCase();
     if (
