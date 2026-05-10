@@ -4,8 +4,12 @@
  */
 import {
   type StoredRepo,
+  loadRepoDeletedPaths,
+  loadRepoFiles,
   loadRepoOverrides,
   loadStoredRepos,
+  normalizeFilePath,
+  resolveRepoStorageAlias,
   saveStoredRepos,
 } from "../repos/storage";
 import { getGraspServers } from "../utils/grasp-servers";
@@ -542,30 +546,50 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
 
     // Step 5: Merge file overrides (user edits) into files array
     onProgress?.("Merging file overrides...");
+    // Indexed file list + overrides use gittr_* keys; URL slug may differ from stored repo label (hyphens vs underscores).
+    const storageRepo =
+      typeof window !== "undefined"
+        ? resolveRepoStorageAlias(entity, repoSlug)
+        : repoSlug;
     const savedOverrides =
-      typeof window !== "undefined" ? loadRepoOverrides(entity, repoSlug) : {};
+      typeof window !== "undefined"
+        ? loadRepoOverrides(entity, storageRepo)
+        : {};
 
     // CRITICAL: Filter out deleted files before pushing to Nostr
     // Deleted files are tracked separately in deletedPaths and should NOT be included in the event
-    const { loadRepoDeletedPaths } = await import("../repos/storage");
     const deletedPaths =
       typeof window !== "undefined"
-        ? loadRepoDeletedPaths(entity, repoSlug)
+        ? loadRepoDeletedPaths(entity, storageRepo)
         : [];
 
-    // Start with repo files (or empty array if none), excluding deleted files
-    // CRITICAL: Normalize paths for comparison (deletedPaths are normalized)
-    const { normalizeFilePath } = await import("../repos/storage");
-    const allFiles =
+    // Start with repo.files plus gittr_files index (addFilesToRepo / upload clears repo.files to save quota)
+    const filesFromRepoObject =
       repo.files && Array.isArray(repo.files) ? [...repo.files] : [];
+    const filesFromIndexedStorage =
+      typeof window !== "undefined" ? loadRepoFiles(entity, storageRepo) : [];
+    const pathToFile = new Map<string, any>();
+    for (const f of filesFromRepoObject) {
+      const p = normalizeFilePath((f as { path?: string }).path || "");
+      if (p) pathToFile.set(p, { ...f, path: p });
+    }
+    for (const f of filesFromIndexedStorage) {
+      const p = normalizeFilePath(f.path || "");
+      if (!p) continue;
+      const prev = pathToFile.get(p);
+      pathToFile.set(p, prev ? { ...prev, ...f, path: p } : { ...f, path: p });
+    }
+    const allFiles = Array.from(pathToFile.values());
 
     // CRITICAL: Log file loading status for debugging
     console.log(`📋 [Push Repo] File loading status:`, {
       repoFilesLength: repo.files?.length || 0,
+      indexedFilesLength: filesFromIndexedStorage.length,
       allFilesLength: allFiles.length,
       hasSourceUrl: !!repo.sourceUrl,
       sourceUrl: repo.sourceUrl,
       repoSlug,
+      storageRepo: storageRepo !== repoSlug ? storageRepo : undefined,
       actualRepositoryName,
       entity,
       pubkey: pubkey ? `${pubkey.substring(0, 8)}...` : "none",

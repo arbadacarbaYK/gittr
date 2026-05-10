@@ -85,7 +85,10 @@ import {
 } from "@/lib/repos/storage";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
-import { sanitizeContributors } from "@/lib/utils/contributors";
+import {
+  mergeOwnerPubkeyIntoContributors,
+  sanitizeContributors,
+} from "@/lib/utils/contributors";
 import { formatDate24h } from "@/lib/utils/date-format";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import {
@@ -2157,7 +2160,17 @@ export default function RepoCodePage() {
         contributors.unshift({ name: resolvedParams.entity, weight: 100 });
       }
     } else if (!contributors.length && repo.entityDisplayName) {
-      const fallbackPubkey = ownerPubkey || effectiveUserPubkey;
+      let fallbackPubkey = ownerPubkey || effectiveUserPubkey;
+      if (!fallbackPubkey && resolvedParams.entity?.startsWith("npub")) {
+        try {
+          const decoded = nip19.decode(resolvedParams.entity);
+          if (decoded.type === "npub") {
+            fallbackPubkey = decoded.data as string;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
       if (fallbackPubkey) {
         contributors = [
           {
@@ -2173,6 +2186,11 @@ export default function RepoCodePage() {
     }
 
     contributors = normalizeContributors(contributors);
+    contributors = mergeOwnerPubkeyIntoContributors(
+      contributors,
+      ownerPubkey || repo.ownerPubkey,
+      repo.entityDisplayName
+    );
 
     if (contributors.length > 0 && ownerPubkey) {
       const repoIndex = repos.findIndex(
@@ -2629,39 +2647,48 @@ export default function RepoCodePage() {
             // Ensure owner is always present
             // Use repo.ownerPubkey (already resolved from npub/contributor/activity matching above)
             // Fallback to effectiveUserPubkey if repo.ownerPubkey not set
-            const resolvedOwnerPubkey =
-              repo.ownerPubkey ||
-              effectiveUserPubkey ||
-              (resolvedParams.entity &&
-              resolvedParams.entity.length === 8 &&
-              /^[0-9a-f]{8}$/i.test(resolvedParams.entity)
-                ? undefined // If entity is a pubkey prefix, we need full pubkey - try to resolve
-                : undefined);
+            let ownerPubkeyForImportPath: string | undefined =
+              repo.ownerPubkey || effectiveUserPubkey;
+            if (
+              !ownerPubkeyForImportPath &&
+              resolvedParams.entity?.startsWith("npub")
+            ) {
+              try {
+                const decoded = nip19.decode(resolvedParams.entity);
+                if (decoded.type === "npub") {
+                  ownerPubkeyForImportPath = decoded.data as string;
+                }
+              } catch {
+                /* ignore */
+              }
+            }
 
             // CRITICAL: For newly created repos (no sourceUrl), don't add owner again
             // The owner is already in contributors from repo creation
             // Only add owner if repo was imported (has sourceUrl) and owner is missing
             if (
               repo.sourceUrl &&
-              resolvedOwnerPubkey &&
+              ownerPubkeyForImportPath &&
               !contributors.some(
                 (c) =>
                   c.pubkey &&
-                  c.pubkey.toLowerCase() === resolvedOwnerPubkey.toLowerCase()
+                  c.pubkey.toLowerCase() ===
+                    ownerPubkeyForImportPath!.toLowerCase()
               )
             ) {
               contributors.unshift({
-                pubkey: resolvedOwnerPubkey,
+                pubkey: ownerPubkeyForImportPath,
                 name: repo.entityDisplayName || resolvedParams.entity,
                 weight: 100,
                 role: "owner",
               });
-            } else if (!repo.sourceUrl && resolvedOwnerPubkey) {
+            } else if (!repo.sourceUrl && ownerPubkeyForImportPath) {
               // For newly created repos, ensure owner is first and has correct weight/role
               const ownerIndex = contributors.findIndex(
                 (c) =>
                   c.pubkey &&
-                  c.pubkey.toLowerCase() === resolvedOwnerPubkey.toLowerCase()
+                  c.pubkey.toLowerCase() ===
+                    ownerPubkeyForImportPath!.toLowerCase()
               );
               if (ownerIndex >= 0) {
                 // Move owner to first position and ensure correct weight/role
@@ -2674,15 +2701,38 @@ export default function RepoCodePage() {
                   owner,
                   ...contributors.filter((_, i) => i !== ownerIndex),
                 ];
+              } else {
+                contributors.unshift({
+                  pubkey: ownerPubkeyForImportPath,
+                  name: repo.entityDisplayName || resolvedParams.entity,
+                  weight: 100,
+                  role: "owner" as const,
+                });
               }
             } else if (!contributors.length && repo.entityDisplayName) {
               // Fallback: if no pubkey but we have entityDisplayName, create contributor entry
-              contributors = [
-                { name: repo.entityDisplayName, weight: 100, role: "owner" },
-              ];
+              if (ownerPubkeyForImportPath) {
+                contributors = [
+                  {
+                    pubkey: ownerPubkeyForImportPath,
+                    name: repo.entityDisplayName,
+                    weight: 100,
+                    role: "owner" as const,
+                  },
+                ];
+              } else {
+                contributors = [
+                  { name: repo.entityDisplayName, weight: 100, role: "owner" },
+                ];
+              }
             }
 
             contributors = normalizeContributors(contributors);
+            contributors = mergeOwnerPubkeyIntoContributors(
+              contributors,
+              ownerPubkeyForImportPath || repo.ownerPubkey,
+              repo.entityDisplayName
+            );
 
             const normalizedRepoEntity = normalizeRepoEntityForRoute(
               repo.entity,

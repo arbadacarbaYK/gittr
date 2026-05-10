@@ -27,6 +27,18 @@ export type Metadata = {
 
 const METADATA_CACHE_KEY = "gittr_metadata_cache";
 
+/** Set `localStorage.gittr_verbose_contributor_meta = "1"` for noisy subscription / kind-0 logs. */
+function contributorMetaVerbose(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return (
+      window.localStorage.getItem("gittr_verbose_contributor_meta") === "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
 // Module-level cache to avoid loading from localStorage on every hook call
 let moduleCache: Record<string, Metadata> | null = null;
 let cacheLoadTime = 0;
@@ -53,10 +65,11 @@ function loadMetadataCache(): Record<string, Metadata> {
       }
       // Only log on first load or when cache size changes significantly
       if (
-        moduleCache === null ||
-        Math.abs(
-          Object.keys(normalized).length - Object.keys(moduleCache).length
-        ) > 10
+        contributorMetaVerbose() &&
+        (moduleCache === null ||
+          Math.abs(
+            Object.keys(normalized).length - Object.keys(moduleCache).length
+          ) > 10)
       ) {
         console.log(
           `📦 [useContributorMetadata] Loaded ${
@@ -122,8 +135,8 @@ function saveMetadataCache(metadata: Record<string, Metadata>) {
         );
         // Invalidate module cache so it reloads on next access
         invalidateModuleCache();
-        // Reduced logging to prevent performance issues
         if (
+          contributorMetaVerbose() &&
           Object.keys(pendingMetadata).length > 0 &&
           Object.keys(pendingMetadata).length % 10 === 0
         ) {
@@ -177,11 +190,13 @@ export function useContributorMetadata(pubkeys: string[]) {
     const cached = loadMetadataCache();
     if (Object.keys(cached).length > 0) {
       setMetadataMap(cached);
-      console.log(
-        `📦 [useContributorMetadata] Loaded ${
-          Object.keys(cached).length
-        } metadata entries from cache on mount`
-      );
+      if (contributorMetaVerbose()) {
+        console.log(
+          `📦 [useContributorMetadata] Loaded ${
+            Object.keys(cached).length
+          } metadata entries from cache on mount`
+        );
+      }
     }
   }, []);
   // Memoize pubkeysKey to prevent unnecessary re-renders - use stable string comparison
@@ -203,17 +218,20 @@ export function useContributorMetadata(pubkeys: string[]) {
   }, [pubkeys.length, pubkeys.join(",")]); // Still depend on length and join for React's dependency tracking
 
   useEffect(() => {
-    console.log(`🔄 [useContributorMetadata] useEffect triggered:`, {
-      pubkeysLength: pubkeys.length,
-      pubkeysKey:
-        pubkeysKey.slice(0, 50) + (pubkeysKey.length > 50 ? "..." : ""),
-      previousKey:
-        pubkeysKeyRef.current.slice(0, 50) +
-        (pubkeysKeyRef.current.length > 50 ? "..." : ""),
-      keyChanged: pubkeysKey !== pubkeysKeyRef.current,
-      wasEmpty: pubkeysKeyRef.current === "",
-      isNowNonEmpty: pubkeysKey !== "" && pubkeysKey !== pubkeysKeyRef.current,
-    });
+    if (contributorMetaVerbose()) {
+      console.log(`🔄 [useContributorMetadata] useEffect triggered:`, {
+        pubkeysLength: pubkeys.length,
+        pubkeysKey:
+          pubkeysKey.slice(0, 50) + (pubkeysKey.length > 50 ? "..." : ""),
+        previousKey:
+          pubkeysKeyRef.current.slice(0, 50) +
+          (pubkeysKeyRef.current.length > 50 ? "..." : ""),
+        keyChanged: pubkeysKey !== pubkeysKeyRef.current,
+        wasEmpty: pubkeysKeyRef.current === "",
+        isNowNonEmpty:
+          pubkeysKey !== "" && pubkeysKey !== pubkeysKeyRef.current,
+      });
+    }
 
     // CRITICAL: Debounce subscriptions to prevent excessive re-subscriptions
     // Only allow re-subscription if at least 2 seconds have passed since last subscription
@@ -321,8 +339,7 @@ export function useContributorMetadata(pubkeys: string[]) {
         ? missingFromCache // Only subscribe for missing ones if they're a small subset
         : validPubkeys; // Otherwise subscribe for all (first render or major change)
 
-    // Only log on first render or when key changes significantly
-    if (isFirstRender || keyChanged) {
+    if (contributorMetaVerbose() && (isFirstRender || keyChanged)) {
       console.log(
         `🔍 [useContributorMetadata] Hook called with ${pubkeys.length} pubkeys`,
         {
@@ -367,7 +384,11 @@ export function useContributorMetadata(pubkeys: string[]) {
     // }
 
     if (pubkeysToSubscribe.length === 0) {
-      console.warn("⚠️ [useContributorMetadata] No pubkeys to subscribe for!");
+      if (contributorMetaVerbose()) {
+        console.warn(
+          "⚠️ [useContributorMetadata] No pubkeys to subscribe for!"
+        );
+      }
       return;
     }
 
@@ -383,9 +404,11 @@ export function useContributorMetadata(pubkeys: string[]) {
       batches.push(pubkeysToSubscribe.slice(i, i + BATCH_SIZE));
     }
 
-    console.log(
-      `📦 [useContributorMetadata] Batching ${pubkeysToSubscribe.length} pubkeys into ${batches.length} batches of ${BATCH_SIZE}`
-    );
+    if (contributorMetaVerbose()) {
+      console.log(
+        `📦 [useContributorMetadata] Batching ${pubkeysToSubscribe.length} pubkeys into ${batches.length} batches of ${BATCH_SIZE}`
+      );
+    }
 
     const unsubs: (() => void)[] = [];
     const timeouts: NodeJS.Timeout[] = [];
@@ -410,7 +433,10 @@ export function useContributorMetadata(pubkeys: string[]) {
                   (p) => p.toLowerCase() === normalizedPubkey
                 );
                 // Reduced logging to prevent console spam when processing many events
-                if (batchIndex === 0 || isTargetPubkey) {
+                if (
+                  contributorMetaVerbose() &&
+                  (batchIndex === 0 || isTargetPubkey)
+                ) {
                   console.log(
                     `🔵 [useContributorMetadata] Processing kind 0 event from ${relayURL} for pubkey ${normalizedPubkey.slice(
                       0,
@@ -432,7 +458,11 @@ export function useContributorMetadata(pubkeys: string[]) {
                   const data = JSON.parse(event.content) as Metadata;
 
                   // Debug: Log banner field if present (only for first batch to reduce spam)
-                  if (batchIndex === 0 && data.banner) {
+                  if (
+                    contributorMetaVerbose() &&
+                    batchIndex === 0 &&
+                    data.banner
+                  ) {
                     console.log(
                       `🖼️ [useContributorMetadata] Banner found for ${normalizedPubkey.slice(
                         0,
@@ -480,7 +510,7 @@ export function useContributorMetadata(pubkeys: string[]) {
                   if (identities.length > 0) {
                     data.identities = identities;
                     // Only log identities for first batch to reduce console spam
-                    if (batchIndex === 0) {
+                    if (contributorMetaVerbose() && batchIndex === 0) {
                       console.log(
                         `✅ [useContributorMetadata] Found ${identities.length} identities in event:`,
                         identities.map((i) => `${i.platform}:${i.identity}`)
@@ -516,9 +546,11 @@ export function useContributorMetadata(pubkeys: string[]) {
                           }
                         } else {
                           // New event HAS identities - log this for debugging
-                          console.log(
-                            `✅ [useContributorMetadata] Newer event has ${mergedData.identities.length} identities, using them`
-                          );
+                          if (contributorMetaVerbose()) {
+                            console.log(
+                              `✅ [useContributorMetadata] Newer event has ${mergedData.identities.length} identities, using them`
+                            );
+                          }
                         }
                         return {
                           ...prev,
@@ -543,9 +575,11 @@ export function useContributorMetadata(pubkeys: string[]) {
                         }
                         if (combinedIdentities.length > 0) {
                           mergedData.identities = combinedIdentities;
-                          console.log(
-                            `🔄 [useContributorMetadata] Merged identities from events with same timestamp: ${combinedIdentities.length} total`
-                          );
+                          if (contributorMetaVerbose()) {
+                            console.log(
+                              `🔄 [useContributorMetadata] Merged identities from events with same timestamp: ${combinedIdentities.length} total`
+                            );
+                          }
                         }
                         return {
                           ...prev,
@@ -584,7 +618,7 @@ export function useContributorMetadata(pubkeys: string[]) {
                     };
                   });
                   // Only log for first batch to reduce console spam
-                  if (batchIndex === 0) {
+                  if (contributorMetaVerbose() && batchIndex === 0) {
                     console.log(
                       `✅ [useContributorMetadata] Received metadata for ${event.pubkey
                         .toLowerCase()
@@ -605,7 +639,7 @@ export function useContributorMetadata(pubkeys: string[]) {
                 }
               } else {
                 // Only log non-kind-0 events for first batch
-                if (batchIndex === 0) {
+                if (contributorMetaVerbose() && batchIndex === 0) {
                   console.log(
                     `⚠️ [useContributorMetadata] Received non-kind-0 event: kind=${
                       event.kind
@@ -624,9 +658,10 @@ export function useContributorMetadata(pubkeys: string[]) {
           unsubs.push(batchUnsub);
           // Log batch subscription progress
           if (
-            batchIndex === 0 ||
-            (batchIndex + 1) % 2 === 0 ||
-            batchIndex === batches.length - 1
+            contributorMetaVerbose() &&
+            (batchIndex === 0 ||
+              (batchIndex + 1) % 2 === 0 ||
+              batchIndex === batches.length - 1)
           ) {
             console.log(
               `✅ [useContributorMetadata] Subscribed to batch ${
@@ -649,17 +684,21 @@ export function useContributorMetadata(pubkeys: string[]) {
 
     // Set overall timeout to stop waiting after 30 seconds (increased for batched subscriptions)
     const overallTimeout = setTimeout(() => {
-      console.log(
-        `⏱️ [useContributorMetadata] Overall metadata fetch timeout after 30s (${batches.length} batches)`
-      );
+      if (contributorMetaVerbose()) {
+        console.log(
+          `⏱️ [useContributorMetadata] Overall metadata fetch timeout after 30s (${batches.length} batches)`
+        );
+      }
     }, 30000);
     timeouts.push(overallTimeout);
 
     return () => {
       // Clean up all batch subscriptions and timeouts
-      console.log(
-        `🔄 [useContributorMetadata] Cleaning up ${unsubs.length} batch subscriptions`
-      );
+      if (contributorMetaVerbose()) {
+        console.log(
+          `🔄 [useContributorMetadata] Cleaning up ${unsubs.length} batch subscriptions`
+        );
+      }
       timeouts.forEach((timeout) => clearTimeout(timeout));
       if (subscriptionTimeoutRef.current) {
         clearTimeout(subscriptionTimeoutRef.current);
@@ -818,12 +857,14 @@ export function useContributorMetadata(pubkeys: string[]) {
             merged[normalizedPubkey] = updatedCache[normalizedPubkey];
           }
 
-          console.log(
-            `🔄 [useContributorMetadata] Refreshed metadata cache from same-tab update for ${normalizedPubkey.slice(
-              0,
-              8
-            )}`
-          );
+          if (contributorMetaVerbose()) {
+            console.log(
+              `🔄 [useContributorMetadata] Refreshed metadata cache from same-tab update for ${normalizedPubkey.slice(
+                0,
+                8
+              )}`
+            );
+          }
           return merged;
         });
       } catch (err) {

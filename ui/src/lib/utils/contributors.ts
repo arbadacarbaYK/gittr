@@ -111,3 +111,60 @@ export function sanitizeContributors<T extends ContributorLike>(
 
   return sanitized;
 }
+
+/**
+ * Ensures the Gittr/Nostr owner (64-char hex pubkey) is present as a contributor with weight 100.
+ * Strips misleading name-only "owner" rows that duplicate {@link displayName} when the real pubkey is known.
+ */
+export function mergeOwnerPubkeyIntoContributors<T extends ContributorLike>(
+  list: T[] | undefined | null,
+  ownerPubkey: string | undefined | null,
+  displayName?: string | null
+): T[] {
+  const base = Array.isArray(list) ? [...list] : [];
+  if (
+    !ownerPubkey ||
+    typeof ownerPubkey !== "string" ||
+    !HEX_64_REGEX.test(ownerPubkey.trim())
+  ) {
+    return sanitizeContributors(base, { keepNameOnly: true }) as T[];
+  }
+  const pk = ownerPubkey.trim().toLowerCase();
+  const dn = typeof displayName === "string" ? displayName.trim() : "";
+
+  const withoutShadowOwner = base.filter((c) => {
+    if (c.pubkey || c.githubLogin) return true;
+    if (
+      dn &&
+      typeof c.name === "string" &&
+      c.name.trim() === dn &&
+      (c.weight === 100 || c.role === "owner")
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  const idx = withoutShadowOwner.findIndex(
+    (c) => c.pubkey && c.pubkey.toLowerCase() === pk
+  );
+  let merged: T[];
+  if (idx >= 0) {
+    merged = withoutShadowOwner.map((c, i) =>
+      i === idx
+        ? ({ ...c, weight: 100, role: "owner" as ContributorRole } as T)
+        : c
+    );
+  } else {
+    merged = [
+      {
+        pubkey: pk,
+        name: dn || undefined,
+        weight: 100,
+        role: "owner",
+      } as T,
+      ...withoutShadowOwner,
+    ];
+  }
+  return sanitizeContributors(merged, { keepNameOnly: true }) as T[];
+}
