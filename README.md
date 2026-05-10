@@ -88,9 +88,9 @@ gittr.space uses a sophisticated multi-source file fetching system that tries mu
 
 **Key Features of Flows:**
 
-**SSH URL Support**: SSH clone URLs (e.g., `git@github.com:owner/repo`) are automatically normalized to HTTPS format, ensuring compatibility with all git hosting providers.
+**SSH URL Support**: `git@host:path` remotes are normalized to HTTPS where applicable. **Generic SSH** remotes (`user@host:path`, no `://`) are treated as **self-hosted git** for `/api/git/repo-files` and related proxies (including optional `.git` suffix retries).
 
-**Automatic Cloning**: GRASP repositories automatically trigger a clone when not found locally, then retry the API call.
+**Automatic Cloning**: GRASP repositories trigger **`POST /api/nostr/repo/clone`** when the bridge has **no tree** — **`GET /api/nostr/repo/files` returns 404** or **200 with an empty `files` array** — then the client retries or polls until files appear.
 
 **Robust Fallback Chain**: Both flows have multiple fallback strategies, ensuring files can be fetched even if one source fails.
 
@@ -114,13 +114,13 @@ Strategy 2: Check if file content is embedded in repoData.files array
 Strategy 3: Multi-source fetch (if repo has clone URLs)
    ├─ Try all clone URLs in parallel:
    │   ├─ GRASP servers → /api/nostr/repo/files → git-nostr-bridge
-   │   │   ├─ If 404 → /api/nostr/repo/clone → Poll (max 10 attempts, 2s delay) ✅
-   │   │   └─ If success → Use files from bridge ✅
+   │   │   ├─ If 404 **or** 200 + empty `files` → /api/nostr/repo/clone → Poll (max 10 attempts, 2s delay) ✅
+   │   │   └─ If success (non-empty tree) → Use files from bridge ✅
    │   ├─ GitHub → /api/git/file-content?sourceUrl=...&path=...&branch=...
    │   ├─ GitLab → /api/git/file-content?sourceUrl=...&path=...&branch=...
    │   ├─ Codeberg → /api/git/file-content?sourceUrl=...&path=...&branch=...
    │   └─ Other GRASP servers → /api/git/file-content?sourceUrl=... → forwards to bridge API
-   ├─ If GRASP server returns 404 → Trigger clone → Poll (max 10 attempts, 2s delay) ✅
+   ├─ If GRASP bridge has no tree (404 **or** empty `files` on 200) → Trigger clone → Poll (max 10 attempts, 2s delay) ✅
    └─ If all fail → Continue to Strategy 4
   ↓
 Strategy 4: Query Nostr for NIP-34 repository events
@@ -135,7 +135,7 @@ Strategy 5: Try git-nostr-bridge API (fallback)
    │   ├─ Decode npub from params.entity
    │   └─ Fallback to resolveEntityToPubkey utility
    ├─ Success → Use content from git-nostr-bridge ✅
-   ├─ 404 (not cloned) → Check if GRASP server
+   ├─ 404 or empty tree → Check if GRASP server
    │   ├─ If GRASP → Trigger clone → Poll (max 10 attempts, 2s delay) ✅
    │   └─ If not GRASP → Continue to Strategy 6
    └─ Error → Continue to Strategy 6
@@ -168,9 +168,9 @@ Handle binary vs text files
   - They're used as fallback when embedded content and git-nostr-bridge aren't available
 
 **SSH URL Normalization:**
-- SSH clone URLs (e.g., `git@github.com:owner/repo`) are automatically converted to HTTPS format (`https://github.com/owner/repo`) before processing
-- This normalization happens in all critical paths: file fetching, file opening, cloning, refetching, pushing to Nostr, and importing
-- Ensures seamless compatibility with repositories that use SSH clone URLs
+- `git@host:path` clone URLs are converted to HTTPS where needed for HTTP APIs
+- `user@host:path` (generic SSH) is routed as **self-hosted git** for repo-tree and file-content proxies, with `.git` suffix retries where applicable
+- Normalization applies across file fetching, file opening, cloning, refetching, pushing to Nostr, and importing
 
 **Push to Nostr Process:**
 - Files are sourced from `localStorage` (primary) or bridge API (fallback)

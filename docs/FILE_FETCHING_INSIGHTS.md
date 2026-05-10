@@ -38,8 +38,9 @@ Some repositories use SSH clone URLs (e.g., `git@github.com:owner/repo`) instead
 ### Solution
 
 **SSH URLs are automatically normalized to HTTPS format** before processing. The normalization pattern is:
-- **SSH**: `git@github.com:owner/repo` → **HTTPS**: `https://github.com/owner/repo`
-- Works for all git hosts (GitHub, GitLab, Codeberg, custom servers)
+- **SSH (`git@`)**: `git@github.com:owner/repo` → **HTTPS**: `https://github.com/owner/repo`
+- **Generic SSH remote (`user@host:path`)**: URLs that look like `deploy@git.example.com:group/project.git` (no `://`, matches `user@host:path`) are classified as **`self-hosted-git`** for tree/file fetching via `/api/git/repo-files` and `/api/git/file-content`, not as GRASP. That route also retries clone URLs with an explicit **`.git`** suffix when the first attempt fails (same idea as for `git@…` remotes).
+- Works for GitHub, GitLab, Codeberg, and self-hosted forges that expose HTTPS or SSH remotes the UI can normalize.
 
 ### Where Normalization Happens
 
@@ -125,9 +126,9 @@ User opens repo page
    └─ If no files → Continue to fetch
   ↓
 3. Try git-nostr-bridge API (for local/GRASP repos)
-   ├─ Success → Use files from git-nostr-bridge ✅
-   ├─ 404 (not cloned) → Check if GRASP server
-   │   ├─ If GRASP → Trigger clone → Wait 3s → Retry ✅
+   ├─ Success (200, non-empty `files[]`) → Use files from git-nostr-bridge ✅
+   ├─ 404 **or** 200 with **empty** `files[]` (bare placeholder / not yet cloned) → If GRASP
+   │   ├─ If GRASP → Trigger `POST /api/nostr/repo/clone` → wait / poll → Retry ✅
    │   └─ If not GRASP → Continue to external git servers
    └─ Error → Continue to external git servers
   ↓
@@ -183,7 +184,7 @@ Strategy 2: Try git-nostr-bridge API
    │   ├─ Decode npub from params.entity
    │   └─ Fallback to resolveEntityToPubkey utility
    ├─ Success → Use content from git-nostr-bridge ✅
-   ├─ 404 (not cloned) → Check if GRASP server
+   ├─ 404 **or** empty tree (same “needs clone” signal as file list) → Check if GRASP server
    │   ├─ If GRASP → Trigger clone → Poll (max 10 attempts, 2s delay) ✅
    │   └─ If not GRASP → Continue to Strategy 3
    └─ Error → Continue to Strategy 3
@@ -226,6 +227,10 @@ The ownerPubkey resolution follows this priority:
 4. **resolveEntityToPubkey utility** (final fallback)
 
 This ensures consistency - if files were fetched successfully, file opening will work too.
+
+### NIP-34 `content` vs tags
+
+Under NIP-34, repository metadata and clone URLs normally live in **tags**. Some publishers still put human-readable prose in `event.content`. The repo page only runs **`JSON.parse` on `content` when the trimmed string starts with `{` or `[`**, so non-JSON prose does not break parsing; when content is valid JSON, optional fields such as `files` can still be merged without discarding clone URLs already collected from tags.
 
 ### Code Reference
 
@@ -317,8 +322,8 @@ GRASP servers (git.gittr.space, gitnostr.com, relay.ngit.dev, git-01.uid.ovh, et
 
 1. **File List Fetching** (`fetchFromNostrGit` in `git-source-fetcher.ts`):
    - Calls `/api/nostr/repo/files?ownerPubkey=...&repo=...&branch=...`
-   - If 404 (repo not cloned), triggers clone via `/api/nostr/repo/clone`
-   - Retries bridge API after clone completes
+   - If **404** (repo not on disk) **or 200 with `files: []`** (bare placeholder / never filled), triggers clone via `/api/nostr/repo/clone`, then polls until `files.length > 0` or attempts exhausted
+   - **`repo` query parameter** is normalized server-side (e.g. `Venue%20Scheduler` → on-disk folder name) so it matches `repositoryDir/{pubkey}/{repo}.git` the same way the bridge does
 
 2. **File Content Fetching** (`/api/git/file-content.ts`):
    - Detects GRASP servers using `isGraspServer()` function
@@ -339,7 +344,7 @@ GRASP servers (git.gittr.space, gitnostr.com, relay.ngit.dev, git-01.uid.ovh, et
 **File List Fetching:**
 - Uses `fetchFromNostrGit()` in `git-source-fetcher.ts`
 - Tries bridge API first: `/api/nostr/repo/files`
-- If 404, triggers clone, then retries
+- If **404** or **200 + empty `files`**, triggers clone, then retries / polls
 - Returns files array or `null` if all attempts fail
 
 **File Content Fetching:**
@@ -371,13 +376,13 @@ GRASP servers (git.gittr.space, gitnostr.com, relay.ngit.dev, git-01.uid.ovh, et
 - The `git` protocol (which web browsers can't use directly)
 - `git-nostr-bridge` (which requires repos to be cloned locally first)
 
-**The key insight**: When `git-nostr-bridge` returns 404 (repo not found), we shouldn't just fall back to HTTP API - we should **trigger a clone first**, then retry `git-nostr-bridge`.
+**The key insight**: When the bridge has **no usable file tree** — either **404** (not on disk) or **200 with `files: []`** (empty bare repo / placeholder) — we should **trigger a clone first**, then retry `git-nostr-bridge`, rather than assuming the GRASP host exposes a browsable HTTP tree.
 
 ### When Cloning is Triggered
 
 Cloning is automatically triggered when:
 
-1. **`git-nostr-bridge` API returns 404** (repo not found locally)
+1. **`GET /api/nostr/repo/files` returns 404** *or* **200 with an empty `files` array** (same signal: nothing to show until `git clone --bare` has populated the mirror)
 2. **The repo is from a GRASP server** (git.gittr.space, gitnostr.com, relay.ngit.dev, git-01.uid.ovh, git-02.uid.ovh, ngit.danconwaydev.com, git.shakespeare.diy)
 3. **A valid HTTP/HTTPS clone URL exists** in the repo's `clone` array
 4. **A valid ownerPubkey is available** (full 64-char hex pubkey)
@@ -389,7 +394,7 @@ Cloning is automatically triggered when:
    ↓
 2. Try git-nostr-bridge API: GET /api/nostr/repo/files?ownerPubkey=...&repo=...
    ↓
-3. API returns 404 (repo not cloned locally)
+3. API returns 404 **or** 200 with `files: []` (repo not usable yet)
    ↓
 4. Check if repo has GRASP clone URL (e.g., https://git.gittr.space/npub.../repo.git or https://relay.ngit.dev/npub.../repo.git)
    ↓
@@ -448,9 +453,11 @@ Cloning is automatically triggered when:
 - Validates inputs (cloneUrl, ownerPubkey must be 64-char hex, repoName)
 - Gets repos directory from env or git-nostr-bridge config.json
 - Repository path: `{reposDir}/{ownerPubkey}/{repoName}.git`
-- Checks if repo already exists (returns 200 if so)
+- **`repoName` is normalized** (decode URI components, trim) so it matches the directory created by the bridge and the `repo` parameter used by `/api/nostr/repo/files`
+- Checks if repo already exists (returns 200 if so); may **remove an empty placeholder** bare dir before cloning
 - Creates owner directory if needed
 - Executes: `git clone --bare "<cloneUrl>" "<repoPath>"`
+- **One retry** if `git` reports the destination “already exists and is not an empty directory” (concurrent clone / race)
 - Returns success/error response
 
 **Key points**:
@@ -458,7 +465,7 @@ Cloning is automatically triggered when:
 - Validates `ownerPubkey` is exactly 64 hex characters
 - Extracts `repoName` from clone URL (handles paths like `gitnostr.com/repo`)
 - Timeout: 60 seconds, max buffer: 10MB
-- Handles "already exists" gracefully (returns 200)
+- Handles "already exists" gracefully (returns 200) and races with a single retry after cleanup when safe
 
 #### Frontend Integration (`page.tsx`)
 
@@ -477,7 +484,7 @@ Cloning is automatically triggered when:
 1. **Addresses the root cause**: GRASP servers that don't expose HTTP API need repos cloned locally first
 2. **Automatic and transparent**: User doesn't need to manually clone repos
 3. **Follows NIP-34 architecture**: Files are stored on git servers, Nostr events only contain references
-4. **Efficient**: Only clones when needed (404 response), checks if already exists
+4. **Efficient**: Only clones when the bridge response indicates **no tree** (404 or empty `files`), not on every navigation
 5. **Robust**: Handles errors gracefully, falls back to HTTP API if clone fails
 
 ### Files Affected
