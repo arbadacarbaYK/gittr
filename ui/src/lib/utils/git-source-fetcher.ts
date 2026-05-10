@@ -1110,23 +1110,36 @@ async function fetchFromNostrGit(
         },
       });
 
+      let bridgeJson: { files?: unknown[]; message?: string } | null = null;
+
       if (response.ok) {
-        const data = await response.json();
-        if (data.files && Array.isArray(data.files) && data.files.length > 0) {
-          console.log(
-            `✅ [Git Source] Fetched ${data.files.length} files from git-nostr-bridge`
+        try {
+          bridgeJson = await response.json();
+        } catch (parseErr) {
+          console.warn(
+            "⚠️ [Git Source] git-nostr-bridge API OK but invalid JSON:",
+            parseErr
           );
-          return data.files;
-        } else {
+        }
+        if (
+          bridgeJson?.files &&
+          Array.isArray(bridgeJson.files) &&
+          bridgeJson.files.length > 0
+        ) {
+          console.log(
+            `✅ [Git Source] Fetched ${bridgeJson.files.length} files from git-nostr-bridge`
+          );
+          return bridgeJson.files as Array<{
+            type: string;
+            path: string;
+            size?: number;
+          }>;
+        }
+        if (bridgeJson !== null) {
           console.log(
             `⚠️ [Git Source] git-nostr-bridge API returned OK but no files:`,
-            data
+            bridgeJson
           );
-          // CRITICAL: When bridge returns 200 with empty files, treat it as a failure
-          // This allows the multi-source fetch to try other sources (GitHub, etc.)
-          // The repo might be empty, on wrong branch, or needs to be re-cloned
-          // Return null so other sources can be tried
-          return null;
         }
       } else {
         const errorText = await response.text().catch(() => "");
@@ -1135,171 +1148,184 @@ async function fetchFromNostrGit(
             response.status
           } - ${errorText.substring(0, 200)}`
         );
-        if (response.status === 404 || response.status === 500) {
-          // 404: Repo not cloned yet
-          // 500: Repo exists but is empty/corrupted (no valid branches, git command failed)
-          const errorType =
-            response.status === 404 ? "not cloned yet" : "empty or corrupted";
+      }
+
+      // 404/500: not on disk or git error. 200 + empty files: bare placeholder or
+      // never-filled repo (see /api/nostr/repo/files — returns 200 with files: [] when
+      // there are no refs). In all these cases the clone API can git clone --bare from GRASP.
+      const emptyOk =
+        response.ok &&
+        bridgeJson &&
+        (!Array.isArray(bridgeJson.files) || bridgeJson.files.length === 0);
+      const shouldTriggerClone =
+        emptyOk ||
+        (!response.ok && (response.status === 404 || response.status === 500));
+
+      if (shouldTriggerClone) {
+        const errorType = emptyOk
+          ? "empty on-disk repo (needs GRASP clone)"
+          : response.status === 404
+          ? "not cloned yet"
+          : "empty or corrupted";
+        console.log(
+          `💡 [Git Source] Repository ${errorType} (${response.status}). Attempting to trigger clone...`
+        );
+
+        // Try to trigger clone via API endpoint
+        // GRASP servers don't expose REST APIs - they only work via git protocol
+        // So we need to clone via git protocol and then retry the bridge API
+        // CRITICAL: Only trigger clone for GRASP servers, not GitHub/Codeberg/GitLab
+        // Use centralized isGraspServer function which includes pattern matching (git., git-\d+.)
+        const isGraspServerCheck = cloneUrl && isGraspServerFn(cloneUrl);
+        console.log(`🔍 [Git Source] Clone trigger check:`, {
+          hasOwnerPubkey: !!ownerPubkey,
+          hasCloneUrl: !!cloneUrl,
+          isGraspServer: isGraspServerCheck,
+          cloneUrl: cloneUrl?.substring(0, 50) + "...",
+          ownerPubkey: ownerPubkey?.slice(0, 16) + "...",
+        });
+
+        // CRITICAL: Normalize SSH URLs (git@host:path) and git:// URLs to https:// for clone API
+        // The clone API will handle the conversion, but we need to pass https:// here
+        let normalizedCloneUrl = cloneUrl;
+        const sshMatch = cloneUrl.match(/^git@([^:]+):(.+)$/);
+        if (sshMatch) {
+          const [, host, path] = sshMatch;
+          normalizedCloneUrl = `https://${host}/${path}`;
           console.log(
-            `💡 [Git Source] Repository ${errorType} (${response.status}). Attempting to trigger clone...`
+            `🔄 [Git Source] Normalizing SSH URL to https:// for clone API: ${normalizedCloneUrl}`
           );
+        } else if (cloneUrl.startsWith("git://")) {
+          normalizedCloneUrl = cloneUrl.replace(/^git:\/\//, "https://");
+          console.log(
+            `🔄 [Git Source] Normalizing git:// to https:// for clone API: ${normalizedCloneUrl}`
+          );
+        }
 
-          // Try to trigger clone via API endpoint
-          // GRASP servers don't expose REST APIs - they only work via git protocol
-          // So we need to clone via git protocol and then retry the bridge API
-          // CRITICAL: Only trigger clone for GRASP servers, not GitHub/Codeberg/GitLab
-          // Use centralized isGraspServer function which includes pattern matching (git., git-\d+.)
-          const isGraspServerCheck = cloneUrl && isGraspServerFn(cloneUrl);
-          console.log(`🔍 [Git Source] Clone trigger check:`, {
-            hasOwnerPubkey: !!ownerPubkey,
-            hasCloneUrl: !!cloneUrl,
-            isGraspServer: isGraspServerCheck,
-            cloneUrl: cloneUrl?.substring(0, 50) + "...",
-            ownerPubkey: ownerPubkey?.slice(0, 16) + "...",
-          });
+        if (
+          ownerPubkey &&
+          normalizedCloneUrl &&
+          (normalizedCloneUrl.startsWith("https://") ||
+            normalizedCloneUrl.startsWith("http://")) &&
+          isGraspServerCheck
+        ) {
+          try {
+            console.log(`🔍 [Git Source] Triggering clone via API:`, {
+              cloneUrl: normalizedCloneUrl,
+              originalCloneUrl: cloneUrl,
+              ownerPubkey: ownerPubkey.slice(0, 16) + "...",
+              repo,
+            });
 
-          // CRITICAL: Normalize SSH URLs (git@host:path) and git:// URLs to https:// for clone API
-          // The clone API will handle the conversion, but we need to pass https:// here
-          let normalizedCloneUrl = cloneUrl;
-          const sshMatch = cloneUrl.match(/^git@([^:]+):(.+)$/);
-          if (sshMatch) {
-            const [, host, path] = sshMatch;
-            normalizedCloneUrl = `https://${host}/${path}`;
-            console.log(
-              `🔄 [Git Source] Normalizing SSH URL to https:// for clone API: ${normalizedCloneUrl}`
-            );
-          } else if (cloneUrl.startsWith("git://")) {
-            normalizedCloneUrl = cloneUrl.replace(/^git:\/\//, "https://");
-            console.log(
-              `🔄 [Git Source] Normalizing git:// to https:// for clone API: ${normalizedCloneUrl}`
-            );
-          }
-
-          if (
-            ownerPubkey &&
-            normalizedCloneUrl &&
-            (normalizedCloneUrl.startsWith("https://") ||
-              normalizedCloneUrl.startsWith("http://")) &&
-            isGraspServerCheck
-          ) {
-            try {
-              console.log(`🔍 [Git Source] Triggering clone via API:`, {
-                cloneUrl: normalizedCloneUrl,
-                originalCloneUrl: cloneUrl,
-                ownerPubkey: ownerPubkey.slice(0, 16) + "...",
+            const cloneResponse = await fetch("/api/nostr/repo/clone", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                cloneUrl: normalizedCloneUrl, // Use normalized URL (https://) for clone API
+                ownerPubkey,
                 repo,
-              });
+              }),
+            });
 
-              const cloneResponse = await fetch("/api/nostr/repo/clone", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  cloneUrl: normalizedCloneUrl, // Use normalized URL (https://) for clone API
-                  ownerPubkey,
-                  repo,
-                }),
-              });
+            if (cloneResponse.ok) {
+              const cloneData = await cloneResponse.json();
+              console.log(
+                `✅ [Git Source] Clone triggered successfully:`,
+                cloneData
+              );
 
-              if (cloneResponse.ok) {
-                const cloneData = await cloneResponse.json();
-                console.log(
-                  `✅ [Git Source] Clone triggered successfully:`,
-                  cloneData
-                );
-
-                // Start polling in the background (non-blocking)
-                // This allows the page to render immediately while clone completes
-                const pollForFiles = async (maxAttempts = 10, delay = 2000) => {
-                  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-                    await new Promise((resolve) => setTimeout(resolve, delay));
-                    console.log(
-                      `🔍 [Git Source] Polling for files (attempt ${attempt}/${maxAttempts})...`
-                    );
-
-                    try {
-                      const pollResponse = await fetch(bridgeUrl);
-                      if (pollResponse.ok) {
-                        const pollData = await pollResponse.json();
-                        if (
-                          pollData.files &&
-                          Array.isArray(pollData.files) &&
-                          pollData.files.length > 0
-                        ) {
-                          console.log(
-                            `✅ [Git Source] Files available after clone! Fetched ${pollData.files.length} files`
-                          );
-                          // Trigger a custom event to notify the page that files are ready
-                          // The page can listen to this event and update the UI
-                          if (typeof window !== "undefined") {
-                            window.dispatchEvent(
-                              new CustomEvent("grasp-repo-cloned", {
-                                detail: {
-                                  files: pollData.files,
-                                  ownerPubkey,
-                                  repo,
-                                },
-                              })
-                            );
-                          }
-                          return pollData.files;
-                        }
-                      }
-                    } catch (pollError) {
-                      console.warn(
-                        `⚠️ [Git Source] Poll attempt ${attempt} failed:`,
-                        pollError
-                      );
-                    }
-                  }
+              // Start polling in the background (non-blocking)
+              // This allows the page to render immediately while clone completes
+              const pollForFiles = async (maxAttempts = 10, delay = 2000) => {
+                for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                  await new Promise((resolve) => setTimeout(resolve, delay));
                   console.log(
-                    `⚠️ [Git Source] Polling completed - files not yet available. User can refresh to try again.`
+                    `🔍 [Git Source] Polling for files (attempt ${attempt}/${maxAttempts})...`
                   );
-                  return null;
-                };
 
-                // Start polling in background (don't await - non-blocking)
-                pollForFiles().catch((err) =>
-                  console.warn("Polling error:", err)
-                );
-
-                // Return null immediately to allow page to render
+                  try {
+                    const pollResponse = await fetch(bridgeUrl);
+                    if (pollResponse.ok) {
+                      const pollData = await pollResponse.json();
+                      if (
+                        pollData.files &&
+                        Array.isArray(pollData.files) &&
+                        pollData.files.length > 0
+                      ) {
+                        console.log(
+                          `✅ [Git Source] Files available after clone! Fetched ${pollData.files.length} files`
+                        );
+                        // Trigger a custom event to notify the page that files are ready
+                        // The page can listen to this event and update the UI
+                        if (typeof window !== "undefined") {
+                          window.dispatchEvent(
+                            new CustomEvent("grasp-repo-cloned", {
+                              detail: {
+                                files: pollData.files,
+                                ownerPubkey,
+                                repo,
+                              },
+                            })
+                          );
+                        }
+                        return pollData.files;
+                      }
+                    }
+                  } catch (pollError) {
+                    console.warn(
+                      `⚠️ [Git Source] Poll attempt ${attempt} failed:`,
+                      pollError
+                    );
+                  }
+                }
                 console.log(
-                  `💡 [Git Source] Clone initiated - polling for files in background. Page will render immediately.`
+                  `⚠️ [Git Source] Polling completed - files not yet available. User can refresh to try again.`
                 );
                 return null;
-              } else {
-                const cloneError = await cloneResponse
-                  .json()
-                  .catch(() => ({ error: "Unknown error" }));
-                console.log(
-                  `⚠️ [Git Source] Clone API failed: ${cloneResponse.status} -`,
-                  cloneError
-                );
-              }
-            } catch (cloneError: any) {
-              console.warn(
-                `⚠️ [Git Source] Failed to trigger clone:`,
-                cloneError.message
+              };
+
+              // Start polling in background (don't await - non-blocking)
+              pollForFiles().catch((err) =>
+                console.warn("Polling error:", err)
               );
-            }
-          } else {
-            if (!isGraspServerCheck) {
+
+              // Return null immediately to allow page to render
               console.log(
-                `💡 [Git Source] Not a GRASP server - skipping clone trigger (GitHub/Codeberg/GitLab use their own APIs)`
+                `💡 [Git Source] Clone initiated - polling for files in background. Page will render immediately.`
               );
+              return null;
             } else {
+              const cloneError = await cloneResponse
+                .json()
+                .catch(() => ({ error: "Unknown error" }));
               console.log(
-                `💡 [Git Source] Cannot trigger clone - missing ownerPubkey or cloneUrl is not HTTPS`
+                `⚠️ [Git Source] Clone API failed: ${cloneResponse.status} -`,
+                cloneError
               );
             }
-            console.log(
-              `💡 [Git Source] Bridge path would be: reposDir/${
-                ownerPubkey ? ownerPubkey.slice(0, 16) + "..." : "?"
-              }/${repo}.git`
+          } catch (cloneError: any) {
+            console.warn(
+              `⚠️ [Git Source] Failed to trigger clone:`,
+              cloneError.message
             );
           }
+        } else {
+          if (!isGraspServerCheck) {
+            console.log(
+              `💡 [Git Source] Not a GRASP server - skipping clone trigger (GitHub/Codeberg/GitLab use their own APIs)`
+            );
+          } else {
+            console.log(
+              `💡 [Git Source] Cannot trigger clone - missing ownerPubkey or cloneUrl is not HTTPS`
+            );
+          }
+          console.log(
+            `💡 [Git Source] Bridge path would be: reposDir/${
+              ownerPubkey ? ownerPubkey.slice(0, 16) + "..." : "?"
+            }/${repo}.git`
+          );
         }
       }
     } else {
