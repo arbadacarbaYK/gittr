@@ -254,11 +254,7 @@ export default function RepoLayoutClient({
     if (!hasUpstreamSourceUrl) {
       return null;
     }
-    if (
-      importStarSnapshot !== null &&
-      importStarSnapshot > 0 &&
-      githubSpec
-    ) {
+    if (importStarSnapshot !== null && importStarSnapshot > 0 && githubSpec) {
       return {
         label: "GitHub",
         value: importStarSnapshot,

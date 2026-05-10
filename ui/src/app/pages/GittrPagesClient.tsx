@@ -258,7 +258,10 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
                         <div className="mt-auto flex flex-wrap gap-2 border-t border-[#383B42]/60 pt-4">
                           <a
                             className={cn(
-                              buttonVariants({ size: "sm", variant: "default" }),
+                              buttonVariants({
+                                size: "sm",
+                                variant: "default",
+                              }),
                               "shadow-sm"
                             )}
                             href={s.siteUrl}

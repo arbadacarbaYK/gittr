@@ -423,6 +423,11 @@ export default function HelpPage() {
                       confirm Import All); multiple selections = one import
                       action for those rows only
                     </li>
+                    <li>
+                      Import stores repos locally in Gittr only. Each repo still
+                      needs <strong>Push to Nostr</strong> from its page when
+                      you want it published to relays.
+                    </li>
                   </ul>
                 </div>
               </div>

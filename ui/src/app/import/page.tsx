@@ -1821,9 +1821,11 @@ export default function ImportPage() {
           <li>
             After you click <strong>Fetch Repos</strong>, you{" "}
             <strong>choose</strong> which repositories to import (checkboxes).
-            Nothing is published to Nostr until you click{" "}
-            <strong>Import … Selected Repositories</strong> (or confirm{" "}
-            <strong>Import All</strong>).
+            <strong>Import … Selected Repositories</strong> (or confirming{" "}
+            <strong>Import All</strong>) only saves those repos in Gittr locally
+            — it does <strong>not</strong> publish anything to Nostr. For each
+            repo you must open it and use <strong>Push to Nostr</strong> when
+            you want it announced on the network.
           </li>
           <li>
             You can select <strong>several</strong> repos and import them in{" "}

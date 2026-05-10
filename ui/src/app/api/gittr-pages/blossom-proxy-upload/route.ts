@@ -1,9 +1,9 @@
+import { reconcileBlossomUpstreamContentType } from "@/lib/gittr-pages/blossom-upload-mime";
 import {
   gittrPagesBlossomOrigin,
   isMediaOnlyNostrBuildBlossom,
   rawGittrPagesBlossomEnvOrigin,
 } from "@/lib/gittr-pages/gittr-pages-blossom-origin";
-import { reconcileBlossomUpstreamContentType } from "@/lib/gittr-pages/blossom-upload-mime";
 
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";

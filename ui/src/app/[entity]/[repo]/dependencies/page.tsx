@@ -28,11 +28,11 @@ import {
   Loader2,
   Maximize2,
   RefreshCw,
+  Search,
+  Settings,
+  X,
   ZoomIn,
   ZoomOut,
-  Search,
-  X,
-  Settings,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
@@ -120,7 +120,9 @@ export default function DependenciesPage({
     null
   );
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(
+    null
+  );
   const searchQueryRef = useRef<string>("");
   const highlightedNodeIdRef = useRef<string | null>(null);
   const matchingNodesRef = useRef<Set<string>>(new Set());
@@ -139,7 +141,7 @@ export default function DependenciesPage({
     dependencies: new Set(),
     frozenPositions: new Map(),
   });
-  
+
   // CodeFlow-style graph configuration - defaults match user's preferred settings
   const [graphConfig, setGraphConfig] = useState({
     viewMode: "force" as "force" | "radial" | "hierarchical" | "grid" | "metro",
@@ -256,7 +258,7 @@ export default function DependenciesPage({
   const lastNodeCountRef = useRef<number>(0);
   const isInitialRenderRef = useRef<boolean>(true);
   const handleKeyDownRef = useRef<((e: KeyboardEvent) => void) | null>(null);
-  
+
   useEffect(() => {
     if (!activeGraphData || !svgRef.current || elementsToRender.length === 0) {
       return;
@@ -265,16 +267,18 @@ export default function DependenciesPage({
     let cleanup: (() => void) | null = null;
     import("d3").then((d3) => {
       const svg = d3.select(svgRef.current);
-      const currentNodeCount = elementsToRender.filter(e => (e as GraphNode).data?.id).length;
-      
+      const currentNodeCount = elementsToRender.filter(
+        (e) => (e as GraphNode).data?.id
+      ).length;
+
       // Only recreate SVG structure on first render
       const shouldRecreate = !simRef.current || isInitialRenderRef.current;
-      
+
       if (shouldRecreate) {
         svg.selectAll("*").remove();
         isInitialRenderRef.current = false;
       }
-      
+
       // Always update - we'll update the existing simulation
 
       const width = svgRef.current?.clientWidth || 800;
@@ -286,7 +290,7 @@ export default function DependenciesPage({
       const edgeEntries = elementsToRender.filter(
         (entry) => (entry as GraphEdge).data?.source
       ) as GraphEdge[];
-      
+
       // CodeFlow-style: Only show files and packages as nodes (not folders)
       // Folders are only used for positioning and coloring
       const nodeEntriesForLayout = nodeEntries.filter(
@@ -295,13 +299,13 @@ export default function DependenciesPage({
       const nodeIdSet = new Set(
         nodeEntriesForLayout.map((node) => node.data.id)
       );
-      
+
       // CodeFlow-style: Only show dependency edges (actual file-to-file dependencies)
       // Folder edges are not shown in the dependency graph
       const allEdges = edgeEntries.filter(
         (edge) =>
           edge.data.type !== "folder" && // Exclude folder hierarchy edges
-          nodeIdSet.has(edge.data.source) && 
+          nodeIdSet.has(edge.data.source) &&
           nodeIdSet.has(edge.data.target)
       );
 
@@ -328,14 +332,14 @@ export default function DependenciesPage({
           node.data.type === "package"
             ? "external"
             : isFolderView
-              ? topFolder
-              : fullFolder;
+            ? topFolder
+            : fullFolder;
         folders.add(folder);
 
         // CodeFlow-style: Node radius based on function count (we'll use size as proxy)
         const base = node.data.type === "package" ? 10 : 8;
         const radius = Math.max(8, Math.min(24, 5 + Math.sqrt(size) * 0.8));
-        
+
         return {
           id: node.data.id,
           label: node.data.displayLabel || node.data.label,
@@ -379,12 +383,15 @@ export default function DependenciesPage({
 
       // CodeFlow-style: Links must reference node objects, not IDs
       // Aggregate multiple edges between same nodes (like CodeFlow's linkMap)
-      const linkMap = new Map<string, { source: any; target: any; count: number; isExternal: boolean }>();
+      const linkMap = new Map<
+        string,
+        { source: any; target: any; count: number; isExternal: boolean }
+      >();
       allEdges.forEach((edge) => {
         const sourceNode = nodeMap.get(edge.data.source);
         const targetNode = nodeMap.get(edge.data.target);
         if (!sourceNode || !targetNode) return;
-        
+
         const key = `${edge.data.source}|${edge.data.target}`;
         if (!linkMap.has(key)) {
           linkMap.set(key, {
@@ -456,11 +463,11 @@ export default function DependenciesPage({
           // Apply zoom transform to container
           container.attr("transform", event.transform.toString());
         });
-      
+
       // Apply zoom to SVG - this enables mouse wheel zoom automatically
       svg.call(zoom as any);
       zoomRef.current = zoom;
-      
+
       // Enable keyboard zoom (Ctrl/Cmd + Plus/Minus/0)
       const handleKeyDown = (e: KeyboardEvent) => {
         if ((e.ctrlKey || e.metaKey) && svgRef.current && zoomRef.current) {
@@ -468,24 +475,30 @@ export default function DependenciesPage({
           const svgSelection = d3.select(svgRef.current);
           if (e.key === "=" || e.key === "+") {
             e.preventDefault();
-            const center = [svgRef.current.clientWidth / 2, svgRef.current.clientHeight / 2];
+            const center = [
+              svgRef.current.clientWidth / 2,
+              svgRef.current.clientHeight / 2,
+            ];
             svgSelection
               .transition()
               .duration(200)
-              .call(zoom.scaleBy , 1.4, center);
+              .call(zoom.scaleBy, 1.4, center);
           } else if (e.key === "-") {
             e.preventDefault();
-            const center = [svgRef.current.clientWidth / 2, svgRef.current.clientHeight / 2];
+            const center = [
+              svgRef.current.clientWidth / 2,
+              svgRef.current.clientHeight / 2,
+            ];
             svgSelection
               .transition()
               .duration(200)
-              .call(zoom.scaleBy , 0.7, center);
+              .call(zoom.scaleBy, 0.7, center);
           } else if (e.key === "0") {
             e.preventDefault();
             svgSelection
               .transition()
               .duration(300)
-              .call(zoom.transform , d3.zoomIdentity);
+              .call(zoom.transform, d3.zoomIdentity);
           }
         }
       };
@@ -504,18 +517,23 @@ export default function DependenciesPage({
         .selectAll("path")
         .data(links, (d: any) => `${d.source.id}-${d.target.id}`)
         .join(
-          (enter) => enter
-            .append("path")
-            .attr("fill", "none")
-            .attr("stroke", (d: any) => {
-              const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
-              return theme === "light" ? "#ccc" : "#333";
-            })
-            .attr("stroke-width", (d: any) =>
-              Math.max(1, Math.min(2.5, Math.sqrt((d.count || 1)) * 0.45))
-            )
-            .attr("stroke-opacity", 0.6)
-            .attr("marker-end", "none"),
+          (enter) =>
+            enter
+              .append("path")
+              .attr("fill", "none")
+              .attr("stroke", (d: any) => {
+                const theme = document.documentElement.classList.contains(
+                  "light"
+                )
+                  ? "light"
+                  : "dark";
+                return theme === "light" ? "#ccc" : "#333";
+              })
+              .attr("stroke-width", (d: any) =>
+                Math.max(1, Math.min(2.5, Math.sqrt(d.count || 1) * 0.45))
+              )
+              .attr("stroke-opacity", 0.6)
+              .attr("marker-end", "none"),
           (update) => update,
           (exit) => exit.remove()
         );
@@ -530,10 +548,10 @@ export default function DependenciesPage({
               .append("g")
               .attr("class", "node")
               .style("cursor", "pointer");
-            
+
             nodeEnter.append("circle").attr("class", "nc");
             nodeEnter.append("text");
-            
+
             return nodeEnter;
           },
           (update) => update,
@@ -541,10 +559,15 @@ export default function DependenciesPage({
         );
 
       // CodeFlow EXACT: Helper functions for node rendering
-      const getR = (d: any) => Math.max(8, Math.min(24, 5 + (d.fnCount || 0) * 0.8));
+      const getR = (d: any) =>
+        Math.max(8, Math.min(24, 5 + (d.fnCount || 0) * 0.8));
       const getC = (d: any) => {
         // CodeFlow-style: Color by folder
-        return d.color || COLORS[Array.from(folders).indexOf(d.folder) % COLORS.length] || COLORS[0];
+        return (
+          d.color ||
+          COLORS[Array.from(folders).indexOf(d.folder) % COLORS.length] ||
+          COLORS[0]
+        );
       };
 
       // Update circle attributes for all nodes (existing + new)
@@ -561,7 +584,8 @@ export default function DependenciesPage({
       // Create tooltip div if it doesn't exist
       let tooltip: any = d3.select("body").select(".dependency-tooltip");
       if (tooltip.empty()) {
-        tooltip = d3.select("body")
+        tooltip = d3
+          .select("body")
           .append("div")
           .attr("class", "dependency-tooltip")
           .style("position", "absolute")
@@ -585,19 +609,18 @@ export default function DependenciesPage({
         .attr("text-anchor", "start")
         .attr("dy", "0.32em")
         .attr("x", (d: any) => getR(d) + 4)
-            .attr("fill", (d: any) => {
-              const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
-              return theme === "light" ? "#333" : "#eee";
-            })
-        .attr(
-          "font-size",
-          (d: any) => {
-            const r = getR(d);
-            // Calculate font size based on circle radius, ensuring it fits inside
-            const fontSize = Math.max(8, Math.min(12, r * 0.4));
-            return fontSize + "px";
-          }
-        )
+        .attr("fill", (d: any) => {
+          const theme = document.documentElement.classList.contains("light")
+            ? "light"
+            : "dark";
+          return theme === "light" ? "#333" : "#eee";
+        })
+        .attr("font-size", (d: any) => {
+          const r = getR(d);
+          // Calculate font size based on circle radius, ensuring it fits inside
+          const fontSize = Math.max(8, Math.min(12, r * 0.4));
+          return fontSize + "px";
+        })
         .attr("font-family", "JetBrains Mono, monospace")
         .attr("font-weight", 500)
         .attr("pointer-events", "none")
@@ -611,19 +634,21 @@ export default function DependenciesPage({
 
       // Add mouseover/mouseout handlers for tooltip
       node
-        .on("mouseover", function(event, d: any) {
+        .on("mouseover", function (event, d: any) {
           const fullName = d.name.replace(/\.[^.]+$/, "");
           const displayName = d.name;
           tooltip
             .style("opacity", 1)
-            .html(`<div><strong>${fullName}</strong></div><div style="font-size: 10px; color: #aaa; margin-top: 4px;">${displayName}</div>`);
+            .html(
+              `<div><strong>${fullName}</strong></div><div style="font-size: 10px; color: #aaa; margin-top: 4px;">${displayName}</div>`
+            );
         })
-        .on("mousemove", function(event) {
+        .on("mousemove", function (event) {
           tooltip
-            .style("left", (event.pageX + 10) + "px")
-            .style("top", (event.pageY - 10) + "px");
+            .style("left", event.pageX + 10 + "px")
+            .style("top", event.pageY - 10 + "px");
         })
-        .on("mouseout", function() {
+        .on("mouseout", function () {
           tooltip.style("opacity", 0);
         });
 
@@ -631,13 +656,19 @@ export default function DependenciesPage({
       let simulation = simRef.current;
       const existingNodes = simulation ? (simulation.nodes() as any[]) : [];
       const existingNodeMap = new Map(existingNodes.map((n: any) => [n.id, n]));
-      
+
       // Preserve positions of existing nodes, initialize new ones
       nodes.forEach((node: any) => {
         const existing = existingNodeMap.get(node.id);
-        if (existing && existing.x != null && existing.y != null && 
-            isFinite(existing.x) && isFinite(existing.y) &&
-            existing.x !== 0 && existing.y !== 0) {
+        if (
+          existing &&
+          existing.x != null &&
+          existing.y != null &&
+          isFinite(existing.x) &&
+          isFinite(existing.y) &&
+          existing.x !== 0 &&
+          existing.y !== 0
+        ) {
           // Preserve existing position
           node.x = existing.x;
           node.y = existing.y;
@@ -655,7 +686,7 @@ export default function DependenciesPage({
           }
         }
       });
-      
+
       if (!simulation) {
         simulation = d3.forceSimulation(nodes as any);
         simRef.current = simulation;
@@ -663,10 +694,10 @@ export default function DependenciesPage({
         // Update existing simulation with new nodes
         simulation.nodes(nodes as any);
       }
-      
+
       // CodeFlow EXACT: Different force configurations for each view mode
       const config = graphConfigRef.current; // Use ref for latest config
-      
+
       // Add boundary forces to keep nodes within viewport
       const padding = 50;
       const boundaryForce = (d: any) => {
@@ -676,25 +707,30 @@ export default function DependenciesPage({
         if (d.y < padding + r) d.y = padding + r;
         if (d.y > height - padding - r) d.y = height - padding - r;
       };
-      
+
       // Store hubNodes for use in simulation.on("end")
       let hubNodes: any[] = [];
-      
+
       if (config.viewMode === "force") {
         // Hub-based layout: Identify hub nodes (nodes with many outgoing edges)
         const outDegree = new Map<string, number>();
         links.forEach((l: any) => {
-          const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+          const sourceId =
+            typeof l.source === "object" ? l.source.id : l.source;
           outDegree.set(sourceId, (outDegree.get(sourceId) || 0) + 1);
         });
-        
+
         // Sort nodes by out-degree to find hubs
-        const sortedNodes = [...nodes].sort((a: any, b: any) => 
-          (outDegree.get(b.id) || 0) - (outDegree.get(a.id) || 0)
+        const sortedNodes = [...nodes].sort(
+          (a: any, b: any) =>
+            (outDegree.get(b.id) || 0) - (outDegree.get(a.id) || 0)
         );
-        
+
         // Position hub nodes in a horizontal spine
-        hubNodes = sortedNodes.slice(0, Math.min(20, Math.floor(nodes.length * 0.3))) as any[];
+        hubNodes = sortedNodes.slice(
+          0,
+          Math.min(20, Math.floor(nodes.length * 0.3))
+        ) as any[];
         const hubSpacing = width / (hubNodes.length + 1);
         const hubY = height / 2;
         hubNodes.forEach((hub: any, i: number) => {
@@ -703,12 +739,14 @@ export default function DependenciesPage({
           hub.hubX = (i + 1) * hubSpacing;
           hub.hubY = hubY;
         });
-        
+
         // Position dependent nodes in orbits around their hub parents
         const dependentsByHub = new Map<string, any[]>();
         links.forEach((l: any) => {
-          const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-          const targetId = typeof l.target === "object" ? l.target.id : l.target;
+          const sourceId =
+            typeof l.source === "object" ? l.source.id : l.source;
+          const targetId =
+            typeof l.target === "object" ? l.target.id : l.target;
           const hub = hubNodes.find((h: any) => h.id === sourceId);
           if (hub) {
             const target = nodes.find((n: any) => n.id === targetId);
@@ -720,18 +758,18 @@ export default function DependenciesPage({
             }
           }
         });
-        
+
         // Calculate orbit positions for dependents
         dependentsByHub.forEach((deps, hubId) => {
           const hub = hubNodes.find((h: any) => h.id === hubId);
           if (!hub) return;
-          
+
           const ringBase = 80;
           const ringStep = 32;
           let currentRing = 0;
           let currentAngle = 0;
           const perRing = 8;
-          
+
           deps.forEach((dep: any, i: number) => {
             if (i > 0 && i % perRing === 0) {
               currentRing++;
@@ -743,31 +781,62 @@ export default function DependenciesPage({
             dep.orbitAngle = angle;
             dep.orbitRadius = radius;
             currentAngle++;
-              });
-            });
-        
+          });
+        });
+
         simulation
-          .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.3))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 1.5).distanceMax(400))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10).iterations(3))
-          .force("x", d3.forceX((d: any) => {
-            if ((d ).isHub) return (d ).hubX;
-            if ((d ).orbitHub) {
-              const hub = hubNodes.find((h: any) => h.id === (d ).orbitHub);
-              if (hub) return hub.hubX + Math.cos((d ).orbitAngle) * (d ).orbitRadius;
-            }
-            const center = centers[d.folder];
-            return center ? center.x : width / 2;
-          }).strength(0.8))
-          .force("y", d3.forceY((d: any) => {
-            if ((d ).isHub) return (d ).hubY;
-            if ((d ).orbitHub) {
-              const hub = hubNodes.find((h: any) => h.id === (d ).orbitHub);
-              if (hub) return hub.hubY + Math.sin((d ).orbitAngle) * (d ).orbitRadius;
-            }
-            const center = centers[d.folder];
-            return center ? center.y : height / 2;
-          }).strength(0.8))
+          .force(
+            "link",
+            d3
+              .forceLink(links as any)
+              .id((d: any) => d.id)
+              .distance(config.linkDist)
+              .strength(0.3)
+          )
+          .force(
+            "charge",
+            d3
+              .forceManyBody()
+              .strength(-config.spacing * 1.5)
+              .distanceMax(400)
+          )
+          .force(
+            "collision",
+            d3
+              .forceCollide()
+              .radius((d: any) => getR(d) + 10)
+              .iterations(3)
+          )
+          .force(
+            "x",
+            d3
+              .forceX((d: any) => {
+                if (d.isHub) return d.hubX;
+                if (d.orbitHub) {
+                  const hub = hubNodes.find((h: any) => h.id === d.orbitHub);
+                  if (hub)
+                    return hub.hubX + Math.cos(d.orbitAngle) * d.orbitRadius;
+                }
+                const center = centers[d.folder];
+                return center ? center.x : width / 2;
+              })
+              .strength(0.8)
+          )
+          .force(
+            "y",
+            d3
+              .forceY((d: any) => {
+                if (d.isHub) return d.hubY;
+                if (d.orbitHub) {
+                  const hub = hubNodes.find((h: any) => h.id === d.orbitHub);
+                  if (hub)
+                    return hub.hubY + Math.sin(d.orbitAngle) * d.orbitRadius;
+                }
+                const center = centers[d.folder];
+                return center ? center.y : height / 2;
+              })
+              .strength(0.8)
+          )
           .force("boundary", () => {
             nodes.forEach(boundaryForce);
           });
@@ -779,11 +848,24 @@ export default function DependenciesPage({
           n.targetY = height / 2 + Math.sin(n.angle) * r;
         });
         simulation
-          .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 0.5).strength(0.05))
+          .force(
+            "link",
+            d3
+              .forceLink(links as any)
+              .id((d: any) => d.id)
+              .distance(config.linkDist * 0.5)
+              .strength(0.05)
+          )
           .force("charge", d3.forceManyBody().strength(-config.spacing * 0.5))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10).iterations(3))
-          .force("x", d3.forceX((d: any) => (d ).targetX).strength(0.8))
-          .force("y", d3.forceY((d: any) => (d ).targetY).strength(0.8))
+          .force(
+            "collision",
+            d3
+              .forceCollide()
+              .radius((d: any) => getR(d) + 10)
+              .iterations(3)
+          )
+          .force("x", d3.forceX((d: any) => d.targetX).strength(0.8))
+          .force("y", d3.forceY((d: any) => d.targetY).strength(0.8))
           .force("boundary", () => {
             nodes.forEach(boundaryForce);
           });
@@ -806,11 +888,36 @@ export default function DependenciesPage({
           });
         });
         simulation
-          .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.1))
-          .force("charge", d3.forceManyBody().strength(-config.spacing * 0.8).distanceMax(200))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10).iterations(3))
-          .force("x", d3.forceX((d: any) => (d ).targetX || width / 2).strength(0.9))
-          .force("y", d3.forceY((d: any) => (d ).targetY || height / 2).strength(0.3))
+          .force(
+            "link",
+            d3
+              .forceLink(links as any)
+              .id((d: any) => d.id)
+              .distance(config.linkDist)
+              .strength(0.1)
+          )
+          .force(
+            "charge",
+            d3
+              .forceManyBody()
+              .strength(-config.spacing * 0.8)
+              .distanceMax(200)
+          )
+          .force(
+            "collision",
+            d3
+              .forceCollide()
+              .radius((d: any) => getR(d) + 10)
+              .iterations(3)
+          )
+          .force(
+            "x",
+            d3.forceX((d: any) => d.targetX || width / 2).strength(0.9)
+          )
+          .force(
+            "y",
+            d3.forceY((d: any) => d.targetY || height / 2).strength(0.3)
+          )
           .force("boundary", () => {
             nodes.forEach(boundaryForce);
           });
@@ -823,25 +930,43 @@ export default function DependenciesPage({
           n.targetY = (Math.floor(i / gridCols) + 1) * cellH;
         });
         simulation
-          .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist * 1.5).strength(0.02))
+          .force(
+            "link",
+            d3
+              .forceLink(links as any)
+              .id((d: any) => d.id)
+              .distance(config.linkDist * 1.5)
+              .strength(0.02)
+          )
           .force("charge", d3.forceManyBody().strength(-config.spacing * 0.3))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10).iterations(3))
-          .force("x", d3.forceX((d: any) => (d ).targetX).strength(1))
-          .force("y", d3.forceY((d: any) => (d ).targetY).strength(1))
+          .force(
+            "collision",
+            d3
+              .forceCollide()
+              .radius((d: any) => getR(d) + 10)
+              .iterations(3)
+          )
+          .force("x", d3.forceX((d: any) => d.targetX).strength(1))
+          .force("y", d3.forceY((d: any) => d.targetY).strength(1))
           .force("boundary", () => {
             nodes.forEach(boundaryForce);
           });
       } else if (config.viewMode === "metro") {
         // Metro layout: find root nodes (no incoming edges) and arrange in lines
-        const roots = nodes.filter((n: any) => 
-          !links.some((l: any) => {
-            const targetId = typeof l.target === "object" ? l.target.id : l.target;
-            return targetId === n.id;
-          })
+        const roots = nodes.filter(
+          (n: any) =>
+            !links.some((l: any) => {
+              const targetId =
+                typeof l.target === "object" ? l.target.id : l.target;
+              return targetId === n.id;
+            })
         );
         const actualRoots = roots.length > 0 ? roots : [nodes[0]];
         const lineY = 80;
-        const lineSpacing = Math.min(120, (height - 160) / Math.max(1, actualRoots.length));
+        const lineSpacing = Math.min(
+          120,
+          (height - 160) / Math.max(1, actualRoots.length)
+        );
         actualRoots.forEach((root: any, li: number) => {
           const visited = new Set<string>();
           const queue = [root.id];
@@ -857,8 +982,10 @@ export default function DependenciesPage({
               (node as any).metroLine = li;
               x += config.spacing * 0.8;
               links.forEach((l: any) => {
-                const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-                const targetId = typeof l.target === "object" ? l.target.id : l.target;
+                const sourceId =
+                  typeof l.source === "object" ? l.source.id : l.source;
+                const targetId =
+                  typeof l.target === "object" ? l.target.id : l.target;
                 if (sourceId === id && !visited.has(targetId)) {
                   queue.push(targetId);
                 }
@@ -866,28 +993,49 @@ export default function DependenciesPage({
             }
           }
         });
-        nodes.filter((n: any) => !(n ).targetX).forEach((n: any, i: number) => {
-          n.targetX = 80 + i * 50;
-          n.targetY = height - 80;
-          (n ).metroLine = actualRoots.length;
-        });
+        nodes
+          .filter((n: any) => !n.targetX)
+          .forEach((n: any, i: number) => {
+            n.targetX = 80 + i * 50;
+            n.targetY = height - 80;
+            n.metroLine = actualRoots.length;
+          });
         simulation
-          .force("link", d3.forceLink(links as any).id((d: any) => d.id).distance(config.linkDist).strength(0.05))
+          .force(
+            "link",
+            d3
+              .forceLink(links as any)
+              .id((d: any) => d.id)
+              .distance(config.linkDist)
+              .strength(0.05)
+          )
           .force("charge", d3.forceManyBody().strength(-config.spacing * 0.4))
-          .force("collision", d3.forceCollide().radius((d: any) => getR(d) + 10).iterations(3))
-          .force("x", d3.forceX((d: any) => (d ).targetX || width / 2).strength(0.95))
-          .force("y", d3.forceY((d: any) => (d ).targetY || height / 2).strength(0.95))
+          .force(
+            "collision",
+            d3
+              .forceCollide()
+              .radius((d: any) => getR(d) + 10)
+              .iterations(3)
+          )
+          .force(
+            "x",
+            d3.forceX((d: any) => d.targetX || width / 2).strength(0.95)
+          )
+          .force(
+            "y",
+            d3.forceY((d: any) => d.targetY || height / 2).strength(0.95)
+          )
           .force("boundary", () => {
             nodes.forEach(boundaryForce);
           });
       }
-      
+
       // Update forces when spacing/linkDist change - use graphConfigRef for latest values
-      const linkForce = simulation.force("link") ;
+      const linkForce = simulation.force("link");
       if (linkForce) {
         linkForce.distance(config.linkDist);
       }
-      const chargeForce = simulation.force("charge") ;
+      const chargeForce = simulation.force("charge");
       if (chargeForce) {
         // Update charge strength based on view mode
         if (config.viewMode === "force") {
@@ -902,7 +1050,7 @@ export default function DependenciesPage({
           chargeForce.strength(-config.spacing * 0.4);
         }
       }
-      
+
       // Always restart simulation when config changes to apply new forces
       simulation
         .velocityDecay(0.78)
@@ -910,19 +1058,20 @@ export default function DependenciesPage({
         .alphaMin(0.02)
         .alpha(0.9)
         .restart();
-      
+
       // Attach drag handlers with highlighting and dependent node movement
       node.call(
         d3
           .drag<SVGGElement, any>()
           .on("start", (event, d) => {
-            if (!event.active && simulation) simulation.alphaTarget(0).restart();
-            
+            if (!event.active && simulation)
+              simulation.alphaTarget(0).restart();
+
             // Store initial position
             dragStateRef.current.draggedNodeId = d.id;
             dragStateRef.current.initialX = d.x || 0;
             dragStateRef.current.initialY = d.y || 0;
-            
+
             d.fx = d.x;
             d.fy = d.y;
 
@@ -930,75 +1079,118 @@ export default function DependenciesPage({
             dragStateRef.current.frozenPositions.clear();
             nodes.forEach((n: any) => {
               if (n.id === d.id) return;
-              const nodeAny = n ;
+              const nodeAny = n;
               dragStateRef.current.frozenPositions.set(n.id, {
                 fx: nodeAny.fx ?? null,
                 fy: nodeAny.fy ?? null,
               });
-              if (n.x != null && n.y != null && isFinite(n.x) && isFinite(n.y)) {
+              if (
+                n.x != null &&
+                n.y != null &&
+                isFinite(n.x) &&
+                isFinite(n.y)
+              ) {
                 nodeAny.fx = n.x;
                 nodeAny.fy = n.y;
               }
             });
-            
+
             // Find all dependent nodes (nodes this node connects to)
             const affected = new Set<string>();
             links.forEach((l: any) => {
-              const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-              const targetId = typeof l.target === "object" ? l.target.id : l.target;
+              const sourceId =
+                typeof l.source === "object" ? l.source.id : l.source;
+              const targetId =
+                typeof l.target === "object" ? l.target.id : l.target;
               if (sourceId === d.id) {
                 affected.add(targetId);
               }
             });
-            
+
             // Also find nodes that connect to this node (dependencies)
             const dependencies = new Set<string>();
             links.forEach((l: any) => {
-              const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-              const targetId = typeof l.target === "object" ? l.target.id : l.target;
+              const sourceId =
+                typeof l.source === "object" ? l.source.id : l.source;
+              const targetId =
+                typeof l.target === "object" ? l.target.id : l.target;
               if (targetId === d.id) {
                 dependencies.add(sourceId);
               }
             });
-            
+
             // Store for drag handler
             dragStateRef.current.dependents = affected;
             dragStateRef.current.dependencies = dependencies;
-            
+
             // Combine all related nodes
             const allRelated = new Set([...affected, ...dependencies]);
-            
+
             // Update visual highlighting - highlight all nodes using nodeLayer
             // Select all node groups, then update their circles
-            nodeLayer.selectAll("g.node").each(function(n: any) {
+            nodeLayer.selectAll("g.node").each(function (n: any) {
               const nodeGroup = d3.select(this);
               const circle = nodeGroup.select("circle.nc");
               const isSelected = n.id === d.id;
               const isRelated = allRelated.has(n.id);
-              
+
               circle
                 .attr("opacity", isSelected ? 1 : isRelated ? 0.8 : 0.2)
-                .attr("fill", isSelected ? "#ff5f5f" : isRelated ? "#ff9f43" : getC(n))
+                .attr(
+                  "fill",
+                  isSelected ? "#ff5f5f" : isRelated ? "#ff9f43" : getC(n)
+                )
                 .attr("stroke-width", isSelected ? 3 : isRelated ? 2.5 : 1.5)
-                .attr("stroke", isSelected ? "#ff5f5f" : isRelated ? "#ff9f43" : (() => {
-                  const c = d3.color(getC(n));
-                  return c ? c.brighter(0.3).toString() : "#fff";
-                })());
+                .attr(
+                  "stroke",
+                  isSelected
+                    ? "#ff5f5f"
+                    : isRelated
+                    ? "#ff9f43"
+                    : (() => {
+                        const c = d3.color(getC(n));
+                        return c ? c.brighter(0.3).toString() : "#fff";
+                      })()
+                );
             });
-            
+
             // Highlight links connecting to/from this node
-            linkLayer.selectAll("path").each(function(l: any) {
+            linkLayer.selectAll("path").each(function (l: any) {
               const path = d3.select(this);
-              const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-              const targetId = typeof l.target === "object" ? l.target.id : l.target;
-              const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
+              const sourceId =
+                typeof l.source === "object" ? l.source.id : l.source;
+              const targetId =
+                typeof l.target === "object" ? l.target.id : l.target;
+              const theme = document.documentElement.classList.contains("light")
+                ? "light"
+                : "dark";
               const isConnected = sourceId === d.id || targetId === d.id;
-              const isRelatedLink = allRelated.has(sourceId) && allRelated.has(targetId);
-              
+              const isRelatedLink =
+                allRelated.has(sourceId) && allRelated.has(targetId);
+
               path
-                .attr("stroke-opacity", isConnected ? 0.95 : isRelatedLink ? 0.7 : 0.15)
-                .attr("stroke", isConnected ? "#ff5f5f" : isRelatedLink ? "#ff9f43" : (theme === "light" ? "#ccc" : "#333"))
-                .attr("stroke-width", isConnected ? 3 : isRelatedLink ? 2 : Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
+                .attr(
+                  "stroke-opacity",
+                  isConnected ? 0.95 : isRelatedLink ? 0.7 : 0.15
+                )
+                .attr(
+                  "stroke",
+                  isConnected
+                    ? "#ff5f5f"
+                    : isRelatedLink
+                    ? "#ff9f43"
+                    : theme === "light"
+                    ? "#ccc"
+                    : "#333"
+                )
+                .attr(
+                  "stroke-width",
+                  isConnected
+                    ? 3
+                    : isRelatedLink
+                    ? 2
+                    : Math.max(1, Math.min(2, Math.sqrt(l.count || 1) * 0.3))
+                );
             });
           })
           .on("drag", (event, d) => {
@@ -1011,7 +1203,7 @@ export default function DependenciesPage({
             if (!event.active && simulation) simulation.alphaTarget(0);
             d.fx = null;
             d.fy = null;
-            
+
             // Release frozen nodes back to their previous fx/fy
             dragStateRef.current.frozenPositions.forEach((pos, id) => {
               const node = nodes.find((n: any) => n.id === id) as any;
@@ -1020,15 +1212,17 @@ export default function DependenciesPage({
               node.fy = pos.fy;
             });
             dragStateRef.current.frozenPositions.clear();
-            
+
             // Reset drag state
             dragStateRef.current.draggedNodeId = null;
             dragStateRef.current.dependents.clear();
             dragStateRef.current.dependencies.clear();
-            
+
             // Reset highlighting
-            const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
-            nodeLayer.selectAll("g.node").each(function(n: any) {
+            const theme = document.documentElement.classList.contains("light")
+              ? "light"
+              : "dark";
+            nodeLayer.selectAll("g.node").each(function (n: any) {
               const nodeGroup = d3.select(this);
               const circle = nodeGroup.select("circle.nc");
               const c = d3.color(getC(n));
@@ -1038,17 +1232,20 @@ export default function DependenciesPage({
                 .attr("stroke-width", 1.5)
                 .attr("stroke", c ? c.brighter(0.3).toString() : "#fff");
             });
-            
-            linkLayer.selectAll("path").each(function(l: any) {
+
+            linkLayer.selectAll("path").each(function (l: any) {
               const path = d3.select(this);
               path
                 .attr("stroke-opacity", 0.4)
                 .attr("stroke", theme === "light" ? "#ccc" : "#333")
-                .attr("stroke-width", Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
+                .attr(
+                  "stroke-width",
+                  Math.max(1, Math.min(2, Math.sqrt(l.count || 1) * 0.3))
+                );
             });
           }) as any
       );
-      
+
       // Attach click handlers to all nodes (existing + new)
       node.on("click", (e, d) => {
         e.stopPropagation();
@@ -1061,19 +1258,27 @@ export default function DependenciesPage({
       simulation.on("tick", () => {
         // Use graphConfigRef to always get latest config values
         const config = graphConfigRef.current;
-        
+
         // Get current search state from refs (always latest values)
         const currentSearchQuery = searchQueryRef.current;
         const currentMatchingNodes = matchingNodesRef.current;
         const currentHighlightedNodeId = highlightedNodeIdRef.current;
-        const hasSearch = currentSearchQuery.trim() && currentMatchingNodes.size > 0;
+        const hasSearch =
+          currentSearchQuery.trim() && currentMatchingNodes.size > 0;
         const currentDraggedNodeId = dragStateRef.current.draggedNodeId;
-        
+
         // Update link paths (curved or straight based on config.curvedLinks)
         const buildLinkPath = (d: any) => {
           const source = typeof d.source === "object" ? d.source : d.source;
           const target = typeof d.target === "object" ? d.target : d.target;
-          if (!source || !target || source.x == null || source.y == null || target.x == null || target.y == null) {
+          if (
+            !source ||
+            !target ||
+            source.x == null ||
+            source.y == null ||
+            target.x == null ||
+            target.y == null
+          ) {
             return "M0,0L0,0";
           }
           const dx = target.x - source.x;
@@ -1103,28 +1308,40 @@ export default function DependenciesPage({
           return `M${sx},${sy}L${tx},${ty}`;
         };
         link.attr("d", buildLinkPath);
-        
+
         // Preserve search highlighting in tick handler (so it persists during zoom/pan)
         if (currentDraggedNodeId) {
           // Highlight links connected to the dragged node
-          link.each(function(l: any) {
+          link.each(function (l: any) {
             const path = d3.select(this);
-            const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-            const targetId = typeof l.target === "object" ? l.target.id : l.target;
+            const sourceId =
+              typeof l.source === "object" ? l.source.id : l.source;
+            const targetId =
+              typeof l.target === "object" ? l.target.id : l.target;
             const isConnected =
-              sourceId === currentDraggedNodeId || targetId === currentDraggedNodeId;
+              sourceId === currentDraggedNodeId ||
+              targetId === currentDraggedNodeId;
             path
               .attr("stroke", isConnected ? "#ff5f5f" : "#666666")
               .attr("stroke-opacity", isConnected ? 0.9 : 0.15)
-              .attr("stroke-width", isConnected ? 2.5 : Math.max(1, Math.min(2, Math.sqrt((l.count || 1)) * 0.3)));
+              .attr(
+                "stroke-width",
+                isConnected
+                  ? 2.5
+                  : Math.max(1, Math.min(2, Math.sqrt(l.count || 1) * 0.3))
+              );
           });
         } else if (hasSearch) {
-          link.each(function(l: any) {
+          link.each(function (l: any) {
             const path = d3.select(this);
-            const sourceId = typeof l.source === "object" ? l.source.id : l.source;
-            const targetId = typeof l.target === "object" ? l.target.id : l.target;
-            const isHighlighted = currentMatchingNodes.has(sourceId) || currentMatchingNodes.has(targetId);
-            
+            const sourceId =
+              typeof l.source === "object" ? l.source.id : l.source;
+            const targetId =
+              typeof l.target === "object" ? l.target.id : l.target;
+            const isHighlighted =
+              currentMatchingNodes.has(sourceId) ||
+              currentMatchingNodes.has(targetId);
+
             // Green for highlighted links, greyish for others
             path
               .attr("stroke", isHighlighted ? "#00ff9d" : "#666666") // More greyish for non-highlighted
@@ -1132,11 +1349,14 @@ export default function DependenciesPage({
           });
         } else {
           // Default link styling when no search - more greyish
-          const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
-          link.attr("stroke", theme === "light" ? "#999999" : "#666666") // More greyish
+          const theme = document.documentElement.classList.contains("light")
+            ? "light"
+            : "dark";
+          link
+            .attr("stroke", theme === "light" ? "#999999" : "#666666") // More greyish
             .attr("stroke-opacity", 0.6);
         }
-        
+
         // Clamp node positions to viewport bounds to prevent nodes going outside
         const padding = 50;
         nodes.forEach((d: any) => {
@@ -1146,7 +1366,7 @@ export default function DependenciesPage({
             d.y = Math.max(padding + r, Math.min(height - padding - r, d.y));
           }
         });
-        
+
         // Update node positions
         node.attr("transform", (d: any) => {
           if (d.x == null || d.y == null || !isFinite(d.x) || !isFinite(d.y)) {
@@ -1154,26 +1374,35 @@ export default function DependenciesPage({
           }
           return `translate(${d.x},${d.y})`;
         });
-        
+
         // Preserve search highlighting for nodes in tick handler (so it persists during zoom/pan)
         if (hasSearch) {
-          node.selectAll("circle.nc").each(function(n: any) {
+          node.selectAll("circle.nc").each(function (n: any) {
             const circle = d3.select(this);
             const isMatch = currentMatchingNodes.has(n.id);
             const isHighlighted = currentHighlightedNodeId === n.id;
-            
+
             circle
               .attr("opacity", isMatch || isHighlighted ? 1 : 0.2)
-              .attr("fill", isHighlighted ? "#ff5f5f" : isMatch ? "#00ff9d" : getC(n))
-              .attr("stroke", isMatch || isHighlighted ? "#00ff9d" : (() => {
-                const c = d3.color(getC(n));
-                return c ? c.brighter(0.3).toString() : "#fff";
-              })())
+              .attr(
+                "fill",
+                isHighlighted ? "#ff5f5f" : isMatch ? "#00ff9d" : getC(n)
+              )
+              .attr(
+                "stroke",
+                isMatch || isHighlighted
+                  ? "#00ff9d"
+                  : (() => {
+                      const c = d3.color(getC(n));
+                      return c ? c.brighter(0.3).toString() : "#fff";
+                    })()
+              )
               .attr("stroke-width", isMatch || isHighlighted ? 3 : 1.5);
           });
         } else {
           // Default node styling when no search
-          node.selectAll("circle.nc")
+          node
+            .selectAll("circle.nc")
             .attr("opacity", 1)
             .attr("fill", getC)
             .attr("stroke", (d: any) => {
@@ -1182,13 +1411,14 @@ export default function DependenciesPage({
             })
             .attr("stroke-width", 1.5);
         }
-        
+
         // Update text opacity and ensure it's centered inside circle
-        node.selectAll("text")
+        node
+          .selectAll("text")
           .attr("opacity", config.showLabels ? 1 : 0)
           .attr("dy", "0.32em")
           .attr("x", (d: any) => getR(d) + 4);
-        
+
         // Update hulls
         updateHulls();
       });
@@ -1199,50 +1429,55 @@ export default function DependenciesPage({
         hullLayer.selectAll("*").remove();
         if (viewMode === "folder") {
           folderList.forEach((folder) => {
-          const folderNodes = nodes.filter((n) => n.folder === folder);
-          if (folderNodes.length < 1) return;
-          const pad = 30;
-          const pts: [number, number][] = [];
-          folderNodes.forEach((n: any) => {
-            if (n.x != null && n.y != null && isFinite(n.x) && isFinite(n.y)) {
-              pts.push(
-                [n.x - pad, n.y - pad],
-                [n.x + pad, n.y - pad],
-                [n.x - pad, n.y + pad],
-                [n.x + pad, n.y + pad]
-              );
+            const folderNodes = nodes.filter((n) => n.folder === folder);
+            if (folderNodes.length < 1) return;
+            const pad = 30;
+            const pts: [number, number][] = [];
+            folderNodes.forEach((n: any) => {
+              if (
+                n.x != null &&
+                n.y != null &&
+                isFinite(n.x) &&
+                isFinite(n.y)
+              ) {
+                pts.push(
+                  [n.x - pad, n.y - pad],
+                  [n.x + pad, n.y - pad],
+                  [n.x - pad, n.y + pad],
+                  [n.x + pad, n.y + pad]
+                );
+              }
+            });
+            if (pts.length < 3) return;
+            const hull = d3.polygonHull(pts);
+            if (hull) {
+              const color =
+                COLORS[folderList.indexOf(folder) % COLORS.length] ||
+                COLORS[0] ||
+                "#4d9fff";
+              hullLayer
+                .append("path")
+                .attr("d", "M" + hull.join("L") + "Z")
+                .attr("fill", color)
+                .attr("fill-opacity", 0.04)
+                .attr("stroke", color)
+                .attr("stroke-width", 2)
+                .attr("stroke-opacity", 0.25);
+              const cx = d3.mean(folderNodes, (n: any) => n.x) || 0;
+              const cy = (d3.min(folderNodes, (n: any) => n.y) || 0) - pad - 8;
+              hullLayer
+                .append("text")
+                .attr("x", cx)
+                .attr("y", cy)
+                .attr("text-anchor", "middle")
+                .attr("fill", color)
+                .attr("font-size", "10px")
+                .attr("font-family", "JetBrains Mono, monospace")
+                .attr("font-weight", 600)
+                .attr("opacity", 0.7)
+                .text(folder || "root");
             }
           });
-          if (pts.length < 3) return;
-          const hull = d3.polygonHull(pts);
-          if (hull) {
-            const color =
-              COLORS[folderList.indexOf(folder) % COLORS.length] ||
-              COLORS[0] ||
-              "#4d9fff";
-            hullLayer
-              .append("path")
-              .attr("d", "M" + hull.join("L") + "Z")
-              .attr("fill", color)
-              .attr("fill-opacity", 0.04)
-              .attr("stroke", color)
-              .attr("stroke-width", 2)
-              .attr("stroke-opacity", 0.25);
-            const cx = d3.mean(folderNodes, (n: any) => n.x) || 0;
-            const cy = (d3.min(folderNodes, (n: any) => n.y) || 0) - pad - 8;
-            hullLayer
-              .append("text")
-              .attr("x", cx)
-              .attr("y", cy)
-              .attr("text-anchor", "middle")
-              .attr("fill", color)
-              .attr("font-size", "10px")
-              .attr("font-family", "JetBrains Mono, monospace")
-              .attr("font-weight", 600)
-              .attr("opacity", 0.7)
-              .text(folder || "root");
-          }
-        });
         }
         // In dependency view, hulls are hidden
       };
@@ -1277,12 +1512,13 @@ export default function DependenciesPage({
         if (e.target === svg.node()) {
           setFocusedNodeId(null);
           setBlastRadius(null);
-          const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
-          link.attr("stroke", theme === "light" ? "#ccc" : "#333").attr("stroke-opacity", 0.4);
-          node
-            .selectAll(".nc")
-            .attr("opacity", 1)
-            .attr("fill", getC);
+          const theme = document.documentElement.classList.contains("light")
+            ? "light"
+            : "dark";
+          link
+            .attr("stroke", theme === "light" ? "#ccc" : "#333")
+            .attr("stroke-opacity", 0.4);
+          node.selectAll(".nc").attr("opacity", 1).attr("fill", getC);
         }
       });
 
@@ -1317,25 +1553,26 @@ export default function DependenciesPage({
         d3.select(svgRef.current)
           .transition()
           .duration(500)
-          .call(
-            zoom.transform ,
-            d3.zoomIdentity.translate(tx, ty).scale(scale)
-          );
+          .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
       };
 
       // Store refs for updates
       nodesRef.current = node;
       linksRef.current = link;
-      
 
       simulation.on("end", null);
       simulation.on("end", () => {
         // Only fit to view if nodes have valid positions
         const validNodes = nodes.filter(
           (n: any) =>
-            n.x != null && n.y != null && isFinite(n.x) && isFinite(n.y) && 
-            n.x !== 0 && n.y !== 0 && 
-            Math.abs(n.x) < width * 10 && Math.abs(n.y) < height * 10
+            n.x != null &&
+            n.y != null &&
+            isFinite(n.x) &&
+            isFinite(n.y) &&
+            n.x !== 0 &&
+            n.y !== 0 &&
+            Math.abs(n.x) < width * 10 &&
+            Math.abs(n.y) < height * 10
         );
         if (validNodes.length > nodes.length * 0.5) {
           setTimeout(() => fitToView(), 200);
@@ -1343,7 +1580,12 @@ export default function DependenciesPage({
         // Prevent graph from collapsing - maintain hub positions (only in force mode)
         if (config.viewMode === "force" && hubNodes.length > 0) {
           hubNodes.forEach((hub: any) => {
-            if (hub.x != null && hub.y != null && hub.hubX != null && hub.hubY != null) {
+            if (
+              hub.x != null &&
+              hub.y != null &&
+              hub.hubX != null &&
+              hub.hubY != null
+            ) {
               hub.fx = hub.hubX;
               hub.fy = hub.hubY;
             }
@@ -1376,7 +1618,6 @@ export default function DependenciesPage({
     focusedNodeId,
     graphConfig, // Add graphConfig so simulation updates when config changes
   ]);
-
 
   async function loadDependencies() {
     setLoading(true);
@@ -1532,7 +1773,10 @@ export default function DependenciesPage({
               (i + 1) % PROGRESSIVE_GRAPH_UPDATE_EVERY === 0;
             if (shouldRefreshGraph) {
               const currentGraph = buildGraph(allDeps, filePaths);
-              const currentFolderGraph = buildFolderOverview(allDeps, filePaths);
+              const currentFolderGraph = buildFolderOverview(
+                allDeps,
+                filePaths
+              );
               setGraphData(currentGraph);
               setFolderGraphData(currentFolderGraph);
               setDependencies([...allDeps]);
@@ -2025,9 +2269,7 @@ export default function DependenciesPage({
     const listingFileCount = (
       arr: Array<{ type: string; path: string }> | null | undefined
     ) =>
-      !arr?.length
-        ? 0
-        : arr.filter((f) => isDependencyListingFile(f)).length;
+      !arr?.length ? 0 : arr.filter((f) => isDependencyListingFile(f)).length;
 
     let localList: Array<{ type: string; path: string }> | null = null;
 
@@ -2090,9 +2332,10 @@ export default function DependenciesPage({
       console.warn("Failed to check localStorage for files:", e);
     }
 
-    async function loadGithubTree(): Promise<
-      Array<{ type: string; path: string }> | null
-    > {
+    async function loadGithubTree(): Promise<Array<{
+      type: string;
+      path: string;
+    }> | null> {
       if (!repo?.sourceUrl) return null;
       try {
         const githubMatch = repo.sourceUrl.match(
@@ -2134,9 +2377,10 @@ export default function DependenciesPage({
       }
     }
 
-    async function loadBridgeTree(): Promise<
-      Array<{ type: string; path: string }> | null
-    > {
+    async function loadBridgeTree(): Promise<Array<{
+      type: string;
+      path: string;
+    }> | null> {
       try {
         const response = await fetch(
           `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
@@ -2181,7 +2425,9 @@ export default function DependenciesPage({
     if (best && best.length > 0) {
       if (best !== localList && localList?.length) {
         console.log(
-          `✅ [Dependencies] Prefer listing with ${bestN} file-like paths over local (${listingFileCount(localList)})`
+          `✅ [Dependencies] Prefer listing with ${bestN} file-like paths over local (${listingFileCount(
+            localList
+          )})`
         );
       } else if (best === bridgeList && bridgeList) {
         console.log(
@@ -2265,7 +2511,11 @@ export default function DependenciesPage({
     const query = searchQuery.toLowerCase().trim();
     const matches = new Set<string>();
     activeGraphData.nodes.forEach((node) => {
-      const label = (node.data.label || node.data.displayLabel || "").toLowerCase();
+      const label = (
+        node.data.label ||
+        node.data.displayLabel ||
+        ""
+      ).toLowerCase();
       const path = (node.data.path || node.data.filePath || "").toLowerCase();
       const folder = path.split("/").slice(0, -1).join("/").toLowerCase();
       if (
@@ -2305,7 +2555,7 @@ export default function DependenciesPage({
   // Highlight search matches
   useEffect(() => {
     if (!nodesRef.current || !linksRef.current || !activeGraphData) return;
-    
+
     import("d3").then((d3) => {
       const node = nodesRef.current;
       const link = linksRef.current;
@@ -2319,10 +2569,11 @@ export default function DependenciesPage({
         "#ff5f5f",
         "#84cc16",
       ];
-      
+
       if (searchQuery.trim() && matchingNodes.size > 0) {
         // Highlight matching nodes
-        node.selectAll(".nc")
+        node
+          .selectAll(".nc")
           .transition()
           .duration(200)
           .attr("opacity", (d: any) => {
@@ -2338,7 +2589,8 @@ export default function DependenciesPage({
             return d.color || COLORS[0];
           })
           .attr("stroke", (d: any) => {
-            if (highlightedNodeId === d.id || matchingNodes.has(d.id)) return "#00ff9d";
+            if (highlightedNodeId === d.id || matchingNodes.has(d.id))
+              return "#00ff9d";
             if (d.type === "package") return "#fbbf24";
             const color = d.color || COLORS[0];
             const c = d3.color(color);
@@ -2348,45 +2600,66 @@ export default function DependenciesPage({
             if (highlightedNodeId === d.id || matchingNodes.has(d.id)) return 3;
             return 1.5;
           });
-        
+
         // Highlight links to/from matching nodes
         link
           .transition()
           .duration(200)
           .attr("stroke-opacity", (d: any) => {
-            const sourceId = typeof d.source === "object" ? d.source.id : d.source;
-            const targetId = typeof d.target === "object" ? d.target.id : d.target;
-            if (matchingNodes.has(sourceId) || matchingNodes.has(targetId)) return 0.8;
+            const sourceId =
+              typeof d.source === "object" ? d.source.id : d.source;
+            const targetId =
+              typeof d.target === "object" ? d.target.id : d.target;
+            if (matchingNodes.has(sourceId) || matchingNodes.has(targetId))
+              return 0.8;
             return 0.15; // More visible greyish for non-highlighted
           })
           .attr("stroke", (d: any) => {
-            const sourceId = typeof d.source === "object" ? d.source.id : d.source;
-            const targetId = typeof d.target === "object" ? d.target.id : d.target;
-            if (matchingNodes.has(sourceId) || matchingNodes.has(targetId)) return "#00ff9d"; // Green for highlighted
+            const sourceId =
+              typeof d.source === "object" ? d.source.id : d.source;
+            const targetId =
+              typeof d.target === "object" ? d.target.id : d.target;
+            if (matchingNodes.has(sourceId) || matchingNodes.has(targetId))
+              return "#00ff9d"; // Green for highlighted
             return "#666666"; // More greyish for non-highlighted links
           });
-        
+
         // Zoom to highlighted node if one is selected
-        if (highlightedNodeId && svgRef.current && zoomRef.current && simRef.current) {
+        if (
+          highlightedNodeId &&
+          svgRef.current &&
+          zoomRef.current &&
+          simRef.current
+        ) {
           const nodes = simRef.current.nodes() as any[];
-          const highlightedNode = nodes.find((n: any) => n.id === highlightedNodeId);
-          if (highlightedNode && highlightedNode.x != null && highlightedNode.y != null) {
+          const highlightedNode = nodes.find(
+            (n: any) => n.id === highlightedNodeId
+          );
+          if (
+            highlightedNode &&
+            highlightedNode.x != null &&
+            highlightedNode.y != null
+          ) {
             const width = svgRef.current?.clientWidth || 800;
             const height = svgRef.current?.clientHeight || 600;
             d3.select(svgRef.current)
               .transition()
               .duration(500)
               .call(
-                zoomRef.current.transform ,
+                zoomRef.current.transform,
                 d3.zoomIdentity
-                  .translate(width / 2 - highlightedNode.x * 1.5, height / 2 - highlightedNode.y * 1.5)
+                  .translate(
+                    width / 2 - highlightedNode.x * 1.5,
+                    height / 2 - highlightedNode.y * 1.5
+                  )
                   .scale(1.5)
               );
           }
         }
       } else {
         // Reset highlighting when search is cleared
-        node.selectAll(".nc")
+        node
+          .selectAll(".nc")
           .transition()
           .duration(200)
           .attr("opacity", 1)
@@ -2402,18 +2675,29 @@ export default function DependenciesPage({
             return c ? c.brighter(0.3).toString() : "#fff";
           })
           .attr("stroke-width", 1.5);
-        
+
         link
           .transition()
           .duration(200)
           .attr("stroke-opacity", 0.4)
-          .attr("stroke", (() => {
-            const theme = document.documentElement.classList.contains("light") ? "light" : "dark";
-            return theme === "light" ? "#999999" : "#666666"; // More greyish
-          })());
+          .attr(
+            "stroke",
+            (() => {
+              const theme = document.documentElement.classList.contains("light")
+                ? "light"
+                : "dark";
+              return theme === "light" ? "#999999" : "#666666"; // More greyish
+            })()
+          );
       }
     });
-  }, [searchQuery, matchingNodes, highlightedNodeId, graphPalette, activeGraphData]);
+  }, [
+    searchQuery,
+    matchingNodes,
+    highlightedNodeId,
+    graphPalette,
+    activeGraphData,
+  ]);
 
   return (
     <div className="mt-4 w-screen max-w-none relative left-1/2 right-1/2 -translate-x-1/2 px-3 sm:px-6">
@@ -2452,23 +2736,23 @@ export default function DependenciesPage({
                 {matchingNodes.size}
               </span>
             )}
-        </div>
-        <Button
-          onClick={() => setViewMode("folder")}
-          disabled={!folderGraphData}
-          variant={viewMode === "folder" ? "default" : "outline"}
-          size="sm"
-        >
-          Folder view
-        </Button>
-        <Button
-          onClick={() => setViewMode("file")}
-          disabled={!graphData}
-          variant={viewMode === "file" ? "default" : "outline"}
-          size="sm"
-        >
-          File dependencies
-        </Button>
+          </div>
+          <Button
+            onClick={() => setViewMode("folder")}
+            disabled={!folderGraphData}
+            variant={viewMode === "folder" ? "default" : "outline"}
+            size="sm"
+          >
+            Folder view
+          </Button>
+          <Button
+            onClick={() => setViewMode("file")}
+            disabled={!graphData}
+            variant={viewMode === "file" ? "default" : "outline"}
+            size="sm"
+          >
+            File dependencies
+          </Button>
           <Button
             onClick={() => setShowExternal((prev) => !prev)}
             disabled={!activeGraphData}
@@ -2484,7 +2768,7 @@ export default function DependenciesPage({
           >
             <Settings className="h-4 w-4 mr-2" />
             Config
-        </Button>
+          </Button>
         </div>
       </div>
 
@@ -2493,13 +2777,21 @@ export default function DependenciesPage({
         <div className="mb-4 p-4 bg-[#1e293b] border border-[#383B42] rounded-md">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Layout</h4>
+              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">
+                Layout
+              </h4>
               <div className="flex flex-wrap gap-2">
-                {(["force", "radial", "hierarchical", "grid", "metro"] as const).map((mode) => (
+                {(
+                  ["force", "radial", "hierarchical", "grid", "metro"] as const
+                ).map((mode) => (
                   <Button
                     key={mode}
-                    onClick={() => setGraphConfig({ ...graphConfig, viewMode: mode })}
-                    variant={graphConfig.viewMode === mode ? "default" : "outline"}
+                    onClick={() =>
+                      setGraphConfig({ ...graphConfig, viewMode: mode })
+                    }
+                    variant={
+                      graphConfig.viewMode === mode ? "default" : "outline"
+                    }
                     size="sm"
                     className="text-xs font-mono"
                   >
@@ -2509,10 +2801,14 @@ export default function DependenciesPage({
               </div>
             </div>
             <div>
-              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Spacing</h4>
+              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">
+                Spacing
+              </h4>
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
-                  <label className="text-xs text-gray-300 w-16 font-mono">Spread:</label>
+                  <label className="text-xs text-gray-300 w-16 font-mono">
+                    Spread:
+                  </label>
                   <input
                     type="range"
                     min="50"
@@ -2520,14 +2816,21 @@ export default function DependenciesPage({
                     step="10"
                     value={graphConfig.spacing}
                     onChange={(e) =>
-                      setGraphConfig({ ...graphConfig, spacing: parseInt(e.target.value) })
+                      setGraphConfig({
+                        ...graphConfig,
+                        spacing: parseInt(e.target.value),
+                      })
                     }
                     className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
                   />
-                  <span className="text-xs text-gray-400 w-12 font-mono text-right">{graphConfig.spacing}</span>
+                  <span className="text-xs text-gray-400 w-12 font-mono text-right">
+                    {graphConfig.spacing}
+                  </span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <label className="text-xs text-gray-300 w-16 font-mono">Links:</label>
+                  <label className="text-xs text-gray-300 w-16 font-mono">
+                    Links:
+                  </label>
                   <input
                     type="range"
                     min="30"
@@ -2535,23 +2838,33 @@ export default function DependenciesPage({
                     step="5"
                     value={graphConfig.linkDist}
                     onChange={(e) =>
-                      setGraphConfig({ ...graphConfig, linkDist: parseInt(e.target.value) })
+                      setGraphConfig({
+                        ...graphConfig,
+                        linkDist: parseInt(e.target.value),
+                      })
                     }
                     className="flex-1 h-2 bg-[#0f172a] rounded-lg appearance-none cursor-pointer accent-orange-500"
                   />
-                  <span className="text-xs text-gray-400 w-12 font-mono text-right">{graphConfig.linkDist}</span>
+                  <span className="text-xs text-gray-400 w-12 font-mono text-right">
+                    {graphConfig.linkDist}
+                  </span>
                 </div>
               </div>
             </div>
             <div>
-              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">Display</h4>
+              <h4 className="text-xs font-semibold text-gray-400 uppercase mb-2 tracking-wider">
+                Display
+              </h4>
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer hover:text-gray-200">
                   <input
                     type="checkbox"
                     checked={graphConfig.showLabels}
                     onChange={(e) =>
-                      setGraphConfig({ ...graphConfig, showLabels: e.target.checked })
+                      setGraphConfig({
+                        ...graphConfig,
+                        showLabels: e.target.checked,
+                      })
                     }
                     className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
                   />
@@ -2562,7 +2875,10 @@ export default function DependenciesPage({
                     type="checkbox"
                     checked={graphConfig.curvedLinks}
                     onChange={(e) =>
-                      setGraphConfig({ ...graphConfig, curvedLinks: e.target.checked })
+                      setGraphConfig({
+                        ...graphConfig,
+                        curvedLinks: e.target.checked,
+                      })
                     }
                     className="w-4 h-4 rounded border-[#383B42] bg-[#0f172a] text-orange-500 focus:ring-orange-500 focus:ring-2 cursor-pointer"
                   />
@@ -2617,11 +2933,14 @@ export default function DependenciesPage({
                 if (!svgRef.current || !zoomRef.current) return;
                 import("d3").then((d3) => {
                   const zoom = zoomRef.current;
-                  const center = [svgRef.current!.clientWidth / 2, svgRef.current!.clientHeight / 2];
+                  const center = [
+                    svgRef.current!.clientWidth / 2,
+                    svgRef.current!.clientHeight / 2,
+                  ];
                   d3.select(svgRef.current)
                     .transition()
                     .duration(200)
-                    .call(zoom.scaleBy , 1.4, center);
+                    .call(zoom.scaleBy, 1.4, center);
                 });
               }}
               title="Zoom In"
@@ -2636,11 +2955,14 @@ export default function DependenciesPage({
                 if (!svgRef.current || !zoomRef.current) return;
                 import("d3").then((d3) => {
                   const zoom = zoomRef.current;
-                  const center = [svgRef.current!.clientWidth / 2, svgRef.current!.clientHeight / 2];
+                  const center = [
+                    svgRef.current!.clientWidth / 2,
+                    svgRef.current!.clientHeight / 2,
+                  ];
                   d3.select(svgRef.current)
                     .transition()
                     .duration(200)
-                    .call(zoom.scaleBy , 0.7, center);
+                    .call(zoom.scaleBy, 0.7, center);
                 });
               }}
               title="Zoom Out"
@@ -2652,15 +2974,20 @@ export default function DependenciesPage({
               size="sm"
               className="bg-[#1e293b] border-[#383B42] hover:bg-[#22262C] hover:border-purple-500/50 h-8 w-8 p-0"
               onClick={() => {
-                if (!svgRef.current || !zoomRef.current || !simRef.current) return;
+                if (!svgRef.current || !zoomRef.current || !simRef.current)
+                  return;
                 import("d3").then((d3) => {
                   const zoom = zoomRef.current;
                   const sim = simRef.current;
                   if (zoom && sim) {
                     const nodes = sim.nodes() as any[];
                     if (!nodes.length) return;
-                    const xs = nodes.map((n: any) => n.x).filter((x: any) => x != null && isFinite(x));
-                    const ys = nodes.map((n: any) => n.y).filter((y: any) => y != null && isFinite(y));
+                    const xs = nodes
+                      .map((n: any) => n.x)
+                      .filter((x: any) => x != null && isFinite(x));
+                    const ys = nodes
+                      .map((n: any) => n.y)
+                      .filter((y: any) => y != null && isFinite(y));
                     if (xs.length === 0 || ys.length === 0) return;
                     const minX = Math.min(...xs);
                     const maxX = Math.max(...xs);
@@ -2670,14 +2997,22 @@ export default function DependenciesPage({
                     const w = svgRef.current.clientWidth;
                     const h = svgRef.current.clientHeight;
                     const pad = 60;
-                    const scale = 0.8 / Math.max((maxX - minX + pad * 2) / w, (maxY - minY + pad * 2) / h);
+                    const scale =
+                      0.8 /
+                      Math.max(
+                        (maxX - minX + pad * 2) / w,
+                        (maxY - minY + pad * 2) / h
+                      );
                     d3.select(svgRef.current)
                       .transition()
                       .duration(400)
                       .call(
-                        zoom.transform ,
+                        zoom.transform,
                         d3.zoomIdentity
-                          .translate(w / 2 - scale * (minX + maxX) / 2, h / 2 - scale * (minY + maxY) / 2)
+                          .translate(
+                            w / 2 - (scale * (minX + maxX)) / 2,
+                            h / 2 - (scale * (minY + maxY)) / 2
+                          )
                           .scale(Math.min(scale, 2))
                       );
                   }

@@ -1,5 +1,8 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
-import { createBlinkInvoice, isBlinkInvoicePaid } from "@/lib/payments/blink-adapter";
+import {
+  createBlinkInvoice,
+  isBlinkInvoicePaid,
+} from "@/lib/payments/blink-adapter";
 import { createPayment } from "@/lib/payments/lnbits-adapter";
 import { resolveBridgeDbPath } from "@/lib/resolve-bridge-db-path";
 
@@ -223,7 +226,12 @@ async function maybeSettleIntent(
   lnbitsReadKey = "",
   blinkApiKey = ""
 ): Promise<{ authorized: boolean; intent?: PushIntent }> {
-  const existingPaidIntent = await getPaidIntent(dbPath, ownerPubkey, repo, payerPubkey);
+  const existingPaidIntent = await getPaidIntent(
+    dbPath,
+    ownerPubkey,
+    repo,
+    payerPubkey
+  );
   if (existingPaidIntent) {
     return { authorized: true, intent: existingPaidIntent };
   }
@@ -305,7 +313,9 @@ export default async function handler(
     const ownerLnbitsReadKeyHeader = req.headers["x-owner-lnbits-read-key"];
     const ownerBlinkApiKeyHeader = req.headers["x-owner-blink-api-key"];
     const ownerLnbitsUrl =
-      typeof ownerLnbitsUrlHeader === "string" ? ownerLnbitsUrlHeader.trim() : "";
+      typeof ownerLnbitsUrlHeader === "string"
+        ? ownerLnbitsUrlHeader.trim()
+        : "";
     const ownerLnbitsReadKey =
       typeof ownerLnbitsReadKeyHeader === "string"
         ? ownerLnbitsReadKeyHeader.trim()
@@ -423,7 +433,9 @@ export default async function handler(
     const effectiveBlinkApiKey =
       typeof ownerBlinkApiKey === "string" ? ownerBlinkApiKey.trim() : "";
     const canUseLnbits =
-      !!effectiveLnbitsUrl && !!effectiveLnbitsReadKey && !!effectiveLnbitsWriteKey;
+      !!effectiveLnbitsUrl &&
+      !!effectiveLnbitsReadKey &&
+      !!effectiveLnbitsWriteKey;
     const canUseBlink = !!effectiveBlinkApiKey;
 
     if (!canUseLnbits && !canUseBlink) {

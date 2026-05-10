@@ -557,11 +557,7 @@ export default function RepoSettingsPage() {
         let signedRepoEvent: any = null;
         if (privateKey) {
           signedRepoEvent = createRepositoryEvent(repoEventPayload, privateKey);
-        } else if (
-          hasNip07 &&
-          typeof window !== "undefined" &&
-          window.nostr
-        ) {
+        } else if (hasNip07 && typeof window !== "undefined" && window.nostr) {
           signedRepoEvent = await createRepositoryEventNip07(
             repoEventPayload,
             window.nostr
@@ -1268,8 +1264,8 @@ export default function RepoSettingsPage() {
             Account (repo owner).
           </p>
           <p className="text-xs text-gray-400 mb-2">
-            Blink key format is GraphQL API key from dashboard.blink.sv
-            (usually starts with <code>blink_</code>).
+            Blink key format is GraphQL API key from dashboard.blink.sv (usually
+            starts with <code>blink_</code>).
           </p>
           {!hasLnbitsInvoiceKey && !hasBlinkApiKey && (
             <p className="text-xs text-red-400 mb-2">

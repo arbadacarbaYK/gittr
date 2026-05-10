@@ -24,11 +24,7 @@ export async function ensurePushPaymentAuthorization(params: {
   ownerLnbitsReadKey?: string;
   ownerBlinkApiKey?: string;
 }> {
-  const {
-    repo,
-    ownerPubkey,
-    payerPubkey,
-  } = params;
+  const { repo, ownerPubkey, payerPubkey } = params;
   if (!ownerPubkey?.trim() || !repo?.trim()) {
     return {
       ok: false,
@@ -69,7 +65,8 @@ export async function ensurePushPaymentAuthorization(params: {
       ownerLnbitsUrl = localStorage.getItem("gittr_lnbits_url") || "";
       ownerLnbitsInvoiceKey =
         localStorage.getItem("gittr_lnbits_invoice_key") || "";
-      ownerLnbitsAdminKey = localStorage.getItem("gittr_lnbits_admin_key") || "";
+      ownerLnbitsAdminKey =
+        localStorage.getItem("gittr_lnbits_admin_key") || "";
       ownerBlinkApiKey = localStorage.getItem("gittr_blink_api_key") || "";
     }
   }

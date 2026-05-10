@@ -5,11 +5,11 @@ import {
   type LNbitsPaymentRequest,
   createPayment,
 } from "@/lib/payments/lnbits-adapter";
+import { resolveLnbitsUrl } from "@/lib/payments/lnbits-url";
 import {
   createInvoiceFromLNURL,
   createInvoiceFromLightningAddress,
 } from "@/lib/payments/lnurl";
-import { resolveLnbitsUrl } from "@/lib/payments/lnbits-url";
 import {
   validateLNURL,
   validateLightningAddress,

@@ -89,7 +89,7 @@ export default function ProjectsPage() {
       // Ensure all projects have view property and items array
       const normalized: Project[] = stored.map((p) => ({
         ...p,
-        view: (p.view || "kanban"),
+        view: p.view || "kanban",
         items: p.items || [], // Ensure items array exists
       }));
       setProjects(normalized);
@@ -460,7 +460,7 @@ export default function ProjectsPage() {
       p.id === project.id
         ? {
             ...p,
-            view: (p.view === "kanban" ? "roadmap" : "kanban"),
+            view: p.view === "kanban" ? "roadmap" : "kanban",
           }
         : p
     );
@@ -642,7 +642,9 @@ export default function ProjectsPage() {
   const renderKanban = () => {
     if (!project) return null;
     const getProjectItemKey = (item: ProjectItem, index: number) =>
-      `${item.type}-${item.id}-${item.issueId || ""}-${item.prId || ""}-${index}`;
+      `${item.type}-${item.id}-${item.issueId || ""}-${
+        item.prId || ""
+      }-${index}`;
 
     return (
       <div className="grid grid-cols-3 gap-4">
@@ -670,7 +672,9 @@ export default function ProjectsPage() {
             {project.items
               .filter((item) => item.status === "todo")
               .map((item, index) => (
-                <div key={getProjectItemKey(item, index)}>{renderItem(item)}</div>
+                <div key={getProjectItemKey(item, index)}>
+                  {renderItem(item)}
+                </div>
               ))}
             {project.items.filter((item) => item.status === "todo").length ===
               0 && (
@@ -705,7 +709,9 @@ export default function ProjectsPage() {
             {project.items
               .filter((item) => item.status === "in_progress")
               .map((item, index) => (
-                <div key={getProjectItemKey(item, index)}>{renderItem(item)}</div>
+                <div key={getProjectItemKey(item, index)}>
+                  {renderItem(item)}
+                </div>
               ))}
             {project.items.filter((item) => item.status === "in_progress")
               .length === 0 && (
@@ -740,7 +746,9 @@ export default function ProjectsPage() {
             {project.items
               .filter((item) => item.status === "done")
               .map((item, index) => (
-                <div key={getProjectItemKey(item, index)}>{renderItem(item)}</div>
+                <div key={getProjectItemKey(item, index)}>
+                  {renderItem(item)}
+                </div>
               ))}
             {project.items.filter((item) => item.status === "done").length ===
               0 && (
@@ -825,7 +833,9 @@ export default function ProjectsPage() {
 
                 return (
                   <div
-                    key={`${item.type}-${item.id}-${item.issueId || ""}-${item.prId || ""}-${index}`}
+                    key={`${item.type}-${item.id}-${item.issueId || ""}-${
+                      item.prId || ""
+                    }-${index}`}
                     className={`border rounded p-3 bg-gray-900 ${
                       isOverdue
                         ? "border-red-700"

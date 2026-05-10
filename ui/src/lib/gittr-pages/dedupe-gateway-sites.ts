@@ -48,10 +48,15 @@ function chooseDisplayHeading(group: GatewayStatusSiteRow[]): string {
   return bestTitle || "Site";
 }
 
-function pickBaseRow(a: GatewayStatusSiteRow, b: GatewayStatusSiteRow): GatewayStatusSiteRow {
+function pickBaseRow(
+  a: GatewayStatusSiteRow,
+  b: GatewayStatusSiteRow
+): GatewayStatusSiteRow {
   if (b.pathCount !== a.pathCount) return b.pathCount > a.pathCount ? b : a;
   if (b.hits !== a.hits) return b.hits > a.hits ? b : a;
-  return rowTitleDisplayQuality(a.title) >= rowTitleDisplayQuality(b.title) ? a : b;
+  return rowTitleDisplayQuality(a.title) >= rowTitleDisplayQuality(b.title)
+    ? a
+    : b;
 }
 
 function rowUpdatedTimeMs(row: GatewayStatusSiteRow): number {
@@ -62,7 +67,10 @@ function rowUpdatedTimeMs(row: GatewayStatusSiteRow): number {
 }
 
 /** When merging duplicate gateway rows, keep stats from `pickBaseRow` but surface the newest published time. */
-function pickNewerByGatewayTime(a: GatewayStatusSiteRow, b: GatewayStatusSiteRow): GatewayStatusSiteRow {
+function pickNewerByGatewayTime(
+  a: GatewayStatusSiteRow,
+  b: GatewayStatusSiteRow
+): GatewayStatusSiteRow {
   const ma = rowUpdatedTimeMs(a);
   const mb = rowUpdatedTimeMs(b);
   if (ma !== mb) return ma >= mb ? a : b;
@@ -93,18 +101,28 @@ function mergeable(a: GatewayStatusSiteRow, b: GatewayStatusSiteRow): boolean {
   return false;
 }
 
-function mergePair(a: GatewayStatusSiteRow, b: GatewayStatusSiteRow): GatewayStatusSiteRow {
+function mergePair(
+  a: GatewayStatusSiteRow,
+  b: GatewayStatusSiteRow
+): GatewayStatusSiteRow {
   const base = pickBaseRow(a, b);
   const title = chooseDisplayHeading([a, b]);
   const newer = pickNewerByGatewayTime(a, b);
-  return { ...base, title, updatedIso: newer.updatedIso, updatedLabel: newer.updatedLabel };
+  return {
+    ...base,
+    title,
+    updatedIso: newer.updatedIso,
+    updatedLabel: newer.updatedLabel,
+  };
 }
 
 /**
  * Collapse gateway duplicates: same author + same description, or portal + npub-style
  * site label, or identical titles. Then one card per hostname for edge cases.
  */
-function mergeDuplicateGatewayRows(sites: GatewayStatusSiteRow[]): GatewayStatusSiteRow[] {
+function mergeDuplicateGatewayRows(
+  sites: GatewayStatusSiteRow[]
+): GatewayStatusSiteRow[] {
   let list = [...sites];
   let changed = true;
   while (changed) {

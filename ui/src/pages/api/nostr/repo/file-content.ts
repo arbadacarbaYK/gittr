@@ -355,9 +355,7 @@ export default async function handler(
           }
         } catch (fallbackError: any) {
           const fallbackStderr = execErrToString(
-            fallbackError.stderr ??
-              fallbackError.message ??
-              fallbackError
+            fallbackError.stderr ?? fallbackError.message ?? fallbackError
           );
           const fallbackStdout = normalizeStdout(fallbackError.stdout);
           console.warn(

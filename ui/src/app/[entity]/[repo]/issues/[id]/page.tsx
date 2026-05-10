@@ -60,8 +60,8 @@ import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
-import { extractMentionedPubkeys } from "@/lib/utils/mention-detection";
 import { findIssueRowIndexByRouteParam } from "@/lib/utils/issue-pr-status";
+import { extractMentionedPubkeys } from "@/lib/utils/mention-detection";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import {
@@ -224,11 +224,7 @@ export default function IssueDetailPage({
         const ownerPk = getRepoOwnerPubkey(repoData, entity);
         const userPk = currentUserPubkey?.toLowerCase();
         setIsOwner(
-          Boolean(
-            userPk &&
-              ownerPk &&
-              ownerPk.toLowerCase() === userPk
-          )
+          Boolean(userPk && ownerPk && ownerPk.toLowerCase() === userPk)
         );
 
         // Get owner pubkey for display name
@@ -735,15 +731,29 @@ export default function IssueDetailPage({
         // Publish NIP-32 label overlay for cross-client label synchronization.
         if (publish && defaultRelays && defaultRelays.length > 0) {
           const repos = loadStoredRepos();
-          const foundRepo = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+          const foundRepo = findRepoByEntityAndName<StoredRepo>(
+            repos,
+            entity,
+            repo
+          );
           const ownerPubkey = foundRepo
             ? getRepoOwnerPubkey(foundRepo, entity)
             : resolveEntityToPubkey(entity);
           const repoIdentifier =
-            (foundRepo as { repositoryName?: string; repo?: string; slug?: string } | null)
-              ?.repositoryName ||
-            (foundRepo as { repositoryName?: string; repo?: string; slug?: string } | null)
-              ?.repo ||
+            (
+              foundRepo as {
+                repositoryName?: string;
+                repo?: string;
+                slug?: string;
+              } | null
+            )?.repositoryName ||
+            (
+              foundRepo as {
+                repositoryName?: string;
+                repo?: string;
+                slug?: string;
+              } | null
+            )?.repo ||
             repo;
 
           let overlayEvent: any | null = null;
@@ -756,7 +766,9 @@ export default function IssueDetailPage({
             if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
               tags.push(["a", `30617:${ownerPubkey}:${repoIdentifier}`]);
             }
-            nextIssue.labels.forEach((value) => tags.push(["l", value, "gittr.issue"]));
+            nextIssue.labels.forEach((value) =>
+              tags.push(["l", value, "gittr.issue"])
+            );
             tags.push(["l", `#subject:${nextIssue.title}`, "gittr.issue"]);
 
             const unsignedOverlayEvent = {

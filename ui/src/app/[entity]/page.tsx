@@ -52,7 +52,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getEventHash, nip19, signEvent } from "nostr-tools";
+import { getEventHash, getPublicKey, nip19, signEvent } from "nostr-tools";
 
 // Force dynamic rendering - metadata.ts needs to run on each request
 export const dynamic = "force-dynamic";
@@ -2550,7 +2550,6 @@ export default function EntityPage({
     try {
       // Check for NIP-07 first (preferred method - will open signing modal)
       const hasNip07 = typeof window !== "undefined" && window.nostr;
-      let privateKey: string | undefined;
       let signerPubkey: string = currentUserPubkey;
 
       // Check if remote signer is ready (for nowser/bunker)
@@ -2594,38 +2593,53 @@ export default function EntityPage({
         }
       }
 
-      // If we didn't get a signer pubkey from NIP-07/remote signer, try private key
-      if (!signerPubkey || signerPubkey === currentUserPubkey) {
-        privateKey = (await getNostrPrivateKey()) || undefined;
-        if (!privateKey) {
+      let privateKeyCache: string | undefined | null = null;
+      const loadPrivateKey = async (): Promise<string | undefined> => {
+        if (privateKeyCache !== null) return privateKeyCache;
+        privateKeyCache = (await getNostrPrivateKey()) || undefined;
+        return privateKeyCache;
+      };
+
+      if (!hasNip07) {
+        const pk = await loadPrivateKey();
+        if (!pk) {
           alert(
             "No signing method available.\n\nPlease use a NIP-07 extension (like Alby or nos2x), pair with a remote signer (nowser/bunker), or configure a private key in Settings."
           );
           setFollowingLoading(false);
           return;
         }
+        signerPubkey = getPublicKey(pk);
       }
 
       // CRITICAL: Fetch current contact list from Nostr BEFORE modifying it
       // Don't rely on state which might be empty if subscription hasn't completed yet
-      // This prevents erasing all existing follows when clicking Follow
+      // `uncertainEmpty`: true when we might be missing follows (timeout/error + no local list).
+      // Then we must not publish a one-contact kind 3 without explicit user consent.
       let currentContacts: string[] = [];
+      let uncertainEmpty = false;
       try {
-        const contactListPromise = new Promise<string[]>((resolve) => {
+        const contactListPromise = new Promise<{
+          contacts: string[];
+          uncertainEmpty: boolean;
+        }>((resolve) => {
           let resolved = false;
+          const finish = (contacts: string[], uncertain: boolean) => {
+            if (resolved) return;
+            resolved = true;
+            resolve({ contacts, uncertainEmpty: uncertain });
+          };
+
           const timeout = setTimeout(() => {
             if (!resolved) {
-              resolved = true;
+              clearTimeout(timeout);
+              const fromState = contactList.map((p) => p.toLowerCase());
               console.warn(
                 "⚠️ [Follow] Timeout fetching contact list, using state as fallback"
               );
-              resolve(
-                contactList.length > 0
-                  ? contactList.map((p) => p.toLowerCase())
-                  : []
-              );
+              finish(fromState, fromState.length === 0);
             }
-          }, 3000); // 3 second timeout
+          }, 8000);
 
           const unsub = subscribe(
             [
@@ -2638,7 +2652,6 @@ export default function EntityPage({
             defaultRelays,
             (event) => {
               if (event.kind === 3 && !resolved) {
-                resolved = true;
                 clearTimeout(timeout);
                 try {
                   const contacts = JSON.parse(event.content);
@@ -2660,7 +2673,7 @@ export default function EntityPage({
                     console.log(
                       `✅ [Follow] Fetched ${pubkeys.length} contacts from Nostr`
                     );
-                    resolve(pubkeys);
+                    finish(pubkeys, false);
                   } else {
                     // Also check tags as fallback (some clients use tags instead of content)
                     const pTags = event.tags
@@ -2672,12 +2685,12 @@ export default function EntityPage({
                       console.log(
                         `✅ [Follow] Fetched ${pTags.length} contacts from tags`
                       );
-                      resolve(pTags);
+                      finish(pTags, false);
                     } else {
                       console.warn(
                         "⚠️ [Follow] Contact list event has no contacts"
                       );
-                      resolve([]);
+                      finish([], false);
                     }
                   }
                 } catch (e) {
@@ -2688,13 +2701,13 @@ export default function EntityPage({
                     .map((tag) => tag[1] as string)
                     .filter((p: string) => p && p.length > 0)
                     .map((p: string) => p.toLowerCase());
-                  resolve(
-                    pTags.length > 0
-                      ? pTags
-                      : contactList.length > 0
-                      ? contactList.map((p) => p.toLowerCase())
-                      : []
-                  );
+                  if (pTags.length > 0) {
+                    finish(pTags, false);
+                  } else if (contactList.length > 0) {
+                    finish(contactList.map((p) => p.toLowerCase()), false);
+                  } else {
+                    finish([], false);
+                  }
                 }
                 if (unsub) unsub();
               }
@@ -2702,31 +2715,30 @@ export default function EntityPage({
             undefined,
             () => {
               if (!resolved) {
-                resolved = true;
                 clearTimeout(timeout);
+                const fromState = contactList.map((p) => p.toLowerCase());
                 console.warn(
                   "⚠️ [Follow] Subscription ended without event, using state as fallback"
                 );
-                resolve(
-                  contactList.length > 0
-                    ? contactList.map((p) => p.toLowerCase())
-                    : []
-                );
+                // Relays finished with no kind 3: empty list here is expected for first-time follows.
+                finish(fromState, false);
               }
               if (unsub) unsub();
             }
           );
         });
 
-        currentContacts = await contactListPromise;
+        const fetched = await contactListPromise;
+        currentContacts = fetched.contacts;
+        uncertainEmpty = fetched.uncertainEmpty;
         console.log(
-          `✅ [Follow] Using ${currentContacts.length} contacts from Nostr (state had ${contactList.length})`
+          `✅ [Follow] Using ${currentContacts.length} contacts from Nostr (state had ${contactList.length}, uncertainEmpty=${uncertainEmpty})`
         );
       } catch (error) {
         console.error("❌ [Follow] Error fetching contact list:", error);
-        // Fallback to state if fetch fails
         currentContacts =
           contactList.length > 0 ? contactList.map((p) => p.toLowerCase()) : [];
+        uncertainEmpty = currentContacts.length === 0;
         console.warn(
           `⚠️ [Follow] Falling back to state: ${currentContacts.length} contacts`
         );
@@ -2744,6 +2756,31 @@ export default function EntityPage({
         // Follow: add to list
         if (!newContacts.includes(targetPubkey)) {
           newContacts.push(targetPubkey);
+        }
+      }
+
+      if (isFollowing && currentContacts.length === 0) {
+        alert(
+          "Could not load your follow list from relays, so unfollowing safely isn’t possible. Wait a moment and try again."
+        );
+        setFollowingLoading(false);
+        return;
+      }
+
+      if (
+        !isFollowing &&
+        uncertainEmpty &&
+        currentContacts.length === 0 &&
+        newContacts.length === 1
+      ) {
+        const ok = window.confirm(
+          "Your follow list could not be loaded from relays in time (or an error occurred), and this session has no cached copy.\n\n" +
+            "If you already follow other people elsewhere, signing this could replace your entire follow list with only this profile.\n\n" +
+            "Choose Cancel to try again later, or OK only if you have no other follows (or you accept that risk)."
+        );
+        if (!ok) {
+          setFollowingLoading(false);
+          return;
         }
       }
 
@@ -2775,8 +2812,11 @@ export default function EntityPage({
             event.sig = signedEvent.sig;
           } else {
             // Remote signer exists but not ready - fall back to private key
-            if (privateKey) {
-              event.sig = signEvent(event, privateKey);
+            const pk = await loadPrivateKey();
+            if (pk) {
+              event.pubkey = getPublicKey(pk);
+              event.id = getEventHash(event);
+              event.sig = signEvent(event, pk);
             } else {
               throw new Error(
                 "Remote signer not ready and no private key available"
@@ -2793,8 +2833,11 @@ export default function EntityPage({
             console.warn(
               "⚠️ [Follow] Remote signer not paired/ready, falling back to private key for signing"
             );
-            if (privateKey) {
-              event.sig = signEvent(event, privateKey);
+            const pk = await loadPrivateKey();
+            if (pk) {
+              event.pubkey = getPublicKey(pk);
+              event.id = getEventHash(event);
+              event.sig = signEvent(event, pk);
             } else {
               throw new Error(
                 "Remote signer not ready and no private key available"
@@ -2805,11 +2848,14 @@ export default function EntityPage({
             throw error;
           }
         }
-      } else if (privateKey) {
-        // Use private key (fallback)
-        event.sig = signEvent(event, privateKey);
       } else {
-        throw new Error("No signing method available");
+        const pk = await loadPrivateKey();
+        if (!pk) {
+          throw new Error("No signing method available");
+        }
+        event.pubkey = getPublicKey(pk);
+        event.id = getEventHash(event);
+        event.sig = signEvent(event, pk);
       }
 
       // Publish to relays
@@ -3020,11 +3066,11 @@ export default function EntityPage({
                 {isLoggedIn && !isOwnProfile && (
                   <Button
                     onClick={handleFollow}
-                    disabled={followingLoading || isFollowing}
+                    disabled={followingLoading}
                     variant={isFollowing ? "outline" : "default"}
                     className={
                       isFollowing
-                        ? "border-purple-500 text-purple-400 cursor-default"
+                        ? "border-purple-500 text-purple-400 hover:bg-purple-950/40"
                         : "bg-purple-600 hover:bg-purple-700"
                     }
                   >

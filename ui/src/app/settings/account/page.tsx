@@ -85,7 +85,9 @@ function InputField({
         )}
       </div>
       {displayError && <p className="text-red-500 text-xs">{error}</p>}
-      {!displayError && helpText && <p className="text-gray-500 text-xs">{helpText}</p>}
+      {!displayError && helpText && (
+        <p className="text-gray-500 text-xs">{helpText}</p>
+      )}
     </div>
   );
 }
@@ -287,7 +289,8 @@ export default function AccountSettingsPage() {
       newErrors.blinkApiKey =
         "Blink API key must look like blink_... (from dashboard.blink.sv)";
     }
-    newValidation.blinkApiKey = !newErrors.blinkApiKey && blinkApiKey.length > 0;
+    newValidation.blinkApiKey =
+      !newErrors.blinkApiKey && blinkApiKey.length > 0;
 
     // Only update state if validation should be shown (after save attempt)
     // This prevents re-renders during typing

@@ -50,12 +50,10 @@ export default async function handler(
   } = req.body || {};
 
   if (!amount || !recipient) {
-    return res
-      .status(400)
-      .json({
-        status: "missing_params",
-        message: "Missing required parameters",
-      });
+    return res.status(400).json({
+      status: "missing_params",
+      message: "Missing required parameters",
+    });
   }
 
   // Input validation
@@ -68,12 +66,10 @@ export default async function handler(
 
   const recipientValidation = validatePubkey(recipient);
   if (!recipientValidation.valid) {
-    return res
-      .status(400)
-      .json({
-        status: "invalid_recipient",
-        message: recipientValidation.error,
-      });
+    return res.status(400).json({
+      status: "invalid_recipient",
+      message: recipientValidation.error,
+    });
   }
 
   if (comment) {
@@ -107,12 +103,10 @@ export default async function handler(
         lnbitsAdminKey.length < 20 ||
         lnbitsAdminKey.length > 100
       ) {
-        return res
-          .status(400)
-          .json({
-            status: "invalid_lnbits_key",
-            message: "Invalid LNbits admin key format",
-          });
+        return res.status(400).json({
+          status: "invalid_lnbits_key",
+          message: "Invalid LNbits admin key format",
+        });
       }
 
       // Use adapter to create invoice (handles both API versions)

@@ -74,7 +74,9 @@ export default async function handler(
 
   const signedHeader = req.headers["x-nostr-auth-event"] as string | undefined;
   if (!signedHeader?.trim()) {
-    return res.status(400).json({ error: "X-Nostr-Auth-Event header required" });
+    return res
+      .status(400)
+      .json({ error: "X-Nostr-Auth-Event header required" });
   }
 
   let parsedEvent: any;
@@ -112,7 +114,11 @@ export default async function handler(
   const now = Math.floor(Date.now() / 1000);
   const query = `INSERT INTO RepositoryPushPolicy (OwnerPubKey,RepositoryName,PushCostSats,UpdatedAt) VALUES ('${escSql(
     owner
-  )}','${escSql(parsed.repoName)}',${parsed.pushCostSats},${now}) ON CONFLICT(OwnerPubKey,RepositoryName) DO UPDATE SET PushCostSats=${parsed.pushCostSats},UpdatedAt=${now}`;
+  )}','${escSql(parsed.repoName)}',${
+    parsed.pushCostSats
+  },${now}) ON CONFLICT(OwnerPubKey,RepositoryName) DO UPDATE SET PushCostSats=${
+    parsed.pushCostSats
+  },UpdatedAt=${now}`;
 
   try {
     await runSql(dbPath, query);

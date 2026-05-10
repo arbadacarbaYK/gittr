@@ -31,7 +31,9 @@ export function rawGittrPagesBlossomEnvOrigin(): string {
     typeof process !== "undefined"
       ? process.env.NEXT_PUBLIC_GITTR_PAGES_BLOSSOM_URL
       : undefined,
-    typeof process !== "undefined" ? process.env.NEXT_PUBLIC_BLOSSOM_URL : undefined,
+    typeof process !== "undefined"
+      ? process.env.NEXT_PUBLIC_BLOSSOM_URL
+      : undefined,
     "https://blossom.band"
   );
 }

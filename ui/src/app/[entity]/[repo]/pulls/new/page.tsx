@@ -110,7 +110,7 @@ export default function NewPullRequestPage({
           resolvedParams.repo
         );
         if (repo?.branches && Array.isArray(repo.branches)) {
-          setBranches(repo.branches );
+          setBranches(repo.branches);
           if (!baseBranchParam) {
             setBaseBranch(repo.defaultBranch || "main");
           }
@@ -479,7 +479,8 @@ export default function NewPullRequestPage({
             const commitsPayload = await commitsRes.json();
             earliestUniqueCommit =
               commitsPayload?.earliestUniqueCommit ||
-              commitsPayload?.commits?.[commitsPayload.commits.length - 1]?.id ||
+              commitsPayload?.commits?.[commitsPayload.commits.length - 1]
+                ?.id ||
               commitsPayload?.commits?.[0]?.id;
 
             if (earliestUniqueCommit) {
@@ -493,7 +494,10 @@ export default function NewPullRequestPage({
               );
               if (targetRepo) {
                 (targetRepo as any).earliestUniqueCommit = earliestUniqueCommit;
-                localStorage.setItem("gittr_repos", JSON.stringify(reposForUpdate));
+                localStorage.setItem(
+                  "gittr_repos",
+                  JSON.stringify(reposForUpdate)
+                );
               }
             }
           }

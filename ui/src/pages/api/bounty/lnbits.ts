@@ -5,11 +5,11 @@ import {
   type LNbitsPaymentRequest,
   createPayment,
 } from "@/lib/payments/lnbits-adapter";
+import { resolveLnbitsUrl } from "@/lib/payments/lnbits-url";
 import {
   createInvoiceFromLNURL,
   createInvoiceFromLightningAddress,
 } from "@/lib/payments/lnurl";
-import { resolveLnbitsUrl } from "@/lib/payments/lnbits-url";
 import {
   validateLNURL,
   validateLightningAddress,
@@ -46,23 +46,19 @@ export default async function handler(
   const { amount, recipient, comment, splits, lud16, lnurl } = req.body || {};
 
   if (!amount || !recipient) {
-    return res
-      .status(400)
-      .json({
-        status: "missing_params",
-        message: "Missing required parameters",
-      });
+    return res.status(400).json({
+      status: "missing_params",
+      message: "Missing required parameters",
+    });
   }
 
   // Input validation using centralized validators
   const recipientValidation = validatePubkey(recipient);
   if (!recipientValidation.valid) {
-    return res
-      .status(400)
-      .json({
-        status: "invalid_recipient",
-        message: recipientValidation.error,
-      });
+    return res.status(400).json({
+      status: "invalid_recipient",
+      message: recipientValidation.error,
+    });
   }
 
   const amountValidation = validatePaymentAmount(amount);
@@ -85,30 +81,24 @@ export default async function handler(
   // Validate splits if provided
   if (splits) {
     if (!Array.isArray(splits) || splits.length > 100) {
-      return res
-        .status(400)
-        .json({
-          status: "invalid_splits",
-          message: "Splits must be an array with max 100 items",
-        });
+      return res.status(400).json({
+        status: "invalid_splits",
+        message: "Splits must be an array with max 100 items",
+      });
     }
     for (const split of splits) {
       if (typeof split !== "object" || !split.pubkey) {
-        return res
-          .status(400)
-          .json({
-            status: "invalid_splits",
-            message: "Each split must have a pubkey",
-          });
+        return res.status(400).json({
+          status: "invalid_splits",
+          message: "Each split must have a pubkey",
+        });
       }
       const pubkeyValidation = validatePubkey(split.pubkey);
       if (!pubkeyValidation.valid) {
-        return res
-          .status(400)
-          .json({
-            status: "invalid_splits",
-            message: `Invalid pubkey in splits: ${pubkeyValidation.error}`,
-          });
+        return res.status(400).json({
+          status: "invalid_splits",
+          message: `Invalid pubkey in splits: ${pubkeyValidation.error}`,
+        });
       }
     }
   }
@@ -134,12 +124,10 @@ export default async function handler(
     lnbitsAdminKey.length < 20 ||
     lnbitsAdminKey.length > 100
   ) {
-    return res
-      .status(400)
-      .json({
-        status: "invalid_lnbits_key",
-        message: "Invalid LNbits admin key format",
-      });
+    return res.status(400).json({
+      status: "invalid_lnbits_key",
+      message: "Invalid LNbits admin key format",
+    });
   }
 
   try {
