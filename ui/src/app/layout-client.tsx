@@ -149,10 +149,17 @@ export default function ClientLayout({
       return allMessages + " " + stackTrace;
     };
 
+    const shouldSuppressRelayLog = (raw: string): boolean => {
+      const m = raw.toLowerCase();
+      return m.includes("reconnecting after");
+    };
+
     const originalError = console.error;
     const originalWarn = console.warn;
+    const originalLog = console.log;
     const originalWindowError = window.console.error;
     const originalWindowWarn = window.console.warn;
+    const originalWindowLog = window.console.log;
 
     // Filter console.error - must run early to catch errors before Next.js interceptor
     console.error = (...args: any[]) => {
@@ -190,11 +197,29 @@ export default function ClientLayout({
       originalWindowWarn.apply(window.console, args);
     };
 
+    console.log = (...args: any[]) => {
+      const fullMessage = extractMessage(args);
+      if (shouldSuppressRelayLog(fullMessage)) {
+        return;
+      }
+      originalLog.apply(console, args);
+    };
+
+    window.console.log = (...args: any[]) => {
+      const fullMessage = extractMessage(args);
+      if (shouldSuppressRelayLog(fullMessage)) {
+        return;
+      }
+      originalWindowLog.apply(window.console, args);
+    };
+
     return () => {
       console.error = originalError;
       console.warn = originalWarn;
+      console.log = originalLog;
       window.console.error = originalWindowError;
       window.console.warn = originalWindowWarn;
+      window.console.log = originalWindowLog;
     };
   }, []);
 

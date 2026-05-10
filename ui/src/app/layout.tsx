@@ -185,6 +185,21 @@ export default function RootLayout({
                       window.console.warn = console.warn;
                     }
                   }
+
+                  // nostr-relaypool uses console.log for "wss://… reconnecting after Ns" (not .warn)
+                  if (console.log) {
+                    const shouldSuppressRelayLog = (fullMessage) =>
+                      fullMessage.includes('reconnecting after');
+                    const originalLog = console.log;
+                    console.log = function(...args) {
+                      const fullMessage = buildFullMessage(args);
+                      if (shouldSuppressRelayLog(fullMessage)) return;
+                      originalLog.apply(console, args);
+                    };
+                    if (typeof window !== 'undefined' && window.console && window.console.log !== console.log) {
+                      window.console.log = console.log;
+                    }
+                  }
                 }
               })();
             `,
