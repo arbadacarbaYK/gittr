@@ -111,26 +111,25 @@ export default function ClientLayout({
     if (typeof window === "undefined") return;
 
     // Helper function to check if message should be suppressed
-    const shouldSuppress = (fullMessage: string): boolean => {
+    const shouldSuppress = (raw: string): boolean => {
+      const fullMessage = raw.toLowerCase();
       return (
-        fullMessage.includes("Error connecting relay") ||
-        fullMessage.includes("WebSocket connection to") ||
+        fullMessage.includes("error connecting relay") ||
+        fullMessage.includes("websocket connection to") ||
         fullMessage.includes("websocket") ||
-        fullMessage.includes("WebSocket") ||
         fullMessage.includes("reconnecting after") ||
-        fullMessage.includes("reconnecting") ||
         (fullMessage.includes("wss://") &&
           (fullMessage.includes("failed") ||
-            fullMessage.includes("Error") ||
+            fullMessage.includes("error") ||
             fullMessage.includes("502") ||
-            fullMessage.includes("reconnecting"))) ||
-        fullMessage.includes("Accessing element.ref was removed in React 19") ||
+            fullMessage.includes("reconnect"))) ||
+        fullMessage.includes("accessing element.ref was removed in react 19") ||
         fullMessage.includes("ref is now a regular prop") ||
         fullMessage.includes("element.ref was removed") ||
-        fullMessage.includes("will be removed from the JSX Element type") ||
-        fullMessage.includes("[File Fetch] API error: 404") ||
-        (fullMessage.includes("API error") && fullMessage.includes("404")) ||
-        fullMessage.includes("Each child in a list should have a unique") ||
+        fullMessage.includes("will be removed from the jsx element type") ||
+        fullMessage.includes("[file fetch] api error: 404") ||
+        (fullMessage.includes("api error") && fullMessage.includes("404")) ||
+        fullMessage.includes("each child in a list should have a unique") ||
         fullMessage.includes("warning-keys")
       );
     };

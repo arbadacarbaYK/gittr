@@ -146,7 +146,13 @@ export default function RootLayout({
                   const shouldSuppress = (fullMessage) => (
                     fullMessage.includes('error connecting relay') ||
                     fullMessage.includes('websocket connection to') ||
-                    (fullMessage.includes('wss://') && (fullMessage.includes('failed') || fullMessage.includes('error') || fullMessage.includes('502'))) ||
+                    fullMessage.includes('websocket') ||
+                    fullMessage.includes('reconnecting after') ||
+                    (fullMessage.includes('wss://') &&
+                      (fullMessage.includes('failed') ||
+                        fullMessage.includes('error') ||
+                        fullMessage.includes('502') ||
+                        fullMessage.includes('reconnect'))) ||
                     fullMessage.includes('accessing element.ref was removed in react 19') ||
                     fullMessage.includes('ref is now a regular prop') ||
                     fullMessage.includes('element.ref was removed') ||
