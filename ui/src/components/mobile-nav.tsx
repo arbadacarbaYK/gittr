@@ -105,7 +105,7 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
                 {item.title}
               </a>
             ) : (
-              <Link
+              <a
                 key={index}
                 href={item.href}
                 onClick={onClick}
@@ -114,7 +114,7 @@ export function MobileNav({ items, children, onClick }: MobileNavProps) {
                 )}
               >
                 {item.title}
-              </Link>
+              </a>
             )
           )}
 
