@@ -1803,7 +1803,35 @@ export default function ImportPage() {
 
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
-      <h1 className="text-2xl font-bold mb-4">Bulk Import from GitHub</h1>
+      <h1 className="text-2xl font-bold mb-2">Bulk Import from GitHub</h1>
+
+      <div
+        className="mb-6 rounded-lg border border-blue-500/40 bg-blue-950/30 p-4 text-sm text-gray-200"
+        role="note"
+      >
+        <p className="font-semibold text-blue-200 mb-2">
+          Nothing is imported automatically
+        </p>
+        <ul className="list-disc list-inside space-y-1.5 text-gray-300">
+          <li>
+            This page only helps you <strong>load a list</strong> of public
+            repositories for a GitHub user or org. Your own Git / machine is{" "}
+            <strong>not</strong> touched until you explicitly import.
+          </li>
+          <li>
+            After you click <strong>Fetch Repos</strong>, you{" "}
+            <strong>choose</strong> which repositories to import (checkboxes).
+            Nothing is published to Nostr until you click{" "}
+            <strong>Import … Selected Repositories</strong> (or confirm{" "}
+            <strong>Import All</strong>).
+          </li>
+          <li>
+            You can select <strong>several</strong> repos and import them in{" "}
+            <strong>one</strong> action — that still only imports the rows you
+            selected, not the whole list unless you choose that.
+          </li>
+        </ul>
+      </div>
 
       <div className="mb-6">
         <label className="block mb-2">GitHub Username or Profile URL</label>

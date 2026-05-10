@@ -405,13 +405,24 @@ export default function HelpPage() {
                     📚 Option 3: Bulk Import from GitHub
                   </p>
                   <p className="text-sm text-gray-300 mb-2">
-                    Import multiple repositories at once from a GitHub user or
-                    organization:
+                    Load a GitHub user/org list, then choose what to import.
+                    Opening the bulk page does <strong>not</strong> import
+                    anything or touch your local Git until you fetch the list,
+                    select repos, and confirm import.
                   </p>
                   <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside ml-2">
-                    <li>Click "Bulk Import from GitHub"</li>
-                    <li>Browse and select which repositories to import</li>
-                    <li>You can import all or just specific ones</li>
+                    <li>
+                      Click &quot;Open bulk import (choose repos next)&quot; on
+                      New repository
+                    </li>
+                    <li>
+                      Use <strong>Fetch Repos</strong>, tick the repos you want
+                    </li>
+                    <li>
+                      Import runs only when you click import selected (or
+                      confirm Import All); multiple selections = one import
+                      action for those rows only
+                    </li>
                   </ul>
                 </div>
               </div>
@@ -563,8 +574,9 @@ export default function HelpPage() {
                   commit, push)
                 </li>
                 <li>
-                  <strong>Bulk import:</strong> Import multiple repositories at
-                  once from a GitHub user/organization
+                  <strong>Bulk import:</strong> Lists repos from a GitHub
+                  user/org for you to pick; nothing imports until you confirm.
+                  You can import several chosen repos in one click.
                 </li>
               </ul>
               <p className="text-sm text-gray-400 mb-3">

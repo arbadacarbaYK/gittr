@@ -33,7 +33,10 @@ function buildCloneAttemptUrls(cloneUrl: string): string[] {
     if (!trimmed.endsWith(".git")) {
       out.push(`${trimmed}.git`);
     }
-  } else if (cloneUrl.startsWith("git@") && !cloneUrl.endsWith(".git")) {
+  } else if (
+    (cloneUrl.startsWith("git@") || isSshStyleGitRemote(cloneUrl)) &&
+    !cloneUrl.endsWith(".git")
+  ) {
     out.push(`${cloneUrl}.git`);
   }
   return out;

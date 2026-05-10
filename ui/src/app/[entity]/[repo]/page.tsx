@@ -4785,46 +4785,56 @@ export default function RepoCodePage() {
                   }
                 }
                 if (event.content) {
-                  try {
-                    const contentData = JSON.parse(event.content);
-                    // CRITICAL: Preserve clone URLs collected from tags before merging contentData
-                    // contentData might not have clone property, which would overwrite eventRepoData.clone
-                    const existingCloneUrls = eventRepoData.clone || [];
-                    // CRITICAL: Extract ALL fields from content, not just files
-                    // This includes sourceUrl, forkedFrom, clone, relays, etc.
-                    eventRepoData = { ...eventRepoData, ...contentData };
-                    // CRITICAL: Restore clone URLs from tags and merge with content clone URLs
-                    eventRepoData.clone = existingCloneUrls;
-                    // Also merge clone URLs from content if present
-                    if (contentData.clone && Array.isArray(contentData.clone)) {
-                      contentData.clone.forEach((url: string) => {
-                        // CRITICAL: Filter out localhost URLs - they're not real git servers
-                        if (
-                          url &&
-                          !url.includes("localhost") &&
-                          !url.includes("127.0.0.1") &&
-                          !eventRepoData.clone.includes(url)
-                        ) {
-                          eventRepoData.clone.push(url);
-                        }
-                      });
-                    }
-                    if (contentData.files) {
-                      console.log(
-                        "📦 [File Fetch] Found files in NIP-34 event content:",
-                        {
-                          filesCount: Array.isArray(contentData.files)
-                            ? contentData.files.length
-                            : "not an array",
-                          filesType: typeof contentData.files,
-                        }
+                  const contentTrim = event.content.trim();
+                  // NIP-34: metadata lives in tags; some publishers put plain text in content
+                  if (
+                    contentTrim.startsWith("{") ||
+                    contentTrim.startsWith("[")
+                  ) {
+                    try {
+                      const contentData = JSON.parse(event.content);
+                      // CRITICAL: Preserve clone URLs collected from tags before merging contentData
+                      // contentData might not have clone property, which would overwrite eventRepoData.clone
+                      const existingCloneUrls = eventRepoData.clone || [];
+                      // CRITICAL: Extract ALL fields from content, not just files
+                      // This includes sourceUrl, forkedFrom, clone, relays, etc.
+                      eventRepoData = { ...eventRepoData, ...contentData };
+                      // CRITICAL: Restore clone URLs from tags and merge with content clone URLs
+                      eventRepoData.clone = existingCloneUrls;
+                      // Also merge clone URLs from content if present
+                      if (
+                        contentData.clone &&
+                        Array.isArray(contentData.clone)
+                      ) {
+                        contentData.clone.forEach((url: string) => {
+                          // CRITICAL: Filter out localhost URLs - they're not real git servers
+                          if (
+                            url &&
+                            !url.includes("localhost") &&
+                            !url.includes("127.0.0.1") &&
+                            !eventRepoData.clone.includes(url)
+                          ) {
+                            eventRepoData.clone.push(url);
+                          }
+                        });
+                      }
+                      if (contentData.files) {
+                        console.log(
+                          "📦 [File Fetch] Found files in NIP-34 event content:",
+                          {
+                            filesCount: Array.isArray(contentData.files)
+                              ? contentData.files.length
+                              : "not an array",
+                            filesType: typeof contentData.files,
+                          }
+                        );
+                      }
+                    } catch (e) {
+                      console.warn(
+                        "⚠️ [File Fetch] Failed to parse NIP-34 event content:",
+                        e
                       );
                     }
-                  } catch (e) {
-                    console.warn(
-                      "⚠️ [File Fetch] Failed to parse NIP-34 event content:",
-                      e
-                    );
                   }
                 }
 

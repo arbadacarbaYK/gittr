@@ -1,4 +1,5 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { sanitizeBridgeRepoName } from "@/lib/utils/sanitize-bridge-repo-name";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "fs";
@@ -133,6 +134,11 @@ export default async function handler(
     return res.status(400).json({ error: "repo is required" });
   }
 
+  const repoSanitized = sanitizeBridgeRepoName(repoName);
+  if (!repoSanitized) {
+    return res.status(400).json({ error: "repo is empty after normalization" });
+  }
+
   // CRITICAL: Resolve ownerPubkey (supports hex, npub, or NIP-05 format)
   // This allows gitworkshop.dev to use NIP-05 format (e.g., user@example.com)
   const resolved = await resolveOwnerPubkey(ownerPubkeyInput);
@@ -205,7 +211,7 @@ export default async function handler(
   }
 
   // Repository path: reposDir/{ownerPubkey}/{repoName}.git
-  const repoPath = join(reposDir, ownerPubkey, `${repoName}.git`);
+  const repoPath = join(reposDir, ownerPubkey, `${repoSanitized}.git`);
 
   try {
     console.log("🔍 Checking repository path:", repoPath);

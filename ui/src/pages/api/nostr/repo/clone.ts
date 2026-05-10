@@ -1,13 +1,15 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { sanitizeBridgeRepoName } from "@/lib/utils/sanitize-bridge-repo-name";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync } from "fs";
-import { rm } from "fs/promises";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { nip05, nip19 } from "nostr-tools";
 import { join } from "path";
 import { promisify } from "util";
+
+import { rm } from "fs/promises";
 
 const execAsync = promisify(exec);
 
@@ -137,6 +139,11 @@ export default async function handler(
     return res.status(400).json({ error: "repo is required" });
   }
 
+  const repoSanitized = sanitizeBridgeRepoName(repoName);
+  if (!repoSanitized) {
+    return res.status(400).json({ error: "repo is empty after normalization" });
+  }
+
   // CRITICAL: Resolve ownerPubkey (supports hex, npub, or NIP-05 format)
   // This allows gitworkshop.dev to use NIP-05 format (e.g., user@example.com)
   const resolved = await resolveOwnerPubkey(ownerPubkeyInput);
@@ -238,7 +245,7 @@ export default async function handler(
   }
 
   // Repository path: reposDir/{ownerPubkey}/{repoName}.git
-  const repoPath = join(reposDir, ownerPubkey, `${repoName}.git`);
+  const repoPath = join(reposDir, ownerPubkey, `${repoSanitized}.git`);
 
   try {
     // Placeholder bare repos (git init --bare, no commits) must not short-circuit:
@@ -266,18 +273,37 @@ export default async function handler(
       execSync(`mkdir -p "${parentDir}"`, { stdio: "inherit" });
     }
 
-    console.log(`🔍 Cloning repository from ${cloneUrl} to ${repoPath}`);
+    console.log(
+      `🔍 Cloning repository from ${cloneUrl} to ${repoPath} (repo key: ${repoSanitized})`
+    );
 
-    // Clone repository using git clone --bare (for bare repos like git-nostr-bridge uses)
-    // Use normalized URL (https:// or http://) - git clone supports both
-    // Note: git:// URLs have been converted to https:// above
-    const { stdout, stderr } = await execAsync(
-      `git clone --bare "${normalizedCloneUrl}" "${repoPath}"`,
-      {
+    // Race or partial state: ensure destination is gone immediately before clone
+    if (existsSync(repoPath)) {
+      await rm(repoPath, { recursive: true, force: true });
+    }
+
+    const runBareClone = () =>
+      execAsync(`git clone --bare "${normalizedCloneUrl}" "${repoPath}"`, {
         timeout: 60000, // 60 second timeout
         maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+      });
+
+    let stdout: string;
+    let stderr: string;
+    try {
+      ({ stdout, stderr } = await runBareClone());
+    } catch (firstErr: unknown) {
+      const msg = String((firstErr as Error)?.message || firstErr);
+      if (msg.includes("already exists and is not an empty directory")) {
+        console.warn(
+          `⚠️ [Clone API] Clone target still present, forcing rm and retry: ${repoPath}`
+        );
+        await rm(repoPath, { recursive: true, force: true }).catch(() => {});
+        ({ stdout, stderr } = await runBareClone());
+      } else {
+        throw firstErr;
       }
-    );
+    }
 
     if (
       stderr &&

@@ -849,10 +849,10 @@ function NewRepoPageContent() {
           📦 Option 3: Bulk import from GitHub
         </h2>
         <p className="text-sm text-gray-300 mb-3">
-          Import multiple repositories at once from a GitHub user or
-          organization. Click the button below to browse and select which
-          repositories to import. You can import all or just select specific
-          ones.
+          Opens the bulk import page: you <strong>fetch a list</strong>, then{" "}
+          <strong>tick which repos</strong> to import. Nothing is imported until
+          you run import there — your Git is not auto-synced from this button.
+          You can import many selected repos in one go, or only a few.
         </p>
         <button
           className="border px-4 py-2 inline-block bg-purple-600 hover:bg-purple-700 text-white rounded"
@@ -898,12 +898,12 @@ function NewRepoPageContent() {
             }
           }}
         >
-          Bulk Import from GitHub
+          Open bulk import (choose repos next)
         </button>
         <p className="text-xs mt-2 text-gray-400">
-          <strong>Tip:</strong> If you entered a GitHub username or URL in
-          Option 1 above, it will be pre-filled on the import page. Otherwise,
-          you can enter it there.
+          <strong>Tip:</strong> Safe to open — no import runs until you select
+          repos and confirm on the next page. If you entered a GitHub username
+          or URL in Option 1 above, it will be pre-filled there.
         </p>
       </div>
       {/* Debug: Show entity info - only render on client to avoid hydration mismatch */}
