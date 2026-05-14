@@ -377,142 +377,8 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       );
     }
 
-    // Priority 2: Add clone URLs for GRASP git servers (prioritized by user preferences if available)
-    // CRITICAL: Only include actual GRASP git servers (NOT regular Nostr relays)
-    // GRASP servers serve git repos via HTTPS/SSH and can be cloned with standard git commands
-    // Regular Nostr relays (like relay.damus.io, nos.lol) are NOT git servers and should NOT be in clone URLs
-    if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
-      const {
-        GRASP_SERVERS_FOR_PUSHING,
-        KNOWN_GRASP_DOMAINS,
-        getGraspServers,
-      } = await import("../utils/grasp-servers");
-      const {
-        getUserGraspServers,
-        graspRelayUrlsToDomains,
-        prioritizeGraspServers,
-      } = await import("../utils/grasp-list");
-
-      // Try to get user's GRASP list preferences (non-blocking, falls back to defaults)
-      let prioritizedGraspDomains: string[] = [];
-      try {
-        // Get default GRASP servers from defaultRelays
-        const defaultGraspRelays = getGraspServers(defaultRelays);
-        const defaultGraspDomains = graspRelayUrlsToDomains(defaultGraspRelays);
-
-        // Try to fetch user's GRASP list (with timeout - don't block if slow)
-        const userGraspRelays = await Promise.race([
-          getUserGraspServers(
-            subscribe,
-            defaultRelays,
-            pubkey,
-            defaultGraspRelays
-          ),
-          new Promise<string[]>((resolve) =>
-            setTimeout(() => resolve(defaultGraspRelays), 3000)
-          ), // 3s timeout
-        ]);
-
-        // Convert relay URLs to domains and prioritize
-        const userGraspDomains = graspRelayUrlsToDomains(userGraspRelays);
-        prioritizedGraspDomains = prioritizeGraspServers(userGraspDomains, [
-          ...KNOWN_GRASP_DOMAINS,
-        ]);
-
-        console.log(
-          `✅ [Push Repo] Using ${
-            prioritizedGraspDomains.length
-          } GRASP servers (${userGraspDomains.length} from user preferences, ${
-            KNOWN_GRASP_DOMAINS.length - userGraspDomains.length
-          } defaults)`
-        );
-      } catch (error) {
-        console.warn(
-          `⚠️ [Push Repo] Failed to fetch user GRASP list, using defaults:`,
-          error
-        );
-        prioritizedGraspDomains = [...KNOWN_GRASP_DOMAINS];
-      }
-
-      // CRITICAL: Include ALL known GRASP servers (including read-only ones) for clone URLs
-      // This ensures maximum compatibility - clients can clone from any GRASP server that has the repo
-      // Even if we don't push to read-only servers like git.jb55.com, clients should still be able to clone from them
-      // But prioritize user's preferred servers first
-      const knownGitServers =
-        prioritizedGraspDomains.length > 0
-          ? prioritizedGraspDomains
-          : [...KNOWN_GRASP_DOMAINS]; // Fallback to all known if prioritization failed
-
-      // Remove duplicates and filter out the primary server (already added above)
-      const primaryServerDomain = configuredGitServerUrl
-        ? configuredGitServerUrl
-            .replace(/^https?:\/\//, "")
-            .replace(/^wss?:\/\//, "")
-            .split("/")[0]
-        : null;
-
-      const uniqueServers = [...new Set(knownGitServers)].filter(
-        (server) => server !== primaryServerDomain
-      );
-
-      // Generate clone URLs for all known servers
-      // CRITICAL: Add BOTH HTTPS and SSH URLs per NIP-34 spec (supports https://, git://, ssh://)
-      // NIP-34 spec: clone tag includes [http|https]://<grasp-path>/<valid-npub>/<string>.git
-      // MUST use npub format in GRASP clone URLs, not hex pubkey
-      // This allows clients to choose the appropriate format (SSH for push/pull with keys, HTTPS for read-only)
-      const { nip19 } = await import("nostr-tools");
-      let npub: string;
-      try {
-        npub = nip19.npubEncode(pubkey);
-      } catch (e) {
-        console.warn(
-          `⚠️ [Push Repo] Failed to encode pubkey to npub for GRASP clone URLs, using hex as fallback:`,
-          e
-        );
-        npub = pubkey; // Fallback to hex if encoding fails (shouldn't happen)
-      }
-
-      const gitSshBase =
-        repo.gitSshBase ||
-        (typeof process !== "undefined" &&
-          process.env?.NEXT_PUBLIC_GIT_SSH_BASE) ||
-        "git.gittr.space";
-
-      uniqueServers.forEach((server) => {
-        // Add HTTPS URL (works for everyone, read-only or with credentials)
-        // NIP-34 format: <grasp-path>/<valid-npub>/<string>.git
-        const httpsCloneUrl = `https://${server}/${npub}/${actualRepositoryName}.git`;
-        addCloneUrl(httpsCloneUrl);
-        console.log(
-          `🔗 [Push Repo] Added HTTPS clone URL (npub format): ${httpsCloneUrl}`
-        );
-
-        // Add SSH URL (for users with SSH keys - allows push/pull)
-        // Use gitSshBase if server matches, otherwise use server domain directly
-        // Note: SSH URLs use npub format for consistency with NIP-34 spec
-        const sshHost =
-          server === "git.gittr.space" || server.includes("gittr.space")
-            ? gitSshBase
-            : server;
-        const sshCloneUrl = `git@${sshHost}:${npub}/${actualRepositoryName}.git`;
-        addCloneUrl(sshCloneUrl);
-        console.log(
-          `🔗 [Push Repo] Added SSH clone URL (npub format): ${sshCloneUrl}`
-        );
-      });
-
-      console.log(
-        `✅ [Push Repo] Added ${
-          uniqueServers.length * 2
-        } clone URLs (HTTPS + SSH) for ${
-          uniqueServers.length
-        } GRASP servers (total: ${cloneUrls.length})`
-      );
-    } else {
-      console.warn(
-        `⚠️ [Push Repo] Cannot add GRASP server clone URLs - invalid pubkey format`
-      );
-    }
+    // Do not add speculative clone URLs for every known GRASP host. Those URLs imply the repo
+    // exists on servers we never pushed to (e.g. git.jb55.com) and break interop with strict clients.
 
     // NOTE: nostr:// URLs are NOT added to clone tags per NIP-34 spec
     // NIP-34 clone tags must contain standard git clone URLs (https://, git://, ssh://)
@@ -1529,7 +1395,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
 
     if (hasNip07 && window.nostr) {
       // Use NIP-07 - create unsigned event, hash it, then sign with extension
-      const { getEventHash } = await import("nostr-tools");
+      const { getEventHash, nip19 } = await import("nostr-tools");
       const signerPubkey = await window.nostr.getPublicKey();
 
       // NIP-34: Build tags array with required metadata
@@ -1574,24 +1440,19 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       const prioritizedCloneUrls = [...httpCloneUrls, ...otherCloneUrls];
 
       console.log(
-        `🔍 [Push Repo] Adding clone tags (prioritized: ${httpCloneUrls.length} HTTP, ${otherCloneUrls.length} other). cloneUrls array:`,
+        `🔍 [Push Repo] Adding clone tag (NIP-34 multi-value). cloneUrls:`,
         prioritizedCloneUrls
       );
-      prioritizedCloneUrls.forEach((url) => {
-        if (url && typeof url === "string" && url.trim().length > 0) {
-          const trimmedUrl = url.trim();
-          nip34Tags.push(["clone", trimmedUrl]);
-          console.log(`   ✅ Added clone tag: ${trimmedUrl}`);
-        } else {
-          console.warn(`   ⚠️ Skipping invalid clone URL:`, url);
-        }
-      });
+      if (prioritizedCloneUrls.length > 0) {
+        nip34Tags.push(["clone", ...prioritizedCloneUrls]);
+      }
 
       // Log all tags for debugging
-      const cloneTagsInTags = nip34Tags.filter((t) => t[0] === "clone");
+      const cloneRow = nip34Tags.find((t) => t[0] === "clone");
+      const cloneVals = cloneRow ? cloneRow.slice(1) : [];
       console.log(
-        `📋 [Push Repo] Clone tags in nip34Tags: ${cloneTagsInTags.length}`,
-        cloneTagsInTags.map((t) => t[1])
+        `📋 [Push Repo] Clone values in nip34Tags: ${cloneVals.length}`,
+        cloneVals
       );
 
       // Validate: Ensure at least one clone URL exists
@@ -1617,27 +1478,19 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         );
       }
 
-      // NIP-34: Add relays tags
-      // CRITICAL: Per NIP-34 spec, each relay should be in a separate tag
-      // Format: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"], etc.
-      //
-      // IMPORTANT: Only add relay URLs that actually exist in defaultRelays
-      // We do NOT create fake relay URLs from clone URLs - only use real relays
-      //
-      // Note on gitworkshop.dev GRASP server recognition:
-      // - gitworkshop.dev recognizes clone URLs as GRASP servers if the relay URL matches the clone URL domain
-      // - Example: Clone URL https://relay.ngit.dev/... + Relay wss://relay.ngit.dev = recognized as GRASP server
-      // - For git.gittr.space: It's a git server, NOT a relay, so wss://git.gittr.space won't be added
-      // - This is correct: git.gittr.space will show in "git servers" but not "grasp servers" on other clients
+      // NIP-34: one "relays" tag with multiple values (same row), not one relay per repeated tag.
+      // Include: (1) wss URLs whose host matches an HTTPS clone URL we emit, when that wss is in
+      // defaultRelays; (2) a small capped set of relays we actually publish to (not every GRASP
+      // domain the app knows about).
       const { getGraspServers } = await import("../utils/grasp-servers");
+      const { normalizeRelayWssUrl } = await import(
+        "@/lib/utils/nip34-tag-values"
+      );
       const graspRelays = getGraspServers(defaultRelays);
       console.log(
         `🔍 [Push Repo] Filtering relays: ${defaultRelays.length} total, ${graspRelays.length} GRASP/git relays`
       );
 
-      // CRITICAL: Only add relay URLs that match clone URL domains IF they actually exist in defaultRelays
-      // This ensures gitworkshop.dev recognizes GRASP servers correctly
-      // Example: If clone URL is https://relay.ngit.dev/... and wss://relay.ngit.dev is in defaultRelays, add it
       const relayUrlsFromCloneUrls = new Set<string>();
       cloneUrls.forEach((cloneUrl) => {
         if (
@@ -1645,18 +1498,12 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           typeof cloneUrl === "string" &&
           (cloneUrl.startsWith("http://") || cloneUrl.startsWith("https://"))
         ) {
-          // Extract domain from clone URL and convert to wss:// format
           const domain = cloneUrl.replace(/^https?:\/\//, "").split("/")[0];
           if (domain) {
             const potentialRelayUrl = `wss://${domain}`;
-            // CRITICAL: Only add if this relay URL actually exists in defaultRelays
-            // Don't create fake relay URLs for git servers that aren't relays
             if (
               defaultRelays.some((r) => {
-                const normalized =
-                  r.startsWith("wss://") || r.startsWith("ws://")
-                    ? r
-                    : `wss://${r}`;
+                const normalized = normalizeRelayWssUrl(r);
                 return (
                   normalized === potentialRelayUrl ||
                   normalized.startsWith(potentialRelayUrl + "/")
@@ -1669,34 +1516,29 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
               );
             } else {
               console.log(
-                `⚠️ [Push Repo] Clone URL domain ${domain} has no matching relay in defaultRelays - skipping (gitworkshop.dev won't recognize as GRASP server)`
+                `⚠️ [Push Repo] Clone URL domain ${domain} has no matching relay in defaultRelays - skipping`
               );
             }
           }
         }
       });
 
-      // Combine GRASP relays from defaultRelays with relay URLs that match clone URLs
-      const allGraspRelays = new Set<string>();
-      graspRelays.forEach((relay) => {
-        const normalizedRelay =
-          relay.startsWith("wss://") || relay.startsWith("ws://")
-            ? relay
-            : `wss://${relay}`;
-        allGraspRelays.add(normalizedRelay);
-      });
-      relayUrlsFromCloneUrls.forEach((relay) => {
-        allGraspRelays.add(relay);
-      });
+      const publishSubset = [...new Set(defaultRelays.map(normalizeRelayWssUrl))]
+        .filter(Boolean)
+        .slice(0, 8);
 
-      if (allGraspRelays.size > 0) {
-        // CRITICAL: Ensure all relay URLs have wss:// prefix before adding as separate tags
-        Array.from(allGraspRelays).forEach((relay) => {
-          nip34Tags.push(["relays", relay]);
-          console.log(`✅ [Push Repo] Added relay tag: ${relay}`);
-        });
+      const announcementRelays = [
+        ...new Set([
+          ...Array.from(relayUrlsFromCloneUrls),
+          ...publishSubset,
+        ]),
+      ].slice(0, 12);
+
+      if (announcementRelays.length > 0) {
+        nip34Tags.push(["relays", ...announcementRelays]);
         console.log(
-          `✅ [Push Repo] Added ${allGraspRelays.size} separate relay tag(s) per NIP-34 spec (${graspRelays.length} from defaultRelays, ${relayUrlsFromCloneUrls.size} matching clone URLs)`
+          `✅ [Push Repo] Added relays tag (${announcementRelays.length} values):`,
+          announcementRelays
         );
       }
 
@@ -1707,13 +1549,14 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         });
       }
 
-      // NIP-34: Add web tags (from logoUrl or links)
+      // NIP-34: one "web" tag with multiple URLs when applicable
+      const webVals: string[] = [];
       if (
         repo.logoUrl &&
         (repo.logoUrl.startsWith("http://") ||
           repo.logoUrl.startsWith("https://"))
       ) {
-        nip34Tags.push(["web", repo.logoUrl]);
+        webVals.push(repo.logoUrl);
       }
       if (repo.links && Array.isArray(repo.links)) {
         repo.links.forEach((link) => {
@@ -1721,9 +1564,12 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             link.url &&
             (link.url.startsWith("http://") || link.url.startsWith("https://"))
           ) {
-            nip34Tags.push(["web", link.url]);
+            webVals.push(link.url);
           }
         });
+      }
+      if (webVals.length > 0) {
+        nip34Tags.push(["web", ...webVals]);
       }
 
       if (
@@ -1756,23 +1602,23 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         });
       }
 
-      // Add all maintainers to tags
-      // CRITICAL: Use npub format per NIP-34 best practices (Dan Conway feedback)
-      // Convert hex pubkeys to npub format for maintainers tags
-      const { nip19 } = await import("nostr-tools");
+      // NIP-34: one "maintainers" tag with multiple npub values (preferred over repeated tags)
+      const maintainerNpubs: string[] = [];
       maintainerPubkeys.forEach((pubkey) => {
         try {
           const npub = nip19.npubEncode(pubkey);
-          nip34Tags.push(["maintainers", npub]);
+          maintainerNpubs.push(npub);
         } catch (e) {
-          // Fallback to hex if encoding fails (shouldn't happen with valid pubkeys)
           console.warn(
             `⚠️ [Push Repo] Failed to encode pubkey to npub, using hex:`,
             e
           );
-          nip34Tags.push(["maintainers", pubkey]);
+          maintainerNpubs.push(pubkey);
         }
       });
+      if (maintainerNpubs.length > 0) {
+        nip34Tags.push(["maintainers", ...maintainerNpubs]);
+      }
 
       // NIP-34: Add "r" tag with "euc" marker for earliest unique commit (optional but recommended)
       // This helps identify repos among forks and group related repos
@@ -1899,6 +1745,9 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       const cloneTagsInEvent = repoEvent.tags.filter(
         (t: any[]) => Array.isArray(t) && t[0] === "clone"
       );
+      const cloneUrlsLogged = cloneTagsInEvent.flatMap((t: any[]) =>
+        t.slice(1)
+      );
       console.log(`🔍 [Push Repo] Event structure before signing:`, {
         eventId: repoEvent.id,
         kind: repoEvent.kind,
@@ -1906,8 +1755,8 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           ? `${repoEvent.pubkey.substring(0, 8)}...`
           : "none",
         totalTags: repoEvent.tags.length,
-        cloneTagsCount: cloneTagsInEvent.length,
-        cloneTags: cloneTagsInEvent.map((t: any[]) => t[1]),
+        cloneTagsCount: cloneUrlsLogged.length,
+        cloneTags: cloneUrlsLogged,
         dTag: repoEvent.tags.find(
           (t: any[]) => Array.isArray(t) && t[0] === "d"
         )?.[1],
@@ -1955,13 +1804,14 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         const cloneTagsAfterSign = repoEvent.tags.filter(
           (t: any[]) => Array.isArray(t) && t[0] === "clone"
         );
+        const afterUrls = cloneTagsAfterSign.flatMap((t: any[]) => t.slice(1));
         console.log(
           `✅ [Push Repo] Event signed successfully. Event ID: ${repoEvent.id}`
         );
         console.log(`🔍 [Push Repo] Event structure after signing:`, {
           eventId: repoEvent.id,
-          cloneTagsCount: cloneTagsAfterSign.length,
-          cloneTags: cloneTagsAfterSign.map((t: any[]) => t[1]),
+          cloneTagsCount: afterUrls.length,
+          cloneTags: afterUrls,
           totalTags: repoEvent.tags.length,
           hasSig: !!repoEvent.sig,
         });
@@ -2099,11 +1949,12 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     const finalCloneTags = repoEvent.tags.filter(
       (t: any[]) => Array.isArray(t) && t[0] === "clone"
     );
+    const finalCloneVals = finalCloneTags.flatMap((t: any[]) => t.slice(1));
     console.log(`🚀 [Push Repo] About to publish event:`, {
       eventId: repoEvent.id,
       kind: repoEvent.kind,
-      cloneTagsCount: finalCloneTags.length,
-      cloneTags: finalCloneTags.map((t: any[]) => t[1]),
+      cloneTagsCount: finalCloneVals.length,
+      cloneTags: finalCloneVals,
       relaysToPublish: publishRelays.length,
       relayList: publishRelays,
     });
@@ -2159,11 +2010,14 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     const publishedCloneTags = repoEvent.tags.filter(
       (t: any[]) => Array.isArray(t) && t[0] === "clone"
     );
+    const publishedCloneVals = publishedCloneTags.flatMap((t: any[]) =>
+      t.slice(1)
+    );
     console.log(`🔍 [Push Repo] Published event structure:`, {
       eventId: result.eventId,
       kind: repoEvent.kind,
-      cloneTagsCount: publishedCloneTags.length,
-      cloneTags: publishedCloneTags.map((t: any[]) => t[1]),
+      cloneTagsCount: publishedCloneVals.length,
+      cloneTags: publishedCloneVals,
       allTagNames: repoEvent.tags.map((t: any[]) => t[0]),
       eventUrl: `https://nostr.watch/e/${result.eventId}`,
       note: "Verify clone tags on nostr.watch or gitworkshop.dev - they should match the URLs above",

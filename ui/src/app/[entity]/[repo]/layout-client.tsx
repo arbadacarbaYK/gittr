@@ -32,6 +32,10 @@ import {
 } from "@/lib/repos/storage";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import {
+  normalizeIssueListStatus,
+  normalizePrListStatus,
+} from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { useEntityOwner } from "@/lib/utils/use-entity-owner";
 
@@ -844,13 +848,16 @@ export default function RepoLayoutClient({
         const issues = JSON.parse(
           localStorage.getItem(issueKey) || "[]"
         ) as any[];
-        // Only count open PRs and issues
+        // Only count open PRs and issues (merged/closed/resolved bucket as non-open)
         setPrCount(
-          prs.filter((pr: any) => (pr.status || "open") === "open").length
+          prs.filter(
+            (pr: any) => normalizePrListStatus(pr.status) === "open"
+          ).length
         );
         setIssueCount(
-          issues.filter((issue: any) => (issue.status || "open") === "open")
-            .length
+          issues.filter(
+            (issue: any) => normalizeIssueListStatus(issue.status) === "open"
+          ).length
         );
       } catch {
         setPrCount(0);

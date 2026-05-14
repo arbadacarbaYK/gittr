@@ -28,6 +28,7 @@ import {
   getRepoOwnerPubkey,
 } from "@/lib/utils/entity-resolver";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
+import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
 
 import Link from "next/link";
@@ -73,33 +74,20 @@ function parseNIP34Repository(event: any): any {
         repoData.description = tagValue;
         break;
       case "clone":
-        // Git clone URL (can have multiple)
-        if (tagValue) repoData.clone.push(tagValue);
+        for (const v of nip34TagValuesFromRow(tag)) {
+          if (v && !repoData.clone.includes(v)) repoData.clone.push(v);
+        }
         break;
-      case "relays":
-        // CRITICAL: Handle both formats per NIP-34 spec:
-        // 1. Separate tags: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"]
-        // 2. Comma-separated (backward compat): ["relays", "wss://relay1.com,wss://relay2.com"]
-        if (tagValue) {
-          // Check if value contains commas (comma-separated format)
-          if (tagValue.includes(",")) {
-            // Comma-separated format - split and add each
-            const relayUrls = tagValue
-              .split(",")
-              .map((r: string) => r.trim())
-              .filter((r: string) => r.length > 0);
-            relayUrls.forEach((relayUrl: string) => {
-              // Ensure wss:// prefix
-              const normalized =
-                relayUrl.startsWith("wss://") || relayUrl.startsWith("ws://")
-                  ? relayUrl
-                  : `wss://${relayUrl}`;
-              if (!repoData.relays.includes(normalized)) {
-                repoData.relays.push(normalized);
-              }
-            });
-          } else {
-            // Single relay per tag - add directly
+      case "relays": {
+        const rawVals = nip34TagValuesFromRow(tag);
+        for (const raw of rawVals) {
+          const parts = raw.includes(",")
+            ? raw
+                .split(",")
+                .map((r: string) => r.trim())
+                .filter((r: string) => r.length > 0)
+            : [raw];
+          for (const tagValue of parts) {
             const normalized =
               tagValue.startsWith("wss://") || tagValue.startsWith("ws://")
                 ? tagValue
@@ -110,21 +98,22 @@ function parseNIP34Repository(event: any): any {
           }
         }
         break;
+      }
       case "web":
-        // Webpage URL (can have multiple)
-        if (tagValue) repoData.web.push(tagValue);
+        for (const v of nip34TagValuesFromRow(tag)) {
+          if (v && !repoData.web.includes(v)) repoData.web.push(v);
+        }
         break;
       case "t":
         // Hashtags/topics (can have multiple)
         if (tagValue) repoData.topics.push(tagValue);
         break;
       case "maintainers":
-        // Other recognized maintainers (can have multiple)
         // NIP-34: Accept both hex and npub formats, normalize to hex for internal storage
-        if (tagValue) {
+        for (const tagValue of nip34TagValuesFromRow(tag)) {
+          if (!tagValue) continue;
           let normalizedPubkey = tagValue;
           try {
-            // If it's npub format, decode to hex
             if (tagValue.startsWith("npub")) {
               const decoded = nip19.decode(tagValue);
               if (
@@ -134,15 +123,12 @@ function parseNIP34Repository(event: any): any {
                 normalizedPubkey = decoded.data as string;
               }
             } else if (/^[0-9a-f]{64}$/i.test(tagValue)) {
-              // Already hex format, use as-is
               normalizedPubkey = tagValue.toLowerCase();
             }
-            // Only add if valid hex pubkey
             if (/^[0-9a-f]{64}$/i.test(normalizedPubkey)) {
               repoData.maintainers.push(normalizedPubkey);
             }
           } catch (e) {
-            // If decoding fails, try to use as hex if valid
             if (/^[0-9a-f]{64}$/i.test(tagValue)) {
               repoData.maintainers.push(tagValue.toLowerCase());
             }

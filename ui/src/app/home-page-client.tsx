@@ -46,6 +46,7 @@ import {
   getRepoStatus,
   getStatusBadgeStyle,
 } from "@/lib/utils/repo-status";
+import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 
 import Link from "next/link";
 import { nip19 } from "nostr-tools";
@@ -83,20 +84,41 @@ function parseNIP34Repository(event: any): any {
         repoData.description = tagValue;
         break;
       case "clone":
-        if (tagValue) repoData.clone.push(tagValue);
+        for (const v of nip34TagValuesFromRow(tag)) {
+          if (v && !repoData.clone.includes(v)) repoData.clone.push(v);
+        }
         break;
       case "relays":
-        if (tagValue) repoData.relays.push(tagValue);
+        for (const raw of nip34TagValuesFromRow(tag)) {
+          const parts = raw.includes(",")
+            ? raw
+                .split(",")
+                .map((r: string) => r.trim())
+                .filter((r: string) => r.length > 0)
+            : [raw];
+          for (const tagValue of parts) {
+            const normalized =
+              tagValue.startsWith("wss://") || tagValue.startsWith("ws://")
+                ? tagValue
+                : `wss://${tagValue}`;
+            if (!repoData.relays.includes(normalized)) {
+              repoData.relays.push(normalized);
+            }
+          }
+        }
         break;
       case "web":
-        if (tagValue) repoData.web.push(tagValue);
+        for (const v of nip34TagValuesFromRow(tag)) {
+          if (v && !repoData.web.includes(v)) repoData.web.push(v);
+        }
         break;
       case "t":
         if (tagValue) repoData.topics.push(tagValue);
         break;
       case "maintainers":
         // NIP-34: Accept both hex and npub formats, normalize to hex for internal storage
-        if (tagValue) {
+        for (const tagValue of nip34TagValuesFromRow(tag)) {
+          if (!tagValue) continue;
           let normalizedPubkey = tagValue;
           try {
             // If it's npub format, decode to hex

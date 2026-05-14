@@ -38,6 +38,7 @@ import {
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import { getGraspServers } from "@/lib/utils/grasp-servers";
+import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
 import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
 
@@ -96,10 +97,28 @@ function parseNIP34Repository(event: any): any {
         repoData.description = tagValue;
         break;
       case "clone":
-        if (tagValue) repoData.clone.push(tagValue);
+        for (const v of nip34TagValuesFromRow(tag)) {
+          if (v && !repoData.clone.includes(v)) repoData.clone.push(v);
+        }
         break;
       case "relays":
-        if (tagValue) repoData.relays.push(tagValue);
+        for (const raw of nip34TagValuesFromRow(tag)) {
+          const parts = raw.includes(",")
+            ? raw
+                .split(",")
+                .map((r: string) => r.trim())
+                .filter((r: string) => r.length > 0)
+            : [raw];
+          for (const tagValue of parts) {
+            const normalized =
+              tagValue.startsWith("wss://") || tagValue.startsWith("ws://")
+                ? tagValue
+                : `wss://${tagValue}`;
+            if (!repoData.relays.includes(normalized)) {
+              repoData.relays.push(normalized);
+            }
+          }
+        }
         break;
       case "t":
         if (tagValue) repoData.topics.push(tagValue);

@@ -12955,10 +12955,12 @@ export default function RepoCodePage() {
 
   const relayDisplayRelays = useMemo(() => {
     const repoRelays = (repoData as any)?.relays || [];
-    return [
-      ...(defaultRelays || []),
-      ...repoRelays.filter((r: string) => !defaultRelays.includes(r)),
-    ];
+    if (Array.isArray(repoRelays) && repoRelays.length > 0) {
+      return [...new Set(repoRelays.map((r: string) => String(r).trim()))].filter(
+        Boolean
+      );
+    }
+    return [...new Set(defaultRelays || [])];
   }, [defaultRelays, (repoData as any)?.relays]);
 
   const relayDisplayGraspServers = useMemo(() => {

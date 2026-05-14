@@ -288,32 +288,35 @@ export function buildUnsignedRepositoryEvent(
     tags.push(["description", description]);
   }
 
-  // GRASP-01 / NIP-34: Add clone tags (git server URLs)
-  // CRITICAL: At least one clone tag is required for NIP-34 compliance
-  // Other clients need clone URLs to access the repository
+  // NIP-34: one "clone" tag with multiple git URLs (values at indices 1..n)
   if (repo.clone && repo.clone.length > 0) {
-    repo.clone.forEach((url) => {
-      if (url && typeof url === "string" && url.trim().length > 0) {
-        tags.push(["clone", url.trim()]);
-      }
-    });
+    const cleaned = repo.clone
+      .filter(
+        (url) => url && typeof url === "string" && url.trim().length > 0
+      )
+      .map((url) => url.trim())
+      .slice(0, 12);
+    if (cleaned.length > 0) {
+      tags.push(["clone", ...cleaned]);
+    }
   }
 
   // If no clone URLs provided, this is a warning but we'll still create the event
   // (Some clients might handle repos without clone URLs differently)
 
-  // GRASP-01 / NIP-34: Add relays tags (Nostr relay URLs)
-  // CRITICAL: Per NIP-34 spec, each relay should be in a separate tag
-  // Format: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"], etc.
+  // NIP-34: one "relays" tag with multiple relay URLs
   if (repo.relays && repo.relays.length > 0) {
-    repo.relays.forEach((relay) => {
-      // Ensure relay has wss:// prefix
-      const normalizedRelay =
+    const cleaned = repo.relays
+      .map((relay) =>
         relay.startsWith("wss://") || relay.startsWith("ws://")
           ? relay
-          : `wss://${relay}`;
-      tags.push(["relays", normalizedRelay]);
-    });
+          : `wss://${relay}`
+      )
+      .filter(Boolean)
+      .slice(0, 12);
+    if (cleaned.length > 0) {
+      tags.push(["relays", ...cleaned]);
+    }
   }
 
   // NIP-34: Add topics/tags
@@ -323,12 +326,13 @@ export function buildUnsignedRepositoryEvent(
     });
   }
 
-  // NIP-34: Add web tags (from logoUrl or links array)
+  // NIP-34: Add web tag(s) — prefer one multi-value "web" row per spec
+  const webVals: string[] = [];
   if (
     repo.logoUrl &&
     (repo.logoUrl.startsWith("http://") || repo.logoUrl.startsWith("https://"))
   ) {
-    tags.push(["web", repo.logoUrl]);
+    webVals.push(repo.logoUrl);
   }
   if (repo.links && Array.isArray(repo.links)) {
     repo.links.forEach((link) => {
@@ -336,9 +340,12 @@ export function buildUnsignedRepositoryEvent(
         link.url &&
         (link.url.startsWith("http://") || link.url.startsWith("https://"))
       ) {
-        tags.push(["web", link.url]);
+        webVals.push(link.url);
       }
     });
+  }
+  if (webVals.length > 0) {
+    tags.push(["web", ...webVals]);
   }
 
   if (
@@ -369,21 +376,24 @@ export function buildUnsignedRepositoryEvent(
     });
   }
 
-  // Add all maintainers to tags
-  // NIP-34: Use npub format per best practices (consistent with push-repo-to-nostr.ts)
+  // NIP-34: one "maintainers" tag with multiple values (npub preferred)
+  const maintainerNpubs: string[] = [];
   maintainerPubkeys.forEach((maintainerPubkey) => {
     try {
       const npub = nip19.npubEncode(maintainerPubkey);
-      tags.push(["maintainers", npub]);
+      maintainerNpubs.push(npub);
     } catch (e) {
       // Fallback to hex if encoding fails (shouldn't happen with valid pubkeys)
       console.warn(
         `⚠️ [createRepositoryEvent] Failed to encode pubkey to npub, using hex:`,
         e
       );
-      tags.push(["maintainers", maintainerPubkey]);
+      maintainerNpubs.push(maintainerPubkey);
     }
   });
+  if (maintainerNpubs.length > 0) {
+    tags.push(["maintainers", ...maintainerNpubs]);
+  }
 
   // NIP-34: Add "r" tag with "euc" marker for earliest unique commit (optional but recommended)
   // This helps identify repos among forks and group related repos
@@ -830,7 +840,12 @@ export function createPullRequestEvent(
     // ["c", "<current-commit-id>"] - REQUIRED (tip of the PR branch)
     ["c", currentCommitId],
     // ["clone", "<clone-url>", ...] - REQUIRED (at least one git clone URL where commit can be downloaded)
-    ...pr.cloneUrls.map((url) => ["clone", url]),
+    [
+      "clone",
+      ...pr.cloneUrls
+        .map((url) => String(url).trim())
+        .filter((url) => url.length > 0),
+    ],
   ];
 
   // Optional tags
@@ -914,7 +929,12 @@ export function createPullRequestUpdateEvent(
     // ["c", "<current-commit-id>"] - REQUIRED (updated tip of PR)
     ["c", prUpdate.currentCommitId],
     // ["clone", "<clone-url>", ...] - REQUIRED
-    ...prUpdate.cloneUrls.map((url) => ["clone", url]),
+    [
+      "clone",
+      ...prUpdate.cloneUrls
+        .map((url) => String(url).trim())
+        .filter((url) => url.length > 0),
+    ],
   ];
 
   // Optional tags
