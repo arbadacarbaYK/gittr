@@ -23,8 +23,7 @@ data
 nginx.conf
 *.nginx
 nginx.gittr.conf.example
-# Private root-level deploy helper scripts (operator-specific names)
-/upload_*.sh
+# Root-level deploy script is tracked (use FRONTEND_PATH env for non-default roots).
 PUSH_VERIFICATION_SUMMARY.md
 docs/ELEVATOR_PITCH.md
 RELEASE_ASSETS_BLOSSOM_PLAN.md
