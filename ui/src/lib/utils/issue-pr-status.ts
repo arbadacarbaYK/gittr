@@ -43,3 +43,20 @@ export function normalizePrListStatus(
   if (v === "closed" || v === "merged") return "closed";
   return "open";
 }
+
+/**
+ * Kind 1618 (PR) events do not carry lifecycle status; we default them to open.
+ * When relay EOSE/replay re-delivers the PR after a local merge (or status events),
+ * spreading that object must not overwrite merged/closed rows in localStorage.
+ */
+export function prStatusForNostrKind1618Merge(
+  existingStatus: string | undefined,
+  kindDefault: "open" = "open"
+): "open" | "merged" | "closed" {
+  const v = String(existingStatus || "")
+    .toLowerCase()
+    .trim();
+  if (v === "merged") return "merged";
+  if (v === "closed") return "closed";
+  return kindDefault;
+}

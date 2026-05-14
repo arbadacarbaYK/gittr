@@ -26,7 +26,10 @@ import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
-import { normalizePrListStatus } from "@/lib/utils/issue-pr-status";
+import {
+  normalizePrListStatus,
+  prStatusForNostrKind1618Merge,
+} from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { clsx } from "clsx";
@@ -336,7 +339,13 @@ export default function RepoPullsPage({
 
               // Status: Default to "open" - will be updated by status events (kinds 1630-1633)
               // NIP-34: Status comes from separate status events, not tags
-              const status = "open"; // Default, will be updated by status event subscription
+              const kindDefaultStatus = "open"; // Default, will be updated by status event subscription
+              const prior =
+                existingIndex >= 0 ? existingPRs[existingIndex] : undefined;
+              const status = prStatusForNostrKind1618Merge(
+                prior?.status,
+                kindDefaultStatus
+              );
 
               const pr = {
                 id: event.id,
