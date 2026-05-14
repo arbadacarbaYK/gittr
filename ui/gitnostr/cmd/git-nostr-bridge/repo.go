@@ -152,13 +152,19 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 		return fmt.Errorf("insert push policy failed: %w", err)
 	}
 
-	err = os.MkdirAll(repoParentPath, 0700)
+	err = os.MkdirAll(repoParentPath, 0750)
 	if err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			//Ignore
 		} else {
 			return fmt.Errorf("repository path mkdir: %w", err)
 		}
+	}
+	// HTTPS git (git-http-backend via fcgiwrap as www-data) must traverse owner dirs.
+	// www-data is typically in supplementary group `git-nostr`; group needs rx on this directory.
+	// Older installs used 0700 here, which breaks https://git…/<pubkey>/<repo>.git (404) while SSH still works.
+	if st, err := os.Stat(repoParentPath); err == nil && st.IsDir() {
+		_ = os.Chmod(repoParentPath, 0750)
 	}
 
 	// Check if repository already exists

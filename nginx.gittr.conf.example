@@ -108,6 +108,8 @@ server {
     # Git HTTP backend via FCGI (git-http-backend)
     # URL format: https://git.gittr.space/{pubkey}/{repo}.git
     # This allows git clone https://git.gittr.space/{pubkey}/{repo}.git
+    # NOTE: fcgiwrap runs as www-data (must be in group git-nostr). Owner hex dirs under GIT_PROJECT_ROOT need mode 0750;
+    #       0700 causes 404 here while SSH still works. See docs/GIT_NOSTR_BRIDGE_SETUP.md.
     location ~ ^/([^/]+)/(.+\.git)(.*)$ {
         root /home/git-nostr/git-nostr-repositories;
         fastcgi_pass unix:/var/run/fcgiwrap.socket;

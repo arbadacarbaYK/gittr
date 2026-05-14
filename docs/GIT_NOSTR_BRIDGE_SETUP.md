@@ -436,6 +436,18 @@ git clone git@gittr.space:<pubkey>/<repo-name>.git
 2. Check bridge logs for repository creation errors
 3. Verify repository was published to Nostr (check relays)
 
+### Git HTTPS (`git.gittr.space`) returns 404 but SSH works
+
+`git-http-backend` (Nginx + `fcgiwrap`) runs as **`www-data`**. On production, **`www-data` must be in the supplementary group `git-nostr`** (see server user setup). Each **owner directory** under `repositoryDir` (64-char hex pubkey folder) should be mode **`0750`** (`rwxr-x---`): owner `git-nostr` keeps full control, group `git-nostr` can traverse and read so `www-data` can reach `…/<hex>/<repo>.git`. Directories created as **`0700`** (or `0701` with `o+x` but **no group perms**) still block the group: you get **404** on `https://git.<domain>/<npub|hex>/<repo>.git/info/refs` even though the bare repo exists and **SSH clone works**.
+
+**One-time repair on an existing server:**
+
+```bash
+find /home/git-nostr/git-nostr-repositories -mindepth 1 -maxdepth 1 -type d -exec chmod 750 {} \;
+```
+
+The bridge now creates new owner parent dirs with **`0750`** and reapplies that mode when processing repository events.
+
 ## Local Development Setup
 
 For **local development**, you can run the bridge on localhost:
