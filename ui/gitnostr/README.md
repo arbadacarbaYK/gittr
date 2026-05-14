@@ -8,12 +8,26 @@ A proof of concept integration of git and nostr providing
 
 This will hopefully form part of a solution for creating a decentralized version of the github/gitlab experience.
 
+## This fork vs **ngit** (separate projects)
+
+**ngit** is its own project: different repositories, different history, different architecture. It tackles Git-on-Nostr / GRASP-style hosting with that codebase.
+
+**This repository (`arbadacarbaYK/gitnostr`) is an alternative to ngit** when you want the **git-nostr** model instead: **git-nostr-bridge**, **git-nostr-ssh**, and a local SQLite cache, in the line descended from **spearson78/gitnostr** and extended for **gittr** (NIP-34 repo state on the bridge, push paywall grants in SQLite, and related behavior). Use this fork for gittr-style servers; use **ngit** if you are standardizing on that stack—**they are not interchangeable checkouts of the same code.**
+
+**Rough comparison**
+
+| | This **gitnostr** fork | **ngit** |
+| --- | --- | --- |
+| What it is | Go bridge + SSH helper + DB; meant to sit behind a web UI or other client you choose | Full project as defined in the **ngit** repositories |
+| Typical pairing | **gittr** ships it under `ui/gitnostr/` and mirrors it here for standalone installs | Consumed on its own release / layout |
+
+**Why people see a folder called `ngit` next to gittr:** the **gittr** monorepo is often deployed on disk under a directory literally named `ngit` (e.g. `/opt/ngit`)—**a naming convention from early project layout**, not “we replaced ourselves with the ngit codebase.” That tree is **gittr** (Next.js app + embedded `ui/gitnostr/`). Docs that say `cd ngit` or `WorkingDirectory=.../ngit` mean **that gittr checkout path**, not “clone the ngit project instead of gittr.”
+
 ## Documentation
 
 - **[SSH & Git Access Guide](SSH_GIT_GUIDE.md)** - Complete guide for using SSH with git-nostr-bridge (cloning, pushing, pulling, permissions)
 - **[SSH & Git guide](https://github.com/arbadacarbaYK/gittr/blob/main/docs/SSH_GIT_GUIDE.md)** — user-facing workflows and examples
 - **[CLI push example](https://github.com/arbadacarbaYK/gittr/blob/main/docs/CLI_PUSH_EXAMPLE.md)** — HTTP API examples for pushing repositories programmatically
-- **[README](README.md)** - Setup and configuration instructions (this file)
 
 I chose to build on top of the existing git tooling to allow the client side dev tools to remain largely unchanged for daily work (standard git commands work including push and pull)
 
