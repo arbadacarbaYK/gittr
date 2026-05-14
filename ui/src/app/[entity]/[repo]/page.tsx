@@ -95,6 +95,7 @@ import {
   getEntityDisplayName,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
+import { filterDisplayCloneUrlsForSidebar } from "@/lib/utils/filter-display-clone-urls";
 import {
   type FetchStatus,
   addUpstreamSourceToCloneUrls,
@@ -12702,13 +12703,19 @@ export default function RepoCodePage() {
         )
       )
     );
-    const httpCloneUrls = uniqueCloneUrls.filter(
+    const sourceForCloneFilter =
+      (effectiveSourceUrl && String(effectiveSourceUrl).trim()) || dsUrl;
+    const displayCloneUrls = filterDisplayCloneUrlsForSidebar(uniqueCloneUrls, {
+      primaryGitServerEnv: process.env.NEXT_PUBLIC_GIT_SERVER_URL,
+      sourceUrl: sourceForCloneFilter,
+    });
+    const httpCloneUrls = displayCloneUrls.filter(
       (url) => url.startsWith("http://") || url.startsWith("https://")
     );
-    const sshCloneUrls = uniqueCloneUrls.filter((url) =>
+    const sshCloneUrls = displayCloneUrls.filter((url) =>
       url.startsWith("git@")
     );
-    const nostrCloneUrlsFromEvent = uniqueCloneUrls.filter((url) =>
+    const nostrCloneUrlsFromEvent = displayCloneUrls.filter((url) =>
       url.startsWith("nostr://")
     );
 
