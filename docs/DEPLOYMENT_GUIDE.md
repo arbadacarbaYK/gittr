@@ -488,7 +488,7 @@ After=network.target
 [Service]
 Type=simple
 User=www-data
-WorkingDirectory=/opt/ngit/ui
+WorkingDirectory=/opt/gittr/ui
 ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=10
@@ -501,10 +501,10 @@ WantedBy=multi-user.target
 ```
 
 **⚠️ CRITICAL**: 
-- **WorkingDirectory** must be the absolute path where the Next.js app is located (e.g., `/opt/ngit/ui` or `/root/ngit/ui`)
+- **WorkingDirectory** must be the absolute path where the Next.js app is located (e.g., `/opt/gittr/ui` or `/root/gittr/ui`)
 - Ensure the path matches where you cloned/deployed the repository
 - The service will fail to start if the path is incorrect
-- Always verify the path exists: `ls -la /opt/ngit/ui` (or your chosen path)
+- Always verify the path exists: `ls -la /opt/gittr/ui` (or your chosen path)
 
 **Note**: Adjust paths and user as needed. You may want to use PM2 or another process manager instead.
 
@@ -598,7 +598,7 @@ git clone git@gittr.space:<pubkey>/<repo-name>.git
    sudo cat /etc/systemd/system/gittr-frontend.service | grep WorkingDirectory
    
    # Verify the path exists and contains the Next.js app
-   ls -la /opt/ngit/ui  # or /root/ngit/ui, or wherever you deployed
+   ls -la /opt/gittr/ui  # or /root/gittr/ui, or wherever you deployed
    
    # If path is wrong, update the service file:
    sudo nano /etc/systemd/system/gittr-frontend.service
@@ -607,7 +607,7 @@ git clone git@gittr.space:<pubkey>/<repo-name>.git
    sudo systemctl restart gittr-frontend
    ```
    
-   **Common issue**: Files uploaded to `/root/ngit/ui` but service runs from `/opt/ngit/ui` (or vice versa). Always ensure:
+   **Common issue**: Files uploaded to `/root/gittr/ui` but service runs from `/opt/gittr/ui` (or vice versa). Always ensure:
    - The `WorkingDirectory` in the systemd service matches where you actually deployed the code
    - When syncing files, use the same path that the service expects
    - After syncing, always rebuild: `cd /path/to/ui && rm -rf .next && npm run build`
@@ -700,8 +700,8 @@ sudo systemctl restart gittr-frontend
 
 ```bash
 sudo systemctl stop git-nostr-bridge
-# If bridge is in /opt/ngit (same as frontend):
-sudo -u git-nostr bash -c "cd /opt/ngit && git pull && cd ui/gitnostr && make git-nostr-bridge"
+# If bridge is in /opt/gittr (same as frontend):
+sudo -u git-nostr bash -c "cd /opt/gittr && git pull && cd ui/gitnostr && make git-nostr-bridge"
 # OR if bridge is in /home/git-nostr/gittr (standalone):
 # sudo -u git-nostr bash -c "cd ~/gittr && git pull && cd ui/gitnostr && make git-nostr-bridge"
 sudo systemctl start git-nostr-bridge
