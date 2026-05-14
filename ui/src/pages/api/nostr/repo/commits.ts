@@ -112,6 +112,36 @@ async function resolveReposDir(): Promise<string> {
   return reposDir || "/home/git-nostr/git-nostr-repositories";
 }
 
+/** Resolve a branch name that exists on the bare repo (HEAD, first heads/*, etc.). */
+async function detectBareRepoDefaultBranch(
+  repoPath: string
+): Promise<string | null> {
+  try {
+    const { stdout } = await execAsync(
+      `git --git-dir="${repoPath}" symbolic-ref -q --short HEAD`,
+      { timeout: 5000 }
+    );
+    const b = stdout.trim();
+    if (b) return b;
+  } catch {
+    // detached or invalid HEAD
+  }
+  try {
+    const { stdout } = await execAsync(
+      `git --git-dir="${repoPath}" for-each-ref --format="%(refname:short)" refs/heads`,
+      { timeout: 5000 }
+    );
+    const first = stdout
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)[0];
+    if (first) return first;
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 interface Commit {
   id: string; // commit hash
   message: string;
@@ -214,33 +244,44 @@ export default async function handler(
 
     // Get commits using git log
     // Format: %H = full hash, %s = subject, %an = author name, %ae = author email, %at = author timestamp, %P = parent hashes
-    const gitLogCommand = `git --git-dir="${repoPath}" log --format="%H|%s|%an|%ae|%at|%P" --max-count=${safeLimit} ${branchName}`;
+    const logFormat = `git --git-dir="${repoPath}" log --format="%H|%s|%an|%ae|%at|%P" --max-count=${safeLimit}`;
 
     let stdout: string;
+    let effectiveBranch = branchName;
+
+    const tryLog = async (b: string): Promise<string> => {
+      const result = await execAsync(`${logFormat} ${b}`, { timeout: 10000 });
+      return result.stdout;
+    };
+
     try {
-      const result = await execAsync(gitLogCommand, { timeout: 10000 });
-      stdout = result.stdout;
+      stdout = await tryLog(branchName);
     } catch (error: any) {
-      // If branch doesn't exist, try main/master
-      if (branchName !== "main" && branchName !== "master") {
+      const fallbacks: string[] = [];
+      if (branchName !== "main") fallbacks.push("main");
+      if (branchName !== "master") fallbacks.push("master");
+      const fromBare = await detectBareRepoDefaultBranch(repoPath);
+      if (fromBare && !fallbacks.includes(fromBare) && fromBare !== branchName) {
+        fallbacks.push(fromBare);
+      }
+      let lastErr: unknown = error;
+      stdout = "";
+      for (const b of fallbacks) {
         try {
-          const fallbackCommand = `git --git-dir="${repoPath}" log --format="%H|%s|%an|%ae|%at|%P" --max-count=${safeLimit} main`;
-          const fallbackResult = await execAsync(fallbackCommand, {
-            timeout: 10000,
-          });
-          stdout = fallbackResult.stdout;
-        } catch (fallbackError) {
-          // Try master as last resort
-          const masterCommand = `git --git-dir="${repoPath}" log --format="%H|%s|%an|%ae|%at|%P" --max-count=${safeLimit} master`;
-          const masterResult = await execAsync(masterCommand, {
-            timeout: 10000,
-          });
-          stdout = masterResult.stdout;
+          stdout = await tryLog(b);
+          effectiveBranch = b;
+          lastErr = null;
+          break;
+        } catch (e) {
+          lastErr = e;
         }
-      } else {
-        throw error;
+      }
+      if (!stdout.trim() && lastErr) {
+        throw lastErr;
       }
     }
+
+    const branchForMeta = effectiveBranch;
 
     const commits: Commit[] = [];
 
@@ -274,7 +315,7 @@ export default async function handler(
               author: authorName?.trim() || authorEmail?.trim() || "unknown",
               authorEmail: authorEmail?.trim(),
               timestamp,
-              branch: branchName,
+              branch: branchForMeta,
               parentIds: parentIds.length > 0 ? parentIds : undefined,
             });
           }
@@ -284,10 +325,14 @@ export default async function handler(
 
     const earliestUniqueCommit = await resolveEarliestUniqueCommit(
       repoPath,
-      branchName
+      branchForMeta
     );
 
-    return res.status(200).json({ commits, earliestUniqueCommit });
+    return res.status(200).json({
+      commits,
+      earliestUniqueCommit,
+      branch: branchForMeta !== branchName ? branchForMeta : undefined,
+    });
   } catch (error: any) {
     console.error("❌ [Commits API] Error:", error);
     return res.status(500).json({

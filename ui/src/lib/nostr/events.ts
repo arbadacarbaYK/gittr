@@ -542,6 +542,36 @@ export function createCodeSnippetEvent(
   return event;
 }
 
+/**
+ * Pick the branch name for NIP-34 ["HEAD", "ref: refs/heads/<name>"] so it always
+ * matches a refs/heads/* entry present in `refs` when possible. Mismatch (e.g. HEAD
+ * points at main while the only ref is develop) breaks git clone / gitworkshop.
+ */
+export function resolveNip34HeadBranchName(
+  refs: Array<{ ref: string; commit: string }>,
+  preferredBranch?: string | null
+): string {
+  const heads = refs
+    .filter((r) => r.ref && typeof r.ref === "string" && r.ref.startsWith("refs/heads/"))
+    .map((r) => ({
+      ref: r.ref,
+      branch: r.ref.replace(/^refs\/heads\//i, ""),
+      commit: (r.commit || "").trim(),
+    }));
+
+  const pref = (preferredBranch || "").trim().toLowerCase();
+  if (pref) {
+    const exact = heads.find((h) => h.branch.toLowerCase() === pref);
+    if (exact) return exact.branch;
+  }
+  const withCommit = heads.find((h) => h.commit.length > 0);
+  if (withCommit) return withCommit.branch;
+  if (heads[0]) return heads[0].branch;
+  const trimmed = (preferredBranch || "").trim();
+  if (trimmed) return trimmed;
+  return "main";
+}
+
 // Create and sign a Nostr repository state event (kind 30618)
 // Per NIP-34: https://nips.nostr.com/34#repository-state-announcements
 // This contains repository refs, branches, and commits - required by ngit clients like gitworkshop.dev
@@ -549,7 +579,7 @@ export function createRepositoryStateEvent(
   repositoryName: string,
   refs: Array<{ ref: string; commit: string }>, // e.g., [{ ref: "refs/heads/main", commit: "abc123..." }]
   privateKey: string,
-  defaultBranchRef: string | null = null // Optional: default branch ref (e.g., "refs/heads/main") for HEAD tag
+  defaultBranchRef: string | null = null // Optional: preferred branch ref for HEAD (must match a ref when possible)
 ): any {
   const pubkey = getPublicKey(privateKey);
 
@@ -569,34 +599,15 @@ export function createRepositoryStateEvent(
     }
   });
 
-  // Add HEAD tag pointing to default branch (NIP-34 requirement)
-  // Format: ["HEAD", "ref: refs/heads/<branch-name>"]
-  // Use provided defaultBranchRef if available, otherwise extract from first refs/heads/ ref
-  let defaultBranchName: string | null = null;
-  if (
+  // HEAD tag must name a branch that exists in this state event's refs (when possible).
+  const preferredName =
     defaultBranchRef &&
     typeof defaultBranchRef === "string" &&
     defaultBranchRef.startsWith("refs/heads/")
-  ) {
-    defaultBranchName = defaultBranchRef.replace("refs/heads/", "");
-  } else if (refs.length > 0) {
-    // Fallback: use first refs/heads/ ref as default
-    const firstHeadRef = refs.find(
-      (r) =>
-        r.ref && typeof r.ref === "string" && r.ref.startsWith("refs/heads/")
-    );
-    if (firstHeadRef && firstHeadRef.ref) {
-      defaultBranchName = firstHeadRef.ref.replace("refs/heads/", "");
-    }
-  }
-
-  // HEAD tag is required per NIP-34 - always include it
-  if (defaultBranchName) {
-    tags.push(["HEAD", `ref: refs/heads/${defaultBranchName}`]);
-  } else {
-    // Last resort: use "main" as default (NIP-34 requires HEAD tag)
-    tags.push(["HEAD", "ref: refs/heads/main"]);
-  }
+      ? defaultBranchRef.replace(/^refs\/heads\//i, "")
+      : null;
+  const headBranch = resolveNip34HeadBranchName(refs, preferredName);
+  tags.push(["HEAD", `ref: refs/heads/${headBranch}`]);
 
   // State event content is empty per NIP-34 spec
   const content = "";

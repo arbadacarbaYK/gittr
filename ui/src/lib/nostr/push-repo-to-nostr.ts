@@ -20,6 +20,8 @@ import {
   KIND_REPOSITORY,
   KIND_REPOSITORY_NIP34,
   createRepositoryEvent,
+  createRepositoryStateEvent,
+  resolveNip34HeadBranchName,
 } from "./events";
 import {
   publishWithConfirmation,
@@ -2531,25 +2533,18 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         // Create unsigned state event
         // Per NIP-34: ref path is the tag name, commit-id is the tag value
         // Format: ["refs/heads/main", "commit-id"]
-        let defaultBranchName: string | null = null;
         const stateTags: string[][] = [["d", actualRepositoryName]];
 
         // Add refs as tags (ref path is tag name, commit is value)
         refs.forEach((r) => {
           if (r.ref && typeof r.ref === "string") {
             stateTags.push([r.ref, r.commit || ""]);
-            // Track default branch name for HEAD tag
-            if (r.ref.startsWith("refs/heads/") && !defaultBranchName) {
-              defaultBranchName = r.ref.replace("refs/heads/", "");
-            }
           }
         });
 
-        // Add HEAD tag pointing to default branch (NIP-34 requirement)
-        // Format: ["HEAD", "ref: refs/heads/<branch-name>"]
-        // Always use repo.defaultBranch as source of truth, not first ref encountered
-        const defaultBranch = repo.defaultBranch || "main";
-        const headTagValue = `ref: refs/heads/${defaultBranch}`;
+        // HEAD must match a refs/heads/* we publish (bridge may only have master/develop/etc.)
+        const headBranch = resolveNip34HeadBranchName(refs, repo.defaultBranch);
+        const headTagValue = `ref: refs/heads/${headBranch}`;
         stateTags.push(["HEAD", headTagValue]);
 
         // Log state event structure for debugging
@@ -2633,16 +2628,12 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           throw signError; // Re-throw if not a cancellation
         }
       } else if (privateKey) {
-        const { createRepositoryStateEvent } = await import("./events");
-        // Include all refs, even those without commits
-        // Pass default branch ref for HEAD tag (NIP-34 requirement)
-        const defaultBranch = repo.defaultBranch || "main";
-        const defaultBranchRef = `refs/heads/${defaultBranch}`;
+        const headBranch = resolveNip34HeadBranchName(refs, repo.defaultBranch);
         stateEvent = createRepositoryStateEvent(
           actualRepositoryName,
           refs,
           privateKey,
-          defaultBranchRef
+          `refs/heads/${headBranch}`
         );
       } else {
         throw new Error(

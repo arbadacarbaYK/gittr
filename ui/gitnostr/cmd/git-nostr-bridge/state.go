@@ -20,6 +20,51 @@ import (
 // so it can be reprocessed when the repository is eventually created.
 var ErrRepositoryNotExists = errors.New("repository does not exist yet")
 
+// headRefTargetExists returns true if ref exists in the bare repo (e.g. refs/heads/main).
+func headRefTargetExists(repoPath, ref string) bool {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return false
+	}
+	cmd := exec.Command("git", "--git-dir", repoPath, "show-ref", "--verify", "-q", ref)
+	return cmd.Run() == nil
+}
+
+// pickRecoverableHeadRef returns an existing refs/heads/* to use as HEAD when the
+// state event's HEAD target is missing (e.g. HEAD points at main but only master exists).
+func pickRecoverableHeadRef(
+	repoPath string,
+	headRef string,
+	refsToUpdate []struct {
+		ref    string
+		commit string
+	},
+) string {
+	headRef = strings.TrimSpace(headRef)
+	if headRefTargetExists(repoPath, headRef) {
+		return headRef
+	}
+	for _, r := range refsToUpdate {
+		if !strings.HasPrefix(r.ref, "refs/heads/") || strings.TrimSpace(r.commit) == "" {
+			continue
+		}
+		if headRefTargetExists(repoPath, r.ref) {
+			return r.ref
+		}
+	}
+	out, err := exec.Command("git", "--git-dir", repoPath, "for-each-ref", "--format=%(refname)", "refs/heads").Output()
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "refs/heads/") && headRefTargetExists(repoPath, line) {
+			return line
+		}
+	}
+	return ""
+}
+
 // handleRepositoryStateEvent processes NIP-34 state events (kind 30618)
 // These events contain refs and commits that need to be updated in the git repository
 func handleRepositoryStateEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) error {
@@ -195,13 +240,22 @@ func handleRepositoryStateEvent(event nostr.Event, db *sql.DB, cfg bridge.Config
 
 	// Update HEAD if specified
 	if headRef != "" {
-		cmd := exec.Command("git", "--git-dir", repoPath, "symbolic-ref", "HEAD", headRef)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Printf("⚠️ [Bridge] Failed to update HEAD to %s: %v\n", headRef, err)
-			log.Printf("🔍 [Bridge] Git output: %s\n", string(output))
+		resolved := pickRecoverableHeadRef(repoPath, headRef, refsToUpdate)
+		if resolved != "" && resolved != headRef {
+			log.Printf("💡 [Bridge] Adjusting HEAD from %s to existing ref %s\n", headRef, resolved)
+			headRef = resolved
+		}
+		if resolved == "" {
+			log.Printf("⚠️ [Bridge] Skipping HEAD update: no existing refs/heads/* matches state (requested %s)\n", headRef)
 		} else {
-			log.Printf("✅ [Bridge] Updated HEAD to %s\n", headRef)
+			cmd := exec.Command("git", "--git-dir", repoPath, "symbolic-ref", "HEAD", headRef)
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				log.Printf("⚠️ [Bridge] Failed to update HEAD to %s: %v\n", headRef, err)
+				log.Printf("🔍 [Bridge] Git output: %s\n", string(output))
+			} else {
+				log.Printf("✅ [Bridge] Updated HEAD to %s\n", headRef)
+			}
 		}
 	}
 
