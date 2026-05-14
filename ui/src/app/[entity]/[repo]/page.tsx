@@ -12710,43 +12710,44 @@ export default function RepoCodePage() {
       url.startsWith("nostr://")
     );
 
-    // Generate nostr:// URLs client-side (they're not stored in events per NIP-34 spec)
-    // Format: nostr://<author-name>@<relay-domain>/<repo-name>
-    // Only generate if repo is synced with relays (has repoData from Nostr)
+    // Sidebar should not imply every GRASP catalog host hosts this repo. NIP-34 stores real
+    // clone tags only; we may add a single nostr:// hint for gittr when the event already
+    // lists git.gittr.space (file fetch / multi-source still use repoData.clone unchanged).
+    const GITTR_GRASP_HOST = "git.gittr.space";
+    const cloneListMentionsGittr = uniqueCloneUrls.some((url) =>
+      url.toLowerCase().includes(GITTR_GRASP_HOST)
+    );
     const generatedNostrUrls: string[] = [];
-    if (repoData && ownerPubkeyForLink && decodedRepo) {
+    if (
+      repoData &&
+      ownerPubkeyForLink &&
+      decodedRepo &&
+      cloneListMentionsGittr &&
+      nostrCloneUrlsFromEvent.length === 0
+    ) {
       try {
-        // Get author name (first 12 chars of npub or entity)
-        let authorName = resolvedParams.entity;
+        let npubForNostr = "";
         if (ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink)) {
-          try {
-            const npub = nip19.npubEncode(ownerPubkeyForLink);
-            authorName = npub.substring(0, 12); // First 12 chars of npub
-          } catch {
-            authorName = ownerPubkeyForLink.substring(0, 12); // Fallback to first 12 chars of pubkey
-          }
+          npubForNostr = nip19.npubEncode(ownerPubkeyForLink);
         } else if (resolvedParams.entity.startsWith("npub")) {
-          authorName = resolvedParams.entity.substring(0, 12);
+          npubForNostr = resolvedParams.entity;
         }
-
-        // Known GRASP git servers that support nostr:// protocol
-        // Import from centralized list (synchronous require for useMemo)
-        const { KNOWN_GRASP_DOMAINS } = require("@/lib/utils/grasp-servers");
-        const knownGraspServers = Array.from(KNOWN_GRASP_DOMAINS);
-
-        // Generate nostr:// URL for each known GRASP server
-        knownGraspServers.forEach((server) => {
+        if (npubForNostr) {
           generatedNostrUrls.push(
-            `nostr://${authorName}@${server}/${decodedRepo}`
+            `nostr://${npubForNostr}@${GITTR_GRASP_HOST}/${decodedRepo}`
           );
-        });
+        }
       } catch (error) {
-        console.warn("Failed to generate nostr:// URLs:", error);
+        console.warn(
+          "Failed to build optional gittr nostr:// clone hint:",
+          error
+        );
       }
     }
 
-    // Combine event URLs (if any) with generated ones
-    const nostrCloneUrls = [...nostrCloneUrlsFromEvent, ...generatedNostrUrls];
+    const nostrCloneUrls = Array.from(
+      new Set([...nostrCloneUrlsFromEvent, ...generatedNostrUrls])
+    );
 
     return { httpCloneUrls, sshCloneUrls, nostrCloneUrls };
   }, [
@@ -15667,7 +15668,7 @@ export default function RepoCodePage() {
                 onClick={() => setCloneUrlsExpanded(!cloneUrlsExpanded)}
                 className="flex items-center justify-between w-full text-xs text-gray-400 hover:text-gray-300 mb-1"
               >
-                <span>Clone URLs (from NIP-34 event)</span>
+                <span>Clone URLs (from repo event)</span>
                 {cloneUrlsExpanded ? (
                   <ChevronUp className="h-3 w-3" />
                 ) : (
@@ -15704,6 +15705,12 @@ export default function RepoCodePage() {
                     <div className="space-y-2 rounded border border-purple-900/40 bg-purple-900/10 p-2">
                       <p className="text-xs text-purple-200">
                         nostr:// clone (requires git-remote-nostr)
+                      </p>
+                      <p className="text-[11px] text-purple-200/70 leading-snug">
+                        Listed nostr:// URLs come from the repository event. If
+                        the event already includes git.gittr.space, one matching
+                        nostr:// form may appear for git-remote-nostr; other
+                        hosts are not implied.
                       </p>
                       {nostrCloneUrls.map((url, idx) => {
                         const command = `git clone ${url}`;
