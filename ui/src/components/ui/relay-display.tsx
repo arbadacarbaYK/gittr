@@ -42,6 +42,7 @@ export function RelayDisplay({
   graspServers,
   userRelays = [],
   gitSourceStatuses = [],
+  cloneUrls = [],
   className = "",
 }: RelayDisplayProps) {
   const [graspExpanded, setGraspExpanded] = useState(false);
@@ -55,20 +56,33 @@ export function RelayDisplay({
     ...userRelays.filter((r) => !relays.includes(r)), // Add user relays not already in default list
   ];
 
-  // Extract Grasp servers from all relays (they're also Grasp servers)
-  // GRASP servers are BOTH Nostr relays (wss://) AND git servers (git:///http:///https://)
-  // NOTE: GRASP relays ARE also Nostr relays, so they appear in BOTH lists
+  const graspHttpsFromCloneUrls: string[] = [];
+  for (const url of cloneUrls) {
+    const u = String(url || "").trim();
+    if (
+      !u ||
+      (!u.startsWith("http://") && !u.startsWith("https://")) ||
+      u.includes("localhost") ||
+      u.includes("127.0.0.1")
+    ) {
+      continue;
+    }
+    if (!isGraspServer(u)) continue;
+    if (!graspHttpsFromCloneUrls.includes(u)) graspHttpsFromCloneUrls.push(u);
+  }
+
+  // GRASP-capable wss endpoints (same host often runs relay + git)
   const graspFromRelays = allRelays.filter(isGraspServer);
 
-  // Combine explicit grasp servers with those found in relays
-  const allGraspServers = [...(graspServers || []), ...graspFromRelays].filter(
-    (v, i, self) => self.indexOf(v) === i
-  ); // Remove duplicates
+  const allGraspServers = [
+    ...(graspServers || []),
+    ...graspHttpsFromCloneUrls,
+    ...graspFromRelays,
+  ].filter((v, i, self) => self.indexOf(v) === i);
 
-  // Show only NON-GRASP relays in the "Relays" section
-  // GRASP servers are already shown in the "Grasp Servers" section above
-  // This prevents duplicates and makes it clear: GRASP servers = dual purpose, regular relays = Nostr only
-  const regularRelays = allRelays.filter((r) => !graspFromRelays.includes(r));
+  // Full relay list from the repo announcement + connected relays (do not hide GRASP relays;
+  // they may be the only relays on the event, and users still need to see them).
+  const regularRelays = allRelays.filter((v, i, self) => self.indexOf(v) === i);
 
   // Get status icon and color for git sources
   const getGitSourceStatusIcon = (status: GitSourceStatus["status"]) => {

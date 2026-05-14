@@ -104,6 +104,10 @@ import {
 } from "@/lib/utils/git-source-fetcher";
 import { KNOWN_GRASP_DOMAINS } from "@/lib/utils/grasp-servers";
 import {
+  nip34TagValuesFromRow,
+  normalizeRelayWssUrl,
+} from "@/lib/utils/nip34-tag-values";
+import {
   normalizeGithubSourceUrl,
   pickHttpSourceUrl,
 } from "@/lib/utils/normalize-github-source-url";
@@ -4703,36 +4707,41 @@ export default function RepoCodePage() {
                       eventRepoData.repositoryName = tagValue;
                     else if (tagName === "description")
                       eventRepoData.description = tagValue;
-                    // GRASP protocol: Extract clone and relay tags
+                    // GRASP protocol: Extract clone and relay tags (multi-value rows per spec)
                     else if (tagName === "clone") {
-                      // CRITICAL: Filter out localhost URLs - they're not real git servers
-                      if (
-                        tagValue &&
-                        !tagValue.includes("localhost") &&
-                        !tagValue.includes("127.0.0.1")
-                      ) {
-                        if (!eventRepoData.clone) eventRepoData.clone = [];
-                        if (!eventRepoData.clone.includes(tagValue)) {
-                          eventRepoData.clone.push(tagValue);
-                          console.log(
-                            `✅ [File Fetch] Added clone URL from event tag: ${tagValue} (total: ${eventRepoData.clone.length})`
-                          );
+                      for (const v of nip34TagValuesFromRow(tag)) {
+                        if (
+                          v &&
+                          !v.includes("localhost") &&
+                          !v.includes("127.0.0.1")
+                        ) {
+                          if (!eventRepoData.clone) eventRepoData.clone = [];
+                          if (!eventRepoData.clone.includes(v)) {
+                            eventRepoData.clone.push(v);
+                            console.log(
+                              `✅ [File Fetch] Added clone URL from event tag: ${v} (total: ${eventRepoData.clone.length})`
+                            );
+                          }
                         }
                       }
                     } else if (tagName === "relay" || tagName === "relays") {
                       if (!eventRepoData.relays) eventRepoData.relays = [];
-                      // CRITICAL: Handle comma-separated relay list per NIP-34 spec
-                      // Format: ["relays", "wss://relay1.com,wss://relay2.com"]
-                      if (tagValue) {
-                        const relayUrls = tagValue
-                          .split(",")
-                          .map((r: string) => r.trim())
-                          .filter((r: string) => r.length > 0);
-                        relayUrls.forEach((relayUrl: string) => {
-                          if (!eventRepoData.relays.includes(relayUrl)) {
-                            eventRepoData.relays.push(relayUrl);
+                      for (const raw of nip34TagValuesFromRow(tag)) {
+                        const parts = raw.includes(",")
+                          ? raw
+                              .split(",")
+                              .map((r: string) => r.trim())
+                              .filter((r: string) => r.length > 0)
+                          : [raw];
+                        for (const piece of parts) {
+                          const normalized = normalizeRelayWssUrl(piece);
+                          if (
+                            normalized &&
+                            !eventRepoData.relays.includes(normalized)
+                          ) {
+                            eventRepoData.relays.push(normalized);
                           }
-                        });
+                        }
                       }
                     }
                     // Extract sourceUrl from "source" tag (used in push-repo-to-nostr.ts)
@@ -4743,42 +4752,44 @@ export default function RepoCodePage() {
                     else if (tagName === "forkedFrom") {
                       eventRepoData.forkedFrom = tagValue;
                     }
-                    // Extract maintainers from "maintainers" tags (NIP-34)
-                    else if (tagName === "maintainers" && tagValue) {
+                    // Extract maintainers from "maintainers" tags (multi-value rows)
+                    else if (tagName === "maintainers") {
                       if (!eventRepoData.maintainers)
                         eventRepoData.maintainers = [];
-                      // Handle both hex and npub formats
-                      let normalizedPubkey = tagValue;
-                      try {
-                        if (tagValue.startsWith("npub")) {
-                          const decoded = nip19.decode(tagValue);
-                          if (
-                            decoded.type === "npub" &&
-                            /^[0-9a-f]{64}$/i.test(decoded.data as string)
-                          ) {
-                            normalizedPubkey = decoded.data as string;
+                      for (const tagValue of nip34TagValuesFromRow(tag)) {
+                        if (!tagValue) continue;
+                        let normalizedPubkey = tagValue;
+                        try {
+                          if (tagValue.startsWith("npub")) {
+                            const decoded = nip19.decode(tagValue);
+                            if (
+                              decoded.type === "npub" &&
+                              /^[0-9a-f]{64}$/i.test(decoded.data as string)
+                            ) {
+                              normalizedPubkey = decoded.data as string;
+                            }
+                          } else if (/^[0-9a-f]{64}$/i.test(tagValue)) {
+                            normalizedPubkey = tagValue.toLowerCase();
                           }
-                        } else if (/^[0-9a-f]{64}$/i.test(tagValue)) {
-                          normalizedPubkey = tagValue.toLowerCase();
-                        }
-                        // Only add if valid hex pubkey
-                        if (
-                          /^[0-9a-f]{64}$/i.test(normalizedPubkey) &&
-                          !eventRepoData.maintainers.includes(normalizedPubkey)
-                        ) {
-                          eventRepoData.maintainers.push(normalizedPubkey);
-                        }
-                      } catch (e) {
-                        // If decoding fails, try to use as hex if valid
-                        if (
-                          /^[0-9a-f]{64}$/i.test(tagValue) &&
-                          !eventRepoData.maintainers.includes(
-                            tagValue.toLowerCase()
-                          )
-                        ) {
-                          eventRepoData.maintainers.push(
-                            tagValue.toLowerCase()
-                          );
+                          if (
+                            /^[0-9a-f]{64}$/i.test(normalizedPubkey) &&
+                            !eventRepoData.maintainers.includes(
+                              normalizedPubkey
+                            )
+                          ) {
+                            eventRepoData.maintainers.push(normalizedPubkey);
+                          }
+                        } catch (e) {
+                          if (
+                            /^[0-9a-f]{64}$/i.test(tagValue) &&
+                            !eventRepoData.maintainers.includes(
+                              tagValue.toLowerCase()
+                            )
+                          ) {
+                            eventRepoData.maintainers.push(
+                              tagValue.toLowerCase()
+                            );
+                          }
                         }
                       }
                     }
@@ -4933,49 +4944,35 @@ export default function RepoCodePage() {
                     if (!Array.isArray(tag) || tag.length < 2) continue;
                     const tagName = tag[0];
                     const tagValue = tag[1];
-                    // GRASP protocol: Extract clone and relay tags
+                    // GRASP protocol: Extract clone and relay tags (multi-value rows per spec)
                     if (tagName === "clone") {
-                      // CRITICAL: Filter out localhost URLs - they're not real git servers
-                      if (
-                        tagValue &&
-                        !tagValue.includes("localhost") &&
-                        !tagValue.includes("127.0.0.1")
-                      ) {
-                        if (!eventRepoData.clone) eventRepoData.clone = [];
-                        eventRepoData.clone.push(tagValue);
+                      for (const v of nip34TagValuesFromRow(tag)) {
+                        if (
+                          v &&
+                          !v.includes("localhost") &&
+                          !v.includes("127.0.0.1")
+                        ) {
+                          if (!eventRepoData.clone) eventRepoData.clone = [];
+                          if (!eventRepoData.clone.includes(v)) {
+                            eventRepoData.clone.push(v);
+                          }
+                        }
                       }
                     } else if (tagName === "relay" || tagName === "relays") {
                       if (!eventRepoData.relays) eventRepoData.relays = [];
-                      // CRITICAL: Handle both formats per NIP-34 spec:
-                      // 1. Separate tags: ["relays", "wss://relay1.com"], ["relays", "wss://relay2.com"]
-                      // 2. Comma-separated (backward compat): ["relays", "wss://relay1.com,wss://relay2.com"]
-                      if (tagValue) {
-                        // Check if value contains commas (comma-separated format)
-                        if (tagValue.includes(",")) {
-                          // Comma-separated format - split and add each
-                          const relayUrls = tagValue
-                            .split(",")
-                            .map((r: string) => r.trim())
-                            .filter((r: string) => r.length > 0);
-                          relayUrls.forEach((relayUrl: string) => {
-                            // Ensure wss:// prefix
-                            const normalized =
-                              relayUrl.startsWith("wss://") ||
-                              relayUrl.startsWith("ws://")
-                                ? relayUrl
-                                : `wss://${relayUrl}`;
-                            if (!eventRepoData.relays.includes(normalized)) {
-                              eventRepoData.relays.push(normalized);
-                            }
-                          });
-                        } else {
-                          // Single relay per tag - add directly
-                          const normalized =
-                            tagValue.startsWith("wss://") ||
-                            tagValue.startsWith("ws://")
-                              ? tagValue
-                              : `wss://${tagValue}`;
-                          if (!eventRepoData.relays.includes(normalized)) {
+                      for (const raw of nip34TagValuesFromRow(tag)) {
+                        const parts = raw.includes(",")
+                          ? raw
+                              .split(",")
+                              .map((r: string) => r.trim())
+                              .filter((r: string) => r.length > 0)
+                          : [raw];
+                        for (const piece of parts) {
+                          const normalized = normalizeRelayWssUrl(piece);
+                          if (
+                            normalized &&
+                            !eventRepoData.relays.includes(normalized)
+                          ) {
                             eventRepoData.relays.push(normalized);
                           }
                         }
@@ -4989,42 +4986,44 @@ export default function RepoCodePage() {
                     else if (tagName === "forkedFrom") {
                       eventRepoData.forkedFrom = tagValue;
                     }
-                    // Extract maintainers from "maintainers" tags (NIP-34)
-                    else if (tagName === "maintainers" && tagValue) {
+                    // Extract maintainers from "maintainers" tags (multi-value rows)
+                    else if (tagName === "maintainers") {
                       if (!eventRepoData.maintainers)
                         eventRepoData.maintainers = [];
-                      // Handle both hex and npub formats
-                      let normalizedPubkey = tagValue;
-                      try {
-                        if (tagValue.startsWith("npub")) {
-                          const decoded = nip19.decode(tagValue);
-                          if (
-                            decoded.type === "npub" &&
-                            /^[0-9a-f]{64}$/i.test(decoded.data as string)
-                          ) {
-                            normalizedPubkey = decoded.data as string;
+                      for (const tagValue of nip34TagValuesFromRow(tag)) {
+                        if (!tagValue) continue;
+                        let normalizedPubkey = tagValue;
+                        try {
+                          if (tagValue.startsWith("npub")) {
+                            const decoded = nip19.decode(tagValue);
+                            if (
+                              decoded.type === "npub" &&
+                              /^[0-9a-f]{64}$/i.test(decoded.data as string)
+                            ) {
+                              normalizedPubkey = decoded.data as string;
+                            }
+                          } else if (/^[0-9a-f]{64}$/i.test(tagValue)) {
+                            normalizedPubkey = tagValue.toLowerCase();
                           }
-                        } else if (/^[0-9a-f]{64}$/i.test(tagValue)) {
-                          normalizedPubkey = tagValue.toLowerCase();
-                        }
-                        // Only add if valid hex pubkey
-                        if (
-                          /^[0-9a-f]{64}$/i.test(normalizedPubkey) &&
-                          !eventRepoData.maintainers.includes(normalizedPubkey)
-                        ) {
-                          eventRepoData.maintainers.push(normalizedPubkey);
-                        }
-                      } catch (e) {
-                        // If decoding fails, try to use as hex if valid
-                        if (
-                          /^[0-9a-f]{64}$/i.test(tagValue) &&
-                          !eventRepoData.maintainers.includes(
-                            tagValue.toLowerCase()
-                          )
-                        ) {
-                          eventRepoData.maintainers.push(
-                            tagValue.toLowerCase()
-                          );
+                          if (
+                            /^[0-9a-f]{64}$/i.test(normalizedPubkey) &&
+                            !eventRepoData.maintainers.includes(
+                              normalizedPubkey
+                            )
+                          ) {
+                            eventRepoData.maintainers.push(normalizedPubkey);
+                          }
+                        } catch (e) {
+                          if (
+                            /^[0-9a-f]{64}$/i.test(tagValue) &&
+                            !eventRepoData.maintainers.includes(
+                              tagValue.toLowerCase()
+                            )
+                          ) {
+                            eventRepoData.maintainers.push(
+                              tagValue.toLowerCase()
+                            );
+                          }
                         }
                       }
                     }
@@ -12655,7 +12654,15 @@ export default function RepoCodePage() {
     let rawCloneList = Array.isArray((repoData as any)?.clone)
       ? ([...(repoData as any)?.clone] as string[])
       : [];
-    if (typeof window !== "undefined" && resolvedParams.entity && decodedRepo) {
+    const eventCloneFromRepo = rawCloneList.length > 0;
+    // When the live NIP-34 announcement lists clone URLs, do not merge stale
+    // clone[] from localStorage (it often still holds an older expanded mirror list).
+    if (
+      typeof window !== "undefined" &&
+      resolvedParams.entity &&
+      decodedRepo &&
+      !eventCloneFromRepo
+    ) {
       try {
         const repos = loadStoredRepos();
         const stored = findRepoByEntityAndName(
@@ -12956,9 +12963,9 @@ export default function RepoCodePage() {
   const relayDisplayRelays = useMemo(() => {
     const repoRelays = (repoData as any)?.relays || [];
     if (Array.isArray(repoRelays) && repoRelays.length > 0) {
-      return [...new Set(repoRelays.map((r: string) => String(r).trim()))].filter(
-        Boolean
-      );
+      return [
+        ...new Set(repoRelays.map((r: string) => String(r).trim())),
+      ].filter(Boolean);
     }
     return [...new Set(defaultRelays || [])];
   }, [defaultRelays, (repoData as any)?.relays]);
@@ -17281,6 +17288,8 @@ export default function RepoCodePage() {
                                     if (
                                       latestEvent.kind === KIND_REPOSITORY_NIP34
                                     ) {
+                                      eventRepoData.clone = [];
+                                      eventRepoData.relays = [];
                                       // Parse NIP-34 format
                                       if (
                                         latestEvent.tags &&
@@ -17306,13 +17315,52 @@ export default function RepoCodePage() {
                                           else if (tagName === "description")
                                             eventRepoData.description =
                                               tagValue;
-                                          else if (
-                                            tagName === "clone" &&
-                                            tagValue
+                                          else if (tagName === "clone") {
+                                            for (const v of nip34TagValuesFromRow(
+                                              tag
+                                            )) {
+                                              if (
+                                                v &&
+                                                !v.includes("localhost") &&
+                                                !v.includes("127.0.0.1") &&
+                                                !eventRepoData.clone.includes(v)
+                                              ) {
+                                                eventRepoData.clone.push(v);
+                                              }
+                                            }
+                                          } else if (
+                                            tagName === "relay" ||
+                                            tagName === "relays"
                                           ) {
-                                            if (!eventRepoData.clone)
-                                              eventRepoData.clone = [];
-                                            eventRepoData.clone.push(tagValue);
+                                            for (const raw of nip34TagValuesFromRow(
+                                              tag
+                                            )) {
+                                              const parts = raw.includes(",")
+                                                ? raw
+                                                    .split(",")
+                                                    .map((r: string) =>
+                                                      r.trim()
+                                                    )
+                                                    .filter(
+                                                      (r: string) =>
+                                                        r.length > 0
+                                                    )
+                                                : [raw];
+                                              for (const piece of parts) {
+                                                const normalized =
+                                                  normalizeRelayWssUrl(piece);
+                                                if (
+                                                  normalized &&
+                                                  !eventRepoData.relays.includes(
+                                                    normalized
+                                                  )
+                                                ) {
+                                                  eventRepoData.relays.push(
+                                                    normalized
+                                                  );
+                                                }
+                                              }
+                                            }
                                           }
                                           // NOTE: public-read/public-write tags are NOT in NIP-34 spec
                                           // Privacy is determined by maintainers list and bridge access control
@@ -17395,7 +17443,16 @@ export default function RepoCodePage() {
                                             eventRepoData.branches || [],
                                           contributors:
                                             eventRepoData.contributors || [],
-                                          clone: eventRepoData.clone || [],
+                                          clone: Array.isArray(
+                                            eventRepoData.clone
+                                          )
+                                            ? eventRepoData.clone
+                                            : [],
+                                          relays: Array.isArray(
+                                            eventRepoData.relays
+                                          )
+                                            ? eventRepoData.relays
+                                            : [],
                                           // CRITICAL: Preserve privacy status from NIP-34 tags
                                           publicRead:
                                             eventRepoData.publicRead !==
@@ -17447,9 +17504,16 @@ export default function RepoCodePage() {
                                         description:
                                           eventRepoData.description ||
                                           existingRepo.description,
-                                        clone:
-                                          eventRepoData.clone ||
-                                          existingRepo.clone,
+                                        clone: Array.isArray(
+                                          eventRepoData.clone
+                                        )
+                                          ? eventRepoData.clone
+                                          : existingRepo.clone ?? [],
+                                        relays: Array.isArray(
+                                          eventRepoData.relays
+                                        )
+                                          ? eventRepoData.relays
+                                          : existingRepoAny.relays ?? [],
                                         // CRITICAL: Preserve privacy status from NIP-34 tags
                                         publicRead:
                                           eventRepoData.publicRead !== undefined
@@ -17538,7 +17602,16 @@ export default function RepoCodePage() {
                                         branches: eventRepoData.branches || [],
                                         contributors:
                                           eventRepoData.contributors || [],
-                                        clone: eventRepoData.clone || [],
+                                        clone: Array.isArray(
+                                          eventRepoData.clone
+                                        )
+                                          ? eventRepoData.clone
+                                          : [],
+                                        relays: Array.isArray(
+                                          eventRepoData.relays
+                                        )
+                                          ? eventRepoData.relays
+                                          : [],
                                         // CRITICAL: Preserve privacy status from NIP-34 tags
                                         publicRead:
                                           eventRepoData.publicRead !== undefined
@@ -18622,6 +18695,7 @@ export default function RepoCodePage() {
             graspServers={relayDisplayGraspServers}
             userRelays={relayDisplayUserRelays}
             gitSourceStatuses={relayDisplayGitSourceStatuses}
+            cloneUrls={httpCloneUrls}
           />
 
           {/* Display last successful Nostr event ID (if available) */}
