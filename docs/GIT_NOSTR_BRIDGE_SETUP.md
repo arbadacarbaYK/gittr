@@ -2,7 +2,7 @@
 
 The git-nostr-bridge is **essential** for Git operations (`git clone`, `git push`, `git pull`) to work with gittr.space repositories. This service watches Nostr for SSH key and repository events and manages Git repositories on the server.
 
-**Standalone `gitnostr` repo (GitHub):** The bridge source that ships with gittr lives under **`ngit/ui/gitnostr/`** inside this monorepo. The separate fork at **`arbadacarbaYK/gitnostr`** should be refreshed by copying those files into the fork (e.g. `rsync` from `ui/gitnostr/` **without** `--delete`, so `.git/` and extra `docs/` are preserved—**never** `rsync --delete` from the embedded tree onto a full clone or you will remove `.git`).
+**Standalone `gitnostr` repo (GitHub):** The bridge source that ships with gittr lives under **`ui/gitnostr/`** in this monorepo (from the repo root). The separate fork at **`arbadacarbaYK/gitnostr`** should be refreshed by copying those files into the fork (e.g. `rsync` from `ui/gitnostr/` **without** `--delete`, so `.git/` and extra `docs/` are preserved—**never** `rsync --delete` from the embedded tree onto a full clone or you will remove `.git`).
 
 ## ⚠️ Important Security Warning
 
