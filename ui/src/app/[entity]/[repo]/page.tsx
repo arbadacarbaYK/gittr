@@ -2915,6 +2915,20 @@ export default function RepoCodePage() {
             `✅ [Repo Update] Reloaded ${filesArray.length} files after update event`
           );
         }
+
+        try {
+          const storageRepo = resolveRepoStorageAlias(
+            resolvedParams.entity,
+            resolvedParams.repo
+          );
+          const merged = {
+            ...loadRepoOverrides(resolvedParams.entity, storageRepo),
+            ...loadRepoOverrides(resolvedParams.entity, resolvedParams.repo),
+          };
+          setOverrides(merged);
+        } catch {
+          /* ignore */
+        }
       } catch (error) {
         console.error("Error handling repo update:", error);
       }
@@ -9366,6 +9380,29 @@ export default function RepoCodePage() {
     setLoadingFolderReadme(true);
     const loadReadme = async () => {
       try {
+        // Local merge/edits live in gittr_overrides — same source as `openFile`. Prefer
+        // these before bridge/GitHub so a successful bridge response cannot mask merged README.
+        const storageRepoForReadme = resolveRepoStorageAlias(
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        const mergedOverrides = {
+          ...loadRepoOverrides(resolvedParams.entity, storageRepoForReadme),
+          ...loadRepoOverrides(resolvedParams.entity, resolvedParams.repo),
+        };
+        const readmePathKey = readmeFile.path;
+        if (
+          Object.prototype.hasOwnProperty.call(
+            mergedOverrides,
+            readmePathKey
+          ) &&
+          typeof mergedOverrides[readmePathKey] === "string"
+        ) {
+          setCurrentFolderReadme(mergedOverrides[readmePathKey]);
+          setLoadingFolderReadme(false);
+          return;
+        }
+
         const branch = selectedBranch || repoData?.defaultBranch || "main";
         const sourceUrl = repoData?.sourceUrl;
 

@@ -18,6 +18,10 @@ export function findIssueRowIndexByRouteParam(
   return -1;
 }
 
+/** PR list rows use the same id routing rules as issues (hex id, `number`, or 1-based index). */
+export const findPullRequestRowIndexByRouteParam =
+  findIssueRowIndexByRouteParam;
+
 /** Normalize stored issue status for list filters and counts (open vs closed). */
 export function normalizeIssueListStatus(
   s: string | undefined

@@ -63,6 +63,7 @@ import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
+import { findPullRequestRowIndexByRouteParam } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import {
@@ -299,11 +300,8 @@ export default function PRDetailPage({
         resolvedParams.repo
       );
       const prs = JSON.parse(localStorage.getItem(key) || "[]") as any[];
-      const prData = prs.find(
-        (p: any) =>
-          p.id === resolvedParams.id ||
-          String(prs.indexOf(p) + 1) === resolvedParams.id
-      );
+      const prIdx = findPullRequestRowIndexByRouteParam(prs, resolvedParams.id);
+      const prData = prIdx >= 0 ? prs[prIdx] : undefined;
 
       if (prData) {
         setPR({
@@ -496,6 +494,7 @@ export default function PRDetailPage({
         alert(
           "Push payment authorized and merged repository state was pushed."
         );
+        window.dispatchEvent(new Event("gittr:repo-updated"));
         router.refresh();
       } else {
         alert(
@@ -872,25 +871,31 @@ export default function PRDetailPage({
         resolvedParams.repo
       );
       const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
-      const updatedPRs = prs.map((p: any) =>
-        p.id === pr.id
-          ? {
-              ...p,
-              status: "merged",
-              mergedAt: Date.now(),
-              mergedBy: currentUserPubkey || "",
-              mergeCommit: commitId,
-            }
-          : p
+      const prRowIdx = findPullRequestRowIndexByRouteParam(
+        prs,
+        resolvedParams.id
       );
-      localStorage.setItem(prsKey, JSON.stringify(updatedPRs));
-      setPR({
-        ...pr,
-        status: "merged",
+      const mergeMeta = {
+        status: "merged" as const,
         mergedAt: Date.now(),
         mergedBy: currentUserPubkey || "",
         mergeCommit: commitId,
+      };
+      let updatedPRs: any[];
+      if (prRowIdx >= 0) {
+        updatedPRs = [...prs];
+        updatedPRs[prRowIdx] = { ...prs[prRowIdx], ...mergeMeta };
+      } else {
+        updatedPRs = prs.map((p: any) =>
+          pr.id != null && p.id === pr.id ? { ...p, ...mergeMeta } : p
+        );
+      }
+      localStorage.setItem(prsKey, JSON.stringify(updatedPRs));
+      setPR({
+        ...pr,
+        ...mergeMeta,
       });
+      window.dispatchEvent(new CustomEvent("gittr:pr-updated"));
 
       // 3a. Create and publish NIP-34 status event (kind 1631: Applied/Merged)
       // Fall back to PR id when it is itself a valid event id.
@@ -1464,6 +1469,10 @@ export default function PRDetailPage({
               repoStatePushed = !!pushResult.success;
               if (!pushResult.success) {
                 repoStatePushError = pushResult.error || "unknown push failure";
+              } else {
+                // Code tab README/tree read bridge first; merged bytes also live in overrides.
+                // Re-notify repo page so files + override state reload after Nostr push completes.
+                window.dispatchEvent(new Event("gittr:repo-updated"));
               }
             }
           }

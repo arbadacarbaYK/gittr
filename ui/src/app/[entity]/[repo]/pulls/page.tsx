@@ -69,6 +69,7 @@ export default function RepoPullsPage({
 }) {
   const resolvedParams = use(params);
   const [mounted, setMounted] = useState(false);
+  const [prListRev, setPrListRev] = useState(0);
   const [issueStatus, setIssueStatus] = useState<"open" | "closed">("open");
   const [search, setSearch] = useState<string>(`is:open is:pr`);
   const [issues, setIssues] = useState<IPullsData[]>([]);
@@ -79,6 +80,12 @@ export default function RepoPullsPage({
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const bump = () => setPrListRev((n) => n + 1);
+    window.addEventListener("gittr:pr-updated", bump);
+    return () => window.removeEventListener("gittr:pr-updated", bump);
   }, []);
 
   useEffect(() => {
@@ -155,7 +162,13 @@ export default function RepoPullsPage({
       setIssues([]);
       setAllPRs([]);
     }
-  }, [resolvedParams?.entity, resolvedParams?.repo, issueStatus, mounted]);
+  }, [
+    resolvedParams?.entity,
+    resolvedParams?.repo,
+    issueStatus,
+    mounted,
+    prListRev,
+  ]);
 
   // Subscribe to PRs from Nostr relays for this repo
   useEffect(() => {
