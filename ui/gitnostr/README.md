@@ -8,14 +8,7 @@ A proof of concept integration of git and nostr providing
 
 This will hopefully form part of a solution for creating a decentralized version of the github/gitlab experience.
 
-## This fork vs **ngit** (separate projects)
-
-**ngit** is its own project (different repositories, history, and architecture). **This repository** is the gittr-maintained **gitnostr** fork: **git-nostr-bridge**, **git-nostr-ssh**, and SQLite caching, extended for gittr (NIP-34 repo state on the bridge, push paywall grants in SQLite, and related behavior). Use this fork for gittr-style servers; follow **ngit** only if you are standardizing on that stack—the two are not interchangeable.
-
-| | This **gitnostr** fork | **ngit** |
-| --- | --- | --- |
-| What it is | Go bridge + SSH helper + DB; sits behind a web UI or other client | Full project as defined in the **ngit** repositories |
-| Typical pairing | **gittr** embeds it under `ui/gitnostr/` and mirrors this repo for standalone bridge installs | Consumed on its own release / layout |
+**Scope:** This tree is the **gittr**-maintained fork of [spearson78/gitnostr](https://github.com/spearson78/gitnostr): **git-nostr-bridge**, **git-nostr-ssh**, and SQLite caching, including NIP-34 repo state on the bridge and push paywall grants in SQLite. It lives inside the gittr monorepo at `ui/gitnostr/` and is mirrored for standalone bridge installs.
 
 ## Documentation
 

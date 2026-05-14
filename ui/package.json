@@ -40,7 +40,6 @@
     "react-dom": "18.2.0",
     "react-hook-form": "^7.43.5",
     "react-markdown": "^10.1.0",
-    "react-qrbtf": "^1.2.1",
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^1.10.0",
