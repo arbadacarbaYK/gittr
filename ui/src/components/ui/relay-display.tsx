@@ -74,11 +74,41 @@ export function RelayDisplay({
   // GRASP-capable wss endpoints (same host often runs relay + git)
   const graspFromRelays = allRelays.filter(isGraspServer);
 
-  const allGraspServers = [
-    ...(graspServers || []),
-    ...graspHttpsFromCloneUrls,
-    ...graspFromRelays,
-  ].filter((v, i, self) => self.indexOf(v) === i);
+  /** Same GRASP host is often listed twice: full https clone URL + wss relay URL — dedupe by host. */
+  const graspCanonicalHost = (url: string): string => {
+    let rest = String(url || "").trim();
+    if (!rest) return "";
+    if (/^wss?:\/\//i.test(rest)) rest = rest.replace(/^wss?:\/\//i, "");
+    else if (/^https?:\/\//i.test(rest))
+      rest = rest.replace(/^https?:\/\//i, "");
+    else if (rest.startsWith("git@")) rest = rest.slice(4);
+    return rest.split("/")[0].split(":")[0].toLowerCase();
+  };
+  const graspRepresentativeScore = (u: string): number => {
+    if (/^https:\/\//i.test(u) && /\/[^/]+\//.test(u)) return 4;
+    if (/^http:\/\//i.test(u) && /\/[^/]+\//.test(u)) return 3;
+    if (/^https:\/\//i.test(u)) return 2;
+    if (/^wss?:\/\//i.test(u)) return 1;
+    return 0;
+  };
+  const graspByHost = new Map<string, string>();
+  const addGraspCandidate = (u: string) => {
+    const t = String(u || "").trim();
+    if (!t || !isGraspServer(t)) return;
+    const host = graspCanonicalHost(t);
+    if (!host) return;
+    const prev = graspByHost.get(host);
+    if (!prev || graspRepresentativeScore(t) > graspRepresentativeScore(prev)) {
+      graspByHost.set(host, t);
+    }
+  };
+  for (const u of graspServers || []) addGraspCandidate(u);
+  for (const u of graspHttpsFromCloneUrls) addGraspCandidate(u);
+  for (const u of graspFromRelays) addGraspCandidate(u);
+
+  const allGraspServers = Array.from(graspByHost.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, url]) => url);
 
   // Full relay list from the repo announcement + connected relays (do not hide GRASP relays;
   // they may be the only relays on the event, and users still need to see them).
@@ -195,15 +225,11 @@ export function RelayDisplay({
           </button>
           {graspExpanded && (
             <div className="space-y-1 ml-6">
-              {allGraspServers.map((server, idx) => {
-                // Extract domain from URL
-                const domain = server
-                  .replace(/^wss?:\/\//, "")
-                  .replace(/^https?:\/\//, "")
-                  .split("/")[0];
+              {allGraspServers.map((server) => {
+                const domain = graspCanonicalHost(server);
                 return (
                   <a
-                    key={idx}
+                    key={domain}
                     href={
                       server.startsWith("http") ? server : `https://${domain}`
                     }
