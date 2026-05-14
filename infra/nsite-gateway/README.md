@@ -29,8 +29,8 @@ Runs **[hzrd149/nsite-gateway](https://github.com/hzrd149/nsite-gateway)** in Do
    `sudo nginx -t && sudo systemctl reload nginx`
 
 5. If `PUBLIC_DOMAIN` was still localhost, edit on server:  
-   `sudo nano /opt/ngit/infra/nsite-gateway/.env` → set `PUBLIC_DOMAIN=https://pages.gittr.space`, then  
-   `cd /opt/ngit/infra/nsite-gateway && docker compose up -d`
+   `sudo nano /opt/gittr/infra/nsite-gateway/.env` → set `PUBLIC_DOMAIN=https://pages.gittr.space`, then  
+   `cd /opt/gittr/infra/nsite-gateway && docker compose up -d`
 
 Whenever gateway-related files in this repo change, run **`../../scripts/deploy-nsite-gateway.sh`** from your machine (see that script for required SSH arguments) so production picks up **`infra/gittr-nsite-gateway`** and the compose override.
 

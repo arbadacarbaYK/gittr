@@ -277,10 +277,10 @@ nano ~/Library/LaunchAgents/com.gitnostr.bridge.plist
     <string>com.gitnostr.bridge</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/home/git-nostr/ngit/ui/gitnostr/bin/git-nostr-bridge</string>
+        <string>/home/git-nostr/gittr/ui/gitnostr/bin/git-nostr-bridge</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/home/git-nostr/ngit/ui/gitnostr</string>
+    <string>/home/git-nostr/gittr/ui/gitnostr</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
