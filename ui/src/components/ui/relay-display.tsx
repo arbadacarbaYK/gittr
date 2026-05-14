@@ -82,7 +82,8 @@ export function RelayDisplay({
     else if (/^https?:\/\//i.test(rest))
       rest = rest.replace(/^https?:\/\//i, "");
     else if (rest.startsWith("git@")) rest = rest.slice(4);
-    return rest.split("/")[0].split(":")[0].toLowerCase();
+    const hostPart = rest.split("/")[0] ?? "";
+    return (hostPart.split(":")[0] ?? "").toLowerCase();
   };
   const graspRepresentativeScore = (u: string): number => {
     if (/^https:\/\//i.test(u) && /\/[^/]+\//.test(u)) return 4;
