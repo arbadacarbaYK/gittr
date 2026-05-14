@@ -127,9 +127,16 @@ export interface FetchStatus {
   source: GitSource;
   status: "pending" | "fetching" | "success" | "failed";
   files?: Array<{ type: string; path: string; size?: number }>;
+  /** Ref/branch used to fetch `files` when it differs from the requested branch (e.g. GitHub default is gh-pages). */
+  resolvedBranch?: string;
   error?: string;
   fetchedAt?: number;
 }
+
+export type GitSourceFilesResult = {
+  files: Array<{ type: string; path: string; size?: number }>;
+  resolvedBranch?: string;
+};
 
 /**
  * Parse a clone URL and determine its source type
@@ -416,7 +423,7 @@ async function fetchFromGitHub(
   owner: string,
   repo: string,
   branch = "main"
-): Promise<Array<{ type: string; path: string; size?: number }> | null> {
+): Promise<GitSourceFilesResult | null> {
   try {
     // CRITICAL: First get the default branch from repo info
     // This ensures we use the correct branch (not always "main" - could be "master" or something else)
@@ -669,7 +676,10 @@ async function fetchFromGitHub(
       path,
     }));
 
-    return [...allDirEntries, ...files];
+    return {
+      files: [...allDirEntries, ...files],
+      resolvedBranch: successfulBranch,
+    };
   } catch (error: any) {
     console.error("❌ [Git Source] GitHub fetch error:", error);
     return null;
@@ -683,7 +693,7 @@ async function fetchFromCodeberg(
   owner: string,
   repo: string,
   branch = "main"
-): Promise<Array<{ type: string; path: string; size?: number }> | null> {
+): Promise<GitSourceFilesResult | null> {
   try {
     // CRITICAL: First get the default branch from repo info
     let defaultBranch: string | null = null;
@@ -915,7 +925,10 @@ async function fetchFromCodeberg(
       path,
     }));
 
-    return [...allDirEntries, ...files];
+    return {
+      files: [...allDirEntries, ...files],
+      resolvedBranch: successfulBranch,
+    };
   } catch (error: any) {
     console.error("❌ [Git Source] Codeberg fetch error:", error);
     return null;
@@ -929,7 +942,7 @@ async function fetchFromGitLab(
   owner: string,
   repo: string,
   branch = "main"
-): Promise<Array<{ type: string; path: string; size?: number }> | null> {
+): Promise<GitSourceFilesResult | null> {
   try {
     // CRITICAL: First get the default branch from repo info
     let defaultBranch: string | null = null;
@@ -1039,7 +1052,10 @@ async function fetchFromGitLab(
             .filter((n: any) => n.type === "tree")
             .map((n: any) => ({ type: "dir", path: n.path }));
 
-          return [...dirs, ...files];
+          return {
+            files: [...dirs, ...files],
+            resolvedBranch: branchToTry,
+          };
         }
       } catch (branchError) {
         console.warn(
@@ -1444,7 +1460,7 @@ export async function fetchFilesFromSource(
   source: GitSource,
   branch = "main",
   eventPublisherPubkey?: string
-): Promise<Array<{ type: string; path: string; size?: number }> | null> {
+): Promise<GitSourceFilesResult | null> {
   console.log(
     `🔍 [Git Source] Fetching from ${source.type}: ${source.displayName}`,
     {
@@ -1474,19 +1490,21 @@ export async function fetchFilesFromSource(
 
     case "nostr-git":
       if (source.npub && source.repo) {
-        return await fetchFromNostrGit(
+        const files = await fetchFromNostrGit(
           source.npub,
           source.repo,
           branch,
           source.url,
           eventPublisherPubkey
         );
+        return files?.length ? { files, resolvedBranch: branch } : null;
       }
       break;
 
     case "self-hosted-git":
       if (source.url) {
-        return await fetchFromSelfHostedGit(source.url, branch);
+        const files = await fetchFromSelfHostedGit(source.url, branch);
+        return files?.length ? { files, resolvedBranch: branch } : null;
       }
       break;
 
@@ -1646,18 +1664,25 @@ export async function fetchFilesFromMultipleSources(
           branch,
         }
       );
-      const files = await fetchFilesFromSource(
+      const fetchResult = await fetchFilesFromSource(
         source,
         branch,
         eventPublisherPubkey
       );
+      const files = fetchResult?.files;
+      if (fetchResult?.resolvedBranch) {
+        status.resolvedBranch = fetchResult.resolvedBranch;
+      }
 
       if (files && files.length > 0) {
         status.status = "success";
         status.files = files;
         status.fetchedAt = Date.now();
         console.log(
-          `✅ [Git Source] Successfully fetched ${files.length} files from ${source.displayName}`
+          `✅ [Git Source] Successfully fetched ${files.length} files from ${source.displayName}` +
+            (status.resolvedBranch
+              ? ` (resolved branch: ${status.resolvedBranch})`
+              : "")
         );
 
         // CRITICAL: Update UI immediately when first source succeeds (don't wait for all)

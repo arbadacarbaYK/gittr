@@ -4173,20 +4173,29 @@ export default function RepoCodePage() {
                 console.log(
                   `🚀 [File Fetch] First source succeeded! Updating files immediately: ${status.files.length} files from ${status.source.displayName}`
                 );
+                const branchFromFetch = status.resolvedBranch;
                 // CRITICAL: Use startTransition to defer state update and prevent hook order issues during render
                 startTransition(() => {
+                  if (branchFromFetch) {
+                    setSelectedBranch(branchFromFetch);
+                  }
                   setRepoData((prev: any) => {
                     // CRITICAL: Create repoData if it doesn't exist yet - files should show immediately
                     const updated = prev
                       ? {
                           ...prev,
                           files: status.files,
+                          defaultBranch:
+                            branchFromFetch ?? prev.defaultBranch ?? "main",
                           // CRITICAL: Store successful sources as array for fallback during file opening
                           successfulSources: [
                             {
                               source: status.source,
                               sourceUrl: pickHttpSourceUrl(status.source),
                               files: status.files,
+                              ...(branchFromFetch
+                                ? { resolvedBranch: branchFromFetch }
+                                : {}),
                             },
                           ],
                           // Keep first source for backward compatibility
@@ -4196,11 +4205,15 @@ export default function RepoCodePage() {
                       : {
                           // Create minimal repoData if it doesn't exist yet
                           files: status.files,
+                          defaultBranch: branchFromFetch ?? "main",
                           successfulSources: [
                             {
                               source: status.source,
                               sourceUrl: pickHttpSourceUrl(status.source),
                               files: status.files,
+                              ...(branchFromFetch
+                                ? { resolvedBranch: branchFromFetch }
+                                : {}),
                             },
                           ],
                           successfulSource: status.source,
@@ -4255,6 +4268,9 @@ export default function RepoCodePage() {
                               source: status.source,
                               sourceUrl: pickHttpSourceUrl(status.source),
                               files: status.files,
+                              ...(status.resolvedBranch
+                                ? { resolvedBranch: status.resolvedBranch }
+                                : {}),
                             },
                           ],
                         }
@@ -4303,13 +4319,20 @@ export default function RepoCodePage() {
               source: s.source,
               sourceUrl: pickHttpSourceUrl(s.source),
               files: s.files,
+              ...(s.resolvedBranch ? { resolvedBranch: s.resolvedBranch } : {}),
             }));
+            const firstResolvedBranch = successfulStatuses.find(
+              (s: any) => s.resolvedBranch
+            )?.resolvedBranch as string | undefined;
 
             setRepoData((prev: any) =>
               prev
                 ? {
                     ...prev,
                     files,
+                    ...(firstResolvedBranch
+                      ? { defaultBranch: firstResolvedBranch }
+                      : {}),
                     ownerPubkey: eventPublisherPubkey || prev.ownerPubkey, // Store the pubkey used for fetching
                     clone:
                       initialCloneUrls.length > 0
@@ -4333,12 +4356,16 @@ export default function RepoCodePage() {
                   }
                 : prev
             );
+            if (firstResolvedBranch) {
+              setSelectedBranch(firstResolvedBranch);
+            }
           } else if (successfulStatuses.length > 0) {
             // Files already exist, but update successful sources array with all completed sources
             const successfulSourcesArray = successfulStatuses.map((s: any) => ({
               source: s.source,
               sourceUrl: pickHttpSourceUrl(s.source),
               files: s.files,
+              ...(s.resolvedBranch ? { resolvedBranch: s.resolvedBranch } : {}),
             }));
 
             setRepoData((prev: any) => {
@@ -6352,42 +6379,65 @@ export default function RepoCodePage() {
                             console.log(
                               `🚀 [File Fetch] First source succeeded! Updating files immediately: ${status.files.length} files from ${status.source.displayName}`
                             );
+                            const branchFromFetch = status.resolvedBranch;
+                            if (branchFromFetch) {
+                              setSelectedBranch(branchFromFetch);
+                            }
                             setRepoData((prev: any) => {
                               // CRITICAL: Create repoData if it doesn't exist yet - files should show immediately
                               const updated = prev
                                 ? {
                                     ...prev,
                                     files: status.files,
+                                    defaultBranch:
+                                      branchFromFetch ??
+                                      prev.defaultBranch ??
+                                      "main",
                                     // CRITICAL: Store successful sources as array for fallback during file opening
                                     successfulSources: [
                                       {
                                         source: status.source,
                                         sourceUrl:
+                                          pickHttpSourceUrl(status.source) ||
                                           status.source.url ||
                                           status.source.displayName,
                                         files: status.files,
+                                        ...(branchFromFetch
+                                          ? {
+                                              resolvedBranch: branchFromFetch,
+                                            }
+                                          : {}),
                                       },
                                     ],
                                     // Keep first source for backward compatibility
                                     successfulSource: status.source,
                                     successfulSourceUrl:
+                                      pickHttpSourceUrl(status.source) ||
                                       status.source.url ||
                                       status.source.displayName,
                                   }
                                 : {
                                     // Create minimal repoData if it doesn't exist yet
                                     files: status.files,
+                                    defaultBranch: branchFromFetch ?? "main",
                                     successfulSources: [
                                       {
                                         source: status.source,
                                         sourceUrl:
+                                          pickHttpSourceUrl(status.source) ||
                                           status.source.url ||
                                           status.source.displayName,
                                         files: status.files,
+                                        ...(branchFromFetch
+                                          ? {
+                                              resolvedBranch: branchFromFetch,
+                                            }
+                                          : {}),
                                       },
                                     ],
                                     successfulSource: status.source,
                                     successfulSourceUrl:
+                                      pickHttpSourceUrl(status.source) ||
                                       status.source.url ||
                                       status.source.displayName,
                                   };
@@ -6435,9 +6485,16 @@ export default function RepoCodePage() {
                                         {
                                           source: status.source,
                                           sourceUrl:
+                                            pickHttpSourceUrl(status.source) ||
                                             status.source.url ||
                                             status.source.displayName,
                                           files: status.files,
+                                          ...(status.resolvedBranch
+                                            ? {
+                                                resolvedBranch:
+                                                  status.resolvedBranch,
+                                              }
+                                            : {}),
                                         },
                                       ],
                                     }
@@ -6481,14 +6538,23 @@ export default function RepoCodePage() {
                           source: s.source,
                           sourceUrl: pickHttpSourceUrl(s.source),
                           files: s.files,
+                          ...(s.resolvedBranch
+                            ? { resolvedBranch: s.resolvedBranch }
+                            : {}),
                         })
                       );
+                      const firstResolvedBranch = successfulStatuses.find(
+                        (s) => s.resolvedBranch
+                      )?.resolvedBranch as string | undefined;
 
                       setRepoData((prev: any) =>
                         prev
                           ? {
                               ...prev,
                               files,
+                              ...(firstResolvedBranch
+                                ? { defaultBranch: firstResolvedBranch }
+                                : {}),
                               // Store all successful sources for fallback during file opening
                               successfulSources:
                                 successfulSourcesArray.length > 0
@@ -6502,6 +6568,9 @@ export default function RepoCodePage() {
                             }
                           : prev
                       );
+                      if (firstResolvedBranch) {
+                        setSelectedBranch(firstResolvedBranch);
+                      }
                     } else if (successfulStatuses.length > 0) {
                       // Files already exist, but update successful sources array with all completed sources
                       const successfulSourcesArray = successfulStatuses.map(
@@ -6509,6 +6578,9 @@ export default function RepoCodePage() {
                           source: s.source,
                           sourceUrl: pickHttpSourceUrl(s.source),
                           files: s.files,
+                          ...(s.resolvedBranch
+                            ? { resolvedBranch: s.resolvedBranch }
+                            : {}),
                         })
                       );
 
@@ -11635,9 +11707,10 @@ export default function RepoCodePage() {
 
         // Use selectedBranch, fallback to defaultBranch, then main/master
         const branch = selectedBranch || repoData?.defaultBranch || "main";
-        const branchesToTry = [branch, "main", "master"].filter(
-          (b, i, arr) => arr.indexOf(b) === i
-        ); // dedupe
+        const defaultBr = repoData?.defaultBranch;
+        const branchesToTry = [branch, defaultBr, "main", "master"]
+          .filter((b): b is string => typeof b === "string" && !!b)
+          .filter((b, i, arr) => arr.indexOf(b) === i); // dedupe
 
         if (githubMatch) {
           const [, owner, repo] = githubMatch;
