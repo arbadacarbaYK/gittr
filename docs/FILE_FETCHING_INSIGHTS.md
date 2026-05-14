@@ -1090,40 +1090,42 @@ const url = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(ownerPubkey)
 3. The timeout was 15 seconds (too long)
 
 **Solution**: 
-1. **Expand clone URLs immediately** when found (not just in EOSE callback) - this ensures all sources are tried and shown
+1. **Start multi-source fetch as soon as real clone URLs exist** (initial path, EOSE, and short timeout) — not only after EOSE
 2. **Reduce EOSE delay** from 1s to 200ms to start fetching faster
 3. **Reduce timeout** from 15s to 3s as a final fallback (should rarely trigger)
-4. **Show status for all expanded sources** - when a Nostr git URL is found, expand it to all known git servers and show status for all of them immediately
+4. **Show status for every clone URL we try** (from NIP-34 `clone` tags, localStorage, upstream `sourceUrl`)
 5. **Update files immediately** when first source succeeds (don't wait for all sources to complete)
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (lines 1238-1318 for immediate expansion, 2224 for EOSE delay, 2268 for timeout)
+**Update (2026-05):** The client **no longer synthesizes** extra `https://<other-grasp-host>/npub/.../repo.git` URLs from a hardcoded mirror list. That behavior multiplied parallel bridge/clone attempts and “File sources” noise for repos that only lived on the host named in the event. Publishers who want multiple GRASP mirrors should list each mirror explicitly in NIP-34 `clone` tags; multi-source fetch still tries every listed URL (and user GRASP-list prioritization in `git-source-fetcher` is unchanged).
+
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (immediate multi-source path, EOSE delay, timeout fallback)
 
 **Key Changes**:
-- Clone URLs are expanded immediately when found (line 1238-1273)
-- Status display shows all sources (including expanded ones) immediately (line 1295-1318)
-- Files are updated immediately when first source succeeds (line 1348-1356)
-- EOSE delay reduced to 200ms (line 2224)
-- Timeout reduced to 3s and also expands clone URLs (line 2326-2357)
+- Multi-source fetch runs as soon as clone URLs are known (not deferred only to EOSE)
+- Status display shows one row per real clone URL / upstream source
+- Files are updated immediately when first source succeeds
+- EOSE delay reduced to 200ms
+- Timeout reduced to 3s as final fallback
 
 ### Status Display for All Sources
 
 **Problem**: Status display only shows one source at a time, or doesn't show all sources that are being tried. Users see "No files found" from one relay but don't see that other relays are still trying or have succeeded. Also, GitHub/Codeberg sources weren't showing their status.
 
 **Solution**: 
-1. **Expand clone URLs immediately** - when one Nostr git URL is found, expand it to all known git servers
-2. **Show status for all sources** - the status display now shows all sources (including expanded ones, GitHub, Codeberg) with their individual statuses
-3. **Update status in real-time** - each source's status is updated as it completes (success or failed)
-4. **Always show status** - status display remains visible even after files are found, so users can see which sources succeeded/failed
-5. **Update files immediately** - files are shown as soon as the first source succeeds, not waiting for all sources
+1. **Try every real clone URL** from NIP-34, localStorage, and upstream `sourceUrl` (no synthetic GRASP mirror URLs — see update above)
+2. **Show status for all sources** — GitHub, Codeberg, GRASP HTTPS, etc., each with its own status
+3. **Update status in real-time** — each source's status is updated as it completes (success or failed)
+4. **Always show status** — status display remains visible even after files are found, so users can see which sources succeeded/failed
+5. **Update files immediately** — files are shown as soon as the first source succeeds, not waiting for all sources
 
-**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (status display logic around line 4809, expansion logic around line 1238)
+**Code Location**: `ui/src/app/[entity]/[repo]/page.tsx` (status display and multi-source orchestration)
 
 **Key Changes**:
-- All expanded clone URLs are added to the status display immediately
-- GitHub/Codeberg sources are added to cloneUrls if sourceUrl is found (line 1230-1235)
+- Status rows match the actual clone URL list (no hidden synthetic mirrors)
+- GitHub/Codeberg sources are added to `cloneUrls` when `sourceUrl` is present
 - Each source shows its own status (pending, fetching, success, failed)
 - Status updates happen in real-time via the `onStatusUpdate` callback
-- Files are updated immediately when first source succeeds (line 1348-1356, 2205-2213)
+- Files are updated immediately when first source succeeds
 - Status display always shows all sources (removed the logic that hid it after files were found)
 
 ---

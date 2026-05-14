@@ -552,7 +552,10 @@ export function resolveNip34HeadBranchName(
   preferredBranch?: string | null
 ): string {
   const heads = refs
-    .filter((r) => r.ref && typeof r.ref === "string" && r.ref.startsWith("refs/heads/"))
+    .filter(
+      (r) =>
+        r.ref && typeof r.ref === "string" && r.ref.startsWith("refs/heads/")
+    )
     .map((r) => ({
       ref: r.ref,
       branch: r.ref.replace(/^refs\/heads\//i, ""),

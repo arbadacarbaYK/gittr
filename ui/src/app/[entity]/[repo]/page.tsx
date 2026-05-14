@@ -102,6 +102,7 @@ import {
   isRefetchableUpstreamSourceUrl,
   parseGitSource,
 } from "@/lib/utils/git-source-fetcher";
+import { KNOWN_GRASP_DOMAINS } from "@/lib/utils/grasp-servers";
 import {
   normalizeGithubSourceUrl,
   pickHttpSourceUrl,
@@ -332,6 +333,39 @@ function mergeRepoStateWithStorage<T extends object>(
   return repoData ?? repoFromStorage ?? null;
 }
 
+/** Merge NIP-34 / multi-source clone URLs into repo state (dedupe, drop localhost). */
+function mergeDiscoverableCloneUrls(
+  prevClone: unknown,
+  discovered: readonly string[]
+): string[] {
+  const clean = (u: string) =>
+    typeof u === "string" &&
+    u.trim().length > 0 &&
+    !u.includes("localhost") &&
+    !u.includes("127.0.0.1");
+  const prevArr = Array.isArray(prevClone)
+    ? (prevClone as string[]).filter(clean)
+    : [];
+  const disc = [...discovered].filter(clean);
+  return Array.from(new Set([...prevArr, ...disc]));
+}
+
+function upstreamRefetchableHttpsGitClone(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!isRefetchableUpstreamSourceUrl(trimmed)) return null;
+  let u = trimmed;
+  const sshMatch = u.match(/^git@([^:]+):(.+)$/);
+  if (sshMatch) {
+    u = `https://${sshMatch[1]}/${sshMatch[2]}`;
+  } else if (!/^https?:\/\//i.test(u)) {
+    u = `https://${u}`;
+  }
+  if (!u.endsWith(".git")) {
+    u = `${u}.git`;
+  }
+  return u;
+}
+
 /**
  * react-markdown emits <pre><code> for fences; CopyableCodeBlock adds its own <pre>.
  * Stripping the outer pre and replacing block-code paragraphs with <div> avoids invalid nesting and hydration issues.
@@ -378,9 +412,11 @@ const markdownProseCodeSafeComponents = {
 
     const hasBlockCode = node?.children?.some(checkForBlockCode);
     const childrenArray = Children.toArray(children);
-    const hasBlockElement = childrenArray.some(
-      reactSubtreeHasBlockMarkdownCode
+    const hasCopyableBlock = childrenArray.some(
+      (c) => isValidElement(c) && c.type === CopyableCodeBlock
     );
+    const hasBlockElement =
+      hasCopyableBlock || childrenArray.some(reactSubtreeHasBlockMarkdownCode);
 
     if (hasBlockCode || hasBlockElement) {
       return <div {...props}>{children}</div>;
@@ -1063,7 +1099,11 @@ export default function RepoCodePage() {
               contributors: [],
               defaultBranch: branch,
             } as StoredRepo);
-          const updated = { ...base, files: data.files };
+          const updated = {
+            ...base,
+            files: data.files,
+            clone: (base as { clone?: string[] }).clone,
+          };
           repoDataRef.current = updated;
           return updated;
         });
@@ -3926,66 +3966,9 @@ export default function RepoCodePage() {
         }
       }
 
-      // This ensures we try all sources and show status for all of them
-      // Include ALL known GRASP servers (for reading), including read-only ones like git.jb55.com
-      const knownGitServers = [
-        "relay.ngit.dev",
-        "ngit-relay.nostrver.se",
-        "gitnostr.com",
-        "ngit.danconwaydev.com",
-        "git.shakespeare.diy",
-        "git-01.uid.ovh",
-        "git-02.uid.ovh",
-        "git.jb55.com", // Read-only: can read repos from here but won't push to it
-      ];
-      const expansionServers = knownGitServers.slice(0, 3);
-
-      // Extract npub and repo from existing Nostr git URLs
-      const nostrGitUrls = initialCloneUrls.filter((url) => {
-        const match = url.match(
-          /^https?:\/\/([^\/]+)\/(npub[a-z0-9]+)\/([^\/]+)\.git$/i
-        );
-        return (
-          match &&
-          match[1] &&
-          knownGitServers.some((server) => match[1]?.includes(server))
-        );
-      });
-
-      if (nostrGitUrls.length > 0) {
-        // Extract npub and repo from the first Nostr git URL
-        const firstMatch = nostrGitUrls[0]?.match(
-          /^https?:\/\/([^\/]+)\/(npub[a-z0-9]+)\/([^\/]+)\.git$/i
-        );
-        if (firstMatch && firstMatch[2] && firstMatch[3]) {
-          const npub = firstMatch[2];
-          const repo = firstMatch[3];
-          console.log(
-            `🔍 [File Fetch] Expanding clone URLs immediately: Found ${
-              nostrGitUrls.length
-            } Nostr git URLs, expanding to try all known git servers for npub ${npub.slice(
-              0,
-              16
-            )}.../${repo}`
-          );
-
-          // Generate clone URLs for all known git servers
-          let addedCount = 0;
-          expansionServers.forEach((server) => {
-            const expandedUrl = `https://${server}/${npub}/${repo}.git`;
-            if (!initialCloneUrls.includes(expandedUrl)) {
-              initialCloneUrls.push(expandedUrl);
-              addedCount++;
-            }
-          });
-          // CRITICAL: Log once with count instead of per-URL to reduce console spam
-          if (addedCount > 0) {
-            console.log(
-              `✅ [File Fetch] Added ${addedCount} expanded clone URLs for ${expansionServers.length} git servers`
-            );
-          }
-        }
-      }
+      // Multi-source fetch uses only real clone URLs (NIP-34 tags, localStorage, upstream
+      // sourceUrl). We do not append synthetic https://<other-grasp>/npub/.../repo.git URLs;
+      // that forced parallel bridge work against hosts that usually never mirrored the repo.
 
       // If we have clone URLs, try multi-source fetch immediately (before querying Nostr)
       // CRITICAL: Check if we've already attempted this fetch to prevent multiple runs
@@ -4060,7 +4043,7 @@ export default function RepoCodePage() {
       // cloneUrls are the source of truth for foreign repos - if they exist, files should be fetchable
       if (initialCloneUrls.length > 0) {
         console.log(
-          `🔍 [File Fetch] NIP-34: Found ${initialCloneUrls.length} clone URLs (including expanded), attempting multi-source fetch immediately`
+          `🔍 [File Fetch] NIP-34: Found ${initialCloneUrls.length} clone URLs, attempting multi-source fetch immediately`
         );
         const branch = String(initialRepoData?.defaultBranch || "main");
 
@@ -4334,15 +4317,10 @@ export default function RepoCodePage() {
                       ? { defaultBranch: firstResolvedBranch }
                       : {}),
                     ownerPubkey: eventPublisherPubkey || prev.ownerPubkey, // Store the pubkey used for fetching
-                    clone:
-                      initialCloneUrls.length > 0
-                        ? initialCloneUrls.filter(
-                            (url: string) =>
-                              url &&
-                              !url.includes("localhost") &&
-                              !url.includes("127.0.0.1")
-                          )
-                        : prev.clone, // Store clone URLs if not already set (filtered)
+                    clone: mergeDiscoverableCloneUrls(
+                      prev.clone,
+                      initialCloneUrls
+                    ),
                     // Store all successful sources for fallback during file opening
                     successfulSources:
                       successfulSourcesArray.length > 0
@@ -4386,6 +4364,10 @@ export default function RepoCodePage() {
                 ? {
                     ...prev,
                     successfulSources: mergedSources,
+                    clone: mergeDiscoverableCloneUrls(
+                      prev.clone,
+                      initialCloneUrls
+                    ),
                     // Update first source if not set
                     successfulSource:
                       prev.successfulSource || successfulStatuses[0]?.source,
@@ -6140,67 +6122,6 @@ export default function RepoCodePage() {
                   `📋 [File Fetch] NIP-34: Total ${cloneUrls.length} unique clone URLs collected`
                 );
 
-                // CRITICAL: Expand Nostr git clone URLs to try other known git servers
-                // If we have one Nostr git URL (e.g., relay.ngit.dev), also try other known servers
-                // This matches the behavior of the reference client (gitworkshop.dev)
-                const knownGitServers = [
-                  "relay.ngit.dev",
-                  "ngit-relay.nostrver.se",
-                  "gitnostr.com",
-                  "ngit.danconwaydev.com",
-                  "git.shakespeare.diy",
-                  "git-01.uid.ovh",
-                  "git-02.uid.ovh",
-                ];
-                const expansionServers = knownGitServers.slice(0, 3);
-
-                // Extract npub and repo from existing Nostr git URLs
-                const nostrGitUrls = cloneUrls.filter((url) => {
-                  const match = url.match(
-                    /^https?:\/\/([^\/]+)\/(npub[a-z0-9]+)\/([^\/]+)\.git$/i
-                  );
-                  return (
-                    match &&
-                    match[1] &&
-                    knownGitServers.some((server) => match[1]?.includes(server))
-                  );
-                });
-
-                if (nostrGitUrls.length > 0) {
-                  // Extract npub and repo from the first Nostr git URL
-                  const firstMatch = nostrGitUrls[0]?.match(
-                    /^https?:\/\/([^\/]+)\/(npub[a-z0-9]+)\/([^\/]+)\.git$/i
-                  );
-                  if (firstMatch && firstMatch[2] && firstMatch[3]) {
-                    const npub = firstMatch[2];
-                    const repo = firstMatch[3];
-                    console.log(
-                      `🔍 [File Fetch] Expanding clone URLs: Found ${
-                        nostrGitUrls.length
-                      } Nostr git URLs, expanding to try all known git servers for npub ${npub.slice(
-                        0,
-                        16
-                      )}.../${repo}`
-                    );
-
-                    // Generate clone URLs for all known git servers
-                    let addedCount = 0;
-                    expansionServers.forEach((server) => {
-                      const expandedUrl = `https://${server}/${npub}/${repo}.git`;
-                      if (!cloneUrls.includes(expandedUrl)) {
-                        cloneUrls.push(expandedUrl);
-                        addedCount++;
-                      }
-                    });
-                    // CRITICAL: Log once with count instead of per-URL to reduce console spam
-                    if (addedCount > 0) {
-                      console.log(
-                        `✅ [File Fetch] Added ${addedCount} expanded clone URLs for ${expansionServers.length} git servers (EOSE)`
-                      );
-                    }
-                  }
-                }
-
                 // If we have clone URLs, try multi-source fetching (NIP-34)
                 // CRITICAL: Check if we've already attempted this fetch to prevent multiple runs
                 const repoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
@@ -6415,6 +6336,10 @@ export default function RepoCodePage() {
                                       pickHttpSourceUrl(status.source) ||
                                       status.source.url ||
                                       status.source.displayName,
+                                    clone: mergeDiscoverableCloneUrls(
+                                      prev.clone,
+                                      cloneUrls
+                                    ),
                                   }
                                 : {
                                     // Create minimal repoData if it doesn't exist yet
@@ -6440,6 +6365,10 @@ export default function RepoCodePage() {
                                       pickHttpSourceUrl(status.source) ||
                                       status.source.url ||
                                       status.source.displayName,
+                                    clone: mergeDiscoverableCloneUrls(
+                                      [],
+                                      cloneUrls
+                                    ),
                                   };
                               // CRITICAL: Update ref immediately so subsequent checks see the new files
                               if (updated && repoDataRef) {
@@ -6465,6 +6394,10 @@ export default function RepoCodePage() {
                               `✅ [File Fetch] Additional source succeeded! Adding to successful sources: ${status.source.displayName} (${status.files.length} files)`
                             );
                             setRepoData((prev: any) => {
+                              const mergedClone = mergeDiscoverableCloneUrls(
+                                prev?.clone,
+                                cloneUrls
+                              );
                               const existingSources =
                                 prev?.successfulSources || [];
                               // Check if this source is already in the list
@@ -6479,6 +6412,7 @@ export default function RepoCodePage() {
                                 const updated = prev
                                   ? {
                                       ...prev,
+                                      clone: mergedClone,
                                       // Add new successful source to array
                                       successfulSources: [
                                         ...existingSources,
@@ -6505,7 +6439,9 @@ export default function RepoCodePage() {
                                 }
                                 return updated;
                               }
-                              return prev;
+                              return prev
+                                ? { ...prev, clone: mergedClone }
+                                : prev;
                             });
                           }
                         }
@@ -6555,6 +6491,10 @@ export default function RepoCodePage() {
                               ...(firstResolvedBranch
                                 ? { defaultBranch: firstResolvedBranch }
                                 : {}),
+                              clone: mergeDiscoverableCloneUrls(
+                                prev.clone,
+                                cloneUrls
+                              ),
                               // Store all successful sources for fallback during file opening
                               successfulSources:
                                 successfulSourcesArray.length > 0
@@ -6602,6 +6542,10 @@ export default function RepoCodePage() {
                           ? {
                               ...prev,
                               successfulSources: mergedSources,
+                              clone: mergeDiscoverableCloneUrls(
+                                prev.clone,
+                                cloneUrls
+                              ),
                               // Update first source if not set
                               successfulSource:
                                 prev.successfulSource ||
@@ -6809,66 +6753,15 @@ export default function RepoCodePage() {
               cloneUrls
             );
 
-            // CRITICAL: Expand Nostr git clone URLs to try all known git servers (same as initial fetch)
-            const knownGitServers = [
-              "relay.ngit.dev",
-              "ngit-relay.nostrver.se",
-              "gitnostr.com",
-              "ngit.danconwaydev.com",
-              "git.shakespeare.diy",
-              "git-01.uid.ovh",
-              "git-02.uid.ovh",
-            ];
-            const expansionServers = knownGitServers.slice(0, 3);
-
-            const nostrGitUrls = cloneUrls.filter((url) => {
-              const match = url.match(
-                /^https?:\/\/([^\/]+)\/(npub[a-z0-9]+)\/([^\/]+)\.git$/i
-              );
-              return (
-                match &&
-                match[1] &&
-                knownGitServers.some((server) => match[1]?.includes(server))
-              );
-            });
-
-            if (nostrGitUrls.length > 0) {
-              const firstMatch = nostrGitUrls[0]?.match(
-                /^https?:\/\/([^\/]+)\/(npub[a-z0-9]+)\/([^\/]+)\.git$/i
-              );
-              if (firstMatch && firstMatch[2] && firstMatch[3]) {
-                const npub = firstMatch[2];
-                const repo = firstMatch[3];
-                console.log(
-                  `🔍 [File Fetch] Expanding clone URLs in timeout: Found ${nostrGitUrls.length} Nostr git URLs, expanding to try all known git servers`
-                );
-
-                let addedCount = 0;
-                expansionServers.forEach((server) => {
-                  const expandedUrl = `https://${server}/${npub}/${repo}.git`;
-                  if (!cloneUrls.includes(expandedUrl)) {
-                    cloneUrls.push(expandedUrl);
-                    addedCount++;
-                  }
-                });
-                // CRITICAL: Log once with count instead of per-URL to reduce console spam
-                if (addedCount > 0) {
-                  console.log(
-                    `✅ [File Fetch] Added ${addedCount} expanded clone URLs for ${expansionServers.length} git servers (timeout)`
-                  );
-                }
-              }
-            }
-
             // If we have clone URLs, try multi-source fetching
             if (cloneUrls.length > 0) {
               console.log(
-                `🔍 [File Fetch] NIP-34: Found ${cloneUrls.length} clone URLs (including expanded) after timeout, attempting multi-source fetch`
+                `🔍 [File Fetch] NIP-34: Found ${cloneUrls.length} clone URLs after timeout, attempting multi-source fetch`
               );
               const branch = String(currentData?.defaultBranch || "main");
 
               // Update fetch statuses - merge with existing to avoid duplicates
-              // CRITICAL: Show status for ALL sources (including expanded ones)
+              // CRITICAL: Show status for every clone URL we will try
               const initialStatuses = cloneUrls.map((url) => {
                 const source = parseGitSource(url);
                 return {
@@ -6986,13 +6879,21 @@ export default function RepoCodePage() {
                           ? {
                               ...prev,
                               files: status.files,
+                              clone: mergeDiscoverableCloneUrls(
+                                prev.clone,
+                                cloneUrls
+                              ),
                               // Preserve existing sourceUrl if it exists, otherwise use the one from successful source
                               sourceUrl:
                                 prev.sourceUrl ||
                                 sourceUrlToSet ||
                                 prev.sourceUrl,
                             }
-                          : { files: status.files, sourceUrl: sourceUrlToSet };
+                          : {
+                              files: status.files,
+                              sourceUrl: sourceUrlToSet,
+                              clone: mergeDiscoverableCloneUrls([], cloneUrls),
+                            };
                         return updated;
                       });
                       // Also update repoDataRef immediately for file opening
@@ -7000,6 +6901,10 @@ export default function RepoCodePage() {
                         repoDataRef.current = {
                           ...repoDataRef.current,
                           files: status.files,
+                          clone: mergeDiscoverableCloneUrls(
+                            repoDataRef.current.clone,
+                            cloneUrls
+                          ),
                           sourceUrl:
                             repoDataRef.current.sourceUrl ||
                             sourceUrlToSet ||
@@ -7044,13 +6949,21 @@ export default function RepoCodePage() {
                     ? {
                         ...prev,
                         files,
+                        clone: mergeDiscoverableCloneUrls(
+                          prev.clone,
+                          cloneUrls
+                        ),
                         // Preserve existing sourceUrl if it exists, otherwise use the one from successful status
                         sourceUrl:
                           prev.sourceUrl ||
                           sourceUrlFromStatus ||
                           prev.sourceUrl,
                       }
-                    : { files, sourceUrl: sourceUrlFromStatus };
+                    : {
+                        files,
+                        sourceUrl: sourceUrlFromStatus,
+                        clone: mergeDiscoverableCloneUrls([], cloneUrls),
+                      };
                   return updated;
                 });
 
@@ -7059,6 +6972,10 @@ export default function RepoCodePage() {
                   repoDataRef.current = {
                     ...repoDataRef.current,
                     files,
+                    clone: mergeDiscoverableCloneUrls(
+                      repoDataRef.current.clone,
+                      cloneUrls
+                    ),
                     sourceUrl:
                       repoDataRef.current.sourceUrl ||
                       sourceUrlFromStatus ||
@@ -7523,7 +7440,16 @@ export default function RepoCodePage() {
                           `✅ [File Fetch] NIP-34: Successfully fetched ${files.length} files from clone URLs (bridge had empty files)`
                         );
                         setRepoData((prev: any) =>
-                          prev ? { ...prev, files } : prev
+                          prev
+                            ? {
+                                ...prev,
+                                files,
+                                clone: mergeDiscoverableCloneUrls(
+                                  prev.clone,
+                                  cloneUrls
+                                ),
+                              }
+                            : prev
                         );
 
                         // Save files separately
@@ -12689,9 +12615,41 @@ export default function RepoCodePage() {
   ]);
 
   const cloneUrlGroups = useMemo(() => {
-    const rawCloneList = Array.isArray((repoData as any)?.clone)
-      ? ((repoData as any)?.clone as string[])
+    let rawCloneList = Array.isArray((repoData as any)?.clone)
+      ? ([...(repoData as any)?.clone] as string[])
       : [];
+    if (typeof window !== "undefined" && resolvedParams.entity && decodedRepo) {
+      try {
+        const repos = loadStoredRepos();
+        const stored = findRepoByEntityAndName(
+          repos,
+          resolvedParams.entity,
+          decodedRepo
+        );
+        const sclone = (stored as { clone?: string[] })?.clone;
+        if (Array.isArray(sclone)) {
+          rawCloneList = [...rawCloneList, ...sclone];
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    const fromEffective =
+      effectiveSourceUrl &&
+      upstreamRefetchableHttpsGitClone(effectiveSourceUrl);
+    if (fromEffective) {
+      rawCloneList = [...rawCloneList, fromEffective];
+    }
+    const dsUrl =
+      typeof (repoData as any)?.sourceUrl === "string"
+        ? String((repoData as any).sourceUrl).trim()
+        : "";
+    const fromRepoDataSource = dsUrl
+      ? upstreamRefetchableHttpsGitClone(dsUrl)
+      : null;
+    if (fromRepoDataSource) {
+      rawCloneList = [...rawCloneList, fromRepoDataSource];
+    }
     const uniqueCloneUrls = Array.from(
       new Set(
         rawCloneList.filter(
@@ -12710,43 +12668,38 @@ export default function RepoCodePage() {
       url.startsWith("nostr://")
     );
 
-    // Sidebar should not imply every GRASP catalog host hosts this repo. NIP-34 stores real
-    // clone tags only; we may add a single nostr:// hint for gittr when the event already
-    // lists git.gittr.space (file fetch / multi-source still use repoData.clone unchanged).
-    const GITTR_GRASP_HOST = "git.gittr.space";
-    const cloneListMentionsGittr = uniqueCloneUrls.some((url) =>
-      url.toLowerCase().includes(GITTR_GRASP_HOST)
-    );
-    const generatedNostrUrls: string[] = [];
-    if (
-      repoData &&
-      ownerPubkeyForLink &&
-      decodedRepo &&
-      cloneListMentionsGittr &&
-      nostrCloneUrlsFromEvent.length === 0
-    ) {
-      try {
-        let npubForNostr = "";
-        if (ownerPubkeyForLink && /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink)) {
-          npubForNostr = nip19.npubEncode(ownerPubkeyForLink);
-        } else if (resolvedParams.entity.startsWith("npub")) {
-          npubForNostr = resolvedParams.entity;
-        }
-        if (npubForNostr) {
-          generatedNostrUrls.push(
-            `nostr://${npubForNostr}@${GITTR_GRASP_HOST}/${decodedRepo}`
-          );
-        }
-      } catch (error) {
-        console.warn(
-          "Failed to build optional gittr nostr:// clone hint:",
-          error
+    // When the event lists GRASP HTTPS clone URLs but no nostr:// tag, show a minimal
+    // nostr://npub/repo line for git-remote-nostr (same identity as the HTTPS URL; the
+    // helper resolves relays / optional host — see sidebar copy). File fetch unchanged.
+    const derivedNostrFromGraspHttps: string[] = [];
+    if (nostrCloneUrlsFromEvent.length === 0) {
+      const hostMatchesKnownGrasp = (host: string): boolean => {
+        const h = host.toLowerCase();
+        return KNOWN_GRASP_DOMAINS.some((d) => {
+          const dlow = d.toLowerCase();
+          return h === dlow || h.includes(dlow) || dlow.includes(h);
+        });
+      };
+      for (const url of httpCloneUrls) {
+        const m = url.match(
+          /^https?:\/\/([^/]+)\/(npub1[0-9a-z]+)\/([^/]+)\.git$/i
         );
+        if (!m?.[1] || !m[2] || !m[3]) continue;
+        const host = m[1];
+        const npub = m[2];
+        let repoSlug = m[3];
+        try {
+          repoSlug = decodeURIComponent(repoSlug);
+        } catch {
+          /* keep raw */
+        }
+        if (!hostMatchesKnownGrasp(host)) continue;
+        derivedNostrFromGraspHttps.push(`nostr://${npub}/${repoSlug}`);
       }
     }
 
     const nostrCloneUrls = Array.from(
-      new Set([...nostrCloneUrlsFromEvent, ...generatedNostrUrls])
+      new Set([...nostrCloneUrlsFromEvent, ...derivedNostrFromGraspHttps])
     );
 
     return { httpCloneUrls, sshCloneUrls, nostrCloneUrls };
@@ -12755,9 +12708,12 @@ export default function RepoCodePage() {
       ? (repoData as any)?.clone.join("|")
       : "",
     repoData,
-    ownerPubkeyForLink,
-    decodedRepo,
     resolvedParams.entity,
+    decodedRepo,
+    effectiveSourceUrl,
+    typeof (repoData as any)?.sourceUrl === "string"
+      ? (repoData as any).sourceUrl
+      : "",
   ]);
 
   const { httpCloneUrls, sshCloneUrls, nostrCloneUrls } = cloneUrlGroups;
@@ -15707,10 +15663,26 @@ export default function RepoCodePage() {
                         nostr:// clone (requires git-remote-nostr)
                       </p>
                       <p className="text-[11px] text-purple-200/70 leading-snug">
-                        Listed nostr:// URLs come from the repository event. If
-                        the event already includes git.gittr.space, one matching
-                        nostr:// form may appear for git-remote-nostr; other
-                        hosts are not implied.
+                        With{" "}
+                        <a
+                          href="https://github.com/aljazceru/awesome-nostr#git"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline hover:text-white"
+                        >
+                          git-remote-nostr
+                        </a>
+                        , the usual form is{" "}
+                        <code className="text-purple-100/90">
+                          nostr://&lt;npub&gt;/&lt;repo&gt;
+                        </code>{" "}
+                        — relays and optional git host are resolved from your
+                        helper config and the repository&apos;s data on Nostr,
+                        not from this sidebar. If the event includes{" "}
+                        <code className="text-purple-100/90">
+                          nostr://…@…/…
+                        </code>
+                        , that pins a host and is shown verbatim.
                       </p>
                       {nostrCloneUrls.map((url, idx) => {
                         const command = `git clone ${url}`;
@@ -15733,16 +15705,12 @@ export default function RepoCodePage() {
                         );
                       })}
                       <p className="text-[11px] text-purple-200/80 leading-snug">
-                        Compatible with other clients. Install{" "}
-                        <a
-                          href="https://github.com/aljazceru/awesome-nostr#git"
-                          target="_blank"
-                          rel="noreferrer"
-                          className="underline hover:text-white"
-                        >
-                          git-remote-nostr
-                        </a>{" "}
-                        to use nostr:// clone URLs.
+                        Plain{" "}
+                        <code className="text-purple-100/90">
+                          git clone https://…
+                        </code>{" "}
+                        works for GRASP HTTPS remotes; use the nostr:// form
+                        only if you use the remote helper.
                       </p>
                     </div>
                   )}

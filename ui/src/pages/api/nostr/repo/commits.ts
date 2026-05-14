@@ -261,7 +261,11 @@ export default async function handler(
       if (branchName !== "main") fallbacks.push("main");
       if (branchName !== "master") fallbacks.push("master");
       const fromBare = await detectBareRepoDefaultBranch(repoPath);
-      if (fromBare && !fallbacks.includes(fromBare) && fromBare !== branchName) {
+      if (
+        fromBare &&
+        !fallbacks.includes(fromBare) &&
+        fromBare !== branchName
+      ) {
         fallbacks.push(fromBare);
       }
       let lastErr: unknown = error;

@@ -2704,7 +2704,10 @@ export default function EntityPage({
                   if (pTags.length > 0) {
                     finish(pTags, false);
                   } else if (contactList.length > 0) {
-                    finish(contactList.map((p) => p.toLowerCase()), false);
+                    finish(
+                      contactList.map((p) => p.toLowerCase()),
+                      false
+                    );
                   } else {
                     finish([], false);
                   }
