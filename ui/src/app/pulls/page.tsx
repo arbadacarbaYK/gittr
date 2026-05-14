@@ -20,7 +20,11 @@ import {
   getEntityDisplayName,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
-import { normalizePrListStatus } from "@/lib/utils/issue-pr-status";
+import {
+  mergeNostrKind1618FileSnapshot,
+  normalizePrListStatus,
+  prStatusForNostrKind1618Merge,
+} from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { clsx } from "clsx";
@@ -634,7 +638,12 @@ export default function PullsPage({}) {
           );
           // Status: Default to "open" - will be updated by status events (kinds 1630-1633)
           // NIP-34: Status comes from separate status events, not tags
-          const status = "open"; // Default, will be updated by status event subscription
+          const prior =
+            existingIndex >= 0 ? existingPRs[existingIndex] : undefined;
+          const status = prStatusForNostrKind1618Merge(prior?.status, "open");
+          const fileSnap = mergeNostrKind1618FileSnapshot(prior, {
+            changedFiles,
+          });
 
           const pr = {
             id: event.id,
@@ -647,10 +656,17 @@ export default function PullsPage({}) {
             contributors: [event.pubkey],
             baseBranch: baseBranch,
             headBranch: headBranch,
-            changedFiles: changedFiles,
+            changedFiles: Array.isArray(fileSnap.changedFiles)
+              ? (fileSnap.changedFiles as any[])
+              : [],
             createdAt: event.created_at * 1000,
             number: String(nextNumber),
             linkedIssue: linkedIssueTag ? linkedIssueTag[1] : undefined,
+            ...(fileSnap.path !== undefined ? { path: fileSnap.path } : {}),
+            ...(fileSnap.before !== undefined
+              ? { before: fileSnap.before }
+              : {}),
+            ...(fileSnap.after !== undefined ? { after: fileSnap.after } : {}),
           };
 
           if (existingIndex >= 0) {

@@ -60,3 +60,43 @@ export function prStatusForNostrKind1618Merge(
   if (v === "closed") return "closed";
   return kindDefault;
 }
+
+/** Snapshot of file-level PR data we keep in localStorage (not present on NIP-34 markdown PR events). */
+export type PrFileSnapshot = {
+  changedFiles?: unknown[];
+  path?: string;
+  before?: string;
+  after?: string;
+};
+
+/**
+ * Kind 1618 from relays is often markdown-only (no JSON `changedFiles`). Spreading that row
+ * must not wipe locally stored diffs — otherwise the PR page shows no files and merge cannot
+ * apply README to overrides.
+ */
+export function mergeNostrKind1618FileSnapshot(
+  prior: PrFileSnapshot | undefined,
+  parsedFromEvent: PrFileSnapshot
+): PrFileSnapshot {
+  const inc = parsedFromEvent;
+  const cf = inc.changedFiles;
+  const hasArrayFiles = Array.isArray(cf) && cf.length > 0;
+  const hasSingleFile =
+    typeof inc.path === "string" && String(inc.path).trim().length > 0;
+
+  if (hasArrayFiles || hasSingleFile) {
+    return {
+      changedFiles: hasArrayFiles ? cf : inc.changedFiles,
+      path: inc.path,
+      before: inc.before,
+      after: inc.after,
+    };
+  }
+
+  return {
+    changedFiles: prior?.changedFiles,
+    path: prior?.path,
+    before: prior?.before,
+    after: prior?.after,
+  };
+}

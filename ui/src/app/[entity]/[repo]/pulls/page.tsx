@@ -27,6 +27,7 @@ import {
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import {
+  mergeNostrKind1618FileSnapshot,
   normalizePrListStatus,
   prStatusForNostrKind1618Merge,
 } from "@/lib/utils/issue-pr-status";
@@ -346,6 +347,9 @@ export default function RepoPullsPage({
                 prior?.status,
                 kindDefaultStatus
               );
+              const fileSnap = mergeNostrKind1618FileSnapshot(prior, {
+                changedFiles,
+              });
 
               const pr = {
                 id: event.id,
@@ -360,10 +364,17 @@ export default function RepoPullsPage({
                 headBranch: headBranch,
                 currentCommitId: cTag ? cTag[1] : undefined, // NIP-34: commit ID
                 cloneUrls: cloneTags.map((t: string[]) => t[1]), // NIP-34: clone URLs
-                changedFiles: changedFiles,
+                changedFiles: Array.isArray(fileSnap.changedFiles)
+                  ? (fileSnap.changedFiles as any[])
+                  : [],
                 createdAt: event.created_at * 1000,
                 number: String(existingPRs.length + 1), // Auto-number
                 linkedIssue: linkedIssueTag ? linkedIssueTag[1] : undefined,
+                ...(fileSnap.path !== undefined ? { path: fileSnap.path } : {}),
+                ...(fileSnap.before !== undefined
+                  ? { before: fileSnap.before }
+                  : {}),
+                ...(fileSnap.after !== undefined ? { after: fileSnap.after } : {}),
               };
 
               if (existingIndex >= 0) {
