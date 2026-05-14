@@ -180,11 +180,11 @@ await pushFilesToBridge({
 
 ```bash
 # On server
-ls -la /opt/gittr/repos/YOUR_PUBKEY/
+ls -la /opt/ngit/repos/YOUR_PUBKEY/
 # Should show: mylnbitch.git (owned by git-nostr:git-nostr)
 
 # If missing or wrong permissions:
-sudo chown -R git-nostr:git-nostr /opt/gittr/repos/
+sudo chown -R git-nostr:git-nostr /opt/ngit/repos/
 ```
 
 ## Expected Behavior

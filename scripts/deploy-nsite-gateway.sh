@@ -18,7 +18,7 @@ if [[ -z "${HOST}" ]]; then
 fi
 
 KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
-REMOTE="/opt/gittr/infra/nsite-gateway"
+REMOTE="/opt/ngit/infra/nsite-gateway"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -37,8 +37,8 @@ echo "📦 Deploying nsite gateway → root@${HOST}:${REMOTE}"
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "mkdir -p '${REMOTE}/public'"
 
 echo "📦 Syncing gittr nsite-gateway fork (for /status/manifests.json build)…"
-ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "rm -rf '/opt/gittr/infra/gittr-nsite-gateway'"
-scp -i "$KEY" -q -r "$ROOT/infra/gittr-nsite-gateway" "root@${HOST}:/opt/gittr/infra/"
+ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "rm -rf '/opt/ngit/infra/gittr-nsite-gateway'"
+scp -i "$KEY" -q -r "$ROOT/infra/gittr-nsite-gateway" "root@${HOST}:/opt/ngit/infra/"
 
 scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/docker-compose.yml" "root@${HOST}:${REMOTE}/"
 scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/docker-compose.gittr-gateway.yml" "root@${HOST}:${REMOTE}/"

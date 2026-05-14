@@ -71,7 +71,7 @@ if [ -n "$BINARY_PATH" ]; then
 else
     # Try common locations
     FOUND=false
-    for path in "/opt/gittr/ui/gitnostr/bin/git-nostr-bridge" "/home/git-nostr/gittr/ui/gitnostr/bin/git-nostr-bridge"; do
+    for path in "/opt/ngit/ui/gitnostr/bin/git-nostr-bridge" "/home/git-nostr/gittr/ui/gitnostr/bin/git-nostr-bridge" "/home/git-nostr/ngit/ui/gitnostr/bin/git-nostr-bridge"; do
         if ssh -i "$SSH_KEY" "$SERVER" "test -f \"$path\"" 2>/dev/null; then
             echo "  Found at: $path"
             ssh -i "$SSH_KEY" "$SERVER" "ls -lh \"$path\""

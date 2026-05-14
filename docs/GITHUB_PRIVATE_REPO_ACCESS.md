@@ -19,7 +19,7 @@ When you import a private repo from GitHub:
 2. **Files are stored in `localStorage`** → Your browser stores all the files
 3. **Repository event is published to Nostr** → Kind 30617 event with repo metadata
 4. **Files are pushed to the bridge** → Via `/api/nostr/repo/push` which sends files directly to the bridge API
-5. **Bridge stores files locally** → Files are written to disk at `/opt/gittr/repos/{pubkey}/{repo}.git`
+5. **Bridge stores files locally** → Files are written to disk at `/opt/ngit/repos/{pubkey}/{repo}.git`
 
 **Why import worked**: The `/api/import` endpoint uses `GITHUB_PLATFORM_TOKEN` to access your private repo.
 
@@ -82,7 +82,7 @@ Add the `Environment` line:
 [Service]
 Type=simple
 User=www-data
-WorkingDirectory=/opt/gittr/ui
+WorkingDirectory=/opt/ngit/ui
 ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=10
@@ -101,10 +101,10 @@ sudo systemctl restart gittr-frontend
 
 #### Option 2: .env.local File
 
-Create/edit `/opt/gittr/ui/.env.local`:
+Create/edit `/opt/ngit/ui/.env.local`:
 
 ```bash
-sudo nano /opt/gittr/ui/.env.local
+sudo nano /opt/ngit/ui/.env.local
 ```
 
 Add:
