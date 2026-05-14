@@ -1241,16 +1241,24 @@ export class RemoteSignerManager {
 
   private applyNip07Adapter() {
     if (typeof window === "undefined") return;
-    // Prefer native NIP-07 extension when available; use remote adapter only
-    // when there is no extension provider in the browser.
+    // When a NIP-46 session is active, `window.nostr` must point at the remote
+    // adapter. If we restored the browser extension here (previous behaviour),
+    // `getPublicKey` / signing would use the extension while NostrContext still
+    // shows the bunker's pubkey — breaking explore, file fetch, and anything
+    // that keys off `window.nostr` vs context.
+    if (this.session) {
+      const adapter = createRemoteNip07Adapter(this);
+      this.adapter = adapter;
+      window.nostr = adapter as typeof window.nostr;
+      return;
+    }
     if (this.originalNostr) {
       window.nostr = this.originalNostr;
       this.adapter = undefined;
       return;
     }
-    const adapter = createRemoteNip07Adapter(this);
-    this.adapter = adapter;
-    window.nostr = adapter;
+    delete (window as unknown as { nostr?: unknown }).nostr;
+    this.adapter = undefined;
   }
 }
 

@@ -952,6 +952,8 @@ function ExplorePageContent() {
     // Identify GRASP relays (these have the most repos!)
     const { getGraspServers } = require("@/lib/utils/grasp-servers");
     const graspRelays = getGraspServers(defaultRelays);
+    const normRelay = (u: string) => u.trim().toLowerCase().replace(/\/+$/, "");
+    const graspRelayNorms = new Set(graspRelays.map(normRelay));
     console.log(
       "🎯 [Explore] GRASP relays found:",
       graspRelays.length,
@@ -2012,12 +2014,26 @@ function ExplorePageContent() {
         }
       },
       undefined,
-      (events, relayURL) => {
+      (relayInfo, minCreatedAt) => {
+        // nostr-relaypool passes (relay, minCreatedAt); relay may be a URL string or { url }.
+        const relayUrl =
+          typeof relayInfo === "string"
+            ? relayInfo
+            : relayInfo &&
+              typeof relayInfo === "object" &&
+              "url" in (relayInfo as object) &&
+              typeof (relayInfo as { url: string }).url === "string"
+            ? (relayInfo as { url: string }).url
+            : "";
         // CRITICAL: After EOSE, process the latest NIP-34 event for each repo
         // This ensures we use the most recent version of replaceable events
         if (nip34EventsByRepo.size > 0) {
           console.log(
-            `📡 [Explore] EOSE from ${relayURL} - processing latest NIP-34 events for ${nip34EventsByRepo.size} repos`
+            `📡 [Explore] EOSE from ${
+              relayUrl || String(relayInfo)
+            } - processing latest NIP-34 events for ${
+              nip34EventsByRepo.size
+            } repos`
           );
 
           nip34EventsByRepo.forEach((eventList, repoKey) => {
@@ -2050,37 +2066,21 @@ function ExplorePageContent() {
           nip34EventsByRepo.clear();
         }
 
-        // Original EOSE handler
-        // EOSE - end of stored events
-        const relayName =
-          typeof relayURL === "string"
-            ? relayURL
-            : relayURL === Infinity
-            ? "multiple"
-            : String(relayURL);
+        const relayName = relayUrl || String(relayInfo ?? "unknown");
         console.log(
           "✅ [Explore] EOSE from relay:",
           relayName,
-          "events:",
-          events?.length || 0
+          "minCreatedAt:",
+          minCreatedAt
         );
 
-        // Track this relay's EOSE
-        if (typeof relayURL === "string") {
-          eoseReceived.add(relayURL);
-          // Track GRASP relays separately
-          if (graspRelays.includes(relayURL)) {
-            graspRelaysReceived.add(relayURL);
-            console.log("🎯 [Explore] GRASP relay responded:", relayURL);
+        if (relayUrl) {
+          const nk = normRelay(relayUrl);
+          eoseReceived.add(nk);
+          if (graspRelayNorms.has(nk)) {
+            graspRelaysReceived.add(nk);
+            console.log("🎯 [Explore] GRASP relay responded:", relayUrl);
           }
-        } else if (relayURL === Infinity) {
-          // Multiple relays sent EOSE - mark all as received
-          defaultRelays.forEach((r) => {
-            eoseReceived.add(r);
-            if (graspRelays.includes(r)) {
-              graspRelaysReceived.add(r);
-            }
-          });
         }
 
         // Log summary after EOSE
@@ -2102,7 +2102,6 @@ function ExplorePageContent() {
           foreignRepos: foreignRepos.length,
           ownRepos: ownRepos.length,
           currentUserPubkey: pubkey ? pubkey.slice(0, 8) : "none",
-          eventsReceived: events?.length || 0,
           fromNostr: foreignRepos.length > 0 ? "✅" : "❌",
           eoseCount: eoseReceived.size,
           graspRelaysReceived: graspRelaysReceived.size,

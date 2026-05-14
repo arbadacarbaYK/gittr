@@ -3,7 +3,10 @@ import {
   resolveUserIconForMetadata,
 } from "@/lib/utils/metadata-icon-resolver";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
-import { normalizeSocialImageUrl } from "@/lib/utils/social-image";
+import {
+  normalizeSocialImageUrl,
+  openGraphImageDescriptor,
+} from "@/lib/utils/social-image";
 
 import { type Metadata } from "next";
 import { nip19 } from "nostr-tools";
@@ -276,12 +279,37 @@ export async function generateMetadata({
     );
 
     // Resolve repository icon URL for Open Graph (also non-blocking)
-    // Priority: owner profile picture -> repo logo -> default logo
-    // Note: We prioritize owner picture because repo logos may not exist
-    let iconUrl = `${baseUrl}/opengraph-image`; // Default fallback
+    // Priority: 1) repo picture (logo) 2) owner profile picture 3) gittr card
+    const defaultCard = `${baseUrl}/opengraph-image`;
+    let iconUrl = defaultCard;
     const iconUrlPromise = (async () => {
       try {
-        // First, try owner profile picture (most reliable)
+        // 1) Repository logo (file-content URL or default)
+        try {
+          let resolvedIcon = await resolveRepoIconForMetadata(
+            resolvedParams.entity,
+            decodedRepo,
+            baseUrl
+          );
+
+          if (!resolvedIcon.startsWith("http")) {
+            resolvedIcon = `${baseUrl}${
+              resolvedIcon.startsWith("/") ? "" : "/"
+            }${resolvedIcon}`;
+          }
+
+          if (resolvedIcon !== defaultCard) {
+            console.log(
+              "[Metadata] Using repo logo:",
+              resolvedIcon.substring(0, 60)
+            );
+            return resolvedIcon;
+          }
+        } catch (error) {
+          console.warn("[Metadata] Failed to resolve repo icon:", error);
+        }
+
+        // 2) Owner profile picture
         if (ownerPubkey) {
           try {
             const ownerIcon = await resolveUserIconForMetadata(
@@ -291,7 +319,7 @@ export async function generateMetadata({
             );
             if (
               ownerIcon &&
-              ownerIcon !== `${baseUrl}/opengraph-image` &&
+              ownerIcon !== defaultCard &&
               ownerIcon.startsWith("http")
             ) {
               console.log(
@@ -305,42 +333,13 @@ export async function generateMetadata({
           }
         }
 
-        // Then try repo logo (may not exist, so this is secondary)
-        try {
-          let resolvedIcon = await resolveRepoIconForMetadata(
-            resolvedParams.entity,
-            decodedRepo,
-            baseUrl
-          );
-
-          // Ensure iconUrl is absolute
-          if (!resolvedIcon.startsWith("http")) {
-            resolvedIcon = `${baseUrl}${
-              resolvedIcon.startsWith("/") ? "" : "/"
-            }${resolvedIcon}`;
-          }
-
-          // Only use repo logo if it's not the default
-          if (resolvedIcon !== `${baseUrl}/opengraph-image`) {
-            console.log(
-              "[Metadata] Using repo logo:",
-              resolvedIcon.substring(0, 60)
-            );
-            return resolvedIcon;
-          }
-        } catch (error) {
-          console.warn("[Metadata] Failed to resolve repo icon:", error);
-        }
-
-        // Fall back to default logo
-        return `${baseUrl}/opengraph-image`;
+        return defaultCard;
       } catch (error) {
-        // If resolution fails, use default logo
         console.warn(
           "[Metadata] Failed to resolve icon, using default:",
           error
         );
-        return `${baseUrl}/opengraph-image`;
+        return defaultCard;
       }
     })();
 
@@ -387,12 +386,11 @@ export async function generateMetadata({
         type: "website",
         siteName: "gittr",
         images: [
-          {
-            url: iconUrl,
-            width: 1200, // X/Twitter requires at least 300x157, but 1200x630 is recommended for summary_large_image
-            height: 630,
-            alt: `${decodedRepo} repository on gittr`,
-          },
+          openGraphImageDescriptor(
+            iconUrl,
+            baseUrl,
+            `${decodedRepo} repository on gittr`
+          ),
         ],
       },
       twitter: {
@@ -433,16 +431,15 @@ export async function generateMetadata({
         type: "website",
         siteName: "gittr",
         images: [
-          {
-            url: `${baseUrl}/opengraph-image`,
-            width: 600,
-            height: 600,
-            alt: `${decodedRepo} repository on gittr`,
-          },
+          openGraphImageDescriptor(
+            `${baseUrl}/opengraph-image`,
+            baseUrl,
+            `${decodedRepo} repository on gittr`
+          ),
         ],
       },
       twitter: {
-        card: "summary",
+        card: "summary_large_image",
         title,
         description: `Repository ${title} on gittr - Decentralized Git Hosting on Nostr`,
         images: [`${baseUrl}/opengraph-image`],

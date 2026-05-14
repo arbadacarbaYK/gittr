@@ -1,6 +1,9 @@
 import { resolveUserIconForMetadata } from "@/lib/utils/metadata-icon-resolver";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
-import { normalizeSocialImageUrl } from "@/lib/utils/social-image";
+import {
+  normalizeSocialImageUrl,
+  openGraphImageDescriptor,
+} from "@/lib/utils/social-image";
 
 import { type Metadata } from "next";
 import { nip19 } from "nostr-tools";
@@ -160,12 +163,11 @@ export async function generateMetadata({
       type: "profile",
       siteName: "gittr",
       images: [
-        {
-          url: iconUrl,
-          width: 1200, // X/Twitter requires at least 300x157, but 1200x630 is recommended for summary_large_image
-          height: 630,
-          alt: `${actualName} profile on gittr`,
-        },
+        openGraphImageDescriptor(
+          iconUrl,
+          baseUrl,
+          `${actualName} profile on gittr`
+        ),
       ],
     },
     twitter: {
