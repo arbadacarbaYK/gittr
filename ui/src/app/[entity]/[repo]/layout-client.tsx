@@ -850,9 +850,8 @@ export default function RepoLayoutClient({
         ) as any[];
         // Only count open PRs and issues (merged/closed/resolved bucket as non-open)
         setPrCount(
-          prs.filter(
-            (pr: any) => normalizePrListStatus(pr.status) === "open"
-          ).length
+          prs.filter((pr: any) => normalizePrListStatus(pr.status) === "open")
+            .length
         );
         setIssueCount(
           issues.filter(

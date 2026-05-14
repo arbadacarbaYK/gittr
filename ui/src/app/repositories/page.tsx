@@ -35,6 +35,7 @@ import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 import {
   isRepoCorrupted,
@@ -1083,10 +1084,14 @@ export default function RepositoriesPage() {
                   const tagName = tag[0];
                   const tagValue = tag[1];
 
-                  if (tagName === "clone" && tagValue) {
-                    cloneTags.push(tagValue);
-                  } else if (tagName === "relays" && tagValue) {
-                    relaysTags.push(tagValue);
+                  if (tagName === "clone") {
+                    for (const v of nip34TagValuesFromRow(tag)) {
+                      cloneTags.push(v);
+                    }
+                  } else if (tagName === "relays") {
+                    for (const v of nip34TagValuesFromRow(tag)) {
+                      relaysTags.push(v);
+                    }
                   } else if (tagName === "t" && tagValue) {
                     topicTags.push(tagValue);
                   } else if (tagName === "source" && tagValue) {
@@ -1289,40 +1294,15 @@ export default function RepositoriesPage() {
               return;
             }
 
-            // Check if this repo already exists (match by entity OR by ownerPubkey)
-            const existingIndex = existingRepos.findIndex((r: any) => {
-              // Match by ownerPubkey first (most reliable - works across all entity formats)
-              if (r.ownerPubkey === event.pubkey) {
-                return (
-                  r.repo === repoData.repositoryName ||
-                  r.slug === repoData.repositoryName
-                );
-              }
-              // Match by entity (npub format or full pubkey)
-              if (r.entity === entity || r.entity === event.pubkey) {
-                return (
-                  r.repo === repoData.repositoryName ||
-                  r.slug === repoData.repositoryName
-                );
-              }
-              // Also check if existing entity is npub for same pubkey
-              if (r.entity && r.entity.startsWith("npub")) {
-                try {
-                  const rDecoded = nip19.decode(r.entity);
-                  if (
-                    rDecoded.type === "npub" &&
-                    (rDecoded.data as string).toLowerCase() ===
-                      event.pubkey.toLowerCase()
-                  ) {
-                    return (
-                      r.repo === repoData.repositoryName ||
-                      r.slug === repoData.repositoryName
-                    );
-                  }
-                } catch {}
-              }
-              return false;
-            });
+            // Check if this repo already exists (same semantics as findRepoByEntityAndName)
+            const existingRepoMatch = findRepoByEntityAndName(
+              existingRepos,
+              entity,
+              repoData.repositoryName
+            );
+            const existingIndex = existingRepoMatch
+              ? existingRepos.indexOf(existingRepoMatch)
+              : -1;
 
             // The actual owner's name will be fetched via useContributorMetadata hook
             const entityDisplayName = entity; // Will be overridden by ownerMetadata when it loads

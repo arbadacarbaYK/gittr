@@ -291,9 +291,7 @@ export function buildUnsignedRepositoryEvent(
   // NIP-34: one "clone" tag with multiple git URLs (values at indices 1..n)
   if (repo.clone && repo.clone.length > 0) {
     const cleaned = repo.clone
-      .filter(
-        (url) => url && typeof url === "string" && url.trim().length > 0
-      )
+      .filter((url) => url && typeof url === "string" && url.trim().length > 0)
       .map((url) => url.trim())
       .slice(0, 12);
     if (cleaned.length > 0) {

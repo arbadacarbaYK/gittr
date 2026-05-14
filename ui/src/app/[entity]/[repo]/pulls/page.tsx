@@ -374,7 +374,9 @@ export default function RepoPullsPage({
                 ...(fileSnap.before !== undefined
                   ? { before: fileSnap.before }
                   : {}),
-                ...(fileSnap.after !== undefined ? { after: fileSnap.after } : {}),
+                ...(fileSnap.after !== undefined
+                  ? { after: fileSnap.after }
+                  : {}),
               };
 
               if (existingIndex >= 0) {

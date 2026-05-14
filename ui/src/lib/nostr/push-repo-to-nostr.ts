@@ -1523,15 +1523,14 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         }
       });
 
-      const publishSubset = [...new Set(defaultRelays.map(normalizeRelayWssUrl))]
+      const publishSubset = [
+        ...new Set(defaultRelays.map(normalizeRelayWssUrl)),
+      ]
         .filter(Boolean)
         .slice(0, 8);
 
       const announcementRelays = [
-        ...new Set([
-          ...Array.from(relayUrlsFromCloneUrls),
-          ...publishSubset,
-        ]),
+        ...new Set([...Array.from(relayUrlsFromCloneUrls), ...publishSubset]),
       ].slice(0, 12);
 
       if (announcementRelays.length > 0) {

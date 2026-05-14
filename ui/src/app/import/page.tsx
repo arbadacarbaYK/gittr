@@ -11,6 +11,10 @@ import {
   storeRepoEventId,
 } from "@/lib/nostr/publish-with-confirmation";
 import useSession from "@/lib/nostr/useSession";
+import {
+  LOCAL_STORAGE_REPOS_MANAGE_HINT,
+  dedupeStoredReposByOwnerAndRepoLabel,
+} from "@/lib/repos/storage";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
@@ -1689,7 +1693,9 @@ export default function ImportPage() {
       // The repos are already correctly structured when added to existingRepos
       // Just ensure they're saved correctly
       try {
-        localStorage.setItem("gittr_repos", JSON.stringify(cleanedRepos));
+        const dedupedForSave =
+          dedupeStoredReposByOwnerAndRepoLabel(cleanedRepos);
+        localStorage.setItem("gittr_repos", JSON.stringify(dedupedForSave));
       } catch (e: any) {
         if (e.name === "QuotaExceededError" || e.message?.includes("quota")) {
           console.error(
@@ -1705,9 +1711,11 @@ export default function ImportPage() {
           });
 
           try {
+            const aggressiveDeduped =
+              dedupeStoredReposByOwnerAndRepoLabel(aggressiveCleanup);
             localStorage.setItem(
               "gittr_repos",
-              JSON.stringify(aggressiveCleanup)
+              JSON.stringify(aggressiveDeduped)
             );
             console.log(
               `🧹 [Import] Aggressive cleanup: removed ${
@@ -1715,7 +1723,7 @@ export default function ImportPage() {
               } repos (older than 30 days)`
             );
             alert(
-              `⚠️ localStorage quota exceeded. Cleaned up old repos. ${aggressiveCleanup.length} repos remaining.`
+              `⚠️ localStorage quota exceeded. Cleaned up old repos. ${aggressiveDeduped.length} repos remaining.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
             );
           } catch (e2: any) {
             console.error(
@@ -1723,7 +1731,7 @@ export default function ImportPage() {
               e2
             );
             alert(
-              `❌ Error: localStorage is full. Please clear browser data or remove some repos manually.`
+              `❌ Error: localStorage is full.${LOCAL_STORAGE_REPOS_MANAGE_HINT} You can also clear this site's data in your browser settings.`
             );
             throw e2;
           }

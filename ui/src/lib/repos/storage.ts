@@ -472,6 +472,82 @@ const isStoredRepo = (value: unknown): value is StoredRepo => {
   return true;
 };
 
+function ownerHexLowerForDedupe(r: StoredRepo): string {
+  if (r.ownerPubkey && /^[0-9a-f]{64}$/i.test(r.ownerPubkey)) {
+    return r.ownerPubkey.toLowerCase();
+  }
+  if (r.entity?.startsWith("npub")) {
+    try {
+      const d = nip19.decode(r.entity);
+      if (d.type === "npub") {
+        return (d.data as string).toLowerCase();
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  if (r.entity && /^[0-9a-f]{64}$/i.test(r.entity)) {
+    return r.entity.toLowerCase();
+  }
+  return "";
+}
+
+function repoLabelForDedupeKey(r: StoredRepo): string {
+  const label =
+    (typeof r.repositoryName === "string" && r.repositoryName.trim()) ||
+    (typeof r.repo === "string" && r.repo.trim()) ||
+    (typeof r.name === "string" && r.name.trim()) ||
+    (() => {
+      if (typeof r.slug === "string" && r.slug.trim()) {
+        const s = r.slug.trim();
+        const i = s.lastIndexOf("/");
+        return i >= 0 ? s.slice(i + 1) : s;
+      }
+      return "";
+    })();
+  return normalizeRepoSlugForMatch(label);
+}
+
+function nostrEventRecencyScore(r: StoredRepo): number {
+  const sec = (r as { lastNostrEventCreatedAt?: number })
+    .lastNostrEventCreatedAt;
+  if (typeof sec === "number" && sec > 0) return sec;
+  const ms =
+    (r as { updatedAt?: number }).updatedAt ||
+    (r as { lastModifiedAt?: number }).lastModifiedAt ||
+    (r as { createdAt?: number }).createdAt;
+  if (typeof ms === "number" && ms > 0) return Math.floor(ms / 1000);
+  return 0;
+}
+
+/**
+ * Merge duplicate rows that describe the same repo (owner pubkey + repo name),
+ * e.g. hyphen vs underscore slug or repeated Nostr sync writes. Keeps the newest row.
+ */
+export function dedupeStoredReposByOwnerAndRepoLabel(
+  repos: StoredRepo[]
+): StoredRepo[] {
+  if (!Array.isArray(repos) || repos.length < 2) return repos;
+  const map = new Map<string, StoredRepo>();
+  let orphanIdx = 0;
+  for (const r of repos) {
+    const owner = ownerHexLowerForDedupe(r);
+    const slug = repoLabelForDedupeKey(r);
+    const k =
+      owner && slug ? `${owner}::${slug}` : `__incomplete__::${orphanIdx++}`;
+    const prev = map.get(k);
+    if (!prev) {
+      map.set(k, r);
+      continue;
+    }
+    map.set(
+      k,
+      nostrEventRecencyScore(r) >= nostrEventRecencyScore(prev) ? r : prev
+    );
+  }
+  return Array.from(map.values());
+}
+
 const parseJsonArray = <T>(
   raw: string | null,
   isValid: (value: unknown) => value is T
@@ -488,7 +564,21 @@ const parseJsonArray = <T>(
 
 export const loadStoredRepos = (): StoredRepo[] => {
   if (typeof window === "undefined") return [];
-  return parseJsonArray(localStorage.getItem("gittr_repos"), isStoredRepo);
+  const raw = parseJsonArray(localStorage.getItem("gittr_repos"), isStoredRepo);
+  const deduped = dedupeStoredReposByOwnerAndRepoLabel(raw);
+  if (deduped.length < raw.length) {
+    try {
+      localStorage.setItem("gittr_repos", JSON.stringify(deduped));
+      console.warn(
+        `[Storage] Removed ${
+          raw.length - deduped.length
+        } duplicate gittr_repos rows (same owner + repo name)`
+      );
+    } catch {
+      /* quota or private mode — still return deduped view for this read */
+    }
+  }
+  return deduped;
 };
 
 export const loadDeletedRepos = (): Array<{
@@ -516,10 +606,22 @@ export const loadDeletedRepos = (): Array<{
   );
 };
 
+/** Appended to quota / localStorage alerts so users know where to trim cached repos */
+export const LOCAL_STORAGE_REPOS_MANAGE_HINT =
+  " Open My Repositories (/repositories) to delete repos or clear foreign repositories.";
+
 export const saveStoredRepos = (repos: StoredRepo[]): void => {
   if (typeof window === "undefined") return;
+  const toSave = dedupeStoredReposByOwnerAndRepoLabel(repos);
+  if (toSave.length < repos.length) {
+    console.warn(
+      `[Storage] Deduped ${
+        repos.length - toSave.length
+      } duplicate repo row(s) before save`
+    );
+  }
   try {
-    localStorage.setItem("gittr_repos", JSON.stringify(repos));
+    localStorage.setItem("gittr_repos", JSON.stringify(toSave));
   } catch (error: any) {
     if (
       error.name === "QuotaExceededError" ||
@@ -535,29 +637,31 @@ export const saveStoredRepos = (repos: StoredRepo[]): void => {
         const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
 
         // Filter out old repos
-        const cleaned = repos.filter((r: any) => {
+        const cleaned = toSave.filter((r: any) => {
           const lastActivity =
             r.updatedAt || r.lastModifiedAt || r.createdAt || 0;
           return lastActivity > thirtyDaysAgo;
         });
 
-        if (cleaned.length < repos.length) {
+        if (cleaned.length < toSave.length) {
           console.log(
             `🧹 [Storage] Cleaned up ${
-              repos.length - cleaned.length
+              toSave.length - cleaned.length
             } old repos (older than 30 days)`
           );
           // Try saving cleaned repos
           try {
-            localStorage.setItem("gittr_repos", JSON.stringify(cleaned));
+            const cleanedDeduped =
+              dedupeStoredReposByOwnerAndRepoLabel(cleaned);
+            localStorage.setItem("gittr_repos", JSON.stringify(cleanedDeduped));
             console.log(
-              `✅ [Storage] Successfully saved ${cleaned.length} repos after cleanup`
+              `✅ [Storage] Successfully saved ${cleanedDeduped.length} repos after cleanup`
             );
             // Show user-friendly message
             if (typeof window !== "undefined") {
               setTimeout(() => {
                 alert(
-                  `⚠️ localStorage is getting full. Cleaned up old repos. ${cleaned.length} repos remaining.`
+                  `⚠️ localStorage is getting full. Cleaned up old repos. ${cleanedDeduped.length} repos remaining.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
                 );
               }, 100);
             }
@@ -577,17 +681,16 @@ export const saveStoredRepos = (repos: StoredRepo[]): void => {
 
             if (aggressiveCleanup.length < cleaned.length) {
               try {
-                localStorage.setItem(
-                  "gittr_repos",
-                  JSON.stringify(aggressiveCleanup)
-                );
+                const aggDeduped =
+                  dedupeStoredReposByOwnerAndRepoLabel(aggressiveCleanup);
+                localStorage.setItem("gittr_repos", JSON.stringify(aggDeduped));
                 console.log(
-                  `✅ [Storage] Aggressive cleanup: ${aggressiveCleanup.length} repos remaining`
+                  `✅ [Storage] Aggressive cleanup: ${aggDeduped.length} repos remaining`
                 );
                 if (typeof window !== "undefined") {
                   setTimeout(() => {
                     alert(
-                      `⚠️ localStorage is full. Cleaned up repos older than 7 days. ${aggressiveCleanup.length} repos remaining.`
+                      `⚠️ localStorage is full. Cleaned up repos older than 7 days. ${aggDeduped.length} repos remaining.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
                     );
                   }, 100);
                 }
@@ -600,7 +703,7 @@ export const saveStoredRepos = (repos: StoredRepo[]): void => {
                 if (typeof window !== "undefined") {
                   setTimeout(() => {
                     alert(
-                      `❌ Error: localStorage is full. Please clear browser data or remove some repos manually.`
+                      `❌ Error: localStorage is full. You can also clear this site's data in your browser settings.${LOCAL_STORAGE_REPOS_MANAGE_HINT}`
                     );
                   }, 100);
                 }
@@ -618,7 +721,7 @@ export const saveStoredRepos = (repos: StoredRepo[]): void => {
           if (typeof window !== "undefined") {
             setTimeout(() => {
               alert(
-                `❌ Error: localStorage is full. Please clear browser data or remove some repos manually.`
+                `❌ Error: localStorage is full.${LOCAL_STORAGE_REPOS_MANAGE_HINT} You can also clear this site's data in your browser settings.`
               );
             }, 100);
           }

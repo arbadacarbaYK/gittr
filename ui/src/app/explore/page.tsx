@@ -27,8 +27,8 @@ import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
 } from "@/lib/utils/entity-resolver";
-import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
+import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
 
 import Link from "next/link";
@@ -2532,22 +2532,23 @@ function ExplorePageContent() {
         !isLoadingRepos &&
         typeof window !== "undefined" &&
         (() => {
-          const repos = JSON.parse(localStorage.getItem("gittr_repos") || "[]");
-          const repoCount = repos.length;
+          const repoCount = loadStoredRepos().length;
           return (
             <div className="mb-4 p-4 border border-purple-500/50 rounded bg-[#171B21]">
               <div className="flex items-center gap-2 text-purple-400">
                 <div className="animate-spin h-4 w-4 border-2 border-purple-500 border-t-transparent rounded-full theme-border" />
                 <span className="text-sm">
-                  🔄 Syncing from Nostr relays... ({repoCount.toLocaleString()}{" "}
-                  repos found so far, {defaultRelays?.length || 0} relays)
+                  🔄 Syncing from Nostr relays… ({repoCount.toLocaleString()}{" "}
+                  cached repo rows in this browser from the network so far,{" "}
+                  {defaultRelays?.length || 0} relays)
                 </span>
               </div>
               <div className="text-xs text-gray-500 mt-2">
-                Repos are being added as they're discovered. The "syncing"
-                indicator will hide when enough relays respond or after 15
-                seconds, but the subscription continues to listen for new repos
-                in real-time.
+                This count is everything stored under gittr_repos (discovery
+                cache), not only your repos. Trim or clear foreign repos on My
+                Repositories (/repositories). The syncing indicator hides when
+                enough relays respond or after 15 seconds; the subscription
+                keeps listening.
               </div>
             </div>
           );

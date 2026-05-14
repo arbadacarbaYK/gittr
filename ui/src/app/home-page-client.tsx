@@ -41,12 +41,12 @@ import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
 } from "@/lib/utils/entity-resolver";
+import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import {
   checkBridgeExists,
   getRepoStatus,
   getStatusBadgeStyle,
 } from "@/lib/utils/repo-status";
-import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 
 import Link from "next/link";
 import { nip19 } from "nostr-tools";

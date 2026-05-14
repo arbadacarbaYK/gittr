@@ -125,6 +125,8 @@ If you want users to be able to import and view files from private GitHub reposi
 - Viewing file content from private repositories
 - The OAuth token is stored securely in browser localStorage (never sent to server except for API calls)
 
+**Repository discovery cache (`gittr_repos`):** The app stores repository announcements from Nostr in the browser (including repos you only browsed or that arrived while Explore / My Repositories was syncing). That list can grow again after you clear it if you open heavy discovery flows. Use **My Repositories** (`/repositories`) to delete individual repos or **clear foreign repositories**; quota alerts point there as well.
+
 See `[ui/GITHUB_OAUTH_SETUP.md](../ui/GITHUB_OAUTH_SETUP.md)` for detailed instructions.
 
 ### Step 4: Build Frontend
