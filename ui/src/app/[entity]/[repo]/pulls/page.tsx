@@ -7,6 +7,7 @@ import FilterBar from "@/components/filter-bar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { loadStoredRepos } from "@/lib/repos/storage";
 import {
   KIND_PULL_REQUEST,
   KIND_STATUS_APPLIED,
@@ -20,7 +21,10 @@ import {
   formatDateTime24h,
   formatTime24h,
 } from "@/lib/utils/date-format";
-import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
+import {
+  getRepoStorageKey,
+  readRepoPullsFromLocalStorage,
+} from "@/lib/utils/entity-normalizer";
 import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
@@ -32,6 +36,7 @@ import {
   prStatusForNostrKind1618Merge,
 } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 
 import { clsx } from "clsx";
 import {
@@ -64,6 +69,11 @@ interface IPullsData {
   comments: number;
   status?: "open" | "merged" | "closed";
   createdAt?: number;
+  updatedAt?: number;
+  /** Nostr-originated row while repo has local edits not yet pushed to relays. */
+  needsNostrRepublish?: boolean;
+  /** Set after refetch when merged locally in gittr but GitHub still lists the PR open. */
+  sourcePrStillOpen?: boolean;
 }
 
 export default function RepoPullsPage({
@@ -79,6 +89,9 @@ export default function RepoPullsPage({
   const [issues, setIssues] = useState<IPullsData[]>([]);
   const [allPRs, setAllPRs] = useState<IPullsData[]>([]); // Store all PRs for counting
   const [prTabCounts, setPrTabCounts] = useState({ open: 0, closed: 0 });
+  const [githubSyncState, setGithubSyncState] = useState<
+    "idle" | "loading" | "ready" | "no-mirror"
+  >("idle");
   const { subscribe, defaultRelays } = useNostrContext();
   const pathname = usePathname() || "";
 
@@ -100,12 +113,10 @@ export default function RepoPullsPage({
     }
 
     try {
-      const key = getRepoStorageKey(
-        "gittr_prs",
+      const list = readRepoPullsFromLocalStorage(
         resolvedParams.entity,
         resolvedParams.repo
-      );
-      const list = JSON.parse(localStorage.getItem(key) || "[]");
+      ) as any[];
 
       const openN = list.filter(
         (pr: any) => normalizePrListStatus(pr.status) === "open"
@@ -120,44 +131,77 @@ export default function RepoPullsPage({
         return issueStatus === "open" ? bucket === "open" : bucket === "closed";
       });
 
-      const mapped: IPullsData[] = filtered.map((pr: any, idx: number) => ({
-        id: pr.id || String(idx),
-        entity: resolvedParams.entity,
-        repo: resolvedParams.repo,
-        title: pr.title || `PR ${idx + 1}`,
-        number: pr.number || String(idx + 1), // Use PR's number field if available
-        date: pr.createdAt ? formatDateTime24h(pr.createdAt) : "",
-        author: pr.author || "you",
-        tags: [],
-        taskTotal: null,
-        taskCompleted: null,
-        linkedPR: 0,
-        assignees: [],
-        comments: 0,
-        status: pr.status || "open", // Include actual PR status
-        createdAt: pr.createdAt || Date.now(),
-      }));
-      // Sort by createdAt (newest first)
-      mapped.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      let repoUnpushed = false;
+      try {
+        const repos = loadStoredRepos();
+        const r = findRepoByEntityAndName(
+          repos,
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        repoUnpushed = r?.hasUnpushedEdits === true;
+      } catch {
+        repoUnpushed = false;
+      }
+
+      const mapped: IPullsData[] = filtered.map((pr: any, idx: number) => {
+        const idStr = String(pr.id || idx);
+        const isNostrHex = /^[0-9a-f]{64}$/i.test(idStr);
+        const createdAt = Number(pr.createdAt) || Date.now();
+        const updatedAt = Number(pr.updatedAt) || createdAt;
+        return {
+          id: idStr,
+          entity: resolvedParams.entity,
+          repo: resolvedParams.repo,
+          title: pr.title || `PR ${idx + 1}`,
+          number: pr.number || String(idx + 1),
+          date: formatDateTime24h(updatedAt || createdAt),
+          author: pr.author || "you",
+          tags: [],
+          taskTotal: null,
+          taskCompleted: null,
+          linkedPR: 0,
+          assignees: [],
+          comments: 0,
+          status: pr.status || "open",
+          createdAt,
+          updatedAt,
+          needsNostrRepublish: Boolean(repoUnpushed && isNostrHex),
+          sourcePrStillOpen: Boolean(pr.sourcePrStillOpen),
+        };
+      });
+      mapped.sort(
+        (a, b) =>
+          (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0)
+      );
 
       // Also store all PRs for counting closed/merged
-      const allMapped: IPullsData[] = list.map((pr: any, idx: number) => ({
-        id: pr.id || String(idx),
-        entity: resolvedParams.entity,
-        repo: resolvedParams.repo,
-        title: pr.title || `PR ${idx + 1}`,
-        number: pr.number || String(idx + 1),
-        date: pr.createdAt ? formatDateTime24h(pr.createdAt) : "",
-        author: pr.author || "you",
-        tags: [],
-        taskTotal: null,
-        taskCompleted: null,
-        linkedPR: 0,
-        assignees: [],
-        comments: 0,
-        status: pr.status || "open",
-        createdAt: pr.createdAt || Date.now(),
-      }));
+      const allMapped: IPullsData[] = list.map((pr: any, idx: number) => {
+        const idStr = String(pr.id || idx);
+        const isNostrHex = /^[0-9a-f]{64}$/i.test(idStr);
+        const createdAt = Number(pr.createdAt) || Date.now();
+        const updatedAt = Number(pr.updatedAt) || createdAt;
+        return {
+          id: idStr,
+          entity: resolvedParams.entity,
+          repo: resolvedParams.repo,
+          title: pr.title || `PR ${idx + 1}`,
+          number: pr.number || String(idx + 1),
+          date: formatDateTime24h(updatedAt || createdAt),
+          author: pr.author || "you",
+          tags: [],
+          taskTotal: null,
+          taskCompleted: null,
+          linkedPR: 0,
+          assignees: [],
+          comments: 0,
+          status: pr.status || "open",
+          createdAt,
+          updatedAt,
+          needsNostrRepublish: Boolean(repoUnpushed && isNostrHex),
+          sourcePrStillOpen: Boolean(pr.sourcePrStillOpen),
+        };
+      });
 
       setAllPRs(allMapped);
       setIssues(mapped);
@@ -172,6 +216,64 @@ export default function RepoPullsPage({
     issueStatus,
     mounted,
     prListRev,
+  ]);
+
+  useEffect(() => {
+    if (!mounted || !resolvedParams?.entity || !resolvedParams?.repo) return;
+    let cancelled = false;
+    setGithubSyncState("loading");
+    (async () => {
+      try {
+        const repos = loadStoredRepos();
+        let r = findRepoByEntityAndName(
+          repos,
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        if (!r) {
+          const pk = resolveEntityToPubkey(resolvedParams.entity)?.toLowerCase();
+          r = repos.find((x) => {
+            const nameMatch = [x.repo, x.slug, x.name].some(
+              (n) =>
+                n &&
+                String(n).toLowerCase() === resolvedParams.repo.toLowerCase()
+            );
+            if (!nameMatch) return false;
+            if (pk && x.ownerPubkey) {
+              return x.ownerPubkey.toLowerCase() === pk;
+            }
+            return true;
+          });
+        }
+        const { sourceUrl, synced } = await hydrateRepoFromGithub(
+          resolvedParams.entity,
+          resolvedParams.repo,
+          {
+            repoRecord: r ?? null,
+            subscribe: subscribe ?? undefined,
+            defaultRelays: defaultRelays?.length ? defaultRelays : undefined,
+          }
+        );
+        if (cancelled) return;
+        if (!sourceUrl) {
+          setGithubSyncState("no-mirror");
+          return;
+        }
+        setGithubSyncState(synced ? "ready" : "ready");
+        setPrListRev((n) => n + 1);
+      } catch {
+        if (!cancelled) setGithubSyncState("no-mirror");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    mounted,
+    resolvedParams?.entity,
+    resolvedParams?.repo,
+    subscribe,
+    defaultRelays?.join("|") ?? "",
   ]);
 
   // Subscribe to PRs from Nostr relays for this repo
@@ -211,8 +313,12 @@ export default function RepoPullsPage({
       const entityPubkey = await resolveEntityPubkey();
       if (cancelled) return;
 
-      // NIP-34: Use "#a" tag filter for discovery: "30617:<owner-pubkey>:<repo-id>"
-      // Also include old "#repo" tag for backward compatibility
+      const prStorageKey = getRepoStorageKey(
+        "gittr_prs",
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
+
       const filters: any[] = [
         {
           kinds: [KIND_PULL_REQUEST],
@@ -291,12 +397,12 @@ export default function RepoPullsPage({
                 }
               }
 
-              const key = getRepoStorageKey(
-                "gittr_prs",
-                resolvedParams.entity,
-                resolvedParams.repo
-              );
-              const existingPRs = JSON.parse(localStorage.getItem(key) || "[]");
+              const existingPRs = [
+                ...(readRepoPullsFromLocalStorage(
+                  resolvedParams.entity,
+                  resolvedParams.repo
+                ) as any[]),
+              ];
 
               // Check if PR already exists
               const existingIndex = existingPRs.findIndex(
@@ -396,7 +502,13 @@ export default function RepoPullsPage({
               if (!prToUpdate.nostrEventId) {
                 prToUpdate.nostrEventId = event.id;
               }
-              localStorage.setItem(key, JSON.stringify(existingPRs));
+              localStorage.setItem(
+                prStorageKey,
+                JSON.stringify(existingPRs)
+              );
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(new Event("gittr:pr-updated"));
+              }
 
               // Trigger reload by updating state
               const openC = existingPRs.filter(
@@ -465,12 +577,9 @@ export default function RepoPullsPage({
       );
 
       // Subscribe to status events (NIP-34 kinds 1630-1633) for all PRs in this repo
-      const prsKey = getRepoStorageKey(
-        "gittr_prs",
-        resolvedParams.entity,
-        resolvedParams.repo
+      const allPRs = JSON.parse(
+        localStorage.getItem(prStorageKey) || "[]"
       );
-      const allPRs = JSON.parse(localStorage.getItem(prsKey) || "[]");
       const prEventIds = allPRs
         .map((pr: any) => pr.nostrEventId || pr.id)
         .filter(Boolean);
@@ -502,7 +611,9 @@ export default function RepoPullsPage({
             if (!rootTag || !rootTag[1]) return;
 
             const prEventId = rootTag[1];
-            const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
+            const prs = JSON.parse(
+              localStorage.getItem(prStorageKey) || "[]"
+            );
             const prIndex = prs.findIndex(
               (p: any) => (p.nostrEventId || p.id) === prEventId
             );
@@ -529,12 +640,21 @@ export default function RepoPullsPage({
                   status: newStatus,
                   lastStatusEventTime: event.created_at * 1000,
                   lastStatusEventId: event.id,
+                  ...(newStatus === "merged"
+                    ? { sourcePrStillOpen: false }
+                    : {}),
                 };
-                localStorage.setItem(prsKey, JSON.stringify(prs));
+                localStorage.setItem(
+                  prStorageKey,
+                  JSON.stringify(prs)
+                );
+                if (typeof window !== "undefined") {
+                  window.dispatchEvent(new Event("gittr:pr-updated"));
+                }
 
                 // Reload PRs to update UI
                 const reloadedPRs = JSON.parse(
-                  localStorage.getItem(prsKey) || "[]"
+                  localStorage.getItem(prStorageKey) || "[]"
                 );
                 const filtered = reloadedPRs.filter((pr: any) => {
                   const bucket = normalizePrListStatus(pr.status);
@@ -560,6 +680,7 @@ export default function RepoPullsPage({
                     comments: 0,
                     status: pr.status || "open",
                     createdAt: pr.createdAt || Date.now(),
+                    sourcePrStillOpen: Boolean(pr.sourcePrStillOpen),
                   })
                 );
                 mapped.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -581,6 +702,7 @@ export default function RepoPullsPage({
                     comments: 0,
                     status: pr.status || "open",
                     createdAt: pr.createdAt || Date.now(),
+                    sourcePrStillOpen: Boolean(pr.sourcePrStillOpen),
                   })
                 );
 
@@ -645,6 +767,15 @@ export default function RepoPullsPage({
 
   // Fetch Nostr metadata for all authors
   const authorMetadata = useContributorMetadata(authorPubkeys);
+
+  const displayPRs = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q || q === "is:open is:pr") return issues;
+    return issues.filter((p) => {
+      const hay = `${p.title} ${p.number} ${p.author} ${p.repo}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [issues, search]);
 
   // Helper to get entity display name (username instead of npub)
   const getEntityDisplayNameForRepo = useCallback(
@@ -758,7 +889,18 @@ export default function RepoPullsPage({
           </div>
           <div className="overflow-hidden rounded-md rounded-tr-none rounded-tl-none border border-t-0 dark:border-lightgray">
             <ul className="divide-y dark:divide-lightgray">
-              {issues.map((item, idx) => (
+              {displayPRs.length === 0 ? (
+                <li className="p-6 text-center text-zinc-400 text-sm">
+                  {githubSyncState === "loading"
+                    ? "Loading pull requests…"
+                    : githubSyncState === "no-mirror"
+                      ? "No GitHub mirror found for this repo. Open the Code tab first, or add a github.com clone URL on Nostr."
+                      : issueStatus === "open"
+                        ? "No open pull requests."
+                        : "No closed pull requests."}
+                </li>
+              ) : null}
+              {displayPRs.map((item, idx) => (
                 <li
                   key={`${item.id}-${idx}`}
                   className="text-gray-400 grid grid-cols-8 p-2 text-sm hover:bg-dark"
@@ -787,15 +929,31 @@ export default function RepoPullsPage({
                         href={`/${item.entity}/${item.repo}/pulls/${item.id}`}
                       >
                         {item.title}
+                        {item.needsNostrRepublish ? (
+                          <span
+                            className="ml-2 align-middle text-[10px] uppercase tracking-wide text-amber-300 border border-amber-600/50 rounded px-1 py-0.5"
+                            title="Repository has local changes; push to Nostr so others see the latest."
+                          >
+                            Repush
+                          </span>
+                        ) : null}
                       </Link>
                     </div>
-                    <div className="ml-7 text-zinc-400 flex items-center gap-2">
+                    <div className="ml-7 text-zinc-400 flex items-center gap-2 flex-wrap">
                       #{item.number}{" "}
                       {item.status === "merged"
                         ? `merged`
                         : item.status === "closed"
                         ? `closed`
                         : `opened`}{" "}
+                      {item.sourcePrStillOpen ? (
+                        <span
+                          className="text-amber-500/90 font-normal"
+                          title="Merged in gittr; GitHub still shows this PR open until you merge or close it there (or refetch after it changes)."
+                        >
+                          · upstream PR still open
+                        </span>
+                      ) : null}{" "}
                       {item.date} by{" "}
                       <Link
                         className="hover:text-purple-500 flex items-center gap-1 group"

@@ -177,3 +177,30 @@ export function graspRelayUrlsToDomains(graspRelayUrls: string[]): string[] {
     })
     .filter((domain): domain is string => domain !== null);
 }
+
+/**
+ * When a NIP-34 repo event has no `clone` tags, try well-known GRASP git hosts
+ * using the standard npub/{repo}.git path so the bridge can clone on first view.
+ */
+export function buildGraspHttpsCloneCandidates(
+  entityRoute: string,
+  repoName: string,
+  domains: string[],
+  maxServers = 4
+): string[] {
+  const entity = String(entityRoute || "").trim();
+  const repo = String(repoName || "").trim();
+  if (!entity || !repo || !domains.length) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const domain of domains.slice(0, maxServers)) {
+    const host = domain.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+    if (!host) continue;
+    const url = `https://${host}/${entity}/${repo}.git`;
+    if (!seen.has(url)) {
+      seen.add(url);
+      out.push(url);
+    }
+  }
+  return out;
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { isGraspServer } from "@/lib/utils/grasp-servers";
 
@@ -45,9 +45,14 @@ export function RelayDisplay({
   cloneUrls = [],
   className = "",
 }: RelayDisplayProps) {
+  const [mounted, setMounted] = useState(false);
   const [graspExpanded, setGraspExpanded] = useState(false);
   const [relaysExpanded, setRelaysExpanded] = useState(false);
   const [gitSourcesExpanded, setGitSourcesExpanded] = useState(true); // Expanded by default to show fetch progress
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Combine default relays with user-configured relays
   // User relays take precedence (they're added/configured by the user)
@@ -163,8 +168,11 @@ export function RelayDisplay({
               <ChevronRight className="h-4 w-4" />
             )}
             <span>Git Sources</span>
-            <span className="text-xs text-gray-500 ml-auto">
-              ({gitSourceStatuses.length})
+            <span
+              className="text-xs text-gray-500 ml-auto"
+              suppressHydrationWarning
+            >
+              ({mounted ? gitSourceStatuses.length : "…"})
             </span>
           </button>
           {gitSourcesExpanded && (
@@ -220,8 +228,11 @@ export function RelayDisplay({
               <ChevronRight className="h-4 w-4" />
             )}
             <span>Grasp Servers</span>
-            <span className="text-xs text-gray-500 ml-auto">
-              ({allGraspServers.length})
+            <span
+              className="text-xs text-gray-500 ml-auto"
+              suppressHydrationWarning
+            >
+              ({mounted ? allGraspServers.length : "…"})
             </span>
           </button>
           {graspExpanded && (

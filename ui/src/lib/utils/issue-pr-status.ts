@@ -69,6 +69,86 @@ export type PrFileSnapshot = {
   after?: string;
 };
 
+/** GitHub import / refetch uses synthetic ids like `pr-12`. */
+export function isGithubStylePrId(id: unknown): boolean {
+  return /^pr-\d+$/i.test(String(id ?? ""));
+}
+
+/** GitHub import / refetch uses synthetic ids like `issue-3`. */
+export function isGithubStyleIssueId(id: unknown): boolean {
+  return /^issue-\d+$/i.test(String(id ?? ""));
+}
+
+/**
+ * After refetch from GitHub, merge imported PR rows with existing localStorage:
+ * - Keeps Nostr-only rows (id not `pr-<n>`, e.g. hex event ids) so relay PRs are not erased.
+ * - If this repo was merged in gittr but GitHub still shows the PR open, keep `merged` and set
+ *   `sourcePrStillOpen` so the UI can explain drift (until GitHub reflects the merge).
+ */
+export function mergeGithubPrsAfterRefetch(
+  existing: unknown[],
+  githubRows: unknown[]
+): unknown[] {
+  const ex = Array.isArray(existing) ? existing : [];
+  const gh = Array.isArray(githubRows) ? githubRows : [];
+  const nostrOnly = ex.filter(
+    (p) =>
+      p &&
+      typeof p === "object" &&
+      !isGithubStylePrId((p as { id?: unknown }).id)
+  );
+
+  const merged = gh.map((row) => {
+    const ghRow = row as Record<string, unknown>;
+    const ghNum = String(ghRow.number ?? "");
+    const ghId = String(ghRow.id ?? "");
+    const prev = ex.find((e) => {
+      if (!e || typeof e !== "object") return false;
+      const p = e as Record<string, unknown>;
+      return (
+        (ghNum && String(p.number ?? "") === ghNum) ||
+        (ghId && String(p.id ?? "") === ghId)
+      );
+    }) as Record<string, unknown> | undefined;
+
+    const prevStatus = String(prev?.status ?? "").toLowerCase();
+    const ghOpen =
+      String(ghRow.status ?? "").toLowerCase() === "open" && !ghRow.merged_at;
+
+    if (prev && prevStatus === "merged" && ghOpen) {
+      return {
+        ...ghRow,
+        status: "merged",
+        mergedAt: prev.mergedAt ?? prev.merged_at,
+        mergedBy: prev.mergedBy,
+        mergeCommit: prev.mergeCommit,
+        sourcePrStillOpen: true,
+      };
+    }
+    return ghRow;
+  });
+
+  return [...merged, ...nostrOnly];
+}
+
+/**
+ * After refetch from GitHub, keep Nostr-only issue rows (id not `issue-<n>`) alongside GitHub rows.
+ */
+export function mergeGithubIssuesAfterRefetch(
+  existing: unknown[],
+  githubRows: unknown[]
+): unknown[] {
+  const ex = Array.isArray(existing) ? existing : [];
+  const gh = Array.isArray(githubRows) ? githubRows : [];
+  const nostrOnly = ex.filter(
+    (p) =>
+      p &&
+      typeof p === "object" &&
+      !isGithubStyleIssueId((p as { id?: unknown }).id)
+  );
+  return [...gh, ...nostrOnly];
+}
+
 /**
  * Kind 1618 from relays is often markdown-only (no JSON `changedFiles`). Spreading that row
  * must not wipe locally stored diffs — otherwise the PR page shows no files and merge cannot

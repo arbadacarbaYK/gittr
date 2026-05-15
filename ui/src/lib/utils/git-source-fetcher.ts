@@ -1619,6 +1619,58 @@ export async function fetchFilesFromMultipleSources(
     }
   }
 
+  const { prioritizeUpstreamCloneUrls } = await import(
+    "@/lib/repos/upstream-precedence"
+  );
+  prioritizedCloneUrls = prioritizeUpstreamCloneUrls(prioritizedCloneUrls);
+
+  const githubCloneUrl = prioritizedCloneUrls.find((u) =>
+    /github\.com/i.test(u)
+  );
+  if (githubCloneUrl) {
+    const ghSource = parseGitSource(githubCloneUrl);
+    if (ghSource.type === "github") {
+      const ghStatus: FetchStatus = {
+        source: ghSource,
+        status: "fetching",
+      };
+      if (onStatusUpdate) onStatusUpdate(ghStatus);
+      try {
+        console.log(
+          `🐙 [Git Source] Trying GitHub first (upstream mirror): ${githubCloneUrl}`
+        );
+        const ghResult = await Promise.race([
+          fetchFilesFromSource(ghSource, branch, eventPublisherPubkey),
+          new Promise<null>((_, reject) =>
+            setTimeout(() => reject(new Error("GitHub fetch timeout")), 15000)
+          ),
+        ]);
+        if (ghResult?.files && ghResult.files.length > 0) {
+          ghStatus.status = "success";
+          ghStatus.files = ghResult.files;
+          ghStatus.fetchedAt = Date.now();
+          if (ghResult.resolvedBranch) {
+            ghStatus.resolvedBranch = ghResult.resolvedBranch;
+          }
+          if (onStatusUpdate) onStatusUpdate(ghStatus);
+          console.log(
+            `✅ [Git Source] GitHub-first fetch succeeded: ${ghResult.files.length} files`
+          );
+          return { files: ghResult.files, statuses: [ghStatus] };
+        }
+        ghStatus.status = "failed";
+        ghStatus.error = "No files from GitHub";
+        if (onStatusUpdate) onStatusUpdate(ghStatus);
+      } catch (e) {
+        ghStatus.status = "failed";
+        ghStatus.error =
+          e instanceof Error ? e.message : "GitHub fetch failed";
+        if (onStatusUpdate) onStatusUpdate(ghStatus);
+        console.warn("⚠️ [Git Source] GitHub-first fetch failed:", e);
+      }
+    }
+  }
+
   const sources = prioritizedCloneUrls.map(parseGitSource);
   const statuses: FetchStatus[] = sources.map((source) => ({
     source,
@@ -1763,7 +1815,7 @@ export async function fetchFilesFromMultipleSources(
           `⏱️ [Git Source] Timeout waiting for first success, returning current statuses`
         );
         resolve({ files: null, statuses });
-      }, 10000); // 10 second timeout
+      }, 45000); // Wait longer for large trees (GitHub API can be slow)
     }
   );
 

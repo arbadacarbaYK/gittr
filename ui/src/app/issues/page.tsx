@@ -15,13 +15,21 @@ import {
   formatDateTime24h,
   formatTime24h,
 } from "@/lib/utils/date-format";
-import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
+import {
+  getRepoStorageKey,
+  readRepoIssuesFromLocalStorage,
+} from "@/lib/utils/entity-normalizer";
 import {
   getEntityDisplayName,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
-import { normalizeIssueListStatus } from "@/lib/utils/issue-pr-status";
+import {
+  mergeGithubIssuesAfterRefetch,
+  normalizeIssueListStatus,
+} from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
+import { syncGithubIssuesForRepo } from "@/lib/utils/sync-github-repo-issues-prs";
 
 import { clsx } from "clsx";
 import {
@@ -53,8 +61,10 @@ interface IIssueData {
   comments: number;
   status?: "open" | "closed";
   createdAt?: number;
+  updatedAt?: number;
   bountyAmount?: number;
   bountyStatus?: "pending" | "paid" | "released";
+  needsNostrRepublish?: boolean;
 }
 
 export default function IssuesPage({}) {
@@ -101,17 +111,12 @@ export default function IssuesPage({}) {
           return;
         }
 
-        // Try both possible key formats
-        const issueKey1 = `gittr_issues__${entity}__${repoName}`;
-        const issueKey2 = `gittr_issues__${repo.slug || entity}_${repoName}`;
-        let repoIssues = JSON.parse(
-          localStorage.getItem(issueKey1) || "[]"
+        const repoIssues = readRepoIssuesFromLocalStorage(
+          entity,
+          repoName
         ) as any[];
-        if (repoIssues.length === 0) {
-          repoIssues = JSON.parse(
-            localStorage.getItem(issueKey2) || "[]"
-          ) as any[];
-        }
+
+        const repoUnpushed = repo?.hasUnpushedEdits === true;
 
         console.log(
           `[IssuesPage] Loading issues from ${entity}/${repoName}:`,
@@ -138,15 +143,18 @@ export default function IssuesPage({}) {
             }
           }
 
+          const idStr = String(issue.id || `${entity}_${repoName}_${idx}`);
+          const isNostrHex = /^[0-9a-f]{64}$/i.test(idStr);
+          const createdAt = issue.createdAt || Date.now();
+          const updatedAt = issue.updatedAt || createdAt;
+
           allIssuesData.push({
-            id: issue.id || `${entity}_${repoName}_${idx}`,
+            id: idStr,
             entity: entity,
             repo: repoName,
             title: issue.title || `Issue ${idx + 1}`,
             number: issue.number || String(idx + 1),
-            date: issue.createdAt
-              ? formatDateTime24h(issue.createdAt)
-              : formatDateTime24h(Date.now()),
+            date: formatDateTime24h(updatedAt || createdAt),
             author: issue.author || "unknown",
             tags: issue.labels || [],
             taskTotal: null,
@@ -155,15 +163,20 @@ export default function IssuesPage({}) {
             assignees: issue.assignees || [],
             comments: 0,
             status: issue.status || "open",
-            createdAt: issue.createdAt || Date.now(),
+            createdAt,
+            updatedAt,
             bountyAmount: issue.bountyAmount,
             bountyStatus: issue.bountyStatus,
+            needsNostrRepublish: Boolean(repoUnpushed && isNostrHex),
           });
         });
       });
 
-      // Sort by createdAt (newest first)
-      allIssuesData.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      // Sort by last activity (GitHub updated_at when present), then created
+      allIssuesData.sort(
+        (a, b) =>
+          (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0)
+      );
 
       console.log("[IssuesPage] Total issues loaded:", allIssuesData.length);
       console.log("[IssuesPage] Current user pubkey:", currentUserPubkey);
@@ -194,9 +207,6 @@ export default function IssuesPage({}) {
 
         // Fetch from GitHub for repos with sourceUrl
         for (const repo of userRepos) {
-          if (!repo.sourceUrl || !repo.sourceUrl.includes("github.com"))
-            continue;
-
           const entity =
             repo.entity ||
             repo.slug?.split("/")[0] ||
@@ -205,64 +215,11 @@ export default function IssuesPage({}) {
             repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
           if (!entity || !repoName) continue;
 
+          const upstream = resolveGithubUpstreamForTabs(entity, repoName, repo);
+          if (!upstream) continue;
+
           try {
-            const url = new URL(repo.sourceUrl);
-            const pathParts = url.pathname
-              .replace(/\.git$/, "")
-              .split("/")
-              .filter(Boolean);
-            if (pathParts.length < 2 || !pathParts[0] || !pathParts[1])
-              continue;
-
-            const owner = pathParts[0];
-            const repoNameFromUrl = pathParts[1];
-
-            const proxyUrl = `/api/github/proxy?endpoint=${encodeURIComponent(
-              `/repos/${owner}/${repoNameFromUrl}/issues?state=all&per_page=100&sort=updated`
-            )}`;
-            const response = await fetch(proxyUrl);
-
-            if (response.ok) {
-              const githubList: any[] = await response.json();
-              const githubIssues = githubList
-                .filter((item: any) => !item.pull_request)
-                .map((item: any) => ({
-                  id: `issue-${item.number}`,
-                  entity: entity,
-                  repo: repoName,
-                  title: item.title || "",
-                  number: String(item.number || ""),
-                  status: item.state === "closed" ? "closed" : "open",
-                  author: item.user?.login || "",
-                  labels: item.labels?.map((l: any) => l.name || l) || [],
-                  assignees: [],
-                  createdAt: item.created_at
-                    ? new Date(item.created_at).getTime()
-                    : Date.now(),
-                  body: item.body || "",
-                  html_url: item.html_url || "",
-                }));
-
-              const key = getRepoStorageKey("gittr_issues", entity, repoName);
-              const existingIssues = JSON.parse(
-                localStorage.getItem(key) || "[]"
-              ) as any[];
-
-              // Merge GitHub issues with existing Nostr issues
-              const mergedIssuesMap = new Map<string, any>();
-              existingIssues.forEach((issue) => {
-                mergedIssuesMap.set(issue.id, issue);
-              });
-              githubIssues.forEach((issue) => {
-                mergedIssuesMap.set(issue.id, issue);
-              });
-
-              const finalIssues = Array.from(mergedIssuesMap.values());
-              localStorage.setItem(key, JSON.stringify(finalIssues));
-              console.log(
-                `✅ [Issues Aggregated] Fetched and merged ${githubIssues.length} GitHub issues for ${entity}/${repoName}`
-              );
-            }
+            await syncGithubIssuesForRepo(entity, repoName, upstream);
           } catch (error) {
             console.error(
               `Failed to fetch issues from GitHub for ${entity}/${repoName}:`,
@@ -282,27 +239,24 @@ export default function IssuesPage({}) {
             repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
           if (!entity || !repoName) return;
 
-          const issueKey1 = `gittr_issues__${entity}__${repoName}`;
-          const issueKey2 = `gittr_issues__${repo.slug || entity}_${repoName}`;
-          let repoIssues = JSON.parse(
-            localStorage.getItem(issueKey1) || "[]"
+          const repoIssues = readRepoIssuesFromLocalStorage(
+            entity,
+            repoName
           ) as any[];
-          if (repoIssues.length === 0) {
-            repoIssues = JSON.parse(
-              localStorage.getItem(issueKey2) || "[]"
-            ) as any[];
-          }
+          const repoUnpushed = repo?.hasUnpushedEdits === true;
 
           repoIssues.forEach((issue: any, idx: number) => {
+            const idStr = String(issue.id || `${entity}_${repoName}_${idx}`);
+            const isNostrHex = /^[0-9a-f]{64}$/i.test(idStr);
+            const createdAt = issue.createdAt || Date.now();
+            const updatedAt = issue.updatedAt || createdAt;
             allIssuesData.push({
-              id: issue.id || `${entity}_${repoName}_${idx}`,
+              id: idStr,
               entity: entity,
               repo: repoName,
               title: issue.title || `Issue ${idx + 1}`,
               number: issue.number || String(idx + 1),
-              date: issue.createdAt
-                ? formatDateTime24h(issue.createdAt)
-                : formatDateTime24h(Date.now()),
+              date: formatDateTime24h(updatedAt || createdAt),
               author: issue.author || "unknown",
               tags: issue.labels || [],
               taskTotal: null,
@@ -311,14 +265,20 @@ export default function IssuesPage({}) {
               assignees: issue.assignees || [],
               comments: 0,
               status: issue.status || "open",
-              createdAt: issue.createdAt || Date.now(),
+              createdAt,
+              updatedAt,
               bountyAmount: issue.bountyAmount,
               bountyStatus: issue.bountyStatus,
+              needsNostrRepublish: Boolean(repoUnpushed && isNostrHex),
             });
           });
         });
 
-        allIssuesData.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        allIssuesData.sort(
+          (a, b) =>
+            (b.updatedAt || b.createdAt || 0) -
+            (a.updatedAt || a.createdAt || 0)
+        );
         setAllIssues(allIssuesData);
       } catch (error) {
         console.error("Failed to fetch issues from GitHub:", error);
@@ -614,23 +574,21 @@ export default function IssuesPage({}) {
             const rn = r.repo || r.slug?.split("/")[1] || r.name || r.slug;
             if (!e || !rn) return;
 
-            const k1 = `gittr_issues__${e}__${rn}`;
-            const k2 = `gittr_issues__${r.slug || e}_${rn}`;
-            let ris = JSON.parse(localStorage.getItem(k1) || "[]") as any[];
-            if (ris.length === 0) {
-              ris = JSON.parse(localStorage.getItem(k2) || "[]") as any[];
-            }
+            const ris = readRepoIssuesFromLocalStorage(e, rn) as any[];
+            const repoUnpushed = r?.hasUnpushedEdits === true;
 
             ris.forEach((i: any, idx: number) => {
+              const idStr = String(i.id || `${e}_${rn}_${idx}`);
+              const isNostrHex = /^[0-9a-f]{64}$/i.test(idStr);
+              const createdAt = i.createdAt || Date.now();
+              const updatedAt = i.updatedAt || createdAt;
               allIssuesData.push({
-                id: i.id || `${e}_${rn}_${idx}`,
+                id: idStr,
                 entity: e,
                 repo: rn,
                 title: i.title || `Issue ${idx + 1}`,
                 number: i.number || String(idx + 1),
-                date: i.createdAt
-                  ? formatDateTime24h(i.createdAt)
-                  : formatDateTime24h(Date.now()),
+                date: formatDateTime24h(updatedAt || createdAt),
                 author: i.author || "unknown",
                 tags: i.labels || [],
                 taskTotal: null,
@@ -639,14 +597,20 @@ export default function IssuesPage({}) {
                 assignees: i.assignees || [],
                 comments: 0,
                 status: i.status || "open",
-                createdAt: i.createdAt || Date.now(),
+                createdAt,
+                updatedAt,
                 bountyAmount: i.bountyAmount,
                 bountyStatus: i.bountyStatus,
+                needsNostrRepublish: Boolean(repoUnpushed && isNostrHex),
               });
             });
           });
 
-          allIssuesData.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          allIssuesData.sort(
+            (a, b) =>
+              (b.updatedAt || b.createdAt || 0) -
+              (a.updatedAt || a.createdAt || 0)
+          );
           setAllIssues(allIssuesData);
         } catch (error: any) {
           console.error("Error processing issue event from Nostr:", error);
@@ -995,6 +959,14 @@ export default function IssuesPage({}) {
                           }`}
                         >
                           {item.title}
+                          {item.needsNostrRepublish ? (
+                            <span
+                              className="ml-2 align-middle text-[10px] uppercase tracking-wide text-amber-300 border border-amber-600/50 rounded px-1 py-0.5"
+                              title="Repository has local changes; push to Nostr so others see the latest."
+                            >
+                              Repush
+                            </span>
+                          ) : null}
                         </Link>
                         {/* Bounty Badge */}
                         {(item.bountyAmount || item.bountyStatus) && (

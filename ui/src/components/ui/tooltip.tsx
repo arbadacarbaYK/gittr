@@ -17,7 +17,12 @@ export function Tooltip({
   mobileClickable = false,
 }: TooltipProps) {
   const [isVisible, setIsVisible] = useState(false);
+  const [showFlyoutText, setShowFlyoutText] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setShowFlyoutText(true);
+  }, []);
 
   // Clean content: remove extra newlines and trim whitespace
   const cleanedContent = content
@@ -81,7 +86,7 @@ export function Tooltip({
           whiteSpace: "normal", // Normal wrapping, don't preserve newlines
         }}
       >
-        {cleanedContent}
+        {showFlyoutText ? cleanedContent : "\u200b"}
         <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-[#22262C]"></div>
       </div>
     </div>

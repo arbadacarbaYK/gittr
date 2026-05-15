@@ -63,7 +63,10 @@ import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
-import { findPullRequestRowIndexByRouteParam } from "@/lib/utils/issue-pr-status";
+import {
+  findPullRequestRowIndexByRouteParam,
+  isGithubStylePrId,
+} from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import {
@@ -109,6 +112,8 @@ interface PRData {
   mergedBy?: string;
   baseBranch?: string;
   headBranch?: string;
+  /** Merged in gittr while GitHub (or other source) may still list this PR open. */
+  sourcePrStillOpen?: boolean;
 }
 
 function isHexEventId(value: unknown): value is string {
@@ -152,6 +157,7 @@ export default function PRDetailPage({
     new Map()
   );
   const [prEventId, setPrEventId] = useState<string | null>(null);
+  const [prStorageRev, setPrStorageRev] = useState(0);
   const [mergePublishReady, setMergePublishReady] = useState<boolean>(false);
   const [mergePublishReason, setMergePublishReason] = useState<string>("");
   const [mergePushPayment, setMergePushPayment] = useState<{
@@ -195,6 +201,12 @@ export default function PRDetailPage({
       setRequiredApprovals(0);
     } catch {}
   }, [resolvedParams.entity, resolvedParams.repo]);
+
+  useEffect(() => {
+    const bump = () => setPrStorageRev((n) => n + 1);
+    window.addEventListener("gittr:pr-updated", bump);
+    return () => window.removeEventListener("gittr:pr-updated", bump);
+  }, []);
 
   // Subscribe to snippets referenced in PR description and snippets that reference this PR
   useEffect(() => {
@@ -322,6 +334,7 @@ export default function PRDetailPage({
           mergedBy: prData.mergedBy,
           baseBranch: prData.baseBranch || "main",
           headBranch: prData.headBranch,
+          sourcePrStillOpen: Boolean(prData.sourcePrStillOpen),
         });
         // Store PR event ID if available
         const resolvedPrEventId =
@@ -413,6 +426,7 @@ export default function PRDetailPage({
     resolvedParams.entity,
     resolvedParams.repo,
     currentUserPubkey,
+    prStorageRev,
   ]);
 
   const changedFiles = useMemo(() => {
@@ -880,6 +894,9 @@ export default function PRDetailPage({
         mergedAt: Date.now(),
         mergedBy: currentUserPubkey || "",
         mergeCommit: commitId,
+        ...(isGithubStylePrId(pr.id)
+          ? { sourcePrStillOpen: true as const }
+          : {}),
       };
       let updatedPRs: any[];
       if (prRowIdx >= 0) {
@@ -1696,6 +1713,17 @@ export default function PRDetailPage({
 
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
+      {pr.sourcePrStillOpen ? (
+        <div
+          className="mb-4 rounded-md border border-amber-600/50 bg-amber-950/40 px-4 py-3 text-sm text-amber-100/95"
+          role="status"
+        >
+          This PR is merged in gittr, but the upstream copy (for example on
+          GitHub) may still be open. Refetch updates lists from the source; push
+          your branch and merge or close the PR there when you want the source
+          to match.
+        </div>
+      ) : null}
       <div className="flex items-start justify-between mb-6">
         <div>
           <div className="flex items-center gap-3 mb-2">

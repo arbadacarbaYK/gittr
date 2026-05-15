@@ -1,9 +1,7 @@
 "use client";
 
 import {
-  Children,
   type ReactNode,
-  isValidElement,
   startTransition,
   useCallback,
   useEffect,
@@ -77,18 +75,31 @@ import {
   loadRepoFiles,
   loadRepoOverrides,
   loadStoredRepos,
+  mergeRepoFileIndexes,
   resolveRepoStorageAlias,
   saveRepoDeletedPaths,
   saveRepoFiles,
   saveRepoOverrides,
   saveStoredRepos,
 } from "@/lib/repos/storage";
+import {
+  markSourceTreeFresh,
+  writeUpstreamSourceSession,
+  readSourceTreeFreshMs,
+  resolveRepoUpstreamSource,
+  resolveUpstreamSourceUrl,
+  shouldPreferUpstreamContent,
+  shouldPreferUpstreamMirror,
+  shouldSkipLegacyKind51EmbeddedFiles,
+} from "@/lib/repos/upstream-precedence";
+import { resolveRepoActivityDisplayMs } from "@/lib/repos/repo-github-hub";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {
   mergeOwnerPubkeyIntoContributors,
   sanitizeContributors,
 } from "@/lib/utils/contributors";
+import { fetchDeduped } from "@/lib/utils/deduped-fetch";
 import { formatDate24h } from "@/lib/utils/date-format";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import {
@@ -103,7 +114,12 @@ import {
   isRefetchableUpstreamSourceUrl,
   parseGitSource,
 } from "@/lib/utils/git-source-fetcher";
+import { buildGraspHttpsCloneCandidates } from "@/lib/utils/grasp-list";
 import { KNOWN_GRASP_DOMAINS } from "@/lib/utils/grasp-servers";
+import {
+  mergeGithubIssuesAfterRefetch,
+  mergeGithubPrsAfterRefetch,
+} from "@/lib/utils/issue-pr-status";
 import {
   nip34TagValuesFromRow,
   normalizeRelayWssUrl,
@@ -126,6 +142,7 @@ import {
   markRepoAsEdited,
   setRepoStatus,
 } from "@/lib/utils/repo-status";
+import { cn } from "@/lib/utils";
 
 import {
   BookOpen,
@@ -371,63 +388,17 @@ function upstreamRefetchableHttpsGitClone(raw: string): string | null {
   return u;
 }
 
-/**
- * react-markdown emits <pre><code> for fences; CopyableCodeBlock adds its own <pre>.
- * Stripping the outer pre and replacing block-code paragraphs with <div> avoids invalid nesting and hydration issues.
- */
-function reactSubtreeHasBlockMarkdownCode(node: unknown): boolean {
-  if (!isValidElement(node)) return false;
-  const props = node.props as { inline?: boolean; children?: ReactNode };
-  if (props?.inline === false) return true;
-  return Children.toArray(props?.children).some(
-    reactSubtreeHasBlockMarkdownCode
-  );
-}
-
 const markdownProseCodeSafeComponents = {
   pre: ({ children }: { children?: ReactNode }) => <>{children}</>,
-  p: ({ node, children, ...props }: any) => {
-    const checkForBlockCode = (child: any): boolean => {
-      if (!child) return false;
-      if (child.type === "element" && child.tagName === "code") {
-        const className = child.properties?.className || "";
-        const cn = Array.isArray(className) ? className.join(" ") : className;
-        if (typeof cn === "string" && cn.includes("language-")) {
-          return true;
-        }
-        const value = child.children?.[0]?.value;
-        if (typeof value === "string" && value.includes("\n")) {
-          return true;
-        }
-      }
-      if (
-        child.type === "element" &&
-        (child.tagName === "div" ||
-          child.tagName === "iframe" ||
-          child.tagName === "img" ||
-          child.tagName === "pre")
-      ) {
-        return true;
-      }
-      if (child.children && Array.isArray(child.children)) {
-        return child.children.some(checkForBlockCode);
-      }
-      return false;
-    };
-
-    const hasBlockCode = node?.children?.some(checkForBlockCode);
-    const childrenArray = Children.toArray(children);
-    const hasCopyableBlock = childrenArray.some(
-      (c) => isValidElement(c) && c.type === CopyableCodeBlock
-    );
-    const hasBlockElement =
-      hasCopyableBlock || childrenArray.some(reactSubtreeHasBlockMarkdownCode);
-
-    if (hasBlockCode || hasBlockElement) {
-      return <div {...props}>{children}</div>;
-    }
-    return <p {...props}>{children}</p>;
-  },
+  /** Div avoids invalid `<p><div|pre>…` when fences map to CopyableCodeBlock (fixes hydration / DOM nesting). */
+  p: ({ children, className, ...props }: any) => (
+    <div
+      {...props}
+      className={cn("mb-4 last:mb-0 max-w-full", className)}
+    >
+      {children}
+    </div>
+  ),
 };
 
 const normalizeRepoEntityForRoute = (
@@ -449,6 +420,29 @@ const normalizeRepoEntityForRoute = (
   } catch {}
   return repoEntity;
 };
+
+/** When NIP-34 has no clone tags, try standard GRASP https://host/npub/repo.git paths. */
+function appendInferredGraspCloneUrls(
+  cloneUrls: string[],
+  entity: string,
+  repo: string
+): void {
+  if (cloneUrls.length > 0) return;
+  const inferred = buildGraspHttpsCloneCandidates(
+    entity,
+    repo,
+    [...KNOWN_GRASP_DOMAINS],
+    4
+  );
+  for (const url of inferred) {
+    if (!cloneUrls.includes(url)) cloneUrls.push(url);
+  }
+  if (inferred.length > 0) {
+    console.log(
+      `🔍 [File Fetch] Inferred ${inferred.length} GRASP clone URL(s) (repo had no clone tags)`
+    );
+  }
+}
 
 export default function RepoCodePage() {
   const routeParams = useParams<{ entity?: string; repo?: string }>();
@@ -526,9 +520,17 @@ export default function RepoCodePage() {
   const fileFetchInProgressRef = useRef<boolean>(false); // Prevent multiple simultaneous file fetches
   const fileFetchAttemptedRef = useRef<string>(""); // Track which repos we've already attempted to fetch files for
   const fileFetchRetryCountRef = useRef<Record<string, number>>({}); // Limit automatic retry loops per repo+branch
+  const subscribeRef = useRef(subscribe);
+  const defaultRelaysRef = useRef(defaultRelays);
   const bridgeFetchInProgressRef = useRef<boolean>(false);
+  const bridgeFetchDoneKeyRef = useRef<string>("");
+  const upstreamContentLoadedKeyRef = useRef<string>("");
   const ownerMetadataRef = useRef<Record<string, Metadata>>({}); // Ref to access latest ownerMetadata without causing re-renders
   const repoDataRef = useRef<StoredRepo | null>(null); // Ref to access latest repoData without causing dependency loops
+  /** Bumps when folder-README effect deps change so stale async loaders cannot overwrite UI. */
+  const folderReadmeLoadGenRef = useRef(0);
+  /** Prevents duplicate setRepoData storms when the same tree is applied repeatedly. */
+  const lastAppliedFileTreeKeyRef = useRef<string>("");
   const MAX_AUTO_FILE_FETCH_RETRIES = 2;
 
   const getFileFetchRetryCount = useCallback((repoKeyWithBranch: string) => {
@@ -549,6 +551,48 @@ export default function RepoCodePage() {
       (fileFetchRetryCountRef.current[repoKeyWithBranch] || 0) + 1;
     fileFetchAttemptedRef.current = repoKeyWithBranch;
   }, []);
+
+  useEffect(() => {
+    subscribeRef.current = subscribe;
+  }, [subscribe]);
+
+  useEffect(() => {
+    defaultRelaysRef.current = defaultRelays;
+  }, [defaultRelays]);
+
+  const finalizePendingFetchStatuses = useCallback(
+    (
+      statuses: Array<{
+        source: string;
+        status: "pending" | "fetching" | "success" | "failed";
+        error?: string;
+      }>
+    ) =>
+      statuses.map((s) =>
+        s.status === "pending" || s.status === "fetching"
+          ? {
+              ...s,
+              status: "failed" as const,
+              error: s.error || "Skipped (another source succeeded)",
+            }
+          : s
+      ),
+    []
+  );
+
+  /** Replace stale local/gittr_files tree when GitHub/upstream is canonical. */
+  const shouldReplaceCachedFileTree = useCallback(() => {
+    const rd = repoDataRef.current;
+    if (!rd?.files || !Array.isArray(rd.files) || rd.files.length === 0) {
+      return true;
+    }
+    return shouldPreferUpstreamMirror(resolvedParams.entity, {
+      sourceUrl: rd?.sourceUrl,
+      forkedFrom: rd?.forkedFrom,
+      clone: (rd as { clone?: string[] })?.clone,
+      hasUnpushedEdits: rd?.hasUnpushedEdits,
+    });
+  }, [resolvedParams.entity]);
 
   const entityPubkey = useMemo(() => {
     if (!resolvedParams.entity) return null;
@@ -574,18 +618,79 @@ export default function RepoCodePage() {
     boolean | null
   >(null);
   const [bridgeFiles, setBridgeFiles] = useState<RepoFileEntry[] | null>(null);
-  // CRITICAL: Ensure files is always an array to prevent mobile hydration issues
-  // Prefer repoData files; fall back to bridge-loaded files for view-only repos
+  /** Bumps when file tree is persisted so safeFiles re-reads gittr_files. */
+  const [filesTreeBump, setFilesTreeBump] = useState(0);
+  // Prefer persisted gittr_files (post bridge / multi-source fetch) over embedded
+  // repoData.files so the tree and README match what was actually saved locally.
+  const filesTreeVersionKey = useMemo(() => {
+    const storageRepo = resolveRepoStorageAlias(
+      resolvedParams.entity,
+      resolvedParams.repo
+    );
+    const indexedLen =
+      loadRepoFiles(resolvedParams.entity, storageRepo).length +
+      loadRepoFiles(resolvedParams.entity, resolvedParams.repo).length;
+    const rdLen = Array.isArray(repoData?.files) ? repoData!.files!.length : 0;
+    const brLen = Array.isArray(bridgeFiles) ? bridgeFiles.length : 0;
+    return `${indexedLen}:${rdLen}:${brLen}:${filesTreeBump}`;
+  }, [
+    repoData?.files?.length,
+    bridgeFiles?.length,
+    filesTreeBump,
+    resolvedParams.entity,
+    resolvedParams.repo,
+  ]);
+
   const safeFiles = useMemo(() => {
+    // Avoid SSR/client mismatch: localStorage is empty on the server but populated on first paint.
+    if (!mounted) return [];
+    const storageRepo = resolveRepoStorageAlias(
+      resolvedParams.entity,
+      resolvedParams.repo
+    );
+    const indexedA = loadRepoFiles(resolvedParams.entity, storageRepo);
+    const indexedB = loadRepoFiles(resolvedParams.entity, resolvedParams.repo);
+    const indexed = mergeRepoFileIndexes(indexedA, indexedB);
     const repoFiles = repoData?.files;
-    if (Array.isArray(repoFiles) && repoFiles.length > 0) {
-      return repoFiles;
+    const preferUpstream = shouldPreferUpstreamMirror(resolvedParams.entity, {
+      sourceUrl: repoData?.sourceUrl,
+      forkedFrom: repoData?.forkedFrom,
+      clone: (repoData as { clone?: string[] })?.clone,
+      hasUnpushedEdits: (repoData as any)?.hasUnpushedEdits,
+    });
+    const candidates: RepoFileEntry[][] = [];
+    if (preferUpstream && Array.isArray(repoFiles) && repoFiles.length > 0) {
+      candidates.push(repoFiles);
+    }
+    if (Array.isArray(indexed) && indexed.length > 0) {
+      candidates.push(indexed);
+    }
+    if (!preferUpstream && Array.isArray(repoFiles) && repoFiles.length > 0) {
+      candidates.push(repoFiles);
     }
     if (Array.isArray(bridgeFiles) && bridgeFiles.length > 0) {
-      return bridgeFiles;
+      candidates.push(bridgeFiles);
     }
-    return [];
-  }, [repoData, bridgeFiles]);
+    let best: RepoFileEntry[] = [];
+    for (const list of candidates) {
+      if (list.length > best.length) best = list;
+    }
+    return best;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted, filesTreeVersionKey, repoData?.files?.length, repoData?.sourceUrl]);
+
+  useEffect(() => {
+    if (safeFiles.length === 0) return;
+    const stillPending = fetchStatuses.some(
+      (s) => s.status === "pending" || s.status === "fetching"
+    );
+    if (!stillPending) return;
+    const timer = window.setTimeout(() => {
+      setFetchStatuses((prev) => finalizePendingFetchStatuses(prev));
+      setFetchingFilesFromGit({ source: null, message: "" });
+    }, 12000);
+    return () => window.clearTimeout(timer);
+  }, [safeFiles.length, fetchStatuses, finalizePendingFetchStatuses]);
 
   useEffect(() => {
     if (
@@ -801,6 +906,9 @@ export default function RepoCodePage() {
       // can read gittr_files__… from localStorage after Code loads. Previously only owners
       // persisted, so visitors never populated that key and those tabs always failed.
       if (!ownerOrLocalEdits && isPrivateRepoListing) return;
+      const isNetworkTreePersist =
+        context.includes("[File Fetch]") || context === "[Refetch]";
+      let filesToSave: RepoFileEntry[] = files;
       try {
         const storageRepo = resolveRepoStorageAlias(
           resolvedParams.entity,
@@ -829,11 +937,78 @@ export default function RepoCodePage() {
           return;
         }
 
-        const saved = saveRepoFiles(resolvedParams.entity, storageRepo, files);
+        const existingIndexedAlt = loadRepoFiles(
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        const existingMerged = mergeRepoFileIndexes(
+          existingIndexed,
+          existingIndexedAlt
+        );
+        const normPersistPath = (p: string) =>
+          String(p || "")
+            .replace(/^\//, "")
+            .toLowerCase();
+        const isReadmePersistPath = (p: string) => {
+          const n = normPersistPath(p);
+          return (
+            n === "readme.md" ||
+            n === "readme" ||
+            n.endsWith("/readme.md") ||
+            n.endsWith("/readme")
+          );
+        };
+        const preferUpstream = shouldPreferUpstreamMirror(
+          resolvedParams.entity,
+          {
+            sourceUrl: currentRepo?.sourceUrl,
+            forkedFrom: currentRepo?.forkedFrom,
+            clone: (currentRepo as { clone?: string[] })?.clone,
+            hasUnpushedEdits: currentRepo?.hasUnpushedEdits,
+          }
+        );
+
+        filesToSave = files.map((f) => {
+          if (!isReadmePersistPath(f.path)) return f;
+          const incoming = (f as { content?: string }).content;
+          if (typeof incoming === "string" && incoming.trim().length > 0)
+            return f;
+          // Do not keep an old README body when refreshing from GitHub/upstream.
+          if (preferUpstream && isNetworkTreePersist) return f;
+          const hit = existingMerged.find(
+            (e) =>
+              normPersistPath(e.path || "") === normPersistPath(f.path || "")
+          );
+          const prevC =
+            hit && typeof (hit as { content?: string }).content === "string"
+              ? String((hit as { content?: string }).content)
+              : "";
+          if (prevC.trim().length > 0) {
+            return { ...f, content: prevC } as RepoFileEntry;
+          }
+          return f;
+        });
+
+        const saved = saveRepoFiles(
+          resolvedParams.entity,
+          storageRepo,
+          filesToSave
+        );
         if (saved) {
           console.log(
-            `✅ ${context} Saved ${files.length} files to separate storage key`
+            `✅ ${context} Saved ${filesToSave.length} files to separate storage key`
           );
+          if (isNetworkTreePersist) {
+            markSourceTreeFresh(
+              resolvedParams.entity,
+              resolvedParams.repo,
+              resolveRepoStorageAlias(
+                resolvedParams.entity,
+                resolvedParams.repo
+              )
+            );
+          }
+          setFilesTreeBump((b) => b + 1);
         } else {
           console.warn(
             `⚠️ ${context} File tree not persisted (localStorage full or quota). ${files.length} files remain in memory for this session.`
@@ -861,11 +1036,26 @@ export default function RepoCodePage() {
                 resolvedParams.repo
               );
               if (
-                saveRepoFiles(resolvedParams.entity, storageRepoRetry, files)
+                saveRepoFiles(
+                  resolvedParams.entity,
+                  storageRepoRetry,
+                  filesToSave
+                )
               ) {
                 console.log(
-                  `✅ ${context} Saved ${files.length} files after clearing ${cleanupResult.clearedKeys} foreign keys`
+                  `✅ ${context} Saved ${filesToSave.length} files after clearing ${cleanupResult.clearedKeys} foreign keys`
                 );
+                if (isNetworkTreePersist) {
+                  markSourceTreeFresh(
+                    resolvedParams.entity,
+                    resolvedParams.repo,
+                    resolveRepoStorageAlias(
+                      resolvedParams.entity,
+                      resolvedParams.repo
+                    )
+                  );
+                }
+                setFilesTreeBump((b) => b + 1);
                 return;
               }
               console.error(
@@ -882,11 +1072,26 @@ export default function RepoCodePage() {
                 resolvedParams.repo
               );
               if (
-                saveRepoFiles(resolvedParams.entity, storageRepoRetry, files)
+                saveRepoFiles(
+                  resolvedParams.entity,
+                  storageRepoRetry,
+                  filesToSave
+                )
               ) {
                 console.log(
-                  `✅ ${context} Saved ${files.length} files after clearing ${cleanupResult.clearedKeys} non-local keys`
+                  `✅ ${context} Saved ${filesToSave.length} files after clearing ${cleanupResult.clearedKeys} non-local keys`
                 );
+                if (isNetworkTreePersist) {
+                  markSourceTreeFresh(
+                    resolvedParams.entity,
+                    resolvedParams.repo,
+                    resolveRepoStorageAlias(
+                      resolvedParams.entity,
+                      resolvedParams.repo
+                    )
+                  );
+                }
+                setFilesTreeBump((b) => b + 1);
                 return;
               }
               console.error(
@@ -908,6 +1113,7 @@ export default function RepoCodePage() {
       resolvedParams.entity,
       resolvedParams.repo,
       repoIsOwner,
+      setFilesTreeBump,
     ]
   );
 
@@ -1009,6 +1215,10 @@ export default function RepoCodePage() {
   const [deletedPaths, setDeletedPaths] = useState<string[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>("");
+  const selectedBranchRef = useRef(selectedBranch);
+  useEffect(() => {
+    selectedBranchRef.current = selectedBranch;
+  }, [selectedBranch]);
   const headingScrollRef = useRef<string>("");
   const readmeHeadingComponents = createMarkdownHeadingComponents(
     createHeadingIdFactory(),
@@ -1038,14 +1248,27 @@ export default function RepoCodePage() {
     if (!resolvedParams.repo) return;
 
     const branch =
-      selectedBranch || repoDataRef.current?.defaultBranch || "main";
+      selectedBranchRef.current ||
+      repoDataRef.current?.defaultBranch ||
+      "main";
     const existingFiles = repoDataRef.current?.files;
-    const hasBridgeFiles = Array.isArray(bridgeFiles) && bridgeFiles.length > 0;
+    const hasRichFileBodies =
+      Array.isArray(existingFiles) &&
+      existingFiles.some(
+        (f: any) =>
+          f &&
+          typeof f.path === "string" &&
+          typeof f.content === "string" &&
+          f.content.length > 0
+      );
+    const bridgeKey = `${resolvedParams.entity}/${resolvedParams.repo}:${branch}`;
+    const hasBridgeFiles = bridgeFetchDoneKeyRef.current === bridgeKey;
 
     if (
       existingFiles &&
       Array.isArray(existingFiles) &&
-      existingFiles.length > 0
+      existingFiles.length > 0 &&
+      hasRichFileBodies
     ) {
       return;
     }
@@ -1083,14 +1306,29 @@ export default function RepoCodePage() {
           ? repoDataRef.current.files.length
           : 0;
         const existingCount = Math.max(indexedCount, refCount);
+        let filesToApply = data.files as RepoFileEntry[];
         if (existingCount > 0 && data.files.length < existingCount) {
-          console.warn(
-            `⏭️ [Bridge Fetch] Ignoring partial response (${data.files.length} < ${existingCount}) to avoid wiping file tree`
+          const existingFromRef = Array.isArray(repoDataRef.current?.files)
+            ? (repoDataRef.current!.files as RepoFileEntry[])
+            : [];
+          const mergedFiles = mergeRepoFileIndexes(
+            existingFromRef,
+            data.files as RepoFileEntry[]
           );
-          return;
+          if (mergedFiles.length < existingCount) {
+            console.warn(
+              `⏭️ [Bridge Fetch] Merged partial response still short (${mergedFiles.length} < ${existingCount}); keeping prior tree`
+            );
+            return;
+          }
+          console.log(
+            `🔀 [Bridge Fetch] Merged partial bridge response (${data.files.length}) with existing index → ${mergedFiles.length} file(s)`
+          );
+          filesToApply = mergedFiles;
         }
 
-        setBridgeFiles(data.files);
+        bridgeFetchDoneKeyRef.current = bridgeKey;
+        setBridgeFiles(filesToApply);
         setRepoData((prev: any) => {
           const base =
             prev ||
@@ -1106,7 +1344,7 @@ export default function RepoCodePage() {
             } as StoredRepo);
           const updated = {
             ...base,
-            files: data.files,
+            files: filesToApply,
             clone: (base as { clone?: string[] }).clone,
           };
           repoDataRef.current = updated;
@@ -1114,21 +1352,19 @@ export default function RepoCodePage() {
         });
 
         // Store files only when repo cache should persist (owner or local edits)
-        persistRepoFiles(data.files, "[Bridge Fetch]");
+        persistRepoFiles(
+          filesToApply,
+          existingCount > 0 && data.files.length < existingCount
+            ? "[Bridge Fetch merged partial]"
+            : "[Bridge Fetch]"
+        );
       } catch (error) {
         console.warn("⚠️ [Bridge Fetch] Failed to load files:", error);
       } finally {
         bridgeFetchInProgressRef.current = false;
       }
     })();
-  }, [
-    repoOwnerPubkey,
-    entityPubkey,
-    resolvedParams.entity,
-    resolvedParams.repo,
-    selectedBranch,
-    bridgeFiles,
-  ]);
+  }, [repoOwnerPubkey, entityPubkey, resolvedParams.entity, resolvedParams.repo]);
   // Live counters synced with localStorage updates from layout actions
   const [liveStarCount, setLiveStarCount] = useState<number>(0);
   const [liveWatchCount, setLiveWatchCount] = useState<number>(0);
@@ -1156,6 +1392,8 @@ export default function RepoCodePage() {
     useState<string>("");
   const [pushStartedAt, setPushStartedAt] = useState<number | null>(null);
   const [isRefetching, setIsRefetching] = useState<boolean>(false);
+  const [showPostSourceRefetchHint, setShowPostSourceRefetchHint] =
+    useState<boolean>(false);
   const [fetchStatusExpanded, setFetchStatusExpanded] =
     useState<boolean>(false);
   const [cloneUrlsExpanded, setCloneUrlsExpanded] = useState<boolean>(false);
@@ -1186,6 +1424,23 @@ export default function RepoCodePage() {
     }, 120_000);
     return () => window.clearTimeout(timeout);
   }, [isPushing, pushStartedAt]);
+
+  const postSourceRefetchHintKey =
+    typeof resolvedParams.entity === "string" &&
+    typeof resolvedParams.repo === "string"
+      ? `gittr_post_source_refetch_hint_v1__${resolvedParams.entity}__${resolvedParams.repo}`
+      : null;
+
+  useEffect(() => {
+    if (!postSourceRefetchHintKey || typeof window === "undefined") return;
+    try {
+      if (sessionStorage.getItem(postSourceRefetchHintKey) === "1") {
+        setShowPostSourceRefetchHint(true);
+      }
+    } catch {
+      // ignore
+    }
+  }, [postSourceRefetchHintKey]);
 
   // Get owner metadata for Nostr profile picture fallback
   // Fetch metadata for both entity and actual owner pubkey (CRITICAL for imported repos)
@@ -1838,6 +2093,7 @@ export default function RepoCodePage() {
     );
 
     if (!repo) {
+      repoProcessedRef.current = repoKey;
       return;
     }
     const normalizedRepoEntity = normalizeRepoEntityForRoute(
@@ -1923,6 +2179,7 @@ export default function RepoCodePage() {
       const updatedRepos = repos.filter((r) => r !== repo);
       saveStoredRepos(updatedRepos);
       console.log("🗑️ [Repo Page] Removed corrupted repo from localStorage");
+      repoProcessedRef.current = repoKey;
       return;
     }
 
@@ -2290,7 +2547,8 @@ export default function RepoCodePage() {
       );
       (async () => {
         try {
-          let found = false;
+          let bestCreated = -1;
+          let bestPubkey: string | null = null;
           // Query for repository events matching the repo name
           // We filter by pubkey prefix in the callback since Nostr doesn't support substring queries
           const unsub = subscribe(
@@ -2303,83 +2561,86 @@ export default function RepoCodePage() {
             ],
             defaultRelays,
             (event, isAfterEose, relayURL) => {
-              if (event.kind === KIND_REPOSITORY && !found) {
-                try {
-                  const repoData = JSON.parse(event.content);
-                  // Use the FULL pubkey from event.pubkey (not the prefix) once found
-                  if (
-                    repoData.repositoryName === resolvedParams.repo &&
-                    event.pubkey
-                      .toLowerCase()
-                      .startsWith(resolvedParams.entity.toLowerCase())
-                  ) {
+              if (event.kind !== KIND_REPOSITORY) return;
+              try {
+                const repoData = JSON.parse(event.content);
+                // Use the FULL pubkey from event.pubkey (not the prefix) once found
+                if (
+                  repoData.repositoryName === resolvedParams.repo &&
+                  event.pubkey
+                    .toLowerCase()
+                    .startsWith(resolvedParams.entity.toLowerCase())
+                ) {
+                  const ca = event.created_at || 0;
+                  if (ca < bestCreated) return;
+                  bestCreated = ca;
+                  bestPubkey = event.pubkey;
+                  console.log(
+                    "✅ Found repository event (newest so far):",
+                    event.pubkey,
+                    "created_at",
+                    ca
+                  );
+
+                  // This ensures metadata fetch uses the correct owner
+                  // Only set if different to prevent unnecessary re-renders
+                  setResolvedOwnerPubkey((prev) =>
+                    prev === event.pubkey ? prev : event.pubkey
+                  );
+
+                  // Found match - update repo with ownerPubkey
+                  const repos = loadStoredRepos();
+                  const repoIndex = repos.findIndex(
+                    (r) =>
+                      r.entity === resolvedParams.entity &&
+                      (r.repo === resolvedParams.repo ||
+                        r.slug === resolvedParams.repo)
+                  );
+                  if (repoIndex >= 0 && repos[repoIndex]) {
+                    const repoToUpdate = repos[repoIndex];
+                    repoToUpdate.ownerPubkey = event.pubkey;
+                    // Also ensure owner is in contributors
+                    if (
+                      !repoToUpdate.contributors ||
+                      !Array.isArray(repoToUpdate.contributors)
+                    ) {
+                      repoToUpdate.contributors = [];
+                    }
+                    const ownerExists = repoToUpdate.contributors.some(
+                      (c) => c.pubkey === event.pubkey
+                    );
+                    if (!ownerExists) {
+                      repoToUpdate.contributors.unshift({
+                        pubkey: event.pubkey,
+                        weight: 100,
+                        role: "owner",
+                      });
+                    }
+                    // Also fix entityDisplayName - use npub format, not shortened pubkey
+                    try {
+                      repoToUpdate.entityDisplayName =
+                        nip19.npubEncode(event.pubkey).substring(0, 16) +
+                        "...";
+                    } catch {
+                      repoToUpdate.entityDisplayName =
+                        event.pubkey.substring(0, 16) + "...";
+                    }
+                    saveStoredRepos(repos);
                     console.log(
-                      "✅ Found repository event! Full pubkey:",
+                      "✅ Updated repo with ownerPubkey:",
                       event.pubkey
                     );
-                    found = true;
-
-                    // This ensures metadata fetch uses the correct owner
-                    // Only set if different to prevent unnecessary re-renders
-                    setResolvedOwnerPubkey((prev) =>
-                      prev === event.pubkey ? prev : event.pubkey
-                    );
-
-                    // Found match - update repo with ownerPubkey
-                    const repos = loadStoredRepos();
-                    const repoIndex = repos.findIndex(
-                      (r) =>
-                        r.entity === resolvedParams.entity &&
-                        (r.repo === resolvedParams.repo ||
-                          r.slug === resolvedParams.repo)
-                    );
-                    if (repoIndex >= 0 && repos[repoIndex]) {
-                      const repoToUpdate = repos[repoIndex];
-                      repoToUpdate.ownerPubkey = event.pubkey;
-                      // Also ensure owner is in contributors
-                      if (
-                        !repoToUpdate.contributors ||
-                        !Array.isArray(repoToUpdate.contributors)
-                      ) {
-                        repoToUpdate.contributors = [];
-                      }
-                      const ownerExists = repoToUpdate.contributors.some(
-                        (c) => c.pubkey === event.pubkey
-                      );
-                      if (!ownerExists) {
-                        repoToUpdate.contributors.unshift({
-                          pubkey: event.pubkey,
-                          weight: 100,
-                          role: "owner",
-                        });
-                      }
-                      // Also fix entityDisplayName - use npub format, not shortened pubkey
-                      try {
-                        repoToUpdate.entityDisplayName =
-                          nip19.npubEncode(event.pubkey).substring(0, 16) +
-                          "...";
-                      } catch {
-                        repoToUpdate.entityDisplayName =
-                          event.pubkey.substring(0, 16) + "...";
-                      }
-                      saveStoredRepos(repos);
-                      console.log(
-                        "✅ Updated repo with ownerPubkey:",
-                        event.pubkey
-                      );
-                      // Don't reload - let React re-render with new metadata
-                    }
-                    if (unsub) unsub();
+                    // Don't reload - let React re-render with new metadata
                   }
-                } catch (e) {
-                  console.error("Error parsing repo event:", e);
                 }
+              } catch (e) {
+                console.error("Error parsing repo event:", e);
               }
             },
             undefined,
             () => {
               // EOSE - no more events
-              if (!found) {
+              if (!bestPubkey) {
                 console.warn(
                   "⚠️ Repository event not found in Nostr (may not be published yet)"
                 );
@@ -2389,7 +2650,7 @@ export default function RepoCodePage() {
           );
           // Timeout after 10 seconds
           setTimeout(() => {
-            if (!found && unsub) {
+            if (!bestPubkey && unsub) {
               console.warn("⚠️ Query timeout - repository event not found");
               unsub();
             }
@@ -2527,17 +2788,35 @@ export default function RepoCodePage() {
       const publicWrite =
         repoAny.publicWrite !== undefined ? repoAny.publicWrite : false; // Default to no public write
 
+      const preferUpstreamOnLoad = shouldPreferUpstreamMirror(
+        resolvedParams.entity,
+        {
+          sourceUrl: repo.sourceUrl,
+          forkedFrom: repo.forkedFrom,
+          clone: (repo as { clone?: string[] }).clone,
+          hasUnpushedEdits: (repo as any).hasUnpushedEdits,
+        }
+      );
+      const preferUpstreamContent = shouldPreferUpstreamContent(
+        resolvedParams.entity,
+        {
+          sourceUrl: repo.sourceUrl,
+          forkedFrom: repo.forkedFrom,
+          clone: (repo as { clone?: string[] }).clone,
+        }
+      );
+
       setRepoData({
         entity: normalizedRepoEntityForDisplay || repo.entity,
         repo: repo.repo || resolvedParams.repo,
-        readme: repo.readme || "",
+        readme: preferUpstreamContent ? "" : repo.readme || "",
+        description: preferUpstreamContent ? "" : repo.description || "",
         files: resolvedFiles,
         sourceUrl: repo.sourceUrl,
         forkedFrom: repo.forkedFrom || repo.sourceUrl,
         entityDisplayName: repo.entityDisplayName,
         name: repo.name,
         createdAt: repo.createdAt,
-        description: repo.description,
         stars: repo.stars,
         forks: repo.forks,
         languages: repo.languages,
@@ -2947,7 +3226,10 @@ export default function RepoCodePage() {
       repoProcessedRef.current = "";
       fileFetchInProgressRef.current = false;
       fileFetchAttemptedRef.current = "";
+      bridgeFetchDoneKeyRef.current = "";
+      upstreamContentLoadedKeyRef.current = "";
       eoseProcessedRef.current.clear(); // Reset EOSE tracking when repo changes
+      lastAppliedFileTreeKeyRef.current = "";
     };
   }, [resolvedParams.entity, resolvedParams.repo]);
 
@@ -3276,12 +3558,47 @@ export default function RepoCodePage() {
                     : true; // Default to public for old repos
 
                 // Update repoData state with latest data from localStorage (including bridgeProcessed flag)
-                // But preserve files and ensure publicRead defaults correctly
-                setRepoData({
-                  ...updatedRepo,
-                  files: filesToPreserve,
-                  publicRead: publicRead,
-                } as any);
+                // But preserve files and ensure publicRead defaults correctly.
+                // Do not clobber an in-memory README that was hydrated from bridge/indexed with the
+                // stale `readme` string still stored on the repo row (common right after refetch).
+                setRepoData((prev) => {
+                  const storageAlias = resolveRepoStorageAlias(
+                    resolvedParams.entity,
+                    resolvedParams.repo
+                  );
+                  const upstreamFresh = readSourceTreeFreshMs(
+                    resolvedParams.entity,
+                    resolvedParams.repo,
+                    storageAlias
+                  );
+                  const preferUpstream = shouldPreferUpstreamMirror(
+                    resolvedParams.entity,
+                    {
+                      sourceUrl:
+                        (prev as any)?.sourceUrl ?? updatedRepo.sourceUrl,
+                      forkedFrom:
+                        (prev as any)?.forkedFrom ?? updatedRepo.forkedFrom,
+                      clone:
+                        (prev as { clone?: string[] })?.clone ??
+                        (updatedRepo as { clone?: string[] })?.clone,
+                      hasUnpushedEdits:
+                        (prev as any)?.hasUnpushedEdits ??
+                        updatedRepo.hasUnpushedEdits,
+                    }
+                  );
+                  const readme =
+                    preferUpstream && upstreamFresh > 0
+                      ? ((prev as any)?.readme ?? "")
+                      : ((prev as any)?.readme ??
+                        (updatedRepo as any)?.readme ??
+                        "");
+                  return {
+                    ...updatedRepo,
+                    files: filesToPreserve,
+                    publicRead: publicRead,
+                    readme,
+                  } as any;
+                });
               }
             })
             .catch((err) => {
@@ -3301,7 +3618,23 @@ export default function RepoCodePage() {
     fileFetchAttemptedRef.current = "";
     fileFetchInProgressRef.current = false;
     fileFetchRetryCountRef.current = {};
+    bridgeFetchDoneKeyRef.current = "";
+    upstreamContentLoadedKeyRef.current = "";
   }, [resolvedParams.entity, resolvedParams.repo]);
+
+  const applyEffectiveSourceUrl = useCallback(
+    (url: string) => {
+      const normalized = url.trim();
+      if (!normalized) return;
+      setEffectiveSourceUrl((prev) => (prev === normalized ? prev : normalized));
+      writeUpstreamSourceSession(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        normalized
+      );
+    },
+    [resolvedParams.entity, resolvedParams.repo]
+  );
 
   // Check Nostr event for sourceUrl if missing from local repo (for button text)
   useEffect(() => {
@@ -3335,7 +3668,7 @@ export default function RepoCodePage() {
             "✅ [effectiveSourceUrl] Found sourceUrl in localStorage:",
             matchingRepo.sourceUrl
           );
-          setEffectiveSourceUrl(matchingRepo.sourceUrl);
+          applyEffectiveSourceUrl(matchingRepo.sourceUrl);
           return;
         }
 
@@ -3363,7 +3696,7 @@ export default function RepoCodePage() {
               "✅ [effectiveSourceUrl] Found clone URL in localStorage, converted to:",
               sourceUrl
             );
-            setEffectiveSourceUrl(sourceUrl);
+            applyEffectiveSourceUrl(sourceUrl);
             return;
           }
         }
@@ -3387,7 +3720,7 @@ export default function RepoCodePage() {
           "✅ [effectiveSourceUrl] Found sourceUrl in repoData:",
           repoData.sourceUrl
         );
-        setEffectiveSourceUrl(repoData.sourceUrl);
+        applyEffectiveSourceUrl(repoData.sourceUrl);
         return;
       }
 
@@ -3412,7 +3745,7 @@ export default function RepoCodePage() {
             "✅ [effectiveSourceUrl] Found clone URL in repoData, converted to:",
             sourceUrl
           );
-          setEffectiveSourceUrl(sourceUrl);
+          applyEffectiveSourceUrl(sourceUrl);
           return;
         }
       }
@@ -3504,7 +3837,7 @@ export default function RepoCodePage() {
                 foundSourceUrl
               );
               clearTimeout(timeout);
-              setEffectiveSourceUrl(foundSourceUrl);
+              applyEffectiveSourceUrl(foundSourceUrl);
               unsub();
               return;
             }
@@ -3524,11 +3857,114 @@ export default function RepoCodePage() {
       unsub();
     };
   }, [
-    repoData,
+    repoData?.sourceUrl,
+    (repoData as { clone?: string[] })?.clone?.join("|") ?? "",
+    repoData?.ownerPubkey,
+    applyEffectiveSourceUrl,
     subscribe,
     defaultRelays,
     resolvedParams.entity,
     resolvedParams.repo,
+    mounted,
+  ]);
+
+  // Eager GitHub README + description when upstream mirror is canonical (do not wait for GRASP tree)
+  useEffect(() => {
+    if (selectedFile || fileContent) return;
+    const sourceUrl =
+      resolveRepoUpstreamSource(repoData) ||
+      resolveUpstreamSourceUrl(effectiveSourceUrl);
+    if (!sourceUrl) return;
+    if (
+      !shouldPreferUpstreamContent(resolvedParams.entity, {
+        sourceUrl: repoData?.sourceUrl,
+        forkedFrom: repoData?.forkedFrom,
+        clone: (repoData as { clone?: string[] })?.clone,
+      })
+    ) {
+      return;
+    }
+
+    const branch = selectedBranch || repoData?.defaultBranch || "main";
+    const contentKey = `${sourceUrl}:${branch}`;
+    if (upstreamContentLoadedKeyRef.current === contentKey) {
+      return;
+    }
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const githubToken =
+          typeof window !== "undefined"
+            ? localStorage.getItem("gittr_github_token")
+            : null;
+        let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+          sourceUrl
+        )}&path=${encodeURIComponent(
+          "README.md"
+        )}&branch=${encodeURIComponent(branch)}`;
+        if (githubToken) {
+          apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
+        }
+        const res = await fetchDeduped(apiUrl);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (
+          cancelled ||
+          data?.content === undefined ||
+          data?.content === null ||
+          data.isBinary
+        ) {
+          return;
+        }
+        const md = String(data.content);
+        upstreamContentLoadedKeyRef.current = contentKey;
+        setCurrentFolderReadme(md);
+        setLoadingFolderReadme(false);
+        setRepoData((prev) => {
+          if (!prev) return prev;
+          if (prev.readme === md) return prev;
+          return { ...prev, readme: md };
+        });
+
+        const ghRepo = sourceUrl.match(/github\.com\/([^/]+)\/([^/.]+)/i);
+        if (ghRepo) {
+          const [, owner, repoName] = ghRepo;
+          const proxyRes = await fetch(
+            `/api/github/proxy?endpoint=${encodeURIComponent(
+              `/repos/${owner}/${repoName}`
+            )}`
+          );
+          if (proxyRes.ok && !cancelled) {
+            const repoInfo = await proxyRes.json();
+            if (
+              typeof repoInfo?.description === "string" &&
+              repoInfo.description.trim().length > 0
+            ) {
+              setRepoData((prev) =>
+                prev ? { ...prev, description: repoInfo.description } : prev
+              );
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[Upstream sync] Failed to load README/description:", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedFile,
+    fileContent,
+    repoData?.sourceUrl,
+    repoData?.forkedFrom,
+    (repoData as { clone?: string[] })?.clone?.join("|") ?? "",
+    repoData?.defaultBranch,
+    effectiveSourceUrl,
+    selectedBranch,
+    resolvedParams.entity,
   ]);
 
   // Separate useEffect for file fetching - only runs when repoData is first set and files are missing
@@ -3618,7 +4054,8 @@ export default function RepoCodePage() {
     }
 
     const repoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
-    const currentBranch = selectedBranch || repoData?.defaultBranch || "main";
+    const currentBranch =
+      selectedBranchRef.current || repoData?.defaultBranch || "main";
     const repoKeyWithBranch = `${repoKey}:${currentBranch}`; // Include branch in key
     const hasAttempted = fileFetchAttemptedRef.current === repoKeyWithBranch;
 
@@ -3635,15 +4072,60 @@ export default function RepoCodePage() {
       Array.isArray(currentRepoData.files) &&
       currentRepoData.files.length > 0;
 
-    // Skip if already attempted for this branch AND we have files (prevents infinite loops)
-    // BUT: If cloneUrls exist and we don't have files, we MUST try to fetch (don't skip!)
-    // This is critical - cloneUrls are the source of truth for foreign repos
-    if (hasAttempted && hasFiles && !fileFetchInProgressRef.current) {
-      console.log(
-        "⏭️ [File Fetch] Already attempted for this repo+branch and files exist, skipping:",
-        repoKeyWithBranch
+    const reposSnapshot = (() => {
+      try {
+        return loadStoredRepos();
+      } catch {
+        return [] as StoredRepo[];
+      }
+    })();
+    const matchingRepoForSource = findRepoByEntityAndName<StoredRepo>(
+      reposSnapshot,
+      resolvedParams.entity,
+      resolvedParams.repo
+    );
+    const sourceForRemote =
+      resolveRepoUpstreamSource(matchingRepoForSource) ||
+      resolveRepoUpstreamSource(currentRepoData);
+    if (sourceForRemote) {
+      writeUpstreamSourceSession(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        sourceForRemote
       );
-      return;
+    }
+    const hasGithubMirror = sourceForRemote.includes("github.com");
+    const entityStr = resolvedParams.entity || "";
+    const isNostrEntityRoute =
+      entityStr.startsWith("npub") || /^[0-9a-f]{64}$/i.test(entityStr);
+    const mustRefreshFromNetwork = hasGithubMirror || isNostrEntityRoute;
+
+    // Skip if already attempted for this branch AND we have files (prevents infinite loops)
+    // BUT: GitHub mirror / Nostr routes must still refresh stale local trees (once per fresh stamp)
+    if (hasAttempted && hasFiles && !fileFetchInProgressRef.current) {
+      if (!mustRefreshFromNetwork) {
+        console.log(
+          "⏭️ [File Fetch] Already attempted for this repo+branch and files exist, skipping:",
+          repoKeyWithBranch
+        );
+        return;
+      }
+      const storageAlias = resolveRepoStorageAlias(
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
+      const upstreamFresh = readSourceTreeFreshMs(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        storageAlias
+      );
+      if (upstreamFresh > 0) {
+        console.log(
+          "⏭️ [File Fetch] Upstream tree already refreshed recently, skipping:",
+          repoKeyWithBranch
+        );
+        return;
+      }
     }
 
     // CRITICAL: If we have cloneUrls but no files, clear attempted flag to allow fetch
@@ -3701,7 +4183,8 @@ export default function RepoCodePage() {
 
     // This prevents infinite retry loops - once files are loaded from at least one source, we're done
     // Only refetch if branch changed (different branch = different files)
-    if (hasCloneUrls && hasFiles) {
+    // GitHub mirror / Nostr entity routes still need a network refresh even when RSC already has files+cloneUrls
+    if (hasCloneUrls && hasFiles && !mustRefreshFromNetwork) {
       const lastFetchedBranch = (fileFetchAttemptedRef.current || "").split(
         ":"
       )[1];
@@ -3733,9 +4216,8 @@ export default function RepoCodePage() {
     // This fixes the issue where repos with sourceUrl/cloneUrls weren't checking localStorage
     if (!hasFiles) {
       try {
-        const repos = loadStoredRepos();
         const matchingRepo = findRepoByEntityAndName<StoredRepo>(
-          repos,
+          reposSnapshot,
           resolvedParams.entity,
           resolvedParams.repo
         );
@@ -3757,9 +4239,10 @@ export default function RepoCodePage() {
 
           if (localFiles.length > 0) {
             console.log(
-              `✅ [File Fetch] Repo has ${localFiles.length} files in localStorage, using them (skipping server fetch)`
+              mustRefreshFromNetwork
+                ? `📂 [File Fetch] Repo has ${localFiles.length} files in localStorage — showing immediately, then refreshing from ${hasGithubMirror ? "GitHub/upstream" : "Nostr/bridge"}`
+                : `✅ [File Fetch] Repo has ${localFiles.length} files in localStorage, using them (skipping server fetch)`
             );
-            // Update repoData with files from localStorage
             setRepoData((prev) =>
               prev
                 ? {
@@ -3768,9 +4251,12 @@ export default function RepoCodePage() {
                   }
                 : null
             );
-            fileFetchAttemptedRef.current = repoKeyWithBranch; // Mark as attempted
-            fileFetchInProgressRef.current = false;
-            return; // Skip server fetching - files already loaded from localStorage
+            if (!mustRefreshFromNetwork) {
+              fileFetchAttemptedRef.current = repoKeyWithBranch;
+              fileFetchInProgressRef.current = false;
+              return;
+            }
+            // Keep going: network path below replaces/merges with fresher tree + README sources
           }
         }
       } catch (e) {
@@ -3782,8 +4268,6 @@ export default function RepoCodePage() {
       }
     }
 
-    // Mark as attempted before starting to prevent re-runs (include branch in key)
-    fileFetchAttemptedRef.current = repoKeyWithBranch;
     console.log(
       "🚀 [File Fetch] Starting file fetch for:",
       repoKeyWithBranch,
@@ -3791,11 +4275,14 @@ export default function RepoCodePage() {
       currentBranch
     );
 
+    const subscribeFn = subscribeRef.current;
+    const relays = defaultRelaysRef.current;
+
     if (
       !ownerPubkeyForFetch ||
       !/^[0-9a-f]{64}$/i.test(ownerPubkeyForFetch) ||
-      !subscribe ||
-      !defaultRelays
+      !subscribeFn ||
+      !relays?.length
     ) {
       console.warn(
         "⚠️ [File Fetch] Cannot fetch files - missing ownerPubkey, subscribe, or defaultRelays",
@@ -3804,9 +4291,9 @@ export default function RepoCodePage() {
           ownerPubkeyValid: ownerPubkeyForFetch
             ? /^[0-9a-f]{64}$/i.test(ownerPubkeyForFetch)
             : false,
-          hasSubscribe: !!subscribe,
-          hasDefaultRelays: !!defaultRelays,
-          defaultRelaysCount: defaultRelays?.length || 0,
+          hasSubscribe: !!subscribeFn,
+          hasDefaultRelays: !!relays?.length,
+          defaultRelaysCount: relays?.length || 0,
         }
       );
       fileFetchInProgressRef.current = false;
@@ -3815,6 +4302,8 @@ export default function RepoCodePage() {
 
     // Use ownerPubkeyForFetch for the rest of the function
     const ownerPubkey: string = ownerPubkeyForFetch;
+    const subscribe = subscribeFn;
+    const defaultRelays = relays;
 
     // CRITICAL: Don't set isInProgress here - set it only when we actually start a fetch
     // This prevents the flag from being stuck if the initial clone URLs check skips
@@ -3985,9 +4474,12 @@ export default function RepoCodePage() {
         }
       }
 
-      // Multi-source fetch uses only real clone URLs (NIP-34 tags, localStorage, upstream
-      // sourceUrl). We do not append synthetic https://<other-grasp>/npub/.../repo.git URLs;
-      // that forced parallel bridge work against hosts that usually never mirrored the repo.
+      // Repos with no clone tags (e.g. metadata-only NIP-34): try well-known GRASP paths.
+      appendInferredGraspCloneUrls(
+        initialCloneUrls,
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
 
       // If we have clone URLs, try multi-source fetch immediately (before querying Nostr)
       // CRITICAL: Check if we've already attempted this fetch to prevent multiple runs
@@ -4007,13 +4499,25 @@ export default function RepoCodePage() {
       const hasAttempted = fileFetchAttemptedRef.current === repoKeyWithBranch;
       const isInProgress = fileFetchInProgressRef.current;
       const hasCloneUrls = initialCloneUrls.length > 0;
+      const initialUpstream = resolveUpstreamSourceUrl(
+        initialRepoData?.sourceUrl,
+        initialRepoData?.forkedFrom,
+        ...initialCloneUrls
+      );
+      const mustRefreshInitial =
+        initialUpstream.includes("github.com") ||
+        (resolvedParams.entity || "").startsWith("npub") ||
+        /^[0-9a-f]{64}$/i.test(resolvedParams.entity || "");
 
       // CRITICAL: If we have cloneUrls but no files, we MUST fetch (don't skip even if attempted before)
       // Only skip if: (attempted AND has files) OR (in progress AND has files)
       // This allows retry if attempted but no files yet (files undefined or empty array)
       // AND especially allows fetch if cloneUrls exist (they're the source of truth for foreign repos)
       // CRITICAL: If isInProgress is true but we have no files, we should still try (previous attempt might have failed)
-      if ((hasAttempted && hasFiles) || (isInProgress && hasFiles)) {
+      if (
+        ((hasAttempted && hasFiles) || (isInProgress && hasFiles)) &&
+        !mustRefreshInitial
+      ) {
         console.log(
           "⏭️ [File Fetch] Already attempted or in progress, skipping initial clone URLs fetch:",
           repoKeyWithBranch,
@@ -4061,6 +4565,26 @@ export default function RepoCodePage() {
       // CRITICAL: If we have cloneUrls, we MUST try to fetch (even if attempted before with no files)
       // cloneUrls are the source of truth for foreign repos - if they exist, files should be fetchable
       if (initialCloneUrls.length > 0) {
+        if (mustRefreshInitial && hasFiles) {
+          const storageAlias = resolveRepoStorageAlias(
+            resolvedParams.entity,
+            resolvedParams.repo
+          );
+          const upstreamFresh = readSourceTreeFreshMs(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            storageAlias
+          );
+          if (upstreamFresh > 0) {
+            console.log(
+              "⏭️ [File Fetch] Upstream tree fresh — skipping repeat multi-source fetch:",
+              repoKeyWithBranch
+            );
+            fileFetchInProgressRef.current = false;
+            setFetchingFilesFromGit({ source: null, message: "" });
+            return;
+          }
+        }
         console.log(
           `🔍 [File Fetch] NIP-34: Found ${initialCloneUrls.length} clone URLs, attempting multi-source fetch immediately`
         );
@@ -4165,20 +4689,48 @@ export default function RepoCodePage() {
               status.files.length > 0
             ) {
               const currentFiles = repoDataRef.current?.files;
+              const existingCount = Array.isArray(currentFiles)
+                ? currentFiles.length
+                : 0;
+              const branchFromFetch = status.resolvedBranch;
+              const branchKey =
+                branchFromFetch ||
+                selectedBranchRef.current ||
+                repoDataRef.current?.defaultBranch ||
+                "main";
+              const applyKey = `${resolvedParams.entity}/${resolvedParams.repo}:${branchKey}:${status.files.length}`;
+              if (lastAppliedFileTreeKeyRef.current === applyKey) {
+                return;
+              }
+              const shouldApplyTree =
+                shouldReplaceCachedFileTree() ||
+                status.files.length > existingCount ||
+                existingCount === 0;
 
-              // First success: update files immediately
-              if (
-                !currentFiles ||
-                !Array.isArray(currentFiles) ||
-                currentFiles.length === 0
-              ) {
+              // First success: update files immediately (or replace stale cache when upstream wins)
+              if (shouldApplyTree) {
+                lastAppliedFileTreeKeyRef.current = applyKey;
+                markSourceTreeFresh(
+                  resolvedParams.entity,
+                  resolvedParams.repo,
+                  resolveRepoStorageAlias(
+                    resolvedParams.entity,
+                    resolvedParams.repo
+                  )
+                );
                 console.log(
                   `🚀 [File Fetch] First source succeeded! Updating files immediately: ${status.files.length} files from ${status.source.displayName}`
                 );
-                const branchFromFetch = status.resolvedBranch;
+                setBridgeFiles(status.files);
+                setFilesTreeBump((b) => b + 1);
                 // CRITICAL: Use startTransition to defer state update and prevent hook order issues during render
                 startTransition(() => {
-                  if (branchFromFetch) {
+                  if (
+                    branchFromFetch &&
+                    branchFromFetch !==
+                      (selectedBranchRef.current ||
+                        repoDataRef.current?.defaultBranch)
+                  ) {
                     setSelectedBranch(branchFromFetch);
                   }
                   setRepoData((prev: any) => {
@@ -4299,7 +4851,24 @@ export default function RepoCodePage() {
         // Clear fetching message after fetch completes
         setFetchingFilesFromGit({ source: null, message: "" });
 
+        const finalizedStatuses = finalizePendingFetchStatuses(
+          statuses.map((s) => ({
+            source: s.source.displayName,
+            status: s.status,
+            error: s.error,
+          }))
+        );
+        setFetchStatuses(finalizedStatuses);
+
         if (files && files.length > 0) {
+          markSourceTreeFresh(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            resolveRepoStorageAlias(
+              resolvedParams.entity,
+              resolvedParams.repo
+            )
+          );
           console.log(
             `✅ [File Fetch] NIP-34: Successfully fetched ${files.length} files from clone URLs (immediate fetch)`
           );
@@ -4310,11 +4879,19 @@ export default function RepoCodePage() {
             (s: any) => s.status === "success" && s.files && s.files.length > 0
           );
 
-          if (
+          const rdForReplace = repoDataRef.current;
+          const shouldReplaceFileTree =
             !currentFiles ||
             !Array.isArray(currentFiles) ||
-            currentFiles.length === 0
-          ) {
+            currentFiles.length === 0 ||
+            shouldPreferUpstreamMirror(resolvedParams.entity, {
+              sourceUrl: rdForReplace?.sourceUrl,
+              forkedFrom: rdForReplace?.forkedFrom,
+              clone: (rdForReplace as { clone?: string[] })?.clone,
+              hasUnpushedEdits: rdForReplace?.hasUnpushedEdits,
+            });
+
+          if (shouldReplaceFileTree) {
             // CRITICAL: Store the ownerPubkey and clone URLs used for fetching, so file opening can use the same
             // Also collect all successful sources for fallback during file opening
             const successfulSourcesArray = successfulStatuses.map((s: any) => ({
@@ -4433,14 +5010,6 @@ export default function RepoCodePage() {
             console.error("❌ [File Fetch] Failed to update localStorage:", e);
           }
 
-          setFetchStatuses(
-            statuses.map((s) => ({
-              source: s.source.displayName,
-              status: s.status,
-              error: s.error,
-            }))
-          );
-
           // CRITICAL: Reset in-progress flag after fetch completes
           fileFetchInProgressRef.current = false;
           // CRITICAL: Mark as attempted to prevent re-fetching (files are now loaded)
@@ -4449,13 +5018,6 @@ export default function RepoCodePage() {
         } else {
           console.warn(
             "⚠️ [File Fetch] NIP-34: Immediate multi-source fetch returned no files, will query Nostr"
-          );
-          setFetchStatuses(
-            statuses.map((s) => ({
-              source: s.source.displayName,
-              status: s.status,
-              error: s.error,
-            }))
           );
           // CRITICAL: Reset in-progress flag even when no files found
           // Also clear attempted flag if no files found (allows retry on next trigger)
@@ -4488,6 +5050,8 @@ export default function RepoCodePage() {
         const paramsEntity = resolvedParams.entity;
         const paramsRepo = resolvedParams.repo;
         let foundFiles = false;
+        /** Latest applied KIND_REPOSITORY (51) JSON snapshot by relay order (see early `foundFiles` gate). */
+        let lastKind51RepoSnapshotCreatedAt = 0;
         let unsub: (() => void) | undefined;
         // Store sourceUrl and clone URLs from events for fallback use (accessible in closure)
         let sourceUrlFromEvent: string | undefined;
@@ -4584,7 +5148,10 @@ export default function RepoCodePage() {
               // But we'll override with the latest one after EOSE
             }
 
-            if (foundFiles) return;
+            if (foundFiles) {
+              if (event.kind !== KIND_REPOSITORY) return;
+              if (event.created_at <= lastKind51RepoSnapshotCreatedAt) return;
+            }
 
             try {
               // Log all clone tags found in the event
@@ -5285,9 +5852,33 @@ export default function RepoCodePage() {
                 Array.isArray(eventRepoData.files) &&
                 eventRepoData.files.length > 0;
 
+              const skipKind51EmbeddedFiles = shouldSkipLegacyKind51EmbeddedFiles(
+                {
+                  eventKind: event.kind,
+                  kindRepository: KIND_REPOSITORY,
+                  hasValidEmbeddedFiles: hasValidFiles,
+                  entity: resolvedParams.entity,
+                  sourceUrl: repoDataRef.current?.sourceUrl,
+                  forkedFrom: repoDataRef.current?.forkedFrom,
+                  clone: (repoDataRef.current as { clone?: string[] })?.clone,
+                  eventSourceUrl: eventRepoData?.sourceUrl,
+                  eventForkedFrom: eventRepoData?.forkedFrom,
+                  latestNip34CreatedAt:
+                    event.kind === KIND_REPOSITORY
+                      ? eventRepoData?.lastEventCreatedAt
+                      : undefined,
+                }
+              );
+              if (skipKind51EmbeddedFiles) {
+                console.log(
+                  "⏭️ [File Fetch] Skipping legacy kind-51 embedded file tree — GitHub/upstream refresh is authoritative"
+                );
+              }
+
               if (
                 (repoNameMatches || contentMatches || pubkeyMatches) &&
-                hasValidFiles
+                hasValidFiles &&
+                !skipKind51EmbeddedFiles
               ) {
                 // Check if repo has unpushed edits before using Nostr event files
                 // This prevents overwriting refetched files from GitHub
@@ -5517,10 +6108,22 @@ export default function RepoCodePage() {
                 );
 
                 if (shouldUseNostrFiles) {
-                  // CRITICAL: Before using Nostr files, check if there are LOCAL files that should take precedence
-                  // This prevents overwriting files that were just added locally
+                  // Prefer newest authoritative tree: latest Nostr snapshot vs last source
+                  // refetch (session) vs last Nostr sync stored on the repo row. Arbitrary old
+                  // gittr_files must NOT mask a newer kind-51 announcement (dangerous for merges).
                   let useLocalFiles = false;
                   let localFiles: RepoFileEntry[] = [];
+                  const nostrEventMs = (event.created_at || 0) * 1000;
+                  const readSourceTreeFreshMs = (ent: string, rep: string) => {
+                    try {
+                      const raw = sessionStorage.getItem(
+                        `gittr_source_tree_fresh_ms__${ent}__${rep}`
+                      );
+                      return raw ? parseInt(raw, 10) || 0 : 0;
+                    } catch {
+                      return 0;
+                    }
+                  };
                   try {
                     const repos = loadStoredRepos();
                     const existingRepo = repos.find((r) => {
@@ -5543,39 +6146,86 @@ export default function RepoCodePage() {
                       return (matchesOwner || matchesEntity) && matchesRepo;
                     });
 
+                    let localFreshMs = 0;
+                    if (resolvedParams.entity && resolvedParams.repo) {
+                      const slugA = resolveRepoStorageAlias(
+                        resolvedParams.entity,
+                        resolvedParams.repo
+                      );
+                      localFreshMs = Math.max(
+                        readSourceTreeFreshMs(
+                          resolvedParams.entity,
+                          resolvedParams.repo
+                        ),
+                        readSourceTreeFreshMs(
+                          resolvedParams.entity,
+                          slugA
+                        )
+                      );
+                    }
+                    const repoLastNostrMs =
+                      existingRepo &&
+                      typeof (existingRepo as any).lastNostrEventCreatedAt ===
+                        "number"
+                        ? Number(
+                            (existingRepo as any).lastNostrEventCreatedAt
+                          ) * 1000
+                        : 0;
+                    localFreshMs = Math.max(localFreshMs, repoLastNostrMs);
+
+                    const localTreeBeatsNostr =
+                      existingRepo?.hasUnpushedEdits === true ||
+                      localFreshMs >= nostrEventMs;
+
                     if (existingRepo) {
-                      // Check if repo has local files (from localStorage)
                       if (
                         existingRepo.files &&
                         Array.isArray(existingRepo.files) &&
                         existingRepo.files.length > 0
                       ) {
-                        localFiles = existingRepo.files;
-                        useLocalFiles = true;
-                        console.log(
-                          "🔒 [File Fetch] Using LOCAL files instead of Nostr files (local files take precedence):",
-                          {
-                            localFileCount: localFiles.length,
-                            nostrFileCount: eventRepoData.files.length,
-                            hasUnpushedEdits: existingRepo.hasUnpushedEdits,
-                          }
-                        );
+                        if (localTreeBeatsNostr) {
+                          localFiles = existingRepo.files;
+                          useLocalFiles = true;
+                          console.log(
+                            "🔒 [File Fetch] Using LOCAL repo.files (fresh vs this Nostr snapshot or unpushed edits):",
+                            {
+                              localFileCount: localFiles.length,
+                              nostrFileCount: eventRepoData.files.length,
+                              hasUnpushedEdits: existingRepo.hasUnpushedEdits,
+                              localFreshMs,
+                              nostrEventMs,
+                            }
+                          );
+                        } else {
+                          console.log(
+                            "⏭️ [File Fetch] Ignoring embedded repo.files — older than this Nostr kind-51 snapshot",
+                            { localFreshMs, nostrEventMs }
+                          );
+                        }
                       } else {
-                        // Try loading from separate storage
                         const separateFiles = loadRepoFiles(
                           resolvedParams.entity,
                           resolvedParams.repo
                         );
                         if (separateFiles.length > 0) {
-                          localFiles = separateFiles;
-                          useLocalFiles = true;
-                          console.log(
-                            "🔒 [File Fetch] Using LOCAL files from separate storage instead of Nostr files:",
-                            {
-                              localFileCount: localFiles.length,
-                              nostrFileCount: eventRepoData.files.length,
-                            }
-                          );
+                          if (localTreeBeatsNostr) {
+                            localFiles = separateFiles;
+                            useLocalFiles = true;
+                            console.log(
+                              "🔒 [File Fetch] Using gittr_files index (fresh vs this Nostr snapshot or unpushed edits):",
+                              {
+                                localFileCount: localFiles.length,
+                                nostrFileCount: eventRepoData.files.length,
+                                localFreshMs,
+                                nostrEventMs,
+                              }
+                            );
+                          } else {
+                            console.log(
+                              "⏭️ [File Fetch] Ignoring gittr_files index — older than this Nostr kind-51 snapshot",
+                              { localFreshMs, nostrEventMs }
+                            );
+                          }
                         }
                       }
                     }
@@ -5587,6 +6237,7 @@ export default function RepoCodePage() {
                   }
 
                   foundFiles = true;
+                  lastKind51RepoSnapshotCreatedAt = event.created_at || 0;
                   console.log("✅ [File Fetch] Found files in Nostr event:", {
                     fileCount: eventRepoData.files.length,
                     firstFile: eventRepoData.files[0],
@@ -5742,7 +6393,6 @@ export default function RepoCodePage() {
                 }
 
                 fileFetchInProgressRef.current = false;
-                if (unsub) unsub();
               } else {
                 // Log detailed info about why files weren't accepted
                 const reason =
@@ -6155,16 +6805,28 @@ export default function RepoCodePage() {
                 const hasAttempted =
                   fileFetchAttemptedRef.current === repoKeyWithBranch;
                 const hasCloneUrlsForEose = cloneUrls.length > 0;
+                const eoseUpstream = resolveUpstreamSourceUrl(
+                  sourceUrl,
+                  currentData?.sourceUrl,
+                  currentData?.forkedFrom,
+                  ...cloneUrls
+                );
+                const mustRefreshEose =
+                  eoseUpstream.includes("github.com") ||
+                  (resolvedParams.entity || "").startsWith("npub") ||
+                  /^[0-9a-f]{64}$/i.test(resolvedParams.entity || "");
                 // Match initial multi-source guard: never skip just because a fetch is in flight
                 // when we still have zero files — the first run may only have Nostr clone URLs;
                 // EOSE adds upstream sourceUrl (e.g. self-hosted git) required for a successful tree.
                 if (
                   fileFetchInProgressRef.current &&
-                  !hasFiles &&
+                  (!hasFiles || mustRefreshEose) &&
                   hasCloneUrlsForEose
                 ) {
                   console.log(
-                    "🔄 [File Fetch] EOSE: clearing isInProgress (no files yet; clone list now includes event URLs):",
+                    mustRefreshEose && hasFiles
+                      ? "🔄 [File Fetch] EOSE: clearing isInProgress (upstream mirror arrived; refresh stale cache):"
+                      : "🔄 [File Fetch] EOSE: clearing isInProgress (no files yet; clone list now includes event URLs):",
                     repoKeyWithBranch
                   );
                   fileFetchInProgressRef.current = false;
@@ -6172,7 +6834,11 @@ export default function RepoCodePage() {
                 const isInProgress = fileFetchInProgressRef.current;
 
                 // Only skip if we already have files (duplicate work). Same as initial clone-url fetch.
-                if ((hasAttempted && hasFiles) || (isInProgress && hasFiles)) {
+                if (
+                  ((hasAttempted && hasFiles) ||
+                    (isInProgress && hasFiles)) &&
+                  !mustRefreshEose
+                ) {
                   console.log(
                     "⏭️ [File Fetch] Already attempted or in progress, skipping EOSE clone URLs fetch:",
                     repoKeyWithBranch,
@@ -6304,18 +6970,46 @@ export default function RepoCodePage() {
                           status.files.length > 0
                         ) {
                           const currentFiles = repoDataRef.current?.files;
+                          const existingCount = Array.isArray(currentFiles)
+                            ? currentFiles.length
+                            : 0;
+                          const branchFromFetch = status.resolvedBranch;
+                          const branchKey =
+                            branchFromFetch ||
+                            selectedBranchRef.current ||
+                            repoDataRef.current?.defaultBranch ||
+                            "main";
+                          const applyKey = `${resolvedParams.entity}/${resolvedParams.repo}:${branchKey}:${status.files.length}`;
+                          if (lastAppliedFileTreeKeyRef.current === applyKey) {
+                            return;
+                          }
+                          const shouldApplyTree =
+                            shouldReplaceCachedFileTree() ||
+                            status.files.length > existingCount ||
+                            existingCount === 0;
 
-                          // First success: update files immediately
-                          if (
-                            !currentFiles ||
-                            !Array.isArray(currentFiles) ||
-                            currentFiles.length === 0
-                          ) {
+                          // First success: update files immediately (or replace stale cache)
+                          if (shouldApplyTree) {
+                            lastAppliedFileTreeKeyRef.current = applyKey;
+                            markSourceTreeFresh(
+                              resolvedParams.entity,
+                              resolvedParams.repo,
+                              resolveRepoStorageAlias(
+                                resolvedParams.entity,
+                                resolvedParams.repo
+                              )
+                            );
                             console.log(
                               `🚀 [File Fetch] First source succeeded! Updating files immediately: ${status.files.length} files from ${status.source.displayName}`
                             );
-                            const branchFromFetch = status.resolvedBranch;
-                            if (branchFromFetch) {
+                            setBridgeFiles(status.files);
+                            setFilesTreeBump((b) => b + 1);
+                            if (
+                              branchFromFetch &&
+                              branchFromFetch !==
+                                (selectedBranchRef.current ||
+                                  repoDataRef.current?.defaultBranch)
+                            ) {
                               setSelectedBranch(branchFromFetch);
                             }
                             setRepoData((prev: any) => {
@@ -6862,10 +7556,21 @@ export default function RepoCodePage() {
                     status.files.length > 0
                   ) {
                     const currentFiles = repoDataRef.current?.files;
-                    // Only update if we don't already have files (first success) or if this source has more files
+                    const preferUpstreamReplace = shouldPreferUpstreamMirror(
+                      resolvedParams.entity,
+                      {
+                        sourceUrl: repoDataRef.current?.sourceUrl,
+                        forkedFrom: repoDataRef.current?.forkedFrom,
+                        clone: (repoDataRef.current as { clone?: string[] })
+                          ?.clone,
+                        hasUnpushedEdits: repoDataRef.current?.hasUnpushedEdits,
+                      }
+                    );
+                    // Replace empty tree, stale cache when upstream wins, or strictly larger listing
                     if (
                       !currentFiles ||
                       currentFiles.length === 0 ||
+                      preferUpstreamReplace ||
                       status.files.length > currentFiles.length
                     ) {
                       // CRITICAL: Extract sourceUrl from successful source for GitHub/GitLab/Codeberg
@@ -8347,9 +9052,8 @@ export default function RepoCodePage() {
                                           githubToken
                                         )}`;
                                       }
-                                      const readmeResponse = await fetch(
-                                        readmeApiUrl
-                                      );
+                                      const readmeResponse =
+                                        await fetchDeduped(readmeApiUrl);
                                       if (readmeResponse.ok) {
                                         const readmeData =
                                           await readmeResponse.json();
@@ -9031,7 +9735,8 @@ export default function RepoCodePage() {
                                 githubToken
                               )}`;
                             }
-                            const readmeResponse = await fetch(readmeApiUrl);
+                            const readmeResponse =
+                              await fetchDeduped(readmeApiUrl);
                             if (readmeResponse.ok) {
                               const readmeData = await readmeResponse.json();
                               readmeContent = readmeData.content || "";
@@ -9161,9 +9866,18 @@ export default function RepoCodePage() {
                     }
                   }
                 } else {
-                  console.log(
-                    "ℹ️ [File Fetch] No sourceUrl found - files must be pushed to git-nostr-bridge via git push"
-                  );
+                  const cloneLen = Array.isArray(repoDataRef.current?.clone)
+                    ? repoDataRef.current!.clone!.length
+                    : 0;
+                  if (cloneLen > 0) {
+                    console.log(
+                      "ℹ️ [File Fetch] No sourceUrl — fetching via clone / GRASP URLs"
+                    );
+                  } else {
+                    console.log(
+                      "ℹ️ [File Fetch] No sourceUrl or clone URLs — add clone tags or push to git-nostr-bridge"
+                    );
+                  }
                 }
               }
             }
@@ -9204,18 +9918,7 @@ export default function RepoCodePage() {
       }
     })();
 
-    return () => {
-      fileFetchInProgressRef.current = false;
-    };
-  }, [
-    resolvedParams.entity,
-    resolvedParams.repo,
-    resolvedOwnerPubkey,
-    ownerPubkeyForLink,
-    subscribe,
-    defaultRelays,
-    selectedBranch,
-  ]); // Include selectedBranch so it re-runs when branch changes
+  }, [resolvedParams.entity, resolvedParams.repo]);
 
   // Extract URL params with state to prevent infinite loops
   const [urlParams, setUrlParams] = useState<{
@@ -9340,19 +10043,18 @@ export default function RepoCodePage() {
 
   // Load README from current folder when path changes
   useEffect(() => {
-    // Clear folder README when a file is selected (file takes priority)
     if (selectedFile || fileContent) {
+      folderReadmeLoadGenRef.current += 1;
       setCurrentFolderReadme(null);
       return;
     }
 
-    // Check if there's a README in the current folder (root or subfolder)
     if (!safeFiles || safeFiles.length === 0) {
+      folderReadmeLoadGenRef.current += 1;
       setCurrentFolderReadme(null);
       return;
     }
 
-    // Determine the folder path (empty string for root, or the current path)
     const folderPrefix = currentPath
       ? currentPath.endsWith("/")
         ? currentPath
@@ -9372,12 +10074,21 @@ export default function RepoCodePage() {
     });
 
     if (!readmeFile) {
+      folderReadmeLoadGenRef.current += 1;
       setCurrentFolderReadme(null);
       return;
     }
 
-    // Load the README content
+    folderReadmeLoadGenRef.current += 1;
+    const gen = folderReadmeLoadGenRef.current;
     setLoadingFolderReadme(true);
+
+    const finish = (md: string | null) => {
+      if (gen !== folderReadmeLoadGenRef.current) return;
+      setCurrentFolderReadme(md);
+      setLoadingFolderReadme(false);
+    };
+
     const loadReadme = async () => {
       try {
         // Local merge/edits live in gittr_overrides — same source as `openFile`. Prefer
@@ -9398,21 +10109,74 @@ export default function RepoCodePage() {
           ) &&
           typeof mergedOverrides[readmePathKey] === "string"
         ) {
-          setCurrentFolderReadme(mergedOverrides[readmePathKey]);
-          setLoadingFolderReadme(false);
+          finish(mergedOverrides[readmePathKey]);
           return;
         }
 
-        const branch = selectedBranch || repoData?.defaultBranch || "main";
-        const sourceUrl = repoData?.sourceUrl;
+        const normPath = (p: string) =>
+          String(p || "")
+            .replace(/^\//, "")
+            .toLowerCase();
+        const wantReadme = normPath(readmePathKey);
+        const mergedIndexed = mergeRepoFileIndexes(
+          loadRepoFiles(resolvedParams.entity, storageRepoForReadme),
+          loadRepoFiles(resolvedParams.entity, resolvedParams.repo)
+        );
+        const row = mergedIndexed.find(
+          (f) => normPath(f.path || "") === wantReadme
+        );
 
-        // Nostr / gittr routes: on-disk bridge is authoritative (GitHub mirror may lag merges)
+        const branch = selectedBranch || repoData?.defaultBranch || "main";
+        const sourceUrl =
+          resolveRepoUpstreamSource(repoData) ||
+          resolveUpstreamSourceUrl(effectiveSourceUrl);
+        const preferUpstreamReadme = shouldPreferUpstreamContent(
+          resolvedParams.entity,
+          {
+            sourceUrl: repoData?.sourceUrl,
+            forkedFrom: repoData?.forkedFrom,
+            clone: (repoData as { clone?: string[] })?.clone,
+          }
+        );
+
+        if (sourceUrl && preferUpstreamReadme) {
+          const githubToken =
+            typeof window !== "undefined"
+              ? localStorage.getItem("gittr_github_token")
+              : null;
+          let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+            sourceUrl
+          )}&path=${encodeURIComponent(
+            readmeFile.path
+          )}&branch=${encodeURIComponent(branch)}`;
+          if (githubToken) {
+            apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
+          }
+          try {
+            const response = await fetchDeduped(apiUrl);
+            if (response.ok) {
+              const data = await response.json();
+              if (
+                data?.content !== undefined &&
+                data?.content !== null &&
+                !data.isBinary
+              ) {
+                finish(String(data.content));
+                return;
+              }
+            }
+          } catch (e) {
+            console.warn("[Folder README] Upstream fetch failed:", e);
+          }
+        }
+
+        // Nostr / gittr routes: bridge only when upstream is not the canonical mirror
         const isNostrEntityRoute =
           !!resolvedParams.entity &&
           (resolvedParams.entity.startsWith("npub") ||
             /^[0-9a-f]{64}$/i.test(resolvedParams.entity));
 
-        if (isNostrEntityRoute && repoData) {
+        if (isNostrEntityRoute && repoData && !preferUpstreamReadme) {
           let ownerPubkey: string | null =
             (repoData as any).ownerPubkey &&
             /^[0-9a-f]{64}$/i.test(String((repoData as any).ownerPubkey))
@@ -9481,8 +10245,7 @@ export default function RepoCodePage() {
                   data?.content !== null &&
                   !data.isBinary
                 ) {
-                  setCurrentFolderReadme(String(data.content));
-                  setLoadingFolderReadme(false);
+                  finish(String(data.content));
                   return;
                 }
               }
@@ -9492,9 +10255,17 @@ export default function RepoCodePage() {
           }
         }
 
-        if (sourceUrl) {
-          // Try API first
-          // Get user's GitHub token for private repos
+        if (
+          !preferUpstreamReadme &&
+          row &&
+          typeof (row as any).content === "string" &&
+          String((row as any).content).trim().length > 0
+        ) {
+          finish(String((row as any).content));
+          return;
+        }
+
+        if (sourceUrl && !preferUpstreamReadme) {
           const githubToken =
             typeof window !== "undefined"
               ? localStorage.getItem("gittr_github_token")
@@ -9507,66 +10278,51 @@ export default function RepoCodePage() {
           if (githubToken) {
             apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
           }
-          const response = await fetch(apiUrl);
+          const response = await fetchDeduped(apiUrl);
           if (response.ok) {
             const data = await response.json();
-            setCurrentFolderReadme(data.content || "");
-            setLoadingFolderReadme(false);
+            finish(data.content || "");
             return;
           }
         }
 
-        // Fallback: separate `gittr_files` storage (authoritative for local edits)
-        const normPath = (p: string) =>
-          String(p || "")
-            .replace(/^\//, "")
-            .toLowerCase();
-        const want = normPath(readmeFile.path);
-        const fromIndexed = loadRepoFiles(
-          resolvedParams.entity,
-          resolvedParams.repo
-        );
-        const indexedMatch = fromIndexed.find(
-          (f) => normPath(f.path || "") === want
-        );
-        if (indexedMatch && (indexedMatch as any).content) {
-          setCurrentFolderReadme(String((indexedMatch as any).content));
-          setLoadingFolderReadme(false);
-          return;
-        }
-
-        const repos = loadStoredRepos();
-        const repo = findRepoByEntityAndName(
-          repos,
-          resolvedParams.entity,
-          resolvedParams.repo
-        );
-        if (repo?.files) {
-          const fileData = repo.files.find(
-            (f: any) => normPath(f.path) === want
+        // Never use embedded README bodies from gittr_files when GitHub/upstream is canonical.
+        if (!preferUpstreamReadme) {
+          const repos = loadStoredRepos();
+          const repo = findRepoByEntityAndName(
+            repos,
+            resolvedParams.entity,
+            resolvedParams.repo
           );
-          if (fileData && (fileData as any).content) {
-            setCurrentFolderReadme((fileData as any).content);
-            setLoadingFolderReadme(false);
-            return;
+          if (repo?.files) {
+            const fileData = repo.files.find(
+              (f: any) => normPath(f.path) === wantReadme
+            );
+            if (fileData && (fileData as any).content) {
+              finish((fileData as any).content);
+              return;
+            }
           }
         }
 
-        // If we can't load it, clear it
-        setCurrentFolderReadme(null);
-        setLoadingFolderReadme(false);
+        finish(null);
       } catch (error) {
         console.error("Error loading folder README:", error);
-        setCurrentFolderReadme(null);
-        setLoadingFolderReadme(false);
+        finish(null);
       }
     };
 
-    loadReadme();
+    const debounceTimer = window.setTimeout(() => {
+      loadReadme();
+    }, 250);
+    return () => window.clearTimeout(debounceTimer);
   }, [
     currentPath,
     safeFiles,
     repoData?.sourceUrl,
+    repoData?.forkedFrom,
+    (repoData as { clone?: string[] })?.clone,
+    repoData?.hasUnpushedEdits,
     repoData?.defaultBranch,
     repoData?.ownerPubkey,
     (repoData as any)?.repositoryName,
@@ -9576,6 +10332,7 @@ export default function RepoCodePage() {
     resolvedParams.entity,
     resolvedParams.repo,
     decodedRepo,
+    effectiveSourceUrl,
   ]);
 
   // Open file when selectedFile is set from URL (skip URL update since URL already has it)
@@ -9830,7 +10587,11 @@ export default function RepoCodePage() {
 
         for (const p of candidates) {
           // Try sourceUrl first
-          const gitUrl: string | undefined = repoData.sourceUrl;
+          const gitUrl: string | undefined =
+            repoData.sourceUrl ||
+            effectiveSourceUrl ||
+            resolveRepoUpstreamSource(repoData) ||
+            undefined;
           let ownerRepo: {
             owner: string;
             repo: string;
@@ -10052,11 +10813,18 @@ export default function RepoCodePage() {
       cancelled = true;
     };
   }, [
-    repoData,
+    repoData?.sourceUrl,
+    repoData?.defaultBranch,
+    (repoData as { clone?: string[] })?.clone?.join("|") ?? "",
+    repoData?.name,
+    repoData?.repo,
+    effectiveSourceUrl,
+    selectedBranch,
+    filesTreeVersionKey,
     resolvedParams.entity,
     resolvedParams.repo,
     ownerPubkeysForMetadata.length,
-  ]); // Use length only to prevent loops - join creates new string each render
+  ]); // Narrow deps — full `repoData` re-ran logo resolution on every file-tree update
 
   const pathParts = useMemo(
     () => currentPath.split("/").filter(Boolean),
@@ -10326,22 +11094,35 @@ export default function RepoCodePage() {
         console.log(
           `✅ [File Fetch] Received files from GRASP clone completion event: ${files.length} files`
         );
+        const applyKey = `${resolvedParams.entity}/${resolvedParams.repo}:${files.length}:${files[0]?.path || ""}`;
+        if (lastAppliedFileTreeKeyRef.current === applyKey) {
+          return;
+        }
+        lastAppliedFileTreeKeyRef.current = applyKey;
+        markSourceTreeFresh(
+          resolvedParams.entity,
+          resolvedParams.repo,
+          resolveRepoStorageAlias(resolvedParams.entity, resolvedParams.repo)
+        );
+        setBridgeFiles(files);
+        setFilesTreeBump((b) => b + 1);
         setRepoData((prev: any) => {
-          if (prev) {
-            return { ...prev, files };
-          } else {
-            // CRITICAL: Create repoData if it doesn't exist yet - files should show immediately
+          const updated = prev
+            ? { ...prev, files }
+            : {
+                entity: resolvedParams.entity,
+                repo: resolvedParams.repo,
+                files,
+                readme: "",
+                defaultBranch: "main",
+              };
+          if (!prev) {
             console.log(
               `🔄 [File Fetch] Creating repoData from GRASP clone event with ${files.length} files`
             );
-            return {
-              entity: resolvedParams.entity,
-              repo: resolvedParams.repo,
-              files: files,
-              readme: "",
-              defaultBranch: "main",
-            };
           }
+          repoDataRef.current = updated;
+          return updated;
         });
 
         // CRITICAL: Save files separately to avoid localStorage quota issues
@@ -10399,6 +11180,7 @@ export default function RepoCodePage() {
     };
   }, [
     computeLiveCounts,
+    persistRepoFiles,
     resolvedOwnerPubkey,
     ownerPubkeyForLink,
     resolvedParams.entity,
@@ -10431,7 +11213,7 @@ export default function RepoCodePage() {
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [safeFiles]);
+  }, [safeFiles.length, getRepoLink]);
 
   function encodePathSegments(path: string): string {
     return path
@@ -11012,7 +11794,7 @@ export default function RepoCodePage() {
                   100
                 )}...`
               );
-              const resp = await fetch(apiUrl);
+              const resp = await fetchDeduped(apiUrl);
               if (resp.ok) {
                 const data = await resp.json();
                 if (data?.content !== undefined) {
@@ -11112,7 +11894,7 @@ export default function RepoCodePage() {
             100
           )}...`
         );
-        const resp = await fetch(apiUrl);
+        const resp = await fetchDeduped(apiUrl);
         if (resp.ok) {
           const data = await resp.json();
           if (data?.content !== undefined) {
@@ -11274,7 +12056,7 @@ export default function RepoCodePage() {
       // console.log(`🔍 [fetchGithubRaw] Trying git-nostr-bridge API: ${apiUrl}`, { ownerPubkey: ownerPubkey.slice(0, 8) + "...", actualRepoName: repoName, decodedRepoFromUrl: decodedRepo, branch, path });
 
       try {
-        const response = await fetch(apiUrl);
+        const response = await fetchDeduped(apiUrl);
         if (response.ok) {
           const data = await response.json();
           if (data.content !== undefined) {
@@ -11371,7 +12153,7 @@ export default function RepoCodePage() {
                     `🔍 [fetchGithubRaw] Polling for file (attempt ${attempt}/5)...`
                   );
                   try {
-                    const pollResponse = await fetch(apiUrl);
+                    const pollResponse = await fetchDeduped(apiUrl);
                     if (pollResponse.ok) {
                       const pollData = await pollResponse.json();
                       if (pollData.content !== undefined) {
@@ -11696,7 +12478,7 @@ export default function RepoCodePage() {
             if (githubToken) {
               apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
             }
-            const r = await fetch(apiUrl);
+            const r = await fetchDeduped(apiUrl);
             if (r.ok) {
               const data = await r.json();
               console.log(
@@ -11809,7 +12591,7 @@ export default function RepoCodePage() {
             if (githubToken) {
               apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
             }
-            const r = await fetch(apiUrl);
+            const r = await fetchDeduped(apiUrl);
             if (r.ok) {
               const data = await r.json();
               console.log(
@@ -11867,7 +12649,7 @@ export default function RepoCodePage() {
             if (githubToken) {
               apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
             }
-            const r = await fetch(apiUrl);
+            const r = await fetchDeduped(apiUrl);
             if (r.ok) {
               const data = await r.json();
               console.log(
@@ -12758,7 +13540,6 @@ export default function RepoCodePage() {
     Array.isArray((repoData as any)?.clone)
       ? (repoData as any)?.clone.join("|")
       : "",
-    repoData,
     resolvedParams.entity,
     decodedRepo,
     effectiveSourceUrl,
@@ -13178,6 +13959,57 @@ export default function RepoCodePage() {
 
   return (
     <div className="mt-4">
+      {showPostSourceRefetchHint && postSourceRefetchHintKey ? (
+        <div
+          className="mb-4 rounded-md border border-amber-700/55 bg-amber-950/40 px-3 py-3 text-sm text-amber-50/95"
+          role="status"
+        >
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 space-y-2 text-xs leading-relaxed">
+              <p className="font-semibold text-amber-100">
+                You refetched from GitHub: files match the source now.
+              </p>
+              <p>
+                Nostr-only PRs/issues still exist on relays and can stay in your
+                list—their saved diffs are{" "}
+                <strong>not automatically valid</strong> against these new files
+                until you review them.
+              </p>
+              <p>
+                <strong>What to do:</strong> open{" "}
+                <Link
+                  className="text-purple-300 underline hover:text-purple-200"
+                  href={getRepoLink("pulls")}
+                >
+                  Pulls
+                </Link>{" "}
+                (and Issues if needed) → check each affected Nostr item → merge
+                again only if it still fits → then{" "}
+                <strong>Push to Nostr</strong> so others get the same tree +
+                story.
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-row gap-2 sm:flex-col">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 border-amber-700/60 text-amber-100 hover:bg-amber-900/50"
+                onClick={() => {
+                  try {
+                    sessionStorage.removeItem(postSourceRefetchHintKey);
+                  } catch {
+                    // ignore
+                  }
+                  setShowPostSourceRefetchHint(false);
+                }}
+              >
+                Dismiss
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="grid grid-cols-1 lg:grid-cols-5 xl:grid-cols-6 gap-6">
         <div
           id="gittr-repo-main"
@@ -13927,10 +14759,12 @@ export default function RepoCodePage() {
                         className="text-purple-500 hover:underline font-semibold"
                       >
                         {(() => {
-                          // CRITICAL: Use ref to access metadata without causing re-renders that block clicks
+                          if (!mounted) {
+                            return resolvedParams.entity?.startsWith("npub")
+                              ? `${resolvedParams.entity.substring(0, 16)}...`
+                              : resolvedParams.entity || "U";
+                          }
                           const currentMetadata = ownerMetadataRef.current;
-                          // Use Nostr metadata for display name
-                          // CRITICAL: Never use repoData.entityDisplayName - it might be wrong (set to current user's name)
                           const ownerMeta =
                             ownerPubkeyForLink &&
                             ownerPubkeyForLink.length === 64
@@ -13979,41 +14813,56 @@ export default function RepoCodePage() {
                       className="text-purple-500 hover:underline font-semibold"
                     >
                       {(() => {
-                        // CRITICAL: Use ref to access metadata without causing re-renders that block clicks
-                        const currentMetadata = ownerMetadataRef.current;
-                        // Use getEntityDisplayName for consistent username resolution
+                        if (!mounted) {
+                          return resolvedParams.entity?.startsWith("npub")
+                            ? `${resolvedParams.entity.substring(0, 16)}...`
+                            : resolvedParams.entity || "U";
+                        }
                         return getEntityDisplayName(
                           ownerPubkeyForLink,
-                          currentMetadata,
+                          ownerMetadataRef.current,
                           resolvedParams.entity
                         );
                       })()}
                     </a>
                   )}
-                  {repoData?.createdAt && (
-                    <span className="text-gray-400 whitespace-nowrap truncate">
-                      {formatDate24h(repoData.createdAt)}
-                    </span>
-                  )}
+                  {mounted &&
+                    (() => {
+                      const activityMs = resolveRepoActivityDisplayMs(
+                        repoData as {
+                          createdAt?: number;
+                          updatedAt?: number;
+                          lastNostrEventCreatedAt?: number;
+                        },
+                        resolvedParams.entity,
+                        resolvedParams.repo
+                      );
+                      if (!activityMs) return null;
+                      return (
+                        <span
+                          className="text-gray-400 whitespace-nowrap truncate"
+                          title="Last activity on GitHub or Nostr"
+                        >
+                          {formatDate24h(activityMs)}
+                        </span>
+                      );
+                    })()}
                 </div>
                 <div className="flex items-center gap-4 text-gray-400 text-xs">
-                  <Tooltip
-                    content={`Total number of files in this repository: ${
-                      safeFiles.filter((f) => f.type === "file").length
-                    }`}
-                  >
+                  <Tooltip content="Total number of files in this repository">
                     <span className="hover:text-purple-500 flex items-center gap-1 cursor-help">
                       <History className="h-4 w-4" />
                       <span className="hidden sm:inline">
-                        {safeFiles.filter((f) => f.type === "file").length}{" "}
-                        files
+                        {mounted
+                          ? `${safeFiles.filter((f) => f.type === "file").length} files`
+                          : "\u00a0"}
                       </span>
                     </span>
                   </Tooltip>
                 </div>
               </div>
             </div>
-            {fetchingFilesFromGit.source && (
+            {mounted && fetchingFilesFromGit.source && (
               <div className="rounded-md rounded-tr-none rounded-tl-none border border-t-0 dark:border-lightgray bg-[#171B21] p-4">
                 <div className="flex items-center gap-3 text-sm text-gray-300">
                   <div className="animate-spin h-4 w-4 border-2 border-purple-500 border-t-transparent rounded-full"></div>
@@ -14025,7 +14874,7 @@ export default function RepoCodePage() {
                 </div>
               </div>
             )}
-            {fetchStatuses.length > 0 &&
+            {mounted && fetchStatuses.length > 0 &&
               (() => {
                 // Check if we have files - if so, show success message briefly, then hide
                 const hasFiles = safeFiles.length > 0;
@@ -14215,7 +15064,7 @@ export default function RepoCodePage() {
                   </div>
                 );
               })()}
-            {items.length > 0 && (
+            {mounted && items.length > 0 && (
               <div className="overflow-hidden rounded-md rounded-tr-none rounded-tl-none border border-t-0 dark:border-lightgray">
                 <ul className="divide-y dark:divide-lightgray">
                   {items.map((it) => (
@@ -14408,17 +15257,27 @@ export default function RepoCodePage() {
                 </ul>
               </div>
             )}
-            {items.length === 0 && repoData && (
+            {mounted && items.length === 0 && repoData && (
               <div className="border p-4 text-center text-gray-400">
                 No files found
               </div>
             )}
-            {!selectedFile && !fileContent && currentFolderReadme && (
+            {mounted &&
+              !selectedFile &&
+              !fileContent &&
+              safeFiles.length > 0 &&
+              (currentFolderReadme ||
+                repoData?.readme ||
+                loadingFolderReadme) && (
               <div className="mt-4 rounded-md border dark:border-[#383B42]">
                 <div className="flex items-center gap-2 border-b p-2 dark:border-[#383B42]">
                   <List className="text-gray-400 ml-2 h-4 w-4" />{" "}
                   <span className="text-gray-400">
-                    {loadingFolderReadme ? "Loading README..." : "README.md"}
+                    {loadingFolderReadme &&
+                    !currentFolderReadme &&
+                    !repoData?.readme
+                      ? "Loading README..."
+                      : "README.md"}
                   </span>
                 </div>
                 <article
@@ -14469,8 +15328,17 @@ export default function RepoCodePage() {
                               imagePath = imagePath.slice(1);
                             }
 
-                            // Construct raw URL based on git provider
-                            const sourceUrl = repoData.sourceUrl || "";
+                            // Construct raw URL based on git provider (Nostr may set this after first paint)
+                            const sourceUrl = (
+                              effectiveSourceUrl ||
+                              repoData.sourceUrl ||
+                              (Array.isArray((repoData as { clone?: string[] }).clone)
+                                ? (repoData as { clone?: string[] }).clone?.find((u) =>
+                                    /github\.com/i.test(u)
+                                  )
+                                : "") ||
+                              ""
+                            ).replace(/\.git$/, "");
                             const githubMatch = sourceUrl.match(
                               /github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/
                             );
@@ -14498,21 +15366,14 @@ export default function RepoCodePage() {
                               imageSrc = `https://codeberg.org/${owner}/${repo}/raw/branch/${encodeURIComponent(
                                 branch
                               )}/${imagePath}`;
-                            } else if (!repoData.sourceUrl) {
-                              // For gittr/nostr repos without external sourceUrl, try to use the bridge API
-                              // Note: The API returns JSON with base64, so we'd need special handling
-                              // For now, log a warning - this case needs a custom image component
-                              console.warn(
-                                "⚠️ [README] Image in nostr repo without sourceUrl - needs special handling:",
-                                imageSrc
-                              );
+                            } else if (!sourceUrl) {
+                              // Upstream URL not resolved yet — skip broken relative img until hydrate/fetch completes
+                              imageSrc = "";
                             } else {
                               // For other git providers, try to construct a raw URL pattern
                               // This is a best-effort approach for unknown providers
                               try {
-                                const url = new URL(
-                                  repoData.sourceUrl.replace(/\.git$/, "")
-                                );
+                                const url = new URL(sourceUrl);
                                 const pathParts = url.pathname
                                   .split("/")
                                   .filter(Boolean);
@@ -14528,7 +15389,7 @@ export default function RepoCodePage() {
                                 } else {
                                   console.warn(
                                     "⚠️ [README] Could not parse sourceUrl for image:",
-                                    repoData.sourceUrl
+                                    sourceUrl
                                   );
                                 }
                               } catch (e) {
@@ -14548,6 +15409,8 @@ export default function RepoCodePage() {
                             // Fallback to original src
                           }
                         }
+
+                        if (!imageSrc) return null;
 
                         return (
                           <div className="my-4 overflow-x-auto">
@@ -14681,7 +15544,7 @@ export default function RepoCodePage() {
                       },
                     }}
                   >
-                    {currentFolderReadme}
+                    {currentFolderReadme || repoData?.readme || ""}
                   </ReactMarkdown>
                 </article>
               </div>
@@ -16870,12 +17733,36 @@ export default function RepoCodePage() {
                                                 html_url: issue.html_url || "",
                                               })
                                             );
+                                          let existingIssues: unknown[] = [];
+                                          try {
+                                            existingIssues = JSON.parse(
+                                              localStorage.getItem(issuesKey) ||
+                                                "[]"
+                                            );
+                                            if (
+                                              !Array.isArray(existingIssues)
+                                            ) {
+                                              existingIssues = [];
+                                            }
+                                          } catch {
+                                            existingIssues = [];
+                                          }
+                                          const mergedIssues =
+                                            mergeGithubIssuesAfterRefetch(
+                                              existingIssues,
+                                              formattedIssues
+                                            );
                                           localStorage.setItem(
                                             issuesKey,
-                                            JSON.stringify(formattedIssues)
+                                            JSON.stringify(mergedIssues)
+                                          );
+                                          window.dispatchEvent(
+                                            new CustomEvent(
+                                              "gittr:issue-updated"
+                                            )
                                           );
                                           console.log(
-                                            `✅ [Refetch] Saved ${formattedIssues.length} issues`
+                                            `✅ [Refetch] Saved ${mergedIssues.length} issues (${formattedIssues.length} from source + Nostr-only preserved)`
                                           );
                                         } catch (e) {
                                           console.error(
@@ -16925,12 +17812,32 @@ export default function RepoCodePage() {
                                               head: pr.head?.ref || null,
                                               base: pr.base?.ref || null,
                                             }));
+                                          let existingPRs: unknown[] = [];
+                                          try {
+                                            existingPRs = JSON.parse(
+                                              localStorage.getItem(pullsKey) ||
+                                                "[]"
+                                            );
+                                            if (!Array.isArray(existingPRs)) {
+                                              existingPRs = [];
+                                            }
+                                          } catch {
+                                            existingPRs = [];
+                                          }
+                                          const mergedPRs =
+                                            mergeGithubPrsAfterRefetch(
+                                              existingPRs,
+                                              formattedPRs
+                                            );
                                           localStorage.setItem(
                                             pullsKey,
-                                            JSON.stringify(formattedPRs)
+                                            JSON.stringify(mergedPRs)
+                                          );
+                                          window.dispatchEvent(
+                                            new CustomEvent("gittr:pr-updated")
                                           );
                                           console.log(
-                                            `✅ [Refetch] Saved ${formattedPRs.length} pull requests`
+                                            `✅ [Refetch] Saved ${mergedPRs.length} pull requests (${formattedPRs.length} from source + Nostr-only preserved)`
                                           );
                                         } catch (e) {
                                           console.error(
@@ -17093,8 +18000,20 @@ export default function RepoCodePage() {
                                         );
                                       } else {
                                         // Reload page to show updated data
+                                        try {
+                                          if (postSourceRefetchHintKey) {
+                                            sessionStorage.setItem(
+                                              postSourceRefetchHintKey,
+                                              "1"
+                                            );
+                                          }
+                                        } catch {
+                                          // ignore
+                                        }
                                         alert(
-                                          `✅ Refetched from GitHub!\n\nFound ${savedFileCount} files.\n\nIf this repo was already pushed to Nostr, you'll need to push again to update it.`
+                                          `✅ Refetched from GitHub (${savedFileCount} files).\n\n` +
+                                            `Your local file tree now matches the source. Nostr-only PRs/issues still exist on relays and may still appear in gittr—their saved diffs are not automatically checked against these new files.\n\n` +
+                                            `What to do: open Pulls (and Issues if needed), review each affected Nostr item, merge again only if it still fits the new files, then Push to Nostr so everyone gets the same repo state.`
                                         );
                                         window.location.reload();
                                       }
@@ -17682,18 +18601,57 @@ export default function RepoCodePage() {
                                 : "Refetch from Nostr"}
                             </Button>
                             <p className="text-xs text-gray-500 mt-1 mb-2 px-1">
-                              ⚠️ Refetch will completely overwrite your local
-                              repository with the latest version from{" "}
+                              ⚠️ Refetch replaces local files from{" "}
                               {hasSourceUrl
                                 ? `the source (${
                                     effectiveSourceUrl || repo.sourceUrl
                                   })`
                                 : "Nostr"}
-                              . Files deleted{" "}
-                              {hasSourceUrl ? "on the source" : "on Nostr"} will
-                              be removed locally. Local edits not pushed will be
-                              lost.
+                              . Unpushed local edits can be lost.
                             </p>
+                            {hasSourceUrl ? (
+                              <details className="text-xs text-gray-500 mt-1 mb-2 px-1 group">
+                                <summary className="cursor-pointer text-gray-400 hover:text-gray-300 list-none [&::-webkit-details-marker]:hidden flex items-center gap-1">
+                                  <span className="text-purple-400/90">
+                                    Nostr PRs/issues after refetch
+                                  </span>
+                                  <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
+                                </summary>
+                                <div className="mt-2 space-y-2 border-l border-zinc-600 pl-2 text-[11px] leading-snug text-gray-400">
+                                  <p>
+                                    GitHub rows only replace local entries with
+                                    ids like{" "}
+                                    <code className="text-gray-300">
+                                      issue-#
+                                    </code>{" "}
+                                    /{" "}
+                                    <code className="text-gray-300">pr-#</code>.
+                                    Nostr-only rows (relay ids) stay listed but
+                                    are <strong>not</strong> reconciled with
+                                    GitHub or with the new file tree.
+                                  </p>
+                                  <p>
+                                    Events on relays are unchanged—people may
+                                    still see old PRs. Your job after refetch is
+                                    to treat those PRs as{" "}
+                                    <strong>maybe invalid</strong> until you
+                                    open them, check the diff against current
+                                    files, merge again if appropriate, then{" "}
+                                    <strong>Push to Nostr</strong> so followers
+                                    get one matching repo state.
+                                  </p>
+                                  <p>
+                                    Numbered PR merged only in gittr while
+                                    GitHub still shows it open stays merged here
+                                    and is flagged (
+                                    <span className="text-amber-500/90">
+                                      upstream still open
+                                    </span>
+                                    ).
+                                  </p>
+                                </div>
+                              </details>
+                            ) : null}
                           </>
                         )}
 
@@ -18051,7 +19009,7 @@ export default function RepoCodePage() {
                                           result.stateEventId?.slice(0, 16) ||
                                           "unknown";
                                         alert(
-                                          `✅ Repository pushed to Nostr!\n\n✅ Announcement event (30617): ${announcementId}...\n✅ State event (30618): ${stateId}...\n\nBoth events published and confirmed.`
+                                          `✅ Repository pushed to Nostr!\n\n✅ Announcement event (30617): ${announcementId}...\n✅ State event (30618): ${stateId}...\n\nBoth events published and confirmed.\n\nNote: older PR/issue events on relays are still there unchanged. If you changed files before this push, reopen Nostr PRs in gittr to be sure they still match the repo you just published.`
                                         );
                                       } else if (result.stateEventId) {
                                         // Both events published but not yet confirmed
@@ -18062,7 +19020,7 @@ export default function RepoCodePage() {
                                           result.stateEventId?.slice(0, 16) ||
                                           "unknown";
                                         alert(
-                                          `⚠️ Repository published but awaiting confirmation.\n\n✅ Announcement event (30617): ${announcementId}...\n✅ State event (30618): ${stateId}...\n\nBoth events published - confirmation may take a few moments.`
+                                          `⚠️ Repository published but awaiting confirmation.\n\n✅ Announcement event (30617): ${announcementId}...\n✅ State event (30618): ${stateId}...\n\nBoth events published - confirmation may take a few moments.\n\nNote: older PR/issue events on relays are unchanged—reopen Nostr PRs if file changes might make them stale.`
                                         );
                                       } else {
                                         // Only first event published (shouldn't happen with the fix, but handle gracefully)
@@ -18599,7 +19557,7 @@ export default function RepoCodePage() {
             {safeFiles.length > 0 && (
               <li>
                 <File className="mr-2 inline h-4 w-4" />
-                <strong>
+                <strong suppressHydrationWarning>
                   {safeFiles.filter((f) => f.type === "file").length}
                 </strong>{" "}
                 files

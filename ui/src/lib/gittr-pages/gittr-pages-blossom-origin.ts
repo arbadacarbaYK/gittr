@@ -5,6 +5,16 @@
  * static-friendly NIP-96 origin (e.g. `https://blossom.band`) and rebuild.
  */
 
+function readPublicEnv(key: string): string | undefined {
+  try {
+    if (typeof process === "undefined") return undefined;
+    const env = (process as { env?: Record<string, string | undefined> }).env;
+    return env?.[key];
+  } catch {
+    return undefined;
+  }
+}
+
 function normalizeBlossomBase(
   specific: string | undefined,
   fallback: string | undefined,
@@ -28,12 +38,8 @@ export function isMediaOnlyNostrBuildBlossom(origin: string): boolean {
 /** Resolved env chain (trim + default). Same value the server uses for Pages uploads. */
 export function rawGittrPagesBlossomEnvOrigin(): string {
   return normalizeBlossomBase(
-    typeof process !== "undefined"
-      ? process.env.NEXT_PUBLIC_GITTR_PAGES_BLOSSOM_URL
-      : undefined,
-    typeof process !== "undefined"
-      ? process.env.NEXT_PUBLIC_BLOSSOM_URL
-      : undefined,
+    readPublicEnv("NEXT_PUBLIC_GITTR_PAGES_BLOSSOM_URL"),
+    readPublicEnv("NEXT_PUBLIC_BLOSSOM_URL"),
     "https://blossom.band"
   );
 }

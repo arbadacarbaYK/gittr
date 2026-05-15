@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -30,12 +30,21 @@ import {
   type StoredRepo,
   loadStoredRepos,
 } from "@/lib/repos/storage";
-import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
+import {
+  getRepoStorageKey,
+  readRepoIssuesFromLocalStorage,
+  readRepoPullsFromLocalStorage,
+} from "@/lib/utils/entity-normalizer";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import {
   normalizeIssueListStatus,
   normalizePrListStatus,
 } from "@/lib/utils/issue-pr-status";
+import {
+  findStoredRepoForRoute,
+  hydrateRepoFromGithub,
+} from "@/lib/repos/repo-github-hub";
+import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { useEntityOwner } from "@/lib/utils/use-entity-owner";
 
@@ -168,6 +177,8 @@ export default function RepoLayoutClient({
   const [repoLogo, setRepoLogo] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [isOwnerUser, setIsOwnerUser] = useState(false);
+  const githubHydrateKeyRef = useRef<string>("");
+  const loadRepoAndLogoRef = useRef<() => void>(() => {});
 
   // Calculate safe initial display name that matches on server and client
   const safeInitialDisplayName = useMemo(() => {
@@ -220,11 +231,25 @@ export default function RepoLayoutClient({
     return typeof id === "string" && /^[0-9a-f]{64}$/i.test(id) ? id : null;
   }, [repo]);
 
+  const githubUpstreamUrl = useMemo(
+    () =>
+      resolveGithubUpstreamForTabs(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        repo
+      ),
+    [
+      resolvedParams.entity,
+      resolvedParams.repo,
+      repo?.sourceUrl,
+      Array.isArray(repo?.clone) ? repo.clone.join("|") : "",
+    ]
+  );
+
   const githubSpec = useMemo(() => {
-    const u = repo?.sourceUrl?.trim();
-    if (!u) return null;
-    return parseGitHubRepoSpec(u);
-  }, [repo?.sourceUrl]);
+    if (!githubUpstreamUrl) return null;
+    return parseGitHubRepoSpec(githubUpstreamUrl);
+  }, [githubUpstreamUrl]);
 
   const nostrStarsAgg = useMemo(
     () => aggregateRepoStarReactions(nostrStarEvents),
@@ -328,6 +353,10 @@ export default function RepoLayoutClient({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    githubHydrateKeyRef.current = "";
+  }, [resolvedParams.entity, resolvedParams.repo]);
 
   // Load repo data first (used by useEntityOwner hook)
   const loadRepoAndLogo = useCallback(() => {
@@ -830,23 +859,95 @@ export default function RepoLayoutClient({
     resolvedParams.repo,
   ]);
 
+  // GitHub issues/PRs + forge metadata (runs on Code tab too — not only Issues/PRs subpages)
+  useEffect(() => {
+    if (!mounted || !resolvedParams.entity || !resolvedParams.repo) return;
+
+    const routeKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
+    if (githubHydrateKeyRef.current === routeKey) return;
+
+    let cancelled = false;
+    let retryTimer: number | undefined;
+
+    const runHydrate = (attempt: number) => {
+      if (cancelled || githubHydrateKeyRef.current === routeKey) return;
+      const record = findStoredRepoForRoute(
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
+      void (async () => {
+        try {
+          const { sourceUrl, meta, synced } = await hydrateRepoFromGithub(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            {
+              repoRecord: record ?? null,
+              subscribe: subscribe ?? undefined,
+              defaultRelays: defaultRelays?.length ? defaultRelays : undefined,
+            }
+          );
+          if (cancelled) return;
+          if (meta) {
+            setForkCount(meta.forks);
+            if (typeof meta.stars === "number") {
+              setGithubStarCount(meta.stars);
+            }
+          }
+          if (synced) {
+            githubHydrateKeyRef.current = routeKey;
+            window.dispatchEvent(new Event("gittr:issue-updated"));
+            window.dispatchEvent(new Event("gittr:pr-updated"));
+            loadRepoAndLogoRef.current();
+            return;
+          }
+          if (sourceUrl && attempt < 2 && !cancelled) {
+            retryTimer = window.setTimeout(() => runHydrate(attempt + 1), 2500);
+            return;
+          }
+          if (sourceUrl) {
+            loadRepoAndLogoRef.current();
+          }
+        } catch {
+          if (attempt < 2 && !cancelled) {
+            retryTimer = window.setTimeout(() => runHydrate(attempt + 1), 2500);
+          }
+        }
+      })();
+    };
+
+    const timer = window.setTimeout(() => runHydrate(0), 400);
+
+    const onReposUpdated = () => {
+      if (githubHydrateKeyRef.current === routeKey) return;
+      runHydrate(0);
+    };
+    window.addEventListener("gittr:repos-updated", onReposUpdated);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      if (retryTimer) window.clearTimeout(retryTimer);
+      window.removeEventListener("gittr:repos-updated", onReposUpdated);
+    };
+  }, [
+    mounted,
+    resolvedParams.entity,
+    resolvedParams.repo,
+    subscribe,
+    defaultRelays?.join("|") ?? "",
+  ]);
+
   // Dynamic counts for issues/PRs (only open items)
   useEffect(() => {
     const updateCounts = () => {
       try {
-        const prKey = getRepoStorageKey(
-          "gittr_prs",
+        const prs = readRepoPullsFromLocalStorage(
           resolvedParams.entity,
           resolvedParams.repo
-        );
-        const issueKey = getRepoStorageKey(
-          "gittr_issues",
+        ) as any[];
+        const issues = readRepoIssuesFromLocalStorage(
           resolvedParams.entity,
           resolvedParams.repo
-        );
-        const prs = JSON.parse(localStorage.getItem(prKey) || "[]") as any[];
-        const issues = JSON.parse(
-          localStorage.getItem(issueKey) || "[]"
         ) as any[];
         // Only count open PRs and issues (merged/closed/resolved bucket as non-open)
         setPrCount(
@@ -868,21 +969,22 @@ export default function RepoLayoutClient({
 
     // Listen for changes to PRs and issues
     const handleStorageChange = (e: StorageEvent) => {
+      const prCanon = getRepoStorageKey(
+        "gittr_prs",
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
+      const issueCanon = getRepoStorageKey(
+        "gittr_issues",
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
+      const repoSuffix = `__${resolvedParams.repo}`;
       if (
-        e.key?.includes(
-          getRepoStorageKey(
-            "gittr_prs",
-            resolvedParams.entity,
-            resolvedParams.repo
-          )
-        ) ||
-        e.key?.includes(
-          getRepoStorageKey(
-            "gittr_issues",
-            resolvedParams.entity,
-            resolvedParams.repo
-          )
-        )
+        e.key === prCanon ||
+        e.key === issueCanon ||
+        (e.key?.startsWith("gittr_prs__") && e.key.endsWith(repoSuffix)) ||
+        (e.key?.startsWith("gittr_issues__") && e.key.endsWith(repoSuffix))
       ) {
         updateCounts();
       }

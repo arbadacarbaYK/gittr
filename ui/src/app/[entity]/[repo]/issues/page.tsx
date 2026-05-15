@@ -7,6 +7,7 @@ import FilterBar from "@/components/filter-bar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { loadStoredRepos } from "@/lib/repos/storage";
 import {
   KIND_ISSUE,
   KIND_STATUS_CLOSED,
@@ -28,6 +29,7 @@ import {
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import { normalizeIssueListStatus } from "@/lib/utils/issue-pr-status";
+import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { clsx } from "clsx";
@@ -59,6 +61,9 @@ interface IIssueData {
   assignees: string[];
   comments: number;
   createdAt?: number;
+  updatedAt?: number;
+  /** Nostr-originated row while repo has local edits not yet pushed to relays. */
+  needsNostrRepublish?: boolean;
 }
 
 export default function RepoIssuesPage({
@@ -74,6 +79,9 @@ export default function RepoIssuesPage({
 
   const [issues, setIssues] = useState<IIssueData[]>([]);
   const [issueTabCounts, setIssueTabCounts] = useState({ open: 0, closed: 0 });
+  const [githubSyncState, setGithubSyncState] = useState<
+    "idle" | "loading" | "ready" | "no-mirror"
+  >("idle");
   const { subscribe, defaultRelays } = useNostrContext();
 
   useEffect(() => {
@@ -104,24 +112,48 @@ export default function RepoIssuesPage({
       const filtered = list.filter((it: any) => {
         return normalizeIssueListStatus(it.status) === issueStatus;
       });
-      const mapped: IIssueData[] = filtered.map((it: any, idx: number) => ({
-        id: it.id || String(idx),
-        entity: it.entity || resolvedParams.entity,
-        repo: it.repo || resolvedParams.repo,
-        title: it.title || `Issue ${idx + 1}`,
-        number: it.number || String(idx + 1), // Use actual number from saved issue
-        date: it.createdAt ? formatDateTime24h(it.createdAt) : "",
-        author: it.author || "you",
-        tags: it.labels || [],
-        taskTotal: null,
-        taskCompleted: null,
-        linkedPR: 0,
-        assignees: it.assignees || [],
-        comments: 0,
-        createdAt: it.createdAt || Date.now(),
-      }));
-      // Sort by createdAt (newest first)
-      mapped.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+      let repoUnpushed = false;
+      try {
+        const repos = loadStoredRepos();
+        const r = findRepoByEntityAndName(
+          repos,
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        repoUnpushed = r?.hasUnpushedEdits === true;
+      } catch {
+        repoUnpushed = false;
+      }
+
+      const mapped: IIssueData[] = filtered.map((it: any, idx: number) => {
+        const idStr = String(it.id || idx);
+        const isNostrHex = /^[0-9a-f]{64}$/i.test(idStr);
+        const createdAt = Number(it.createdAt) || Date.now();
+        const updatedAt = Number(it.updatedAt) || createdAt;
+        return {
+          id: idStr,
+          entity: it.entity || resolvedParams.entity,
+          repo: it.repo || resolvedParams.repo,
+          title: it.title || `Issue ${idx + 1}`,
+          number: it.number || String(idx + 1), // Use actual number from saved issue
+          date: formatDateTime24h(updatedAt || createdAt),
+          author: it.author || "you",
+          tags: it.labels || [],
+          taskTotal: null,
+          taskCompleted: null,
+          linkedPR: 0,
+          assignees: it.assignees || [],
+          comments: 0,
+          createdAt,
+          updatedAt,
+          needsNostrRepublish: Boolean(repoUnpushed && isNostrHex),
+        };
+      });
+      mapped.sort(
+        (a, b) =>
+          (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0)
+      );
       setIssues(mapped);
     } catch {
       setIssues([]);
@@ -143,6 +175,66 @@ export default function RepoIssuesPage({
       window.removeEventListener("gittr:issue-updated", handleIssueCreated);
     };
   }, [loadIssues]);
+
+  // GitHub issues + PRs (shared hydrate) when repo has a github.com mirror
+  useEffect(() => {
+    if (!mounted || !resolvedParams?.entity || !resolvedParams?.repo) return;
+    let cancelled = false;
+    setGithubSyncState("loading");
+    (async () => {
+      try {
+        const repos = loadStoredRepos();
+        let r = findRepoByEntityAndName(
+          repos,
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        if (!r) {
+          const pk = resolveEntityToPubkey(resolvedParams.entity)?.toLowerCase();
+          r = repos.find((x) => {
+            const nameMatch = [x.repo, x.slug, x.name].some(
+              (n) =>
+                n &&
+                String(n).toLowerCase() === resolvedParams.repo.toLowerCase()
+            );
+            if (!nameMatch) return false;
+            if (pk && x.ownerPubkey) {
+              return x.ownerPubkey.toLowerCase() === pk;
+            }
+            return true;
+          });
+        }
+        const { sourceUrl, synced } = await hydrateRepoFromGithub(
+          resolvedParams.entity,
+          resolvedParams.repo,
+          {
+            repoRecord: r ?? null,
+            subscribe: subscribe ?? undefined,
+            defaultRelays: defaultRelays?.length ? defaultRelays : undefined,
+          }
+        );
+        if (cancelled) return;
+        if (!sourceUrl) {
+          setGithubSyncState("no-mirror");
+          return;
+        }
+        setGithubSyncState(synced ? "ready" : "ready");
+        loadIssues();
+      } catch {
+        if (!cancelled) setGithubSyncState("no-mirror");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    mounted,
+    resolvedParams?.entity,
+    resolvedParams?.repo,
+    loadIssues,
+    subscribe,
+    defaultRelays?.join("|") ?? "",
+  ]);
 
   // Subscribe to Issues from Nostr relays for this repo
   useEffect(() => {
@@ -488,6 +580,15 @@ export default function RepoIssuesPage({
   // Fetch Nostr metadata for all authors
   const authorMetadata = useContributorMetadata(authorPubkeys);
 
+  const displayIssues = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q || q === "is:open is:issue") return issues;
+    return issues.filter((it) => {
+      const hay = `${it.title} ${it.number} ${it.author} ${it.repo}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [issues, search]);
+
   // Helper to get entity display name (username instead of npub)
   const getEntityDisplayNameForRepo = useCallback(
     (entity: string, repo: string) => {
@@ -606,8 +707,24 @@ export default function RepoIssuesPage({
             </div>
           </div>
           <div className="overflow-hidden rounded-md rounded-tr-none rounded-tl-none border border-t-0 dark:border-lightgray">
+            {mounted && githubSyncState === "loading" ? (
+              <p className="mt-2 px-4 pb-2 text-sm text-zinc-400">
+                Syncing issues from GitHub…
+              </p>
+            ) : null}
             <ul className="divide-y dark:divide-lightgray">
-              {issues.map((item) => (
+              {displayIssues.length === 0 ? (
+                <li className="p-6 text-center text-zinc-400 text-sm">
+                  {githubSyncState === "loading"
+                    ? "Loading issues…"
+                    : githubSyncState === "no-mirror"
+                      ? "No GitHub mirror found for this repo. Open the Code tab first, or add a github.com clone URL on Nostr."
+                      : issueStatus === "open"
+                        ? "No open issues."
+                        : "No closed issues."}
+                </li>
+              ) : null}
+              {displayIssues.map((item) => (
                 <li
                   key={`${item.id} ${item.entity}`}
                   className="text-gray-400 grid grid-cols-8 p-2 text-sm hover:bg-dark"
@@ -636,6 +753,14 @@ export default function RepoIssuesPage({
                         }`}
                       >
                         {item.title}
+                        {item.needsNostrRepublish ? (
+                          <span
+                            className="ml-2 align-middle text-[10px] uppercase tracking-wide text-amber-300 border border-amber-600/50 rounded px-1 py-0.5"
+                            title="Repository has local changes; push to Nostr so others see the latest."
+                          >
+                            Repush
+                          </span>
+                        ) : null}
                       </Link>
                     </div>
                     <div className="ml-7 text-zinc-400 flex items-center gap-2">

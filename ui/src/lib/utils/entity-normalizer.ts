@@ -70,8 +70,10 @@ function issueStableMergeKey(row: unknown): string {
   if (!row || typeof row !== "object") return `invalid:${String(row)}`;
   const r = row as Record<string, unknown>;
   const id = r.id;
-  if (typeof id === "string" && /^[0-9a-f]{64}$/i.test(id)) {
-    return id.toLowerCase();
+  if (typeof id === "string") {
+    const idl = id.toLowerCase();
+    if (/^[0-9a-f]{64}$/.test(idl)) return idl;
+    if (/^issue-\d+$/.test(idl) || /^pr-\d+$/.test(idl)) return idl;
   }
   const num = r.number;
   if (typeof num === "string" || typeof num === "number") {
@@ -146,9 +148,12 @@ export function readRepoIssuesFromLocalStorage(
 
   const out = Array.from(merged.values()) as Array<Record<string, unknown>>;
   out.sort((a, b) => {
+    const ua = Number(a.updatedAt ?? a.createdAt ?? 0);
+    const ub = Number(b.updatedAt ?? b.createdAt ?? 0);
+    if (ub !== ua) return ub - ua;
     const na = parseInt(String(a.number ?? "0"), 10) || 0;
     const nb = parseInt(String(b.number ?? "0"), 10) || 0;
-    return na - nb;
+    return nb - na;
   });
 
   const sortForCompare = (list: unknown[]) =>
@@ -158,6 +163,104 @@ export function readRepoIssuesFromLocalStorage(
 
   try {
     const prev = readIssuesArrayRaw(canonicalKey);
+    const changed =
+      JSON.stringify(sortForCompare(out)) !==
+      JSON.stringify(sortForCompare(prev));
+    if (changed && out.length >= 0) {
+      localStorage.setItem(canonicalKey, JSON.stringify(out));
+      for (const k of keys) {
+        if (k !== canonicalKey) {
+          localStorage.removeItem(k);
+        }
+      }
+    }
+  } catch {
+    /* quota or private mode */
+  }
+
+  return out;
+}
+
+/** All localStorage keys that may hold this repo's gittr-only PRs (hex vs npub routes). */
+export function collectGittrPrsStorageKeys(
+  entity: string,
+  repo: string
+): string[] {
+  const seen = new Set<string>();
+  const add = (k: string) => {
+    if (k) seen.add(k);
+  };
+  const canonical = getRepoStorageKey("gittr_prs", entity, repo);
+  add(canonical);
+  add(`gittr_prs__${entity}__${repo}`);
+  if (/^[0-9a-f]{64}$/i.test(entity)) {
+    const hex = entity.toLowerCase();
+    add(`gittr_prs__${hex}__${repo}`);
+    try {
+      add(`gittr_prs__${nip19.npubEncode(hex)}__${repo}`);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (entity.startsWith("npub")) {
+    try {
+      const d = nip19.decode(entity);
+      if (d.type === "npub" && typeof d.data === "string") {
+        add(`gittr_prs__${(d.data as string).toLowerCase()}__${repo}`);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return [...seen];
+}
+
+function readPullsArrayRaw(storageKey: string): unknown[] {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    const list = raw ? (JSON.parse(raw) as unknown[]) : [];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Read per-repo PRs from localStorage (canonical npub key + legacy hex keys).
+ * Same merge semantics as {@link readRepoIssuesFromLocalStorage}.
+ */
+export function readRepoPullsFromLocalStorage(
+  entity: string,
+  repo: string
+): unknown[] {
+  if (typeof window === "undefined") return [];
+  const canonicalKey = getRepoStorageKey("gittr_prs", entity, repo);
+  const keys = collectGittrPrsStorageKeys(entity, repo);
+  const merged = new Map<string, unknown>();
+
+  for (const k of keys) {
+    for (const row of readPullsArrayRaw(k)) {
+      merged.set(issueStableMergeKey(row), row);
+    }
+  }
+
+  const out = Array.from(merged.values()) as Array<Record<string, unknown>>;
+  out.sort((a, b) => {
+    const ua = Number(a.updatedAt ?? a.createdAt ?? 0);
+    const ub = Number(b.updatedAt ?? b.createdAt ?? 0);
+    if (ub !== ua) return ub - ua;
+    const na = parseInt(String(a.number ?? "0"), 10) || 0;
+    const nb = parseInt(String(b.number ?? "0"), 10) || 0;
+    return nb - na;
+  });
+
+  const sortForCompare = (list: unknown[]) =>
+    [...list].sort((a, b) =>
+      issueStableMergeKey(a).localeCompare(issueStableMergeKey(b))
+    );
+
+  try {
+    const prev = readPullsArrayRaw(canonicalKey);
     const changed =
       JSON.stringify(sortForCompare(out)) !==
       JSON.stringify(sortForCompare(prev));
