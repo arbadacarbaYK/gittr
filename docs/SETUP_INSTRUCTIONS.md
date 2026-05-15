@@ -414,8 +414,21 @@ Add API rate-limit zones in `/etc/nginx/nginx.conf` (inside `http {}`):
 
 ```nginx
 limit_req_zone $binary_remote_addr zone=api_per_ip:20m rate=600r/m;
+limit_req_zone $binary_remote_addr zone=file_content_per_ip:20m rate=1800r/m;
 limit_req_zone $binary_remote_addr zone=auth_per_ip:10m rate=180r/m;
 limit_conn_zone $binary_remote_addr zone=conn_per_ip:10m;
+```
+
+Add a dedicated block **before** `location ^~ /api/` for bulk file fetches during browser push/refetch:
+
+```nginx
+location = /api/nostr/repo/file-content {
+    limit_req_status 429;
+    limit_req zone=file_content_per_ip burst=200 nodelay;
+    limit_conn conn_per_ip 40;
+    proxy_pass http://127.0.0.1:3000;
+    # …same proxy headers as other /api/ blocks…
+}
 ```
 
 ```nginx
