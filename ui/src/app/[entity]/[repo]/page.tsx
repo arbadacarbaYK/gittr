@@ -18704,12 +18704,18 @@ export default function RepoCodePage() {
                                 : null}
                             </p>
                             {hasSourceUrl ? (
-                              <details className="text-xs text-gray-500 mt-1 mb-2 px-1 group">
+                              <details
+                                className="text-xs text-gray-500 mt-1 mb-2 px-1 group"
+                                aria-label="More details about Nostr PRs and issues after refetch from source"
+                              >
                                 <summary className="cursor-pointer text-gray-400 hover:text-gray-300 list-none [&::-webkit-details-marker]:hidden flex items-center gap-1">
                                   <span className="text-purple-400/90">
-                                    Nostr PRs/issues after refetch
+                                    More
                                   </span>
-                                  <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
+                                  <ChevronDown
+                                    className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180"
+                                    aria-hidden
+                                  />
                                 </summary>
                                 <div className="mt-2 space-y-2 border-l border-zinc-600 pl-2 text-[11px] leading-snug text-gray-400">
                                   <p>
