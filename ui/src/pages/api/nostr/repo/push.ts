@@ -3,6 +3,7 @@ import {
   rateLimiters,
 } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { isRateLimitExemptRequest } from "@/lib/api/rate-limit-exempt";
 import { resolveBridgeDbPath } from "@/lib/resolve-bridge-db-path";
 
 import { exec } from "child_process";
@@ -241,11 +242,6 @@ export default async function handler(
 
   setCorsHeaders(res, req);
 
-  const rateLimitResult = await rateLimiters.push(req as any);
-  if (rateLimitResult) {
-    return res.status(429).json(JSON.parse(await rateLimitResult.text()));
-  }
-
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
@@ -345,11 +341,35 @@ export default async function handler(
     });
   }
 
+  const rateLimitExempt = isRateLimitExemptRequest(
+    req,
+    authResult.pubkey ?? undefined
+  );
+  if (rateLimitExempt) {
+    console.log(
+      `ℹ️ [Bridge Push] Rate limit exempt: pubkey=${authResult.pubkey?.slice(0, 8)}...`
+    );
+  }
+
+  if (!rateLimitExempt) {
+    const ipLimit = await rateLimiters.push(req as any);
+    if (ipLimit) {
+      const body = await ipLimit.json();
+      res.setHeader(
+        "Retry-After",
+        ipLimit.headers.get("Retry-After") ?? "60"
+      );
+      return res.status(429).json(body);
+    }
+  }
+
   // Per-pubkey rate limit (in addition to per-IP)
-  const pubkeyLimit = checkPushPerPubkey(authResult.pubkey!);
-  if (pubkeyLimit.limited && pubkeyLimit.body) {
-    res.setHeader("Retry-After", String(pubkeyLimit.body.retry_after));
-    return res.status(429).json(pubkeyLimit.body);
+  if (!rateLimitExempt) {
+    const pubkeyLimit = checkPushPerPubkey(authResult.pubkey!);
+    if (pubkeyLimit.limited && pubkeyLimit.body) {
+      res.setHeader("Retry-After", String(pubkeyLimit.body.retry_after));
+      return res.status(429).json(pubkeyLimit.body);
+    }
   }
 
   // Verify the authenticated user can push to this repo

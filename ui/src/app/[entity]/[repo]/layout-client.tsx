@@ -356,7 +356,7 @@ export default function RepoLayoutClient({
 
   useEffect(() => {
     githubHydrateKeyRef.current = "";
-  }, [resolvedParams.entity, resolvedParams.repo]);
+  }, [resolvedParams.entity, resolvedParams.repo, githubUpstreamUrl]);
 
   // Load repo data first (used by useEntityOwner hook)
   const loadRepoAndLogo = useCallback(() => {
@@ -859,11 +859,38 @@ export default function RepoLayoutClient({
     resolvedParams.repo,
   ]);
 
+  const refreshOpenIssuePrCounts = useCallback(() => {
+    try {
+      const prs = readRepoPullsFromLocalStorage(
+        resolvedParams.entity,
+        resolvedParams.repo
+      ) as any[];
+      const issues = readRepoIssuesFromLocalStorage(
+        resolvedParams.entity,
+        resolvedParams.repo
+      ) as any[];
+      setPrCount(
+        prs.filter((pr: any) => normalizePrListStatus(pr.status) === "open")
+          .length
+      );
+      setIssueCount(
+        issues.filter(
+          (issue: any) => normalizeIssueListStatus(issue.status) === "open"
+        ).length
+      );
+    } catch {
+      setPrCount(0);
+      setIssueCount(0);
+    }
+  }, [resolvedParams.entity, resolvedParams.repo]);
+
   // GitHub issues/PRs + forge metadata (runs on Code tab too — not only Issues/PRs subpages)
   useEffect(() => {
     if (!mounted || !resolvedParams.entity || !resolvedParams.repo) return;
 
     const routeKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
+    refreshOpenIssuePrCounts();
+
     if (githubHydrateKeyRef.current === routeKey) return;
 
     let cancelled = false;
@@ -893,6 +920,7 @@ export default function RepoLayoutClient({
               setGithubStarCount(meta.stars);
             }
           }
+          refreshOpenIssuePrCounts();
           if (synced) {
             githubHydrateKeyRef.current = routeKey;
             window.dispatchEvent(new Event("gittr:issue-updated"));
@@ -933,39 +961,15 @@ export default function RepoLayoutClient({
     mounted,
     resolvedParams.entity,
     resolvedParams.repo,
+    githubUpstreamUrl,
     subscribe,
     defaultRelays?.join("|") ?? "",
+    refreshOpenIssuePrCounts,
   ]);
 
   // Dynamic counts for issues/PRs (only open items)
   useEffect(() => {
-    const updateCounts = () => {
-      try {
-        const prs = readRepoPullsFromLocalStorage(
-          resolvedParams.entity,
-          resolvedParams.repo
-        ) as any[];
-        const issues = readRepoIssuesFromLocalStorage(
-          resolvedParams.entity,
-          resolvedParams.repo
-        ) as any[];
-        // Only count open PRs and issues (merged/closed/resolved bucket as non-open)
-        setPrCount(
-          prs.filter((pr: any) => normalizePrListStatus(pr.status) === "open")
-            .length
-        );
-        setIssueCount(
-          issues.filter(
-            (issue: any) => normalizeIssueListStatus(issue.status) === "open"
-          ).length
-        );
-      } catch {
-        setPrCount(0);
-        setIssueCount(0);
-      }
-    };
-
-    updateCounts();
+    refreshOpenIssuePrCounts();
 
     // Listen for changes to PRs and issues
     const handleStorageChange = (e: StorageEvent) => {
@@ -986,13 +990,13 @@ export default function RepoLayoutClient({
         (e.key?.startsWith("gittr_prs__") && e.key.endsWith(repoSuffix)) ||
         (e.key?.startsWith("gittr_issues__") && e.key.endsWith(repoSuffix))
       ) {
-        updateCounts();
+        refreshOpenIssuePrCounts();
       }
     };
 
     // Listen for custom events when PRs/issues are updated
-    const handlePRUpdate = () => updateCounts();
-    const handleIssueUpdate = () => updateCounts();
+    const handlePRUpdate = () => refreshOpenIssuePrCounts();
+    const handleIssueUpdate = () => refreshOpenIssuePrCounts();
 
     window.addEventListener("storage", handleStorageChange);
     window.addEventListener("gittr:pr-updated", handlePRUpdate);
@@ -1003,7 +1007,11 @@ export default function RepoLayoutClient({
       window.removeEventListener("gittr:pr-updated", handlePRUpdate);
       window.removeEventListener("gittr:issue-updated", handleIssueUpdate);
     };
-  }, [resolvedParams.entity, resolvedParams.repo]);
+  }, [
+    resolvedParams.entity,
+    resolvedParams.repo,
+    refreshOpenIssuePrCounts,
+  ]);
 
   const handleWatch = useCallback(() => {
     if (!pubkey) return;

@@ -581,6 +581,12 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       }
     };
 
+    const isDirectoryTreeEntry = (path: string, file: any): boolean =>
+      file?.type === "dir" ||
+      file?.type === "tree" ||
+      !path ||
+      path.endsWith("/");
+
     const filesWithOverrides = baseFiles
       .map((file: any) => {
         const filePath = file.path || "";
@@ -589,6 +595,11 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
 
         // Skip invalid paths (empty after normalization, like "/")
         if (!normalizedPath) {
+          return null;
+        }
+
+        // Folder rows from git tree index — not pushable files
+        if (isDirectoryTreeEntry(normalizedPath, file)) {
           return null;
         }
 

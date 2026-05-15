@@ -399,6 +399,17 @@ sudo apt install nginx
 sudo nano /etc/nginx/sites-available/gittr
 ```
 
+**Optional — exempt trusted operators from Next.js push rate limits** (does not change nginx). In `ui/.env.local` on the server:
+
+```bash
+# Hex pubkey and/or npub; comma-separated
+GITTR_RATE_LIMIT_EXEMPT_PUBKEYS=9a83779e75080556c656d4d418d02a4d7edbe288a2f9e6dd2b48799ec935184c
+# Optional: exempt by client IP (X-Forwarded-For / X-Real-IP)
+# GITTR_RATE_LIMIT_EXEMPT_IPS=203.0.113.10
+```
+
+Restart the Next.js app after changing these. Large browser pushes still hit nginx `limit_req` on `/api/` (default 600 req/min per IP); raise burst or add a dedicated `location` if you routinely push hundreds of files from the UI.
+
 Add API rate-limit zones in `/etc/nginx/nginx.conf` (inside `http {}`):
 
 ```nginx
