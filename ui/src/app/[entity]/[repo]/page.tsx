@@ -5278,6 +5278,11 @@ export default function RepoCodePage() {
                   !eventRepoData.lastEventCreatedAt ||
                   event.created_at > eventRepoData.lastEventCreatedAt
                 ) {
+                  // Newer replaceable snapshot: reset tag-derived lists so older events'
+                  // clone/SSH/GitHub URLs are not merged in (out-of-order relay delivery).
+                  eventRepoData.clone = [];
+                  eventRepoData.relays = [];
+                  eventRepoData.maintainers = [];
                   eventRepoData.lastEventCreatedAt = event.created_at;
                   eventRepoData.lastEventId = event.id;
                   console.log(
@@ -6648,36 +6653,67 @@ export default function RepoCodePage() {
 
             // CRITICAL: For NIP-34 replaceable events, pick the LATEST event (highest created_at)
             // This ensures we use the most recent event, not the first one found
-            if (collectedEvents.length > 1) {
+            if (collectedEvents.length > 0) {
               // Sort by created_at descending (latest first)
               collectedEvents.sort(
                 (a, b) => (b.event.created_at || 0) - (a.event.created_at || 0)
               );
               const latestEvent = collectedEvents[0];
-              if (latestEvent && latestEvent.event) {
-                console.log(
-                  `✅ [File Fetch] Found ${
-                    collectedEvents.length
-                  } NIP-34 events - using latest: id=${latestEvent.event.id.slice(
-                    0,
-                    8
-                  )}..., created_at=${latestEvent.event.created_at}`
-                );
-              }
-
-              // Re-process the latest event to ensure we use its data
-              // The event callback above already processed it, but we want to make sure we're using the latest
-              // This is handled by the fact that we process events as they arrive, and the latest one will have the highest created_at
-              // But we log it here for debugging
-            } else if (collectedEvents.length === 1) {
-              const firstEvent = collectedEvents[0];
-              if (firstEvent && firstEvent.event) {
-                console.log(
-                  `📦 [File Fetch] Found 1 NIP-34 event: id=${firstEvent.event.id.slice(
-                    0,
-                    8
-                  )}..., created_at=${firstEvent.event.created_at}`
-                );
+              if (latestEvent?.event) {
+                if (collectedEvents.length > 1) {
+                  console.log(
+                    `✅ [File Fetch] Found ${
+                      collectedEvents.length
+                    } NIP-34 events - using latest: id=${latestEvent.event.id.slice(
+                      0,
+                      8
+                    )}..., created_at=${latestEvent.event.created_at}`
+                  );
+                } else {
+                  console.log(
+                    `📦 [File Fetch] Found 1 NIP-34 event: id=${latestEvent.event.id.slice(
+                      0,
+                      8
+                    )}..., created_at=${latestEvent.event.created_at}`
+                  );
+                }
+                // Safety net: clone URLs must come from the latest event only
+                if (eventRepoData) {
+                  eventRepoData.clone = [];
+                  eventRepoData.relays = [];
+                  for (const tag of latestEvent.event.tags || []) {
+                    if (!Array.isArray(tag) || tag.length < 2) continue;
+                    if (tag[0] === "clone") {
+                      for (const v of nip34TagValuesFromRow(tag)) {
+                        if (
+                          v &&
+                          !v.includes("localhost") &&
+                          !v.includes("127.0.0.1") &&
+                          !eventRepoData.clone.includes(v)
+                        ) {
+                          eventRepoData.clone.push(v);
+                        }
+                      }
+                    } else if (tag[0] === "relay" || tag[0] === "relays") {
+                      if (!eventRepoData.relays) eventRepoData.relays = [];
+                      for (const raw of nip34TagValuesFromRow(tag)) {
+                        const normalized = normalizeRelayWssUrl(raw);
+                        if (
+                          normalized &&
+                          !eventRepoData.relays.includes(normalized)
+                        ) {
+                          eventRepoData.relays.push(normalized);
+                        }
+                      }
+                    }
+                  }
+                  eventRepoData.lastEventCreatedAt =
+                    latestEvent.event.created_at;
+                  eventRepoData.lastEventId = latestEvent.event.id;
+                  console.log(
+                    `📋 [File Fetch] NIP-34 EOSE: latest event has ${eventRepoData.clone.length} clone URL(s)`
+                  );
+                }
               }
             }
 

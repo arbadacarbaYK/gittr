@@ -12,7 +12,10 @@ import {
   resolveRepoStorageAlias,
   saveStoredRepos,
 } from "../repos/storage";
-import { getGraspServers } from "../utils/grasp-servers";
+import {
+  GRASP_SERVERS_FOR_PUSHING,
+  getGraspServers,
+} from "../utils/grasp-servers";
 import { normalizeGithubSourceUrl } from "../utils/normalize-github-source-url";
 import { setRepoStatus } from "../utils/repo-status";
 
@@ -295,7 +298,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       // CRITICAL: For GRASP servers, construct the full clone URL with ownerPubkey and repo name
       // NIP-34 spec: clone tag includes [http|https]://<grasp-path>/<valid-npub>/<string>.git
       // MUST use npub format in GRASP clone URLs, not hex pubkey
-      // Add BOTH HTTPS and SSH URLs per NIP-34 spec
+      // NIP-34 clone: HTTPS only (browser clients like gitworkshop.dev cannot use git@ SSH)
       const { isGraspServer } = await import("../utils/grasp-servers");
       if (isGraspServer(cleanUrl)) {
         // Extract domain from URL (remove protocol)
@@ -332,8 +335,8 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             `🔗 [Push Repo] Added primary GRASP server HTTPS clone URL (npub format): ${httpsCloneUrl}`
           );
 
-          // Add SSH URL (for users with SSH keys)
-          // Note: SSH URLs may still use hex in some implementations, but we use npub for consistency
+          // SSH clone is shown in gittr UI (Code sidebar) via NEXT_PUBLIC_GIT_SSH_BASE — not in
+          // NIP-34 clone tags, because in-browser git clients reject git@ (UnknownTransportError).
           const gitSshBase =
             repo.gitSshBase ||
             (typeof process !== "undefined" &&
@@ -345,9 +348,8 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
               ? gitSshBase
               : serverDomain;
           const sshCloneUrl = `git@${sshHost}:${npub}/${actualRepositoryName}.git`;
-          addCloneUrl(sshCloneUrl);
           console.log(
-            `🔗 [Push Repo] Added primary GRASP server SSH clone URL (npub format): ${sshCloneUrl}`
+            `ℹ️ [Push Repo] SSH clone URL for UI/CLI only (not in NIP-34 clone tag): ${sshCloneUrl}`
           );
         } else {
           console.warn(
@@ -377,8 +379,36 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       );
     }
 
-    // Do not add speculative clone URLs for every known GRASP host. Those URLs imply the repo
-    // exists on servers we never pushed to (e.g. git.jb55.com) and break interop with strict clients.
+    // GRASP relays (e.g. ngit-relay.nostrver.se) reject kind 30617 unless their HTTPS git URL is
+    // in clone[] (not only relays[]). HTTPS only — no git@ SSH (browser clients break on SSH).
+    if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
+      const { nip19 } = await import("nostr-tools");
+      let npubForGrasp: string;
+      try {
+        npubForGrasp = nip19.npubEncode(pubkey);
+      } catch {
+        npubForGrasp = pubkey;
+      }
+      const graspRelayUrls = getGraspServers(defaultRelays);
+      for (const relayWss of graspRelayUrls) {
+        const host = relayWss
+          .replace(/^wss?:\/\//, "")
+          .split("/")[0]
+          ?.toLowerCase();
+        if (!host) continue;
+        const isPushableGrasp = GRASP_SERVERS_FOR_PUSHING.some(
+          (d) => host === d || host.endsWith(`.${d}`)
+        );
+        if (!isPushableGrasp) continue;
+        const httpsCloneUrl = `https://${host}/${npubForGrasp}/${actualRepositoryName}.git`;
+        if (!cloneUrls.includes(httpsCloneUrl)) {
+          addCloneUrl(httpsCloneUrl);
+          console.log(
+            `🔗 [Push Repo] Added GRASP HTTPS clone (required by ${host} relay): ${httpsCloneUrl}`
+          );
+        }
+      }
+    }
 
     // NOTE: nostr:// URLs are NOT added to clone tags per NIP-34 spec
     // NIP-34 clone tags must contain standard git clone URLs (https://, git://, ssh://)
@@ -1447,9 +1477,9 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       }
 
       // NIP-34: Add clone tags
-      // CRITICAL: Per NIP-34 spec, clone tags must contain standard git clone URLs (https://, git://, ssh://)
+      // CRITICAL: Per NIP-34 spec, clone tags use standard git URLs (https:// preferred for GRASP)
       // DO NOT include nostr:// URLs - clients generate those from event metadata
-      // Prioritize HTTP/HTTPS URLs first, then other formats (SSH, etc.)
+      // DO NOT include git@ SSH here — in-browser clients cannot use it (see GRASP block above)
       const httpCloneUrls = cloneUrls.filter(
         (url) =>
           url &&
@@ -1990,6 +2020,50 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       confirmedRelays: result.confirmedRelays,
     });
 
+    // gitworkshop / ngit query GRASP relays (especially ngit-relay) — retry any that did not echo the event
+    const NGIT_RELAY = "wss://ngit-relay.nostrver.se";
+    if (result.eventId) {
+      const graspPublishRelays = getGraspServers(publishRelays);
+      const graspPending = graspPublishRelays.filter(
+        (r) => !result.confirmedRelays.includes(r)
+      );
+      if (graspPending.length > 0) {
+        onProgress?.(
+          `Syncing announcement to ${graspPending.length} GRASP relay(s) for ngit clients...`
+        );
+        const graspSync = await publishWithConfirmation(
+          publish,
+          subscribe,
+          repoEvent,
+          graspPending,
+          25000
+        );
+        if (graspSync.confirmed) {
+          result.confirmed = true;
+          for (const r of graspSync.confirmedRelays) {
+            if (!result.confirmedRelays.includes(r)) {
+              result.confirmedRelays.push(r);
+            }
+          }
+        }
+        console.log(`📊 [Push Repo] GRASP relay sync:`, {
+          confirmed: graspSync.confirmed,
+          confirmedRelays: graspSync.confirmedRelays,
+          stillPending: graspPending.filter(
+            (r) => !graspSync.confirmedRelays.includes(r)
+          ),
+        });
+        if (
+          graspPending.includes(NGIT_RELAY) &&
+          !result.confirmedRelays.includes(NGIT_RELAY)
+        ) {
+          onProgress?.(
+            "⚠️ ngit-relay has not confirmed yet — other clients may still see the old announcement until relays sync (wait a few minutes or push again)"
+          );
+        }
+      }
+    }
+
     // CRITICAL: Send announcement event directly to bridge API for immediate processing
     // This avoids waiting for relay propagation which can take 10-60 seconds
     if (result.eventId && repoEvent.kind === KIND_REPOSITORY_NIP34) {
@@ -2364,7 +2438,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
               } else {
                 onProgress?.("❌ CRITICAL: Still no commit SHAs after retry");
                 onProgress?.(
-                  "❌ State event will be published but gitworkshop.dev will NOT recognize it"
+                  "❌ State event will be published but ngit clients may not recognize it yet"
                 );
                 onProgress?.(
                   "💡 Bridge may need more time - you may need to push again later"
@@ -2542,12 +2616,12 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         stateEventTags: stateEvent.tags.map((t: any[]) => t[0]),
       });
 
-      // CRITICAL: Verify state event is queryable on relays (for gitworkshop.dev)
+      // CRITICAL: Verify state event is queryable on relays (for ngit / other NIP-34 clients)
       // Query for the state event we just published to ensure it's findable
-      // IMPORTANT: Use ALL default relays, not just publishRelays, since gitworkshop.dev may use different relays
+      // IMPORTANT: Use ALL default relays, not just publishRelays — clients may read different relays
       if (stateResult.eventId && stateResult.confirmed) {
         onProgress?.(
-          "🔍 Verifying state event is queryable on relays (checking multiple relays for gitworkshop.dev compatibility)..."
+          "🔍 Verifying state event is queryable on relays (checking multiple relays)..."
         );
         try {
           const { KIND_REPOSITORY_STATE } = await import("./events");
@@ -2597,17 +2671,6 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           await new Promise((resolve) => setTimeout(resolve, 5000));
           verifyUnsub();
 
-          // NIP-34: Use npub format for gitworkshop.dev URLs (follows clone URL pattern)
-          // Convert once and reuse for both success and fallback messages
-          const { nip19 } = await import("nostr-tools");
-          let npub: string;
-          try {
-            npub = nip19.npubEncode(pubkey);
-          } catch (e) {
-            npub = pubkey; // Fallback to hex if encoding fails
-          }
-          const gitworkshopUrl = `https://gitworkshop.dev/${npub}/${actualRepositoryName}`;
-
           if (foundStateEvent) {
             const refsWithCommits = refs.filter(
               (r) => r.commit && r.commit.length > 0
@@ -2622,13 +2685,12 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
                   .join(", ")}${foundOnRelays.length > 2 ? "..." : ""}`
               );
               onProgress?.(
-                "✅ ngit clients (like gitworkshop.dev) should now recognize Nostr state."
+                "✅ Nostr git clients (ngit) should now recognize repository state."
               );
-              onProgress?.(`🔗 View on gitworkshop.dev: ${gitworkshopUrl}`);
             } else {
               onProgress?.("⚠️ State event published but has no commit SHAs");
               onProgress?.(
-                "💡 gitworkshop.dev may not recognize it until bridge processes files"
+                "💡 Other clients may not recognize state until the bridge finishes processing files"
               );
               onProgress?.(
                 "💡 Bridge should update the state event automatically once commits are ready"
@@ -2640,9 +2702,8 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             );
             onProgress?.("💡 It may take a few minutes for relays to sync");
             onProgress?.(
-              "💡 gitworkshop.dev may use different relays - check manually in a few minutes"
+              "💡 Some clients read other relays — recheck in a few minutes if state is not visible yet"
             );
-            onProgress?.(`🔗 Check on gitworkshop.dev: ${gitworkshopUrl}`);
           }
         } catch (verifyError) {
           console.warn(
@@ -2656,7 +2717,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       } else {
         onProgress?.("⚠️ State event published but awaiting confirmation");
         onProgress?.(
-          "💡 It may take a few minutes for gitworkshop.dev to sync"
+          "💡 It may take a few minutes for relays and clients to sync"
         );
       }
 
