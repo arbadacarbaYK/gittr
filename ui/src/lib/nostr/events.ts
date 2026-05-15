@@ -374,23 +374,12 @@ export function buildUnsignedRepositoryEvent(
     });
   }
 
-  // NIP-34: one "maintainers" tag with multiple values (npub preferred)
-  const maintainerNpubs: string[] = [];
-  maintainerPubkeys.forEach((maintainerPubkey) => {
-    try {
-      const npub = nip19.npubEncode(maintainerPubkey);
-      maintainerNpubs.push(npub);
-    } catch (e) {
-      // Fallback to hex if encoding fails (shouldn't happen with valid pubkeys)
-      console.warn(
-        `⚠️ [createRepositoryEvent] Failed to encode pubkey to npub, using hex:`,
-        e
-      );
-      maintainerNpubs.push(maintainerPubkey);
-    }
-  });
-  if (maintainerNpubs.length > 0) {
-    tags.push(["maintainers", ...maintainerNpubs]);
+  // NIP-34: one "maintainers" tag with multiple hex pubkeys (gitworkshop/ngit expect hex)
+  if (maintainerPubkeys.size > 0) {
+    tags.push([
+      "maintainers",
+      ...Array.from(maintainerPubkeys).map((pk) => pk.toLowerCase()),
+    ]);
   }
 
   // NIP-34: Add "r" tag with "euc" marker for earliest unique commit (optional but recommended)

@@ -1612,22 +1612,12 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         });
       }
 
-      // NIP-34: one "maintainers" tag with multiple npub values (preferred over repeated tags)
-      const maintainerNpubs: string[] = [];
-      maintainerPubkeys.forEach((pubkey) => {
-        try {
-          const npub = nip19.npubEncode(pubkey);
-          maintainerNpubs.push(npub);
-        } catch (e) {
-          console.warn(
-            `⚠️ [Push Repo] Failed to encode pubkey to npub, using hex:`,
-            e
-          );
-          maintainerNpubs.push(pubkey);
-        }
-      });
-      if (maintainerNpubs.length > 0) {
-        nip34Tags.push(["maintainers", ...maintainerNpubs]);
+      // NIP-34: one "maintainers" tag with multiple hex pubkeys (gitworkshop/ngit expect hex)
+      if (maintainerPubkeys.size > 0) {
+        nip34Tags.push([
+          "maintainers",
+          ...Array.from(maintainerPubkeys).map((pk) => pk.toLowerCase()),
+        ]);
       }
 
       // NIP-34: Add "r" tag with "euc" marker for earliest unique commit (optional but recommended)
