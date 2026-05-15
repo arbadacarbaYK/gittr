@@ -53,7 +53,7 @@ make --version || sudo apt-get install -y build-essential
 ### Step 1: Clone Repository
 
 ```bash
-git clone https://github.com/arbadacarbaYK/gittr.git
+git clone https://github.com/arbadacarbaYK/gittr.git  
 cd gittr
 ```
 
@@ -89,7 +89,7 @@ If you run backend/bridge services from the repo root, there is also a root `.en
 - GUI authorization uses a dedicated push-payment intent flow and grants a short push window (default 15 minutes).
 - **Merge to Nostr** (post-merge automatic repo-state push) uses the same authorization: if paywall applies, the merge flow opens the invoice QR before the bridge push can complete.
 - **Push Cost in repo settings** must be written to the bridge SQLite table `RepositoryPushPolicy` (not only `localStorage`). Saving repo settings now calls `POST /api/nostr/repo/push-policy-sync` with your signed kind **30617** so the paywall amount matches what `/api/nostr/repo/push-payment` enforces. NIP-07-only users previously skipped publishing settings (`privateKey` was required); that is fixed—sign with the extension when saving. If you set Push Cost before this change, open **Repo → Settings**, verify the value, and **Save** once after upgrading so the bridge row is created/updated.
-- **NIP-34 kind 30617 tag shape (interop):** [NIP-34](https://github.com/nostr-protocol/nips/blob/master/34.md) shows `clone`, `relays`, `web`, and `maintainers` as **one tag row with multiple values** (e.g. `["clone", "https://…/repo.git", "git@…:…"]`). Gittr’s push path emits that shape and only lists **clone URLs for hosts you actually use** (configured `NEXT_PUBLIC_GIT_SERVER_URL` plus optional GitHub/GitLab/Codeberg `sourceUrl`), not speculative URLs for every known GRASP domain. **`maintainers` values are lowercase 64-char hex pubkeys** (not `npub1…`) so gitworkshop.dev and ngit resolve maintainer graphs correctly. The Code sidebar **relay list** prefers relays parsed from the published **30617** when present, instead of merging the full in-app default relay list into the displayed count.
+- **NIP-34 kind 30617 tag shape (interop):** [NIP-34](https://github.com/nostr-protocol/nips/blob/master/34.md) shows `clone`, `relays`, `web`, and `maintainers` as **one tag row with multiple values** (e.g. `["clone", "https://…/repo.git", "git@…:…"]`). Gittr’s push path emits that shape and only lists **clone URLs for hosts you actually use** (configured `NEXT_PUBLIC_GIT_SERVER_URL`). When GRASP is configured, **GitHub/GitLab/Codeberg import URLs stay in the `source` tag only** (not duplicated in `clone`) so Nostr state refs from git.gittr.space match every listed clone URL — required for gitworkshop.dev. After push, branch/tag names are saved from bridge refs so a normal page refresh keeps the branch switcher. **`maintainers` values are lowercase 64-char hex pubkeys** (not `npub1…`) so gitworkshop.dev and ngit resolve maintainer graphs correctly. The Code sidebar **relay list** prefers relays parsed from the published **30617** when present, instead of merging the full in-app default relay list into the displayed count.
 - **Sidebar clone URLs vs old announcements:** Refetch only reloads what relays return; it does not change tags on the network. To replace a long historical `clone` row on relays, **Push to Nostr** again from an up-to-date gittr. Separately, the repo page **filters** HTTPS/SSH clone lines for display: if the list already includes your configured primary git host (`NEXT_PUBLIC_GIT_SERVER_URL`), other GRASP mirror hosts from legacy events are hidden so users are not shown URLs that imply the repo was pushed to every public GRASP server.
 - **Production:** If the Next.js process runs as a different Unix user than `git-nostr-bridge`, `$HOME/.config/git-nostr/...` can point at the wrong (or empty) SQLite file, so merges and pushes skip the paywall while the bridge still uses the real DB. Set `GIT_NOSTR_BRIDGE_DB` in `ui/.env.local` to the **absolute path** of the bridge’s SQLite file (same as `DbFile` in `git-nostr-bridge.json`). Resolution order is: `GIT_NOSTR_BRIDGE_DB`, then `/home/git-nostr/.config/...`, then `$HOME/.config/...`.
 - `**GET /api/nostr/repo/files` (file tree for Code, Architecture, Dependencies):** Next.js reads bare repos from disk at `repositoryDir/{ownerHex}/{repo}.git`. If `GIT_NOSTR_BRIDGE_REPOS_DIR` / `REPOS_DIR` / `GITNOSTR_REPOS_DIR` is unset, the handler reads `repositoryDir` from `git-nostr-bridge.json` — `**/home/git-nostr/.config/...`is tried before`$HOME/.config/...`** so a root-owned `next start`still finds the same tree as the bridge. Set`**GIT_NOSTR_BRIDGE_REPOS_DIR**`explicitly if you use a non-standard path. Architecture/Dependencies reuse the **browser`gittr_files\_\_…`cache** written when the Code tab loads the tree; that cache must be written for **all viewers on public repos** (not only the owner), or those tabs stay empty when`/api/nostr/repo/files` is wrong or slow.
@@ -107,24 +107,24 @@ If you want users to be able to import and view files from private GitHub reposi
 
 1. Create a GitHub OAuth App at [https://github.com/settings/developers](https://github.com/settings/developers)
 
-- **Application name**: Your app name (e.g., "gittr.space")
-- **Homepage URL**: Your domain (e.g., `https://gittr.space`)
-- **Authorization callback URL**: `https://yourdomain.com/api/github/callback` (or `http://localhost:3000/api/github/callback` for local dev)
+   - **Application name**: Your app name (e.g., "gittr.space")
+   - **Homepage URL**: Your domain (e.g., `https://gittr.space`)
+   - **Authorization callback URL**: `https://yourdomain.com/api/github/callback` (or `http://localhost:3000/api/github/callback` for local dev)
 
 2. Copy the **Client ID** and **Client Secret** from the OAuth app settings
 3. Add to `ui/.env.local`:
 
-```
- GITHUB_CLIENT_ID=your_client_id_here
- GITHUB_CLIENT_SECRET=your_client_secret_here
- GITHUB_REDIRECT_URI=https://yourdomain.com/api/github/callback
-```
+   ```
+   GITHUB_CLIENT_ID=your_client_id_here
+   GITHUB_CLIENT_SECRET=your_client_secret_here
+   GITHUB_REDIRECT_URI=https://yourdomain.com/api/github/callback
+   ```
 
 4. Users can then connect their GitHub account via Settings → SSH Keys → Connect GitHub, which enables:
 
-- Importing private repositories
-- Viewing file content from private repositories
-- The OAuth token is stored securely in browser localStorage (never sent to server except for API calls)
+   - Importing private repositories
+   - Viewing file content from private repositories
+   - The OAuth token is stored securely in browser localStorage (never sent to server except for API calls)
 
 **Repository discovery cache (`gittr_repos`):** The app stores repository announcements from Nostr in the browser (including repos you only browsed or that arrived while Explore / My Repositories was syncing). That list can grow again after you clear it if you open heavy discovery flows. Use **My Repositories** (`/repositories`) to delete individual repos or **clear foreign repositories**; quota alerts point there as well.
 
@@ -200,7 +200,7 @@ sudo su - git-nostr
 ```bash
 # IMPORTANT: as git-nostr user
 cd ~
-git clone https://github.com/arbadacarbaYK/gittr.git
+git clone https://github.com/arbadacarbaYK/gittr.git 
 cd gittr/ui/gitnostr
 make git-nostr-bridge
 ```
@@ -219,21 +219,21 @@ Edit `~/.config/git-nostr/git-nostr-bridge.json`:
 
 ```json
 {
-  "repositoryDir": "/home/git-nostr/git-nostr-repositories",
-  "DbFile": "/home/git-nostr/.config/git-nostr/git-nostr-db.sqlite",
-  "relays": [
-    "wss://relay.noderunners.network",
-    "wss://relay.azzamo.net",
-    "wss://relay.damus.io",
-    "wss://nos.lol"
-  ],
-  "gitRepoOwners": []
+    "repositoryDir": "/home/git-nostr/git-nostr-repositories",
+    "DbFile": "/home/git-nostr/.config/git-nostr/git-nostr-db.sqlite",
+    "relays": [
+        "wss://relay.noderunners.network",
+        "wss://relay.azzamo.net",
+        "wss://relay.damus.io",
+        "wss://nos.lol"
+    ],
+    "gitRepoOwners": []
 }
 ```
 
 **Note:** Replace `/home/git-nostr` with the actual home directory path if different. The bridge needs Git installed (already in prerequisites) to create repositories.
 
-**IMPORTANT:**
+**IMPORTANT:** 
 
 - The `relays` array should match the relays in `ui/.env.local` (`NEXT_PUBLIC_NOSTR_RELAYS`).
 - Leave `gitRepoOwners` empty `[]` to allow ANY user to create repos (decentralized).
@@ -441,10 +441,10 @@ server {
 server {
     listen 443 ssl http2;
     server_name gittr.space;
-
+    
     ssl_certificate /etc/letsencrypt/live/gittr.space/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/gittr.space/privkey.pem;
-
+    
     location ^~ /api/ {
         # Return 429 for throttled API traffic (instead of default 503)
         limit_req_status 429;
@@ -485,10 +485,10 @@ server {
 server {
     listen 443 ssl http2;
     server_name git.gittr.space;
-
+    
     ssl_certificate /etc/letsencrypt/live/git.gittr.space/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/git.gittr.space/privkey.pem;
-
+    
     # Git bridge HTTP service (git-nostr-bridge)
     # Default port is 8080, adjust if your bridge uses a different port
     location / {
@@ -498,7 +498,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-Host $host;
-
+        
         # Git smart HTTP protocol requires these headers
         proxy_buffering off;
         proxy_request_buffering off;
@@ -712,8 +712,8 @@ If you're using Docker, you don't need to install Go or set up system users manu
 
 1. **Edit the Dockerfile** (`ui/gitnostr/Dockerfile`):
 
-- Replace the `gitRepoOwners` array with your Nostr pubkey (hex format, NOT npub)
-- Update the `relays` array to match your `.env.local` configuration
+   - Replace the `gitRepoOwners` array with your Nostr pubkey (hex format, NOT npub)
+   - Update the `relays` array to match your `.env.local` configuration
 
 2. **Build and run the bridge container:**
 

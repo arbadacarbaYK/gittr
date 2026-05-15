@@ -2,7 +2,12 @@
  * Publish repository event to Nostr and wait for confirmation
  * Stores the event ID in the repository data when confirmed
  */
-import { KIND_REPOSITORY } from "./events";
+import {
+  loadStoredRepos,
+  saveStoredRepos,
+  type StoredRepo,
+} from "../repos/storage";
+import { KIND_REPOSITORY, resolveNip34HeadBranchName } from "./events";
 
 export interface PublishResult {
   eventId: string;
@@ -118,6 +123,70 @@ export async function publishWithConfirmation(
  * Store the event ID in repository data
  * @param stateEventId - Optional state event ID (kind 30618) - if provided, stores it separately
  */
+/** Extract branch/tag names from bridge or state-event refs for localStorage. */
+export function refsToRepoMetadata(refs: Array<{ ref: string; commit?: string }>): {
+  branches: string[];
+  tags: Array<{ name: string; commit?: string }>;
+} {
+  const branches: string[] = [];
+  const tags: Array<{ name: string; commit?: string }> = [];
+  for (const r of refs) {
+    if (!r.ref || typeof r.ref !== "string") continue;
+    if (r.ref.startsWith("refs/heads/")) {
+      const name = r.ref.replace(/^refs\/heads\//, "");
+      if (name && !branches.includes(name)) branches.push(name);
+    } else if (r.ref.startsWith("refs/tags/")) {
+      const name = r.ref.replace(/^refs\/tags\//, "");
+      if (name) tags.push({ name, commit: r.commit || undefined });
+    }
+  }
+  return { branches, tags };
+}
+
+/**
+ * After Push to Nostr, persist branch/tag list from bridge refs so a page refresh
+ * still shows the correct branch switcher (import data alone is not re-fetched).
+ */
+export function persistRepoRefsMetadata(
+  repoSlug: string,
+  entity: string,
+  refs: Array<{ ref: string; commit?: string }>,
+  preferredDefaultBranch?: string
+): { branches: string[]; defaultBranch: string } | null {
+  const withCommits = refs.filter((r) => r.commit && r.commit.length > 0);
+  if (withCommits.length === 0) return null;
+
+  const { branches, tags } = refsToRepoMetadata(withCommits);
+  if (branches.length === 0) return null;
+
+  const defaultBranch = resolveNip34HeadBranchName(
+    withCommits as Array<{ ref: string; commit: string }>,
+    preferredDefaultBranch
+  );
+
+  try {
+    const repos = loadStoredRepos();
+    const repoIndex = repos.findIndex(
+      (r: any) =>
+        (r.slug === repoSlug || r.repo === repoSlug) && r.entity === entity
+    );
+    if (repoIndex < 0) return null;
+
+    const existing = repos[repoIndex] as StoredRepo;
+    repos[repoIndex] = {
+      ...existing,
+      branches,
+      defaultBranch,
+      ...(tags.length > 0 ? { tags } : {}),
+    } as StoredRepo;
+    saveStoredRepos(repos);
+    return { branches, defaultBranch };
+  } catch (error) {
+    console.error("Failed to persist repo refs metadata:", error);
+    return null;
+  }
+}
+
 export function storeRepoEventId(
   repoSlug: string,
   entity: string,

@@ -2854,6 +2854,60 @@ export default function RepoCodePage() {
         }
       }
 
+      // After Push to Nostr, branch list lives on the bridge — hydrate on page load
+      const repoAnyForRefs = repo as {
+        repositoryName?: string;
+        lastStateEventId?: string;
+        stateEventId?: string;
+        nostrEventId?: string;
+      };
+      const hasNostrPush =
+        repoAnyForRefs.lastStateEventId ||
+        repoAnyForRefs.stateEventId ||
+        repoAnyForRefs.nostrEventId;
+      if (hasNostrPush && ownerPubkey) {
+        (async () => {
+          try {
+            const actualRepoName =
+              repoAnyForRefs.repositoryName ||
+              repo.repo ||
+              repo.slug ||
+              resolvedParams.repo;
+            const refsRes = await fetch(
+              `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
+                ownerPubkey
+              )}&repo=${encodeURIComponent(actualRepoName)}`
+            );
+            if (!refsRes.ok) return;
+            const refsData = await refsRes.json();
+            if (!refsData.refs?.length) return;
+            const { persistRepoRefsMetadata } = await import(
+              "@/lib/nostr/publish-with-confirmation"
+            );
+            const persisted = persistRepoRefsMetadata(
+              resolvedParams.repo,
+              resolvedParams.entity,
+              refsData.refs,
+              repo.defaultBranch
+            );
+            if (persisted) {
+              setRepoData((prev) =>
+                prev
+                  ? ({
+                      ...prev,
+                      branches: persisted.branches,
+                      defaultBranch: persisted.defaultBranch,
+                    } as StoredRepo)
+                  : prev
+              );
+              setSelectedBranch(persisted.defaultBranch);
+            }
+          } catch (e) {
+            console.warn("[Repo Load] Bridge refs hydration failed:", e);
+          }
+        })();
+      }
+
       // Only fetch from sourceUrl if we don't have files AND don't have readme
       // File fetching is handled in a separate useEffect below to prevent blocking
       // But if we have no data at all, try fetching from sourceUrl as a one-time import
@@ -18601,13 +18655,17 @@ export default function RepoCodePage() {
                                 : "Refetch from Nostr"}
                             </Button>
                             <p className="text-xs text-gray-500 mt-1 mb-2 px-1">
-                              ⚠️ Refetch replaces local files from{" "}
+                              ⚠️ Refetch replaces files in local storage with
+                              those from{" "}
                               {hasSourceUrl
                                 ? `the source (${
                                     effectiveSourceUrl || repo.sourceUrl
                                   })`
                                 : "Nostr"}
                               . Unpushed local edits can be lost.
+                              {hasSourceUrl
+                                ? " Nostr-only PRs and Issues can be out of sync after refetch and need to be handled again."
+                                : null}
                             </p>
                             {hasSourceUrl ? (
                               <details className="text-xs text-gray-500 mt-1 mb-2 px-1 group">

@@ -407,8 +407,25 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         if (!cloneUrl.endsWith(".git")) {
           cloneUrl = `${cloneUrl}.git`;
         }
-        // Only add if not already in array
-        addCloneUrl(cloneUrl);
+        // GRASP is canonical after gittr push — listing GitHub in clone while state
+        // refs point at bridge commits breaks gitworkshop (commit not found on server).
+        const { isGraspServer } = await import("../utils/grasp-servers");
+        const hasGraspClone = cloneUrls.some(
+          (u) =>
+            isGraspServer(u) ||
+            u.includes("git.gittr.space") ||
+            u.includes("gittr.space")
+        );
+        if (!hasGraspClone) {
+          addCloneUrl(cloneUrl);
+        } else {
+          console.log(
+            `ℹ️ [Push Repo] Upstream forge URL kept in source tag only (not clone): ${cloneUrl}`
+          );
+          onProgress?.(
+            "ℹ️ GitHub/GitLab kept as import source only — gittr.space is the clone URL for Nostr clients"
+          );
+        }
       }
     }
 
@@ -2741,6 +2758,24 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           result.confirmed,
           stateResult.eventId
         );
+      }
+
+      // Persist branches/tags from bridge refs so page refresh keeps branch switcher
+      if (refs.length > 0) {
+        const { persistRepoRefsMetadata } = await import(
+          "./publish-with-confirmation"
+        );
+        const persisted = persistRepoRefsMetadata(
+          repoSlug,
+          entity,
+          refs,
+          repo.defaultBranch || "main"
+        );
+        if (persisted) {
+          onProgress?.(
+            `✅ Saved ${persisted.branches.length} branch(es) locally (default: ${persisted.defaultBranch})`
+          );
+        }
       }
 
       return {
