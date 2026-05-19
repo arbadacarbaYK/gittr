@@ -9,7 +9,7 @@
  *
  * Supports:
  * - npub format (GRASP protocol standard)
- * - NIP-05 identifiers (e.g., user@example.com) - for compatibility with gitworkshop.dev
+ * - NIP-05 identifiers (e.g., user@example.com) - for compatibility with other Nostr git clients
  * - Full 64-char hex pubkeys
  */
 import { nip05, nip19 } from "nostr-tools";

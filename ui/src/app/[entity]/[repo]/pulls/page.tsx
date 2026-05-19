@@ -4,6 +4,12 @@ import * as React from "react";
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 
 import FilterBar from "@/components/filter-bar";
+import IssuesPrFilterMenuRow from "@/components/issues-pr-filter-toolbar";
+import {
+  filterListBySearchQuery,
+  parseListSearchQuery,
+  setListSearchOpenClosed,
+} from "@/lib/utils/issue-pr-list-search";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
@@ -741,11 +747,14 @@ export default function RepoPullsPage({
     issueStatus,
   ]);
 
-  const handleIssueStatusOpen = useCallback(() => setIssueStatus("open"), []);
-  const handleIssueStatusClosed = useCallback(
-    () => setIssueStatus("closed"),
-    []
-  );
+  const handleIssueStatusOpen = useCallback(() => {
+    setIssueStatus("open");
+    setSearch((s) => setListSearchOpenClosed(s, "open", "pr"));
+  }, []);
+  const handleIssueStatusClosed = useCallback(() => {
+    setIssueStatus("closed");
+    setSearch((s) => setListSearchOpenClosed(s, "closed", "pr"));
+  }, []);
 
   const handleSearch = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -753,29 +762,52 @@ export default function RepoPullsPage({
     []
   );
 
-  // Get all unique author pubkeys (only full 64-char pubkeys for metadata lookup)
-  const authorPubkeys = useMemo(() => {
-    return Array.from(
-      new Set(
-        issues
-          .map((p) => p.author)
-          .filter(Boolean)
-          .filter((author) => /^[a-f0-9]{64}$/i.test(author)) // Only full 64-char pubkeys
-      )
-    );
-  }, [issues]);
+  useEffect(() => {
+    const parsed = parseListSearchQuery(search);
+    if (parsed.status === "open" || parsed.status === "closed") {
+      setIssueStatus(parsed.status);
+    }
+  }, [search]);
 
-  // Fetch Nostr metadata for all authors
+  const filterSourceItems = useMemo(() => {
+    try {
+      const list = readRepoPullsFromLocalStorage(
+        resolvedParams.entity,
+        resolvedParams.repo
+      ) as any[];
+      return list.map((pr) => ({
+        title: pr.title || "",
+        number: String(pr.number ?? pr.id ?? ""),
+        author: pr.author || "",
+        tags: pr.labels || [],
+        assignees: pr.assignees || [],
+        createdAt: Number(pr.createdAt) || undefined,
+        updatedAt: Number(pr.updatedAt) || undefined,
+      }));
+    } catch {
+      return [];
+    }
+  }, [resolvedParams.entity, resolvedParams.repo, issues.length, prListRev]);
+
+  const authorPubkeys = useMemo(() => {
+    const pubkeys = new Set<string>();
+    for (const it of filterSourceItems) {
+      if (it.author && /^[a-f0-9]{64}$/i.test(it.author)) {
+        pubkeys.add(it.author.toLowerCase());
+      }
+      for (const a of it.assignees || []) {
+        if (a && /^[a-f0-9]{64}$/i.test(a)) pubkeys.add(a.toLowerCase());
+      }
+    }
+    return Array.from(pubkeys);
+  }, [filterSourceItems]);
+
   const authorMetadata = useContributorMetadata(authorPubkeys);
 
-  const displayPRs = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q || q === "is:open is:pr") return issues;
-    return issues.filter((p) => {
-      const hay = `${p.title} ${p.number} ${p.author} ${p.repo}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [issues, search]);
+  const displayPRs = useMemo(
+    () => filterListBySearchQuery(issues, search, "pr", authorMetadata),
+    [issues, search, authorMetadata]
+  );
 
   // Helper to get entity display name (username instead of npub)
   const getEntityDisplayNameForRepo = useCallback(
@@ -865,26 +897,13 @@ export default function RepoPullsPage({
                   {mounted ? prTabCounts.closed : 0} Closed
                 </button>
               </div>
-              <div className="mt-2 flex text-gray-400 lg:mt-0 space-x-6">
-                <span className="flex text-zinc-400 hover:text-zinc-200 cursor-pointer">
-                  Author <ChevronDown className="h-4 w-4 ml-1 mt-1.5" />
-                </span>
-                <span className="flex text-zinc-400 hover:text-zinc-200 cursor-pointer">
-                  Label <ChevronDown className="h-4 w-4 ml-1 mt-1.5" />
-                </span>
-                <span className="hidden md:flex text-zinc-400 hover:text-zinc-200 cursor-pointer">
-                  Projects <ChevronDown className="h-4 w-4 ml-1 mt-1.5" />
-                </span>
-                <span className="hidden md:flex text-zinc-400 hover:text-zinc-200 cursor-pointer">
-                  Milestones <ChevronDown className="h-4 w-4 ml-1 mt-1.5" />
-                </span>
-                <span className="flex text-zinc-400 hover:text-zinc-200 cursor-pointer">
-                  Assignee <ChevronDown className="h-4 w-4 ml-1 mt-1.5" />
-                </span>
-                <span className="flex text-zinc-400 hover:text-zinc-200 cursor-pointer">
-                  Sort <ChevronDown className="h-4 w-4 ml-1 mt-1.5" />
-                </span>
-              </div>
+              <IssuesPrFilterMenuRow
+                search={search}
+                onSearchChange={setSearch}
+                kind="pr"
+                items={filterSourceItems}
+                authorMetadata={authorMetadata}
+              />
             </div>
           </div>
           <div className="overflow-hidden rounded-md rounded-tr-none rounded-tl-none border border-t-0 dark:border-lightgray">

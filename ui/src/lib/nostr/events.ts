@@ -374,7 +374,7 @@ export function buildUnsignedRepositoryEvent(
     });
   }
 
-  // NIP-34: one "maintainers" tag with multiple hex pubkeys (gitworkshop/ngit expect hex)
+  // NIP-34: one "maintainers" tag with multiple hex pubkeys (ngit and other Nostr git clients expect hex)
   if (maintainerPubkeys.size > 0) {
     tags.push([
       "maintainers",
@@ -542,7 +542,7 @@ export function createCodeSnippetEvent(
 /**
  * Pick the branch name for NIP-34 ["HEAD", "ref: refs/heads/<name>"] so it always
  * matches a refs/heads/* entry present in `refs` when possible. Mismatch (e.g. HEAD
- * points at main while the only ref is develop) breaks git clone / gitworkshop.
+ * points at main while the only ref is develop) breaks git clone for other Nostr git clients.
  */
 export function resolveNip34HeadBranchName(
   refs: Array<{ ref: string; commit: string }>,
@@ -574,7 +574,7 @@ export function resolveNip34HeadBranchName(
 
 // Create and sign a Nostr repository state event (kind 30618)
 // Per NIP-34: https://nips.nostr.com/34#repository-state-announcements
-// This contains repository refs, branches, and commits - required by ngit clients like gitworkshop.dev
+// This contains repository refs, branches, and commits - required by ngit and other Nostr git clients
 export function createRepositoryStateEvent(
   repositoryName: string,
   refs: Array<{ ref: string; commit: string }>, // e.g., [{ ref: "refs/heads/main", commit: "abc123..." }]

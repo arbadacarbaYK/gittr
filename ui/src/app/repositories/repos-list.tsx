@@ -257,7 +257,7 @@ export function ReposList({
           let repoName =
             repoDataAny?.repositoryName || repo.repo || repo.slug || repo.name;
 
-          // Extract repo name (handle paths like "gitnostr.com/gitworkshop")
+          // Extract repo name (handle paths like "host.example/my-repo")
           if (
             repoName &&
             typeof repoName === "string" &&

@@ -23,6 +23,7 @@ import {
   getUserMetadata,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
+import { nostrProfileViewerUrl } from "@/lib/utils/nostr-profile-viewer-url";
 import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
 
 import {
@@ -2126,7 +2127,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 <div className="flex items-center gap-2 text-gray-400 text-xs font-mono">
                   <span>npub: {displayPubkey}</span>
                   <a
-                    href={`https://nostr.com/${displayPubkey}`}
+                    href={nostrProfileViewerUrl(displayPubkey)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-purple-400 hover:text-purple-300"

@@ -226,7 +226,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       repoDataAny?.slug ||
       repoSlug;
 
-    // Extract repo name (handle paths like "gitnostr.com/gitworkshop")
+    // Extract repo name (handle paths like "host.example/my-repo")
     if (actualRepositoryName.includes("/")) {
       const parts = actualRepositoryName.split("/");
       actualRepositoryName = parts[parts.length - 1] || actualRepositoryName;
@@ -298,7 +298,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       // CRITICAL: For GRASP servers, construct the full clone URL with ownerPubkey and repo name
       // NIP-34 spec: clone tag includes [http|https]://<grasp-path>/<valid-npub>/<string>.git
       // MUST use npub format in GRASP clone URLs, not hex pubkey
-      // NIP-34 clone: HTTPS only (browser clients like gitworkshop.dev cannot use git@ SSH)
+      // NIP-34 clone: HTTPS only (browser-based Nostr git clients cannot use git@ SSH)
       const { isGraspServer } = await import("../utils/grasp-servers");
       if (isGraspServer(cleanUrl)) {
         // Extract domain from URL (remove protocol)
@@ -412,7 +412,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
 
     // NOTE: nostr:// URLs are NOT added to clone tags per NIP-34 spec
     // NIP-34 clone tags must contain standard git clone URLs (https://, git://, ssh://)
-    // Clients like gitworkshop.dev generate nostr:// URLs from event metadata (pubkey + repo name + relays)
+    // Some Nostr git clients generate nostr:// URLs from event metadata (pubkey + repo name + relays)
     // We do NOT include nostr:// URLs in clone tags - they are client-generated, not event-stored
 
     if (repo.sourceUrl) {
@@ -438,7 +438,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           cloneUrl = `${cloneUrl}.git`;
         }
         // GRASP is canonical after gittr push — listing GitHub in clone while state
-        // refs point at bridge commits breaks gitworkshop (commit not found on server).
+        // refs point at bridge commits breaks interop with other Nostr git clients (commit not found on server).
         const { isGraspServer } = await import("../utils/grasp-servers");
         const hasGraspClone = cloneUrls.some(
           (u) =>
@@ -1659,7 +1659,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         });
       }
 
-      // NIP-34: one "maintainers" tag with multiple hex pubkeys (gitworkshop/ngit expect hex)
+      // NIP-34: one "maintainers" tag with multiple hex pubkeys (ngit and other Nostr git clients expect hex)
       if (maintainerPubkeys.size > 0) {
         nip34Tags.push([
           "maintainers",
@@ -2020,7 +2020,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       confirmedRelays: result.confirmedRelays,
     });
 
-    // gitworkshop / ngit query GRASP relays (especially ngit-relay) — retry any that did not echo the event
+    // ngit and other Nostr git clients query GRASP relays (especially ngit-relay) — retry any that did not echo the event
     const NGIT_RELAY = "wss://ngit-relay.nostrver.se";
     if (result.eventId) {
       const graspPublishRelays = getGraspServers(publishRelays);
@@ -2111,7 +2111,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       cloneTags: publishedCloneVals,
       allTagNames: repoEvent.tags.map((t: any[]) => t[0]),
       eventUrl: `https://nostr.watch/e/${result.eventId}`,
-      note: "Verify clone tags on nostr.watch or gitworkshop.dev - they should match the URLs above",
+      note: "Verify clone tags on nostr.watch or another Nostr git client - they should match the URLs above",
     });
 
     // CRITICAL: Continue to second signature even if first event isn't confirmed yet
@@ -2150,7 +2150,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         const { pushFilesToBridge } = await import("./push-to-bridge");
         // CRITICAL: Use current time as commit date (when this push happens)
         // This ensures each push creates a commit with the date of when it was pushed
-        // gitworkshop.dev will show this date as the "last commit" date
+        // other Nostr git clients will show this date as the "last commit" date
         const commitDate = Math.floor(Date.now() / 1000);
         // CRITICAL: Log bridge push parameters for debugging
         console.log(`📤 [Push Repo] Pushing to bridge:`, {
@@ -2405,13 +2405,13 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         );
       }
 
-      // Final check - CRITICAL: gitworkshop.dev REQUIRES commit SHAs in state event
+      // Final check - CRITICAL: Other Nostr git clients often require commit SHAs in state event
       // If we don't have commit SHAs, we MUST retry fetching refs or fail the push
       const refsWithCommits = refs.filter(
         (r) => r.commit && r.commit.length > 0
       ).length;
       if (refsWithCommits === 0) {
-        // CRITICAL: gitworkshop.dev will NOT recognize state without commit SHAs
+        // CRITICAL: other Nostr git clients will NOT recognize state without commit SHAs
         // Try one more time to fetch refs from bridge (may need a moment to process)
         onProgress?.(
           "⚠️ No commit SHAs found - retrying refs fetch from bridge..."
@@ -2625,7 +2625,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         );
         try {
           const { KIND_REPOSITORY_STATE } = await import("./events");
-          // Use ALL default relays for verification (gitworkshop.dev may use different relays)
+          // Use ALL default relays for verification (other Nostr git clients may use different relays)
           // defaultRelays already contains all relays (both GRASP and regular)
           const allRelaysForVerification = defaultRelays;
 

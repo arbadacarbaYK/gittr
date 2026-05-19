@@ -33,7 +33,7 @@ interface RelayDisplayProps {
 
 /**
  * Displays configured Nostr relays and Grasp servers
- * Similar to gitworkshop.dev's relay/grasp server display
+ * Similar to other Nostr git clients' relay/grasp server display
  * Sections are collapsible to save space
  * Also displays git source fetch statuses (GitHub, GitLab, Codeberg, etc.)
  */

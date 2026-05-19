@@ -1676,7 +1676,7 @@ export default function DependenciesPage({
         repoDataAny?.name ||
         resolvedParams.repo;
 
-      // Extract repo name (handle paths like "gitnostr.com/gitworkshop")
+      // Extract repo name (handle paths like "host.example/my-repo")
       if (actualRepoName.includes("/")) {
         const parts = actualRepoName.split("/");
         actualRepoName = parts[parts.length - 1] || actualRepoName;

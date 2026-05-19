@@ -3,7 +3,7 @@
  *
  * Handles finding repositories by entity/repo with support for:
  * - npub format (Grasp protocol standard)
- * - NIP-05 identifiers (e.g., user@example.com) - for compatibility with gitworkshop.dev
+ * - NIP-05 identifiers (e.g., user@example.com) - for compatibility with other Nostr git clients
  * - 8-char pubkey prefixes
  * - Full 64-char pubkeys
  * - ownerPubkey matching
@@ -52,7 +52,7 @@ export function findRepoByEntityAndName<
     if (entityPubkey && r.entity === entityPubkey) return true;
 
     // Match by ownerPubkey (most reliable - works across all entity formats)
-    // This is CRITICAL for repos pushed from gitworkshop.dev (NIP-05) to be found on gittr.space
+    // This is CRITICAL for repos pushed from other Nostr git clients (NIP-05) to be found on gittr.space
     if (
       entityPubkey &&
       r.ownerPubkey &&
@@ -115,7 +115,7 @@ export async function findRepoByEntityAndNameAsync<
     if (entityPubkey && r.entity === entityPubkey) return true;
 
     // Match by ownerPubkey (most reliable - works across all entity formats)
-    // This is CRITICAL for repos pushed from gitworkshop.dev (NIP-05) to be found on gittr.space
+    // This is CRITICAL for repos pushed from other Nostr git clients (NIP-05) to be found on gittr.space
     if (
       entityPubkey &&
       r.ownerPubkey &&

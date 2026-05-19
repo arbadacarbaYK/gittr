@@ -251,7 +251,7 @@
       console.log("- Small text files (< 10KB) have content in event ✅");
       console.log("- Binary/large files have metadata only (per NIP-34) ✅");
       console.log("- Clone URLs should point to git servers for fetching large files");
-      console.log("- gitworkshop.dev should read small files from event content");
+      console.log("- other Nostr git clients should read small files from event content");
       
       // Check for binary files with content (shouldn't happen)
       const binaryWithContent = binaryFiles.filter((f: any) => f.content);

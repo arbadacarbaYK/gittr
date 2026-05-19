@@ -112,7 +112,7 @@ export function getRepoStatus(repo: any): RepoStatus {
 
   // CRITICAL: Check if repo has state event ID (kind 30618) - required for full NIP-34 compliance
   // Both announcement AND state events are required for "live" status
-  // gitworkshop.dev and other ngit clients need the state event to recognize "Nostr state"
+  // ngit and other Nostr git clients need the state event to recognize "Nostr state"
   const hasStateEventId = !!(repo.stateEventId || repo.lastStateEventId);
 
   // Check if repo has files (if it was pushed empty, it needs files pushed)

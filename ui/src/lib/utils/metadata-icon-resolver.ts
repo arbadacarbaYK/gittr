@@ -66,7 +66,7 @@ export async function resolveRepoIconForMetadata(
 
   // For Nostr-native repos, try API endpoint for logo files
   if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-    // Clean repo name (handle paths like "gitnostr.com/gitworkshop")
+    // Clean repo name (handle paths like "host.example/my-repo")
     let cleanRepoName = decodedRepo;
     if (cleanRepoName.includes("/")) {
       const parts = cleanRepoName.split("/");

@@ -40,6 +40,7 @@ import {
 import { getGraspServers } from "@/lib/utils/grasp-servers";
 import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
+import { nostrProfileViewerUrl } from "@/lib/utils/nostr-profile-viewer-url";
 import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
 
 import {
@@ -3193,7 +3194,7 @@ export default function EntityPage({
                     npub: {displayPubkey}
                   </span>
                   <a
-                    href={`https://nostr.com/${displayPubkey}`}
+                    href={nostrProfileViewerUrl(displayPubkey)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-purple-400 hover:text-purple-300 shrink-0"
@@ -3749,7 +3750,7 @@ export default function EntityPage({
                         repo.slug ||
                         repo.name;
 
-                      // Extract repo name (handle paths like "gitnostr.com/gitworkshop")
+                      // Extract repo name (handle paths like "host.example/my-repo")
                       if (
                         repoName &&
                         typeof repoName === "string" &&

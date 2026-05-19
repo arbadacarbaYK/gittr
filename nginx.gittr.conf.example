@@ -120,7 +120,7 @@ server {
         fastcgi_param PATH_INFO $uri;
         fastcgi_param REMOTE_USER $remote_user;
         
-        # CORS headers for GRASP protocol compliance (allows gitworkshop.dev and other clients to clone)
+        # CORS headers for GRASP protocol compliance (allows other Nostr git clients and other clients to clone)
         add_header Access-Control-Allow-Origin * always;
         add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
         add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;

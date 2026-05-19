@@ -2,9 +2,9 @@
 
 This document lists all Nostr Improvement Proposals (NIPs) and event kinds used by gittr.space.
 
-## Interop Baseline (ngit/gitworkshop)
+## Interop Baseline (ngit and other Nostr git clients)
 
-To keep event behavior consistent with other major NIP-34 clients (including ngit/gitworkshop), gittr enforces these interoperability rules:
+To keep event behavior consistent with other major NIP-34 clients (including ngit and other Nostr git clients), gittr enforces these interoperability rules:
 
 - For kind `1621` (issues), required NIP-34 tags are always present: `a`, `r`, `p`, `subject`.
 - For kind `1617` (patches), required NIP-34 tags are always present: `a`, `r`, `p`.
@@ -183,7 +183,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `refs/tags/<tag>`: Tag name and commit SHA
   - `HEAD`: Default branch reference (e.g., "ref: refs/heads/main")
 - **Content**: Empty (state is in tags)
-- **Required for**: Full NIP-34 compliance and recognition by ngit clients (e.g., gitworkshop.dev)
+- **Required for**: Full NIP-34 compliance and recognition by ngit clients (e.g., other Nostr git clients)
 
 ### Kind 1621: Issues (NIP-34)
 

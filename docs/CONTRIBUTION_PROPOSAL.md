@@ -4,7 +4,7 @@ This document outlines the enhancements made by gittr.space to the git-nostr-bri
 
 ## Overview
 
-gittr.space has been the first major web UI client to seriously use GRASP servers (beyond gitworkshop.dev's CLI tools). In the process of building a production-ready web interface, we've identified and solved several real-world problems that CLI-only usage didn't encounter.
+gittr.space has been the first major web UI client to seriously use GRASP servers (beyond other Nostr git clients' CLI tools). In the process of building a production-ready web interface, we've identified and solved several real-world problems that CLI-only usage didn't encounter.
 
 ## Key Enhancements for Contribution
 

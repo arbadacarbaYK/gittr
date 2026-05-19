@@ -731,7 +731,7 @@ export default async function handler(
       // By deferring git add until the final chunk, we only do it once with all files
       await execAsync(`git -C "${tempDir}" add -A`);
       // CRITICAL: Use --allow-empty to always create a new commit, even if files are unchanged
-      // This ensures each push to Nostr creates a new commit with the correct date, which gitworkshop.dev will show
+      // This ensures each push to Nostr creates a new commit with the correct date, which other Nostr git clients will show
       // Without this, if files are identical, git won't create a commit and state event will point to old commit
       // CRITICAL: Set commit date using GIT_AUTHOR_DATE and GIT_COMMITTER_DATE environment variables
       // This ensures the commit date matches when the repo was pushed, not when the commit is created

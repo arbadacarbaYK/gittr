@@ -699,7 +699,7 @@ export default function RepoCodePage() {
     ) {
       setRepoOwnerPubkey((repoData as any).ownerPubkey.toLowerCase());
     } else if (mounted) {
-      // CRITICAL: Support NIP-05 format (e.g., user@example.com) for gitworkshop.dev compatibility
+      // CRITICAL: Support NIP-05 format (e.g., user@example.com) for compatibility with other Nostr git clients
       const isNip05 = resolvedParams.entity.includes("@");
 
       if (isNip05) {
@@ -4408,7 +4408,7 @@ export default function RepoCodePage() {
       if (!sourceUrl && typeof window !== "undefined") {
         try {
           const repos = loadStoredRepos();
-          // CRITICAL: Use async version if NIP-05 format (for gitworkshop.dev compatibility)
+          // CRITICAL: Use async version if NIP-05 format (for compatibility with other Nostr git clients)
           const isNip05 = resolvedParams.entity.includes("@");
           const matchingRepo = isNip05
             ? await findRepoByEntityAndNameAsync<StoredRepo>(
@@ -10770,7 +10770,7 @@ export default function RepoCodePage() {
             repoData?.repo ||
             repoData?.slug;
 
-          // Extract repo name (handle paths like "gitnostr.com/gitworkshop")
+          // Extract repo name (handle paths like "host.example/my-repo")
           if (
             repoName &&
             typeof repoName === "string" &&
@@ -12129,7 +12129,7 @@ export default function RepoCodePage() {
         repoDataAny?.name ||
         String(decodedRepo || "");
 
-      // Extract repo name (handle paths like "gitnostr.com/gitworkshop")
+      // Extract repo name (handle paths like "host.example/my-repo")
       if (repoName.includes("/")) {
         const parts = repoName.split("/");
         repoName = parts[parts.length - 1] || repoName;

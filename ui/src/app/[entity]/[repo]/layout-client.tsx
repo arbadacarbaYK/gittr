@@ -655,7 +655,7 @@ export default function RepoLayoutClient({
             foundRepo.repo ||
             foundRepo.slug;
 
-          // Extract repo name (handle paths like "gitnostr.com/gitworkshop")
+          // Extract repo name (handle paths like "host.example/my-repo")
           if (
             repoName &&
             typeof repoName === "string" &&
