@@ -280,11 +280,10 @@ export function buildUnsignedRepositoryEvent(
     tags.push(["name", repoName]);
   }
 
-  // NIP-34: Add description tag
-  // CRITICAL: Always include "description" tag (other clients expect it)
-  const description =
-    repo.description || `Repository: ${repoName || repo.repositoryName}`;
-  if (description) {
+  // NIP-34: description tag (omit auto-generated "Repository: …" placeholders)
+  const description = (repo.description || "").trim();
+  const placeholder = `repository: ${(repoName || repo.repositoryName || "").toLowerCase()}`;
+  if (description && description.toLowerCase() !== placeholder) {
     tags.push(["description", description]);
   }
 

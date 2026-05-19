@@ -28,6 +28,8 @@ export type GithubRepoMeta = {
   openIssues: number;
   pushedAtMs: number;
   updatedAtMs: number;
+  /** GitHub repository description (sidebar About when mirrored from source). */
+  description?: string;
 };
 
 export function githubPushedSessionKey(entity: string, repo: string): string {
@@ -218,6 +220,7 @@ export async function fetchGithubRepoMeta(
       open_issues_count?: number;
       pushed_at?: string;
       updated_at?: string;
+      description?: string | null;
     };
     const pushedAtMs = j.pushed_at
       ? new Date(j.pushed_at).getTime()
@@ -225,6 +228,8 @@ export async function fetchGithubRepoMeta(
     const updatedAtMs = j.updated_at
       ? new Date(j.updated_at).getTime()
       : 0;
+    const description =
+      typeof j.description === "string" ? j.description.trim() : "";
     return {
       stars: typeof j.stargazers_count === "number" ? j.stargazers_count : 0,
       forks: typeof j.forks_count === "number" ? j.forks_count : 0,
@@ -232,6 +237,7 @@ export async function fetchGithubRepoMeta(
         typeof j.open_issues_count === "number" ? j.open_issues_count : 0,
       pushedAtMs,
       updatedAtMs,
+      ...(description ? { description } : {}),
     };
   } catch {
     return null;
@@ -304,6 +310,7 @@ export async function hydrateRepoFromGithub(
         ...repos[idx]!,
         stars: meta.stars,
         forks: meta.forks,
+        ...(meta.description ? { description: meta.description } : {}),
         lastNostrEventCreatedAt: Math.floor(
           (meta.pushedAtMs || Date.now()) / 1000
         ),
@@ -314,6 +321,35 @@ export async function hydrateRepoFromGithub(
   }
 
   return { sourceUrl, meta, synced: Boolean(issuesOk || pullsOk) };
+}
+
+/** GitHub `description` field for sidebar About (import / refetch). */
+export async function fetchGithubRepoDescription(
+  sourceUrl: string
+): Promise<string | null> {
+  const meta = await fetchGithubRepoMeta(sourceUrl);
+  return meta?.description?.trim() || null;
+}
+
+export function persistRepoDescription(
+  entity: string,
+  repoSlug: string,
+  description: string
+): void {
+  const trimmed = description.trim();
+  if (!trimmed) return;
+  const repos = loadStoredRepos();
+  const idx = repos.findIndex((r) => {
+    const found = findRepoByEntityAndName([r], entity, repoSlug);
+    return found !== undefined;
+  });
+  if (idx < 0 || !repos[idx]) return;
+  if (repos[idx]!.description === trimmed) return;
+  repos[idx] = { ...repos[idx]!, description: trimmed };
+  saveStoredRepos(repos);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("gittr:repos-updated"));
+  }
 }
 
 /** Milliseconds for "last activity" display (not repo birth date). */

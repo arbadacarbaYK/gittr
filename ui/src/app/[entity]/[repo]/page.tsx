@@ -89,8 +89,14 @@ import {
   shouldPreferUpstreamContent,
   shouldPreferUpstreamMirror,
   shouldSkipLegacyKind51EmbeddedFiles,
+  hasGithubUpstreamMirror,
 } from "@/lib/repos/upstream-precedence";
-import { resolveRepoActivityDisplayMs } from "@/lib/repos/repo-github-hub";
+import { sidebarAboutText } from "@/lib/repos/repo-about-text";
+import {
+  fetchGithubRepoDescription,
+  persistRepoDescription,
+  resolveRepoActivityDisplayMs,
+} from "@/lib/repos/repo-github-hub";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {
@@ -2868,7 +2874,7 @@ export default function RepoCodePage() {
         entity: normalizedRepoEntityForDisplay || repo.entity,
         repo: repo.repo || resolvedParams.repo,
         readme: preferUpstreamContent ? "" : repo.readme || "",
-        description: preferUpstreamContent ? "" : repo.description || "",
+        description: repo.description || "",
         files: resolvedFiles,
         sourceUrl: repo.sourceUrl,
         forkedFrom: repo.forkedFrom || repo.sourceUrl,
@@ -3980,7 +3986,42 @@ export default function RepoCodePage() {
     mounted,
   ]);
 
-  // Eager GitHub README + description when upstream mirror is canonical (do not wait for GRASP tree)
+  // Sidebar About: refetch description from GitHub (or other upstream) on visit / refresh
+  useEffect(() => {
+    if (!mounted) return;
+    const sourceUrl =
+      resolveRepoUpstreamSource(repoData) ||
+      resolveUpstreamSourceUrl(effectiveSourceUrl);
+    if (!sourceUrl || !hasGithubUpstreamMirror(sourceUrl)) return;
+
+    let cancelled = false;
+    (async () => {
+      const desc = await fetchGithubRepoDescription(sourceUrl);
+      if (cancelled || !desc) return;
+      setRepoData((prev) =>
+        prev?.description === desc ? prev : { ...prev!, description: desc }
+      );
+      persistRepoDescription(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        desc
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    mounted,
+    repoData?.sourceUrl,
+    repoData?.forkedFrom,
+    (repoData as { clone?: string[] })?.clone?.join("|") ?? "",
+    effectiveSourceUrl,
+    resolvedParams.entity,
+    resolvedParams.repo,
+  ]);
+
+  // Eager GitHub README when upstream mirror is canonical (do not wait for GRASP tree)
   useEffect(() => {
     if (selectedFile || fileContent) return;
     const sourceUrl =
@@ -4039,28 +4080,8 @@ export default function RepoCodePage() {
           return { ...prev, readme: md };
         });
 
-        const ghRepo = sourceUrl.match(/github\.com\/([^/]+)\/([^/.]+)/i);
-        if (ghRepo) {
-          const [, owner, repoName] = ghRepo;
-          const proxyRes = await fetch(
-            `/api/github/proxy?endpoint=${encodeURIComponent(
-              `/repos/${owner}/${repoName}`
-            )}`
-          );
-          if (proxyRes.ok && !cancelled) {
-            const repoInfo = await proxyRes.json();
-            if (
-              typeof repoInfo?.description === "string" &&
-              repoInfo.description.trim().length > 0
-            ) {
-              setRepoData((prev) =>
-                prev ? { ...prev, description: repoInfo.description } : prev
-              );
-            }
-          }
-        }
       } catch (e) {
-        console.warn("[Upstream sync] Failed to load README/description:", e);
+        console.warn("[Upstream sync] Failed to load README:", e);
       }
     })();
 
@@ -11199,7 +11220,26 @@ export default function RepoCodePage() {
 
   useEffect(() => {
     computeLiveCounts();
-    const onUpdate = () => computeLiveCounts();
+    const onUpdate = () => {
+      computeLiveCounts();
+      try {
+        const repos = loadStoredRepos();
+        const rec = findRepoByEntityAndName(
+          repos,
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        const desc =
+          typeof rec?.description === "string" ? rec.description.trim() : "";
+        if (desc) {
+          setRepoData((prev) =>
+            prev?.description === desc ? prev : { ...prev!, description: desc }
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+    };
     window.addEventListener("gittr:repos-updated", onUpdate as EventListener);
 
     // Listen for GRASP repo clone completion events
@@ -16439,7 +16479,8 @@ export default function RepoCodePage() {
             className="pb-2 prose prose-invert max-w-none prose-p:text-sm prose-p:text-gray-300 prose-a:text-purple-400 prose-a:no-underline hover:prose-a:underline"
             suppressHydrationWarning
           >
-            {mounted && repoData?.description ? (
+            {mounted &&
+            sidebarAboutText(repoData?.description, resolvedParams.repo) ? (
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
@@ -16447,7 +16488,7 @@ export default function RepoCodePage() {
                   a: repoDescriptionMarkdownAnchor,
                 }}
               >
-                {repoData.description}
+                {sidebarAboutText(repoData?.description, resolvedParams.repo)}
               </ReactMarkdown>
             ) : (
               <p className="text-gray-500">No description available</p>

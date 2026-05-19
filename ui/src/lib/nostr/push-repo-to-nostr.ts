@@ -1471,7 +1471,8 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       // NIP-34: Add description tag
       // CRITICAL: Always include "description" tag (other clients expect it)
       const description =
-        repo.description || `Repository: ${repoName || actualRepositoryName}`;
+        (repo.description || "").trim() ||
+          (repoName ? "" : `Repository: ${actualRepositoryName}`);
       if (description) {
         nip34Tags.push(["description", description]);
       }

@@ -140,10 +140,8 @@ export function CodeViewer({
     const match = hash.match(/#L(\d+)(?:-L(\d+))?/);
 
     if (!match || !match[1]) {
-      // No hash to parse - clear selection only if there's truly no hash
-      if (!hash || !hash.includes("L")) {
-        setSelectedLines(null);
-      }
+      // Do not clear selection here — file-change effect handles that.
+      // Clearing when hash is empty was wiping clicks before the URL updated.
       return;
     }
 
@@ -238,6 +236,24 @@ export function CodeViewer({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<number | null>(null);
   const [justDragged, setJustDragged] = useState(false);
+  /** Refs avoid stale state when mouseup/click fire in the same tick as mousedown */
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef<number | null>(null);
+  const justDraggedRef = useRef(false);
+  const selectedLinesRef = useRef(selectedLines);
+  selectedLinesRef.current = selectedLines;
+
+  const applyLineHash = useCallback((start: number, end: number) => {
+    const newHash = end > start ? `#L${start}-L${end}` : `#L${start}`;
+    isUserSelectionRef.current = true;
+    lastHashRef.current = newHash;
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + window.location.search + newHash
+    );
+    setCurrentHash(newHash);
+  }, []);
 
   // Helper to scroll action bar into view
   const scrollToActionBar = () => {
@@ -252,11 +268,20 @@ export function CodeViewer({
     }, 150);
   };
 
+  const endDrag = () => {
+    isDraggingRef.current = false;
+    dragStartRef.current = null;
+    setIsDragging(false);
+    setDragStart(null);
+  };
+
   const handleLineMouseDown = (lineNum: number, e: React.MouseEvent) => {
-    if (e.button !== 0) return; // Only left mouse button
-    e.preventDefault();
+    if (e.button !== 0) return;
     e.stopPropagation();
 
+    isDraggingRef.current = true;
+    justDraggedRef.current = false;
+    dragStartRef.current = lineNum;
     setIsDragging(true);
     setJustDragged(false);
     setDragStart(lineNum);
@@ -264,128 +289,91 @@ export function CodeViewer({
     setSelectedLines({ start: lineNum, end: lineNum });
   };
 
-  const handleLineMouseEnter = (lineNum: number, e: React.MouseEvent) => {
-    if (isDragging && dragStart !== null) {
-      const start = Math.min(dragStart, lineNum);
-      const end = Math.max(dragStart, lineNum);
-      setSelectedLines({ start, end });
-    }
+  const handleLineMouseEnter = (lineNum: number) => {
+    if (!isDraggingRef.current || dragStartRef.current === null) return;
+    const start = Math.min(dragStartRef.current, lineNum);
+    const end = Math.max(dragStartRef.current, lineNum);
+    setSelectedLines({ start, end });
   };
 
   const handleLineMouseUp = (lineNum: number, e: React.MouseEvent) => {
-    if (!isDragging) return;
+    if (!isDraggingRef.current && dragStartRef.current === null) return;
 
     e.preventDefault();
     e.stopPropagation();
 
-    if (dragStart !== null) {
-      const start = Math.min(dragStart, lineNum);
-      const end = Math.max(dragStart, lineNum);
-      setSelectedLines({ start, end });
+    const anchor = dragStartRef.current ?? lineNum;
+    const start = Math.min(anchor, lineNum);
+    const end = Math.max(anchor, lineNum);
+    setSelectedLines({ start, end });
+    applyLineHash(start, end);
+    scrollToActionBar();
 
-      // Update URL
-      const newHash = end > start ? `#L${start}-L${end}` : `#L${start}`;
-      isUserSelectionRef.current = true; // Mark as user selection to prevent hash re-processing
-      lastHashRef.current = newHash; // Update last hash
-      window.history.replaceState(
-        null,
-        "",
-        window.location.pathname + window.location.search + newHash
-      );
-      scrollToActionBar();
-
-      // Mark that we just dragged
-      setJustDragged(true);
-      // Clear the flag after a short delay so click handler knows
-      setTimeout(() => setJustDragged(false), 100);
+    const dragged = anchor !== lineNum;
+    justDraggedRef.current = dragged;
+    setJustDragged(dragged);
+    if (dragged) {
+      setTimeout(() => {
+        justDraggedRef.current = false;
+        setJustDragged(false);
+      }, 100);
     }
 
-    setIsDragging(false);
-    setDragStart(null);
+    endDrag();
     setSelectionStart(null);
   };
 
   const handleLineClick = (lineNum: number, e: React.MouseEvent) => {
-    // Ignore click if we just finished dragging
-    if (justDragged || isDragging) {
-      return;
-    }
+    if (justDraggedRef.current || isDraggingRef.current) return;
 
     e.preventDefault();
     e.stopPropagation();
 
-    // Two-click selection mode: first click sets start, second click sets end
     if (rangeMode && selectionStart !== null) {
-      // Second click - complete the range
       const start = Math.min(selectionStart, lineNum);
       const end = Math.max(selectionStart, lineNum);
       setSelectedLines({ start, end });
       setSelectionStart(null);
       setRangeMode(false);
-
-      // Update URL
-      const newHash = end > start ? `#L${start}-L${end}` : `#L${start}`;
-      isUserSelectionRef.current = true; // Mark as user selection
-      lastHashRef.current = newHash;
-      window.history.replaceState(
-        null,
-        "",
-        window.location.pathname + window.location.search + newHash
-      );
+      applyLineHash(start, end);
       scrollToActionBar();
     } else if (rangeMode && selectionStart === null) {
-      // First click in range mode - set start point
       setSelectionStart(lineNum);
-      setSelectedLines({ start: lineNum, end: lineNum }); // Show preview
+      setSelectedLines({ start: lineNum, end: lineNum });
     } else if (e.shiftKey || e.ctrlKey || e.metaKey) {
-      // Keyboard modifier: extend from existing selection
       if (selectedLines) {
         const start = Math.min(selectedLines.start, lineNum);
         const end = Math.max(selectedLines.start, lineNum);
         setSelectedLines({ start, end });
-        const newHash = end > start ? `#L${start}-L${end}` : `#L${start}`;
-        window.history.replaceState(
-          null,
-          "",
-          window.location.pathname + window.location.search + newHash
-        );
+        applyLineHash(start, end);
       } else {
         setSelectedLines({ start: lineNum, end: lineNum });
-        const newHash = `#L${lineNum}`;
-        isUserSelectionRef.current = true;
-        lastHashRef.current = newHash;
-        window.history.replaceState(
-          null,
-          "",
-          window.location.pathname + window.location.search + newHash
-        );
+        applyLineHash(lineNum, lineNum);
       }
     } else {
-      // Single click - select single line
       setSelectedLines({ start: lineNum, end: lineNum });
       setSelectionStart(null);
-      const newHash = `#L${lineNum}`;
-      window.history.replaceState(
-        null,
-        "",
-        window.location.pathname + window.location.search + newHash
-      );
+      applyLineHash(lineNum, lineNum);
+      scrollToActionBar();
     }
   };
 
-  // Handle mouse up anywhere to end drag
   useEffect(() => {
     const handleGlobalMouseUp = () => {
-      if (isDragging) {
-        setIsDragging(false);
-        setDragStart(null);
-        setSelectionStart(null);
-      }
+      if (!isDraggingRef.current || dragStartRef.current === null) return;
+      const sel = selectedLinesRef.current;
+      const anchor = dragStartRef.current;
+      const start = sel?.start ?? anchor;
+      const end = sel?.end ?? anchor;
+      applyLineHash(start, end);
+      scrollToActionBar();
+      endDrag();
+      setSelectionStart(null);
     };
 
     window.addEventListener("mouseup", handleGlobalMouseUp);
     return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
-  }, [isDragging]);
+  }, [applyLineHash]);
 
   // Mobile: Handle touch for range selection
   const handleLineTouchStart = (lineNum: number, e: React.TouchEvent) => {
@@ -743,8 +731,7 @@ export function CodeViewer({
             }`;
           const handlers = {
             onMouseDown: (e: React.MouseEvent) => handleLineMouseDown(lineNum, e),
-            onMouseEnter: (e: React.MouseEvent) =>
-              handleLineMouseEnter(lineNum, e),
+            onMouseEnter: () => handleLineMouseEnter(lineNum),
             onMouseUp: (e: React.MouseEvent) => handleLineMouseUp(lineNum, e),
             onClick: (e: React.MouseEvent) => handleLineClick(lineNum, e),
             onContextMenu: (e: React.MouseEvent) =>
@@ -758,23 +745,20 @@ export function CodeViewer({
           return (
             <div
               key={`line-${idx}-${selectedLines?.start}-${selectedLines?.end}-${selectionStart}`}
-              className="grid grid-cols-1 sm:grid-cols-[auto_1fr] min-w-max"
+              className="grid grid-cols-1 sm:grid-cols-[auto_1fr] min-w-max cursor-pointer"
+              style={noSelect}
+              {...handlers}
             >
               <div
                 id={`line-${lineNum}`}
-                className={`hidden sm:block select-none text-right tabular-nums text-gray-500 border-r border-gray-700 ${rowClass("gutter")}`}
-                style={{ ...noSelect, minWidth: `${gutterCh}ch` }}
+                className={`hidden sm:block text-right tabular-nums text-gray-500 border-r border-gray-700 ${rowClass("gutter")}`}
+                style={{ minWidth: `${gutterCh}ch` }}
                 title={`Line ${lineNum}. Click to select. Use "Select Range" for multi-line selection. Right-click to copy permalink.`}
-                {...handlers}
               >
                 {lineNum}
               </div>
-              <div
-                className={`whitespace-pre ${rowClass("code")}`}
-                style={noSelect}
-                {...handlers}
-              >
-                {line || " "}
+              <div className={`whitespace-pre ${rowClass("code")}`}>
+                {line || "\u00a0"}
               </div>
             </div>
           );

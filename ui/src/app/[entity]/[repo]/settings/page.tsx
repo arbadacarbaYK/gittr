@@ -21,6 +21,9 @@ import {
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { getAccumulatedZaps } from "@/lib/payments/zap-repo";
 import { canManageSettings, isOwner } from "@/lib/repo-permissions";
+import { fetchGithubRepoDescription } from "@/lib/repos/repo-github-hub";
+import { isPlaceholderRepositoryDescription } from "@/lib/repos/repo-about-text";
+import { resolveRepoUpstreamSource } from "@/lib/repos/upstream-precedence";
 import {
   type StoredContributor,
   type StoredRepo,
@@ -222,8 +225,18 @@ export default function RepoSettingsPage() {
           publicRead?: boolean;
           publicWrite?: boolean;
         };
-        setDescription(repoData.description || "");
+        const storedDesc = repoData.description || "";
+        setDescription(storedDesc);
         setTags(repoData.topics || []);
+        const upstream = resolveRepoUpstreamSource(repoData);
+        if (
+          upstream?.includes("github.com") &&
+          isPlaceholderRepositoryDescription(storedDesc, repo)
+        ) {
+          void fetchGithubRepoDescription(upstream).then((fromGh) => {
+            if (fromGh) setDescription(fromGh);
+          });
+        }
         setZapSplits(repoWithExtras.zapPolicy?.splits || []);
         setLogoInput(repoWithExtras.logoUrl || "");
         setRequiredApprovals(repoWithExtras.requiredApprovals || 1);
