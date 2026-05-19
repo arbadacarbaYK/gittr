@@ -5,7 +5,7 @@ import { use, useCallback, useEffect, useRef, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CopyableCodeBlock } from "@/components/ui/copyable-code-block";
+import { MarkdownCode } from "@/lib/utils/markdown-code";
 import { Reactions } from "@/components/ui/reactions";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -263,27 +263,7 @@ export default function DiscussionDetailPage({
                   remarkPlugins={[remarkGfm]}
                   rehypePlugins={[rehypeRaw]}
                   components={{
-                    code: ({
-                      node,
-                      inline,
-                      className,
-                      children,
-                      ...props
-                    }: any) => {
-                      return (
-                        <CopyableCodeBlock
-                          inline={inline}
-                          className={
-                            inline
-                              ? "bg-gray-900 px-1 rounded text-green-400"
-                              : className ||
-                                "bg-gray-900 rounded p-4 overflow-x-auto"
-                          }
-                        >
-                          {children}
-                        </CopyableCodeBlock>
-                      );
-                    },
+                    code: MarkdownCode,
                   }}
                 >
                   {comment.content}
@@ -386,27 +366,7 @@ export default function DiscussionDetailPage({
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
                 components={{
-                  code: ({
-                    node,
-                    inline,
-                    className,
-                    children,
-                    ...props
-                  }: any) => {
-                    return (
-                      <CopyableCodeBlock
-                        inline={inline}
-                        className={
-                          inline
-                            ? "bg-gray-900 px-1 rounded text-green-400"
-                            : className ||
-                              "bg-gray-900 rounded p-4 overflow-x-auto"
-                        }
-                      >
-                        {children}
-                      </CopyableCodeBlock>
-                    );
-                  },
+                  code: MarkdownCode,
                 }}
               >
                 {discussion.description}

@@ -17,7 +17,6 @@ import { BranchTagSwitcher } from "@/components/ui/branch-tag-switcher";
 import { Button } from "@/components/ui/button";
 import { CodeViewer } from "@/components/ui/code-viewer";
 import { Contributors } from "@/components/ui/contributors";
-import { CopyableCodeBlock } from "@/components/ui/copyable-code-block";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,7 +25,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { FuzzyFileFinder } from "@/components/ui/fuzzy-file-finder";
-import { MermaidRenderer } from "@/components/ui/mermaid-renderer";
 import { PaymentQR } from "@/components/ui/payment-qr";
 import { PushPaywallStatus } from "@/components/ui/push-paywall-status";
 import { RelayDisplay } from "@/components/ui/relay-display";
@@ -144,6 +142,7 @@ import {
 } from "@/lib/utils/repo-status";
 import { cn } from "@/lib/utils";
 import { MarkdownAnchor } from "@/lib/utils/markdown-anchor";
+import { MarkdownCode } from "@/lib/utils/markdown-code";
 
 import {
   BookOpen,
@@ -15555,44 +15554,7 @@ export default function RepoCodePage() {
                         );
                       },
                       a: MarkdownAnchor,
-                      code: ({
-                        node,
-                        inline,
-                        className,
-                        children,
-                        ...props
-                      }: any) => {
-                        const match = /language-([\w-]+)/.exec(className || "");
-                        const language = match?.[1]?.toLowerCase();
-                        const content = String(children).replace(/\n$/, "");
-
-                        if (!inline && language === "mermaid") {
-                          return (
-                            <MermaidRenderer code={content} className="my-4" />
-                          );
-                        }
-
-                        // Inline code (single backticks) - just styled text
-                        if (inline) {
-                          return (
-                            <code className="bg-gray-900 px-1 py-0.5 rounded text-green-400">
-                              {children}
-                            </code>
-                          );
-                        }
-                        // Code blocks (triple backticks) - copyable box
-                        return (
-                          <CopyableCodeBlock
-                            inline={false}
-                            className={
-                              className ||
-                              "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"
-                            }
-                          >
-                            {children}
-                          </CopyableCodeBlock>
-                        );
-                      },
+                      code: MarkdownCode,
                     }}
                   >
                     {currentFolderReadme || repoData?.readme || ""}
@@ -16233,40 +16195,7 @@ export default function RepoCodePage() {
                               );
                             },
                             a: MarkdownAnchor,
-                            code: ({
-                              node,
-                              inline,
-                              className,
-                              children,
-                              ...props
-                            }: any) => {
-                              const hasLanguageClass =
-                                className && /language-/.test(className);
-                              const isBlockCode =
-                                hasLanguageClass || inline === false;
-
-                              // Inline code (single backticks) - just styled text, not copyable
-                              if (!isBlockCode) {
-                                return (
-                                  <code className="bg-gray-900 px-1 py-0.5 rounded text-green-400">
-                                    {children}
-                                  </code>
-                                );
-                              }
-
-                              // Code blocks (triple backticks) - copyable box
-                              return (
-                                <CopyableCodeBlock
-                                  inline={false}
-                                  className={
-                                    className ||
-                                    "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"
-                                  }
-                                >
-                                  {children}
-                                </CopyableCodeBlock>
-                              );
-                            },
+                            code: MarkdownCode,
                           }}
                         >
                           {(() => {

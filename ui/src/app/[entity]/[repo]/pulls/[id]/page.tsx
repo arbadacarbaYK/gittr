@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CodeSnippetRenderer } from "@/components/ui/code-snippet-renderer";
 import { ConflictDetector } from "@/components/ui/conflict-detector";
-import { CopyableCodeBlock } from "@/components/ui/copyable-code-block";
+import { MarkdownCode } from "@/lib/utils/markdown-code";
 import { FileDiffViewer } from "@/components/ui/file-diff-viewer";
 import { PaymentQR } from "@/components/ui/payment-qr";
 import { PRReviewSection } from "@/components/ui/pr-review-section";
@@ -2030,32 +2030,7 @@ export default function PRDetailPage({
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
                 components={{
-                  code: ({
-                    node,
-                    inline,
-                    className,
-                    children,
-                    ...props
-                  }: any) => {
-                    if (inline) {
-                      return (
-                        <code className="bg-gray-900 px-1 py-0.5 rounded text-green-400">
-                          {children}
-                        </code>
-                      );
-                    }
-                    return (
-                      <CopyableCodeBlock
-                        inline={false}
-                        className={
-                          className ||
-                          "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"
-                        }
-                      >
-                        {children}
-                      </CopyableCodeBlock>
-                    );
-                  },
+                  code: MarkdownCode,
                 }}
               >
                 {pr.body || "No description provided"}

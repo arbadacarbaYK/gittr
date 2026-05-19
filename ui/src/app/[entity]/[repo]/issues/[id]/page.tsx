@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { BountyButton } from "@/components/ui/bounty-button";
 import { Button } from "@/components/ui/button";
 import { CodeSnippetRenderer } from "@/components/ui/code-snippet-renderer";
-import { CopyableCodeBlock } from "@/components/ui/copyable-code-block";
+import { MarkdownCode } from "@/lib/utils/markdown-code";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1533,27 +1533,7 @@ export default function IssueDetailPage({
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
                 components={{
-                  code: ({
-                    node,
-                    inline,
-                    className,
-                    children,
-                    ...props
-                  }: any) => {
-                    return (
-                      <CopyableCodeBlock
-                        inline={inline}
-                        className={
-                          inline
-                            ? "bg-gray-900 px-1 rounded text-green-400"
-                            : className ||
-                              "bg-gray-900 rounded p-4 overflow-x-auto"
-                        }
-                      >
-                        {children}
-                      </CopyableCodeBlock>
-                    );
-                  },
+                  code: MarkdownCode,
                 }}
               >
                 {issue.description}
