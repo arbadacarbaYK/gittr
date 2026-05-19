@@ -143,6 +143,7 @@ import {
   setRepoStatus,
 } from "@/lib/utils/repo-status";
 import { cn } from "@/lib/utils";
+import { MarkdownAnchor } from "@/lib/utils/markdown-anchor";
 
 import {
   BookOpen,
@@ -307,24 +308,33 @@ const createMarkdownHeadingComponents = (
       };
 
       return (
-        <Tag id={id} className="group scroll-mt-24" {...props}>
-          <span className="inline-flex items-center gap-2">
+        <Tag
+          id={id}
+          className="group scroll-mt-24 flex flex-wrap items-center gap-2"
+          {...props}
+        >
+          <span className="min-w-0 flex-1">{children}</span>
+          <span className="inline-flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <a
               href={`#${id}`}
-              className="no-underline text-inherit hover:text-purple-300"
+              className="text-gray-400 hover:text-purple-300"
+              aria-label={
+                text ? `Link to ${text}` : "Link to heading"
+              }
+              title="Jump to this heading"
             >
-              {children}
+              <Link2 className="h-3.5 w-3.5" />
             </a>
             <button
               type="button"
               onClick={handleCopy}
-              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-purple-300"
+              className="text-gray-400 hover:text-purple-300"
               aria-label={
                 text ? `Copy link to ${text}` : "Copy link to heading"
               }
               title="Copy link to heading"
             >
-              <Link2 className="h-3.5 w-3.5" />
+              <Copy className="h-3.5 w-3.5" />
             </button>
           </span>
         </Tag>
@@ -1837,6 +1847,13 @@ export default function RepoCodePage() {
   // Clear failed files when repo changes
   useEffect(() => {
     failedFilesRef.current.clear();
+  }, [resolvedParams.entity, resolvedParams.repo]);
+
+  // Reset folder README fetch when navigating to another repo
+  useEffect(() => {
+    folderReadmeLoadGenRef.current += 1;
+    setCurrentFolderReadme(null);
+    setLoadingFolderReadme(false);
   }, [resolvedParams.entity, resolvedParams.repo]);
   // Ref to track if we're updating state from URL (prevents loops)
   const updatingFromURLRef = useRef(false);
@@ -10136,12 +10153,14 @@ export default function RepoCodePage() {
     if (selectedFile || fileContent) {
       folderReadmeLoadGenRef.current += 1;
       setCurrentFolderReadme(null);
+      setLoadingFolderReadme(false);
       return;
     }
 
     if (!safeFiles || safeFiles.length === 0) {
       folderReadmeLoadGenRef.current += 1;
       setCurrentFolderReadme(null);
+      setLoadingFolderReadme(false);
       return;
     }
 
@@ -10166,6 +10185,7 @@ export default function RepoCodePage() {
     if (!readmeFile) {
       folderReadmeLoadGenRef.current += 1;
       setCurrentFolderReadme(null);
+      setLoadingFolderReadme(false);
       return;
     }
 
@@ -10173,8 +10193,9 @@ export default function RepoCodePage() {
     const gen = folderReadmeLoadGenRef.current;
     setLoadingFolderReadme(true);
 
+    let cancelled = false;
     const finish = (md: string | null) => {
-      if (gen !== folderReadmeLoadGenRef.current) return;
+      if (cancelled || gen !== folderReadmeLoadGenRef.current) return;
       setCurrentFolderReadme(md);
       setLoadingFolderReadme(false);
     };
@@ -10402,16 +10423,19 @@ export default function RepoCodePage() {
       }
     };
 
-    const debounceTimer = window.setTimeout(() => {
-      loadReadme();
-    }, 250);
-    return () => window.clearTimeout(debounceTimer);
+    void loadReadme();
+
+    return () => {
+      cancelled = true;
+      folderReadmeLoadGenRef.current += 1;
+      setLoadingFolderReadme(false);
+    };
   }, [
     currentPath,
     safeFiles,
     repoData?.sourceUrl,
     repoData?.forkedFrom,
-    (repoData as { clone?: string[] })?.clone,
+    (repoData as { clone?: string[] })?.clone?.join("|") ?? "",
     repoData?.hasUnpushedEdits,
     repoData?.defaultBranch,
     repoData?.ownerPubkey,
@@ -15365,7 +15389,10 @@ export default function RepoCodePage() {
                   <span className="text-gray-400">
                     {loadingFolderReadme &&
                     !currentFolderReadme &&
-                    !repoData?.readme
+                    !repoData?.readme &&
+                    !safeFiles.some((f: { path?: string }) =>
+                      /^(readme\.md|readme)$/i.test(String(f?.path || ""))
+                    )
                       ? "Loading README..."
                       : "README.md"}
                   </span>
@@ -15527,73 +15554,7 @@ export default function RepoCodePage() {
                           </div>
                         );
                       },
-                      a: ({ node, href, children, ...props }: any) => {
-                        // Convert YouTube URLs to embeds
-                        if (href && typeof href === "string") {
-                          const youtubeRegex =
-                            /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
-                          const match = href.match(youtubeRegex);
-                          if (match && match[1]) {
-                            const videoId = match[1];
-                            return (
-                              <div className="my-4">
-                                <iframe
-                                  width="560"
-                                  height="315"
-                                  src={`https://www.youtube.com/embed/${videoId}`}
-                                  title="YouTube video player"
-                                  frameBorder="0"
-                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                                  allowFullScreen
-                                  referrerPolicy="no-referrer-when-downgrade"
-                                  className="w-full max-w-full rounded"
-                                  style={{ aspectRatio: "16/9" }}
-                                />
-                              </div>
-                            );
-                          }
-                          // CRITICAL: Fix links that have path segments instead of query parameters
-                          // This handles old links from GitHub repos or other sources that use path segments
-                          // Match: https://gittr.space/npub.../repo-name/path/to/file
-                          // Convert to: https://gittr.space/npub.../repo-name?path=path%2Fto%2Ffile
-                          if (
-                            href.includes("gittr.space") &&
-                            href.includes("/") &&
-                            !href.includes("?path=") &&
-                            !href.includes("?file=") &&
-                            !href.includes("?branch=") &&
-                            !href.includes("api/")
-                          ) {
-                            const gittrPathMatch = href.match(
-                              /^(https?:\/\/gittr\.space\/[^\/]+\/[^\/]+)\/([^?#]+)$/
-                            );
-                            if (
-                              gittrPathMatch &&
-                              gittrPathMatch[1] &&
-                              gittrPathMatch[2]
-                            ) {
-                              const baseUrl = gittrPathMatch[1];
-                              const pathSegment = gittrPathMatch[2];
-                              // Convert path segment to query parameter format
-                              href = `${baseUrl}?path=${encodeURIComponent(
-                                pathSegment
-                              )}`;
-                            }
-                          }
-                        }
-                        // Regular link
-                        return (
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-purple-400 hover:text-purple-300"
-                            {...props}
-                          >
-                            {children}
-                          </a>
-                        );
-                      },
+                      a: MarkdownAnchor,
                       code: ({
                         node,
                         inline,
@@ -16271,45 +16232,7 @@ export default function RepoCodePage() {
                                 </div>
                               );
                             },
-                            a: ({ node, href, children, ...props }: any) => {
-                              // Convert YouTube URLs to embeds
-                              if (href && typeof href === "string") {
-                                const youtubeRegex =
-                                  /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
-                                const match = href.match(youtubeRegex);
-                                if (match && match[1]) {
-                                  const videoId = match[1];
-                                  return (
-                                    <div className="my-4">
-                                      <iframe
-                                        width="560"
-                                        height="315"
-                                        src={`https://www.youtube.com/embed/${videoId}`}
-                                        title="YouTube video player"
-                                        frameBorder="0"
-                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                                        allowFullScreen
-                                        referrerPolicy="no-referrer-when-downgrade"
-                                        className="w-full max-w-full rounded"
-                                        style={{ aspectRatio: "16/9" }}
-                                      />
-                                    </div>
-                                  );
-                                }
-                              }
-                              // Regular link
-                              return (
-                                <a
-                                  href={href}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-purple-400 hover:text-purple-300"
-                                  {...props}
-                                >
-                                  {children}
-                                </a>
-                              );
-                            },
+                            a: MarkdownAnchor,
                             code: ({
                               node,
                               inline,
@@ -16550,45 +16473,7 @@ export default function RepoCodePage() {
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
                 components={{
-                  a: ({ node, href, children, ...props }: any) => {
-                    // Convert YouTube URLs to embeds
-                    if (href && typeof href === "string") {
-                      const youtubeRegex =
-                        /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
-                      const match = href.match(youtubeRegex);
-                      if (match && match[1]) {
-                        const videoId = match[1];
-                        return (
-                          <div className="my-4">
-                            <iframe
-                              width="560"
-                              height="315"
-                              src={`https://www.youtube.com/embed/${videoId}`}
-                              title="YouTube video player"
-                              frameBorder="0"
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                              allowFullScreen
-                              referrerPolicy="no-referrer-when-downgrade"
-                              className="w-full max-w-full rounded"
-                              style={{ aspectRatio: "16/9" }}
-                            />
-                          </div>
-                        );
-                      }
-                    }
-                    // Regular link
-                    return (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-purple-400 hover:text-purple-300"
-                        {...props}
-                      >
-                        {children}
-                      </a>
-                    );
-                  },
+                  a: MarkdownAnchor,
                 }}
               >
                 {repoData.description}

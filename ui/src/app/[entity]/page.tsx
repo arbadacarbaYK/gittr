@@ -151,6 +151,8 @@ export default function EntityPage({
   const anonRepoSyncRef = useRef(false);
   const [isPubkey, setIsPubkey] = useState(false);
   const [userRepos, setUserRepos] = useState<any[]>([]);
+  /** Bumped when gittr_repos changes so the profile repo list reloads without hard refresh. */
+  const [reposReloadToken, setReposReloadToken] = useState(0);
   const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [contributionGraph, setContributionGraph] = useState<
     Array<{ date: string; count: number }>
@@ -449,9 +451,23 @@ export default function EntityPage({
     return {};
   }, [pubkeyForMetadata, currentUserPubkey, fullPubkeyForMeta, metadataMap]);
 
-  // Ensure public profiles can load repos even when anonymous storage was cleaned
+  // Re-load repo list when localStorage is updated (explore sync, profile Nostr fetch, imports)
   useEffect(() => {
-    if (isLoggedIn) return;
+    const bumpReposReload = () => setReposReloadToken((n) => n + 1);
+    window.addEventListener("storage", bumpReposReload);
+    window.addEventListener("gittr:repos-updated", bumpReposReload);
+    window.addEventListener("gittr:repo-created", bumpReposReload);
+    window.addEventListener("gittr:repo-imported", bumpReposReload);
+    return () => {
+      window.removeEventListener("storage", bumpReposReload);
+      window.removeEventListener("gittr:repos-updated", bumpReposReload);
+      window.removeEventListener("gittr:repo-created", bumpReposReload);
+      window.removeEventListener("gittr:repo-imported", bumpReposReload);
+    };
+  }, []);
+
+  // Fetch this profile's repos from relays when the local cache is empty (all visitors)
+  useEffect(() => {
     if (!subscribe || !defaultRelays || defaultRelays.length === 0) return;
 
     const targetPubkey =
@@ -514,15 +530,6 @@ export default function EntityPage({
 
     if (hasReposForProfile) return;
     if (anonRepoSyncRef.current) return;
-
-    if (typeof window !== "undefined") {
-      const cacheKey = `gittr_profile_repo_sync_${targetPubkey}`;
-      const lastSync = sessionStorage.getItem(cacheKey);
-      if (lastSync && Date.now() - Number(lastSync) < 2 * 60 * 1000) {
-        return;
-      }
-      sessionStorage.setItem(cacheKey, Date.now().toString());
-    }
 
     anonRepoSyncRef.current = true;
     const graspRelays = getGraspServers(defaultRelays);
@@ -593,12 +600,12 @@ export default function EntityPage({
             ...repoEntry,
           };
           localStorage.setItem("gittr_repos", JSON.stringify(existingRepos));
-          window.dispatchEvent(new CustomEvent("storage"));
+          window.dispatchEvent(new Event("gittr:repos-updated"));
         }
       } else {
         existingRepos.push(repoEntry);
         localStorage.setItem("gittr_repos", JSON.stringify(existingRepos));
-        window.dispatchEvent(new CustomEvent("storage"));
+        window.dispatchEvent(new Event("gittr:repos-updated"));
       }
     };
 
@@ -638,6 +645,11 @@ export default function EntityPage({
 
     const resetTimer = setTimeout(() => {
       anonRepoSyncRef.current = false;
+      if (typeof window !== "undefined") {
+        const cacheKey = `gittr_profile_repo_sync_${targetPubkey}`;
+        sessionStorage.setItem(cacheKey, Date.now().toString());
+      }
+      setReposReloadToken((n) => n + 1);
     }, 8000);
 
     return () => {
@@ -646,7 +658,6 @@ export default function EntityPage({
       if (unsub) unsub();
     };
   }, [
-    isLoggedIn,
     userRepos.length,
     subscribe,
     defaultRelays,
@@ -2092,8 +2103,12 @@ export default function EntityPage({
         router.replace("/explore");
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolvedParams.entity]);
+  }, [
+    resolvedParams.entity,
+    reposReloadToken,
+    fullPubkeyForMeta,
+    currentUserPubkey,
+  ]);
 
   // Resolve pubkey from localStorage after mount to prevent hydration errors
   // Use ref to track last processed entity to prevent re-processing

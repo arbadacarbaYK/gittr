@@ -12,6 +12,7 @@ import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { formatDate24h, formatDateTime24h } from "@/lib/utils/date-format";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import { MarkdownAnchor } from "@/lib/utils/markdown-anchor";
 
 import {
   Calendar,
@@ -577,14 +578,7 @@ export default function ProjectsPage() {
                   remarkPlugins={[remarkGfm]}
                   rehypePlugins={[rehypeRaw]}
                   components={{
-                    a: ({ node, ...props }: any) => (
-                      <a
-                        {...props}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-purple-400 hover:text-purple-300"
-                      />
-                    ),
+                    a: MarkdownAnchor,
                   }}
                 >
                   {item.content}
@@ -960,14 +954,7 @@ export default function ProjectsPage() {
                           remarkPlugins={[remarkGfm]}
                           rehypePlugins={[rehypeRaw]}
                           components={{
-                            a: ({ node, ...props }: any) => (
-                              <a
-                                {...props}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-purple-400 hover:text-purple-300"
-                              />
-                            ),
+                            a: MarkdownAnchor,
                           }}
                         >
                           {item.content.length > 150
