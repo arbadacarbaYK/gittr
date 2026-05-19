@@ -1,10 +1,10 @@
 export default function Head() {
   return (
     <>
-      <title>NostrGit</title>
+      <title>gittr</title>
       <meta
         name="description"
-        content="a truly censorship-resistant alternative to GitHub that has a chance of working"
+        content="Nostr git hosting: mirror repos, collaborate with issues and PRs, publish Pages, discover apps, Lightning bounties."
       />
       <link rel="icon" href="/favicon.ico" />
       <link

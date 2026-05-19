@@ -1,3 +1,4 @@
+import { buildRepoFallbackDescription } from "@/lib/seo/site-metadata";
 import {
   resolveRepoIconForMetadata,
   resolveUserIconForMetadata,
@@ -360,7 +361,7 @@ export async function generateMetadata({
       ? repoDescription.length > 160
         ? repoDescription.substring(0, 157) + "..."
         : repoDescription
-      : `Repository ${title} on gittr - Decentralized Git Hosting on Nostr. A censorship-resistant alternative to GitHub.`;
+      : buildRepoFallbackDescription(resolvedParams.entity, decodedRepo);
 
     console.log("[Metadata] Final metadata:", {
       title,
@@ -372,11 +373,11 @@ export async function generateMetadata({
       title,
       description,
       keywords: [
-        "git",
-        "nostr",
+        "nostr git",
+        "NIP-34",
         "repository",
-        "decentralized",
-        "censorship-resistant",
+        "git hosting",
+        "Lightning bounties",
         decodedRepo,
       ],
       openGraph: {
@@ -421,7 +422,10 @@ export async function generateMetadata({
 
     return {
       title,
-      description: `Repository ${title} on gittr - Decentralized Git Hosting on Nostr. A censorship-resistant alternative to GitHub.`,
+      description: buildRepoFallbackDescription(
+        resolvedParams.entity,
+        decodedRepo
+      ),
       openGraph: {
         title,
         description: `Repository ${title} on gittr - Decentralized Git Hosting on Nostr`,

@@ -1,7 +1,7 @@
 {
     "name": "gittr",
     "short_name": "gittr",
-    "description": "Decentralized Git hosting on Nostr with Bitcoin incentives.",
+    "description": "Nostr git hosting: mirror repos, issues & PRs, Pages, apps, Lightning bounties.",
     "id": "/?source=pwa",
     "start_url": "/?source=pwa",
     "scope": "/",

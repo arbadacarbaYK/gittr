@@ -1,8 +1,20 @@
-# gittr.space - Git over Nostr with Bitcoin Incentives
+# gittr.space — Git over Nostr with Lightning incentives
 
-A decentralized Git platform built on Nostr with native Bitcoin/Lightning payment integration. Think GitHub, but censorship-resistant, with zaps, bounties, and decentralized storage.
+**gittr** is collaboration software on [Nostr](https://github.com/nostr-protocol/nips): mirror git repositories to Nostr git relays (GRASP / NIP-34), run issues and pull requests with signed events, publish **gittr Pages**, discover **Nostr apps**, and fund fixes with **Lightning bounties**.
+
+Import from GitHub, GitLab, Codeberg, or your own git server when you want a backup or a bridge from a centralized forge — gittr is not “a login page that pretends to be another host.”
 
 **Platform**: [gittr.space](https://gittr.space)
+
+### What people use gittr for
+
+- **Mirror & backup** — Keep a copy of repos from your machine or any central forge on Nostr git servers.
+- **Collaborate on Nostr** — Issues, PRs, reviews, and merge state published as NIP-34 / related events.
+- **gittr Pages** — Static sites tied to repos (see [pages.gittr.space](https://pages.gittr.space) and `/pages` in the app).
+- **Nostr apps** — Browse and install apps from the directory (`/apps`).
+- **Bounties & zaps** — Fund issues; split zaps to contributors (LNbits / NWC / LNURL).
+
+**SEO & sitemap:** See [docs/SEO.md](docs/SEO.md) — the sitemap is generated dynamically from relays (and optional local `nostr-pushed-repos.txt`), not shipped as a static file in git.
 
 ## 🚀 Features
 

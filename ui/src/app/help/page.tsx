@@ -123,11 +123,58 @@ export default function HelpPage() {
           <HelpCircle className="h-8 w-8 text-purple-400" />
           Help & Documentation
         </h1>
-        <p className="text-gray-400">
-          Everything you need to know about using gittr.space - Git over Nostr
-          with Bitcoin incentives
+        <p className="text-gray-400 max-w-3xl">
+          Git collaboration on Nostr: mirror code from any forge, run issues and
+          pull requests with signed events, publish Pages, discover apps, and
+          use Lightning bounties. Import from GitHub, GitLab, or Codeberg when
+          you want a backup — not because gittr is a copy of another site.
         </p>
       </header>
+
+      <section
+        id="what-is-gittr"
+        className="border border-[#383B42] rounded-lg p-6 bg-[#171B21] mb-8"
+      >
+        <h2 className="text-xl font-semibold mb-3 text-white">
+          What you can do on gittr
+        </h2>
+        <ul className="grid gap-3 sm:grid-cols-2 text-sm text-gray-300">
+          <li>
+            <strong className="text-white">Mirror &amp; backup</strong> — Copy
+            repos from your server or a central forge to Nostr git relays
+            (GRASP).
+          </li>
+          <li>
+            <strong className="text-white">Issues &amp; PRs on Nostr</strong> —
+            Reviews, merge, and push updated repo state so other clients see the
+            same tree.
+          </li>
+          <li>
+            <strong className="text-white">gittr Pages</strong> — Publish static
+            sites; browse the directory at{" "}
+            <Link href="/pages" className="text-purple-400 hover:text-purple-300">
+              /pages
+            </Link>
+            .
+          </li>
+          <li>
+            <strong className="text-white">Nostr apps</strong> — Discover and
+            install apps from{" "}
+            <Link href="/apps" className="text-purple-400 hover:text-purple-300">
+              /apps
+            </Link>
+            .
+          </li>
+          <li>
+            <strong className="text-white">Bounties &amp; zaps</strong> — Fund
+            issues; pay contributors over Lightning (see Bounties below).
+          </li>
+          <li>
+            <strong className="text-white">Import</strong> — One repo or bulk
+            from GitHub/GitLab when you already host code elsewhere.
+          </li>
+        </ul>
+      </section>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         {/* Quick Links */}
