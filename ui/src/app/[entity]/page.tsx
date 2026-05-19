@@ -40,7 +40,10 @@ import {
 import { getGraspServers } from "@/lib/utils/grasp-servers";
 import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
-import { nostrProfileViewerUrl } from "@/lib/utils/nostr-profile-viewer-url";
+import {
+  isNostrProfileMirrorWebsite,
+  nostrProfileViewerUrl,
+} from "@/lib/utils/nostr-profile-viewer-url";
 import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
 
 import {
@@ -2439,6 +2442,10 @@ export default function EntityPage({
   const website = getMetaField("website");
   const lud16 = getMetaField("lud16");
   const lnurl = getMetaField("lnurl");
+  const hideMirrorWebsite =
+    !!website &&
+    !!fullPubkeyForMeta &&
+    isNostrProfileMirrorWebsite(website, fullPubkeyForMeta);
 
   // Get full pubkey for display (always show npub format, never shortened pubkey)
   const displayPubkey =
@@ -3164,7 +3171,7 @@ export default function EntityPage({
 
             {/* Links */}
             <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3 md:gap-4">
-              {website && (
+              {website && !hideMirrorWebsite && (
                 <a
                   href={
                     website.startsWith("http") ? website : `https://${website}`

@@ -23,7 +23,10 @@ import {
   getUserMetadata,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
-import { nostrProfileViewerUrl } from "@/lib/utils/nostr-profile-viewer-url";
+import {
+  isNostrProfileMirrorWebsite,
+  nostrProfileViewerUrl,
+} from "@/lib/utils/nostr-profile-viewer-url";
 import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
 
 import {
@@ -1720,6 +1723,10 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
   const website = getMetaField("website");
   const lud16 = getMetaField("lud16");
   const lnurl = getMetaField("lnurl");
+  const hideMirrorWebsite =
+    !!website &&
+    !!fullPubkeyForMeta &&
+    isNostrProfileMirrorWebsite(website, fullPubkeyForMeta);
 
   // Get full pubkey for display (always show npub format, never shortened pubkey)
   const displayPubkey =
@@ -2103,7 +2110,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
 
             {/* Links */}
             <div className="flex flex-wrap gap-4">
-              {website && (
+              {website && !hideMirrorWebsite && (
                 <a
                   href={
                     website.startsWith("http") ? website : `https://${website}`
