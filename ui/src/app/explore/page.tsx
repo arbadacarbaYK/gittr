@@ -236,8 +236,10 @@ function ExplorePageContent() {
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const searchParams = useSearchParams();
-  const q = (searchParams?.get("q") || "").toLowerCase();
+  const qRaw = searchParams?.get("q") || "";
+  const q = qRaw.toLowerCase();
   const userFilter = searchParams?.get("user") || null;
+  const openRepoInNewTab = !!(qRaw.trim() || userFilter);
   const { defaultRelays, subscribe, pubkey, addRelay } = useNostrContext();
 
   // DEBUG: Log context values
@@ -2464,8 +2466,17 @@ function ExplorePageContent() {
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
       <h1 className="text-2xl font-bold mb-4">
-        {userFilter ? `Repositories by ${userFilter}` : "Repos"}
+        {userFilter
+          ? `Repositories by ${userFilter}`
+          : qRaw.trim()
+          ? `Search: ${qRaw.trim()}`
+          : "Repos"}
       </h1>
+      {openRepoInNewTab && (
+        <p className="text-sm text-gray-400 mb-4">
+          Repo links open in a new tab so these results stay here.
+        </p>
+      )}
       {userFilter && (
         <p className="text-gray-400 mb-4">
           Showing public repositories for this user
@@ -2687,12 +2698,18 @@ function ExplorePageContent() {
                 <a
                   key={uniqueKey}
                   href={href}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    // Use window.location for navigation since Next.js Link isn't working
-                    window.location.href = href;
-                  }}
+                  target={openRepoInNewTab ? "_blank" : undefined}
+                  rel={openRepoInNewTab ? "noopener noreferrer" : undefined}
+                  onClick={
+                    openRepoInNewTab
+                      ? undefined
+                      : (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          // Use window.location for navigation since Next.js Link isn't working
+                          window.location.href = href;
+                        }
+                  }
                   className="border p-4 hover:bg-white/5 transition-colors block cursor-pointer rounded"
                 >
                   <div className="flex items-center gap-3">
@@ -2769,7 +2786,7 @@ function ExplorePageContent() {
             {userFilter ? (
               <p>No public repositories found for this user.</p>
             ) : q ? (
-              <p>No repositories found matching "{q}".</p>
+              <p>No repositories found matching &quot;{qRaw.trim()}&quot;.</p>
             ) : (
               <p>No repositories yet.</p>
             )}

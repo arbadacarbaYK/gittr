@@ -1,17 +1,28 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { Suspense, useCallback, useEffect, useRef } from "react";
 
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { nip19 } from "nostr-tools";
 
-export default function SearchBar({ className }: { className?: string }) {
+function SearchBarInner({ className }: { className?: string }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const ref = useRef<HTMLInputElement>(null);
+
+  // Keep header search in sync when returning to /explore?q=…
+  const exploreQuery =
+    pathname === "/explore" ? searchParams?.get("q")?.trim() || "" : "";
+  useEffect(() => {
+    if (ref.current && exploreQuery !== ref.current.value) {
+      ref.current.value = exploreQuery;
+    }
+  }, [exploreQuery]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -114,5 +125,25 @@ export default function SearchBar({ className }: { className?: string }) {
       placeholder="Search or jump to…"
       onKeyDown={handleKeyDown}
     />
+  );
+}
+
+export default function SearchBar({ className }: { className?: string }) {
+  return (
+    <Suspense
+      fallback={
+        <Input
+          className={cn(
+            "w-full bg-[#0E1116] transition-all ease-in-out",
+            className
+          )}
+          type="text"
+          placeholder="Search or jump to…"
+          disabled
+        />
+      }
+    >
+      <SearchBarInner className={className} />
+    </Suspense>
   );
 }
