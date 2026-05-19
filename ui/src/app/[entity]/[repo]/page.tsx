@@ -15399,7 +15399,7 @@ export default function RepoCodePage() {
                 <article
                   id="readme"
                   ref={readmePreviewRef}
-                  className="prose prose-invert max-w-full p-4 text-white prose-headings:text-white prose-p:text-gray-300 prose-a:text-purple-500 prose-strong:text-white prose-code:text-green-400 prose-pre:bg-gray-900 prose-code:bg-gray-900 prose-code:px-1 prose-code:rounded"
+                  className="prose prose-invert max-w-full p-4 text-white prose-headings:text-white prose-p:text-gray-300 prose-a:text-purple-500 prose-strong:text-white prose-code:text-green-400 prose-pre:bg-gray-900 prose-code:bg-gray-900 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-code:inline"
                 >
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}

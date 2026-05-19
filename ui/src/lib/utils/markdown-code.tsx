@@ -5,24 +5,45 @@ import type { ReactNode } from "react";
 import { CopyableCodeBlock } from "@/components/ui/copyable-code-block";
 import { MermaidRenderer } from "@/components/ui/mermaid-renderer";
 
-type HastParent = { type?: string; tagName?: string };
+type HastLike = {
+  type?: string;
+  tagName?: string;
+  parent?: HastLike;
+};
 
 export type MarkdownCodeProps = {
-  node?: { parent?: HastParent };
+  node?: HastLike;
   className?: string;
   children?: ReactNode;
   /** Removed in react-markdown v10; kept for call-site compatibility. */
   inline?: boolean;
 };
 
-/** Fenced blocks are `<pre><code>`; inline backticks are `<code>` only. */
+function isInsidePre(node?: HastLike): boolean {
+  let current = node?.parent;
+  for (let depth = 0; current && depth < 8; depth += 1) {
+    if (current.type === "element" && current.tagName === "pre") {
+      return true;
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
+/**
+ * Fenced ``` blocks: `<pre><code class="language-…">` or multiline `<pre><code>`.
+ * Single backticks (tables, prose, parentheses) must stay inline.
+ */
 export function isMarkdownBlockCode(
-  node?: MarkdownCodeProps["node"],
-  className?: string
+  node?: HastLike,
+  className?: string,
+  content?: string
 ): boolean {
   if (className && /language-/.test(className)) return true;
-  const parent = node?.parent;
-  return parent?.type === "element" && parent?.tagName === "pre";
+  if (!isInsidePre(node)) return false;
+  const text = (content ?? "").trim();
+  if (!text.includes("\n") && text.length < 160) return false;
+  return true;
 }
 
 const inlineCodeClassName =
@@ -40,7 +61,7 @@ export function MarkdownCode({
   const language = /language-([\w-]+)/
     .exec(className || "")?.[1]
     ?.toLowerCase();
-  const block = isMarkdownBlockCode(node, className);
+  const block = isMarkdownBlockCode(node, className, content);
 
   if (block && language === "mermaid") {
     return <MermaidRenderer code={content} className="my-4" />;
