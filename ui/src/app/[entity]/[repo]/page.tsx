@@ -141,7 +141,7 @@ import {
   setRepoStatus,
 } from "@/lib/utils/repo-status";
 import { cn } from "@/lib/utils";
-import { MarkdownAnchor } from "@/lib/utils/markdown-anchor";
+import { createMarkdownAnchor } from "@/lib/utils/markdown-anchor";
 import { MarkdownCode } from "@/lib/utils/markdown-code";
 
 import {
@@ -1820,6 +1820,48 @@ export default function RepoCodePage() {
       resolvedParams.repo,
       searchParams,
     ]
+  );
+
+  const markdownReadmeBasePath = currentPath
+    ? `${currentPath}/README.md`
+    : "README.md";
+
+  const readmeMarkdownAnchor = useMemo(
+    () =>
+      createMarkdownAnchor({
+        getRepoLink,
+        basePath: markdownReadmeBasePath,
+        entity: resolvedParams.entity,
+        repoName: resolvedParams.repo,
+      }),
+    [
+      getRepoLink,
+      markdownReadmeBasePath,
+      resolvedParams.entity,
+      resolvedParams.repo,
+    ]
+  );
+
+  const fileMarkdownAnchor = useMemo(
+    () =>
+      createMarkdownAnchor({
+        getRepoLink,
+        basePath: selectedFile || "README.md",
+        entity: resolvedParams.entity,
+        repoName: resolvedParams.repo,
+      }),
+    [getRepoLink, selectedFile, resolvedParams.entity, resolvedParams.repo]
+  );
+
+  const repoDescriptionMarkdownAnchor = useMemo(
+    () =>
+      createMarkdownAnchor({
+        getRepoLink,
+        basePath: "README.md",
+        entity: resolvedParams.entity,
+        repoName: resolvedParams.repo,
+      }),
+    [getRepoLink, resolvedParams.entity, resolvedParams.repo]
   );
 
   // Ref to prevent infinite loops when opening files from URL
@@ -15553,7 +15595,7 @@ export default function RepoCodePage() {
                           </div>
                         );
                       },
-                      a: MarkdownAnchor,
+                      a: readmeMarkdownAnchor,
                       code: MarkdownCode,
                     }}
                   >
@@ -16194,7 +16236,7 @@ export default function RepoCodePage() {
                                 </div>
                               );
                             },
-                            a: MarkdownAnchor,
+                            a: fileMarkdownAnchor,
                             code: MarkdownCode,
                           }}
                         >
@@ -16402,7 +16444,7 @@ export default function RepoCodePage() {
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
                 components={{
-                  a: MarkdownAnchor,
+                  a: repoDescriptionMarkdownAnchor,
                 }}
               >
                 {repoData.description}

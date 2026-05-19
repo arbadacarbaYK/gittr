@@ -68,7 +68,11 @@ export function MarkdownCode({
   }
 
   if (!block) {
-    return <code className={inlineCodeClassName}>{children}</code>;
+    return (
+      <CopyableCodeBlock inline className={inlineCodeClassName}>
+        {children}
+      </CopyableCodeBlock>
+    );
   }
 
   return (

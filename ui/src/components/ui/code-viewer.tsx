@@ -710,178 +710,127 @@ export function CodeViewer({
     return <div className="text-gray-400">Binary file - cannot display</div>;
   }
 
+  const gutterCh = Math.max(3, String(lines.length).length + 1);
+
   return (
     <div ref={containerRef} className="relative">
-      <div className="flex">
-        {/* Line numbers - hidden on mobile */}
-        <div className="hidden sm:block select-none text-right pr-4 text-gray-500 text-sm font-mono border-r border-gray-700">
-          {lines.map((_, idx) => {
-            const lineNum = idx + 1;
-            // Calculate if this line is in the selected range
-            const isSelected = selectedLines
-              ? lineNum >= selectedLines.start && lineNum <= selectedLines.end
-              : false;
-            const isStart = selectedLines && lineNum === selectedLines.start;
-            const isEnd = selectedLines && lineNum === selectedLines.end;
-            const isSelectionStart = selectionStart === lineNum && rangeMode;
-
-            return (
+      <div className="overflow-x-auto font-mono text-sm leading-5 border border-gray-700 rounded-md">
+        {lines.map((line, idx) => {
+          const lineNum = idx + 1;
+          const isSelected = selectedLines
+            ? lineNum >= selectedLines.start && lineNum <= selectedLines.end
+            : false;
+          const isStart = selectedLines && lineNum === selectedLines.start;
+          const isEnd = selectedLines && lineNum === selectedLines.end;
+          const isSelectionStart = selectionStart === lineNum && rangeMode;
+          const multiLine =
+            selectedLines && selectedLines.end > selectedLines.start;
+          const rowClass = (part: "gutter" | "code") =>
+            `py-0.5 px-2 cursor-pointer transition-colors ${
+              isSelected
+                ? part === "gutter"
+                  ? "bg-yellow-600/60 text-yellow-50 font-semibold"
+                  : "bg-yellow-600/60"
+                : isSelectionStart
+                  ? part === "gutter"
+                    ? "bg-blue-600/40 text-blue-100 border-l-2 border-blue-400"
+                    : "bg-blue-600/40 border-l-2 border-blue-400"
+                  : part === "gutter"
+                    ? "hover:bg-gray-800/50"
+                    : "hover:bg-gray-800/30"
+            } ${isStart && multiLine ? "rounded-t-sm" : ""} ${
+              isEnd && multiLine ? "rounded-b-sm" : ""
+            }`;
+          const handlers = {
+            onMouseDown: (e: React.MouseEvent) => handleLineMouseDown(lineNum, e),
+            onMouseEnter: (e: React.MouseEvent) =>
+              handleLineMouseEnter(lineNum, e),
+            onMouseUp: (e: React.MouseEvent) => handleLineMouseUp(lineNum, e),
+            onClick: (e: React.MouseEvent) => handleLineClick(lineNum, e),
+            onContextMenu: (e: React.MouseEvent) =>
+              handleLineRightClick(lineNum, e),
+            onTouchStart: (e: React.TouchEvent) =>
+              handleLineTouchStart(lineNum, e),
+            onTouchEnd: (e: React.TouchEvent) => handleLineTouchEnd(lineNum, e),
+            onTouchCancel: handleLineTouchCancel,
+          };
+          const noSelect = { userSelect: "none" as const };
+          return (
+            <div
+              key={`line-${idx}-${selectedLines?.start}-${selectedLines?.end}-${selectionStart}`}
+              className="grid grid-cols-1 sm:grid-cols-[auto_1fr] min-w-max"
+            >
               <div
-                key={`line-num-${idx}-${selectedLines?.start}-${selectedLines?.end}-${selectionStart}`} // Force re-render on selection change
                 id={`line-${lineNum}`}
-                className={`
-                  py-0.5 px-2 cursor-pointer transition-colors relative
-                  ${
-                    isSelected
-                      ? "bg-yellow-600/60 text-yellow-50 font-semibold"
-                      : isSelectionStart
-                      ? "bg-blue-600/40 text-blue-100 border-l-2 border-blue-400"
-                      : "hover:bg-gray-800/50"
-                  }
-                  ${
-                    isStart &&
-                    selectedLines &&
-                    selectedLines.end > selectedLines.start
-                      ? "rounded-t-sm"
-                      : ""
-                  }
-                  ${
-                    isEnd &&
-                    selectedLines &&
-                    selectedLines.end > selectedLines.start
-                      ? "rounded-b-sm"
-                      : ""
-                  }
-                `}
-                onMouseDown={(e) => handleLineMouseDown(lineNum, e)}
-                onMouseEnter={(e) => handleLineMouseEnter(lineNum, e)}
-                onMouseUp={(e) => handleLineMouseUp(lineNum, e)}
-                onClick={(e) => handleLineClick(lineNum, e)}
-                onContextMenu={(e) => handleLineRightClick(lineNum, e)}
-                onTouchStart={(e) => handleLineTouchStart(lineNum, e)}
-                onTouchEnd={(e) => handleLineTouchEnd(lineNum, e)}
-                onTouchCancel={handleLineTouchCancel}
-                style={{ userSelect: "none" }}
-                title={`Line ${lineNum}. Click to select. Use "Select Range" button for multi-line selection. Right-click to copy permalink.`}
+                className={`hidden sm:block select-none text-right tabular-nums text-gray-500 border-r border-gray-700 ${rowClass("gutter")}`}
+                style={{ ...noSelect, minWidth: `${gutterCh}ch` }}
+                title={`Line ${lineNum}. Click to select. Use "Select Range" for multi-line selection. Right-click to copy permalink.`}
+                {...handlers}
               >
                 {lineNum}
               </div>
-            );
-          })}
-        </div>
-
-        {/* Code content */}
-        <div className="flex-1 overflow-x-auto relative sm:border-l-0 border-l border-gray-700">
-          <pre className="whitespace-pre-wrap font-mono text-sm">
-            {lines.map((line, idx) => {
-              const lineNum = idx + 1;
-              // Calculate if this line is in the selected range
-              const isSelected = selectedLines
-                ? lineNum >= selectedLines.start && lineNum <= selectedLines.end
-                : false;
-              const isStart = selectedLines && lineNum === selectedLines.start;
-              const isEnd = selectedLines && lineNum === selectedLines.end;
-              const isSelectionStart = selectionStart === lineNum && rangeMode;
-
-              return (
-                <div
-                  key={`line-content-${idx}-${selectedLines?.start}-${selectedLines?.end}-${selectionStart}`} // Force re-render on selection change
-                  className={`
-                    py-0.5 px-2 cursor-pointer transition-colors
-                    ${
-                      isSelected
-                        ? "bg-yellow-600/60"
-                        : isSelectionStart
-                        ? "bg-blue-600/40 border-l-2 border-blue-400"
-                        : "hover:bg-gray-800/30"
-                    }
-                    ${
-                      isStart &&
-                      selectedLines &&
-                      selectedLines.end > selectedLines.start
-                        ? "rounded-t-sm"
-                        : ""
-                    }
-                    ${
-                      isEnd &&
-                      selectedLines &&
-                      selectedLines.end > selectedLines.start
-                        ? "rounded-b-sm"
-                        : ""
-                    }
-                  `}
-                  onMouseDown={(e) => handleLineMouseDown(lineNum, e)}
-                  onMouseEnter={(e) => handleLineMouseEnter(lineNum, e)}
-                  onMouseUp={(e) => handleLineMouseUp(lineNum, e)}
-                  onClick={(e) => handleLineClick(lineNum, e)}
-                  onContextMenu={(e) => handleLineRightClick(lineNum, e)}
-                  onTouchStart={(e) => handleLineTouchStart(lineNum, e)}
-                  onTouchEnd={(e) => handleLineTouchEnd(lineNum, e)}
-                  onTouchCancel={handleLineTouchCancel}
-                  style={{ userSelect: "none" }}
-                >
-                  {line || "\u00A0"}
-                </div>
-              );
-            })}
-          </pre>
-          {/* Floating action bar appears right after the selected code */}
-          {selectedLines && (
-            <div
-              ref={actionBarRef}
-              id="selection-action-bar"
-              className="sticky top-2 z-10 my-2 p-2 bg-gray-900/95 backdrop-blur-sm border border-gray-600 rounded-lg shadow-lg"
-              style={{
-                scrollMarginTop: "80px", // Account for any fixed headers
-              }}
-            >
-              <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
-                <span className="flex-shrink-0 font-semibold text-yellow-300 whitespace-nowrap">
-                  {selectedLines.end > selectedLines.start
-                    ? `Lines ${selectedLines.start}-${selectedLines.end}`
-                    : `Line ${selectedLines.start}`}
-                </span>
-                <div className="flex flex-wrap items-center gap-2 flex-1">
-                  <button
-                    onClick={() => {
-                      if (!selectedLines) return;
-                      const hash =
-                        selectedLines.end > selectedLines.start
-                          ? `#L${selectedLines.start}-L${selectedLines.end}`
-                          : `#L${selectedLines.start}`;
-                      const fullUrl = `${window.location.origin}${window.location.pathname}${window.location.search}${hash}`;
-                      navigator.clipboard.writeText(fullUrl);
-
-                      // Show toast
-                      const toast = document.createElement("div");
-                      toast.className =
-                        "fixed bottom-4 right-4 bg-gray-800 border border-gray-600 text-white px-4 py-2 rounded shadow-lg z-50";
-                      toast.textContent = "Permalink copied to clipboard";
-                      document.body.appendChild(toast);
-                      setTimeout(() => {
-                        document.body.removeChild(toast);
-                      }, 2000);
-                    }}
-                    className="px-2 sm:px-3 py-1.5 sm:py-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded text-xs sm:text-sm font-medium touch-manipulation transition-colors whitespace-nowrap"
-                  >
-                    Copy permalink
-                  </button>
-                  {pubkey && (
-                    <button
-                      onClick={() => setShowSnippetModal(true)}
-                      className="px-2 sm:px-3 py-1.5 sm:py-2 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white rounded text-xs sm:text-sm font-medium flex items-center gap-1.5 touch-manipulation transition-colors whitespace-nowrap"
-                    >
-                      <Share2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                      <span className="hidden sm:inline">Share as snippet</span>
-                      <span className="sm:hidden">Share</span>
-                    </button>
-                  )}
-                </div>
+              <div
+                className={`whitespace-pre ${rowClass("code")}`}
+                style={noSelect}
+                {...handlers}
+              >
+                {line || " "}
               </div>
             </div>
-          )}
-        </div>
+          );
+        })}
       </div>
+
+      {selectedLines && (
+        <div
+          ref={actionBarRef}
+          id="selection-action-bar"
+          className="mt-2 p-2 bg-gray-900/95 backdrop-blur-sm border border-gray-600 rounded-lg shadow-lg"
+        >
+          <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+            <span className="flex-shrink-0 font-semibold text-yellow-300 whitespace-nowrap">
+              {selectedLines.end > selectedLines.start
+                ? `Lines ${selectedLines.start}-${selectedLines.end}`
+                : `Line ${selectedLines.start}`}
+            </span>
+            <div className="flex flex-wrap items-center gap-2 flex-1">
+              <button
+                onClick={() => {
+                  if (!selectedLines) return;
+                  const hash =
+                    selectedLines.end > selectedLines.start
+                      ? `#L${selectedLines.start}-L${selectedLines.end}`
+                      : `#L${selectedLines.start}`;
+                  const fullUrl = `${window.location.origin}${window.location.pathname}${window.location.search}${hash}`;
+                  navigator.clipboard.writeText(fullUrl);
+
+                  const toast = document.createElement("div");
+                  toast.className =
+                    "fixed bottom-4 right-4 bg-gray-800 border border-gray-600 text-white px-4 py-2 rounded shadow-lg z-50";
+                  toast.textContent = "Permalink copied to clipboard";
+                  document.body.appendChild(toast);
+                  setTimeout(() => {
+                    document.body.removeChild(toast);
+                  }, 2000);
+                }}
+                className="px-2 sm:px-3 py-1.5 sm:py-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded text-xs sm:text-sm font-medium touch-manipulation transition-colors whitespace-nowrap"
+              >
+                Copy permalink
+              </button>
+              {pubkey && (
+                <button
+                  onClick={() => setShowSnippetModal(true)}
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white rounded text-xs sm:text-sm font-medium flex items-center gap-1.5 touch-manipulation transition-colors whitespace-nowrap"
+                >
+                  <Share2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <span className="hidden sm:inline">Share as snippet</span>
+                  <span className="sm:hidden">Share</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Selection instructions when no selection */}
       {!selectedLines && (
