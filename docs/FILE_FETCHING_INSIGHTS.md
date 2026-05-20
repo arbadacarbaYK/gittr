@@ -24,6 +24,10 @@ How the UI loads repo trees and file content. Implementation lives in:
 3. Upstream `GET /api/git/file-content?sourceUrl=…`  
 4. Binary → base64 / data URL in the browser  
 
+**Folder README** (browsing a directory without opening a file)
+
+Same branch as the loaded tree: use `repoData.filesBranch` (from multifetch `resolvedBranch`), not only `?branch=` in the URL. If the remote default is `master` but the URL says `main`, the UI syncs branch after the first successful tree fetch. Fallback order: local overrides → bridge `file-content` → `successfulSources` / `clone[]` via `GET /api/git/file-content?sourceUrl=…` (GRASP HTTPS) → cached `gittr_files` row content.
+
 ## SSH clone URLs
 
 `git@host:path` is normalized to HTTPS for HTTP APIs where needed. Generic `user@host:path` (no `://`) is treated as self-hosted git for `/api/git/*`.

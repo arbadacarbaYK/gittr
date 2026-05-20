@@ -94,6 +94,8 @@ import {
 import { sidebarAboutText } from "@/lib/repos/repo-about-text";
 import {
   resolveActiveRepoBranch,
+  resolveContentBranch,
+  branchesToTryForContent,
   shouldApplyFetchedFileTree,
 } from "@/lib/repos/repo-file-tree-branch";
 import {
@@ -1959,6 +1961,19 @@ export default function RepoCodePage() {
       }, 100);
     },
     [resolvedParams.entity, resolvedParams.repo, router]
+  );
+
+  /** When multifetch resolves e.g. master but URL still says main, align UI + README fetches. */
+  const syncResolvedBranchFromFetch = useCallback(
+    (resolvedBranch: string | undefined) => {
+      const b = (resolvedBranch || "").trim();
+      if (!b) return;
+      const cur = (selectedBranchRef.current || "").trim();
+      if (cur === b) return;
+      setSelectedBranch(b);
+      updateURL({ branch: b });
+    },
+    [updateURL]
   );
 
   const ownerSlug = useMemo(() => {
@@ -4872,9 +4887,7 @@ export default function RepoCodePage() {
                 setFilesTreeBump((b) => b + 1);
                 // CRITICAL: Use startTransition to defer state update and prevent hook order issues during render
                 startTransition(() => {
-                  if (!selectedBranchRef.current?.trim()) {
-                    setSelectedBranch(branchFromFetch);
-                  }
+                  syncResolvedBranchFromFetch(branchFromFetch);
                   setRepoData((prev: any) => {
                     // CRITICAL: Create repoData if it doesn't exist yet - files should show immediately
                     const updated = prev
@@ -4883,7 +4896,7 @@ export default function RepoCodePage() {
                           files: status.files,
                           filesBranch: branchFromFetch,
                           defaultBranch:
-                            prev.defaultBranch ?? branchFromFetch ?? "main",
+                            branchFromFetch || prev.defaultBranch || "main",
                           // CRITICAL: Store successful sources as array for fallback during file opening
                           successfulSources: [
                             {
@@ -7192,9 +7205,7 @@ export default function RepoCodePage() {
                             );
                             setBridgeFiles(status.files);
                             setFilesTreeBump((b) => b + 1);
-                            if (!selectedBranchRef.current?.trim()) {
-                              setSelectedBranch(branchFromFetch);
-                            }
+                            syncResolvedBranchFromFetch(branchFromFetch);
                             setRepoData((prev: any) => {
                               // CRITICAL: Create repoData if it doesn't exist yet - files should show immediately
                               const updated = prev
@@ -7203,8 +7214,8 @@ export default function RepoCodePage() {
                                     files: status.files,
                                     filesBranch: branchFromFetch,
                                     defaultBranch:
-                                      prev.defaultBranch ??
-                                      branchFromFetch ??
+                                      branchFromFetch ||
+                                      prev.defaultBranch ||
                                       "main",
                                     // CRITICAL: Store successful sources as array for fallback during file opening
                                     successfulSources: [
@@ -10324,7 +10335,7 @@ export default function RepoCodePage() {
           (f) => normPath(f.path || "") === wantReadme
         );
 
-        const branch = selectedBranch || repoData?.defaultBranch || "main";
+        const branch = resolveContentBranch(repoData, selectedBranch);
         const sourceUrl =
           resolveRepoUpstreamSource(repoData) ||
           resolveUpstreamSourceUrl(effectiveSourceUrl);
@@ -10453,6 +10464,85 @@ export default function RepoCodePage() {
           }
         }
 
+        // GRASP / nostr-git mirrors (same path as file tree multifetch)
+        if (!preferUpstreamReadme && repoData) {
+          const successfulSources =
+            (repoData as { successfulSources?: Array<{
+              sourceUrl?: string;
+              resolvedBranch?: string;
+              files?: unknown[];
+            }> })?.successfulSources || [];
+          for (const src of successfulSources) {
+            if (
+              !src?.sourceUrl ||
+              !Array.isArray(src.files) ||
+              src.files.length === 0
+            ) {
+              continue;
+            }
+            const srcBranch = src.resolvedBranch || branch;
+            try {
+              const cloneApi = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+                src.sourceUrl
+              )}&path=${encodeURIComponent(
+                readmeFile.path
+              )}&branch=${encodeURIComponent(srcBranch)}`;
+              const cloneResp = await fetchDeduped(cloneApi);
+              if (cloneResp.ok) {
+                const data = await cloneResp.json();
+                if (
+                  data?.content !== undefined &&
+                  data?.content !== null &&
+                  !data.isBinary
+                ) {
+                  finish(String(data.content));
+                  return;
+                }
+              }
+            } catch (e) {
+              console.warn("[Folder README] Clone source fetch failed:", e);
+            }
+          }
+          const cloneList = (repoData as { clone?: string[] })?.clone;
+          if (Array.isArray(cloneList)) {
+            for (const cloneUrl of cloneList) {
+              if (
+                !cloneUrl ||
+                typeof cloneUrl !== "string" ||
+                !/^https?:\/\//i.test(cloneUrl)
+              ) {
+                continue;
+              }
+              for (const tryBranch of branchesToTryForContent(
+                repoData,
+                selectedBranch
+              )) {
+                try {
+                  const cloneApi = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+                    cloneUrl
+                  )}&path=${encodeURIComponent(
+                    readmeFile.path
+                  )}&branch=${encodeURIComponent(tryBranch)}`;
+                  const cloneResp = await fetchDeduped(cloneApi);
+                  if (cloneResp.ok) {
+                    const data = await cloneResp.json();
+                    if (
+                      data?.content !== undefined &&
+                      data?.content !== null &&
+                      !data.isBinary
+                    ) {
+                      finish(String(data.content));
+                      return;
+                    }
+                  }
+                } catch {
+                  /* try next branch / clone */
+                }
+              }
+            }
+          }
+        }
+
         if (
           !preferUpstreamReadme &&
           row &&
@@ -10525,6 +10615,9 @@ export default function RepoCodePage() {
     (repoData as { clone?: string[] })?.clone?.join("|") ?? "",
     repoData?.hasUnpushedEdits,
     repoData?.defaultBranch,
+    (repoData as { filesBranch?: string })?.filesBranch,
+    (repoData as { successfulSources?: unknown[] })?.successfulSources
+      ?.length,
     repoData?.ownerPubkey,
     (repoData as any)?.repositoryName,
     selectedBranch,
@@ -10551,7 +10644,7 @@ export default function RepoCodePage() {
     // Check if files are loaded - if not, wait for them
     const hasFiles = safeFiles.length > 0;
     const repoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
-    const currentBranch = selectedBranch || repoData?.defaultBranch || "main";
+    const currentBranch = resolveContentBranch(repoData, selectedBranch);
     const repoKeyWithBranch = `${repoKey}:${currentBranch}`;
     const filesAreLoading = fileFetchInProgressRef.current;
     const filesHaveBeenAttempted =
@@ -11544,11 +11637,7 @@ export default function RepoCodePage() {
           bridgeRepo = parts[parts.length - 1] || bridgeRepo;
         }
         bridgeRepo = String(bridgeRepo).replace(/\.git$/, "");
-        const branch0 =
-          (repoData as { filesBranch?: string })?.filesBranch ||
-          selectedBranch ||
-          repoData?.defaultBranch ||
-          "main";
+        const branch0 = resolveContentBranch(repoData, selectedBranch);
         try {
           const api0 = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
             ownerPk.toLowerCase()
@@ -12098,7 +12187,7 @@ export default function RepoCodePage() {
       isRefetchableUpstreamSourceUrl(sourceUrlForPriorityFetch)
     ) {
       try {
-        const branchToUse = selectedBranch || repoData?.defaultBranch || "main";
+        const branchToUse = resolveContentBranch(repoData, selectedBranch);
         // Get user's GitHub token for private repos
         const githubToken =
           typeof window !== "undefined"
@@ -12501,6 +12590,9 @@ export default function RepoCodePage() {
           sourcesToTry.push({
             sourceUrl: successfulSource.sourceUrl,
             source: successfulSource.source,
+            ...(successfulSource.resolvedBranch
+              ? { resolvedBranch: successfulSource.resolvedBranch }
+              : {}),
           });
           console.log(
             `✅ [fetchGithubRaw] Added successful source to try: ${successfulSource.sourceUrl} (${successfulSource.files.length} files)`
@@ -12674,12 +12766,7 @@ export default function RepoCodePage() {
               ),
         });
 
-        // Use selectedBranch, fallback to defaultBranch, then main/master
-        const branch = selectedBranch || repoData?.defaultBranch || "main";
-        const defaultBr = repoData?.defaultBranch;
-        const branchesToTry = [branch, defaultBr, "main", "master"]
-          .filter((b): b is string => typeof b === "string" && !!b)
-          .filter((b, i, arr) => arr.indexOf(b) === i); // dedupe
+        const branchesToTry = branchesToTryForContent(repoData, selectedBranch);
 
         if (githubMatch) {
           const [, owner, repo] = githubMatch;
@@ -12911,11 +12998,61 @@ export default function RepoCodePage() {
             }
           }
         } else {
-          console.log(
-            `⚠️ [fetchGithubRaw] sourceUrl is not GitHub, GitLab, or Codeberg: ${sourceUrl}, trying next source...`
+          const contentBranches = branchesToTryForContent(
+            repoData,
+            selectedBranch
           );
-          // Continue to next source in loop
-          continue;
+          for (const tryBranch of contentBranches) {
+            const resolvedFromSource = (sourceInfo as { resolvedBranch?: string })
+              .resolvedBranch;
+            const branchForFetch = resolvedFromSource || tryBranch;
+            let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+              sourceUrl
+            )}&path=${encodeURIComponent(path)}&branch=${encodeURIComponent(
+              branchForFetch
+            )}`;
+            const githubToken =
+              typeof window !== "undefined"
+                ? localStorage.getItem("gittr_github_token")
+                : null;
+            if (githubToken) {
+              apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
+            }
+            const r = await fetchDeduped(apiUrl);
+            if (r.ok) {
+              const data = await r.json();
+              if (data?.content !== undefined) {
+                if (data.isBinary) {
+                  const ext = path.split(".").pop()?.toLowerCase() || "";
+                  const mimeTypes: Record<string, string> = {
+                    png: "image/png",
+                    jpg: "image/jpeg",
+                    jpeg: "image/jpeg",
+                    gif: "image/gif",
+                    webp: "image/webp",
+                    svg: "image/svg+xml",
+                    ico: "image/x-icon",
+                    pdf: "application/pdf",
+                    mp4: "video/mp4",
+                    mp3: "audio/mpeg",
+                    wav: "audio/wav",
+                  };
+                  const mimeType =
+                    mimeTypes[ext] || "application/octet-stream";
+                  const dataUrl = `data:${mimeType};base64,${data.content}`;
+                  return { content: null, url: dataUrl, isBinary: true };
+                }
+                return {
+                  content: data.content,
+                  url: null,
+                  isBinary: false,
+                };
+              }
+            }
+          }
+          console.log(
+            `⚠️ [fetchGithubRaw] Generic clone fetch failed for: ${sourceUrl}, trying next source...`
+          );
         }
       } catch (error: any) {
         console.error(
