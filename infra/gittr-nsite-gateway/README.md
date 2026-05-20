@@ -8,6 +8,11 @@ Upstream project: **[hzrd149/nsite-gateway](https://github.com/hzrd149/nsite-gat
 
 - **`GET /status/manifests.json`** — same data as the HTML status page, as JSON, so gittr’s **`/pages`** and **`GET /api/gittr-pages/status-sites`** can use a proper API instead of parsing HTML.
 - **Correct “updated” time** — the HTML `/status` table and `manifests.json` use **max(manifest `created_at`, latest snapshot `created_at`)**. Upstream preferred only the latest snapshot when present, so a **manifest-only** republish (new kind 35128, no new snapshot event) still looked like the first upload. The overlay also indexes the **newest manifest per site address** by time, so relay/event order cannot replace a newer manifest with an older one.
+- **`hasIndexHtml` + directory filter** — NIP-5A only serves `/` when the manifest lists **`/index.html`**. Many **ROOT** “Blossom Explorer” manifests list files like `/readme.md` but no homepage (404 at `/`). **`GET /status/manifests.json`** and gittr **`/pages`** only include sites where **`hasIndexHtml`** is true. The HTML **`/status`** operator table may still list all indexed manifests.
+
+## 404 on some `npub….pages.gittr.space` URLs
+
+That is usually **not** a gateway outage. The manifest is indexed, but there is **no `/index.html` path** (see **Paths** on `https://pages.gittr.space/status/<npub>`). Those entries are **not** shown on gittr **`/pages`** after this overlay is deployed; operators can still inspect them on **`/status`**.
 
 ## What you actually do on the server
 

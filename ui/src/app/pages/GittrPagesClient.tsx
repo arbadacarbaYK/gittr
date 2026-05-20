@@ -121,20 +121,20 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
               Published sites
             </h1>
             <p className="mt-3 text-base leading-relaxed text-gray-400">
-              Every card is a live site on our gateway.{" "}
-              <strong className="text-gray-200">Open site</strong> always opens
-              in a new tab so you keep gittr open here.
+              Live sites you can open in a new tab. Only entries with a root{" "}
+              <code className="text-gray-300">index.html</code> are listed here
+              (manifest-only Blossom uploads without a homepage are omitted).
             </p>
           </div>
           {typeof count === "number" && !loading && !error ? (
             <div className="flex shrink-0 flex-col items-start gap-1 rounded-xl border border-[#383B42] bg-[#171B21]/90 px-5 py-4 text-left md:items-end md:text-right">
               <span className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                On gateway
+                Live sites
               </span>
               <span className="text-3xl font-semibold tabular-nums text-white">
                 {count}
               </span>
-              <span className="text-xs text-gray-500">sites listed</span>
+              <span className="text-xs text-gray-500">with a homepage</span>
             </div>
           ) : null}
         </div>
@@ -170,7 +170,7 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
             />
           </div>
           <p className="mt-3 text-xs leading-relaxed text-gray-500">
-            Full table and per-path breakdown:{" "}
+            Operator view (all manifests, including file-only):{" "}
             <a
               className="font-medium text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
               href={statusPageUrl}

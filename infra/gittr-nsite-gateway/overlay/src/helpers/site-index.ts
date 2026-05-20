@@ -28,10 +28,22 @@ export type IndexedSite = {
   title?: string;
   description?: string;
   pathCount: number;
+  /** NIP-5A serves `/` only when the manifest lists `/index.html`. */
+  hasIndexHtml: boolean;
   manifestId: string;
   createdAt: number;
   snapshots: SiteSnapshotSummary[];
 };
+
+function manifestHasIndexHtml(event: NostrEvent): boolean {
+  for (const path of getManifestPaths(event).keys()) {
+    const normalized = path.trim().toLowerCase();
+    if (normalized === "/index.html" || normalized === "index.html") {
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Prefer the newest manifest per address. Upstream overwrites by timeline order; if the store
@@ -87,6 +99,7 @@ export function buildIndexedSites(events: NostrEvent[]): IndexedSite[] {
       title: getManifestTitle(event),
       description: getManifestDescription(event),
       pathCount: getManifestPaths(event).size,
+      hasIndexHtml: manifestHasIndexHtml(event),
       manifestId: event.id,
       createdAt: event.created_at,
       snapshots: [],

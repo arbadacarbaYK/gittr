@@ -13,6 +13,10 @@ export type GatewayStatusSiteRow = {
   hits: number;
   updatedLabel: string;
   updatedIso?: string;
+  /** From gateway manifests.json when gittr nsite-gateway overlay is deployed. */
+  hasIndexHtml?: boolean;
+  /** `root` = npub Blossom Explorer; `named` = d-tag gittr Pages site. */
+  siteKind?: "root" | "named";
 };
 
 function toHttps(url: string): string {

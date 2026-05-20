@@ -22,6 +22,7 @@ function getStatusSites(host: string, protocol: string): StatusSite[] {
       title: site.title,
       description: site.description,
       pathCount: site.pathCount,
+      hasIndexHtml: site.hasIndexHtml,
       manifestId: site.manifestId,
       createdAt: site.createdAt,
       hostname: siteHostname,
@@ -78,7 +79,7 @@ export async function statusManifestsJsonRoute(c: Context) {
 
   const now = Date.now();
   const rows = sites
-    .filter((site) => site.href)
+    .filter((site) => site.href && site.hasIndexHtml)
     .map((site) => {
       const namedId = site.identifier?.trim();
       const statusAddress = namedId
@@ -102,6 +103,13 @@ export async function statusManifestsJsonRoute(c: Context) {
         authorDisplay: (site.authorName || site.npub).trim(),
         authorPubkeyHex: site.pubkey,
         pathCount: site.pathCount,
+        hasIndexHtml: site.hasIndexHtml,
+        siteKind:
+          site.identifier === "ROOT" ||
+          site.identifier === "" ||
+          site.identifier === undefined
+            ? "root"
+            : "named",
         pathsStatusUrl,
         snapshots: site.snapshotCount,
         hits: site.hits ?? 0,

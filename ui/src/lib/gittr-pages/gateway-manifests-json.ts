@@ -1,4 +1,5 @@
 import { dedupeGatewaySitesForDirectory } from "./dedupe-gateway-sites";
+import { filterBrowsableGatewaySites } from "./gateway-site-browseability";
 import type { GatewayStatusSiteRow } from "./parse-gateway-status-html";
 
 export type GatewayManifestsJsonPayload = {
@@ -66,6 +67,12 @@ export function parseGatewayManifestsJson(
       typeof row.updatedIso === "string" ? row.updatedIso : undefined;
     const description =
       typeof row.description === "string" ? row.description : undefined;
+    const hasIndexHtml =
+      typeof row.hasIndexHtml === "boolean" ? row.hasIndexHtml : undefined;
+    const siteKind =
+      row.siteKind === "root" || row.siteKind === "named"
+        ? row.siteKind
+        : undefined;
 
     sites.push({
       title: title || "Untitled site",
@@ -83,10 +90,14 @@ export function parseGatewayManifestsJson(
       updatedLabel,
       updatedIso,
       description,
+      hasIndexHtml,
+      siteKind,
     });
   }
 
-  const sitesDeduped = dedupeGatewaySitesForDirectory(sites);
+  const sitesDeduped = filterBrowsableGatewaySites(
+    dedupeGatewaySitesForDirectory(sites)
+  );
   return {
     sites: sitesDeduped,
     meta: {

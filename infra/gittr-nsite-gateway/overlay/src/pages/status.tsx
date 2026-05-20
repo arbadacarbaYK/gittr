@@ -10,6 +10,7 @@ export type StatusSite = {
   title?: string;
   description?: string;
   pathCount: number;
+  hasIndexHtml: boolean;
   manifestId: string;
   createdAt: number;
   hostname?: string;
