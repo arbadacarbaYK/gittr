@@ -46,7 +46,7 @@ fi
 echo "📦 Syncing gittr nsite-gateway image context + fork sources (gittr-pages)…"
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "rm -rf '/opt/ngit/infra/gittr-nsite-gateway'"
 scp -i "$KEY" -q -r "$ROOT/infra/gittr-nsite-gateway" "root@${HOST}:/opt/ngit/infra/"
-ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "rm -rf '/opt/ngit/infra/gittr-nsite-gateway/gateway-src'"
+ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "rm -rf '/opt/ngit/infra/gittr-nsite-gateway/gateway-src' && mkdir -p '/opt/ngit/infra/gittr-nsite-gateway/gateway-src'"
 scp -i "$KEY" -q -r "${NSITE_GATEWAY_SRC}/." "root@${HOST}:/opt/ngit/infra/gittr-nsite-gateway/gateway-src/"
 # Never ship secrets from a local .env
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "rm -f '/opt/ngit/infra/gittr-nsite-gateway/gateway-src/.env' '/opt/ngit/infra/gittr-nsite-gateway/gateway-src/.gittr-pages-mute-nsec'"
