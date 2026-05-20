@@ -414,10 +414,74 @@ export function parseGitSource(cloneUrl: string): GitSource {
   }
 }
 
+/** Dedupe parsed sources (NIP-34 often lists the same mirror twice). */
+function dedupeGitSourcesByUrl(sources: GitSource[]): GitSource[] {
+  const seen = new Set<string>();
+  const out: GitSource[] = [];
+  for (const s of sources) {
+    const key = (s.url || s.displayName || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\/+$/, "")
+      .replace(/\.git$/i, "");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+  }
+  return out;
+}
+
+function isGithubApiRateLimit(status: number, bodyText: string): boolean {
+  if (status !== 403) return false;
+  const lower = bodyText.toLowerCase();
+  return lower.includes("rate limit") || lower.includes("ratelimit");
+}
+
+/**
+ * List a public GitHub repo via server-side `git clone` (no GitHub REST quota).
+ */
+async function fetchGitHubViaRepoFilesApi(
+  owner: string,
+  repo: string,
+  branch: string
+): Promise<GitSourceFilesResult | null> {
+  const sourceUrl = `https://github.com/${owner}/${repo}.git`;
+  const branchesToTry = [branch, "main", "master"]
+    .filter((b): b is string => typeof b === "string" && !!b.trim())
+    .filter((b, i, arr) => arr.indexOf(b) === i);
+
+  for (const tryBranch of branchesToTry) {
+    try {
+      const params = new URLSearchParams({
+        sourceUrl,
+        branch: tryBranch,
+      });
+      const res = await fetch(`/api/git/repo-files?${params.toString()}`);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data?.files && Array.isArray(data.files) && data.files.length > 0) {
+        console.log(
+          `✅ [Git Source] GitHub via /api/git/repo-files: ${data.files.length} files (branch: ${data.defaultBranch || tryBranch})`
+        );
+        return {
+          files: data.files,
+          resolvedBranch: data.defaultBranch || tryBranch,
+        };
+      }
+    } catch (e) {
+      console.warn(
+        `⚠️ [Git Source] GitHub repo-files failed for branch ${tryBranch}:`,
+        e
+      );
+    }
+  }
+  return null;
+}
+
 /**
  * Fetch file list from a GitHub repository
- * Uses server-side proxy to leverage platform OAuth token (if configured)
- * This avoids rate limits and doesn't require user login
+ * Prefers /api/git/repo-files (git clone) to avoid GitHub REST rate limits.
+ * Falls back to server-side proxy when clone listing fails.
  */
 async function fetchFromGitHub(
   owner: string,
@@ -425,6 +489,11 @@ async function fetchFromGitHub(
   branch = "main"
 ): Promise<GitSourceFilesResult | null> {
   try {
+    const viaClone = await fetchGitHubViaRepoFilesApi(owner, repo, branch);
+    if (viaClone?.files?.length) {
+      return viaClone;
+    }
+
     // CRITICAL: First get the default branch from repo info
     // This ensures we use the correct branch (not always "main" - could be "master" or something else)
     let defaultBranch: string | null = null;
@@ -453,23 +522,22 @@ async function fetchFromGitHub(
           // Not JSON
         }
 
-        // SECURITY: If 404 or 403, this could be a private repo
-        // We should NOT use a platform token with 'repo' scope as it can access ANY user's private repos
-        // Instead, gracefully fail and let the bridge be the source of truth
+        if (isGithubApiRateLimit(repoInfoResponse.status, errorText)) {
+          console.warn(
+            `⚠️ [Git Source] GitHub REST API rate limited for ${owner}/${repo} (git clone path already tried).`
+          );
+          return null;
+        }
+
+        // 404 or 403 without rate limit: private, missing, or token cannot see repo
         if (
           repoInfoResponse.status === 404 ||
           repoInfoResponse.status === 403
         ) {
           console.warn(
-            `⚠️ [Git Source] Repository ${owner}/${repo} is private or not found. Skipping GitHub fallback for security reasons.`
+            `⚠️ [Git Source] GitHub REST cannot access ${owner}/${repo} (${repoInfoResponse.status}). Use bridge or import with git clone.`
           );
-          console.warn(
-            `⚠️ [Git Source] Private repos should be accessed via the bridge (files should be pushed during import).`
-          );
-          console.warn(
-            `⚠️ [Git Source] If bridge is empty, check bridge logs or re-push the repo to Nostr.`
-          );
-          return null; // Gracefully fail - don't try to access private repos with platform token
+          return null;
         }
 
         console.error(
@@ -1538,7 +1606,7 @@ async function fetchFromNostrGit(
 async function fetchFromSelfHostedGit(
   sourceUrl: string,
   branch: string
-): Promise<Array<{ type: string; path: string; size?: number }> | null> {
+): Promise<GitSourceFilesResult | null> {
   try {
     const params = new URLSearchParams({
       sourceUrl,
@@ -1552,8 +1620,13 @@ async function fetchFromSelfHostedGit(
       return null;
     }
     const data = await res.json();
-    if (!data.files || !Array.isArray(data.files)) return null;
-    return data.files;
+    if (!data.files || !Array.isArray(data.files) || data.files.length === 0) {
+      return null;
+    }
+    return {
+      files: data.files,
+      resolvedBranch: data.defaultBranch || branch || "main",
+    };
   } catch (e) {
     console.warn("⚠️ [Git Source] fetchFromSelfHostedGit error:", e);
     return null;
@@ -1610,8 +1683,7 @@ export async function fetchFilesFromSource(
 
     case "self-hosted-git":
       if (source.url) {
-        const files = await fetchFromSelfHostedGit(source.url, branch);
-        return files?.length ? { files, resolvedBranch: branch } : null;
+        return await fetchFromSelfHostedGit(source.url, branch);
       }
       break;
 
@@ -1734,9 +1806,11 @@ export async function fetchFilesFromMultipleSources(
   const githubCloneUrl = prioritizedCloneUrls.find((u) =>
     /github\.com/i.test(u)
   );
+  let githubPreflightDone = false;
   if (githubCloneUrl) {
     const ghSource = parseGitSource(githubCloneUrl);
     if (ghSource.type === "github") {
+      githubPreflightDone = true;
       const ghStatus: FetchStatus = {
         source: ghSource,
         status: "fetching",
@@ -1749,7 +1823,7 @@ export async function fetchFilesFromMultipleSources(
         const ghResult = await Promise.race([
           fetchFilesFromSource(ghSource, branch, eventPublisherPubkey),
           new Promise<null>((_, reject) =>
-            setTimeout(() => reject(new Error("GitHub fetch timeout")), 15000)
+            setTimeout(() => reject(new Error("GitHub fetch timeout")), 20000)
           ),
         ]);
         if (ghResult?.files && ghResult.files.length > 0) {
@@ -1766,19 +1840,39 @@ export async function fetchFilesFromMultipleSources(
           return { files: ghResult.files, statuses: [ghStatus] };
         }
         ghStatus.status = "failed";
-        ghStatus.error = "No files from GitHub";
+        ghStatus.error = "No files from GitHub (REST limited or empty)";
         if (onStatusUpdate) onStatusUpdate(ghStatus);
       } catch (e) {
         ghStatus.status = "failed";
-        ghStatus.error =
-          e instanceof Error ? e.message : "GitHub fetch failed";
+        const msg = e instanceof Error ? e.message : "GitHub fetch failed";
+        ghStatus.error = msg.includes("rate limit")
+          ? "GitHub API rate limited"
+          : msg;
         if (onStatusUpdate) onStatusUpdate(ghStatus);
         console.warn("⚠️ [Git Source] GitHub-first fetch failed:", e);
       }
     }
   }
 
-  const sources = prioritizedCloneUrls.map(parseGitSource);
+  let sources = dedupeGitSourcesByUrl(
+    prioritizedCloneUrls.map(parseGitSource)
+  );
+  if (githubPreflightDone) {
+    sources = sources.filter((s) => s.type !== "github");
+  }
+
+  // Imported GitHub repos: avoid hammering every GRASP mirror when upstream exists
+  const hasGithubUpstream = prioritizedCloneUrls.some((u) =>
+    /github\.com/i.test(u)
+  );
+  if (hasGithubUpstream && sources.length > 6) {
+    const nonGrasp = sources.filter((s) => s.type !== "nostr-git");
+    const grasp = sources.filter((s) => s.type === "nostr-git").slice(0, 4);
+    sources = [...nonGrasp, ...grasp];
+    console.log(
+      `ℹ️ [Git Source] GitHub upstream present — probing ${sources.length} mirrors (not all ${prioritizedCloneUrls.length} clone URLs)`
+    );
+  }
   const statuses: FetchStatus[] = sources.map((source) => ({
     source,
     status: "pending",
