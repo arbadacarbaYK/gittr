@@ -70,20 +70,20 @@ ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" 'set -euo pipefail
   grep -v "^GITTR_SYNC_MUTED_PUBKEYS=" "$GATEWAY_ENV" > "${GATEWAY_ENV}.tmp" || true
   mv "${GATEWAY_ENV}.tmp" "$GATEWAY_ENV"
   if [[ -f "$UI_ENV" ]] && [[ -d /opt/ngit/ui/node_modules/nostr-tools ]]; then
-    HEX="$(node -e "
-      const fs = require(\"fs\");
-      const { nip19 } = require(\"nostr-tools\");
-      const raw = fs.readFileSync(\"$UI_ENV\", \"utf8\");
+    HEX="$(cd /opt/ngit/ui && node -e "
+      const fs = require('fs');
+      const { nip19 } = require('nostr-tools');
+      const raw = fs.readFileSync('/opt/ngit/ui/.env.local', 'utf8');
       const m = raw.match(/^NEXT_PUBLIC_PUBLISHER_BLOCKLIST=(.+)$/m);
       if (!m) process.exit(0);
       let v = m[1].trim();
-      if ((v.startsWith(\"\\\"\") && v.endsWith(\"\\\"\")) || (v.startsWith(\"'\''\") && v.endsWith(\"'\''\"))) v = v.slice(1, -1);
+      if ((v.startsWith('\"') && v.endsWith('\"')) || (v.startsWith(\"'\") && v.endsWith(\"'\"))) v = v.slice(1, -1);
       const hex = [];
       for (const p of v.split(/[\\s,;]+/).filter(Boolean)) {
         if (/^npub1/i.test(p)) hex.push(nip19.decode(p).data);
         else if (/^[0-9a-f]{64}$/i.test(p)) hex.push(p.toLowerCase());
       }
-      if (hex.length) process.stdout.write(hex.join(\",\"));
+      if (hex.length) process.stdout.write(hex.join(','));
     " 2>/dev/null || true)"
     if [[ -n "${HEX:-}" ]]; then
       echo "GITTR_SYNC_MUTED_PUBKEYS=${HEX}" >> "$GATEWAY_ENV"
