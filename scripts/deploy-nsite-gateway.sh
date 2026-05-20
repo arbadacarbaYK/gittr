@@ -83,36 +83,36 @@ ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" 'set -euo pipefail
   fi
 '
 
-echo "🔧 Syncing Pages blocklist → gateway curation (CURATION_USER + GITTR_SYNC_MUTED_PUBKEYS)..."
-ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" 'set -euo pipefail
-  GATEWAY_ENV="'"${REMOTE}"'/.env"
-  UI_ENV="/opt/ngit/ui/.env.local"
-  grep -v "^GITTR_SYNC_MUTED_PUBKEYS=" "$GATEWAY_ENV" > "${GATEWAY_ENV}.tmp" || true
-  mv "${GATEWAY_ENV}.tmp" "$GATEWAY_ENV"
-  if [[ -f "$UI_ENV" ]] && [[ -d /opt/ngit/ui/node_modules/nostr-tools ]]; then
-    HEX="$(cd /opt/ngit/ui && node -e "
-      const fs = require('fs');
-      const { nip19 } = require('nostr-tools');
-      const raw = fs.readFileSync('/opt/ngit/ui/.env.local', 'utf8');
-      const m = raw.match(/^NEXT_PUBLIC_PUBLISHER_BLOCKLIST=(.+)$/m);
-      if (!m) process.exit(0);
-      let v = m[1].trim();
-      if ((v.startsWith('\"') && v.endsWith('\"')) || (v.startsWith(\"'\") && v.endsWith(\"'\"))) v = v.slice(1, -1);
-      const hex = [];
-      for (const p of v.split(/[\\s,;]+/).filter(Boolean)) {
-        if (/^npub1/i.test(p)) hex.push(nip19.decode(p).data);
-        else if (/^[0-9a-f]{64}$/i.test(p)) hex.push(p.toLowerCase());
-      }
-      if (hex.length) process.stdout.write(hex.join(','));
-    " 2>/dev/null || true)"
-    if [[ -n "${HEX:-}" ]]; then
-      echo "GITTR_SYNC_MUTED_PUBKEYS=${HEX}" >> "$GATEWAY_ENV"
-      echo "   Pages blocklist synced to gateway (hex count: $(echo "$HEX" | tr "," "\\n" | wc -l))"
-    fi
-  else
-    echo "   ℹ️  No ui/.env.local or nostr-tools — skip GITTR_SYNC_MUTED_PUBKEYS"
+echo "🔧 Syncing Pages blocklist → gateway curation (GITTR_SYNC_MUTED_PUBKEYS)..."
+ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" bash -s "${REMOTE}" <<'REMOTE_SYNC'
+set -euo pipefail
+GATEWAY_ENV="$1/.env"
+UI_ENV="/opt/ngit/ui/.env.local"
+grep -v "^GITTR_SYNC_MUTED_PUBKEYS=" "$GATEWAY_ENV" > "${GATEWAY_ENV}.tmp" || true
+mv "${GATEWAY_ENV}.tmp" "$GATEWAY_ENV"
+if [[ -f "$UI_ENV" ]] && [[ -d /opt/ngit/ui/node_modules/nostr-tools ]]; then
+  HEX="$(cd /opt/ngit/ui && node -e '
+    const fs = require("fs");
+    const { nip19 } = require("nostr-tools");
+    const raw = fs.readFileSync("/opt/ngit/ui/.env.local", "utf8");
+    const m = raw.match(/^NEXT_PUBLIC_PUBLISHER_BLOCKLIST=(.+)$/m);
+    if (!m) process.exit(0);
+    const v = m[1].trim().replace(/^["']|["']$/g, "");
+    const hex = [];
+    for (const p of v.split(/[\s,;]+/).filter(Boolean)) {
+      if (/^npub1/i.test(p)) hex.push(nip19.decode(p).data);
+      else if (/^[0-9a-f]{64}$/i.test(p)) hex.push(p.toLowerCase());
+    }
+    if (hex.length) process.stdout.write(hex.join(","));
+  ' 2>/dev/null || true)"
+  if [[ -n "${HEX:-}" ]]; then
+    echo "GITTR_SYNC_MUTED_PUBKEYS=${HEX}" >> "$GATEWAY_ENV"
+    echo "   Pages blocklist synced to gateway (hex count: $(echo "$HEX" | tr ',' '\n' | wc -l))"
   fi
-'
+else
+  echo "   ℹ️  No ui/.env.local or nostr-tools — skip GITTR_SYNC_MUTED_PUBKEYS"
+fi
+REMOTE_SYNC
 
 echo "🐳 Building gittr gateway fork image and restarting stack…"
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "cd '${REMOTE}' && docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml build && docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml up -d"
