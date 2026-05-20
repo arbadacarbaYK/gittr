@@ -14,7 +14,7 @@ How the UI loads repo trees and file content. Implementation lives in:
 1. Browser `localStorage` (owned / edited repos)
 2. Embedded files in Nostr repo event (legacy/small)
 3. Parallel over `clone[]` / `source`: bridge `GET /api/nostr/repo/files`, or upstream git APIs
-4. GRASP: empty tree or 404 → `POST /api/nostr/repo/clone`, then poll/retry
+4. GRASP: empty tree or 404 → shallow-clone each working `clone[]` URL via `GET /api/git/repo-files?sourceUrl=…` (shows files from the remote match immediately); then `POST /api/nostr/repo/clone` to mirror on disk and retry bridge; background poll if mirror is slow
 5. Nostr subscription for kind 30617 if still missing
 
 **Single file**
@@ -28,11 +28,28 @@ How the UI loads repo trees and file content. Implementation lives in:
 
 `git@host:path` is normalized to HTTPS for HTTP APIs where needed. Generic `user@host:path` (no `://`) is treated as self-hosted git for `/api/git/*`.
 
-## GRASP
+## GRASP (foreign / nostr-git)
 
-Many GRASP hosts do not expose a browse API; gittr uses the **bridge bare repo** on your server. Next must reach the GRASP **HTTPS** clone URL for `clone.ts`.
+Many GRASP hosts have no file-browse REST API — only `git clone` over HTTPS. Per **clone URL** (in parallel with others), `fetchFromNostrGit` tries:
 
-Empty bare dir with no branches: files API may return `files: []` — client should trigger clone.
+1. **On-disk bridge** — `GET /api/nostr/repo/files` (`reposDir/{pubkey}/{repo}.git`)
+2. **Remote shallow clone** — `GET /api/git/repo-files?sourceUrl=<that clone HTTPS URL>` (temp dir, same as import); **returns files to the UI immediately** when the remote has commits
+3. **Bare mirror** — `POST /api/nostr/repo/clone`, then **await** bridge reads (poll ~12s); background poll + `grasp-repo-cloned` if still slow
+4. After a successful shallow clone, bare mirror runs **in the background** so the next visit hits the bridge
+
+Parallel `clone[]` sources use `Promise.race`: **first mirror that returns a non-empty tree wins**. A dead mirror (502) does not block a working one (e.g. `relay.ngit.dev`).
+
+Empty bare dir with no branches: nostr files API may return `files: []` — step 2–3 still run.
+
+### Newest copy: what we do and do not compare
+
+| Question | Behaviour |
+|----------|-----------|
+| Newest **Nostr repo announcement** (30617)? | **Yes** — subscriptions keep the latest `created_at` event; `clone[]` / `relays` tags come from that snapshot. |
+| Newest **tree across GRASP mirrors**? | **Not yet** — we do not compare `HEAD` / kind **30618** state across every clone URL and pick the newest commit. We use **first successful fetch** in the parallel race (after GitHub-first when applicable). |
+| GitHub / `source` upstream? | **Yes** when present — `prioritizeUpstreamCloneUrls` tries GitHub (and refetchable upstream) before GRASP so the live forge wins over stale embedded kind-51 trees. |
+
+Improvement backlog: optional pass to compare commit SHAs from each successful shallow clone (or latest 30618) and show the newest branch tip.
 
 ## GitHub mirror
 

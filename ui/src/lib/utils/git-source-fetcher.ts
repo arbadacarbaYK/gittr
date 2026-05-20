@@ -1094,6 +1094,167 @@ async function fetchFromGitLab(
  * @param cloneUrl - full clone URL (must be HTTPS for GRASP servers)
  * @param eventPublisherPubkey - Optional: event publisher's pubkey (for bridge API - bridge stores repos by event publisher, not clone URL npub)
  */
+
+function normalizeGraspHttpsCloneUrl(cloneUrl: string): string {
+  const sshMatch = cloneUrl.match(/^git@([^:]+):(.+)$/);
+  if (sshMatch) {
+    const [, host, path] = sshMatch;
+    return `https://${host}/${path}`;
+  }
+  if (cloneUrl.startsWith("git://")) {
+    return cloneUrl.replace(/^git:\/\//, "https://");
+  }
+  return cloneUrl;
+}
+
+async function readBridgeFilesFromUrl(
+  bridgeUrl: string,
+  fallbackBranch: string
+): Promise<GitSourceFilesResult | null> {
+  try {
+    const response = await fetch(bridgeUrl, {
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      },
+    });
+    if (!response.ok) return null;
+    const bridgeJson = (await response.json()) as {
+      files?: unknown[];
+      branch?: string;
+    };
+    if (!Array.isArray(bridgeJson.files) || bridgeJson.files.length === 0) {
+      return null;
+    }
+    const resolved =
+      typeof bridgeJson.branch === "string" && bridgeJson.branch.trim()
+        ? bridgeJson.branch.trim()
+        : fallbackBranch;
+    return {
+      files: bridgeJson.files as Array<{
+        type: string;
+        path: string;
+        size?: number;
+      }>,
+      resolvedBranch: resolved,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Shallow-clone a GRASP HTTPS remote into a temp dir (same path as self-hosted import). */
+async function fetchGraspViaRepoFilesApi(
+  httpsCloneUrl: string,
+  branch: string
+): Promise<GitSourceFilesResult | null> {
+  try {
+    const params = new URLSearchParams({
+      sourceUrl: httpsCloneUrl,
+      branch: branch || "main",
+    });
+    const res = await fetch(`/api/git/repo-files?${params.toString()}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      console.warn(
+        `⚠️ [Git Source] GRASP remote shallow clone failed: ${res.status} (${httpsCloneUrl.slice(0, 72)}...)`
+      );
+      return null;
+    }
+    const data = await res.json();
+    if (!data.files || !Array.isArray(data.files) || data.files.length === 0) {
+      return null;
+    }
+    const resolvedBranch =
+      typeof data.defaultBranch === "string" && data.defaultBranch.trim()
+        ? data.defaultBranch.trim()
+        : branch;
+    console.log(
+      `✅ [Git Source] GRASP remote shallow clone: ${data.files.length} files (${httpsCloneUrl.slice(0, 72)}...)`
+    );
+    return { files: data.files, resolvedBranch };
+  } catch (e) {
+    console.warn("⚠️ [Git Source] fetchGraspViaRepoFilesApi error:", e);
+    return null;
+  }
+}
+
+async function awaitBridgeFilesAfterClone(
+  bridgeUrl: string,
+  branch: string,
+  maxAttempts = 8,
+  delayMs = 1500
+): Promise<GitSourceFilesResult | null> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (attempt > 1) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    console.log(
+      `🔍 [Git Source] Waiting for on-disk mirror (attempt ${attempt}/${maxAttempts})...`
+    );
+    const result = await readBridgeFilesFromUrl(bridgeUrl, branch);
+    if (result?.files?.length) {
+      return result;
+    }
+  }
+  return null;
+}
+
+function scheduleBareCloneToBridge(
+  normalizedCloneUrl: string,
+  ownerPubkey: string,
+  repo: string
+): void {
+  void fetch("/api/nostr/repo/clone", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      cloneUrl: normalizedCloneUrl,
+      ownerPubkey,
+      repo,
+    }),
+  }).catch((err) =>
+    console.warn("⚠️ [Git Source] Background bare clone failed:", err)
+  );
+}
+
+function notifyGraspRepoCloned(
+  files: Array<{ type: string; path: string; size?: number }>,
+  ownerPubkey: string,
+  repo: string
+): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("grasp-repo-cloned", {
+      detail: { files, ownerPubkey, repo },
+    })
+  );
+}
+
+function startBackgroundBridgePoll(
+  bridgeUrl: string,
+  branch: string,
+  ownerPubkey: string,
+  repo: string
+): void {
+  const poll = async () => {
+    for (let attempt = 1; attempt <= 10; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const result = await readBridgeFilesFromUrl(bridgeUrl, branch);
+      if (result?.files?.length) {
+        notifyGraspRepoCloned(result.files, ownerPubkey, repo);
+        return;
+      }
+    }
+    console.log(
+      `⚠️ [Git Source] Background bridge poll finished without files`
+    );
+  };
+  poll().catch((err) => console.warn("Polling error:", err));
+}
+
 async function fetchFromNostrGit(
   npub: string,
   repo: string,
@@ -1229,62 +1390,45 @@ async function fetchFromNostrGit(
           ? "not cloned yet"
           : "empty or corrupted";
         console.log(
-          `💡 [Git Source] Repository ${errorType} (${response.status}). Attempting to trigger clone...`
+          `💡 [Git Source] Repository ${errorType} (${response.status}). Resolving via GRASP remote + mirror...`
         );
 
-        // Try to trigger clone via API endpoint
-        // GRASP servers don't expose REST APIs - they only work via git protocol
-        // So we need to clone via git protocol and then retry the bridge API
-        // CRITICAL: Only trigger clone for GRASP servers, not GitHub/Codeberg/GitLab
-        // Use centralized isGraspServer function which includes pattern matching (git., git-\d+.)
         const isGraspServerCheck = cloneUrl && isGraspServerFn(cloneUrl);
-        console.log(`🔍 [Git Source] Clone trigger check:`, {
+        const normalizedCloneUrl = normalizeGraspHttpsCloneUrl(cloneUrl);
+        const isHttpsGrasp =
+          normalizedCloneUrl.startsWith("https://") ||
+          normalizedCloneUrl.startsWith("http://");
+
+        console.log(`🔍 [Git Source] GRASP resolve check:`, {
           hasOwnerPubkey: !!ownerPubkey,
-          hasCloneUrl: !!cloneUrl,
           isGraspServer: isGraspServerCheck,
-          cloneUrl: cloneUrl?.substring(0, 50) + "...",
-          ownerPubkey: ownerPubkey?.slice(0, 16) + "...",
+          cloneUrl: normalizedCloneUrl.substring(0, 72) + "...",
         });
 
-        // CRITICAL: Normalize SSH URLs (git@host:path) and git:// URLs to https:// for clone API
-        // The clone API will handle the conversion, but we need to pass https:// here
-        let normalizedCloneUrl = cloneUrl;
-        const sshMatch = cloneUrl.match(/^git@([^:]+):(.+)$/);
-        if (sshMatch) {
-          const [, host, path] = sshMatch;
-          normalizedCloneUrl = `https://${host}/${path}`;
-          console.log(
-            `🔄 [Git Source] Normalizing SSH URL to https:// for clone API: ${normalizedCloneUrl}`
+        if (ownerPubkey && isHttpsGrasp && isGraspServerCheck) {
+          // 1) Read directly from this clone URL (the "match") — no local mirror required
+          const remoteFiles = await fetchGraspViaRepoFilesApi(
+            normalizedCloneUrl,
+            branch
           );
-        } else if (cloneUrl.startsWith("git://")) {
-          normalizedCloneUrl = cloneUrl.replace(/^git:\/\//, "https://");
-          console.log(
-            `🔄 [Git Source] Normalizing git:// to https:// for clone API: ${normalizedCloneUrl}`
-          );
-        }
+          if (remoteFiles?.files?.length) {
+            scheduleBareCloneToBridge(normalizedCloneUrl, ownerPubkey, repo);
+            return remoteFiles;
+          }
 
-        if (
-          ownerPubkey &&
-          normalizedCloneUrl &&
-          (normalizedCloneUrl.startsWith("https://") ||
-            normalizedCloneUrl.startsWith("http://")) &&
-          isGraspServerCheck
-        ) {
+          // 2) Mirror onto gittr disk, then read bridge (fixes persistent copy)
           try {
-            console.log(`🔍 [Git Source] Triggering clone via API:`, {
+            console.log(`🔍 [Git Source] Mirroring to bridge from:`, {
               cloneUrl: normalizedCloneUrl,
-              originalCloneUrl: cloneUrl,
               ownerPubkey: ownerPubkey.slice(0, 16) + "...",
               repo,
             });
 
             const cloneResponse = await fetch("/api/nostr/repo/clone", {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                cloneUrl: normalizedCloneUrl, // Use normalized URL (https://) for clone API
+                cloneUrl: normalizedCloneUrl,
                 ownerPubkey,
                 repo,
               }),
@@ -1293,99 +1437,54 @@ async function fetchFromNostrGit(
             if (cloneResponse.ok) {
               const cloneData = await cloneResponse.json();
               console.log(
-                `✅ [Git Source] Clone triggered successfully:`,
+                `✅ [Git Source] Bare mirror clone OK:`,
                 cloneData
               );
 
-              // Start polling in the background (non-blocking)
-              // This allows the page to render immediately while clone completes
-              const pollForFiles = async (maxAttempts = 10, delay = 2000) => {
-                for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-                  await new Promise((resolve) => setTimeout(resolve, delay));
-                  console.log(
-                    `🔍 [Git Source] Polling for files (attempt ${attempt}/${maxAttempts})...`
-                  );
-
-                  try {
-                    const pollResponse = await fetch(bridgeUrl);
-                    if (pollResponse.ok) {
-                      const pollData = await pollResponse.json();
-                      if (
-                        pollData.files &&
-                        Array.isArray(pollData.files) &&
-                        pollData.files.length > 0
-                      ) {
-                        console.log(
-                          `✅ [Git Source] Files available after clone! Fetched ${pollData.files.length} files`
-                        );
-                        // Trigger a custom event to notify the page that files are ready
-                        // The page can listen to this event and update the UI
-                        if (typeof window !== "undefined") {
-                          window.dispatchEvent(
-                            new CustomEvent("grasp-repo-cloned", {
-                              detail: {
-                                files: pollData.files,
-                                ownerPubkey,
-                                repo,
-                              },
-                            })
-                          );
-                        }
-                        return pollData.files;
-                      }
-                    }
-                  } catch (pollError) {
-                    console.warn(
-                      `⚠️ [Git Source] Poll attempt ${attempt} failed:`,
-                      pollError
-                    );
-                  }
-                }
-                console.log(
-                  `⚠️ [Git Source] Polling completed - files not yet available. User can refresh to try again.`
+              const mirrored = await awaitBridgeFilesAfterClone(
+                bridgeUrl,
+                branch
+              );
+              if (mirrored?.files?.length) {
+                notifyGraspRepoCloned(
+                  mirrored.files,
+                  ownerPubkey,
+                  repo
                 );
-                return null;
-              };
+                return mirrored;
+              }
 
-              // Start polling in background (don't await - non-blocking)
-              pollForFiles().catch((err) =>
-                console.warn("Polling error:", err)
-              );
-
-              // Return null immediately to allow page to render
               console.log(
-                `💡 [Git Source] Clone initiated - polling for files in background. Page will render immediately.`
+                `⚠️ [Git Source] Mirror clone OK but bridge not readable yet; background poll`
               );
-              return null;
+              startBackgroundBridgePoll(
+                bridgeUrl,
+                branch,
+                ownerPubkey,
+                repo
+              );
             } else {
               const cloneError = await cloneResponse
                 .json()
                 .catch(() => ({ error: "Unknown error" }));
               console.log(
-                `⚠️ [Git Source] Clone API failed: ${cloneResponse.status} -`,
+                `⚠️ [Git Source] Bare mirror clone failed: ${cloneResponse.status}`,
                 cloneError
               );
             }
           } catch (cloneError: any) {
             console.warn(
-              `⚠️ [Git Source] Failed to trigger clone:`,
+              `⚠️ [Git Source] Bare mirror clone error:`,
               cloneError.message
             );
           }
-        } else {
-          if (!isGraspServerCheck) {
-            console.log(
-              `💡 [Git Source] Not a GRASP server - skipping clone trigger (GitHub/Codeberg/GitLab use their own APIs)`
-            );
-          } else {
-            console.log(
-              `💡 [Git Source] Cannot trigger clone - missing ownerPubkey or cloneUrl is not HTTPS`
-            );
-          }
+        } else if (!isGraspServerCheck) {
           console.log(
-            `💡 [Git Source] Bridge path would be: reposDir/${
-              ownerPubkey ? ownerPubkey.slice(0, 16) + "..." : "?"
-            }/${repo}.git`
+            `💡 [Git Source] Not a GRASP server - skipping (GitHub/Codeberg/GitLab use their own APIs)`
+          );
+        } else {
+          console.log(
+            `💡 [Git Source] Cannot resolve GRASP - missing ownerPubkey or non-HTTPS clone URL`
           );
         }
       }
@@ -1398,12 +1497,9 @@ async function fetchFromNostrGit(
       );
     }
 
-    // CRITICAL: GRASP servers don't expose REST API endpoints - they only work via git protocol
-    // We've already tried the bridge API (which reads from locally cloned repos)
-    // If that failed, we tried to trigger a clone via the clone API endpoint
-    // There's nothing else we can do - GRASP servers require git protocol, not HTTP REST APIs
+    // Tried: on-disk bridge, remote shallow clone (/api/git/repo-files), bare mirror + bridge retry
 
-    // Summary: All fetch attempts failed
+    // Summary: All fetch attempts failed for this clone URL
     console.log(
       `❌ [Git Source] All fetch attempts failed for ${repo} from ${npub.slice(
         0,

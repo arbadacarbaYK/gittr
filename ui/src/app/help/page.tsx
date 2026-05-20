@@ -1114,6 +1114,48 @@ export default function HelpPage() {
               </p>
             </div>
 
+            <div className="mt-6 p-4 bg-[#11161f] border border-gray-700 rounded-lg">
+              <h3 className="text-lg font-semibold text-white mb-2">
+                Browsing files on the Code tab
+              </h3>
+              <p className="text-sm text-gray-300 mb-2">
+                NIP-34 events carry <strong>metadata</strong> (name, description,
+                <code className="bg-gray-800 px-1 rounded">clone[]</code> URLs) —
+                not the full file tree. gittr loads the tree from git servers and
+                our bridge mirror.
+              </p>
+              <ol className="text-sm text-gray-300 list-decimal list-inside space-y-1 ml-1">
+                <li>Cache / small embedded files in the event (legacy)</li>
+                <li>
+                  GitHub / GitLab / Codeberg when a{" "}
+                  <code className="bg-gray-800 px-1 rounded">source</code> or
+                  GitHub clone URL exists
+                </li>
+                <li>
+                  For each GRASP HTTPS URL in{" "}
+                  <code className="bg-gray-800 px-1 rounded">clone[]</code> (in
+                  parallel): read our on-disk mirror, or shallow-clone that URL
+                  directly, or mirror it onto gittr then read
+                </li>
+              </ol>
+              <p className="mt-3 text-xs text-gray-400">
+                If one mirror is down (502) but another works (e.g.{" "}
+                <code className="bg-gray-800 px-1 rounded">relay.ngit.dev</code>
+                ), you still get files from the working URL. The status chip on
+                the repo shows ✓/✗ per source.
+              </p>
+              <p className="mt-2 text-xs text-gray-400">
+                <strong>Newest metadata:</strong> we use the latest kind 30617
+                from relays. <strong>Newest commit across all mirrors:</strong>{" "}
+                we currently show the first mirror that responds with a tree,
+                not a full compare of every server&apos;s HEAD — see{" "}
+                <code className="bg-gray-800 px-1 rounded">
+                  docs/FILE_FETCHING_INSIGHTS.md
+                </code>{" "}
+                in the repo.
+              </p>
+            </div>
+
             <div className="mt-6 space-y-3">
               <h4 className="text-sm font-semibold text-white uppercase tracking-wide">
                 Supported Git Commands
