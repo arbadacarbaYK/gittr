@@ -2,40 +2,77 @@
 
 **Production runs entirely on your server** (Docker + reverse proxy in front). Users and gittr **never** need to open GitHub for this to work.
 
-Upstream project: **[hzrd149/nsite-gateway](https://github.com/hzrd149/nsite-gateway)** (Deno). We do **not** ship a full copy of that repo here. Instead, **`infra/gittr-nsite-gateway`** is a **small overlay** plus a **Dockerfile** that, **when you build the image**, `git clone`s upstream once and copies our files on top. That clone is a **build-time** dependency (like `npm install` pulling packages), not something end users or production traffic “links to.”
+Upstream project: **[hzrd149/nsite-gateway](https://github.com/hzrd149/nsite-gateway)** (Deno). We build **`NSITE_GATEWAY_REF=v3.6.2`** (or newer after testing), then apply a **minimal overlay** — not a full fork of the gateway UI.
 
-## What gittr adds
+## Stay in sync with upstream first
 
-- **`GET /status/manifests.json`** — same data as the HTML status page, as JSON, so gittr’s **`/pages`** and **`GET /api/gittr-pages/status-sites`** can use a proper API instead of parsing HTML.
-- **Correct “updated” time** — the HTML `/status` table and `manifests.json` use **max(manifest `created_at`, latest snapshot `created_at`)**. Upstream preferred only the latest snapshot when present, so a **manifest-only** republish (new kind 35128, no new snapshot event) still looked like the first upload. The overlay also indexes the **newest manifest per site address** by time, so relay/event order cannot replace a newer manifest with an older one.
-- **`hasIndexHtml` + directory filter** — NIP-5A only serves `/` when the manifest lists **`/index.html`**. Many **ROOT** “Blossom Explorer” manifests list files like `/readme.md` but no homepage (404 at `/`). **`GET /status/manifests.json`** and gittr **`/pages`** only include sites where **`hasIndexHtml`** is true. The HTML **`/status`** operator table may still list all indexed manifests.
+Before opening new PRs to hzrd149, rebase on the current release tag and keep the overlay thin:
+
+| Upstream (v3.6.0+) | Overlay should **not** replace |
+|--------------------|--------------------------------|
+| Status table: **client** (nsyte, etc.), **curation** mutes, snapshots, hits | `pages/status.tsx` — use upstream |
+| **Newest manifest** per address + correct **updated** time (merged PR #21) | Full `site-index.ts` rewrite |
+| **404 at `/`** when manifest has no `index.html` | `routes/site.tsx` |
+
+## What gittr adds (overlay only)
+
+- **`GET /status/manifests.json`** — JSON for gittr **`/pages`** (until upstream merges the prepared PR).
+- **`hasIndexHtml`** on `IndexedSite` — small extension to upstream `site-index.ts`.
+- **Directory filter** — `manifests.json` only lists sites with **`hasIndexHtml`** (real homepages). Same curation filter as HTML `/status` when **`CURATION_USER`** is set.
+
+## Why upstream `/status` still shows “broken” sites
+
+That is **intentional**, not a bug in hzrd149’s gateway:
+
+- The gateway indexes **every** valid Nostr site manifest it sees (including Blossom Explorer uploads with only `/readme.md`, PDFs, etc.).
+- Those URLs **404 at `/`** because NIP-5A requires **`/index.html`** in the manifest — incomplete or experimental publishes, not a gateway outage.
+- HTML **`/status`** is an **operator index** (“what exists on the network”), not a “working sites” directory.
+- gittr **`/pages`** and **`manifests.json`** are the **public directory** (browsable only).
+
+## Curation vs gittr publisher blocklist
+
+| Mechanism | Where | Purpose |
+|-----------|--------|---------|
+| **`CURATION_USER`** (upstream) | Gateway env | Curator’s NIP-51 mute list; hides authors from gateway **home** and **`/status`** / **`manifests.json`** when set. Align with hzrd149 / nsite.run if you want the same mutes. |
+| **`PUBLISHER_BLOCKLIST`** (gittr) | Next.js env | gittr-only: explore, repos, apps, sitemap, and a second filter on **`/api/gittr-pages/status-sites`**. Keep for platform-wide bad actors (e.g. one spam pubkey) even when not on the curator list. |
+
+For Pages: prefer **`CURATION_USER`** on the gateway so **`manifests.json`** matches upstream policy; keep **`PUBLISHER_BLOCKLIST`** for the rest of gittr.space.
 
 ## 404 on some `npub….pages.gittr.space` URLs
 
-That is usually **not** a gateway outage. The manifest is indexed, but there is **no `/index.html` path** (see **Paths** on `https://pages.gittr.space/status/<npub>`). Those entries are **not** shown on gittr **`/pages`** after this overlay is deployed; operators can still inspect them on **`/status`**.
+The manifest is indexed, but there is **no `/index.html` path** (see **Paths** on `https://pages.gittr.space/status/<npub>`). Those entries are **not** in **`manifests.json`** or gittr **`/pages`**; operators can still inspect them on **`/status`**.
 
 ## What you actually do on the server
 
-1. Deploy/sync this repo to the server (including **`infra/gittr-nsite-gateway/`** and **`infra/nsite-gateway/docker-compose.gittr-gateway.yml`** — your **`deploy-nsite-gateway.sh`** already does that).
+1. Deploy/sync this repo to the server (including **`infra/gittr-nsite-gateway/`** and **`infra/nsite-gateway/docker-compose.gittr-gateway.yml`** — **`deploy-nsite-gateway.sh`** does that).
 2. On the server, from **`infra/nsite-gateway`**:
 
    ```bash
    docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml up -d --build
    ```
 
-3. Confirm: `https://pages.gittr.space/status/manifests.json` returns JSON.
+3. Confirm: `https://pages.gittr.space/status/manifests.json` returns JSON with `hasIndexHtml: true` on every row.
 
-No GitHub account required for that flow.
+Optional in **`gittr-pages.production.env`** (same file deployed as gateway `.env`):
 
-## Optional: GitHub fork (for maintainers only)
-
-Some teams like to **fork** hzrd149’s repo on GitHub to track merges, CI, or a pre-built container image (`ghcr.io/...`). That is **optional**. If you don’t use it, you still build from **this monorepo** on your own machine or server; production stays **your** hostnames only.
+```env
+# Curator hex pubkey or npub — same value as hzrd149/nsite.run if you want shared mutes
+# CURATION_USER=
+# CURATION_REFRESH=600
+```
 
 ## Local build
 
 ```bash
 cd infra/gittr-nsite-gateway
-docker build -t gittr-nsite-gateway:local --build-arg NSITE_GATEWAY_REF=master .
+docker build -t gittr-nsite-gateway:local --build-arg NSITE_GATEWAY_REF=v3.6.2 .
 ```
 
 Use the same `.env` / volumes pattern as **`infra/nsite-gateway`** (see upstream README for env vars).
+
+## Upstream PRs (arbadacarbaYK)
+
+- **Merged:** `fix/status-updated-newest-manifest` (PR #21).
+- **Pending:** `GET /status/manifests.json` — see **`MANIFESTS_JSON_UPSTREAM_PR.md`**. Rebase on `v3.6.2` before opening; include `hasIndexHtml` + curation parity in that PR or a follow-up.
+
+After upstream merges, delete overlay files that duplicate upstream and bump **`NSITE_GATEWAY_REF`**.

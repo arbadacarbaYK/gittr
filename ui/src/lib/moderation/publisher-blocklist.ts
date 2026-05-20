@@ -1,6 +1,11 @@
 /**
  * Operator-controlled list of publisher pubkeys to exclude from public listings
- * (explore, home, repositories sync, apps, gittr Pages directory, sitemaps).
+ * (explore, home, repositories sync, apps, sitemaps).
+ *
+ * gittr Pages directory: the nsite gateway also supports upstream **CURATION_USER**
+ * (NIP-51 mute list) on manifests.json when set in gateway `.env`. Keep this blocklist
+ * for gittr.space surfaces that do not use the gateway, and for pubkeys you want hidden
+ * platform-wide even if not on the curator list.
  *
  * Configure with NEXT_PUBLIC_PUBLISHER_BLOCKLIST and/or PUBLISHER_BLOCKLIST
  * (comma, space, or semicolon separated 64-hex pubkeys and/or npub1… bech32).

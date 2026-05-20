@@ -4,12 +4,18 @@ import { formatAgeFromUnix } from "../../helpers/format.ts";
 import { formatNsiteSubdomain } from "../../helpers/nsite-host.ts";
 import { NAMED_SITE_MANIFEST_KIND } from "../../helpers/site-manifest.ts";
 import { buildIndexedSites } from "../../helpers/site-index.ts";
+import { getNsiteDeployClientReference } from "../../nsite-clients.ts";
 import type { StatusSite } from "../../pages/status.tsx";
 import { getHitCount } from "../../services/analytics.ts";
+import { getCurationMutedPubkeys } from "../../services/curation.ts";
 import { eventStore, getUserProfile } from "../../services/nostr.ts";
 
+/** Same site list as GET /status HTML (curation + upstream status table fields). */
 function getStatusSites(host: string, protocol: string): StatusSite[] {
-  const manifests = buildIndexedSites(eventStore.getTimeline({}));
+  const muted = getCurationMutedPubkeys();
+  const manifests = buildIndexedSites(eventStore.getTimeline({})).filter(
+    (site) => !muted.has(site.pubkey),
+  );
   const sites: StatusSite[] = [];
 
   for (const site of manifests) {
@@ -22,12 +28,12 @@ function getStatusSites(host: string, protocol: string): StatusSite[] {
       title: site.title,
       description: site.description,
       pathCount: site.pathCount,
-      hasIndexHtml: site.hasIndexHtml,
       manifestId: site.manifestId,
       createdAt: site.createdAt,
       hostname: siteHostname,
       href: siteHostname ? `${protocol}//${siteHostname}/` : undefined,
       npub: npubEncode(site.pubkey),
+      client: getNsiteDeployClientReference(site.client),
       snapshotCount: site.snapshots.length,
       latestSnapshotId: site.snapshots[0]?.id,
       latestSnapshotCreatedAt: site.snapshots[0]?.createdAt,
@@ -47,25 +53,34 @@ function toHttps(url: string): string {
   return url;
 }
 
+/**
+ * Machine-readable directory feed for gittr Pages (and other consumers).
+ * Omits curated mutes (when CURATION_USER is set) and manifests without `/index.html`.
+ */
 export async function statusManifestsJsonRoute(c: Context) {
   const url = new URL(c.req.url);
   const base = `${url.protocol}//${url.host}`.replace(/\/$/, "");
+  const indexed = buildIndexedSites(eventStore.getTimeline({}));
+  const hasIndexByKey = new Map(
+    indexed.map((site) => [site.key, site.hasIndexHtml] as const),
+  );
+
   const sites = getStatusSites(url.host, url.protocol);
 
   const uniquePubkeys = [...new Set(sites.map((s) => s.pubkey))];
   const profileResults = await Promise.all(
     uniquePubkeys.map(
       async (pubkey) =>
-        [pubkey, await getUserProfile(pubkey, 5_000)] as const
-    )
+        [pubkey, await getUserProfile(pubkey, 5_000)] as const,
+    ),
   );
   const profiles = new Map(profileResults);
 
   const hitResults = await Promise.all(
     sites.map(
       async (site) =>
-        [site.key, await getHitCount(site.pubkey, site.identifier)] as const
-    )
+        [site.key, await getHitCount(site.pubkey, site.identifier)] as const,
+    ),
   );
   const hits = new Map(hitResults);
 
@@ -79,7 +94,7 @@ export async function statusManifestsJsonRoute(c: Context) {
 
   const now = Date.now();
   const rows = sites
-    .filter((site) => site.href && site.hasIndexHtml)
+    .filter((site) => site.href && hasIndexByKey.get(site.key) === true)
     .map((site) => {
       const namedId = site.identifier?.trim();
       const statusAddress = namedId
@@ -90,7 +105,6 @@ export async function statusManifestsJsonRoute(c: Context) {
           })
         : site.npub;
       const pathsStatusUrl = `${base}/status/${statusAddress}`;
-      // Manifest-only republish updates createdAt but not snapshot events; prefer the newer of the two.
       const latestSnap = site.latestSnapshotCreatedAt ?? 0;
       const ts = Math.max(site.createdAt, latestSnap);
       return {
@@ -103,7 +117,7 @@ export async function statusManifestsJsonRoute(c: Context) {
         authorDisplay: (site.authorName || site.npub).trim(),
         authorPubkeyHex: site.pubkey,
         pathCount: site.pathCount,
-        hasIndexHtml: site.hasIndexHtml,
+        hasIndexHtml: true,
         siteKind:
           site.identifier === "ROOT" ||
           site.identifier === "" ||
@@ -127,6 +141,6 @@ export async function statusManifestsJsonRoute(c: Context) {
     200,
     {
       "Cache-Control": "public, max-age=120",
-    }
+    },
   );
 }

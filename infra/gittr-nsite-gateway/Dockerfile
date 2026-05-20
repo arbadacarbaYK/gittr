@@ -1,5 +1,5 @@
 # gittr: upstream nsite-gateway + overlay (see README.md)
-ARG NSITE_GATEWAY_REF=master
+ARG NSITE_GATEWAY_REF=v3.6.2
 FROM denoland/deno:2.7.7 AS upstream
 
 ARG NSITE_GATEWAY_REF
@@ -21,7 +21,6 @@ COPY --from=upstream /src/public ./public
 COPY overlay/src/helpers/site-index.ts ./src/helpers/site-index.ts
 COPY overlay/src/routes/status/index.ts ./src/routes/status/index.ts
 COPY overlay/src/routes/status/manifests-json.tsx ./src/routes/status/manifests-json.tsx
-COPY overlay/src/pages/status.tsx ./src/pages/status.tsx
 
 RUN deno cache --frozen --unstable-kv main.ts
 

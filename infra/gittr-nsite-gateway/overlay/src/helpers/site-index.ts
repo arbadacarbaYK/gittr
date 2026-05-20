@@ -1,6 +1,7 @@
 import type { NostrEvent } from "applesauce-core/helpers";
 import {
   getManifestAddressKey,
+  getManifestClient,
   getManifestDescription,
   getManifestIdentifier,
   getManifestPaths,
@@ -27,8 +28,9 @@ export type IndexedSite = {
   kind: number;
   title?: string;
   description?: string;
+  client?: string;
   pathCount: number;
-  /** NIP-5A serves `/` only when the manifest lists `/index.html`. */
+  /** True when the manifest lists `/index.html` (NIP-5A can serve `/`). */
   hasIndexHtml: boolean;
   manifestId: string;
   createdAt: number;
@@ -46,8 +48,8 @@ function manifestHasIndexHtml(event: NostrEvent): boolean {
 }
 
 /**
- * Prefer the newest manifest per address. Upstream overwrites by timeline order; if the store
- * yields events out of chronological order, an older republish could replace a newer one.
+ * Prefer the newest manifest per address. The naive loop overwrites by timeline order; if the
+ * store yields events out of order, an older manifest could replace a newer one.
  */
 export function buildIndexedSites(events: NostrEvent[]): IndexedSite[] {
   const sites = new Map<string, IndexedSite>();
@@ -98,6 +100,7 @@ export function buildIndexedSites(events: NostrEvent[]): IndexedSite[] {
       kind: event.kind,
       title: getManifestTitle(event),
       description: getManifestDescription(event),
+      client: getManifestClient(event),
       pathCount: getManifestPaths(event).size,
       hasIndexHtml: manifestHasIndexHtml(event),
       manifestId: event.id,
@@ -134,10 +137,9 @@ export function getIndexedSiteByAddress(
 }
 
 export function getSiteIndexEvents(events: NostrEvent[]): NostrEvent[] {
-  return events.filter(
-    (event) =>
-      event.kind === ROOT_SITE_MANIFEST_KIND ||
-      event.kind === NAMED_SITE_MANIFEST_KIND ||
-      event.kind === MANIFEST_SNAPSHOT_KIND
+  return events.filter((event) =>
+    event.kind === ROOT_SITE_MANIFEST_KIND ||
+    event.kind === NAMED_SITE_MANIFEST_KIND ||
+    event.kind === MANIFEST_SNAPSHOT_KIND
   );
 }
