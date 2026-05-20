@@ -93,6 +93,10 @@ import {
 } from "@/lib/repos/upstream-precedence";
 import { sidebarAboutText } from "@/lib/repos/repo-about-text";
 import {
+  resolveActiveRepoBranch,
+  shouldApplyFetchedFileTree,
+} from "@/lib/repos/repo-file-tree-branch";
+import {
   fetchGithubRepoDescription,
   persistRepoDescription,
   resolveRepoActivityDisplayMs,
@@ -4187,8 +4191,10 @@ export default function RepoCodePage() {
     }
 
     const repoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
-    const currentBranch =
-      selectedBranchRef.current || repoData?.defaultBranch || "main";
+    const currentBranch = resolveActiveRepoBranch(
+      currentRepoData ?? repoData,
+      selectedBranchRef.current
+    );
     const repoKeyWithBranch = `${repoKey}:${currentBranch}`; // Include branch in key
     const hasAttempted = fileFetchAttemptedRef.current === repoKeyWithBranch;
 
@@ -4721,7 +4727,10 @@ export default function RepoCodePage() {
         console.log(
           `🔍 [File Fetch] NIP-34: Found ${initialCloneUrls.length} clone URLs, attempting multi-source fetch immediately`
         );
-        const branch = String(initialRepoData?.defaultBranch || "main");
+        const branch = resolveActiveRepoBranch(
+          initialRepoData,
+          selectedBranchRef.current
+        );
 
         // Mark as attempted BEFORE starting to prevent other triggers
         // CRITICAL: Set isInProgress here (when we actually start fetching), not earlier
@@ -4825,22 +4834,27 @@ export default function RepoCodePage() {
               const existingCount = Array.isArray(currentFiles)
                 ? currentFiles.length
                 : 0;
-              const branchFromFetch = status.resolvedBranch;
-              const branchKey =
-                branchFromFetch ||
-                selectedBranchRef.current ||
-                repoDataRef.current?.defaultBranch ||
-                "main";
-              const applyKey = `${resolvedParams.entity}/${resolvedParams.repo}:${branchKey}:${status.files.length}`;
+              const branchFromFetch =
+                status.resolvedBranch ||
+                resolveActiveRepoBranch(
+                  repoDataRef.current,
+                  selectedBranchRef.current
+                );
+              const activeBranch = resolveActiveRepoBranch(
+                repoDataRef.current,
+                selectedBranchRef.current
+              );
+              const applyKey = `${resolvedParams.entity}/${resolvedParams.repo}:${branchFromFetch}:${status.files.length}`;
               if (lastAppliedFileTreeKeyRef.current === applyKey) {
                 return;
               }
-              const shouldApplyTree =
-                shouldReplaceCachedFileTree() ||
-                status.files.length > existingCount ||
-                existingCount === 0;
+              const shouldApplyTree = shouldApplyFetchedFileTree(
+                branchFromFetch,
+                existingCount,
+                activeBranch
+              );
 
-              // First success: update files immediately (or replace stale cache when upstream wins)
+              // First success: update files immediately when branch matches the UI
               if (shouldApplyTree) {
                 lastAppliedFileTreeKeyRef.current = applyKey;
                 markSourceTreeFresh(
@@ -4852,18 +4866,13 @@ export default function RepoCodePage() {
                   )
                 );
                 console.log(
-                  `🚀 [File Fetch] First source succeeded! Updating files immediately: ${status.files.length} files from ${status.source.displayName}`
+                  `🚀 [File Fetch] First source succeeded! Updating files immediately: ${status.files.length} files from ${status.source.displayName} (branch: ${branchFromFetch})`
                 );
                 setBridgeFiles(status.files);
                 setFilesTreeBump((b) => b + 1);
                 // CRITICAL: Use startTransition to defer state update and prevent hook order issues during render
                 startTransition(() => {
-                  if (
-                    branchFromFetch &&
-                    branchFromFetch !==
-                      (selectedBranchRef.current ||
-                        repoDataRef.current?.defaultBranch)
-                  ) {
+                  if (!selectedBranchRef.current?.trim()) {
                     setSelectedBranch(branchFromFetch);
                   }
                   setRepoData((prev: any) => {
@@ -4872,8 +4881,9 @@ export default function RepoCodePage() {
                       ? {
                           ...prev,
                           files: status.files,
+                          filesBranch: branchFromFetch,
                           defaultBranch:
-                            branchFromFetch ?? prev.defaultBranch ?? "main",
+                            prev.defaultBranch ?? branchFromFetch ?? "main",
                           // CRITICAL: Store successful sources as array for fallback during file opening
                           successfulSources: [
                             {
@@ -4892,6 +4902,7 @@ export default function RepoCodePage() {
                       : {
                           // Create minimal repoData if it doesn't exist yet
                           files: status.files,
+                          filesBranch: branchFromFetch,
                           defaultBranch: branchFromFetch ?? "main",
                           successfulSources: [
                             {
@@ -4912,7 +4923,7 @@ export default function RepoCodePage() {
                       console.log(
                         `✅ [File Fetch] repoDataRef updated with ${
                           updated.files?.length || 0
-                        } files - files should now be visible in UI`
+                        } files (branch: ${branchFromFetch})`
                       );
                     }
                     // CRITICAL: Force a re-render by updating state - ensure files are visible immediately
@@ -7046,7 +7057,10 @@ export default function RepoCodePage() {
                   console.log(
                     `🔍 [File Fetch] NIP-34: Found ${cloneUrls.length} clone URLs after EOSE, attempting multi-source fetch`
                   );
-                  const branch = String(currentData?.defaultBranch || "main");
+                  const branch = resolveActiveRepoBranch(
+                    currentData,
+                    selectedBranchRef.current
+                  );
 
                   // Mark as attempted BEFORE starting to prevent other triggers
                   markFileFetchAttempt(repoKeyWithBranch);
@@ -7142,22 +7156,27 @@ export default function RepoCodePage() {
                           const existingCount = Array.isArray(currentFiles)
                             ? currentFiles.length
                             : 0;
-                          const branchFromFetch = status.resolvedBranch;
-                          const branchKey =
-                            branchFromFetch ||
-                            selectedBranchRef.current ||
-                            repoDataRef.current?.defaultBranch ||
-                            "main";
-                          const applyKey = `${resolvedParams.entity}/${resolvedParams.repo}:${branchKey}:${status.files.length}`;
+                          const branchFromFetch =
+                            status.resolvedBranch ||
+                            resolveActiveRepoBranch(
+                              repoDataRef.current,
+                              selectedBranchRef.current
+                            );
+                          const activeBranch = resolveActiveRepoBranch(
+                            repoDataRef.current,
+                            selectedBranchRef.current
+                          );
+                          const applyKey = `${resolvedParams.entity}/${resolvedParams.repo}:${branchFromFetch}:${status.files.length}`;
                           if (lastAppliedFileTreeKeyRef.current === applyKey) {
                             return;
                           }
-                          const shouldApplyTree =
-                            shouldReplaceCachedFileTree() ||
-                            status.files.length > existingCount ||
-                            existingCount === 0;
+                          const shouldApplyTree = shouldApplyFetchedFileTree(
+                            branchFromFetch,
+                            existingCount,
+                            activeBranch
+                          );
 
-                          // First success: update files immediately (or replace stale cache)
+                          // First success: update files immediately when branch matches the UI
                           if (shouldApplyTree) {
                             lastAppliedFileTreeKeyRef.current = applyKey;
                             markSourceTreeFresh(
@@ -7169,16 +7188,11 @@ export default function RepoCodePage() {
                               )
                             );
                             console.log(
-                              `🚀 [File Fetch] First source succeeded! Updating files immediately: ${status.files.length} files from ${status.source.displayName}`
+                              `🚀 [File Fetch] First source succeeded! Updating files immediately: ${status.files.length} files from ${status.source.displayName} (branch: ${branchFromFetch})`
                             );
                             setBridgeFiles(status.files);
                             setFilesTreeBump((b) => b + 1);
-                            if (
-                              branchFromFetch &&
-                              branchFromFetch !==
-                                (selectedBranchRef.current ||
-                                  repoDataRef.current?.defaultBranch)
-                            ) {
+                            if (!selectedBranchRef.current?.trim()) {
                               setSelectedBranch(branchFromFetch);
                             }
                             setRepoData((prev: any) => {
@@ -7187,9 +7201,10 @@ export default function RepoCodePage() {
                                 ? {
                                     ...prev,
                                     files: status.files,
+                                    filesBranch: branchFromFetch,
                                     defaultBranch:
-                                      branchFromFetch ??
                                       prev.defaultBranch ??
+                                      branchFromFetch ??
                                       "main",
                                     // CRITICAL: Store successful sources as array for fallback during file opening
                                     successfulSources: [
@@ -7221,6 +7236,7 @@ export default function RepoCodePage() {
                                 : {
                                     // Create minimal repoData if it doesn't exist yet
                                     files: status.files,
+                                    filesBranch: branchFromFetch,
                                     defaultBranch: branchFromFetch ?? "main",
                                     successfulSources: [
                                       {
@@ -7253,7 +7269,7 @@ export default function RepoCodePage() {
                                 console.log(
                                   `✅ [File Fetch] repoDataRef updated with ${
                                     updated.files?.length || 0
-                                  } files - files should now be visible in UI`
+                                  } files (branch: ${branchFromFetch})`
                                 );
                               }
                               // CRITICAL: Force a re-render by updating state - ensure files are visible immediately
@@ -7635,7 +7651,10 @@ export default function RepoCodePage() {
               console.log(
                 `🔍 [File Fetch] NIP-34: Found ${cloneUrls.length} clone URLs after timeout, attempting multi-source fetch`
               );
-              const branch = String(currentData?.defaultBranch || "main");
+              const branch = resolveActiveRepoBranch(
+                currentData,
+                selectedBranchRef.current
+              );
 
               // Update fetch statuses - merge with existing to avoid duplicates
               // CRITICAL: Show status for every clone URL we will try
@@ -7725,22 +7744,25 @@ export default function RepoCodePage() {
                     status.files.length > 0
                   ) {
                     const currentFiles = repoDataRef.current?.files;
-                    const preferUpstreamReplace = shouldPreferUpstreamMirror(
-                      resolvedParams.entity,
-                      {
-                        sourceUrl: repoDataRef.current?.sourceUrl,
-                        forkedFrom: repoDataRef.current?.forkedFrom,
-                        clone: (repoDataRef.current as { clone?: string[] })
-                          ?.clone,
-                        hasUnpushedEdits: repoDataRef.current?.hasUnpushedEdits,
-                      }
+                    const existingCount = Array.isArray(currentFiles)
+                      ? currentFiles.length
+                      : 0;
+                    const branchFromFetch =
+                      status.resolvedBranch ||
+                      resolveActiveRepoBranch(
+                        repoDataRef.current,
+                        selectedBranchRef.current
+                      );
+                    const activeBranch = resolveActiveRepoBranch(
+                      repoDataRef.current,
+                      selectedBranchRef.current
                     );
-                    // Replace empty tree, stale cache when upstream wins, or strictly larger listing
                     if (
-                      !currentFiles ||
-                      currentFiles.length === 0 ||
-                      preferUpstreamReplace ||
-                      status.files.length > currentFiles.length
+                      shouldApplyFetchedFileTree(
+                        branchFromFetch,
+                        existingCount,
+                        activeBranch
+                      )
                     ) {
                       // CRITICAL: Extract sourceUrl from successful source for GitHub/GitLab/Codeberg
                       // This allows fetchGithubRaw to fetch individual file content
@@ -7767,6 +7789,7 @@ export default function RepoCodePage() {
                           ? {
                               ...prev,
                               files: status.files,
+                              filesBranch: branchFromFetch,
                               clone: mergeDiscoverableCloneUrls(
                                 prev.clone,
                                 cloneUrls
@@ -7779,6 +7802,7 @@ export default function RepoCodePage() {
                             }
                           : {
                               files: status.files,
+                              filesBranch: branchFromFetch,
                               sourceUrl: sourceUrlToSet,
                               clone: mergeDiscoverableCloneUrls([], cloneUrls),
                             };
@@ -7789,6 +7813,7 @@ export default function RepoCodePage() {
                         repoDataRef.current = {
                           ...repoDataRef.current,
                           files: status.files,
+                          filesBranch: branchFromFetch,
                           clone: mergeDiscoverableCloneUrls(
                             repoDataRef.current.clone,
                             cloneUrls
@@ -7797,7 +7822,7 @@ export default function RepoCodePage() {
                             repoDataRef.current.sourceUrl ||
                             sourceUrlToSet ||
                             repoDataRef.current.sourceUrl,
-                        };
+                        } as StoredRepo & { filesBranch?: string };
                       }
                     }
                   }
@@ -11519,7 +11544,11 @@ export default function RepoCodePage() {
           bridgeRepo = parts[parts.length - 1] || bridgeRepo;
         }
         bridgeRepo = String(bridgeRepo).replace(/\.git$/, "");
-        const branch0 = selectedBranch || repoData?.defaultBranch || "main";
+        const branch0 =
+          (repoData as { filesBranch?: string })?.filesBranch ||
+          selectedBranch ||
+          repoData?.defaultBranch ||
+          "main";
         try {
           const api0 = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
             ownerPk.toLowerCase()

@@ -1100,7 +1100,7 @@ async function fetchFromNostrGit(
   branch = "main",
   cloneUrl: string,
   eventPublisherPubkey?: string
-): Promise<Array<{ type: string; path: string; size?: number }> | null> {
+): Promise<GitSourceFilesResult | null> {
   // Import GRASP server detection function
   const {
     isGraspServer: isGraspServerFn,
@@ -1159,7 +1159,11 @@ async function fetchFromNostrGit(
         },
       });
 
-      let bridgeJson: { files?: unknown[]; message?: string } | null = null;
+      let bridgeJson: {
+        files?: unknown[];
+        branch?: string;
+        message?: string;
+      } | null = null;
 
       if (response.ok) {
         try {
@@ -1176,13 +1180,21 @@ async function fetchFromNostrGit(
           bridgeJson.files.length > 0
         ) {
           console.log(
-            `✅ [Git Source] Fetched ${bridgeJson.files.length} files from git-nostr-bridge`
+            `✅ [Git Source] Fetched ${bridgeJson.files.length} files from git-nostr-bridge` +
+              (bridgeJson.branch ? ` (branch: ${bridgeJson.branch})` : "")
           );
-          return bridgeJson.files as Array<{
-            type: string;
-            path: string;
-            size?: number;
-          }>;
+          const resolved =
+            typeof bridgeJson.branch === "string" && bridgeJson.branch.trim()
+              ? bridgeJson.branch.trim()
+              : branch;
+          return {
+            files: bridgeJson.files as Array<{
+              type: string;
+              path: string;
+              size?: number;
+            }>,
+            resolvedBranch: resolved,
+          };
         }
         if (bridgeJson !== null) {
           console.log(
@@ -1490,14 +1502,13 @@ export async function fetchFilesFromSource(
 
     case "nostr-git":
       if (source.npub && source.repo) {
-        const files = await fetchFromNostrGit(
+        return await fetchFromNostrGit(
           source.npub,
           source.repo,
           branch,
           source.url,
           eventPublisherPubkey
         );
-        return files?.length ? { files, resolvedBranch: branch } : null;
       }
       break;
 
