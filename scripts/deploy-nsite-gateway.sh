@@ -97,7 +97,8 @@ if [[ -f "$UI_ENV" ]] && [[ -d /opt/ngit/ui/node_modules/nostr-tools ]]; then
     const raw = fs.readFileSync("/opt/ngit/ui/.env.local", "utf8");
     const m = raw.match(/^NEXT_PUBLIC_PUBLISHER_BLOCKLIST=(.+)$/m);
     if (!m) process.exit(0);
-    const v = m[1].trim().replace(/^["']|["']$/g, "");
+    let v = m[1].trim();
+    if (v.length >= 2 && ((v[0] === "\"" && v.at(-1) === "\"") || (v[0] === "'" && v.at(-1) === "'"))) v = v.slice(1, -1);
     const hex = [];
     for (const p of v.split(/[\s,;]+/).filter(Boolean)) {
       if (/^npub1/i.test(p)) hex.push(nip19.decode(p).data);
