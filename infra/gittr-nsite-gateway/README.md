@@ -1,4 +1,10 @@
-# gittr nsite-gateway overlay (JSON for `/pages`)
+# gittr nsite-gateway image
+
+Docker image builds from **[arbadacarbaYK/nsite-gateway](https://github.com/arbadacarbaYK/nsite-gateway)** branch **`gittr-pages`** (no file overlay in this repo anymore).
+
+Legacy overlay files under `overlay/` are kept for reference until the fork branch is the only source.
+
+# gittr nsite-gateway overlay (legacy) (JSON for `/pages`)
 
 **Production runs entirely on your server** (Docker + reverse proxy in front). Users and gittr **never** need to open GitHub for this to work.
 
@@ -36,7 +42,7 @@ That is **intentional**, not a bug in hzrd149’s gateway:
 | **`CURATION_USER`** (upstream) | Gateway env | Curator’s NIP-51 mute list; hides authors from gateway **home** and **`/status`** / **`manifests.json`** when set. Align with hzrd149 / nsite.run if you want the same mutes. |
 | **`PUBLISHER_BLOCKLIST`** (gittr) | Next.js env | gittr-only: explore, repos, apps, sitemap, and a second filter on **`/api/gittr-pages/status-sites`**. Keep for platform-wide bad actors (e.g. one spam pubkey) even when not on the curator list. |
 
-For Pages: prefer **`CURATION_USER`** on the gateway so **`manifests.json`** matches upstream policy; keep **`PUBLISHER_BLOCKLIST`** for the rest of gittr.space.
+Production: **`CURATION_USER`** is gittr’s public operator hex; deploy syncs **`GITTR_SYNC_MUTED_PUBKEYS`** from **`ui/.env.local`** `NEXT_PUBLIC_PUBLISHER_BLOCKLIST` (server-only). See **`docs/GITTR_PAGES_CURATION.md`**. Keep **`PUBLISHER_BLOCKLIST`** for explore/repos/sitemap on gittr.space.
 
 ## 404 on some `npub….pages.gittr.space` URLs
 

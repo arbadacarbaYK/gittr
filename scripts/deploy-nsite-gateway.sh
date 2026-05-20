@@ -36,9 +36,20 @@ fi
 echo "📦 Deploying nsite gateway → root@${HOST}:${REMOTE}"
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "mkdir -p '${REMOTE}/public'"
 
-echo "📦 Syncing gittr nsite-gateway fork (for /status/manifests.json build)…"
+NSITE_GATEWAY_SRC="${NSITE_GATEWAY_SRC:-$ROOT/../nsite-gateway-pr}"
+if [[ ! -f "${NSITE_GATEWAY_SRC}/main.ts" ]]; then
+  echo "❌ Missing nsite-gateway fork sources: ${NSITE_GATEWAY_SRC}"
+  echo "   Clone arbadacarbaYK/nsite-gateway and checkout branch gittr-pages, or set NSITE_GATEWAY_SRC."
+  exit 1
+fi
+
+echo "📦 Syncing gittr nsite-gateway image context + fork sources (gittr-pages)…"
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "rm -rf '/opt/ngit/infra/gittr-nsite-gateway'"
 scp -i "$KEY" -q -r "$ROOT/infra/gittr-nsite-gateway" "root@${HOST}:/opt/ngit/infra/"
+ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "rm -rf '/opt/ngit/infra/gittr-nsite-gateway/gateway-src'"
+scp -i "$KEY" -q -r "${NSITE_GATEWAY_SRC}/." "root@${HOST}:/opt/ngit/infra/gittr-nsite-gateway/gateway-src/"
+# Never ship secrets from a local .env
+ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "rm -f '/opt/ngit/infra/gittr-nsite-gateway/gateway-src/.env' '/opt/ngit/infra/gittr-nsite-gateway/gateway-src/.gittr-pages-mute-nsec'"
 
 scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/docker-compose.yml" "root@${HOST}:${REMOTE}/"
 scp -i "$KEY" -q "$ROOT/infra/nsite-gateway/docker-compose.gittr-gateway.yml" "root@${HOST}:${REMOTE}/"
@@ -60,8 +71,17 @@ ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" 'export DEBIAN_FRONTEND=noninterac
   docker --version
 '
 
-echo "🔧 Writing production .env on server (from gittr-pages.production.env)..."
-ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "install -m 0600 -T '${REMOTE}/gittr-pages.production.env' '${REMOTE}/.env'"
+echo "🔧 Gateway .env (create from template only if missing — never overwrite existing)..."
+ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" 'set -euo pipefail
+  SRC="'"${REMOTE}"'/gittr-pages.production.env"
+  DST="'"${REMOTE}"'/.env"
+  if [[ -f "$DST" ]]; then
+    echo "   Keeping existing ${DST}"
+  else
+    install -m 0600 -T "$SRC" "$DST"
+    echo "   Created ${DST} from gittr-pages.production.env"
+  fi
+'
 
 echo "🔧 Syncing Pages blocklist → gateway curation (CURATION_USER + GITTR_SYNC_MUTED_PUBKEYS)..."
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" 'set -euo pipefail
@@ -97,4 +117,7 @@ ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" 'set -euo pipefail
 echo "🐳 Building gittr gateway fork image and restarting stack…"
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "cd '${REMOTE}' && docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml build && docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml up -d"
 
+scp -i "$KEY" -q "$ROOT/scripts/publish-gittr-pages-mutelist.cjs" "root@${HOST}:/opt/ngit/ui/scripts/" 2>/dev/null || true
+
 echo "✅ nsite gateway should be listening on host port 3040 (see SETUP_INSTRUCTIONS.md for HTTPS / reverse-proxy in front)."
+echo "   Push fork: cd ${NSITE_GATEWAY_SRC} && git push -u fork gittr-pages  (needs GitHub auth, not deploy-key-only)"
