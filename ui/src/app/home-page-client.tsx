@@ -17,6 +17,7 @@ import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
+import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { loadStoredRepos } from "@/lib/repos/storage";
 import {
   type RepoStats,
@@ -2412,17 +2413,17 @@ export default function HomePage() {
                                 );
                               })()}
                           </div>
-                          {r.description && r.description.trim() ? (
-                            <div className="text-sm opacity-60 mt-1 truncate">
-                              {r.description}
-                            </div>
-                          ) : r.sourceUrl ? (
-                            <div className="text-sm opacity-70 mt-1 break-words overflow-hidden">
-                              <span className="break-all line-clamp-2">
-                                Imported from {r.sourceUrl}
-                              </span>
-                            </div>
-                          ) : null}
+                          {(() => {
+                            const cardDesc = repoCardDescriptionText(
+                              r.description,
+                              r.name || repo
+                            );
+                            return cardDesc ? (
+                              <div className="text-sm opacity-60 mt-1 truncate">
+                                {cardDesc}
+                              </div>
+                            ) : null;
+                          })()}
                         </div>
                       </Link>
                     </li>

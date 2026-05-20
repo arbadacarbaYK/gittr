@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { PushPaywallStatus } from "@/components/ui/push-paywall-status";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
+import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { isOwner } from "@/lib/repo-permissions";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { formatDateTime24h } from "@/lib/utils/date-format";
@@ -767,15 +768,17 @@ export function ReposList({
                       </div>
                     </div>
                   </div>
-                  {r.description && r.description.trim() ? (
-                    <div className="text-sm opacity-70 line-clamp-2">
-                      {r.description}
-                    </div>
-                  ) : r.sourceUrl ? (
-                    <div className="text-sm opacity-70 line-clamp-2">
-                      Imported from {r.sourceUrl}
-                    </div>
-                  ) : null}
+                  {(() => {
+                    const cardDesc = repoCardDescriptionText(
+                      r.description,
+                      r.repo || r.slug || r.name || ""
+                    );
+                    return cardDesc ? (
+                      <div className="text-sm opacity-70 line-clamp-2">
+                        {cardDesc}
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
               </div>
               <div className="flex items-center gap-2 sm:ml-4 flex-shrink-0 flex-wrap">

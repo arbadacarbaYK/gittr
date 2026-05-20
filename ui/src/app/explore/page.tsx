@@ -21,6 +21,7 @@ import {
   useContributorMetadata,
 } from "@/lib/nostr/useContributorMetadata";
 import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
+import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { loadStoredRepos } from "@/lib/repos/storage";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {
@@ -2763,18 +2764,17 @@ function ExplorePageContent() {
                       <div className="opacity-70 truncate">
                         {entityDisplayName}/{repoDisplayName}
                       </div>
-                      {r.description && (
-                        <div className="text-sm opacity-60 mt-1 truncate">
-                          {r.description}
-                        </div>
-                      )}
-                      {r.sourceUrl && (
-                        <div className="text-sm opacity-70 mt-1 break-words overflow-hidden">
-                          <span className="break-all line-clamp-2">
-                            Imported from {r.sourceUrl}
-                          </span>
-                        </div>
-                      )}
+                      {(() => {
+                        const cardDesc = repoCardDescriptionText(
+                          r.description,
+                          repoDisplayName
+                        );
+                        return cardDesc ? (
+                          <div className="text-sm opacity-60 mt-1 truncate">
+                            {cardDesc}
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                 </a>

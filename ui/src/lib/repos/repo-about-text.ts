@@ -22,3 +22,11 @@ export function sidebarAboutText(
   if (!d || isPlaceholderRepositoryDescription(d, repoName)) return "";
   return d;
 }
+
+/** Repo cards (home, explore, repositories list): real blurb only, never "Imported from …". */
+export function repoCardDescriptionText(
+  description: string | undefined | null,
+  repoName: string
+): string {
+  return sidebarAboutText(description, repoName);
+}

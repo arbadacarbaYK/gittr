@@ -23,6 +23,7 @@ import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
+import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { isOwner } from "@/lib/repo-permissions";
 import {
   type StoredRepo,
@@ -3234,15 +3235,17 @@ export default function RepositoriesPage() {
                           )}
                         </Badge>
                       </div>
-                      {r.description && r.description.trim() ? (
-                        <div className="text-sm opacity-70 line-clamp-2">
-                          {r.description}
-                        </div>
-                      ) : r.sourceUrl ? (
-                        <div className="text-sm opacity-70 whitespace-nowrap overflow-hidden text-ellipsis">
-                          Imported from {r.sourceUrl}
-                        </div>
-                      ) : null}
+                      {(() => {
+                        const cardDesc = repoCardDescriptionText(
+                          r.description,
+                          r.repo || r.slug || r.name || ""
+                        );
+                        return cardDesc ? (
+                          <div className="text-sm opacity-70 line-clamp-2">
+                            {cardDesc}
+                          </div>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:ml-4 flex-shrink-0 w-full sm:w-auto">
