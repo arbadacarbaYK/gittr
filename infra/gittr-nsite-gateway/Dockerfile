@@ -19,6 +19,7 @@ COPY --from=upstream /src/src ./src
 COPY --from=upstream /src/public ./public
 
 COPY overlay/src/helpers/site-index.ts ./src/helpers/site-index.ts
+COPY overlay/src/helpers/gittr-muted-pubkeys.ts ./src/helpers/gittr-muted-pubkeys.ts
 COPY overlay/src/routes/status/index.ts ./src/routes/status/index.ts
 COPY overlay/src/routes/status/manifests-json.tsx ./src/routes/status/manifests-json.tsx
 

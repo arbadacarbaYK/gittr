@@ -7,12 +7,12 @@ import { buildIndexedSites } from "../../helpers/site-index.ts";
 import { getNsiteDeployClientReference } from "../../nsite-clients.ts";
 import type { StatusSite } from "../../pages/status.tsx";
 import { getHitCount } from "../../services/analytics.ts";
-import { getCurationMutedPubkeys } from "../../services/curation.ts";
+import { getPagesDirectoryMutedPubkeys } from "../../helpers/gittr-muted-pubkeys.ts";
 import { eventStore, getUserProfile } from "../../services/nostr.ts";
 
 /** Same site list as GET /status HTML (curation + upstream status table fields). */
 function getStatusSites(host: string, protocol: string): StatusSite[] {
-  const muted = getCurationMutedPubkeys();
+  const muted = getPagesDirectoryMutedPubkeys();
   const manifests = buildIndexedSites(eventStore.getTimeline({})).filter(
     (site) => !muted.has(site.pubkey),
   );
