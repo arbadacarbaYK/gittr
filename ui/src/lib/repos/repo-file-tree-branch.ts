@@ -3,6 +3,41 @@
  * Prevents flip-flop when parallel fetches use different branches (e.g. main vs feature).
  */
 
+/** Branch for repo sub-pages (commits, releases, …): URL param, then stored default, then main. */
+export function resolveRepoTabBranch(
+  searchParams: { get(name: string): string | null } | null | undefined,
+  repo?: { defaultBranch?: string } | null
+): string {
+  const fromQuery = searchParams?.get("branch")?.trim();
+  if (fromQuery) return fromQuery;
+  const fromRepo = (repo?.defaultBranch || "").trim();
+  if (fromRepo) return fromRepo;
+  return "main";
+}
+
+/** Append `?branch=` for cross-tab navigation (GitHub uses master, gittr default was main). */
+export function withRepoBranchQuery(
+  path: string,
+  branch: string,
+  existingSearch?: { toString(): string } | null
+): string {
+  if (existingSearch?.toString()) {
+    const params = new URLSearchParams(existingSearch.toString());
+    if (branch && !params.has("branch")) {
+      params.set("branch", branch);
+    }
+    const q = params.toString();
+    return q ? `${path}?${q}` : path;
+  }
+  if (branch && branch !== "main") {
+    return `${path}?branch=${encodeURIComponent(branch)}`;
+  }
+  if (branch === "master") {
+    return `${path}?branch=${encodeURIComponent(branch)}`;
+  }
+  return path;
+}
+
 export function resolveActiveRepoBranch(
   repo:
     | { filesBranch?: string; defaultBranch?: string }

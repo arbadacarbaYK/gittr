@@ -45,6 +45,10 @@ import {
   hydrateRepoFromGithub,
 } from "@/lib/repos/repo-github-hub";
 import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
+import {
+  resolveRepoTabBranch,
+  withRepoBranchQuery,
+} from "@/lib/repos/repo-file-tree-branch";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { useEntityOwner } from "@/lib/utils/use-entity-owner";
 
@@ -336,9 +340,11 @@ export default function RepoLayoutClient({
           : `/${resolvedParams.entity}/${resolvedParams.repo}${
               subpath ? `/${subpath}` : ""
             }`;
-      return includeSearchParams && searchParams?.toString()
-        ? `${basePath}?${searchParams.toString()}`
-        : basePath;
+      const tabBranch = resolveRepoTabBranch(searchParams, repo);
+      if (includeSearchParams && searchParams?.toString()) {
+        return withRepoBranchQuery(basePath, tabBranch, searchParams);
+      }
+      return withRepoBranchQuery(basePath, tabBranch);
     },
     [
       mounted,
@@ -346,6 +352,7 @@ export default function RepoLayoutClient({
       resolvedParams.entity,
       resolvedParams.repo,
       searchParams,
+      repo,
     ]
   );
 
@@ -1586,7 +1593,10 @@ export default function RepoLayoutClient({
                   className="flex-shrink-0"
                 >
                   <a
-                    href={getRepoLink(item.link || "", item.name === "Code")}
+                    href={getRepoLink(
+                      item.link || "",
+                      item.name === "Code"
+                    )}
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -1650,7 +1660,10 @@ export default function RepoLayoutClient({
                   }}
                 >
                   <a
-                    href={getRepoLink(item.link || "", item.name === "Code")}
+                    href={getRepoLink(
+                      item.link || "",
+                      item.name === "Code"
+                    )}
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();

@@ -20,6 +20,7 @@ import {
   getRepoOwnerPubkey,
   resolveEntityToPubkeyAsync,
 } from "@/lib/utils/entity-resolver";
+import { resolveRepoTabBranch } from "@/lib/repos/repo-file-tree-branch";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { GitBranch, GitCommit, History, Search } from "lucide-react";
@@ -51,7 +52,8 @@ export default function CommitsPage({
   const { entity, repo } = resolvedParams; // Extract primitives to avoid stale closures
   const [mounted, setMounted] = useState(false);
   const searchParams = useSearchParams();
-  const branch = searchParams?.get("branch") || "main";
+  const [storedRepo, setStoredRepo] = useState<StoredRepo | null>(null);
+  const branch = resolveRepoTabBranch(searchParams, storedRepo);
   const fileFilter = searchParams?.get("file") || null;
   const [commits, setCommits] = useState<Commit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +63,14 @@ export default function CommitsPage({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const repos = loadStoredRepos();
+    setStoredRepo(
+      findRepoByEntityAndName<StoredRepo>(repos, entity, repo) ?? null
+    );
+  }, [mounted, entity, repo]);
 
   // Get all unique author pubkeys from commits (only full 64-char pubkeys for metadata lookup)
   const authorPubkeys = useMemo(() => {
@@ -86,9 +96,11 @@ export default function CommitsPage({
         localStorage.getItem(commitsKey) || "[]"
       ) as Commit[];
 
+      const repos = loadStoredRepos();
+      const rec =
+        storedRepo ?? findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+
       if (!Array.isArray(allCommits) || allCommits.length === 0) {
-        const repos = loadStoredRepos();
-        const rec = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
         let ownerPk = rec ? getRepoOwnerPubkey(rec, entity) : null;
         if (!ownerPk && entity?.includes("@")) {
           ownerPk = await resolveEntityToPubkeyAsync(entity, rec ?? undefined);
@@ -116,14 +128,17 @@ export default function CommitsPage({
                 branch?: string;
                 parentIds?: string[];
               }>;
+              branch?: string;
+              error?: string;
             };
+            const effectiveBranch = data.branch || branch;
             const raw = data.commits || [];
             allCommits = raw.map((c) => ({
               id: c.id,
               message: c.message,
               author: c.author,
               timestamp: c.timestamp,
-              branch: c.branch || branch,
+              branch: c.branch || effectiveBranch,
               parentIds: c.parentIds,
             }));
             if (allCommits.length > 0) {
@@ -134,7 +149,10 @@ export default function CommitsPage({
       }
 
       let branchCommits = allCommits.filter(
-        (c) => !c.branch || c.branch === branch
+        (c) =>
+          !c.branch ||
+          c.branch === branch ||
+          c.branch === (rec?.defaultBranch || "").trim()
       );
 
       if (fileFilter) {
@@ -163,7 +181,7 @@ export default function CommitsPage({
     } finally {
       setLoading(false);
     }
-  }, [mounted, entity, repo, branch, fileFilter]);
+  }, [mounted, entity, repo, branch, fileFilter, storedRepo]);
 
   useEffect(() => {
     loadCommits();
