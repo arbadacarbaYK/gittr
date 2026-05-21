@@ -154,6 +154,10 @@ export default function CommitsPage({
           c.branch === branch ||
           c.branch === (rec?.defaultBranch || "").trim()
       );
+      // Refetch from GitHub stores commits with defaultBranch; old UI used ?branch=main and hid them all.
+      if (branchCommits.length === 0 && allCommits.length > 0) {
+        branchCommits = allCommits;
+      }
 
       if (fileFilter) {
         branchCommits = branchCommits.filter(
