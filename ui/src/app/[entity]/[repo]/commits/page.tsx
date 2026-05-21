@@ -32,6 +32,48 @@ import { GitBranch, GitCommit, History, Search } from "lucide-react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 
+async function fetchGithubCommitsForBranch(
+  entity: string,
+  repo: string,
+  branch: string
+): Promise<Commit[]> {
+  const ghUrl = inferGithubUpstreamFromRoute(entity, repo);
+  const spec = ghUrl ? parseGitHubRepoSpec(ghUrl) : null;
+  if (!spec) return [];
+
+  const branchesToTry = [branch, "main", "master"].filter(
+    (b, i, arr) => b && arr.indexOf(b) === i
+  );
+  for (const tryBranch of branchesToTry) {
+    const endpoint = `/repos/${spec.owner}/${spec.repo}/commits?sha=${encodeURIComponent(tryBranch)}&per_page=100`;
+    const ghRes = await fetch(
+      `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`
+    );
+    if (!ghRes.ok) continue;
+    const ghCommits = (await ghRes.json()) as Array<{
+      sha?: string;
+      commit?: {
+        message?: string;
+        author?: { name?: string; date?: string };
+      };
+    }>;
+    if (!Array.isArray(ghCommits) || ghCommits.length === 0) continue;
+    return ghCommits
+      .filter((c) => c.sha && c.commit?.message)
+      .map((c) => ({
+        id: c.sha!,
+        message: c.commit!.message!,
+        author: c.commit?.author?.name || "GitHub",
+        authorName: c.commit?.author?.name,
+        timestamp: c.commit?.author?.date
+          ? Math.floor(new Date(c.commit.author.date).getTime() / 1000)
+          : 0,
+        branch: tryBranch,
+      }));
+  }
+  return [];
+}
+
 interface Commit {
   id: string; // commit hash or ID
   message: string;
@@ -153,46 +195,11 @@ export default function CommitsPage({
               localStorage.setItem(commitsKey, JSON.stringify(allCommits));
             }
           }
-        } else {
-          const ghUrl = inferGithubUpstreamFromRoute(entity, repo);
-          const spec = ghUrl ? parseGitHubRepoSpec(ghUrl) : null;
-          if (spec) {
-            const branchesToTry = [branch, "main", "master"].filter(
-              (b, i, arr) => b && arr.indexOf(b) === i
-            );
-            for (const tryBranch of branchesToTry) {
-              const endpoint = `/repos/${spec.owner}/${spec.repo}/commits?sha=${encodeURIComponent(tryBranch)}&per_page=100`;
-              const ghRes = await fetch(
-                `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`
-              );
-              if (!ghRes.ok) continue;
-              const ghCommits = (await ghRes.json()) as Array<{
-                sha?: string;
-                commit?: {
-                  message?: string;
-                  author?: { name?: string; date?: string };
-                };
-              }>;
-              if (!Array.isArray(ghCommits) || ghCommits.length === 0) {
-                continue;
-              }
-              allCommits = ghCommits
-                .filter((c) => c.sha && c.commit?.message)
-                .map((c) => ({
-                  id: c.sha!,
-                  message: c.commit!.message!,
-                  author: c.commit?.author?.name || "GitHub",
-                  authorName: c.commit?.author?.name,
-                  timestamp: c.commit?.author?.date
-                    ? Math.floor(new Date(c.commit.author.date).getTime() / 1000)
-                    : 0,
-                  branch: tryBranch,
-                }));
-              if (allCommits.length > 0) {
-                localStorage.setItem(commitsKey, JSON.stringify(allCommits));
-              }
-              break;
-            }
+        }
+        if (!allCommits.length) {
+          allCommits = await fetchGithubCommitsForBranch(entity, repo, branch);
+          if (allCommits.length > 0) {
+            localStorage.setItem(commitsKey, JSON.stringify(allCommits));
           }
         }
       }
@@ -209,6 +216,18 @@ export default function CommitsPage({
       // Refetch from GitHub stores commits with defaultBranch (often master); UI may show main.
       if (branchCommits.length === 0 && allCommits.length > 0) {
         branchCommits = allCommits;
+      }
+      if (branchCommits.length === 0) {
+        const ghCommits = await fetchGithubCommitsForBranch(
+          entity,
+          repo,
+          branch
+        );
+        if (ghCommits.length > 0) {
+          allCommits = ghCommits;
+          branchCommits = ghCommits;
+          localStorage.setItem(commitsKey, JSON.stringify(allCommits));
+        }
       }
 
       if (fileFilter) {

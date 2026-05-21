@@ -31,10 +31,6 @@ import {
   getRecentBountyActivities,
   getTopBountyTakers,
   getTopDevsByPRs,
-  getTopRepos,
-  getTopReposFromNostr,
-  getTopUsers,
-  getTopUsersFromNostr,
   getUserBountyActivityStats,
 } from "@/lib/stats";
 import { cn } from "@/lib/utils";
@@ -236,7 +232,93 @@ export default function HomePage() {
     recentIssues: any[];
   } | null>(null);
   const [statsLoaded, setStatsLoaded] = useState(false);
+  const [leaderboardReady, setLeaderboardReady] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const leaderboardFetchGen = useRef(0);
+
+  const applyLeaderboardPayload = useCallback(
+    (data: { topRepos?: RepoStats[]; topUsers?: UserStats[] }) => {
+      if (Array.isArray(data.topRepos)) {
+        const sortedRepos = [...data.topRepos].sort(
+          (a, b) => (b.activityCount || 0) - (a.activityCount || 0)
+        );
+        setTopRepos(sortedRepos);
+        if (sortedRepos.length > 0) {
+          try {
+            sessionStorage.setItem(
+              "gittr_cached_topRepos",
+              JSON.stringify(sortedRepos)
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      if (Array.isArray(data.topUsers)) {
+        const sortedUsers = [...data.topUsers].sort(
+          (a, b) => (b.activityCount || 0) - (a.activityCount || 0)
+        );
+        setTopUsers(sortedUsers);
+        if (sortedUsers.length > 0) {
+          try {
+            sessionStorage.setItem(
+              "gittr_cached_topUsers",
+              JSON.stringify(sortedUsers)
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+      setLeaderboardReady(true);
+    },
+    []
+  );
+
+  // Show last server snapshot instantly (same for logged-in / logged-out).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const cachedRepos = sessionStorage.getItem("gittr_cached_topRepos");
+      const cachedUsers = sessionStorage.getItem("gittr_cached_topUsers");
+      if (cachedRepos) {
+        const parsed = JSON.parse(cachedRepos) as RepoStats[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setTopRepos(parsed);
+          setLeaderboardReady(true);
+        }
+      }
+      if (cachedUsers) {
+        const parsed = JSON.parse(cachedUsers) as UserStats[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setTopUsers(parsed);
+          setLeaderboardReady(true);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // One fetch per page visit — uses server cache (ms), never ?nocache, never on pubkey change.
+  useEffect(() => {
+    const gen = ++leaderboardFetchGen.current;
+    void (async () => {
+      try {
+        const res = await fetch("/api/stats/platform-leaderboard");
+        if (!res.ok || gen !== leaderboardFetchGen.current) return;
+        const data = (await res.json()) as {
+          topRepos?: RepoStats[];
+          topUsers?: UserStats[];
+        };
+        if (gen !== leaderboardFetchGen.current) return;
+        applyLeaderboardPayload(data);
+      } catch (err) {
+        console.warn("⚠️ [Home] Platform leaderboard fetch failed:", err);
+        if (gen === leaderboardFetchGen.current) setLeaderboardReady(true);
+      }
+    })();
+  }, [applyLeaderboardPayload]);
 
   // Load repos and listen for updates from Nostr sync
   const loadRepos = useCallback(() => {
@@ -702,218 +784,9 @@ export default function HomePage() {
       // Don't crash the page
     }
 
-    // Listen for new activities
+    // Listen for new activities (personal stats only — not Most Active cards)
     const handleActivity = () => {
       try {
-        // CRITICAL: First, try to load from sessionStorage (persists across navigation in same session)
-        const cachedTopRepos = sessionStorage.getItem("gittr_cached_topRepos");
-        const cachedTopUsers = sessionStorage.getItem("gittr_cached_topUsers");
-
-        if (cachedTopRepos) {
-          try {
-            const parsed = JSON.parse(cachedTopRepos);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              console.log(
-                `📦 [Home] Loading ${parsed.length} top repos from sessionStorage cache`
-              );
-              setTopRepos(parsed);
-            }
-          } catch (e) {
-            console.warn("⚠️ [Home] Failed to parse cached top repos:", e);
-          }
-        }
-
-        if (cachedTopUsers) {
-          try {
-            const parsed = JSON.parse(cachedTopUsers);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              console.log(
-                `📦 [Home] Loading ${parsed.length} top users from sessionStorage cache`
-              );
-              setTopUsers(parsed);
-            }
-          } catch (e) {
-            console.warn("⚠️ [Home] Failed to parse cached top users:", e);
-          }
-        }
-
-        // Then, show localStorage data immediately (fast) if no cache
-        if (!cachedTopRepos) {
-          const localTopRepos = getTopRepos(10);
-          setTopRepos(localTopRepos);
-        }
-        if (!cachedTopUsers) {
-          const localTopUsers = getTopUsers(10);
-          setTopUsers(localTopUsers);
-        }
-
-        // Then, try to fetch from Nostr for more accurate data (if subscribe is available)
-        if (
-          subscribe &&
-          typeof subscribe === "function" &&
-          defaultRelays &&
-          Array.isArray(defaultRelays) &&
-          defaultRelays.length > 0
-        ) {
-          console.log(
-            `📡 [Home] Fetching top repos/users from Nostr using ${defaultRelays.length} relays...`
-          );
-
-          // Fetch top repos from Nostr (network source of truth)
-          getTopReposFromNostr(subscribe, defaultRelays, 10)
-            .then((nostrRepos) => {
-              console.log(
-                `📊 [Home] Nostr returned ${nostrRepos.length} repos`
-              );
-              if (nostrRepos.length > 0) {
-                // CRITICAL: Sort by activityCount descending to ensure correct order
-                const sorted = [...nostrRepos].sort(
-                  (a, b) => (b.activityCount || 0) - (a.activityCount || 0)
-                );
-
-                // CRITICAL: Update logic - be smart about when to replace localStorage data
-                // Check if current data looks "bad" (all same value, or all very low)
-                setTopRepos((currentRepos) => {
-                  const currentMax =
-                    currentRepos.length > 0
-                      ? Math.max(
-                          ...currentRepos.map((r) => r.activityCount || 0)
-                        )
-                      : 0;
-                  const currentMin =
-                    currentRepos.length > 0
-                      ? Math.min(
-                          ...currentRepos.map((r) => r.activityCount || 0)
-                        )
-                      : 0;
-                  const nostrMax = Math.max(
-                    ...sorted.map((r) => r.activityCount || 0)
-                  );
-                  const nostrCount = sorted.length;
-
-                  // Detect "bad" localStorage data: all repos have same activity count (likely stale/corrupted)
-                  const allSameActivity =
-                    currentRepos.length > 0 &&
-                    currentMax === currentMin &&
-                    currentMax > 0;
-                  const allLowActivity = currentMax <= 2; // All repos have 1-2 activities (likely incomplete)
-                  const isBadData = allSameActivity || allLowActivity;
-
-                  // Update if:
-                  // 1. Nostr has at least 1 repo with activity > 0
-                  // 2. AND (nostrMax >= currentMax OR current data is bad OR we have no current data)
-                  // 3. AND if current data is good, require at least 3 repos and min activity 5 (prevent downgrade)
-                  if (
-                    nostrCount > 0 &&
-                    nostrMax > 0 &&
-                    (isBadData ||
-                      currentRepos.length === 0 ||
-                      (nostrCount >= 3 &&
-                        nostrMax >= 5 &&
-                        nostrMax >= currentMax))
-                  ) {
-                    const maxNostrActivity = sorted[0]?.activityCount || 0;
-                    console.log(
-                      `✅ [Home] Updating top repos from Nostr: ${nostrCount} repos, max activity: ${maxNostrActivity} (vs current: ${currentMax}, badData: ${isBadData})`
-                    );
-                    console.log(
-                      `📋 [Home] Top repos:`,
-                      sorted
-                        .map((r) => `${r.repoName}(${r.activityCount})`)
-                        .join(", ")
-                    );
-                    // Cache in sessionStorage for same-session persistence
-                    try {
-                      sessionStorage.setItem(
-                        "gittr_cached_topRepos",
-                        JSON.stringify(sorted)
-                      );
-                    } catch (e) {
-                      console.warn("⚠️ [Home] Failed to cache top repos:", e);
-                    }
-                    return sorted;
-                  } else {
-                    console.log(
-                      `ℹ️ [Home] Keeping current top repos (Nostr: ${nostrCount} repos, max: ${nostrMax}, Current: ${currentRepos.length} repos, max: ${currentMax}, badData: ${isBadData})`
-                    );
-                    return currentRepos;
-                  }
-                });
-              } else {
-                console.warn(
-                  `⚠️ [Home] Nostr returned 0 repos, keeping cached/localStorage data`
-                );
-              }
-            })
-            .catch((error) => {
-              console.error(
-                "❌ [Home] Error fetching top repos from Nostr:",
-                error
-              );
-              // Keep localStorage data on error
-            });
-
-          // Fetch top users from Nostr
-          getTopUsersFromNostr(subscribe, defaultRelays, 10)
-            .then((nostrUsers) => {
-              if (nostrUsers.length > 0) {
-                // CRITICAL: Sort by activityCount descending to ensure correct order
-                const sorted = [...nostrUsers].sort(
-                  (a, b) => (b.activityCount || 0) - (a.activityCount || 0)
-                );
-
-                // CRITICAL: Only update if Nostr users have higher or equal max activity than current
-                // This prevents replacing good data with lower values
-                // Use a ref or state check - but since we're in a callback, check current state
-                setTopUsers((currentUsers) => {
-                  const currentMax =
-                    currentUsers.length > 0
-                      ? Math.max(
-                          ...currentUsers.map((u) => u.activityCount || 0)
-                        )
-                      : 0;
-                  const nostrMax = Math.max(
-                    ...sorted.map((u) => u.activityCount || 0)
-                  );
-
-                  if (nostrMax >= currentMax || currentUsers.length === 0) {
-                    console.log(
-                      `✅ [Home] Updating top users from Nostr: ${sorted.length} users (max: ${nostrMax} vs current: ${currentMax})`
-                    );
-                    // Cache in sessionStorage for same-session persistence
-                    try {
-                      sessionStorage.setItem(
-                        "gittr_cached_topUsers",
-                        JSON.stringify(sorted)
-                      );
-                    } catch (e) {
-                      console.warn("⚠️ [Home] Failed to cache top users:", e);
-                    }
-                    return sorted;
-                  } else {
-                    console.log(
-                      `ℹ️ [Home] Keeping current top users (${currentMax} > ${nostrMax})`
-                    );
-                    return currentUsers;
-                  }
-                });
-              }
-            })
-            .catch((error) => {
-              console.error(
-                "❌ [Home] Error fetching top users from Nostr:",
-                error
-              );
-              // Keep localStorage data on error
-            });
-        } else {
-          console.warn(
-            `⚠️ [Home] Cannot fetch from Nostr: subscribe=${typeof subscribe}, relays=${
-              defaultRelays?.length || 0
-            }`
-          );
-        }
-
         // These are always platform-wide (not filtered by user access)
         setTopDevs(getTopDevsByPRs(10));
         setTopBountyTakers(getTopBountyTakers(10));
@@ -940,9 +813,6 @@ export default function HomePage() {
         setPlatformBountyStats(getPlatformBountyStats());
       } catch (error) {
         console.error("Error loading stats:", error);
-        // Set empty arrays to prevent UI breaking
-        setTopRepos([]);
-        setTopUsers([]);
         setTopDevs([]);
         setTopBountyTakers([]);
         setLatestBounties([]);
@@ -967,7 +837,7 @@ export default function HomePage() {
       window.removeEventListener("ngit:pr-updated", handleActivity);
       window.removeEventListener("ngit:issue-updated", handleActivity);
     };
-  }, [pubkey]); // Re-run when pubkey changes (login/logout)
+  }, [pubkey]); // Personal stats only; leaderboard is loadPlatformLeaderboard()
 
   const recent = useMemo(() => {
     console.log("📋 [Home] Computing recent repos:", {
@@ -1472,28 +1342,7 @@ export default function HomePage() {
             {!statsLoaded ? (
               <div className="text-sm text-gray-500 py-2">Loading...</div>
             ) : topRepos.length > 0 ? (
-              topRepos
-                .filter((repo) => {
-                  const [entity, repoName] =
-                    repo.repoId &&
-                    typeof repo.repoId === "string" &&
-                    repo.repoId.includes("/")
-                      ? repo.repoId.split("/")
-                      : [repo.entity || "", repo.repoId || ""];
-                  const matchingRepo = repos.find((r: any) => {
-                    const sameEntity =
-                      (r.entity || "").toLowerCase() ===
-                      (entity || "").toLowerCase();
-                    const sameRepo =
-                      (r.repo || r.slug || "").toLowerCase() ===
-                      (repoName || "").toLowerCase();
-                    return sameEntity && sameRepo;
-                  });
-                  return matchingRepo
-                    ? canCurrentUserSeeRepo(matchingRepo)
-                    : true;
-                })
-                .slice(0, 5)
+              topRepos.slice(0, 5)
                 .map((repo, idx) => {
                   // repoId is in format "entity/repo"
                   const [entity, repoName] =
@@ -1523,7 +1372,7 @@ export default function HomePage() {
                 })
             ) : (
               <div className="text-sm text-gray-500 py-2">
-                {statsLoaded ? "No active repos yet" : "Loading..."}
+                {leaderboardReady ? "No active repos yet" : "Loading..."}
               </div>
             )}
           </div>
@@ -1533,7 +1382,7 @@ export default function HomePage() {
         <div className="border border-[#383B42] rounded p-4 flex flex-col">
           <h3 className="font-semibold mb-3 text-yellow-400">⭐ Most Active</h3>
           <div className="space-y-2 flex-1">
-            {!statsLoaded ? (
+            {!leaderboardReady && topUsers.length === 0 ? (
               <div className="text-sm text-gray-500 py-2">Loading...</div>
             ) : topUsers.length > 0 ? (
               topUsers.slice(0, 5).map((user, idx) => {
@@ -1571,7 +1420,7 @@ export default function HomePage() {
               })
             ) : (
               <div className="text-sm text-gray-500 py-2">
-                {statsLoaded ? "No active users yet" : "Loading..."}
+                {leaderboardReady ? "No active users yet" : "Loading..."}
               </div>
             )}
           </div>

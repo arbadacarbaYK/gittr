@@ -1238,14 +1238,12 @@ export function countRepoActivitiesFromNostr(
               `✅ [Nostr Repo Stats] Counted activities for ${repoMap.size} repos from Nostr`
             );
             resolve(repoMap);
-          }, 1000);
+          }, 250);
         }
       },
       {} // options parameter
     );
 
-    // Timeout after 12 seconds - balance between speed and getting enough data
-    // Increased from 8s to 12s to ensure we get enough repos before timing out
     setTimeout(() => {
       if (!resolved) {
         resolved = true;
@@ -1258,7 +1256,7 @@ export function countRepoActivitiesFromNostr(
           (r) => r.activityCount > 0
         ).length;
         console.log(
-          `⏱️ [Nostr Repo Stats] Timeout after 12s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`,
+          `⏱️ [Nostr Repo Stats] Timeout after 7s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`,
           repoMap.size,
           "repos,",
           reposWithActivity,
@@ -1268,7 +1266,7 @@ export function countRepoActivitiesFromNostr(
         );
         resolve(repoMap);
       }
-    }, 12000);
+    }, 7000);
   });
 }
 
@@ -1288,66 +1286,36 @@ export function countUserActivitiesFromNostr(
   relays: string[],
   sinceDays = 90 // Count activity from last 90 days (increased from 30 for better coverage)
 ): Promise<Map<string, UserStats>> {
-  // CRITICAL: Only use GRASP/git relays - regular relays don't have git events!
-  const { getGraspServers } = require("@/lib/utils/grasp-servers");
-  const graspRelays = getGraspServers(relays);
-  const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
+  // Use the full relay set passed in (git + general relays). Issues/PRs are often on nos.lol etc.
+  const activeRelays = relays.filter(Boolean);
+  const useSince =
+    sinceDays > 0 && sinceDays < 36500
+      ? Math.floor((Date.now() - sinceDays * 24 * 60 * 60 * 1000) / 1000)
+      : undefined;
 
   console.log(
-    `🔍 [Nostr User Stats] Starting query for all users using ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`,
+    `🔍 [Nostr User Stats] Starting query for all users using ${activeRelays.length} relays:`,
     activeRelays
   );
 
   return new Promise((resolve) => {
     const userMap = new Map<string, UserStats>();
     const seenRepos = new Map<string, Set<string>>(); // Track unique repos per user (pubkey -> Set<repoId>)
-    const since = Math.floor(
-      (Date.now() - sinceDays * 24 * 60 * 60 * 1000) / 1000
-    );
 
     let eoseCount = 0;
     const expectedEose = activeRelays.length;
     let resolved = false;
 
+    const withSince = (extra: Record<string, unknown>) =>
+      useSince != null ? { ...extra, since: useSince } : extra;
+
     const filters = [
-      // Repo announcements (kind 30617) - count unique repos per user
-      {
-        kinds: [KIND_REPOSITORY_NIP34],
-        since,
-        limit: 1000,
-      },
-      // Repo state events (kind 30618) - indicate pushes
-      {
-        kinds: [KIND_REPOSITORY_STATE],
-        since,
-        limit: 2000,
-      },
-      // PR events (kind 1618)
-      {
-        kinds: [KIND_PULL_REQUEST],
-        since,
-        limit: 1000,
-      },
-      // PR merged status (kind 1631)
-      {
-        kinds: [KIND_STATUS_APPLIED],
-        "#k": ["1618"],
-        since,
-        limit: 500,
-      },
-      // Issue events (kind 1621)
-      {
-        kinds: [KIND_ISSUE],
-        since,
-        limit: 1000,
-      },
-      // Issue closed status (kind 1632)
-      {
-        kinds: [KIND_STATUS_CLOSED],
-        "#k": ["1621"],
-        since,
-        limit: 500,
-      },
+      withSince({ kinds: [KIND_REPOSITORY_NIP34], limit: 5000 }),
+      withSince({ kinds: [KIND_REPOSITORY_STATE], limit: 5000 }),
+      withSince({ kinds: [KIND_PULL_REQUEST], limit: 2000 }),
+      withSince({ kinds: [KIND_STATUS_APPLIED], "#k": ["1618"], limit: 1000 }),
+      withSince({ kinds: [KIND_ISSUE], limit: 2000 }),
+      withSince({ kinds: [KIND_STATUS_CLOSED], "#k": ["1621"], limit: 1000 }),
     ];
 
     const unsub = subscribe(
@@ -1455,25 +1423,25 @@ export function countUserActivitiesFromNostr(
               `✅ [Nostr User Stats] Counted activities for ${userMap.size} users from Nostr`
             );
             resolve(userMap);
-          }, 1000);
+          }, 250);
         }
       },
       {} // options parameter
     );
 
-    // Timeout after 5 seconds (balance between speed and getting data)
+    // Match repo leaderboard timeout so server API returns both cards together
     setTimeout(() => {
       if (!resolved) {
         resolved = true;
         unsub();
         console.log(
-          `⏱️ [Nostr User Stats] Timeout after 5s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`,
+          `⏱️ [Nostr User Stats] Timeout after 7s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`,
           userMap.size,
           "users"
         );
         resolve(userMap);
       }
-    }, 5000);
+    }, 7000);
   });
 }
 
@@ -1582,23 +1550,20 @@ export async function getTopUsersFromNostr(
   relays: string[],
   count = 10
 ): Promise<UserStats[]> {
-  // CRITICAL: countUserActivitiesFromNostr doesn't filter to GRASP servers (users can be on any relay)
-  // But for consistency and performance, filter to GRASP servers here
-  const { getGraspServers } = require("@/lib/utils/grasp-servers");
-  const graspRelays = getGraspServers(relays);
-  const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
-
   console.log(
-    `🔍 [getTopUsersFromNostr] Starting query with ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`,
-    activeRelays
+    `🔍 [getTopUsersFromNostr] Starting query with ${relays.length} relays`
   );
   const userMap = await countUserActivitiesFromNostr(
     subscribe,
-    activeRelays,
-    90
-  ); // Last 90 days
-  return Array.from(userMap.values())
-    .filter((u) => !isPublisherBlocklisted(u.pubkey))
+    relays,
+    999999
+  ); // All-time (same window as platform repo leaderboard)
+  const users = Array.from(userMap.values())
+    .filter((u) => !isPublisherBlocklisted(u.pubkey) && u.activityCount > 0)
     .sort((a, b) => b.activityCount - a.activityCount)
     .slice(0, count);
+  console.log(
+    `✅ [getTopUsersFromNostr] Returning ${users.length} users (map size ${userMap.size})`
+  );
+  return users;
 }

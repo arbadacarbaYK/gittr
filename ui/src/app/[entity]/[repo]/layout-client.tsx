@@ -271,10 +271,8 @@ export default function RepoLayoutClient({
   const hasUpstreamSourceUrl = !!repo?.sourceUrl?.trim();
 
   const sourceStarsDisplay = useMemo(() => {
-    // Repos visible before "push to Nostr" (import-only, no 30617 id): hide source/GitHub row.
-    if (!repoNostrEventId) {
-      return null;
-    }
+    // GitHub mirror stats are public; do not require a published 30617 id (logged-in
+    // localStorage often lacks nostrEventId while route still maps to github.com/entity/repo).
     if (githubSpec && githubStarCount !== null) {
       return {
         label: "GitHub",
@@ -284,7 +282,7 @@ export default function RepoLayoutClient({
       } as const;
     }
     // No upstream URL → nothing to attribute; avoid bogus "Import 0" from local `stars`.
-    if (!hasUpstreamSourceUrl) {
+    if (!hasUpstreamSourceUrl && !githubSpec) {
       return null;
     }
     if (importStarSnapshot !== null && importStarSnapshot > 0 && githubSpec) {
@@ -305,7 +303,6 @@ export default function RepoLayoutClient({
     }
     return null;
   }, [
-    repoNostrEventId,
     githubSpec,
     githubStarCount,
     importStarSnapshot,

@@ -562,23 +562,63 @@ const parseJsonArray = <T>(
   }
 };
 
+/** Keep gittr_repos small — file trees live under gittr_files__* keys. */
+export function slimRepoForStorage(repo: StoredRepo): StoredRepo {
+  const r = repo as StoredRepo & {
+    issues?: unknown[];
+    pulls?: unknown[];
+    commits?: unknown[];
+    readme?: string;
+  };
+  const files = r.files;
+  const slim: StoredRepo = { ...r };
+  delete (slim as { files?: RepoFileEntry[] }).files;
+  delete (slim as { issues?: unknown[] }).issues;
+  delete (slim as { pulls?: unknown[] }).pulls;
+  delete (slim as { commits?: unknown[] }).commits;
+  if (typeof r.readme === "string" && r.readme.length > 2000) {
+    delete (slim as { readme?: string }).readme;
+  }
+  if (Array.isArray(files) && files.length > 0 && !slim.fileCount) {
+    slim.fileCount = files.length;
+  }
+  return slim;
+}
+
+function slimReposForStorage(repos: StoredRepo[]): StoredRepo[] {
+  return repos.map(slimRepoForStorage);
+}
+
 export const loadStoredRepos = (): StoredRepo[] => {
   if (typeof window === "undefined") return [];
   const raw = parseJsonArray(localStorage.getItem("gittr_repos"), isStoredRepo);
   const deduped = dedupeStoredReposByOwnerAndRepoLabel(raw);
-  if (deduped.length < raw.length) {
+  const slimmed = slimReposForStorage(deduped);
+  const hadEmbeddedFiles = deduped.some(
+    (r) =>
+      (Array.isArray(r.files) && r.files.length > 0) ||
+      (Array.isArray((r as { issues?: unknown[] }).issues) &&
+        (r as { issues?: unknown[] }).issues!.length > 0)
+  );
+  if (deduped.length < raw.length || hadEmbeddedFiles) {
     try {
-      localStorage.setItem("gittr_repos", JSON.stringify(deduped));
-      console.warn(
-        `[Storage] Removed ${
-          raw.length - deduped.length
-        } duplicate gittr_repos rows (same owner + repo name)`
-      );
+      localStorage.setItem("gittr_repos", JSON.stringify(slimmed));
+      if (hadEmbeddedFiles) {
+        console.log(
+          `🧹 [Storage] Stripped embedded file/issue lists from gittr_repos (${slimmed.length} repos)`
+        );
+      } else if (deduped.length < raw.length) {
+        console.warn(
+          `[Storage] Removed ${
+            raw.length - deduped.length
+          } duplicate gittr_repos rows (same owner + repo name)`
+        );
+      }
     } catch {
-      /* quota or private mode — still return deduped view for this read */
+      /* quota or private mode — still return slimmed view for this read */
     }
   }
-  return deduped;
+  return slimmed;
 };
 
 export const loadDeletedRepos = (): Array<{
@@ -612,7 +652,9 @@ export const LOCAL_STORAGE_REPOS_MANAGE_HINT =
 
 export const saveStoredRepos = (repos: StoredRepo[]): void => {
   if (typeof window === "undefined") return;
-  const toSave = dedupeStoredReposByOwnerAndRepoLabel(repos);
+  const toSave = slimReposForStorage(
+    dedupeStoredReposByOwnerAndRepoLabel(repos)
+  );
   if (toSave.length < repos.length) {
     console.warn(
       `[Storage] Deduped ${
