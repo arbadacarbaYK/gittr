@@ -140,6 +140,22 @@ export function readUpstreamSourceSession(
   }
 }
 
+/** Public GitHub mirror from route slug (e.g. arbadacarbaYK/gittr → github.com/arbadacarbaYK/gittr). */
+export function inferGithubUpstreamFromRoute(
+  entity: string,
+  repoSlug: string
+): string {
+  const owner = (entity || "").trim();
+  const repo = (repoSlug || "").trim();
+  if (!owner || !repo) return "";
+  if (isNostrEntityRoute(owner)) return "";
+  if (owner.includes("@")) return "";
+  if (!/^[a-zA-Z0-9._-]+$/.test(owner) || !/^[a-zA-Z0-9._-]+$/.test(repo)) {
+    return "";
+  }
+  return `https://github.com/${owner}/${repo}`;
+}
+
 export function resolveGithubUpstreamForTabs(
   entity: string,
   repoSlug: string,
@@ -153,7 +169,7 @@ export function resolveGithubUpstreamForTabs(
   if (fromRecord.includes("github.com")) return fromRecord;
   const fromSession = readUpstreamSourceSession(entity, repoSlug);
   if (fromSession.includes("github.com")) return fromSession;
-  return "";
+  return inferGithubUpstreamFromRoute(entity, repoSlug);
 }
 
 export function markSourceTreeFresh(

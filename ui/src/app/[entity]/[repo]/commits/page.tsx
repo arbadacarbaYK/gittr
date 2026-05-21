@@ -20,7 +20,12 @@ import {
   getRepoOwnerPubkey,
   resolveEntityToPubkeyAsync,
 } from "@/lib/utils/entity-resolver";
-import { resolveRepoTabBranch } from "@/lib/repos/repo-file-tree-branch";
+import {
+  repoDefaultBranch,
+  resolveSharedRepoBranch,
+} from "@/lib/repos/repo-file-tree-branch";
+import { inferGithubUpstreamFromRoute } from "@/lib/repos/upstream-precedence";
+import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { GitBranch, GitCommit, History, Search } from "lucide-react";
@@ -53,10 +58,10 @@ export default function CommitsPage({
   const [mounted, setMounted] = useState(false);
   const searchParams = useSearchParams();
   const [storedRepo, setStoredRepo] = useState<StoredRepo | null>(null);
-  // Commits always use the repo default branch — not feature branches stuck in ?branch= from Code URL
-  const branch =
-    (storedRepo?.defaultBranch || "").trim() ||
-    resolveRepoTabBranch(null, storedRepo);
+  const branch = resolveSharedRepoBranch(searchParams, storedRepo, {
+    entity,
+    repo,
+  });
   const fileFilter = searchParams?.get("file") || null;
   const [commits, setCommits] = useState<Commit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,16 +153,60 @@ export default function CommitsPage({
               localStorage.setItem(commitsKey, JSON.stringify(allCommits));
             }
           }
+        } else {
+          const ghUrl = inferGithubUpstreamFromRoute(entity, repo);
+          const spec = ghUrl ? parseGitHubRepoSpec(ghUrl) : null;
+          if (spec) {
+            const branchesToTry = [branch, "main", "master"].filter(
+              (b, i, arr) => b && arr.indexOf(b) === i
+            );
+            for (const tryBranch of branchesToTry) {
+              const endpoint = `/repos/${spec.owner}/${spec.repo}/commits?sha=${encodeURIComponent(tryBranch)}&per_page=100`;
+              const ghRes = await fetch(
+                `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`
+              );
+              if (!ghRes.ok) continue;
+              const ghCommits = (await ghRes.json()) as Array<{
+                sha?: string;
+                commit?: {
+                  message?: string;
+                  author?: { name?: string; date?: string };
+                };
+              }>;
+              if (!Array.isArray(ghCommits) || ghCommits.length === 0) {
+                continue;
+              }
+              allCommits = ghCommits
+                .filter((c) => c.sha && c.commit?.message)
+                .map((c) => ({
+                  id: c.sha!,
+                  message: c.commit!.message!,
+                  author: c.commit?.author?.name || "GitHub",
+                  authorName: c.commit?.author?.name,
+                  timestamp: c.commit?.author?.date
+                    ? Math.floor(new Date(c.commit.author.date).getTime() / 1000)
+                    : 0,
+                  branch: tryBranch,
+                }));
+              if (allCommits.length > 0) {
+                localStorage.setItem(commitsKey, JSON.stringify(allCommits));
+              }
+              break;
+            }
+          }
         }
       }
 
-      let branchCommits = allCommits.filter(
-        (c) =>
-          !c.branch ||
-          c.branch === branch ||
-          c.branch === (rec?.defaultBranch || "").trim()
+      const defBr = repoDefaultBranch(rec);
+      const branchAliases = new Set(
+        [branch, defBr, "main", "master", rec?.defaultBranch]
+          .map((b) => (typeof b === "string" ? b.trim() : ""))
+          .filter(Boolean)
       );
-      // Refetch from GitHub stores commits with defaultBranch; old UI used ?branch=main and hid them all.
+      let branchCommits = allCommits.filter(
+        (c) => !c.branch || branchAliases.has((c.branch || "").trim())
+      );
+      // Refetch from GitHub stores commits with defaultBranch (often master); UI may show main.
       if (branchCommits.length === 0 && allCommits.length > 0) {
         branchCommits = allCommits;
       }

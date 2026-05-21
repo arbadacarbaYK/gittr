@@ -159,10 +159,21 @@ export function persistRepoRefsMetadata(
   const { branches, tags } = refsToRepoMetadata(withCommits);
   if (branches.length === 0) return null;
 
-  const defaultBranch = resolveNip34HeadBranchName(
+  const rawDefault = resolveNip34HeadBranchName(
     withCommits as Array<{ ref: string; commit: string }>,
     preferredDefaultBranch
   );
+  const defaultBranch =
+    rawDefault.startsWith("dependabot/") || rawDefault.startsWith("renovate/")
+      ? branches.includes("main")
+        ? "main"
+        : branches.includes("master")
+          ? "master"
+          : branches.find(
+              (b) =>
+                !b.startsWith("dependabot/") && !b.startsWith("renovate/")
+            ) || rawDefault
+      : rawDefault;
 
   try {
     const repos = loadStoredRepos();

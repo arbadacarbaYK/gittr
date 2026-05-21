@@ -45,7 +45,10 @@ import {
   hydrateRepoFromGithub,
 } from "@/lib/repos/repo-github-hub";
 import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
-import { repoSubpageBranchQuery } from "@/lib/repos/repo-file-tree-branch";
+import {
+  repoNavHref,
+  resolveSharedRepoBranch,
+} from "@/lib/repos/repo-file-tree-branch";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { useEntityOwner } from "@/lib/utils/use-entity-owner";
 
@@ -341,17 +344,14 @@ export default function RepoLayoutClient({
           : `/${resolvedParams.entity}/${resolvedParams.repo}${
               subpath ? `/${subpath}` : ""
             }`;
-      // Code tab: keep file/path/hash only while already on Code — never leak ?branch= to other tabs
-      if (!subpath) {
-        if (preserveCodeSearchParams && isRepoCodePath() && searchParams?.toString()) {
-          const params = new URLSearchParams(searchParams.toString());
-          params.delete("branch");
-          const q = params.toString();
-          return q ? `${basePath}?${q}` : basePath;
-        }
-        return basePath;
+      const sharedBranch = resolveSharedRepoBranch(searchParams, repo, {
+        entity: resolvedParams.entity,
+        repo: resolvedParams.repo,
+      });
+      if (preserveCodeSearchParams && isRepoCodePath() && searchParams) {
+        return repoNavHref(basePath, sharedBranch, searchParams);
       }
-      return repoSubpageBranchQuery(basePath, repo?.defaultBranch);
+      return repoNavHref(basePath, sharedBranch);
     },
     [
       mounted,
@@ -359,7 +359,7 @@ export default function RepoLayoutClient({
       resolvedParams.entity,
       resolvedParams.repo,
       searchParams,
-      repo?.defaultBranch,
+      repo,
       isRepoCodePath,
     ]
   );

@@ -558,12 +558,23 @@ export function resolveNip34HeadBranchName(
       commit: (r.commit || "").trim(),
     }));
 
+  const isBotBranch = (name: string) =>
+    /^(dependabot|renovate)\//i.test((name || "").trim());
+
   const pref = (preferredBranch || "").trim().toLowerCase();
   if (pref) {
     const exact = heads.find((h) => h.branch.toLowerCase() === pref);
     if (exact) return exact.branch;
   }
-  const withCommit = heads.find((h) => h.commit.length > 0);
+  for (const canonical of ["main", "master"]) {
+    const match = heads.find(
+      (h) => h.branch.toLowerCase() === canonical && h.commit.length > 0
+    );
+    if (match) return match.branch;
+  }
+  const withCommit = heads.find(
+    (h) => h.commit.length > 0 && !isBotBranch(h.branch)
+  );
   if (withCommit) return withCommit.branch;
   if (heads[0]) return heads[0].branch;
   const trimmed = (preferredBranch || "").trim();

@@ -96,8 +96,12 @@ import {
   resolveActiveRepoBranch,
   resolveContentBranch,
   branchesToTryForContent,
+  repoDefaultBranch,
   shouldApplyFetchedFileTree,
+  shouldSyncBranchFromFetch,
+  writeUserPickedRepoBranch,
 } from "@/lib/repos/repo-file-tree-branch";
+import { inferGithubUpstreamFromRoute } from "@/lib/repos/upstream-precedence";
 import {
   fetchGithubRepoDescription,
   persistRepoDescription,
@@ -1236,6 +1240,7 @@ export default function RepoCodePage() {
   const [deletedPaths, setDeletedPaths] = useState<string[]>([]);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>("");
+  const userPickedBranchRef = useRef(false);
   const selectedBranchRef = useRef(selectedBranch);
   useEffect(() => {
     selectedBranchRef.current = selectedBranch;
@@ -1907,6 +1912,12 @@ export default function RepoCodePage() {
     folderReadmeLoadGenRef.current += 1;
     setCurrentFolderReadme(null);
     setLoadingFolderReadme(false);
+    userPickedBranchRef.current = false;
+    writeUserPickedRepoBranch(
+      resolvedParams.entity,
+      resolvedParams.repo,
+      null
+    );
   }, [resolvedParams.entity, resolvedParams.repo]);
   // Ref to track if we're updating state from URL (prevents loops)
   const updatingFromURLRef = useRef(false);
@@ -1966,9 +1977,19 @@ export default function RepoCodePage() {
   /** When multifetch resolves e.g. master but URL still says main, align UI + README fetches. */
   const syncResolvedBranchFromFetch = useCallback(
     (resolvedBranch: string | undefined) => {
-      const b = (resolvedBranch || "").trim();
-      if (!b) return;
+      const def = repoDefaultBranch(repoDataRef.current);
       const cur = (selectedBranchRef.current || "").trim();
+      if (
+        !shouldSyncBranchFromFetch(
+          resolvedBranch,
+          def,
+          cur,
+          userPickedBranchRef.current
+        )
+      ) {
+        return;
+      }
+      const b = (resolvedBranch || "").trim();
       if (cur === b) return;
       setSelectedBranch(b);
       updateURL({ branch: b });
@@ -2925,7 +2946,9 @@ export default function RepoCodePage() {
         repo.branches && repo.branches.length > 0
           ? repo.branches
           : Array.from(new Set([repo.defaultBranch || "main", "dev"]));
-      setSelectedBranch(repo.defaultBranch || branches[0] || "main");
+      setSelectedBranch(
+        repoDefaultBranch({ defaultBranch: repo.defaultBranch, branches })
+      );
       // persist back if we synthesized branches
       if (!repo.branches || repo.branches.length === 0) {
         const idx = repos.findIndex((r) => r === repo);
@@ -2974,16 +2997,29 @@ export default function RepoCodePage() {
               repo.defaultBranch
             );
             if (persisted) {
+              const safeDefault = repoDefaultBranch({
+                defaultBranch: persisted.defaultBranch,
+                branches: persisted.branches,
+              });
               setRepoData((prev) =>
                 prev
                   ? ({
                       ...prev,
                       branches: persisted.branches,
-                      defaultBranch: persisted.defaultBranch,
+                      defaultBranch: safeDefault,
                     } as StoredRepo)
                   : prev
               );
-              setSelectedBranch(persisted.defaultBranch);
+              if (
+                shouldSyncBranchFromFetch(
+                  safeDefault,
+                  repoDefaultBranch(repo),
+                  selectedBranchRef.current,
+                  userPickedBranchRef.current
+                )
+              ) {
+                setSelectedBranch(safeDefault);
+              }
             }
           } catch (e) {
             console.warn("[Repo Load] Bridge refs hydration failed:", e);
@@ -3236,7 +3272,9 @@ export default function RepoCodePage() {
               d.branches && d.branches.length > 0
                 ? d.branches
                 : Array.from(new Set([d.defaultBranch || "main", "dev"]));
-            setSelectedBranch(d.defaultBranch || branches[0] || "main");
+            setSelectedBranch(
+              repoDefaultBranch({ defaultBranch: d.defaultBranch, branches })
+            );
 
             // cache it - match by entity and repo
             const updated = repos.map((r) => {
@@ -4189,13 +4227,14 @@ export default function RepoCodePage() {
       }
     }
 
-    if (!ownerPubkeyForFetch) {
-      // CRITICAL: Log only primitives to avoid React re-render loops
+    const routeGithubSource = inferGithubUpstreamFromRoute(
+      resolvedParams.entity,
+      resolvedParams.repo
+    );
+    if (!ownerPubkeyForFetch && !routeGithubSource) {
       console.log(
-        "⏭️ [File Fetch] Skipping - no ownerPubkey yet",
-        `hasResolvedOwnerPubkey=${!!resolvedOwnerPubkey}, hasOwnerPubkeyForLink=${!!ownerPubkeyForLink}, hasRepoData=${!!currentRepoData}, entity=${
-          resolvedParams.entity
-        }`
+        "⏭️ [File Fetch] Skipping - no ownerPubkey and no GitHub route mirror",
+        `entity=${resolvedParams.entity}`
       );
       return;
     }
@@ -4221,7 +4260,13 @@ export default function RepoCodePage() {
 
     // Check if repo already has files (only if repoData exists)
     // NOTE: For branch switching, we want to refetch even if files exist (different branch = different files)
+    const cachedFilesBranch = (
+      (currentRepoData as { filesBranch?: string })?.filesBranch || ""
+    ).trim();
+    const filesMatchBranch =
+      !cachedFilesBranch || cachedFilesBranch === currentBranch;
     const hasFiles =
+      filesMatchBranch &&
       currentRepoData?.files &&
       Array.isArray(currentRepoData.files) &&
       currentRepoData.files.length > 0;
@@ -4240,7 +4285,8 @@ export default function RepoCodePage() {
     );
     const sourceForRemote =
       resolveRepoUpstreamSource(matchingRepoForSource) ||
-      resolveRepoUpstreamSource(currentRepoData);
+      resolveRepoUpstreamSource(currentRepoData) ||
+      routeGithubSource;
     if (sourceForRemote) {
       writeUpstreamSourceSession(
         resolvedParams.entity,
@@ -4290,6 +4336,25 @@ export default function RepoCodePage() {
         repoKeyWithBranch
       );
       fileFetchAttemptedRef.current = "";
+    }
+    if (
+      cachedFilesBranch &&
+      cachedFilesBranch !== currentBranch &&
+      currentRepoData?.files?.length
+    ) {
+      console.log(
+        "🔄 [File Fetch] Cached files are for a different branch, will refetch:",
+        `cached=${cachedFilesBranch}, current=${currentBranch}`
+      );
+      fileFetchAttemptedRef.current = "";
+      startTransition(() => {
+        setRepoData((prev: any) =>
+          prev
+            ? { ...prev, files: [], filesBranch: undefined }
+            : prev
+        );
+        setBridgeFiles([]);
+      });
     }
     const hasSourceUrl = !!currentRepoData?.sourceUrl;
 
@@ -4432,30 +4497,26 @@ export default function RepoCodePage() {
     const subscribeFn = subscribeRef.current;
     const relays = defaultRelaysRef.current;
 
-    if (
-      !ownerPubkeyForFetch ||
-      !/^[0-9a-f]{64}$/i.test(ownerPubkeyForFetch) ||
-      !subscribeFn ||
-      !relays?.length
-    ) {
+    const canFetchGithubOnly =
+      sourceForRemote.includes("github.com") || !!routeGithubSource;
+    const hasNostrFetchPrereqs =
+      !!ownerPubkeyForFetch &&
+      /^[0-9a-f]{64}$/i.test(ownerPubkeyForFetch) &&
+      !!subscribeFn &&
+      !!relays?.length;
+    if (!hasNostrFetchPrereqs && !canFetchGithubOnly) {
       console.warn(
-        "⚠️ [File Fetch] Cannot fetch files - missing ownerPubkey, subscribe, or defaultRelays",
+        "⚠️ [File Fetch] Cannot fetch files - need ownerPubkey+relays or a GitHub mirror URL",
         {
           hasOwnerPubkeyForFetch: !!ownerPubkeyForFetch,
-          ownerPubkeyValid: ownerPubkeyForFetch
-            ? /^[0-9a-f]{64}$/i.test(ownerPubkeyForFetch)
-            : false,
-          hasSubscribe: !!subscribeFn,
-          hasDefaultRelays: !!relays?.length,
-          defaultRelaysCount: relays?.length || 0,
+          canFetchGithubOnly,
         }
       );
       fileFetchInProgressRef.current = false;
       return;
     }
 
-    // Use ownerPubkeyForFetch for the rest of the function
-    const ownerPubkey: string = ownerPubkeyForFetch;
+    const ownerPubkey: string | null = ownerPubkeyForFetch;
     const subscribe = subscribeFn;
     const defaultRelays = relays;
 
@@ -4504,7 +4565,13 @@ export default function RepoCodePage() {
       // CRITICAL: If we have a sourceUrl but it's not in clone URLs, add it!
       // This handles cases where the repo exists on GitHub/Codeberg but the clone URL wasn't in localStorage
       // Check both repoDataRef and localStorage for sourceUrl
-      let sourceUrl = initialRepoData?.sourceUrl;
+      let sourceUrl =
+        initialRepoData?.sourceUrl ||
+        routeGithubSource ||
+        inferGithubUpstreamFromRoute(
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
       if (!sourceUrl && typeof window !== "undefined") {
         try {
           const repos = loadStoredRepos();
@@ -4522,7 +4589,8 @@ export default function RepoCodePage() {
                 resolvedParams.repo
               );
           // Priority 1: Use sourceUrl or forkedFrom if available
-          sourceUrl = matchingRepo?.sourceUrl || matchingRepo?.forkedFrom;
+          sourceUrl =
+            matchingRepo?.sourceUrl || matchingRepo?.forkedFrom || sourceUrl;
           // Priority 2: If no sourceUrl, try to find GitHub/GitLab/Codeberg clone URL (preferred)
           // CRITICAL: Only use GitHub/GitLab/Codeberg URLs as sourceUrl - Nostr git servers are handled by multi-source fetcher
           if (
@@ -4656,10 +4724,12 @@ export default function RepoCodePage() {
       const initialUpstream = resolveUpstreamSourceUrl(
         initialRepoData?.sourceUrl,
         initialRepoData?.forkedFrom,
+        routeGithubSource,
         ...initialCloneUrls
       );
       const mustRefreshInitial =
         initialUpstream.includes("github.com") ||
+        !!routeGithubSource ||
         (resolvedParams.entity || "").startsWith("npub") ||
         /^[0-9a-f]{64}$/i.test(resolvedParams.entity || "");
 
@@ -4895,8 +4965,6 @@ export default function RepoCodePage() {
                           ...prev,
                           files: status.files,
                           filesBranch: branchFromFetch,
-                          defaultBranch:
-                            branchFromFetch || prev.defaultBranch || "main",
                           // CRITICAL: Store successful sources as array for fallback during file opening
                           successfulSources: [
                             {
@@ -4916,7 +4984,7 @@ export default function RepoCodePage() {
                           // Create minimal repoData if it doesn't exist yet
                           files: status.files,
                           filesBranch: branchFromFetch,
-                          defaultBranch: branchFromFetch ?? "main",
+                          defaultBranch: "main",
                           successfulSources: [
                             {
                               source: status.source,
@@ -5067,7 +5135,7 @@ export default function RepoCodePage() {
                     ...prev,
                     files,
                     ...(firstResolvedBranch
-                      ? { defaultBranch: firstResolvedBranch }
+                      ? { filesBranch: firstResolvedBranch }
                       : {}),
                     ownerPubkey: eventPublisherPubkey || prev.ownerPubkey, // Store the pubkey used for fetching
                     clone: mergeDiscoverableCloneUrls(
@@ -5087,8 +5155,17 @@ export default function RepoCodePage() {
                   }
                 : prev
             );
-            if (firstResolvedBranch) {
+            if (
+              firstResolvedBranch &&
+              shouldSyncBranchFromFetch(
+                firstResolvedBranch,
+                repoDefaultBranch(repoDataRef.current),
+                selectedBranchRef.current,
+                userPickedBranchRef.current
+              )
+            ) {
               setSelectedBranch(firstResolvedBranch);
+              updateURL({ branch: firstResolvedBranch });
             }
           } else if (successfulStatuses.length > 0) {
             // Files already exist, but update successful sources array with all completed sources
@@ -5283,6 +5360,10 @@ export default function RepoCodePage() {
             // Don't set limit - we need all events to find the latest one
           },
         ];
+
+        if (!subscribe) {
+          return;
+        }
 
         unsub = subscribe(
           filters,
@@ -7213,10 +7294,6 @@ export default function RepoCodePage() {
                                     ...prev,
                                     files: status.files,
                                     filesBranch: branchFromFetch,
-                                    defaultBranch:
-                                      branchFromFetch ||
-                                      prev.defaultBranch ||
-                                      "main",
                                     // CRITICAL: Store successful sources as array for fallback during file opening
                                     successfulSources: [
                                       {
@@ -7248,7 +7325,7 @@ export default function RepoCodePage() {
                                     // Create minimal repoData if it doesn't exist yet
                                     files: status.files,
                                     filesBranch: branchFromFetch,
-                                    defaultBranch: branchFromFetch ?? "main",
+                                    defaultBranch: "main",
                                     successfulSources: [
                                       {
                                         source: status.source,
@@ -7393,7 +7470,7 @@ export default function RepoCodePage() {
                               ...prev,
                               files,
                               ...(firstResolvedBranch
-                                ? { defaultBranch: firstResolvedBranch }
+                                ? { filesBranch: firstResolvedBranch }
                                 : {}),
                               clone: mergeDiscoverableCloneUrls(
                                 prev.clone,
@@ -7412,8 +7489,17 @@ export default function RepoCodePage() {
                             }
                           : prev
                       );
-                      if (firstResolvedBranch) {
+                      if (
+                        firstResolvedBranch &&
+                        shouldSyncBranchFromFetch(
+                          firstResolvedBranch,
+                          repoDefaultBranch(repoDataRef.current),
+                          selectedBranchRef.current,
+                          userPickedBranchRef.current
+                        )
+                      ) {
                         setSelectedBranch(firstResolvedBranch);
+                        updateURL({ branch: firstResolvedBranch });
                       }
                     } else if (successfulStatuses.length > 0) {
                       // Files already exist, but update successful sources array with all completed sources
@@ -7986,6 +8072,9 @@ export default function RepoCodePage() {
         // CRITICAL: This is the PRIMARY method for foreign repos - many repos don't store files in Nostr events
         // Instead, they rely on git-nostr-bridge to clone repos when it sees repository events
         async function fetchFromGitNostrBridge() {
+          if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+            return;
+          }
           try {
             const currentData = repoDataRef.current;
             // CRITICAL: Use defaultBranch from repo data if available, otherwise try to get it from sourceUrl
@@ -8095,20 +8184,27 @@ export default function RepoCodePage() {
                   "main";
                 setRepoData((prev: any) => {
                   if (!prev) return prev;
-                  const updated = { ...prev, files: data.files };
-                  // Update defaultBranch if API returned a different branch
-                  if (data.branch && data.branch !== prev.defaultBranch) {
-                    console.log(
-                      `🔄 [File Fetch] Updating defaultBranch from '${
-                        prev.defaultBranch || "none"
-                      }' to '${data.branch}' (from API response)`
-                    );
-                    updated.defaultBranch = data.branch;
-                    // Also update selectedBranch to match
-                    setSelectedBranch(data.branch);
+                  const updated: Record<string, unknown> = {
+                    ...prev,
+                    files: data.files,
+                  };
+                  if (data.branch) {
+                    updated.filesBranch = data.branch;
                   }
                   return updated;
                 });
+                if (
+                  data.branch &&
+                  shouldSyncBranchFromFetch(
+                    data.branch,
+                    repoDefaultBranch(repoData),
+                    selectedBranchRef.current,
+                    userPickedBranchRef.current
+                  )
+                ) {
+                  setSelectedBranch(data.branch);
+                  updateURL({ branch: data.branch });
+                }
 
                 // CRITICAL: Store files separately to avoid localStorage quota issues
                 persistRepoFiles(data.files as RepoFileEntry[], "[File Fetch]");
@@ -10208,12 +10304,23 @@ export default function RepoCodePage() {
     if (!repoData || updatingFromURLRef.current) return; // Wait for repo to load, skip if already updating
     updatingFromURLRef.current = true;
 
-    // Update branch from URL if valid - use functional update
-    if (urlBranch && (repoData as any).branches?.includes(urlBranch)) {
-      setSelectedBranch((prev) => {
-        if (prev !== urlBranch) return urlBranch;
-        return prev;
-      });
+    const defaultBr = repoDefaultBranch(repoData);
+    const branchList = (repoData as { branches?: string[] }).branches;
+    if (urlBranch && branchList?.includes(urlBranch)) {
+      if (userPickedBranchRef.current) {
+        setSelectedBranch((prev) =>
+          prev !== urlBranch ? urlBranch : prev
+        );
+      } else if (urlBranch === defaultBr) {
+        setSelectedBranch((prev) =>
+          prev !== urlBranch ? urlBranch : prev
+        );
+      } else {
+        setSelectedBranch((prev) => (prev !== defaultBr ? defaultBr : prev));
+        updateURL({ branch: undefined });
+      }
+    } else if (!selectedBranchRef.current.trim()) {
+      setSelectedBranch(defaultBr);
     }
     // Update path from URL - use functional update
     if (urlPath !== null && urlPath !== undefined) {
@@ -13449,6 +13556,12 @@ export default function RepoCodePage() {
   const handleBranchSelect = useCallback(
     (branch: string) => {
       console.log("🔄 [Branch Switch] Switching to branch:", branch);
+      userPickedBranchRef.current = true;
+      writeUserPickedRepoBranch(
+        resolvedParams.entity,
+        resolvedParams.repo,
+        branch
+      );
       setSelectedBranch(branch);
       updateURL({ branch, file: null, path: "" });
       setCurrentPath("");
@@ -13460,12 +13573,6 @@ export default function RepoCodePage() {
           r.entity === resolvedParams.entity &&
           (r.repo === resolvedParams.repo || r.slug === resolvedParams.repo)
       );
-      if (repo) {
-        setRepoData((prev) =>
-          prev ? { ...prev, defaultBranch: branch } : prev
-        );
-      }
-
       // CRITICAL: Trigger file refetch for the new branch
       // Clear the file fetch attempt ref so files are refetched
       const repoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
@@ -13503,6 +13610,12 @@ export default function RepoCodePage() {
           set.add(branchName);
           repos[idx].branches = Array.from(set);
           saveStoredRepos(repos);
+          userPickedBranchRef.current = true;
+          writeUserPickedRepoBranch(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            branchName
+          );
           setSelectedBranch(branchName);
           updateURL({ branch: branchName, file: null, path: "" });
           setCurrentPath("");
