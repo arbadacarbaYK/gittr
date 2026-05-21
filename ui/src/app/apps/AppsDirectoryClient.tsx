@@ -223,6 +223,86 @@ export function AppsDirectoryClient() {
     () => relaysForSoftwareCatalog(defaultRelays),
     [defaultRelays]
   );
+  const relaysKey = useMemo(() => relays.join("|"), [relays]);
+
+  const refreshAppsFromRef = useCallback(() => {
+    const map = dedupeSoftwareApps(rawAppEventsRef.current);
+    setApps(
+      Array.from(map.values()).sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+      )
+    );
+  }, []);
+
+  const mergeReleaseEvent = useCallback((event: NostrEventLike) => {
+    if (isPublisherBlocklisted(event.pubkey)) return;
+    const r = parseSoftwareRelease(event);
+    if (!r) return;
+    const key = appDedupKey(r.pubkey, r.appId);
+    upsertReleaseInMap(releasesRef.current, key, r);
+    upsertReleaseInMap(releasesByAppIdRef.current, r.appId, r);
+    setReleasesByApp(new Map(releasesRef.current));
+    setReleasesByAppId(new Map(releasesByAppIdRef.current));
+  }, []);
+
+  const applyServerCatalog = useCallback(
+    (data: {
+      apps?: ParsedSoftwareApp[];
+      releasesByApp?: Record<string, ParsedSoftwareRelease[]>;
+      releasesByAppId?: Record<string, ParsedSoftwareRelease[]>;
+    }) => {
+      if (data.apps?.length) {
+        for (const a of data.apps) {
+          rawAppEventsRef.current.push(
+            a.raw ?? {
+              id: "",
+              pubkey: a.pubkey,
+              kind: KIND_SOFTWARE_APPLICATION,
+              created_at: a.createdAt,
+              content: a.content,
+              tags: [],
+            }
+          );
+        }
+        refreshAppsFromRef();
+      }
+      if (data.releasesByApp) {
+        for (const [k, list] of Object.entries(data.releasesByApp)) {
+          for (const r of list) {
+            upsertReleaseInMap(releasesRef.current, k, r);
+          }
+        }
+        setReleasesByApp(new Map(releasesRef.current));
+      }
+      if (data.releasesByAppId) {
+        for (const [k, list] of Object.entries(data.releasesByAppId)) {
+          for (const r of list) {
+            upsertReleaseInMap(releasesByAppIdRef.current, k, r);
+          }
+        }
+        setReleasesByAppId(new Map(releasesByAppIdRef.current));
+      }
+    },
+    [refreshAppsFromRef]
+  );
+
+  const fetchCatalogFromServer = useCallback(async () => {
+    try {
+      const res = await fetch("/api/nostr/software-catalog", {
+        cache: "no-store",
+      });
+      if (!res.ok) return false;
+      const data = (await res.json()) as {
+        apps?: ParsedSoftwareApp[];
+        releasesByApp?: Record<string, ParsedSoftwareRelease[]>;
+        releasesByAppId?: Record<string, ParsedSoftwareRelease[]>;
+      };
+      applyServerCatalog(data);
+      return (data.apps?.length ?? 0) > 0;
+    } catch {
+      return false;
+    }
+  }, [applyServerCatalog]);
 
   const profilePubkeys = useMemo(() => {
     const s = new Set<string>();
@@ -319,12 +399,10 @@ export function AppsDirectoryClient() {
     [subscribe, relays]
   );
 
-  useEffect(() => {
-    if (!subscribe) {
-      setLoading(false);
-      return;
-    }
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
 
+  useEffect(() => {
     rawAppEventsRef.current = [];
     releasesRef.current = new Map();
     releasesByAppIdRef.current = new Map();
@@ -334,54 +412,48 @@ export function AppsDirectoryClient() {
     setReleasesByAppId(new Map());
     setAssetsById(new Map());
     setLoading(true);
+    setLoadError(null);
 
     let cancelled = false;
-    const stopTimer = setTimeout(() => {
-      if (cancelled) return;
-      setLoading(false);
-    }, 14000);
 
-    const unsub = subscribe(
-      [
-        { kinds: [KIND_SOFTWARE_APPLICATION], limit: 4000 },
-        { kinds: [KIND_SOFTWARE_RELEASE], limit: 12000 },
-      ],
-      relays,
-      (event: NostrEventLike) => {
-        if (cancelled) return;
-        if (isPublisherBlocklisted(event.pubkey)) return;
-        if (event.kind === KIND_SOFTWARE_APPLICATION) {
-          rawAppEventsRef.current.push(event);
-          const map = dedupeSoftwareApps(rawAppEventsRef.current);
-          setApps(
-            Array.from(map.values()).sort((a, b) =>
-              a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
-            )
-          );
-          return;
-        }
-        if (event.kind === KIND_SOFTWARE_RELEASE) {
-          const r = parseSoftwareRelease(event);
-          if (!r) return;
-          const key = appDedupKey(r.pubkey, r.appId);
-          const list = releasesRef.current.get(key) ?? [];
-          const idx = list.findIndex((x) => x.d === r.d);
-          let nextList: ParsedSoftwareRelease[];
-          if (idx === -1) {
-            nextList = [...list, r];
-          } else {
-            const prev = list[idx]!;
-            nextList = [...list];
-            if (r.createdAt >= prev.createdAt) {
-              nextList[idx] = r;
+    const finishLoading = () => {
+      if (!cancelled) setLoading(false);
+    };
+
+    const stopTimer = setTimeout(() => {
+      finishLoading();
+    }, 18000);
+
+    void (async () => {
+      const ok = await fetchCatalogFromServer();
+      if (cancelled) return;
+      if (ok) finishLoading();
+    })();
+
+    const unsub = subscribe
+      ? subscribe(
+          [
+            { kinds: [KIND_SOFTWARE_APPLICATION], limit: 4000 },
+            { kinds: [KIND_SOFTWARE_RELEASE], limit: 12000 },
+          ],
+          relays,
+          (event: NostrEventLike) => {
+            if (cancelled) return;
+            if (event.kind === KIND_SOFTWARE_APPLICATION) {
+              if (!isPublisherBlocklisted(event.pubkey)) {
+                rawAppEventsRef.current.push(event);
+                refreshAppsFromRef();
+              }
+              finishLoading();
+              return;
             }
-          }
-          releasesRef.current.set(key, nextList);
-          setReleasesByApp(new Map(releasesRef.current));
-        }
-      },
-      12000
-    );
+            if (event.kind === KIND_SOFTWARE_RELEASE) {
+              mergeReleaseEvent(event);
+            }
+          },
+          16000
+        )
+      : () => {};
 
     return () => {
       cancelled = true;
@@ -396,7 +468,25 @@ export function AppsDirectoryClient() {
       });
       assetSubUnsubsRef.current = [];
     };
-  }, [subscribe, relays]);
+  }, [
+    subscribe,
+    relaysKey,
+    reloadNonce,
+    fetchCatalogFromServer,
+    refreshAppsFromRef,
+    mergeReleaseEvent,
+  ]);
+
+  useEffect(() => {
+    if (loading || apps.length > 0) return;
+    void fetchCatalogFromServer().then((ok) => {
+      if (!ok) {
+        setLoadError(
+          "Could not load apps from Nostr relays. Try again — no login or extension is required."
+        );
+      }
+    });
+  }, [loading, apps.length, fetchCatalogFromServer]);
 
   const releasesForApp = useCallback(
     (app: ParsedSoftwareApp): ParsedSoftwareRelease[] => {
@@ -528,7 +618,9 @@ export function AppsDirectoryClient() {
               Apps on Nostr
             </h1>
             <p className="mt-3 text-base leading-relaxed text-gray-400">
-              Installable software published to nostr.
+              Installable software published to Nostr. No login or browser
+              extension required — listings load from public relays (including{" "}
+              <code className="text-gray-500">relay.zapstore.dev</code>).
             </p>
           </div>
           {!loading ? (
@@ -681,11 +773,22 @@ export function AppsDirectoryClient() {
         )}
 
         {!loading && apps.length === 0 && (
-          <p className="text-sm text-gray-500">
-            No applications returned yet. Check your relay list and network, or
-            try again — Zapstore events are usually on{" "}
-            <code className="text-gray-400">wss://relay.zapstore.dev</code>.
-          </p>
+          <div className="mb-4 space-y-3 rounded-lg border border-[#383B42] bg-[#171B21]/60 p-4">
+            <p className="text-sm text-gray-400">
+              {loadError ??
+                "No applications returned yet. This page does not require signing in — data comes from Nostr relays."}
+            </p>
+            <button
+              type="button"
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "border-[#383B42]"
+              )}
+              onClick={() => setReloadNonce((n) => n + 1)}
+            >
+              Retry loading apps
+            </button>
+          </div>
         )}
 
         <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2">
