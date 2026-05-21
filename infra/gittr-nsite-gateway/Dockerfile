@@ -1,4 +1,4 @@
-# gittr Pages gateway — built from arbadacarbaYK/nsite-gateway `gittr-pages` sources.
+# gittr Pages gateway — built from arbadacarbaYK/nsite-gateway `master` (production fork).
 #
 # Sources are in `gateway-src/` (gitignored). deploy-nsite-gateway.sh copies your local
 # clone (default: ../nsite-gateway-pr on branch gittr-pages) before `docker build`.

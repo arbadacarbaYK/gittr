@@ -39,11 +39,11 @@ ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "mkdir -p '${REMOTE}/public'"
 NSITE_GATEWAY_SRC="${NSITE_GATEWAY_SRC:-$ROOT/../nsite-gateway-pr}"
 if [[ ! -f "${NSITE_GATEWAY_SRC}/main.ts" ]]; then
   echo "❌ Missing nsite-gateway fork sources: ${NSITE_GATEWAY_SRC}"
-  echo "   Clone arbadacarbaYK/nsite-gateway and checkout branch gittr-pages, or set NSITE_GATEWAY_SRC."
+  echo "   Clone https://github.com/arbadacarbaYK/nsite-gateway (branch master), or set NSITE_GATEWAY_SRC."
   exit 1
 fi
 
-echo "📦 Syncing gittr nsite-gateway image context + fork sources (gittr-pages)…"
+echo "📦 Syncing gittr nsite-gateway image context + fork sources (master)…"
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "rm -rf '/opt/ngit/infra/gittr-nsite-gateway'"
 scp -i "$KEY" -q -r "$ROOT/infra/gittr-nsite-gateway" "root@${HOST}:/opt/ngit/infra/"
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "rm -rf '/opt/ngit/infra/gittr-nsite-gateway/gateway-src' && mkdir -p '/opt/ngit/infra/gittr-nsite-gateway/gateway-src'"
@@ -121,4 +121,3 @@ ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "cd '${REMOTE}' && docker compose 
 scp -i "$KEY" -q "$ROOT/scripts/publish-gittr-pages-mutelist.cjs" "root@${HOST}:/opt/ngit/ui/scripts/" 2>/dev/null || true
 
 echo "✅ nsite gateway should be listening on host port 3040 (see SETUP_INSTRUCTIONS.md for HTTPS / reverse-proxy in front)."
-echo "   Push fork: cd ${NSITE_GATEWAY_SRC} && git push -u fork gittr-pages  (needs GitHub auth, not deploy-key-only)"
