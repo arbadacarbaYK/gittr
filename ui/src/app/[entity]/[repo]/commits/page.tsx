@@ -53,7 +53,10 @@ export default function CommitsPage({
   const [mounted, setMounted] = useState(false);
   const searchParams = useSearchParams();
   const [storedRepo, setStoredRepo] = useState<StoredRepo | null>(null);
-  const branch = resolveRepoTabBranch(searchParams, storedRepo);
+  // Commits always use the repo default branch — not feature branches stuck in ?branch= from Code URL
+  const branch =
+    (storedRepo?.defaultBranch || "").trim() ||
+    resolveRepoTabBranch(null, storedRepo);
   const fileFilter = searchParams?.get("file") || null;
   const [commits, setCommits] = useState<Commit[]>([]);
   const [loading, setLoading] = useState(true);

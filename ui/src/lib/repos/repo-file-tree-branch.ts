@@ -15,27 +15,14 @@ export function resolveRepoTabBranch(
   return "main";
 }
 
-/** Append `?branch=` for cross-tab navigation (GitHub uses master, gittr default was main). */
-export function withRepoBranchQuery(
+/** `?branch=` for git-history sub-pages only — always the repo default, never URL feature branches. */
+export function repoSubpageBranchQuery(
   path: string,
-  branch: string,
-  existingSearch?: { toString(): string } | null
+  defaultBranch: string | undefined | null
 ): string {
-  if (existingSearch?.toString()) {
-    const params = new URLSearchParams(existingSearch.toString());
-    if (branch && !params.has("branch")) {
-      params.set("branch", branch);
-    }
-    const q = params.toString();
-    return q ? `${path}?${q}` : path;
-  }
-  if (branch && branch !== "main") {
-    return `${path}?branch=${encodeURIComponent(branch)}`;
-  }
-  if (branch === "master") {
-    return `${path}?branch=${encodeURIComponent(branch)}`;
-  }
-  return path;
+  const b = (defaultBranch || "").trim();
+  if (!b || b === "main") return path;
+  return `${path}?branch=${encodeURIComponent(b)}`;
 }
 
 export function resolveActiveRepoBranch(

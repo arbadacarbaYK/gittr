@@ -45,10 +45,7 @@ import {
   hydrateRepoFromGithub,
 } from "@/lib/repos/repo-github-hub";
 import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
-import {
-  resolveRepoTabBranch,
-  withRepoBranchQuery,
-} from "@/lib/repos/repo-file-tree-branch";
+import { repoSubpageBranchQuery } from "@/lib/repos/repo-file-tree-branch";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { useEntityOwner } from "@/lib/utils/use-entity-owner";
 
@@ -328,9 +325,13 @@ export default function RepoLayoutClient({
 
   // Helper function to generate href for repo links (avoids duplication)
   // Use consistent href on initial render to prevent hydration mismatches
+  const isRepoCodePath = useCallback(() => {
+    const base = `/${resolvedParams.entity}/${resolvedParams.repo}`;
+    return pathname === base || pathname === `${base}/`;
+  }, [pathname, resolvedParams.entity, resolvedParams.repo]);
+
   const getRepoLink = useCallback(
-    (subpath = "", includeSearchParams = false) => {
-      // On initial render (before mount), always use resolvedParams.entity to ensure consistency
+    (subpath = "", preserveCodeSearchParams = false) => {
       const effectiveOwnerPubkey = mounted ? ownerPubkey : null;
       const basePath =
         effectiveOwnerPubkey && /^[0-9a-f]{64}$/i.test(effectiveOwnerPubkey)
@@ -340,11 +341,17 @@ export default function RepoLayoutClient({
           : `/${resolvedParams.entity}/${resolvedParams.repo}${
               subpath ? `/${subpath}` : ""
             }`;
-      const tabBranch = resolveRepoTabBranch(searchParams, repo);
-      if (includeSearchParams && searchParams?.toString()) {
-        return withRepoBranchQuery(basePath, tabBranch, searchParams);
+      // Code tab: keep file/path/hash only while already on Code — never leak ?branch= to other tabs
+      if (!subpath) {
+        if (preserveCodeSearchParams && isRepoCodePath() && searchParams?.toString()) {
+          const params = new URLSearchParams(searchParams.toString());
+          params.delete("branch");
+          const q = params.toString();
+          return q ? `${basePath}?${q}` : basePath;
+        }
+        return basePath;
       }
-      return withRepoBranchQuery(basePath, tabBranch);
+      return repoSubpageBranchQuery(basePath, repo?.defaultBranch);
     },
     [
       mounted,
@@ -352,7 +359,8 @@ export default function RepoLayoutClient({
       resolvedParams.entity,
       resolvedParams.repo,
       searchParams,
-      repo,
+      repo?.defaultBranch,
+      isRepoCodePath,
     ]
   );
 
