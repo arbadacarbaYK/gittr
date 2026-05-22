@@ -248,6 +248,10 @@ export default function HomePage() {
   } | null>(null);
   const [statsLoaded, setStatsLoaded] = useState(false);
   const [leaderboardReady, setLeaderboardReady] = useState(false);
+  const [lbTopReposReady, setLbTopReposReady] = useState(false);
+  const [lbTopUsersReady, setLbTopUsersReady] = useState(false);
+  const [lbRecentReposReady, setLbRecentReposReady] = useState(false);
+  const [lbRecentActivitiesReady, setLbRecentActivitiesReady] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const leaderboardFetchGen = useRef(0);
 
@@ -258,11 +262,17 @@ export default function HomePage() {
       recentRepos?: PlatformRecentRepo[];
       recentActivities?: PlatformRecentActivity[];
     }) => {
+      const refreshing =
+        typeof (data as { refreshing?: boolean }).refreshing === "boolean"
+          ? (data as { refreshing?: boolean }).refreshing
+          : false;
+
       if (Array.isArray(data.topRepos)) {
         const sortedRepos = [...data.topRepos].sort(
           (a, b) => (b.activityCount || 0) - (a.activityCount || 0)
         );
         setTopRepos(sortedRepos);
+        if (!refreshing || sortedRepos.length > 0) setLbTopReposReady(true);
         if (sortedRepos.length > 0) {
           try {
             sessionStorage.setItem(
@@ -279,6 +289,7 @@ export default function HomePage() {
           (a, b) => (b.activityCount || 0) - (a.activityCount || 0)
         );
         setTopUsers(sortedUsers);
+        if (!refreshing || sortedUsers.length > 0) setLbTopUsersReady(true);
         if (sortedUsers.length > 0) {
           try {
             sessionStorage.setItem(
@@ -290,32 +301,45 @@ export default function HomePage() {
           }
         }
       }
-      if (Array.isArray(data.recentRepos) && data.recentRepos.length > 0) {
-        setPlatformRecentRepos(data.recentRepos);
-        try {
-          sessionStorage.setItem(
-            "gittr_cached_recentRepos",
-            JSON.stringify(data.recentRepos)
-          );
-        } catch {
-          /* ignore */
+      if (Array.isArray(data.recentRepos)) {
+        if (data.recentRepos.length > 0) {
+          setPlatformRecentRepos(data.recentRepos);
+          try {
+            sessionStorage.setItem(
+              "gittr_cached_recentRepos",
+              JSON.stringify(data.recentRepos)
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!refreshing || data.recentRepos.length > 0) {
+          setLbRecentReposReady(true);
         }
       }
-      if (
-        Array.isArray(data.recentActivities) &&
-        data.recentActivities.length > 0
-      ) {
-        setPlatformRecentActivities(data.recentActivities);
-        try {
-          sessionStorage.setItem(
-            "gittr_cached_recentActivities",
-            JSON.stringify(data.recentActivities)
-          );
-        } catch {
-          /* ignore */
+      if (Array.isArray(data.recentActivities)) {
+        if (data.recentActivities.length > 0) {
+          setPlatformRecentActivities(data.recentActivities);
+          try {
+            sessionStorage.setItem(
+              "gittr_cached_recentActivities",
+              JSON.stringify(data.recentActivities)
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!refreshing || data.recentActivities.length > 0) {
+          setLbRecentActivitiesReady(true);
         }
       }
-      setLeaderboardReady(true);
+      if (!refreshing) {
+        setLeaderboardReady(true);
+        setLbTopReposReady(true);
+        setLbTopUsersReady(true);
+        setLbRecentReposReady(true);
+        setLbRecentActivitiesReady(true);
+      }
     },
     []
   );
@@ -334,20 +358,21 @@ export default function HomePage() {
         const parsed = JSON.parse(cachedRepos) as RepoStats[];
         if (Array.isArray(parsed) && parsed.length > 0) {
           setTopRepos(parsed);
-          setLeaderboardReady(true);
+          setLbTopReposReady(true);
         }
       }
       if (cachedUsers) {
         const parsed = JSON.parse(cachedUsers) as UserStats[];
         if (Array.isArray(parsed) && parsed.length > 0) {
           setTopUsers(parsed);
-          setLeaderboardReady(true);
+          setLbTopUsersReady(true);
         }
       }
       if (cachedRecentRepos) {
         const parsed = JSON.parse(cachedRecentRepos) as PlatformRecentRepo[];
         if (Array.isArray(parsed) && parsed.length > 0) {
           setPlatformRecentRepos(parsed);
+          setLbRecentReposReady(true);
         }
       }
       if (cachedRecentActivities) {
@@ -356,6 +381,7 @@ export default function HomePage() {
         ) as PlatformRecentActivity[];
         if (Array.isArray(parsed) && parsed.length > 0) {
           setPlatformRecentActivities(parsed);
+          setLbRecentActivitiesReady(true);
         }
       }
     } catch {
@@ -363,26 +389,46 @@ export default function HomePage() {
     }
   }, []);
 
-  // One fetch per page visit — uses server cache (ms), never ?nocache, never on pubkey change.
+  // Poll leaderboard until server relay refresh finishes; apply partial payloads as they arrive.
   useEffect(() => {
     const gen = ++leaderboardFetchGen.current;
-    void (async () => {
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const poll = async () => {
       try {
         const res = await fetch("/api/stats/platform-leaderboard");
-        if (!res.ok || gen !== leaderboardFetchGen.current) return;
+        if (!res.ok || cancelled || gen !== leaderboardFetchGen.current) return;
         const data = (await res.json()) as {
           topRepos?: RepoStats[];
           topUsers?: UserStats[];
           recentRepos?: PlatformRecentRepo[];
           recentActivities?: PlatformRecentActivity[];
+          refreshing?: boolean;
         };
-        if (gen !== leaderboardFetchGen.current) return;
+        if (cancelled || gen !== leaderboardFetchGen.current) return;
         applyLeaderboardPayload(data);
+        if (data.refreshing) {
+          pollTimer = setTimeout(poll, 1200);
+        }
       } catch (err) {
         console.warn("⚠️ [Home] Platform leaderboard fetch failed:", err);
-        if (gen === leaderboardFetchGen.current) setLeaderboardReady(true);
+        if (!cancelled && gen === leaderboardFetchGen.current) {
+          setLeaderboardReady(true);
+          setLbTopReposReady(true);
+          setLbTopUsersReady(true);
+          setLbRecentReposReady(true);
+          setLbRecentActivitiesReady(true);
+        }
       }
-    })();
+    };
+
+    void poll();
+
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
   }, [applyLeaderboardPayload]);
 
   // Load repos and listen for updates from Nostr sync
@@ -1424,9 +1470,7 @@ export default function HomePage() {
             🔥 Most Active Repos
           </h3>
           <div className="space-y-2 flex-1">
-            {!statsLoaded ? (
-              <div className="text-sm text-gray-500 py-2">Loading...</div>
-            ) : topRepos.length > 0 ? (
+            {topRepos.length > 0 ? (
               topRepos.slice(0, 5)
                 .map((repo, idx) => {
                   // repoId is in format "entity/repo"
@@ -1505,7 +1549,7 @@ export default function HomePage() {
               })
             ) : (
               <div className="text-sm text-gray-500 py-2">
-                {leaderboardReady ? "No active users yet" : "Loading..."}
+                {lbTopUsersReady ? "No active users yet" : "Loading..."}
               </div>
             )}
           </div>
@@ -2126,7 +2170,7 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="text-gray-400">
-              {!statsLoaded && platformRecentActivities.length === 0
+              {!lbRecentActivitiesReady && platformRecentActivities.length === 0
                 ? "Loading recent activity..."
                 : "No recent activity yet."}
             </div>
@@ -2147,7 +2191,7 @@ export default function HomePage() {
           </div>
           {displayRecentRepos.length === 0 ? (
             <div className="text-gray-400">
-              {syncing && platformRecentRepos.length === 0
+              {!lbRecentReposReady && platformRecentRepos.length === 0
                 ? "Loading repositories..."
                 : "No repositories yet. Create or import one to get started."}
             </div>

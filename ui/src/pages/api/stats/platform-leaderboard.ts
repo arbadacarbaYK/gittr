@@ -33,41 +33,62 @@ export type PlatformLeaderboardResponse = {
   recentRepos: PlatformRecentRepo[];
   recentActivities: PlatformRecentActivity[];
   cached: boolean;
+  /** True while a relay refresh is still running (client may poll). */
+  refreshing: boolean;
   relayCount: number;
 };
 
-async function refreshLeaderboardCache(): Promise<void> {
-  const [topRepos, topUsers, recentRepos, recentActivities] =
-    await Promise.all([
-      withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
-        getTopReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 10)
-      ),
-      withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
-        getTopUsersFromNostr(subscribe, PLATFORM_STATS_RELAYS, 10)
-      ),
-      withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
-        getRecentReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 12)
-      ),
-      withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
-        getRecentPlatformActivitiesFromNostr(
-          subscribe,
-          PLATFORM_STATS_RELAYS,
-          12
-        )
-      ),
-    ]);
-  cache = {
+function emptySnapshot() {
+  return {
     at: Date.now(),
-    topRepos,
-    topUsers,
-    recentRepos,
-    recentActivities,
+    topRepos: [] as RepoStats[],
+    topUsers: [] as UserStats[],
+    recentRepos: [] as PlatformRecentRepo[],
+    recentActivities: [] as PlatformRecentActivity[],
   };
+}
+
+/** Fills cache as each relay query completes so GET can return partial data immediately. */
+async function refreshLeaderboardCache(): Promise<void> {
+  const snap = emptySnapshot();
+  cache = snap;
+
+  await Promise.all([
+    withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
+      getTopReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 10)
+    ).then((topRepos) => {
+      snap.topRepos = topRepos;
+      snap.at = Date.now();
+    }),
+    withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
+      getTopUsersFromNostr(subscribe, PLATFORM_STATS_RELAYS, 10)
+    ).then((topUsers) => {
+      snap.topUsers = topUsers;
+      snap.at = Date.now();
+    }),
+    withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
+      getRecentReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 12)
+    ).then((recentRepos) => {
+      snap.recentRepos = recentRepos;
+      snap.at = Date.now();
+    }),
+    withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
+      getRecentPlatformActivitiesFromNostr(
+        subscribe,
+        PLATFORM_STATS_RELAYS,
+        12
+      )
+    ).then((recentActivities) => {
+      snap.recentActivities = recentActivities;
+      snap.at = Date.now();
+    }),
+  ]);
 }
 
 function scheduleBackgroundRefresh(): void {
   if (refreshInFlight) return;
   if (cache && Date.now() - cache.at < CACHE_MS) return;
+  if (!cache) cache = emptySnapshot();
   refreshInFlight = refreshLeaderboardCache()
     .catch((e) => console.error("[platform-leaderboard] background refresh", e))
     .finally(() => {
@@ -92,57 +113,40 @@ export default async function handler(
   const forceRefresh = req.query.refresh === "1";
   const now = Date.now();
   const cacheStale = cache && now - cache.at >= CACHE_MS;
-  const cacheIncomplete =
-    cache && cache.topRepos.length > 0 && cache.topUsers.length === 0;
 
-  // Never block on nocache — return last good snapshot immediately, refresh in background.
-  if (cache && !forceRefresh && !cacheIncomplete) {
-    if (cacheStale) scheduleBackgroundRefresh();
+  const respond = (cached: boolean, refreshing: boolean) => {
+    if (!cache) {
+      return res
+        .status(500)
+        .json({ error: "Failed to load platform leaderboard" });
+    }
     res.setHeader(
       "Cache-Control",
-      "public, max-age=60, stale-while-revalidate=300"
+      cached
+        ? "public, max-age=60, stale-while-revalidate=300"
+        : "public, max-age=15, stale-while-revalidate=120"
     );
     return res.status(200).json({
       topRepos: cache.topRepos,
       topUsers: cache.topUsers,
       recentRepos: cache.recentRepos,
       recentActivities: cache.recentActivities,
-      cached: true,
+      cached,
+      refreshing,
       relayCount: PLATFORM_STATS_RELAYS.length,
     });
+  };
+
+  if (forceRefresh) {
+    if (!refreshInFlight) scheduleBackgroundRefresh();
+    return respond(!!cache, true);
   }
 
-  try {
-    if (refreshInFlight) {
-      await refreshInFlight;
-    } else {
-      await refreshLeaderboardCache();
-    }
-    if (!cache) {
-      return res.status(500).json({ error: "Failed to load platform leaderboard" });
-    }
-    res.setHeader("Cache-Control", "public, max-age=300");
-    return res.status(200).json({
-      topRepos: cache.topRepos,
-      topUsers: cache.topUsers,
-      recentRepos: cache.recentRepos,
-      recentActivities: cache.recentActivities,
-      cached: false,
-      relayCount: PLATFORM_STATS_RELAYS.length,
-    });
-  } catch (e) {
-    console.error("[platform-leaderboard]", e);
-    if (cache) {
-      scheduleBackgroundRefresh();
-      return res.status(200).json({
-        topRepos: cache.topRepos,
-        topUsers: cache.topUsers,
-        recentRepos: cache.recentRepos,
-        recentActivities: cache.recentActivities,
-        cached: true,
-        relayCount: PLATFORM_STATS_RELAYS.length,
-      });
-    }
-    return res.status(500).json({ error: "Failed to load platform leaderboard" });
+  if (!cache) {
+    scheduleBackgroundRefresh();
+    return respond(true, true);
   }
-}
+
+  if (cacheStale) scheduleBackgroundRefresh();
+
+  return respond(true, !!refreshInFlight);

@@ -21,6 +21,7 @@ import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import {
   aggregateRepoStarReactions,
   publishStarReaction,
+  queryRepoAnnouncementEventId,
   removeStarReaction,
 } from "@/lib/nostr/repo-stars";
 import { useRepoNip57ZapBadgeTotal } from "@/lib/nostr/useRepoNip57ZapBadgeTotal";
@@ -169,7 +170,8 @@ export default function RepoLayoutClient({
   const searchParams = useSearchParams();
   // Use consistent default width on server and initial client render to prevent hydration mismatch
   const [windowWidth, setWindowWidth] = useState(1920);
-  const { pubkey, publish, subscribe, defaultRelays } = useNostrContext();
+  const { pubkey, publish, subscribe, defaultRelays, remoteSigner } =
+    useNostrContext();
   const [isWatching, setIsWatching] = useState(false);
   const [githubStarCount, setGithubStarCount] = useState<number | null>(null);
   const [nostrStarEvents, setNostrStarEvents] = useState<NostrEvent[]>([]);
@@ -229,11 +231,13 @@ export default function RepoLayoutClient({
     enabled: mounted && !!ownerHexForZaps,
   });
 
+  const [relayRepoEventId, setRelayRepoEventId] = useState<string | null>(null);
+
   const repoNostrEventId = useMemo(() => {
-    if (!repo) return null;
-    const id = repo.lastNostrEventId || repo.nostrEventId;
+    if (!repo) return relayRepoEventId;
+    const id = repo.lastNostrEventId || repo.nostrEventId || relayRepoEventId;
     return typeof id === "string" && /^[0-9a-f]{64}$/i.test(id) ? id : null;
-  }, [repo]);
+  }, [repo, relayRepoEventId]);
 
   const githubUpstreamUrl = useMemo(
     () =>
@@ -813,6 +817,45 @@ export default function RepoLayoutClient({
     };
   }, [mounted, subscribe, defaultRelays, repoNostrEventId]);
 
+  // Resolve kind 30617 id from relays when local repo row has no nostrEventId (explore / import visitors).
+  useEffect(() => {
+    if (!mounted || !subscribe || !defaultRelays?.length || !ownerPubkey) {
+      return;
+    }
+    if (repo?.lastNostrEventId || repo?.nostrEventId) {
+      setRelayRepoEventId(null);
+      return;
+    }
+    const repoIdentifier =
+      (repo as { repositoryName?: string; repo?: string; slug?: string } | null)
+        ?.repositoryName ||
+      (repo as { repositoryName?: string; repo?: string; slug?: string } | null)
+        ?.repo ||
+      resolvedParams.repo;
+    if (!repoIdentifier) return;
+
+    let cancelled = false;
+    void queryRepoAnnouncementEventId(
+      subscribe,
+      defaultRelays,
+      ownerPubkey,
+      repoIdentifier,
+      { timeoutMs: 6000 }
+    ).then((id) => {
+      if (!cancelled && id) setRelayRepoEventId(id);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    mounted,
+    subscribe,
+    defaultRelays,
+    ownerPubkey,
+    repo,
+    resolvedParams.repo,
+  ]);
+
   // Sync watch state from canonical NIP-51 list (kind 10018)
   useEffect(() => {
     if (!pubkey || !subscribe || !defaultRelays || defaultRelays.length === 0) {
@@ -1179,13 +1222,25 @@ export default function RepoLayoutClient({
     ) {
       return;
     }
-    if (typeof window === "undefined" || !window.nostr?.signEvent) return;
     if (!publish) return;
 
-    const wn = window.nostr;
-    const getSigner = async () => ({
-      signEvent: (e: Parameters<typeof wn.signEvent>[0]) => wn.signEvent(e),
-    });
+    const getSigner = async () => {
+      if (typeof window !== "undefined" && window.nostr?.signEvent) {
+        const wn = window.nostr;
+        return {
+          signEvent: (e: Parameters<typeof wn.signEvent>[0]) => wn.signEvent(e),
+        };
+      }
+      if (remoteSigner?.getState?.() === "ready") {
+        return {
+          signEvent: (e: Parameters<typeof import("nostr-tools").UnsignedEvent>[0]) =>
+            remoteSigner.signEvent(e),
+        };
+      }
+      throw new Error(
+        "Connect a Nostr signer (browser extension or remote signer) to star this repo."
+      );
+    };
     const doPublish = (event: NostrEvent) => {
       publish(event, defaultRelays);
     };
@@ -1241,6 +1296,7 @@ export default function RepoLayoutClient({
     isNostrStarred,
     publish,
     defaultRelays,
+    remoteSigner,
     mergeNostrStarEvent,
     resolvedParams.entity,
     resolvedParams.repo,

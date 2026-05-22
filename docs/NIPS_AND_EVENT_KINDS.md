@@ -2,6 +2,8 @@
 
 This document lists all Nostr Improvement Proposals (NIPs) and event kinds used by gittr.space.
 
+**Canonical NIP / kind reference (nostr schemata on gittr):** [schemata README](https://gittr.space/npub1zafcms4xya5ap9zr7xxr0jlrtrattwlesytn2s42030lzu0dwlzqpd26k5/schemata?file=README.md) — e.g. [NIP-34](https://gittr.space/npub1zafcms4xya5ap9zr7xxr0jlrtrattwlesytn2s42030lzu0dwlzqpd26k5/schemata?file=README.md&path=nips%2Fnip-34), [NIP-25](https://gittr.space/npub1zafcms4xya5ap9zr7xxr0jlrtrattwlesytn2s42030lzu0dwlzqpd26k5/schemata?file=README.md&path=nips%2Fnip-25), [NIP-51](https://gittr.space/npub1zafcms4xya5ap9zr7xxr0jlrtrattwlesytn2s42030lzu0dwlzqpd26k5/schemata?file=README.md&path=nips%2Fnip-51).
+
 ## Interop Baseline (ngit and other Nostr git clients)
 
 To keep event behavior consistent with other major NIP-34 clients (including ngit and other Nostr git clients), gittr enforces these interoperability rules:

@@ -1,7 +1,7 @@
 // NIP-25: Repository star reactions and NIP-51: Following lists
 import { type Event, type Filter } from "nostr-tools";
 
-import { KIND_REACTION } from "./events";
+import { KIND_REACTION, KIND_REPOSITORY_NIP34 } from "./events";
 
 export type RelaySubscribeFn = (
   filters: Filter[],
@@ -62,6 +62,62 @@ export function aggregateMyStarredRepoEventIds(
     if (ev.content === "+" || ev.content === "⭐") out.push(eid);
   }
   return out;
+}
+
+/** Latest kind 30617 id for owner + repo `d` tag (for starring when localStorage lacks nostrEventId). */
+export async function queryRepoAnnouncementEventId(
+  subscribe: RelaySubscribeFn,
+  relays: string[],
+  ownerPubkey: string,
+  repositoryName: string,
+  opts?: { timeoutMs?: number }
+): Promise<string | null> {
+  const author = ownerPubkey.trim().toLowerCase();
+  const dTag = repositoryName.trim();
+  if (!/^[0-9a-f]{64}$/.test(author) || !dTag) return null;
+
+  let latest: Event | null = null;
+  const filters: Filter[] = [
+    {
+      kinds: [KIND_REPOSITORY_NIP34],
+      authors: [author],
+      "#d": [dTag],
+      limit: 20,
+    },
+  ];
+
+  return new Promise((resolve) => {
+    let finished = false;
+    const finish = (unsub?: () => void) => {
+      if (finished) return;
+      finished = true;
+      try {
+        unsub?.();
+      } catch {
+        /* ignore */
+      }
+      const id = latest?.id;
+      resolve(
+        typeof id === "string" && /^[0-9a-f]{64}$/i.test(id) ? id : null
+      );
+    };
+
+    const unsub = subscribe(
+      filters,
+      relays,
+      (event: Event) => {
+        if (event.kind !== KIND_REPOSITORY_NIP34) return;
+        if (!latest || (event.created_at || 0) >= (latest.created_at || 0)) {
+          latest = event;
+        }
+      },
+      undefined,
+      () => finish(unsub as () => void),
+      {}
+    );
+
+    setTimeout(() => finish(unsub as () => void), opts?.timeoutMs ?? 6000);
+  });
 }
 
 /**
