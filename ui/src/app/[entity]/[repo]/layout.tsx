@@ -174,10 +174,7 @@ export async function generateMetadata({
 }: {
   params: Promise<{ entity: string; repo: string }>;
 }): Promise<Metadata> {
-  // CRITICAL: Log immediately to verify function is being called
-  console.log(
-    "[Metadata] ===== generateMetadata for [entity]/[repo] CALLED ====="
-  );
+  const devMeta = process.env.NODE_ENV !== "production";
 
   try {
     const resolvedParams = await params;
@@ -196,11 +193,13 @@ export async function generateMetadata({
       decodedRepo = resolvedParams.repo;
     }
 
-    logMeta(
-      "[Metadata] Generating metadata for:",
-      resolvedParams.entity,
-      decodedRepo
-    );
+    if (devMeta) {
+      console.log(
+        "[Metadata] Generating metadata for:",
+        resolvedParams.entity,
+        decodedRepo
+      );
+    }
 
     // Format owner name (convert pubkey to npub if needed)
     let ownerName = resolvedParams.entity;

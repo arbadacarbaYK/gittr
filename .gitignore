@@ -48,11 +48,15 @@ Nip34*.md
 # Local one-off exports (bridge repo lists, etc.)
 .tmp_*.txt
 .tmp_*.tsv
+gittr_nostr_repos_*.txt
+!gittr_nostr_repos_*.example.txt
 
 # SEO / sitemap: owner hex, npub paths, repo slugs — maintain on server or locally only
 # (never commit real lists; use *.example.txt in repo for format hints)
 nostr-pushed-repos.txt
-gittr_nostr_repos_*.txt
+repo-list-ownerhex-for-username-script.txt
+!nostr-pushed-repos.example.txt
+!repo-list-ownerhex-for-username-script.example.txt
 
 # Local planning (nsite gateway + gittr Pages; not shipped in git)
 NSITE_GATEWAY_PLAN.local.md

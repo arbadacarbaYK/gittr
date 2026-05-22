@@ -23,7 +23,9 @@ import {
   isRepoStarReaction,
   publishStarReaction,
   queryRepoAnnouncementEventId,
+  REPO_ANNOUNCEMENT_ID_EVENT,
   removeStarReaction,
+  type RepoAnnouncementIdDetail,
   type RelaySubscribeFn,
 } from "@/lib/nostr/repo-stars";
 import { showToast } from "@/components/ui/toast";
@@ -250,16 +252,9 @@ export default function RepoLayoutClient({
         pubkey &&
         ownerPubkey &&
         /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
-        repoNostrEventId &&
-        !resolvingRepoEventId
+        repoNostrEventId
       ),
-    [
-      mounted,
-      pubkey,
-      ownerPubkey,
-      repoNostrEventId,
-      resolvingRepoEventId,
-    ]
+    [mounted, pubkey, ownerPubkey, repoNostrEventId]
   );
 
   const githubUpstreamUrl = useMemo(
@@ -397,6 +392,27 @@ export default function RepoLayoutClient({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Code tab file-fetch often resolves 30617 before this layout’s relay query finishes.
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const detail = (ev as CustomEvent<RepoAnnouncementIdDetail>).detail;
+      if (!detail?.eventId) return;
+      const entityMatch =
+        detail.entity === resolvedParams.entity ||
+        detail.entity?.toLowerCase() === resolvedParams.entity?.toLowerCase();
+      const repoMatch =
+        detail.repo === resolvedParams.repo ||
+        detail.repo?.toLowerCase() === resolvedParams.repo?.toLowerCase();
+      if (!entityMatch || !repoMatch) return;
+      if (/^[0-9a-f]{64}$/i.test(detail.eventId)) {
+        setRelayRepoEventId(detail.eventId);
+      }
+    };
+    window.addEventListener(REPO_ANNOUNCEMENT_ID_EVENT, handler);
+    return () =>
+      window.removeEventListener(REPO_ANNOUNCEMENT_ID_EVENT, handler);
+  }, [resolvedParams.entity, resolvedParams.repo]);
 
   useEffect(() => {
     githubHydrateKeyRef.current = "";
@@ -885,6 +901,7 @@ export default function RepoLayoutClient({
     ownerPubkey,
     repo,
     resolvedParams.repo,
+    relayRepoEventId,
   ]);
 
   // Sync watch state from canonical NIP-51 list (kind 10018)

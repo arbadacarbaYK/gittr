@@ -1,5 +1,7 @@
 "use client";
 
+import { filterGraspMirrorPollutionFromFileTree } from "@/lib/utils/filter-grasp-mirror-pollution";
+
 /**
  * Git Source Fetcher
  *
@@ -1416,12 +1418,16 @@ async function fetchFromNostrGit(
             typeof bridgeJson.branch === "string" && bridgeJson.branch.trim()
               ? bridgeJson.branch.trim()
               : branch;
+          const rawFiles = bridgeJson.files as Array<{
+            type: string;
+            path: string;
+            size?: number;
+          }>;
+          const files = filterGraspMirrorPollutionFromFileTree(rawFiles, {
+            ownerPubkeyHex: ownerPubkey,
+          });
           return {
-            files: bridgeJson.files as Array<{
-              type: string;
-              path: string;
-              size?: number;
-            }>,
+            files,
             resolvedBranch: resolved,
           };
         }

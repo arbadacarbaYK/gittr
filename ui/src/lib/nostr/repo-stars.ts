@@ -107,6 +107,26 @@ function eventMatchesRepoAnnouncement(
   return false;
 }
 
+export const REPO_ANNOUNCEMENT_ID_EVENT = "gittr:repo-announcement-id";
+
+export type RepoAnnouncementIdDetail = {
+  eventId: string;
+  entity: string;
+  repo: string;
+  ownerPubkey?: string;
+};
+
+/** File-fetch on the Code tab already found a 30617 — tell the layout header immediately. */
+export function broadcastRepoAnnouncementEventId(
+  detail: RepoAnnouncementIdDetail
+): void {
+  if (typeof window === "undefined") return;
+  if (!/^[0-9a-f]{64}$/i.test(detail.eventId)) return;
+  window.dispatchEvent(
+    new CustomEvent(REPO_ANNOUNCEMENT_ID_EVENT, { detail })
+  );
+}
+
 /** Latest kind 30617 id for this repo (relays). Works even when you are the first star. */
 export async function queryRepoAnnouncementEventId(
   subscribe: RelaySubscribeFn,

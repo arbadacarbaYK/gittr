@@ -120,6 +120,8 @@ export function repoNavHref(
  * Multifetch must not switch the branch dropdown to dependabot/main-heuristic noise.
  * Only accept fetch branch when it matches repo default or user already selected it.
  */
+const CANONICAL_DEFAULT_BRANCHES = new Set(["main", "master"]);
+
 export function shouldSyncBranchFromFetch(
   resolvedBranch: string | undefined,
   repoDefault: string,
@@ -131,8 +133,15 @@ export function shouldSyncBranchFromFetch(
   const def = (repoDefault || "main").trim();
   const cur = (currentSelected || "").trim();
   if (userPickedBranch) return b === cur;
-  if (b !== def) return false;
-  return !cur || cur === def;
+  if (b === def) return !cur || cur === def;
+  // GRASP mirrors often use `master` while UI default is `main` — still sync the tree.
+  if (
+    CANONICAL_DEFAULT_BRANCHES.has(b) &&
+    CANONICAL_DEFAULT_BRANCHES.has(def)
+  ) {
+    return !cur || CANONICAL_DEFAULT_BRANCHES.has(cur);
+  }
+  return false;
 }
 
 export function resolveActiveRepoBranch(

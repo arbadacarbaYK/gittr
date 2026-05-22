@@ -51,6 +51,7 @@ import {
 import { syncReadmeTextIntoRepoFiles } from "@/lib/gittr-pages/sync-readme-to-files";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
+import { broadcastRepoAnnouncementEventId } from "@/lib/nostr/repo-stars";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
 import {
   type Metadata,
@@ -121,6 +122,7 @@ import {
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import { filterDisplayCloneUrlsForSidebar } from "@/lib/utils/filter-display-clone-urls";
+import { filterGraspMirrorPollutionFromFileTree } from "@/lib/utils/filter-grasp-mirror-pollution";
 import {
   type FetchStatus,
   addUpstreamSourceToCloneUrls,
@@ -696,9 +698,19 @@ export default function RepoCodePage() {
     if (Array.isArray(bridgeFiles) && bridgeFiles.length > 0) {
       candidates.push(bridgeFiles);
     }
+    const ownerHex =
+      (repoData as { ownerPubkey?: string } | null)?.ownerPubkey &&
+      /^[0-9a-f]{64}$/i.test(String((repoData as { ownerPubkey?: string }).ownerPubkey))
+        ? String((repoData as { ownerPubkey?: string }).ownerPubkey).toLowerCase()
+        : resolveEntityToPubkey(resolvedParams.entity, repoData as StoredRepo) ||
+          undefined;
+    const scrub = (list: RepoFileEntry[]) =>
+      filterGraspMirrorPollutionFromFileTree(list, { ownerPubkeyHex: ownerHex });
+
     let best: RepoFileEntry[] = [];
     for (const list of candidates) {
-      if (list.length > best.length) best = list;
+      const filtered = scrub(list);
+      if (filtered.length > best.length) best = filtered;
     }
     return best;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5469,6 +5481,12 @@ export default function RepoCodePage() {
                   eventRepoData.maintainers = [];
                   eventRepoData.lastEventCreatedAt = event.created_at;
                   eventRepoData.lastEventId = event.id;
+                  broadcastRepoAnnouncementEventId({
+                    eventId: event.id,
+                    entity: resolvedParams.entity,
+                    repo: paramsRepo,
+                    ownerPubkey: ownerPubkey || undefined,
+                  });
                   console.log(
                     `✅ [File Fetch] Using latest NIP-34 event: id=${event.id.slice(
                       0,
@@ -6894,6 +6912,12 @@ export default function RepoCodePage() {
                   eventRepoData.lastEventCreatedAt =
                     latestEvent.event.created_at;
                   eventRepoData.lastEventId = latestEvent.event.id;
+                  broadcastRepoAnnouncementEventId({
+                    eventId: latestEvent.event.id,
+                    entity: resolvedParams.entity,
+                    repo: paramsRepo,
+                    ownerPubkey: ownerPubkey || undefined,
+                  });
                   console.log(
                     `📋 [File Fetch] NIP-34 EOSE: latest event has ${eventRepoData.clone.length} clone URL(s)`
                   );
@@ -10442,7 +10466,7 @@ export default function RepoCodePage() {
           (f) => normPath(f.path || "") === wantReadme
         );
 
-        const branch = resolveContentBranch(repoData, selectedBranch);
+        const branchesToTry = branchesToTryForContent(repoData, selectedBranch);
         const sourceUrl =
           resolveRepoUpstreamSource(repoData) ||
           resolveUpstreamSourceUrl(effectiveSourceUrl);
@@ -10460,29 +10484,34 @@ export default function RepoCodePage() {
             typeof window !== "undefined"
               ? localStorage.getItem("gittr_github_token")
               : null;
-          let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
-            sourceUrl
-          )}&path=${encodeURIComponent(
-            readmeFile.path
-          )}&branch=${encodeURIComponent(branch)}`;
-          if (githubToken) {
-            apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
-          }
-          try {
-            const response = await fetchDeduped(apiUrl);
-            if (response.ok) {
-              const data = await response.json();
-              if (
-                data?.content !== undefined &&
-                data?.content !== null &&
-                !data.isBinary
-              ) {
-                finish(String(data.content));
-                return;
-              }
+          for (const branch of branchesToTry) {
+            let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+              sourceUrl
+            )}&path=${encodeURIComponent(
+              readmeFile.path
+            )}&branch=${encodeURIComponent(branch)}`;
+            if (githubToken) {
+              apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
             }
-          } catch (e) {
-            console.warn("[Folder README] Upstream fetch failed:", e);
+            try {
+              const response = await fetchDeduped(apiUrl);
+              if (response.ok) {
+                const data = await response.json();
+                if (
+                  data?.content !== undefined &&
+                  data?.content !== null &&
+                  !data.isBinary
+                ) {
+                  finish(String(data.content));
+                  return;
+                }
+              }
+            } catch (e) {
+              console.warn(
+                `[Folder README] Upstream fetch failed (branch ${branch}):`,
+                e
+              );
+            }
           }
         }
 
@@ -10545,28 +10574,33 @@ export default function RepoCodePage() {
               bridgeRepoName = parts[parts.length - 1] || bridgeRepoName;
             }
             bridgeRepoName = String(bridgeRepoName).replace(/\.git$/, "");
-            try {
-              const bridgeUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
-                ownerPubkey
-              )}&repo=${encodeURIComponent(
-                bridgeRepoName
-              )}&path=${encodeURIComponent(
-                readmeFile.path
-              )}&branch=${encodeURIComponent(branch)}`;
-              const bridgeResp = await fetch(bridgeUrl);
-              if (bridgeResp.ok) {
-                const data = await bridgeResp.json();
-                if (
-                  data?.content !== undefined &&
-                  data?.content !== null &&
-                  !data.isBinary
-                ) {
-                  finish(String(data.content));
-                  return;
+            for (const branch of branchesToTry) {
+              try {
+                const bridgeUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+                  ownerPubkey
+                )}&repo=${encodeURIComponent(
+                  bridgeRepoName
+                )}&path=${encodeURIComponent(
+                  readmeFile.path
+                )}&branch=${encodeURIComponent(branch)}`;
+                const bridgeResp = await fetch(bridgeUrl);
+                if (bridgeResp.ok) {
+                  const data = await bridgeResp.json();
+                  if (
+                    data?.content !== undefined &&
+                    data?.content !== null &&
+                    !data.isBinary
+                  ) {
+                    finish(String(data.content));
+                    return;
+                  }
                 }
+              } catch (e) {
+                console.warn(
+                  `[Folder README] Bridge fetch failed (branch ${branch}):`,
+                  e
+                );
               }
-            } catch (e) {
-              console.warn("[Folder README] Bridge fetch failed:", e);
             }
           }
         }
@@ -10587,7 +10621,8 @@ export default function RepoCodePage() {
             ) {
               continue;
             }
-            const srcBranch = src.resolvedBranch || branch;
+            const srcBranch =
+              src.resolvedBranch || branchesToTry[0] || "main";
             try {
               const cloneApi = `/api/git/file-content?sourceUrl=${encodeURIComponent(
                 src.sourceUrl
@@ -10665,19 +10700,21 @@ export default function RepoCodePage() {
             typeof window !== "undefined"
               ? localStorage.getItem("gittr_github_token")
               : null;
-          let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
-            sourceUrl
-          )}&path=${encodeURIComponent(
-            readmeFile.path
-          )}&branch=${encodeURIComponent(branch)}`;
-          if (githubToken) {
-            apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
-          }
-          const response = await fetchDeduped(apiUrl);
-          if (response.ok) {
-            const data = await response.json();
-            finish(data.content || "");
-            return;
+          for (const branch of branchesToTry) {
+            let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+              sourceUrl
+            )}&path=${encodeURIComponent(
+              readmeFile.path
+            )}&branch=${encodeURIComponent(branch)}`;
+            if (githubToken) {
+              apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
+            }
+            const response = await fetchDeduped(apiUrl);
+            if (response.ok) {
+              const data = await response.json();
+              finish(data.content || "");
+              return;
+            }
           }
         }
 
