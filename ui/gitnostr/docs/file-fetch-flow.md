@@ -1,74 +1,35 @@
 # File Fetch Flow (Bridge + gittr UI)
 
-How **git-nostr-bridge** exposes repos on disk and how **[gittr](https://github.com/arbadacarbaYK/gittr)** loads trees, file content, and commits. For the full UI fallback order (localStorage → embedded → bridge → GRASP shallow → upstream), see gittr **[`docs/FILE_FETCHING_INSIGHTS.md`](https://github.com/arbadacarbaYK/gittr/blob/main/docs/FILE_FETCHING_INSIGHTS.md)** — that doc is updated when gittr behavior changes; this page focuses on the **bridge contract** and **gittr-specific wiring**.
+How **git-nostr-bridge** mirrors repos on disk and how **[gittr](https://github.com/arbadacarbaYK/gittr)** reads them. UI fetch order (localStorage → embedded → bridge disk → GRASP shallow → GitHub/GitLab): **[`docs/FILE_FETCHING_INSIGHTS.md`](https://github.com/arbadacarbaYK/gittr/blob/main/docs/FILE_FETCHING_INSIGHTS.md)**.
 
-## 1. What the bridge exposes (unchanged contract)
+## 1. Bridge + shared disk
 
-- **Repository mirror**: NIP-34 events on relays (or `POST /api/event` when `BRIDGE_HTTP_PORT` is set) → bare repo under `repositoryDir/{pubkey}/{repo}.git`.
-- **File tree (on disk)**: gittr calls **`GET /api/nostr/repo/files`** (Next.js proxy to the same `repositoryDir` the bridge uses). Production UI host is **`gittr.space`**; git over SSH/HTTPS is **`git.gittr.space`**.
-- **File content**: `GET /api/nostr/repo/file-content?ownerPubkey=…&repo=…&path=…&branch=…` — paths must be **`encodeURIComponent`**’d for non-ASCII names.
-- **Commits on disk**: `GET /api/nostr/repo/commits?ownerPubkey=…&repo=…&branch=…` — `git log` on the bare mirror (not the file-tree listing logic).
-- **Clone trigger**: `POST /api/nostr/repo/clone` when the bare dir is missing; gittr may also use **`GET /api/git/repo-files?sourceUrl=…`** for a **temporary shallow clone** of a GRASP/upstream HTTPS URL while the mirror catches up.
-- **Internal bridge URLs** (direct to bridge process): e.g. `/api/nostr/repo/tree` — gittr normally uses the Next routes above instead.
+| API / path | What it does |
+| --- | --- |
+| Relays + optional **`POST /api/event`** (`BRIDGE_HTTP_PORT`) | Mirror bare repos under `repositoryDir/{pubkey}/{repo}.git` |
+| **`GET /api/nostr/repo/files`** (gittr Next.js) | File tree from that directory (`GIT_NOSTR_BRIDGE_REPOS_DIR`) |
+| **`GET /api/nostr/repo/file-content`** (gittr Next.js) | Blob content; `path=` must be URL-encoded (UTF-8 filenames) |
+| **`GET /api/nostr/repo/commits`** (gittr Next.js) | `git log` on the bare mirror for the Commits tab |
+| **`POST /api/nostr/repo/clone`** (gittr Next.js) | Trigger bare clone from a `clone[]` HTTPS URL |
+| **`GET /api/git/repo-files?sourceUrl=`** (gittr Next.js) | Shallow clone of a remote URL into a temp dir (GRASP/upstream) |
 
-## 2. gittr UI — what still matches this doc
+Production: web UI **`gittr.space`**, git SSH/HTTPS **`git.gittr.space`**.
 
-**File tree & single-file content (Code tab)** — order is documented in [`FILE_FETCHING_INSIGHTS.md`](https://github.com/arbadacarbaYK/gittr/blob/main/docs/FILE_FETCHING_INSIGHTS.md):
+## 2. Code tab (file tree)
 
-1. `localStorage` / embedded NIP-34 files  
-2. Parallel over `clone[]` / `source`: bridge **`/api/nostr/repo/files`**, upstream via **`/api/git/repo-files`** or GitHub-first heuristics  
-3. GRASP: empty bridge → shallow **`/api/git/repo-files?sourceUrl=`** per HTTPS clone URL (parallel race; **first non-empty tree wins**) → optional **`POST …/clone`** + poll / `grasp-repo-cloned`  
-4. Nostr resubscribe if still empty  
+See [`FILE_FETCHING_INSIGHTS.md`](https://github.com/arbadacarbaYK/gittr/blob/main/docs/FILE_FETCHING_INSIGHTS.md). Implementation: `ui/src/lib/utils/git-source-fetcher.ts`, `ui/src/app/[entity]/[repo]/page.tsx`.
 
-**Not compared today:** newest `HEAD` across every GRASP mirror — first successful source wins (see gittr doc table “Newest copy”).
+## 3. Shared branch, Commits, Issues, PRs
 
-Implementation: `ui/src/lib/utils/git-source-fetcher.ts`, `ui/src/app/[entity]/[repo]/page.tsx`.
+- **One `?branch=`** across Code, Commits, Issues, PRs (`resolveSharedRepoBranch` in `ui/src/lib/repos/repo-file-tree-branch.ts`).
+- **Commits tab:** **`/api/nostr/repo/commits`** on the bare repo (+ GitHub REST fallback when imported).
+- **Issues / PRs:** Nostr events on relays; file bytes use the Code-tab paths when needed.
+- **Push to Nostr:** `git push` updates the bare repo; the UI publishes **30617 / 30618** to relays.
 
-## 3. gittr changes (branch, Commits, Issues, PRs)
+## 4. Bridge production features
 
-These are **gittr-only** behaviors on top of the bridge; they are easy to miss if you only read the old “open any repo tab” summary.
+HTTP **`/api/event`**, deduplication, watch-all (`gitRepoOwners: []`): [gittr-enhancements.md](gittr-enhancements.md).
 
-### Shared branch across tabs
+## 5. Other Nostr git clients
 
-- **One `?branch=`** for **Code, Commits, Issues, and PRs** (`resolveSharedRepoBranch` in `ui/src/lib/repos/repo-file-tree-branch.ts`, wired in `layout-client.tsx` nav links).
-- **Default branch** is sanitized (e.g. **dependabot/** branches are not stored as repo default).
-- After a **multifetch**, gittr only **updates the branch dropdown** when `shouldSyncBranchFromFetch` allows it (avoids jumping to a random remote tip like `dependabot/...` unless the user already picked that branch).
-- **File tree cache** uses `filesBranch` in repo state; **opening a file** uses `resolveContentBranch` / `branchesToTryForContent` so content matches the selected or resolved branch.
-
-### Commits tab (different API than file tree)
-
-- Loads via **`GET /api/nostr/repo/commits?ownerPubkey=…&repo=…&branch=…`** (bare repo `git log` on the bridge disk).
-- **GitHub import fallback** still uses GitHub REST for commit list when configured.
-- Uses the **same `?branch=`** as Code; branch normalization fixes `main` vs `master` mismatches after GitHub refetch.
-
-Does **not** run the full `git-source-fetcher` tree race; it only needs the mirror to exist for that branch (or GitHub).
-
-### Issues & PRs tabs
-
-- **Lists and detail** come from **Nostr events** (issues, PRs, statuses) on relays — not from `repo/files`.
-- Tab navigation **keeps the shared branch** in the URL for consistency when jumping back to Code or Commits.
-- **File diffs / PR file views** that need bytes still go through Code-style paths (`file-content`, bridge, or upstream) on the active branch.
-
-### Push to Nostr (metadata vs git on disk)
-
-- **`git push`** updates the **bare repo on the bridge**.
-- **“Push to Nostr”** in the UI publishes **30617 / 30618** (and related) to relays.
-- Push payload files: **localStorage first**, then bridge **`file-content`**; see gittr doc — push does not re-import from GitHub during publish.
-- Empty-tree push preserves existing files on disk when only updating metadata (date refresh).
-
-## 4. Production bridge features (this repo)
-
-- **HTTP fast lane** (`BRIDGE_HTTP_PORT`): POST signed NIP-34 to `/api/event` for immediate mirror.
-- **Deduplication** of HTTP + relay events.
-- **Watch-all** (`gitRepoOwners: []`): mirror every repo on configured relays.
-
-Details: [gittr-enhancements.md](gittr-enhancements.md).
-
-## 5. Other clients
-
-- Publish **30617** (and legacy 51 where needed); bridge mirrors like gittr.
-- Use **`/api/nostr/repo/files`** + **`file-content`** (+ **`commits`** if you show history from disk).
-- Optional: HTTP fast lane + `grasp-repo-cloned` / polling after `clone` — same as gittr GRASP flow in `FILE_FETCHING_INSIGHTS.md`.
-- If you build a multi-tab UI, consider the same **shared branch** and **don’t treat first multifetch branch as canonical** unless it matches your default-branch rules.
-
-When in doubt, treat **[`FILE_FETCHING_INSIGHTS.md`](https://github.com/arbadacarbaYK/gittr/blob/main/docs/FILE_FETCHING_INSIGHTS.md)** as the living UI spec and this file as **bridge + integration** notes.
+Publish **30617** (and **51** where needed), point readers at the same `repositoryDir`, or call gittr’s Next.js routes if co-hosted.

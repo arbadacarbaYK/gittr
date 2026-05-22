@@ -1,32 +1,23 @@
 # Standalone git-nostr-bridge Setup
 
-This guide explains how to run the `git-nostr-bridge` binary on its own — without the gittr UI —
-so that any Nostr-aware Git frontend can use it.
-
-> 🆕 Production bridge features used on gittr.space.
+Run **`git-nostr-bridge`** and **`git-nostr-ssh`** on your server so any Nostr git client (including [gittr](https://github.com/arbadacarbaYK/gittr)) can use SSH git against mirrored bare repos.
 
 ## 1. Prerequisites
 
-- Go 1.21+
-- Git 2.34+
-- A dedicated Linux user (recommended) whose `~/.ssh/authorized_keys` the bridge may manage
+- **Go 1.20+** (`go.mod`; gittr stacks often use Go 1.21+)
+- **Git 2.34+**
+- **Linux** host with a dedicated **`git-nostr`** user (the bridge manages that user’s `authorized_keys`)
 
-## 2. Environment variables
+## 2. Environment variables (bridge binary)
 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
-| `BRIDGE_HTTP_PORT` | optional | `8080` | Enables the fast-lane HTTP API (`/api/event`). Leave unset to disable and rely on relays only. |
-| `SSH_ORIGINAL_COMMAND` | set automatically by sshd | n/a | Used only by `git-nostr-ssh` when invoked via ssh. You never set this manually. |
-| `GITHUB_PLATFORM_TOKEN` | optional | n/a | GitHub personal access token with `public_repo` scope for fetching public repository files. Used by frontend clients that call the bridge's file-content API. |
-| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | optional | n/a | GitHub OAuth credentials for user authentication. Required if frontend clients need to access private repositories. Users authenticate via OAuth and their tokens are stored in browser localStorage, then passed to the bridge API. |
+| `BRIDGE_HTTP_PORT` | optional | `8080` | HTTP **`POST /api/event`** for signed NIP-34 events. Unset = relays only. |
+| `SSH_ORIGINAL_COMMAND` | set by sshd | — | Used by **`git-nostr-ssh`** during `git clone` / `push` / `pull`. |
 
-**Note on GitHub tokens:**
-- `GITHUB_PLATFORM_TOKEN`: Used by the bridge for public repo access (rate limits, better reliability)
-- User OAuth tokens: Stored in browser localStorage after OAuth flow, passed as `githubToken` query parameter to `/api/git/file-content` endpoint
-- The bridge prioritizes user tokens (for private repos) over platform tokens (for public repos)
+All other behavior is controlled by **`~/.config/git-nostr/git-nostr-bridge.json`** (below).
 
-No other environment variables are needed for the bridge. All behavior is controlled through the JSON
-config described below.
+**Deploying with gittr:** file browsing, GitHub import, and OAuth live in the **gittr Next.js app** (`GIT_NOSTR_BRIDGE_REPOS_DIR` must point at the same `repositoryDir`). See [gittr `GIT_NOSTR_BRIDGE_SETUP.md`](https://github.com/arbadacarbaYK/gittr/blob/main/docs/GIT_NOSTR_BRIDGE_SETUP.md).
 
 ## 3. Configuration file reference
 
@@ -45,7 +36,7 @@ Create (or edit) `~/.config/git-nostr/git-nostr-bridge.json`:
 | --- | --- | --- |
 | `repositoryDir` | yes | Absolute path where bare Git repositories are stored. The bridge creates the directory if missing. |
 | `DbFile` | yes | SQLite file keeping Nostr event metadata and permissions. Use an absolute path. |
-| `relays` | yes | List of read-only relays that emit gitnostr events (kinds 50/51/30617). The bridge reads both kind 51 (legacy) and kind 30617 (NIP-34) for backwards compatibility. Include your preferred relays or run your own. |
+| `relays` | yes | WebSocket URLs for repo, permission, and SSH-key events (kinds **50**, **51**, **30617**). Use the same public relays as gittr (e.g. `wss://relay.damus.io`, `wss://nos.lol`). |
 | `gitRepoOwners` | optional | If empty, the bridge mirrors **all** repositories it sees (“watch-all mode”). If you list pubkeys, only those authors can create repos on this bridge. |
 
 Save the file and ensure it is readable by the bridge user only (`chmod 600` is fine).
@@ -64,9 +55,9 @@ BRIDGE_HTTP_PORT=8080 ./bin/git-nostr-bridge
 - `BRIDGE_HTTP_PORT` is optional — omit it to skip the HTTP listener.
 - Use `nohup` or `systemd` for long-running deployments.
 
-## 5. SSH command handler (optional)
+## 5. SSH (`git-nostr-ssh`)
 
-To serve `git clone` / `git push` over SSH, install the helper:
+Install the SSH helper and point `authorized_keys` at it (see [SSH_GIT_GUIDE.md](../SSH_GIT_GUIDE.md)):
 
 ```bash
 sudo install -o git-nostr -g git-nostr ./bin/git-nostr-ssh /usr/local/bin/git-nostr-ssh

@@ -11,11 +11,8 @@ digraph G {
     git [label="git", shape=box];
     bridge [label="git-nostr-bridge", shape=box];
     ssh [label="git-nostr-ssh", shape=box];
-    hook [label="git-nostr-hook\n(TODO)", shape=box];
     db [label="git-nostr-db", shape=box];
 
-    git -> hook [style=dashed, label="Use"];
-    hook -> db [style=dashed, label="Use"];
     git -> bridge [style=dashed, label="Use"];
     bridge -> db [style=dashed, label="Use"];
     ssh -> db [style=dashed, label="Use"];
@@ -49,7 +46,7 @@ digraph G {
   watchall [label="Watch-all mode\n(empty gitRepoOwners)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
   logging [label="Structured logging\n([Bridge], [Bridge API])", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
 
-  bridge -> http_api [style=dotted, dir=back, label="New\nentry point"];
+  bridge -> http_api [style=dotted, dir=back, label="entry point"];
   http_api -> direct_chan [label="POST event"];
   relay -> merged_chan [label="Relay events"];
   direct_chan -> merged_chan [label="HTTP events"];
@@ -58,6 +55,6 @@ digraph G {
   watchall -> bridge [style=dashed];
   logging -> bridge [style=dashed];
 
-  legend [shape=note, label="Blue nodes = gittr additions\nGrey clusters = upstream blocks", fontsize=10];
+  legend [shape=note, label="Blue nodes = production bridge features\n(gittr.space)", fontsize=10];
   legend -> http_api [style=invis];
 }

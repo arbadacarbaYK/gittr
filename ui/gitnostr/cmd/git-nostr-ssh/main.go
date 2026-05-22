@@ -109,7 +109,7 @@ func main() {
 	} else {
 		fmt.Fprintf(os.Stderr, "fatal: invalid repository owner pubkey in '%s'\n", repoParam)
 		fmt.Fprintf(os.Stderr, "hint: Repository path must be in format: <hex-pubkey>/<repo-name>, <npub>/<repo-name>, or <nip05>/<repo-name>\n")
-		fmt.Fprintf(os.Stderr, "hint: Example: git@gittr.space:npub1.../repo-name.git or git@gittr.space:user@domain.com/repo-name.git\n")
+		fmt.Fprintf(os.Stderr, "hint: Example: git@git.gittr.space:npub1.../repo-name.git or git@git.gittr.space:user@domain.com/repo-name.git\n")
 		os.Exit(1)
 	}
 

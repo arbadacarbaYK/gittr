@@ -5,7 +5,7 @@ digraph G {
 
   // Original gitnostr components (grey)
   subgraph cluster_original {
-    label="Original gitnostr (upstream)";
+    label="gitnostr bridge (core)";
     color="#b0bec5";
     style="rounded";
     

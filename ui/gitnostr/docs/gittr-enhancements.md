@@ -22,12 +22,11 @@ This document describes production bridge features gittr relies on.
 - **`BRIDGE_HTTP_PORT` env** – Leave it unset to disable the HTTP listener entirely (pure relay mode,
   identical to relay-only mode). Set it when you want to POST events directly (defaults to `8080`, but any
   port works and you can reverse-proxy it for auth/TLS).
-- **`gitRepoOwners` array** – Legacy behavior (non-empty) still scopes subscriptions to specific
-  pubkeys. Leaving it empty switches on watch-all mode so public mirrors pick up every repo event.
+- **`gitRepoOwners` array** – Non-empty = only listed pubkeys. **Empty** = watch-all (mirror every repo on your relays).
 - **Clone/source URLs** – No gittr-specific values are hard-coded. The bridge simply tries whatever
   clone/source tags the event provides (GitHub, GitLab, Codeberg, GRASP, etc.); HTTPS URLs are
   preferred, and git@/git:// schemes get normalized automatically.
 
 See [`docs/STANDALONE_BRIDGE_SETUP.md`](docs/STANDALONE_BRIDGE_SETUP.md) for a full
-configuration reference when deploying the bridge without the gittr UI.
+configuration reference for standalone bridge hosts.
 

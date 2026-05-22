@@ -1,6 +1,6 @@
 # SSH & Git Access Guide
 
-SSH for gittr.space uses **[gitnostr](https://github.com/arbadacarbaYK/gitnostr)** (`git-nostr-bridge` + `git-nostr-ssh` on **`git.gittr.space`**). You do **not** install the bridge locally to contribute—connect with normal `git` like GitHub. Self-hosters: full bridge doc in [`ui/gitnostr/SSH_GIT_GUIDE.md`](../ui/gitnostr/SSH_GIT_GUIDE.md) (same as upstream gitnostr).
+SSH for gittr.space uses **[gitnostr](https://github.com/arbadacarbaYK/gitnostr)** (`git-nostr-bridge` + `git-nostr-ssh` on **`git.gittr.space`**). You do **not** install the bridge locally to contribute—connect with normal `git` like GitHub. Self-hosters: [`ui/gitnostr/SSH_GIT_GUIDE.md`](../ui/gitnostr/SSH_GIT_GUIDE.md) (kept in sync with [github.com/arbadacarbaYK/gitnostr](https://github.com/arbadacarbaYK/gitnostr)).
 
 **SSH is bridge-native**, not “only via the website.” Keys are **Nostr kind 52** events; the bridge updates `authorized_keys`. **`nostr://`** remotes work too when the repo is mirrored here ([git-remote-nostr](https://github.com/DanConwayDev/ngit-cli)).
 

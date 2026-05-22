@@ -72,6 +72,13 @@ git remote add origin nostr://<npub>/<repo-name>
 
 SSH and `nostr://` both target the same NIP-34 repo on the bridge.
 
+### Register a repo on Nostr first
+
+The bridge needs a repo announcement (**kind 30617**, or legacy **51**) before SSH works:
+
+- **CLI:** `gn repo create <name>` (see [README — gn](README.md#git-nostr-cli-gn))
+- **gittr:** **Create repository** → empty repo → after `git push`, **Push to Nostr** on the repo page
+
 ## Workflow 1: Create and Add Files via SSH
 
 ### 1.1 From a Local Source
@@ -107,8 +114,7 @@ Import a GitHub repository to Nostr:
 git clone https://github.com/<username>/<repo-name>.git
 cd <repo-name>
 
-# 2. Create the repository on gittr.space (via web UI)
-# Go to "Create repository" page, enter name, click "Create Empty Repository"
+# 2. Register repo on Nostr (gn repo create <name> OR gittr "Create repository")
 
 # 3. Add gittr as a remote
 git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
@@ -129,8 +135,7 @@ Import from any Git server (GitLab, self-hosted, etc.):
 git clone https://git.example.com/<username>/<repo-name>.git
 cd <repo-name>
 
-# 2. Create the repository on gittr.space (via web UI)
-# Go to "Create repository" page, enter name, click "Create Empty Repository"
+# 2. Register repo on Nostr (gn repo create <name> OR gittr "Create repository")
 
 # 3. Add gittr as a remote
 git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
@@ -151,8 +156,7 @@ Import from Codeberg:
 git clone https://codeberg.org/<username>/<repo-name>.git
 cd <repo-name>
 
-# 2. Create the repository on gittr.space (via web UI)
-# Go to "Create repository" page, enter name, click "Create Empty Repository"
+# 2. Register repo on Nostr (gn repo create <name> OR gittr "Create repository")
 
 # 3. Add gittr as a remote
 git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
