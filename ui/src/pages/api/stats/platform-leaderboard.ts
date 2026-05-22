@@ -150,3 +150,4 @@ export default async function handler(
   if (cacheStale) scheduleBackgroundRefresh();
 
   return respond(true, !!refreshInFlight);
+}

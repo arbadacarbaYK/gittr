@@ -24,6 +24,7 @@ import {
   publishStarReaction,
   queryRepoAnnouncementEventId,
   removeStarReaction,
+  type RelaySubscribeFn,
 } from "@/lib/nostr/repo-stars";
 import { showToast } from "@/components/ui/toast";
 import { useRepoNip57ZapBadgeTotal } from "@/lib/nostr/useRepoNip57ZapBadgeTotal";
@@ -861,7 +862,7 @@ export default function RepoLayoutClient({
     setResolvingRepoEventId(true);
     const relays = getAllRelays(defaultRelays);
     void queryRepoAnnouncementEventId(
-      subscribe,
+      subscribe as RelaySubscribeFn,
       relays,
       ownerPubkey,
       repoIdentifier,
@@ -1265,7 +1266,10 @@ export default function RepoLayoutClient({
     }
 
     const getSigner = async () => {
-      if (typeof window !== "undefined" && window.nostr?.signEvent) {
+      if (
+        typeof window !== "undefined" &&
+        typeof window.nostr?.signEvent === "function"
+      ) {
         const wn = window.nostr;
         return {
           signEvent: (e: Parameters<typeof wn.signEvent>[0]) => wn.signEvent(e),
@@ -1273,7 +1277,7 @@ export default function RepoLayoutClient({
       }
       if (remoteSigner?.getState?.() === "ready") {
         return {
-          signEvent: (e: Parameters<typeof import("nostr-tools").UnsignedEvent>[0]) =>
+          signEvent: (e: Parameters<typeof remoteSigner.signEvent>[0]) =>
             remoteSigner.signEvent(e),
         };
       }
@@ -1315,7 +1319,7 @@ export default function RepoLayoutClient({
         getSigner
       );
       if (r.success && r.signedEvent) {
-        mergeNostrStarEvent(r.signedEvent);
+        mergeNostrStarEvent(r.signedEvent as NostrEvent);
         syncLocalStarsIndex(false);
         showToast("Unstarred on Nostr.", "success");
       } else {
@@ -1329,7 +1333,7 @@ export default function RepoLayoutClient({
         getSigner
       );
       if (r.success && r.signedEvent) {
-        mergeNostrStarEvent(r.signedEvent);
+        mergeNostrStarEvent(r.signedEvent as NostrEvent);
         syncLocalStarsIndex(true);
         showToast("Starred on Nostr (NIP-25).", "success");
       } else {
