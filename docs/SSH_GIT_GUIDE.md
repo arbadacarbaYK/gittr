@@ -1,6 +1,6 @@
 # SSH & Git Access Guide
 
-SSH for gittr.space uses **[gitnostr](https://github.com/arbadacarbaYK/gitnostr)** (`git-nostr-bridge` + `git-nostr-ssh` on **`git.gittr.space`**). You do **not** install the bridge locally to contribute—connect with normal `git` like GitHub. Self-hosters: [`ui/gitnostr/SSH_GIT_GUIDE.md`](../ui/gitnostr/SSH_GIT_GUIDE.md) (kept in sync with [github.com/arbadacarbaYK/gitnostr](https://github.com/arbadacarbaYK/gitnostr)).
+SSH for gittr.space uses **[gitnostr](https://gittr.space/arbadacarbaYK/gitnostr?branch=main)** (`git-nostr-bridge` + `git-nostr-ssh` on **`git.gittr.space`**). You do **not** install the bridge locally to contribute—connect with normal `git` like GitHub. Self-hosters: [bridge SSH guide](https://gittr.space/arbadacarbaYK/gitnostr?file=SSH_GIT_GUIDE.md&branch=main) (same text in monorepo `ui/gitnostr/SSH_GIT_GUIDE.md`).
 
 **SSH is bridge-native**, not “only via the website.” Keys are **Nostr kind 52** events; the bridge updates `authorized_keys`. **`nostr://`** remotes work too when the repo is mirrored here ([git-remote-nostr](https://github.com/DanConwayDev/ngit-cli)).
 
@@ -8,7 +8,7 @@ SSH for gittr.space uses **[gitnostr](https://github.com/arbadacarbaYK/gitnostr)
 
 Pick **one** way to publish your public key (all publish kind **52** for the same bridge):
 
-1. **`gn`** (no UI): `git-nostr-cli` → `./bin/gn ssh-key add ~/.ssh/id_ed25519.pub` — see [gitnostr SSH guide](https://github.com/arbadacarbaYK/gitnostr/blob/main/SSH_GIT_GUIDE.md)
+1. **`gn`** (no UI): `git-nostr-cli` → `./bin/gn ssh-key add ~/.ssh/id_ed25519.pub` — see [gitnostr SSH guide](https://gittr.space/arbadacarbaYK/gitnostr?file=SSH_GIT_GUIDE.md&branch=main)
 2. **Any Nostr client** that can sign kind 52
 3. **gittr.space (optional):** **Settings → SSH Keys** → generate or paste `~/.ssh/id_*.pub` (convenience only)
 

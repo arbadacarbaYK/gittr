@@ -1328,7 +1328,7 @@ export default function HelpPage() {
                 For complete documentation on SSH and Git operations:
               </p>
               <a
-                href="https://github.com/arbadacarbaYK/gittr/blob/main/docs/SSH_GIT_GUIDE.md"
+                href="https://gittr.space/arbadacarbaYK/gittr?file=docs/SSH_GIT_GUIDE.md&branch=main"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-purple-400 hover:text-purple-300 underline text-sm"
@@ -2195,7 +2195,7 @@ export default function HelpPage() {
                 </li>
                 <li>
                   <a
-                    href="https://github.com/arbadacarbaYK/gittr"
+                    href="https://gittr.space/arbadacarbaYK/gittr?branch=main"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-purple-400 hover:text-purple-300 flex items-center gap-2"
@@ -2230,7 +2230,7 @@ export default function HelpPage() {
               <p>
                 If you have questions or hit issues, see the{" "}
                 <a
-                  href="https://github.com/arbadacarbaYK/gittr"
+                  href="https://gittr.space/arbadacarbaYK/gittr?branch=main"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-purple-400 hover:text-purple-300"
@@ -2239,7 +2239,7 @@ export default function HelpPage() {
                 </a>{" "}
                 source repo, plus{" "}
                 <a
-                  href="https://github.com/arbadacarbaYK/gitnostr"
+                  href="https://gittr.space/arbadacarbaYK/gitnostr?branch=main"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-purple-400 hover:text-purple-300"
@@ -2248,7 +2248,7 @@ export default function HelpPage() {
                 </a>{" "}
                 and{" "}
                 <a
-                  href="https://github.com/arbadacarbaYK/gittr-helper-tools"
+                  href="https://gittr.space/arbadacarbaYK/gittr?branch=main-helper-tools"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-purple-400 hover:text-purple-300"

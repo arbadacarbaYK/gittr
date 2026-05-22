@@ -229,7 +229,7 @@ export function SSHGitHelp({
             <p className="text-xs text-gray-400">
               For detailed documentation, see{" "}
               <a
-                href="https://github.com/arbadacarbaYK/gittr/blob/main/docs/SSH_GIT_GUIDE.md"
+                href="https://gittr.space/arbadacarbaYK/gittr?file=docs/SSH_GIT_GUIDE.md&branch=main"
                 className="text-purple-400 hover:underline"
                 target="_blank"
                 rel="noopener noreferrer"

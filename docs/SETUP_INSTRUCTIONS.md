@@ -41,7 +41,7 @@ git --version
 ## 1. Clone and build UI
 
 ```bash
-git clone https://github.com/arbadacarbaYK/gittr.git
+git clone git@git.gittr.space:arbadacarbaYK/gittr.git
 cd gittr/ui
 yarn install
 cp .env.example .env.local
@@ -68,7 +68,7 @@ PWA: optional; needs HTTPS in production (`ui/public/site.webmanifest`, `sw.js`)
 sudo useradd --create-home --shell /bin/bash git-nostr
 sudo su - git-nostr
 cd ~
-git clone https://github.com/arbadacarbaYK/gittr.git
+git clone git@git.gittr.space:arbadacarbaYK/gittr.git
 cd gittr/ui/gitnostr
 make git-nostr-bridge
 ```

@@ -46,7 +46,7 @@ Save the file and ensure it is readable by the bridge user only (`chmod 600` is 
 ## 4. Build + run
 
 ```bash
-git clone https://github.com/arbadacarbaYK/gitnostr.git
+git clone git@git.gittr.space:arbadacarbaYK/gitnostr.git
 cd gitnostr
 make git-nostr-bridge git-nostr-ssh
 

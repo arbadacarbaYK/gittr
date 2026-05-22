@@ -1,6 +1,6 @@
 # gittr.space Bridge Enhancements
 
-**Canonical repo:** [`github.com/arbadacarbaYK/gitnostr`](https://github.com/arbadacarbaYK/gitnostr) — the gittr project’s Git-on-Nostr bridge (also at `gittr/ui/gitnostr/`).  
+**Browse on gittr:** [arbadacarbaYK/gitnostr](https://gittr.space/arbadacarbaYK/gitnostr?branch=main) — also built from [gittr `ui/gitnostr/`](https://gittr.space/arbadacarbaYK/gittr?file=ui/gitnostr/README.md&branch=main).  
 This document describes production bridge features gittr relies on.
 
 ![Diagram of enhancements](./gittr-enhancements.png)

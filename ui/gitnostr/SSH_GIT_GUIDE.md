@@ -376,6 +376,6 @@ gittr does **not** use a shell password for Git over SSH. A password prompt almo
 
 ## See Also
 
-- **[SSH & Git guide (gittr docs)](https://github.com/arbadacarbaYK/gittr/blob/main/docs/SSH_GIT_GUIDE.md)** — user-facing guide with web UI workflows (same content as on a hosted instance)
+- **[SSH & Git guide (gittr docs)](https://gittr.space/arbadacarbaYK/gittr?file=docs/SSH_GIT_GUIDE.md&branch=main)** — user-facing guide with web UI workflows (same content as on a hosted instance)
 - [git-nostr-bridge README](README.md) - Setup and configuration instructions
 - [git-nostr-cli Usage](README.md#git-nostr-cli-gn) - Command-line tool documentation

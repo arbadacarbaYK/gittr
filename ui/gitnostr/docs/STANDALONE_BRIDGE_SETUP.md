@@ -1,6 +1,6 @@
 # Standalone git-nostr-bridge Setup
 
-Run **`git-nostr-bridge`** and **`git-nostr-ssh`** on your server so any Nostr git client (including [gittr](https://github.com/arbadacarbaYK/gittr)) can use SSH git against mirrored bare repos.
+Run **`git-nostr-bridge`** and **`git-nostr-ssh`** on your server so any Nostr git client (including [gittr](https://gittr.space/arbadacarbaYK/gittr?branch=main)) can use SSH git against mirrored bare repos.
 
 ## 1. Prerequisites
 
@@ -17,7 +17,7 @@ Run **`git-nostr-bridge`** and **`git-nostr-ssh`** on your server so any Nostr g
 
 All other behavior is controlled by **`~/.config/git-nostr/git-nostr-bridge.json`** (below).
 
-**Deploying with gittr:** file browsing, GitHub import, and OAuth live in the **gittr Next.js app** (`GIT_NOSTR_BRIDGE_REPOS_DIR` must point at the same `repositoryDir`). See [gittr `GIT_NOSTR_BRIDGE_SETUP.md`](https://github.com/arbadacarbaYK/gittr/blob/main/docs/GIT_NOSTR_BRIDGE_SETUP.md).
+**Deploying with gittr:** file browsing, GitHub import, and OAuth live in the **gittr Next.js app** (`GIT_NOSTR_BRIDGE_REPOS_DIR` must point at the same `repositoryDir`). See [gittr `GIT_NOSTR_BRIDGE_SETUP.md`](https://gittr.space/arbadacarbaYK/gittr?file=docs/GIT_NOSTR_BRIDGE_SETUP.md&branch=main).
 
 ## 3. Configuration file reference
 
@@ -44,7 +44,7 @@ Save the file and ensure it is readable by the bridge user only (`chmod 600` is 
 ## 4. Build + run
 
 ```bash
-git clone https://github.com/arbadacarbaYK/gitnostr.git
+git clone git@git.gittr.space:arbadacarbaYK/gitnostr.git
 cd gitnostr
 make git-nostr-bridge git-nostr-ssh
 

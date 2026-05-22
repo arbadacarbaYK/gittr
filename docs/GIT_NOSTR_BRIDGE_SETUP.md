@@ -3,7 +3,7 @@
 Watches Nostr for repo + SSH key events; maintains bare repos and `authorized_keys`. Required for `git clone` / `git push` / `git pull` against your host.
 
 **Full stack install:** [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md) (UI + nginx + bridge).  
-**Source:** [`ui/gitnostr/`](../../ui/gitnostr/) in this repo, or clone [arbadacarbaYK/gitnostr](https://github.com/arbadacarbaYK/gitnostr) — the same gitnostr project gittr runs in production.
+**Source:** [`ui/gitnostr/`](../../ui/gitnostr/) in this repo, or clone [arbadacarbaYK/gitnostr](https://gittr.space/arbadacarbaYK/gitnostr?branch=main) — the same gitnostr project gittr runs in production.
 
 ## Security
 
@@ -18,7 +18,7 @@ Use dedicated user **`git-nostr`**.
 ```bash
 sudo useradd --create-home --shell /bin/bash git-nostr
 sudo su - git-nostr
-git clone https://github.com/arbadacarbaYK/gittr.git
+git clone git@git.gittr.space:arbadacarbaYK/gittr.git
 cd gittr/ui/gitnostr
 make git-nostr-bridge   # produces bin/git-nostr-bridge, bin/git-nostr-ssh
 ```

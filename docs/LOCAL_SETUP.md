@@ -11,7 +11,7 @@ Node 18+, yarn (preferred), git. Optional: Go 1.21+ for the bridge.
 ## Steps
 
 ```bash
-git clone https://github.com/arbadacarbaYK/gittr.git
+git clone git@git.gittr.space:arbadacarbaYK/gittr.git
 cd gittr/ui
 yarn install
 cp .env.example .env.local
