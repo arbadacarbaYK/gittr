@@ -20,6 +20,8 @@ export function aggregateRepoStarReactions(events: Event[]): {
   const byPub = new Map<string, Event>();
   for (const event of events) {
     if (event.kind !== KIND_REACTION) continue;
+    const eid = event.tags.find((t) => t[0] === "e")?.[1];
+    if (!eid) continue;
     const pk = event.pubkey.toLowerCase();
     const prev = byPub.get(pk);
     if (!prev || (event.created_at || 0) >= (prev.created_at || 0)) {
@@ -64,25 +66,65 @@ export function aggregateMyStarredRepoEventIds(
   return out;
 }
 
-/** Latest kind 30617 id for owner + repo `d` tag (for starring when localStorage lacks nostrEventId). */
+/** Build possible `d` identifiers for a repo row / URL slug. */
+export function repoAnnouncementDTagCandidates(
+  repositoryName: string,
+  repo?: {
+    repositoryName?: string;
+    repo?: string;
+    slug?: string;
+    name?: string;
+  } | null
+): string[] {
+  const out = new Set<string>();
+  const add = (v?: string) => {
+    const t = (v || "").trim();
+    if (t) out.add(t);
+  };
+  add(repositoryName);
+  add(repo?.repositoryName);
+  add(repo?.repo);
+  add(repo?.slug);
+  add(repo?.name);
+  return [...out];
+}
+
+function eventMatchesRepoAnnouncement(
+  event: Event,
+  author: string,
+  dCandidates: string[]
+): boolean {
+  const d = event.tags.find((t) => t[0] === "d")?.[1]?.trim();
+  if (d && dCandidates.includes(d)) return true;
+  const want = new Set(
+    dCandidates.map((name) => `30617:${author}:${name}`.toLowerCase())
+  );
+  for (const t of event.tags) {
+    if (t[0] === "a" && typeof t[1] === "string") {
+      if (want.has(t[1].toLowerCase())) return true;
+    }
+  }
+  return false;
+}
+
+/** Latest kind 30617 id for this repo (relays). Works even when you are the first star. */
 export async function queryRepoAnnouncementEventId(
   subscribe: RelaySubscribeFn,
   relays: string[],
   ownerPubkey: string,
   repositoryName: string,
-  opts?: { timeoutMs?: number }
+  opts?: { timeoutMs?: number; repo?: Parameters<typeof repoAnnouncementDTagCandidates>[1] }
 ): Promise<string | null> {
   const author = ownerPubkey.trim().toLowerCase();
-  const dTag = repositoryName.trim();
-  if (!/^[0-9a-f]{64}$/.test(author) || !dTag) return null;
+  const dCandidates = repoAnnouncementDTagCandidates(repositoryName, opts?.repo);
+  if (!/^[0-9a-f]{64}$/.test(author) || dCandidates.length === 0) return null;
 
   let latest: Event | null = null;
   const filters: Filter[] = [
     {
       kinds: [KIND_REPOSITORY_NIP34],
       authors: [author],
-      "#d": [dTag],
-      limit: 20,
+      limit: 80,
     },
   ];
 
@@ -107,6 +149,7 @@ export async function queryRepoAnnouncementEventId(
       relays,
       (event: Event) => {
         if (event.kind !== KIND_REPOSITORY_NIP34) return;
+        if (!eventMatchesRepoAnnouncement(event, author, dCandidates)) return;
         if (!latest || (event.created_at || 0) >= (latest.created_at || 0)) {
           latest = event;
         }
@@ -116,8 +159,18 @@ export async function queryRepoAnnouncementEventId(
       {}
     );
 
-    setTimeout(() => finish(unsub as () => void), opts?.timeoutMs ?? 6000);
+    setTimeout(() => finish(unsub as () => void), opts?.timeoutMs ?? 8000);
   });
+}
+
+/** True when a kind-7 reaction targets this repo announcement (NIP-25 + gittr `#k` 30617). */
+export function isRepoStarReaction(event: Event, repoEventId: string): boolean {
+  if (event.kind !== KIND_REACTION) return false;
+  const eid = event.tags.find((t) => t[0] === "e")?.[1];
+  if (!eid || eid.toLowerCase() !== repoEventId.toLowerCase()) return false;
+  const k = event.tags.find((t) => t[0] === "k")?.[1];
+  if (k && k !== "30617" && k !== String(KIND_REPOSITORY_NIP34)) return false;
+  return event.content === "+" || event.content === "⭐";
 }
 
 /**
@@ -130,11 +183,11 @@ export async function queryRepoStars(
   opts?: { timeoutMs?: number }
 ): Promise<{ count: number; starers: string[] }> {
   const collected: Event[] = [];
+  // Many relays index `#e` but not `#k` on kind 7 — filter `k=30617` client-side.
   const filters: Filter[] = [
     {
       kinds: [KIND_REACTION],
       "#e": [repoEventId],
-      "#k": ["30617"],
       limit: 500,
     },
   ];
@@ -156,7 +209,7 @@ export async function queryRepoStars(
       filters,
       relays,
       (event: Event) => {
-        if (event.kind === KIND_REACTION) collected.push(event);
+        if (isRepoStarReaction(event, repoEventId)) collected.push(event);
       },
       undefined,
       () => finish(unsub as () => void),

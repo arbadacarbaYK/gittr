@@ -20,10 +20,12 @@ import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import {
   aggregateRepoStarReactions,
+  isRepoStarReaction,
   publishStarReaction,
   queryRepoAnnouncementEventId,
   removeStarReaction,
 } from "@/lib/nostr/repo-stars";
+import { showToast } from "@/components/ui/toast";
 import { useRepoNip57ZapBadgeTotal } from "@/lib/nostr/useRepoNip57ZapBadgeTotal";
 import { canManageSettings, isOwner } from "@/lib/repo-permissions";
 import {
@@ -232,12 +234,32 @@ export default function RepoLayoutClient({
   });
 
   const [relayRepoEventId, setRelayRepoEventId] = useState<string | null>(null);
+  const [resolvingRepoEventId, setResolvingRepoEventId] = useState(false);
 
   const repoNostrEventId = useMemo(() => {
-    if (!repo) return relayRepoEventId;
-    const id = repo.lastNostrEventId || repo.nostrEventId || relayRepoEventId;
+    const localId = repo?.lastNostrEventId || repo?.nostrEventId;
+    const id = relayRepoEventId || localId;
     return typeof id === "string" && /^[0-9a-f]{64}$/i.test(id) ? id : null;
   }, [repo, relayRepoEventId]);
+
+  const canStarOnNostr = useMemo(
+    () =>
+      !!(
+        mounted &&
+        pubkey &&
+        ownerPubkey &&
+        /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
+        repoNostrEventId &&
+        !resolvingRepoEventId
+      ),
+    [
+      mounted,
+      pubkey,
+      ownerPubkey,
+      repoNostrEventId,
+      resolvingRepoEventId,
+    ]
+  );
 
   const githubUpstreamUrl = useMemo(
     () =>
@@ -313,13 +335,18 @@ export default function RepoLayoutClient({
     hasUpstreamSourceUrl,
   ]);
 
-  const nostrStarButtonTitle = useMemo(
-    () =>
-      repoNostrEventId
-        ? "Stars on Nostr (NIP-25)."
-        : "Needs a published 30617 event on Nostr before you can star here.",
-    [repoNostrEventId]
-  );
+  const nostrStarButtonTitle = useMemo(() => {
+    if (resolvingRepoEventId) {
+      return "Looking up this repo on Nostr relays…";
+    }
+    if (!repoNostrEventId) {
+      return "No kind 30617 repo announcement on relays yet. Owner must Push to Nostr (or publish with gn) before stars work.";
+    }
+    if (!pubkey) {
+      return "Log in with Nostr to star on relays (NIP-25 kind 7).";
+    }
+    return "Star on Nostr (NIP-25 kind 7 on this repo’s 30617 event). First star works the same — no prior stars needed.";
+  }, [repoNostrEventId, resolvingRepoEventId, pubkey]);
 
   const zapBadgeTitle = useMemo(
     () =>
@@ -794,13 +821,12 @@ export default function RepoLayoutClient({
         {
           kinds: [7],
           "#e": [repoNostrEventId],
-          "#k": ["30617"],
           limit: 500,
         },
       ],
       relays,
       (event) => {
-        if (event.kind !== 7) return;
+        if (!isRepoStarReaction(event as NostrEvent, repoNostrEventId)) return;
         collected.set(event.id, event as NostrEvent);
         setNostrStarEvents(Array.from(collected.values()));
       },
@@ -817,15 +843,12 @@ export default function RepoLayoutClient({
     };
   }, [mounted, subscribe, defaultRelays, repoNostrEventId]);
 
-  // Resolve kind 30617 id from relays when local repo row has no nostrEventId (explore / import visitors).
+  // Always resolve latest kind 30617 from relays (local id may be missing or stale).
   useEffect(() => {
     if (!mounted || !subscribe || !defaultRelays?.length || !ownerPubkey) {
       return;
     }
-    if (repo?.lastNostrEventId || repo?.nostrEventId) {
-      setRelayRepoEventId(null);
-      return;
-    }
+    if (!/^[0-9a-f]{64}$/i.test(ownerPubkey)) return;
     const repoIdentifier =
       (repo as { repositoryName?: string; repo?: string; slug?: string } | null)
         ?.repositoryName ||
@@ -835,17 +858,24 @@ export default function RepoLayoutClient({
     if (!repoIdentifier) return;
 
     let cancelled = false;
+    setResolvingRepoEventId(true);
+    const relays = getAllRelays(defaultRelays);
     void queryRepoAnnouncementEventId(
       subscribe,
-      defaultRelays,
+      relays,
       ownerPubkey,
       repoIdentifier,
-      { timeoutMs: 6000 }
-    ).then((id) => {
-      if (!cancelled && id) setRelayRepoEventId(id);
-    });
+      { timeoutMs: 8000, repo }
+    )
+      .then((id) => {
+        if (!cancelled) setRelayRepoEventId(id);
+      })
+      .finally(() => {
+        if (!cancelled) setResolvingRepoEventId(false);
+      });
     return () => {
       cancelled = true;
+      setResolvingRepoEventId(false);
     };
   }, [
     mounted,
@@ -1214,15 +1244,25 @@ export default function RepoLayoutClient({
   }, []);
 
   const handleNostrStar = useCallback(async () => {
-    if (
-      !pubkey ||
-      !repoNostrEventId ||
-      !ownerPubkey ||
-      !/^[0-9a-f]{64}$/i.test(ownerPubkey)
-    ) {
+    if (!pubkey) {
+      showToast("Log in with Nostr (NIP-07) to star.", "error");
       return;
     }
-    if (!publish) return;
+    if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+      showToast("Still resolving repo owner — try again in a moment.", "error");
+      return;
+    }
+    if (!repoNostrEventId) {
+      showToast(
+        "This repo is not on relays as kind 30617 yet. The owner needs Push to Nostr first.",
+        "error"
+      );
+      return;
+    }
+    if (!publish) {
+      showToast("Nostr connection not ready.", "error");
+      return;
+    }
 
     const getSigner = async () => {
       if (typeof window !== "undefined" && window.nostr?.signEvent) {
@@ -1241,8 +1281,9 @@ export default function RepoLayoutClient({
         "Connect a Nostr signer (browser extension or remote signer) to star this repo."
       );
     };
+    const publishRelays = getAllRelays(defaultRelays);
     const doPublish = (event: NostrEvent) => {
-      publish(event, defaultRelays);
+      publish(event, publishRelays);
     };
     const ownerHex = ownerPubkey.toLowerCase();
     const repoId = `${resolvedParams.entity}/${resolvedParams.repo}`;
@@ -1276,6 +1317,9 @@ export default function RepoLayoutClient({
       if (r.success && r.signedEvent) {
         mergeNostrStarEvent(r.signedEvent);
         syncLocalStarsIndex(false);
+        showToast("Unstarred on Nostr.", "success");
+      } else {
+        showToast(r.error || "Could not unstar — check extension approval.", "error");
       }
     } else {
       const r = await publishStarReaction(
@@ -1287,6 +1331,13 @@ export default function RepoLayoutClient({
       if (r.success && r.signedEvent) {
         mergeNostrStarEvent(r.signedEvent);
         syncLocalStarsIndex(true);
+        showToast("Starred on Nostr (NIP-25).", "success");
+      } else {
+        showToast(
+          r.error ||
+            "Could not publish star — approve the extension prompt or try another relay.",
+          "error"
+        );
       }
     }
   }, [
@@ -1591,7 +1642,7 @@ export default function RepoLayoutClient({
                 onClick={() => {
                   void handleNostrStar();
                 }}
-                disabled={!mounted || !pubkey || !repoNostrEventId}
+                disabled={!canStarOnNostr}
                 suppressHydrationWarning
               >
                 <Star
