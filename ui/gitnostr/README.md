@@ -1,6 +1,6 @@
 # gitnostr
 
-**Git bridge to Nostr for [gittr](https://gittr.space).** Same codebase as [`arbadacarbaYK/gitnostr`](https://github.com/arbadacarbaYK/gitnostr).
+**Git bridge to Nostr for [gittr](https://gittr.space).** Same codebase as [`arbadacarbaYK/gitnostr`](https://github.com/arbadacarbaYK/gitnostr). **SSH/HTTPS git is native to the bridge** (`git-nostr-ssh`)—not “only through the web UI”; keys via **`gn`**, kind **52** events, or optionally gittr Settings.
 
 **When to use it / use cases:** [README → When gitnostr is the better fit](https://github.com/arbadacarbaYK/gitnostr#when-gitnostr-is-the-better-fit) (forge backend, client integration, own-server backup, normal `git@` workflow, public mirror, push paywall). **vs ngit:** [same section + table](https://github.com/arbadacarbaYK/gitnostr#gitnostr-vs-ngit).
 
