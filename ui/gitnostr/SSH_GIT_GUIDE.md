@@ -1,15 +1,10 @@
 # SSH & Git Access Guide for git-nostr-bridge
 
-**SSH is provided by the bridge**, not by a web UI. `git-nostr-bridge` mirrors repos on disk; **`git-nostr-ssh`** is the `authorized_keys` command that runs `git-upload-pack` / `git-receive-pack`. Any normal git client can clone and push once your **public key is on Nostr (kind 52)** and the bridge has processed the event.
+**`git-nostr-ssh`** handles `git clone`, `push`, and `pull` over SSH. The bridge mirrors bare repos and loads **`authorized_keys`** from Nostr **kind 52** events.
 
-You do **not** need gittr, a browser, or the ngit CLI for SSH—only a host running this bridge (e.g. **gittr.space**’s `git.gittr.space`, or your own VPS).
+**Same bare repo, other transports:** **HTTPS** (nginx in front of the bridge) and **`nostr://`** with [git-remote-nostr](https://github.com/DanConwayDev/ngit-cli) when the repo is on the bridge.
 
-**Also supported (same bare repo on the bridge):**
-
-- **HTTPS** clone/push when your operator fronts the bridge with nginx (see gittr deploy docs).
-- **`nostr://` remotes** with [git-remote-nostr](https://github.com/DanConwayDev/ngit-cli) when the repository is mirrored on that bridge—orthogonal to SSH; both can work for the same repo.
-
-Server operators: [README.md](README.md) · [docs/STANDALONE_BRIDGE_SETUP.md](docs/STANDALONE_BRIDGE_SETUP.md).
+Hosts: **gittr.space** uses `git.gittr.space`, or run your own bridge — [README.md](README.md) · [docs/STANDALONE_BRIDGE_SETUP.md](docs/STANDALONE_BRIDGE_SETUP.md).
 
 ## Quick Start: Set Up SSH Keys
 
@@ -32,9 +27,9 @@ make git-nostr-cli
 
 Publish a kind **52** event (SSH public key tag) to the same relays the bridge uses, with your usual client (nak, custom app, etc.). The bridge treats it the same as `gn` or the gittr UI.
 
-#### Option 3: gittr.space web UI (optional)
+#### Option 3: gittr.space
 
-If you use [gittr](https://gittr.space): **Settings → SSH Keys** → generate or paste a public key. That only **publishes the same kind 52 event** the bridge already consumes—convenience, not a separate SSH system.
+**Settings → SSH Keys** — generate or paste a public key (publishes kind **52** to relays).
 
 **Important**: KIND_52 is used by the gitnostr protocol for SSH keys, but NIP-52 defines KIND_52 for Calendar Events. This is a known conflict. Some relays may reject KIND_52 events. If publishing fails, try a different relay (relay.damus.io, nos.lol typically work).
 
@@ -66,16 +61,16 @@ git clone git@git.gittr.space:<owner-identifier>/<repo-name>.git   # same keys, 
 
 Both usernames hit the same `git-nostr-ssh` handler. **Use the SSH hostname your operator configured** (`NEXT_PUBLIC_GIT_SSH_BASE` on gittr, often `git.gittr.space`).
 
-### `nostr://` remotes (no SSH)
+### `nostr://` remotes
 
-If the repo exists on the bridge (or relays + GRASP), with **git-remote-nostr** installed:
+With **git-remote-nostr** installed and the repo on the bridge:
 
 ```bash
 git clone nostr://<npub>/<repo-name>
 git remote add origin nostr://<npub>/<repo-name>
 ```
 
-SSH and `nostr://` are different transports to the same NIP-34 repo when this bridge holds the bare mirror. gittr does not ship ngit, but supports these remotes for users who install git-remote-nostr.
+SSH and `nostr://` both target the same NIP-34 repo on the bridge.
 
 ## Workflow 1: Create and Add Files via SSH
 
@@ -349,7 +344,7 @@ gittr does **not** use a shell password for Git over SSH. A password prompt almo
 ### "Network is unreachable" (port 22)
 - Verify SSH port 22 is accessible: `ssh -v git-nostr@git.gittr.space`
 - Check if your network/firewall blocks port 22
-- Try HTTPS clone instead: `git clone https://gittr.space/<owner-identifier>/<repo-name>.git`
+- Try HTTPS clone instead: `git clone https://git.gittr.space/<owner-identifier>/<repo-name>.git` (or your operator’s HTTPS git host)
 
 ## Security Notes
 

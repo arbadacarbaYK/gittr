@@ -5,9 +5,7 @@ This document describes production bridge features gittr relies on.
 
 ![Diagram of enhancements](./gittr-enhancements.png)
 
-Blue boxes in the diagram are extensions beyond the earliest public git-nostr-bridge prototypes.
-
-> **Badge legend:** 🆕 marks functionality added for gittr production.
+> **Badge legend:** 🆕 marks bridge features used on gittr production.
 
 ## Feature summary
 

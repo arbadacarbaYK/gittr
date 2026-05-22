@@ -3,7 +3,7 @@
 This guide explains how to run the `git-nostr-bridge` binary on its own — without the gittr UI —
 so that any Nostr-aware Git frontend can use it.
 
-> 🆕 badge callout: whenever you see 🆕 below it means "this behavior exists only in this fork today".
+> 🆕 Production bridge features used on gittr.space.
 
 ## 1. Prerequisites
 
