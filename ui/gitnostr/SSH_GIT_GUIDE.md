@@ -1,14 +1,21 @@
 # SSH & Git Access Guide for git-nostr-bridge
 
-This guide explains how to use SSH to create, add, and modify files in repositories hosted by `git-nostr-bridge`.
+**SSH is provided by the bridge**, not by a web UI. `git-nostr-bridge` mirrors repos on disk; **`git-nostr-ssh`** is the `authorized_keys` command that runs `git-upload-pack` / `git-receive-pack`. Any normal git client can clone and push once your **public key is on Nostr (kind 52)** and the bridge has processed the event.
 
-**Important**: This guide is for **users** connecting to a `git-nostr-bridge` server. You don't need to install the bridge locally - you just connect to it like you would connect to GitHub or GitLab. For server operators who want to run their own bridge, see [README.md](README.md) for setup instructions.
+You do **not** need gittr, a browser, or the ngit CLI for SSH—only a host running this bridge (e.g. **gittr.space**’s `git.gittr.space`, or your own VPS).
+
+**Also supported (same bare repo on the bridge):**
+
+- **HTTPS** clone/push when your operator fronts the bridge with nginx (see gittr deploy docs).
+- **`nostr://` remotes** with [git-remote-nostr](https://github.com/DanConwayDev/ngit-cli) when the repository is mirrored on that bridge—orthogonal to SSH; both can work for the same repo.
+
+Server operators: [README.md](README.md) · [docs/STANDALONE_BRIDGE_SETUP.md](docs/STANDALONE_BRIDGE_SETUP.md).
 
 ## Quick Start: Set Up SSH Keys
 
-SSH keys are managed entirely through Nostr events:
+Keys are **Nostr events (kind 52)**. The bridge watches relays and rewrites `~git-nostr/.ssh/authorized_keys`. Publish a key by **any** of these—pick one:
 
-#### Option 1: Using git-nostr-cli (gn)
+#### Option 1: git-nostr-cli (`gn`) — no UI
 
 ```bash
 # Build git-nostr-cli if you haven't already
@@ -21,12 +28,13 @@ make git-nostr-cli
 ./bin/gn ssh-key add ~/.ssh/id_rsa.pub
 ```
 
-#### Option 2: Using gittr.space Web UI
+#### Option 2: Any Nostr signer
 
-If you're using `gittr.space`:
-1. Go to **Settings → SSH Keys**
-2. Either generate a new key or paste your existing public key
-3. Your key will be published to Nostr and processed by the bridge automatically
+Publish a kind **52** event (SSH public key tag) to the same relays the bridge uses, with your usual client (nak, custom app, etc.). The bridge treats it the same as `gn` or the gittr UI.
+
+#### Option 3: gittr.space web UI (optional)
+
+If you use [gittr](https://gittr.space): **Settings → SSH Keys** → generate or paste a public key. That only **publishes the same kind 52 event** the bridge already consumes—convenience, not a separate SSH system.
 
 **Important**: KIND_52 is used by the gitnostr protocol for SSH keys, but NIP-52 defines KIND_52 for Calendar Events. This is a known conflict. Some relays may reject KIND_52 events. If publishing fails, try a different relay (relay.damus.io, nos.lol typically work).
 
@@ -35,14 +43,14 @@ If you're using `gittr.space`:
 The bridge supports multiple formats for the owner identifier in clone URLs:
 
 ```bash
-# Using npub (recommended, per NIP-34 specification) — use the npub from your repo page
-git clone git@gittr.space:<YOUR_NPUB>/repo-name.git
+# Production gittr host (SSH subdomain) — use the clone URL your forge shows if different
+git clone git@git.gittr.space:<YOUR_NPUB>/repo-name.git
 
 # Using NIP-05 (human-readable)
-git clone git@gittr.space:alice@example.com/repo-name.git
+git clone git@git.gittr.space:alice@example.com/repo-name.git
 
-# Using hex pubkey (64-char)
-git clone git@gittr.space:0000000000000000000000000000000000000000000000000000000000000001/repo-name.git
+# Self-hosted bridge: replace host with your GIT_SSH_BASE / server name
+git clone git@your-bridge.example:<YOUR_NPUB>/repo-name.git
 ```
 
 All three formats resolve to the same repository.
@@ -52,14 +60,22 @@ All three formats resolve to the same repository.
 Both SSH usernames are supported for Git operations:
 
 ```bash
-# Preferred (matches bridge Unix account name)
-git clone git-nostr@gittr.space:<owner-identifier>/<repo-name>.git
-
-# Compatibility alias (GitHub-style; same host and keys)
-git clone git@gittr.space:<owner-identifier>/<repo-name>.git
+git clone git-nostr@git.gittr.space:<owner-identifier>/<repo-name>.git
+git clone git@git.gittr.space:<owner-identifier>/<repo-name>.git   # same keys, GitHub-style user
 ```
 
-If one username fails in your local SSH config, try the other. Both map to the same bridge permission checks. **Always use the clone URL shown on your repository page** (`gittr.space` / `NEXT_PUBLIC_GIT_SSH_BASE`) in case your host uses a different SSH hostname than this guide’s examples.
+Both usernames hit the same `git-nostr-ssh` handler. **Use the SSH hostname your operator configured** (`NEXT_PUBLIC_GIT_SSH_BASE` on gittr, often `git.gittr.space`).
+
+### `nostr://` remotes (no SSH)
+
+If the repo exists on the bridge (or relays + GRASP), with **git-remote-nostr** installed:
+
+```bash
+git clone nostr://<npub>/<repo-name>
+git remote add origin nostr://<npub>/<repo-name>
+```
+
+SSH and `nostr://` are different transports to the same NIP-34 repo when this bridge holds the bare mirror. gittr does not ship ngit, but supports these remotes for users who install git-remote-nostr.
 
 ## Workflow 1: Create and Add Files via SSH
 
@@ -72,7 +88,7 @@ Create a new repository and push your local files:
 # Go to "Create repository" page, enter name, click "Create Empty Repository"
 
 # 2. Clone the empty repository
-git clone git@gittr.space:<your-identifier>/<repo-name>.git
+git clone git@git.gittr.space:<your-identifier>/<repo-name>.git
 cd <repo-name>
 
 # 3. Copy your local files into the cloned repository
@@ -100,7 +116,7 @@ cd <repo-name>
 # Go to "Create repository" page, enter name, click "Create Empty Repository"
 
 # 3. Add gittr as a remote
-git remote add gittr git@gittr.space:<your-identifier>/<repo-name>.git
+git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
 
 # 4. Push to gittr
 git push gittr main
@@ -122,7 +138,7 @@ cd <repo-name>
 # Go to "Create repository" page, enter name, click "Create Empty Repository"
 
 # 3. Add gittr as a remote
-git remote add gittr git@gittr.space:<your-identifier>/<repo-name>.git
+git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
 
 # 4. Push to gittr
 git push gittr main
@@ -144,7 +160,7 @@ cd <repo-name>
 # Go to "Create repository" page, enter name, click "Create Empty Repository"
 
 # 3. Add gittr as a remote
-git remote add gittr git@gittr.space:<your-identifier>/<repo-name>.git
+git remote add gittr git@git.gittr.space:<your-identifier>/<repo-name>.git
 
 # 4. Push to gittr
 git push gittr main
@@ -161,7 +177,7 @@ Update an existing repository with local changes:
 
 ```bash
 # 1. Clone the existing repository
-git clone git@gittr.space:<owner-identifier>/<repo-name>.git
+git clone git@git.gittr.space:<owner-identifier>/<repo-name>.git
 cd <repo-name>
 
 # 2. Make your changes
@@ -188,7 +204,7 @@ Sync updates from GitHub to an existing Nostr repository:
 
 ```bash
 # 1. Clone the existing Nostr repository
-git clone git@gittr.space:<your-identifier>/<repo-name>.git
+git clone git@git.gittr.space:<your-identifier>/<repo-name>.git
 cd <repo-name>
 
 # 2. Add GitHub as a remote
@@ -211,7 +227,7 @@ Sync updates from any Git server to an existing Nostr repository:
 
 ```bash
 # 1. Clone the existing Nostr repository
-git clone git@gittr.space:<your-identifier>/<repo-name>.git
+git clone git@git.gittr.space:<your-identifier>/<repo-name>.git
 cd <repo-name>
 
 # 2. Add the Git server as a remote
@@ -234,7 +250,7 @@ Sync updates from Codeberg to an existing Nostr repository:
 
 ```bash
 # 1. Clone the existing Nostr repository
-git clone git@gittr.space:<your-identifier>/<repo-name>.git
+git clone git@git.gittr.space:<your-identifier>/<repo-name>.git
 cd <repo-name>
 
 # 2. Add Codeberg as a remote
@@ -292,7 +308,7 @@ gittr does **not** use a shell password for Git over SSH. A password prompt almo
 
 1. **Confirm you use the right private key** (same machine where you generated or pasted the **public** key into Settings → SSH Keys):
    ```bash
-   GIT_SSH_COMMAND='ssh -v -o IdentitiesOnly=yes -i ~/.ssh/<your-key>' git ls-remote git@gittr.space:<your-npub>/<repo>.git
+   GIT_SSH_COMMAND='ssh -v -o IdentitiesOnly=yes -i ~/.ssh/<your-key>' git ls-remote git@git.gittr.space:<your-npub>/<repo>.git
    ```
    In the `-v` output you should see **Offering public key** and then **Server accepts key** (or similar). If it skips your key, fix the `-i` path or add the key to `ssh-agent`.
 
@@ -307,7 +323,7 @@ gittr does **not** use a shell password for Git over SSH. A password prompt almo
 - Check that your private key is in `~/.ssh/` with correct permissions (600)
 - Verify the bridge service has processed your key (may take a few seconds)
 - Force a single key to avoid auth spam:
-  - `GIT_SSH_COMMAND='ssh -o IdentitiesOnly=yes -i ~/.ssh/<your-key>' git ls-remote git-nostr@gittr.space:<owner>/<repo>.git`
+  - `GIT_SSH_COMMAND='ssh -o IdentitiesOnly=yes -i ~/.ssh/<your-key>' git ls-remote git-nostr@git.gittr.space:<owner>/<repo>.git`
 - If you see `Too many authentication failures`, your SSH agent likely offered too many keys. Use `IdentitiesOnly=yes` as shown above.
 - If your IP was previously blocked by fail2ban, retry after unban/ban expiry.
 
@@ -331,7 +347,7 @@ gittr does **not** use a shell password for Git over SSH. A password prompt almo
 - If you just created the repository, wait a moment for the bridge to process it
 
 ### "Network is unreachable" (port 22)
-- Verify SSH port 22 is accessible: `ssh -v git-nostr@gittr.space`
+- Verify SSH port 22 is accessible: `ssh -v git-nostr@git.gittr.space`
 - Check if your network/firewall blocks port 22
 - Try HTTPS clone instead: `git clone https://gittr.space/<owner-identifier>/<repo-name>.git`
 

@@ -1,16 +1,16 @@
 # SSH & Git Access Guide
 
-This guide explains how to use SSH to create, add, and modify files in gittr.space repositories.
+SSH for gittr.space uses **[gitnostr](https://github.com/arbadacarbaYK/gitnostr)** (`git-nostr-bridge` + `git-nostr-ssh` on **`git.gittr.space`**). You do **not** install the bridge locally to contribute—connect with normal `git` like GitHub. Self-hosters: full bridge doc in [`ui/gitnostr/SSH_GIT_GUIDE.md`](../ui/gitnostr/SSH_GIT_GUIDE.md) (same as upstream gitnostr).
 
-**Important**: You don't need to install anything locally! The `git-nostr-bridge` service runs on gittr's servers. You just push to it like you would push to GitHub or GitLab.
+**SSH is bridge-native**, not “only via the website.” Keys are **Nostr kind 52** events; the bridge updates `authorized_keys`. **`nostr://`** remotes work too when the repo is mirrored here ([git-remote-nostr](https://github.com/DanConwayDev/ngit-cli)).
 
 ## Quick Start: Set Up SSH Keys
 
-1. Go to **Settings → SSH Keys** on gittr.space
-2. Either:
-   - **Generate new key**: Click "Generate SSH Key", download the private key, and save it to `~/.ssh/id_ed25519`
-   - **Add existing key**: Paste your public key from `~/.ssh/id_*.pub`
-3. Your SSH key will be published to Nostr (only public key, safe to share)
+Pick **one** way to publish your public key (all publish kind **52** for the same bridge):
+
+1. **`gn`** (no UI): `git-nostr-cli` → `./bin/gn ssh-key add ~/.ssh/id_ed25519.pub` — see [gitnostr SSH guide](https://github.com/arbadacarbaYK/gitnostr/blob/main/SSH_GIT_GUIDE.md)
+2. **Any Nostr client** that can sign kind 52
+3. **gittr.space (optional):** **Settings → SSH Keys** → generate or paste `~/.ssh/id_*.pub` (convenience only)
 
 ## Repository URL Formats
 
