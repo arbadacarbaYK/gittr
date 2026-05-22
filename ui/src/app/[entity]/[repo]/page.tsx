@@ -17636,6 +17636,7 @@ export default function RepoCodePage() {
                                         ...existingRepo,
                                         sourceUrl: updatedSourceUrl, // CRITICAL: Preserve sourceUrl to prevent bridge sync
                                         files: newFiles, // COMPLETE REPLACEMENT - use GitHub files exactly as returned
+                                        fileCount: newFiles.length,
                                         readme:
                                           importData.readme ||
                                           existingRepo.readme,
@@ -18221,7 +18222,27 @@ export default function RepoCodePage() {
 
                                       saveStoredRepos(repos);
 
-                                      // Verify files were saved
+                                      // Verify files were saved (file trees live in gittr_files__*, not gittr_repos)
+                                      const storageRepoAfterRefetch =
+                                        resolveRepoStorageAlias(
+                                          resolvedParams.entity,
+                                          resolvedParams.repo
+                                        );
+                                      const indexedAfterRefetch =
+                                        mergeRepoFileIndexes(
+                                          loadRepoFiles(
+                                            resolvedParams.entity,
+                                            storageRepoAfterRefetch
+                                          ),
+                                          loadRepoFiles(
+                                            resolvedParams.entity,
+                                            resolvedParams.repo
+                                          )
+                                        );
+                                      const savedFileCount =
+                                        indexedAfterRefetch.filter(
+                                          (f) => f.type === "file"
+                                        ).length;
                                       const savedRepos = loadStoredRepos();
                                       const savedRepo = savedRepos.find(
                                         (r: any) =>
@@ -18229,10 +18250,6 @@ export default function RepoCodePage() {
                                             r.repo === resolvedParams.repo) &&
                                           r.entity === resolvedParams.entity
                                       );
-                                      const savedFileCount =
-                                        savedRepo?.files?.filter(
-                                          (f: any) => f.type === "file"
-                                        ).length || 0;
 
                                       console.log(
                                         `✅ [Refetch] Updated repo:`,
@@ -18240,10 +18257,15 @@ export default function RepoCodePage() {
                                           importFilesCount:
                                             importData.files?.length || 0,
                                           savedFilesCount: savedFileCount,
-                                          savedRepoFilesLength:
-                                            savedRepo?.files?.length || 0,
-                                          firstFewFiles:
-                                            savedRepo?.files?.slice(0, 3),
+                                          indexedFilesTotal:
+                                            indexedAfterRefetch.length,
+                                          savedRepoFileCount:
+                                            savedRepo?.fileCount ?? null,
+                                          storageKey: getRepoStorageKey(
+                                            "gittr_files",
+                                            resolvedParams.entity,
+                                            storageRepoAfterRefetch
+                                          ),
                                         }
                                       );
 
@@ -18260,9 +18282,9 @@ export default function RepoCodePage() {
                                           }
                                         );
                                         alert(
-                                          `⚠️ Warning: Files were fetched (${
+                                          `⚠️ Refetch got ${
                                             importData.files?.length || 0
-                                          }) but not saved correctly. Please check console for details.`
+                                          } files from GitHub but could not store them locally (browser storage full or blocked). Try My Repositories → clear foreign repos, or use a private window with more free space.`
                                         );
                                       } else {
                                         // Reload page to show updated data
