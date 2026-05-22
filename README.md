@@ -84,7 +84,7 @@ Only rows we can stand behind from **this repo** or the other project’s README
 
 **Notes**
 
-- **gittr** — built on **[gitnostr](https://github.com/arbadacarbaYK/gitnostr)** (`ui/gitnostr/`, MIT): `git-nostr-bridge`, `git-nostr-ssh`, `git-nostr-cli` (`gn`). Production bridge is the gittr fork, not [spearson78/gitnostr](https://github.com/spearson78/gitnostr) upstream alone. Web-only features (bounties, Pages, `/apps`, import UI) live in this repo.
+- **gittr** — built on **[gitnostr](https://github.com/arbadacarbaYK/gitnostr)** (`ui/gitnostr/`, MIT): `git-nostr-bridge`, `git-nostr-ssh`, `git-nostr-cli` (`gn`). Web-only features (bounties, Pages, `/apps`, import UI) live in this repo.
 - **gitworkshop** — pairs with **ngit** (CLI + `git-remote-nostr`), not with gitnostr. Loads repo data from public **ngit GRASP** git servers (e.g. `relay.ngit.dev`, `ngit-relay.nostrver.se`)—the same mirrors gittr queries (`ui/src/lib/utils/grasp-servers.ts`), plus `clone` URLs on events. **Repo zaps** yes; no issue bounties or gittr-style Pages/`/apps`.
 - **gitplaza** — [dluvian](https://codeberg.org/dluvian/gitplaza)’s **desktop** NIP-34 client (Rust, [Iced](https://iced.rs)): repos, issues, patches (with diffs), releases ([kind 30063](https://github.com/nostr-protocol/nips/pull/1336)), kanban, starred repos ([kind 10018 draft](https://github.com/nostr-protocol/nips/pull/2130)), Blossom server list, inbox/social zaps. **Does not** host git or import from GitHub; upstream explicitly sends users to **GitWorkshop + ngit** for fuller git workflows. No LN issue bounties or gittr-style Pages/`/apps`.
 - **Other awesome-nostr entries** — [nak](https://github.com/fiatjaf/nak) (`nak git`), [gitstr](https://github.com/fiatjaf/gitstr) (deprecated), [git-nostr-tools](http://git.jb55.com/git-nostr-tools), [git-nostr](https://github.com/colealbon/git-nostr), [gittr-helper-tools](https://github.com/arbadacarbaYK/gittr-helper-tools), [Zapounty](https://github.com/ZigBalthazar/zapounty): see table above.
@@ -144,8 +144,8 @@ Deploy: hosted ([SETUP_INSTRUCTIONS.md](docs/SETUP_INSTRUCTIONS.md)) or local UI
 
 | Project                                            | Role                                                                                                                                                                             |
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [gitnostr](https://github.com/spearson78/gitnostr) | Upstream **git server** (bridge/SSH); gittr ships the fork in `ui/gitnostr/` → [arbadacarbaYK/gitnostr](https://github.com/arbadacarbaYK/gitnostr) (paywall, NIP-34 state, etc.) |
-| **gittr**                                          | This repo — **web forge on gitnostr**; not a thin fork of upstream gitnostr alone                                                                                                |
+| [gitnostr](https://github.com/arbadacarbaYK/gitnostr) | **Git server** (bridge/SSH) — [`ui/gitnostr/`](ui/gitnostr/) in this monorepo; same repo on GitHub |
+| **gittr**                                             | This repo — **web forge** on top of gitnostr                                                                                        |
 | [NostrGit](https://github.com/NostrGit/NostrGit)   | Historical **UI** template only (not the bridge codebase)                                                                                                                        |
 
 

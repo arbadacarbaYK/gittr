@@ -5,8 +5,12 @@ import {
   PLATFORM_STATS_RELAYS,
 } from "@/lib/nostr/server-relay-subscribe";
 import {
+  getRecentPlatformActivitiesFromNostr,
+  getRecentReposFromNostr,
   getTopReposFromNostr,
   getTopUsersFromNostr,
+  type PlatformRecentActivity,
+  type PlatformRecentRepo,
   type RepoStats,
   type UserStats,
 } from "@/lib/stats";
@@ -17,6 +21,8 @@ let cache: {
   at: number;
   topRepos: RepoStats[];
   topUsers: UserStats[];
+  recentRepos: PlatformRecentRepo[];
+  recentActivities: PlatformRecentActivity[];
 } | null = null;
 
 let refreshInFlight: Promise<void> | null = null;
@@ -24,23 +30,38 @@ let refreshInFlight: Promise<void> | null = null;
 export type PlatformLeaderboardResponse = {
   topRepos: RepoStats[];
   topUsers: UserStats[];
+  recentRepos: PlatformRecentRepo[];
+  recentActivities: PlatformRecentActivity[];
   cached: boolean;
   relayCount: number;
 };
 
 async function refreshLeaderboardCache(): Promise<void> {
-  const [topRepos, topUsers] = await Promise.all([
-    withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
-      getTopReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 10)
-    ),
-    withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
-      getTopUsersFromNostr(subscribe, PLATFORM_STATS_RELAYS, 10)
-    ),
-  ]);
+  const [topRepos, topUsers, recentRepos, recentActivities] =
+    await Promise.all([
+      withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
+        getTopReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 10)
+      ),
+      withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
+        getTopUsersFromNostr(subscribe, PLATFORM_STATS_RELAYS, 10)
+      ),
+      withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
+        getRecentReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 12)
+      ),
+      withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
+        getRecentPlatformActivitiesFromNostr(
+          subscribe,
+          PLATFORM_STATS_RELAYS,
+          12
+        )
+      ),
+    ]);
   cache = {
     at: Date.now(),
     topRepos,
     topUsers,
+    recentRepos,
+    recentActivities,
   };
 }
 
@@ -84,6 +105,8 @@ export default async function handler(
     return res.status(200).json({
       topRepos: cache.topRepos,
       topUsers: cache.topUsers,
+      recentRepos: cache.recentRepos,
+      recentActivities: cache.recentActivities,
       cached: true,
       relayCount: PLATFORM_STATS_RELAYS.length,
     });
@@ -102,6 +125,8 @@ export default async function handler(
     return res.status(200).json({
       topRepos: cache.topRepos,
       topUsers: cache.topUsers,
+      recentRepos: cache.recentRepos,
+      recentActivities: cache.recentActivities,
       cached: false,
       relayCount: PLATFORM_STATS_RELAYS.length,
     });
@@ -112,6 +137,8 @@ export default async function handler(
       return res.status(200).json({
         topRepos: cache.topRepos,
         topUsers: cache.topUsers,
+        recentRepos: cache.recentRepos,
+        recentActivities: cache.recentActivities,
         cached: true,
         relayCount: PLATFORM_STATS_RELAYS.length,
       });

@@ -1,0 +1,207 @@
+digraph G {
+  graph [splines=true, bgcolor="white", fontname="Inter", rankdir=TB];
+  node [shape=box, style="rounded", fontname="Inter", fontsize=10];
+  edge [fontname="Inter", fontsize=9];
+
+  // Original gitnostr components (grey)
+  subgraph cluster_original {
+    label="Original gitnostr (upstream)";
+    color="#b0bec5";
+    style="rounded";
+    
+    git [label="git", shape=box, style="filled", fillcolor="#e0e0e0"];
+    bridge_core [label="git-nostr-bridge\n(core)", shape=box, style="filled", fillcolor="#e0e0e0"];
+    ssh_core [label="git-nostr-ssh", shape=box, style="filled", fillcolor="#e0e0e0"];
+    db_core [label="git-nostr-db\n(SQLite)", shape=box, style="filled", fillcolor="#e0e0e0"];
+    cli_core [label="git-nostr-cli", shape=box, style="filled", fillcolor="#e0e0e0"];
+    relay_core [label="Nostr Relays", shape=box, style="filled", fillcolor="#e0e0e0"];
+    
+    bridge_core -> db_core [style=dashed];
+    ssh_core -> db_core [style=dashed];
+    ssh_core -> git [style=dashed];
+    bridge_core -> relay_core [label="Subscribe"];
+    cli_core -> relay_core [label="Publish"];
+  }
+
+  // gittr.space Bridge Enhancements (blue)
+  subgraph cluster_bridge_enhancements {
+    label="🆕 Bridge Enhancements";
+    color="#0288d1";
+    style="rounded";
+    
+    http_api [label="HTTP API\n(/api/event)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+    direct_chan [label="directEvents queue\n(merge HTTP + relays)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+    dedupe [label="Deduplication cache\n(seen events)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+    watchall [label="Watch-all mode\n(public mirrors)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+    logging [label="Structured logging", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+    
+    http_api -> direct_chan;
+    relay_core -> direct_chan;
+    direct_chan -> dedupe;
+    dedupe -> bridge_core;
+  }
+
+  // gittr.space Frontend/UI (purple)
+  subgraph cluster_frontend {
+    label="🆕 gittr.space Frontend";
+    color="#8b5cf6";
+    style="rounded";
+    
+    nextjs [label="Next.js App\n(React + TypeScript)", shape=box, style="filled", fillcolor="#e1bee7", color="#8b5cf6"];
+    
+    subgraph cluster_ui_features {
+      label="UI Features";
+      color="#8b5cf6";
+      style="rounded";
+      
+      themes [label="Multiple Themes\n(Classic, Cypherpunk, etc.)", shape=box, style="filled", fillcolor="#e1bee7", color="#8b5cf6"];
+      explore [label="Explore Page\n(repos + users)", shape=box, style="filled", fillcolor="#e1bee7", color="#8b5cf6"];
+      profiles [label="User Profiles\n(activity timelines)", shape=box, style="filled", fillcolor="#e1bee7", color="#8b5cf6"];
+      fuzzy [label="Fuzzy File Finder\n(Cmd/Ctrl+P)", shape=box, style="filled", fillcolor="#e1bee7", color="#8b5cf6"];
+      search [label="Repo-wide Code Search", shape=box, style="filled", fillcolor="#e1bee7", color="#8b5cf6"];
+    }
+    
+    nextjs -> themes;
+    nextjs -> explore;
+    nextjs -> profiles;
+    nextjs -> fuzzy;
+    nextjs -> search;
+  }
+
+  // File Fetching System (green)
+  subgraph cluster_file_fetching {
+    label="🆕 Multi-Source File Fetching";
+    color="#4caf50";
+    style="rounded";
+    
+    multi_source [label="Parallel Multi-Source Fetch", shape=box, style="filled", fillcolor="#c8e6c9", color="#4caf50"];
+    prioritization [label="Source Prioritization\n(GitHub/GitLab first)", shape=box, style="filled", fillcolor="#c8e6c9", color="#4caf50"];
+    bridge_cache [label="Bridge API Cache\n(deduplication)", shape=box, style="filled", fillcolor="#c8e6c9", color="#4caf50"];
+    clone_cache [label="Clone Trigger Cache", shape=box, style="filled", fillcolor="#c8e6c9", color="#4caf50"];
+    url_norm [label="SSH URL Normalization", shape=box, style="filled", fillcolor="#c8e6c9", color="#4caf50"];
+    image_handler [label="README Image Handler\n(relative path resolution)", shape=box, style="filled", fillcolor="#c8e6c9", color="#4caf50"];
+    
+    multi_source -> prioritization;
+    multi_source -> bridge_cache;
+    multi_source -> clone_cache;
+    multi_source -> url_norm;
+    nextjs -> image_handler;
+  }
+
+  // GRASP Protocol (orange)
+  subgraph cluster_grasp {
+    label="🆕 GRASP Protocol Support";
+    color="#ff9800";
+    style="rounded";
+    
+    grasp_detection [label="GRASP Server Detection", shape=box, style="filled", fillcolor="#ffe0b2", color="#ff9800"];
+    clone_tags [label="Clone/Relays Tags\n(NIP-34)", shape=box, style="filled", fillcolor="#ffe0b2", color="#ff9800"];
+    proactive_sync [label="Client-Side Proactive Sync", shape=box, style="filled", fillcolor="#ffe0b2", color="#ff9800"];
+    blossom [label="NIP-96 Blossom Support\n(Git pack files)", shape=box, style="filled", fillcolor="#ffe0b2", color="#ff9800"];
+    
+    nextjs -> grasp_detection;
+    nextjs -> clone_tags;
+    nextjs -> proactive_sync;
+    nextjs -> blossom;
+  }
+
+  // Collaboration Features (red)
+  subgraph cluster_collaboration {
+    label="🆕 Collaboration Features";
+    color="#f44336";
+    style="rounded";
+    
+    issues [label="Issues\n(with bounties)", shape=box, style="filled", fillcolor="#ffcdd2", color="#f44336"];
+    prs [label="Pull Requests\n(review system)", shape=box, style="filled", fillcolor="#ffcdd2", color="#f44336"];
+    projects [label="Projects\n(Kanban + Roadmap)", shape=box, style="filled", fillcolor="#ffcdd2", color="#f44336"];
+    discussions [label="Discussions", shape=box, style="filled", fillcolor="#ffcdd2", color="#f44336"];
+    contributors [label="Contributor Tracking\n(GitHub profile linking)", shape=box, style="filled", fillcolor="#ffcdd2", color="#f44336"];
+    
+    nextjs -> issues;
+    nextjs -> prs;
+    nextjs -> projects;
+    nextjs -> discussions;
+    nextjs -> contributors;
+  }
+
+  // Payment Integration (yellow)
+  subgraph cluster_payments {
+    label="🆕 Bitcoin/Lightning Integration";
+    color="#ffc107";
+    style="rounded";
+    
+    zaps [label="Zap Repositories\n(split to contributors)", shape=box, style="filled", fillcolor="#fff9c4", color="#ffc107"];
+    bounties [label="Issue Bounties\n(LNbits funded)", shape=box, style="filled", fillcolor="#fff9c4", color="#ffc107"];
+    zap_dist [label="Accumulated Zap Distribution", shape=box, style="filled", fillcolor="#fff9c4", color="#ffc107"];
+    payment_config [label="Payment Settings\n(LNURL, LUD-16, NWC, LNbits)", shape=box, style="filled", fillcolor="#fff9c4", color="#ffc107"];
+    bounty_hunt [label="Bounty Hunt Page", shape=box, style="filled", fillcolor="#fff9c4", color="#ffc107"];
+    
+    nextjs -> zaps;
+    nextjs -> bounties;
+    nextjs -> zap_dist;
+    nextjs -> payment_config;
+    nextjs -> bounty_hunt;
+  }
+
+  // Notifications (teal)
+  subgraph cluster_notifications {
+    label="🆕 Notification System";
+    color="#009688";
+    style="rounded";
+    
+    nostr_dm [label="Nostr DM Notifications", shape=box, style="filled", fillcolor="#b2dfdb", color="#009688"];
+    telegram_dm [label="Telegram DM", shape=box, style="filled", fillcolor="#b2dfdb", color="#009688"];
+    telegram_chan [label="Telegram Channel\nAnnouncements", shape=box, style="filled", fillcolor="#b2dfdb", color="#009688"];
+    
+    nextjs -> nostr_dm;
+    nextjs -> telegram_dm;
+    nextjs -> telegram_chan;
+  }
+
+  // NIP Extensions (indigo)
+  subgraph cluster_nips {
+    label="🆕 NIP Extensions";
+    color="#3f51b5";
+    style="rounded";
+    
+    nip25 [label="NIP-25 Reactions\n(Stars)", shape=box, style="filled", fillcolor="#c5cae9", color="#3f51b5"];
+    nip51 [label="NIP-51 Lists\n(Following)", shape=box, style="filled", fillcolor="#c5cae9", color="#3f51b5"];
+    nip46 [label="NIP-46 Remote Signer\n(QR scanning)", shape=box, style="filled", fillcolor="#c5cae9", color="#3f51b5"];
+    nip57 [label="NIP-57 Zaps\n(UI routing)", shape=box, style="filled", fillcolor="#c5cae9", color="#3f51b5"];
+    nip96 [label="NIP-96 Blossom\n(Git pack storage)", shape=box, style="filled", fillcolor="#c5cae9", color="#3f51b5"];
+    
+    nextjs -> nip25;
+    nextjs -> nip51;
+    nextjs -> nip46;
+    nextjs -> nip57;
+    nextjs -> nip96;
+  }
+
+  // Storage & Data (brown)
+  subgraph cluster_storage {
+    label="🆕 Storage Enhancements";
+    color="#795548";
+    style="rounded";
+    
+    localstorage [label="Browser localStorage\n(all user data)", shape=box, style="filled", fillcolor="#d7ccc8", color="#795548"];
+    metadata_cache [label="Contributor Metadata Cache\n(736+ entries)", shape=box, style="filled", fillcolor="#d7ccc8", color="#795548"];
+    repo_cache [label="Repository Cache\n(optimized storage)", shape=box, style="filled", fillcolor="#d7ccc8", color="#795548"];
+    
+    nextjs -> localstorage;
+    nextjs -> metadata_cache;
+    nextjs -> repo_cache;
+  }
+
+  // Connections
+  nextjs -> http_api [label="POST events", style=dashed];
+  nextjs -> multi_source [label="File fetching"];
+  nextjs -> bridge_core [label="API calls", style=dashed];
+  nextjs -> relay_core [label="Nostr subscriptions"];
+  
+  issues -> bounties [style=dashed];
+  zaps -> zap_dist [style=dashed];
+  
+  // Legend
+  legend [shape=note, label="Color Legend:\n🔵 Blue = Bridge enhancements\n🟣 Purple = Frontend/UI features\n🟢 Green = File fetching system\n🟠 Orange = GRASP protocol\n🔴 Red = Collaboration\n🟡 Yellow = Payments\n🔵 Teal = Notifications\n🔵 Indigo = NIP extensions\n🟤 Brown = Storage\n\nGrey = Original gitnostr components", fontsize=9, style="filled", fillcolor="#f5f5f5"];
+}
+

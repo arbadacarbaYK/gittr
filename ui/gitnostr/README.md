@@ -1,14 +1,16 @@
-# gitnostr by @spearson78 (gittr fork)
+# gitnostr
 
-A proof of concept integration of git and nostr providing
+**Git bridge to Nostr for [gittr](https://gittr.space).** Same codebase as [`arbadacarbaYK/gitnostr`](https://github.com/arbadacarbaYK/gitnostr).
+
+**When to use it / use cases:** [README → When gitnostr is the better fit](https://github.com/arbadacarbaYK/gitnostr#when-gitnostr-is-the-better-fit) (forge backend, client integration, own-server backup, normal `git@` workflow, public mirror, push paywall). **vs ngit:** [same section + table](https://github.com/arbadacarbaYK/gitnostr#gitnostr-vs-ngit).
+
+Integration of git and Nostr providing
 
 - repository management
 - ssh-key management
 - repository permission management
 
 This will hopefully form part of a solution for creating a decentralized version of the github/gitlab experience.
-
-**Scope:** This tree is the **gittr**-maintained fork of [spearson78/gitnostr](https://github.com/spearson78/gitnostr): **git-nostr-bridge**, **git-nostr-ssh**, and SQLite caching, including NIP-34 repo state on the bridge and push paywall grants in SQLite. It lives inside the gittr monorepo at `ui/gitnostr/` and is mirrored for standalone bridge installs.
 
 ## Documentation
 
@@ -68,7 +70,7 @@ git-nostr-bridge will then react to these events and update the DB and create an
 **Go version 1.20+ is required**
 **It is recommended to use a local private relay for testing. Testing was performed using https://github.com/scsibug/nostr-rs-relay**
 
-**gittr.space:** To install **only** the bridge (outside the gittr monorepo), clone **`https://github.com/arbadacarbaYK/gitnostr`** — this fork has the paywall, NIP-34 state, and other changes gittr expects. The [original repo](https://github.com/spearson78/gitnostr) is kept as upstream attribution; **do not use it for gittr production builds** or you will be missing those features. Inside gittr, build from **`gittr/ui/gitnostr/`** (this directory).
+**gittr.space:** Bridge-only install: clone **`https://github.com/arbadacarbaYK/gitnostr`**. Monorepo build: use **`ui/gitnostr/`** (this directory).
 
 ## git-nostr-bridge
 
@@ -83,7 +85,7 @@ sudo useradd --create-home git-nostr
 sudo su - git-nostr
 ```
 
-Clone the **gittr-maintained** gitnostr fork and build the bridge components
+Clone **gitnostr** and build the bridge components
 
 ```bash
 git clone https://github.com/arbadacarbaYK/gitnostr.git
@@ -140,7 +142,7 @@ Your git-nostr-bridge is now ready for use
 
 **Watch out for a conflict with the gn command from https://gn.googlesource.com **
 
-Clone the **gittr-maintained** gitnostr fork and build the cli components
+Clone **gitnostr** and build the cli components
 
 ```bash
 git clone https://github.com/arbadacarbaYK/gitnostr.git

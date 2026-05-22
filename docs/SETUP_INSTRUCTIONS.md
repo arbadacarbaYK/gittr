@@ -2,6 +2,8 @@
 
 Install gittr (Next.js UI + API) and **git-nostr-bridge** on a Linux server. Paths like `/opt/gittr` and hostnames like `gittr.space` are examples—use your own.
 
+**Deploy path name:** Some servers still use `/opt/ngit` as the checkout directory from early layout. That tree is **this gittr repo** (Next.js under `ui/`, bridge under `ui/gitnostr/`)—not the separate **[ngit](https://ngit.dev)** project. Scripts or docs that say `cd /opt/ngit` mean your gittr install path.
+
 **Do not commit** real IPs, SSH keys, OAuth secrets, or LNbits keys. Use `ui/.env.example` and private deploy scripts.
 
 **Other docs (read when needed, not duplicated here):** full index [docs/README.md](README.md).

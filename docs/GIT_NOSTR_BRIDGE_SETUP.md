@@ -3,7 +3,7 @@
 Watches Nostr for repo + SSH key events; maintains bare repos and `authorized_keys`. Required for `git clone` / `git push` / `git pull` against your host.
 
 **Full stack install:** [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md) (UI + nginx + bridge).  
-**Source:** `ui/gitnostr/` in this repo, or fork [arbadacarbaYK/gitnostr](https://github.com/arbadacarbaYK/gitnostr). Do not use upstream [spearson78/gitnostr](https://github.com/spearson78/gitnostr) for gittr production — missing paywall, NIP-34 state, and related changes.
+**Source:** [`ui/gitnostr/`](../../ui/gitnostr/) in this repo, or clone [arbadacarbaYK/gitnostr](https://github.com/arbadacarbaYK/gitnostr) — the same gitnostr project gittr runs in production.
 
 ## Security
 

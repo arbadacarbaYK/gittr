@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { BoltSnow } from "@/components/ui/bolt-snow";
@@ -12,7 +19,7 @@ import {
   isRepoFromBlocklistedOwner,
 } from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
+import { KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
@@ -20,6 +27,8 @@ import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { loadStoredRepos } from "@/lib/repos/storage";
 import {
+  type PlatformRecentActivity,
+  type PlatformRecentRepo,
   type RepoStats,
   type UserStats,
   getLatestBounties,
@@ -225,6 +234,12 @@ export default function HomePage() {
     offlineCount: number;
   } | null>(null);
   const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
+  const [platformRecentRepos, setPlatformRecentRepos] = useState<
+    PlatformRecentRepo[]
+  >([]);
+  const [platformRecentActivities, setPlatformRecentActivities] = useState<
+    PlatformRecentActivity[]
+  >([]);
   const [openPRsAndIssues, setOpenPRsAndIssues] = useState<{
     openPRs: number;
     openIssues: number;
@@ -237,7 +252,12 @@ export default function HomePage() {
   const leaderboardFetchGen = useRef(0);
 
   const applyLeaderboardPayload = useCallback(
-    (data: { topRepos?: RepoStats[]; topUsers?: UserStats[] }) => {
+    (data: {
+      topRepos?: RepoStats[];
+      topUsers?: UserStats[];
+      recentRepos?: PlatformRecentRepo[];
+      recentActivities?: PlatformRecentActivity[];
+    }) => {
       if (Array.isArray(data.topRepos)) {
         const sortedRepos = [...data.topRepos].sort(
           (a, b) => (b.activityCount || 0) - (a.activityCount || 0)
@@ -270,6 +290,31 @@ export default function HomePage() {
           }
         }
       }
+      if (Array.isArray(data.recentRepos) && data.recentRepos.length > 0) {
+        setPlatformRecentRepos(data.recentRepos);
+        try {
+          sessionStorage.setItem(
+            "gittr_cached_recentRepos",
+            JSON.stringify(data.recentRepos)
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      if (
+        Array.isArray(data.recentActivities) &&
+        data.recentActivities.length > 0
+      ) {
+        setPlatformRecentActivities(data.recentActivities);
+        try {
+          sessionStorage.setItem(
+            "gittr_cached_recentActivities",
+            JSON.stringify(data.recentActivities)
+          );
+        } catch {
+          /* ignore */
+        }
+      }
       setLeaderboardReady(true);
     },
     []
@@ -281,6 +326,10 @@ export default function HomePage() {
     try {
       const cachedRepos = sessionStorage.getItem("gittr_cached_topRepos");
       const cachedUsers = sessionStorage.getItem("gittr_cached_topUsers");
+      const cachedRecentRepos = sessionStorage.getItem("gittr_cached_recentRepos");
+      const cachedRecentActivities = sessionStorage.getItem(
+        "gittr_cached_recentActivities"
+      );
       if (cachedRepos) {
         const parsed = JSON.parse(cachedRepos) as RepoStats[];
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -293,6 +342,20 @@ export default function HomePage() {
         if (Array.isArray(parsed) && parsed.length > 0) {
           setTopUsers(parsed);
           setLeaderboardReady(true);
+        }
+      }
+      if (cachedRecentRepos) {
+        const parsed = JSON.parse(cachedRecentRepos) as PlatformRecentRepo[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setPlatformRecentRepos(parsed);
+        }
+      }
+      if (cachedRecentActivities) {
+        const parsed = JSON.parse(
+          cachedRecentActivities
+        ) as PlatformRecentActivity[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setPlatformRecentActivities(parsed);
         }
       }
     } catch {
@@ -310,6 +373,8 @@ export default function HomePage() {
         const data = (await res.json()) as {
           topRepos?: RepoStats[];
           topUsers?: UserStats[];
+          recentRepos?: PlatformRecentRepo[];
+          recentActivities?: PlatformRecentActivity[];
         };
         if (gen !== leaderboardFetchGen.current) return;
         applyLeaderboardPayload(data);
@@ -446,7 +511,7 @@ export default function HomePage() {
       window.removeEventListener("ngit:repo-created", handleRepoUpdate);
       window.removeEventListener("ngit:repo-imported", handleRepoUpdate);
     };
-  }, [loadRepos]);
+  }, [loadRepos, syncing]);
 
   // Sync from Nostr relays - ensures homepage shows repos even when not signed in
   // This makes the homepage consistent across browsers (unlike localStorage which is browser-specific)
@@ -485,10 +550,12 @@ export default function HomePage() {
       const eoseReceived = new Set<string>();
 
       const unsub = subscribe(
-        [{ kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34], limit: 5000 }],
+        [{ kinds: [KIND_REPOSITORY_NIP34], limit: 5000 }],
         allRelays,
         (event: any, isAfterEose: boolean, relayURL?: string) => {
           try {
+            if (event.kind !== KIND_REPOSITORY_NIP34) return;
+
             // Collect NIP-34 events for later processing (to pick latest)
             if (event.kind === KIND_REPOSITORY_NIP34) {
               if (isPublisherBlocklisted(event.pubkey)) return;
@@ -505,28 +572,11 @@ export default function HomePage() {
               }
             }
 
-            // Process events immediately (for responsive UI)
-            if (
-              event.kind === KIND_REPOSITORY ||
-              event.kind === KIND_REPOSITORY_NIP34
-            ) {
+            // Process NIP-34 announcements immediately (kind 51 content is often encrypted)
+            if (event.kind === KIND_REPOSITORY_NIP34) {
               if (isPublisherBlocklisted(event.pubkey)) return;
               try {
-                let repoData;
-                if (event.kind === KIND_REPOSITORY_NIP34) {
-                  repoData = parseNIP34Repository(event);
-                } else {
-                  try {
-                    repoData = JSON.parse(event.content);
-                  } catch (parseError) {
-                    console.warn(
-                      `[Home] Failed to parse repo event content as JSON:`,
-                      parseError,
-                      `Content: ${event.content?.substring(0, 50)}...`
-                    );
-                    return; // Skip this event if content is not valid JSON
-                  }
-                }
+                const repoData = parseNIP34Repository(event);
 
                 // Ensure repoData is defined before proceeding
                 if (!repoData) {
@@ -1004,6 +1054,20 @@ export default function HomePage() {
     return filtered.slice(0, 12);
   }, [repos]);
 
+  const displayRecentActivity = useMemo((): Activity[] => {
+    if (recentActivity.length > 0) return recentActivity;
+    return platformRecentActivities.map((a) => ({
+      id: a.id,
+      type: a.type,
+      timestamp: a.timestamp,
+      user: a.user,
+      entity: a.entity,
+      repo: a.repo,
+      repoName: a.repoName,
+      metadata: a.metadata,
+    }));
+  }, [recentActivity, platformRecentActivities]);
+
   // Get metadata for user avatars (stats)
   const userPubkeys = useMemo(
     () =>
@@ -1015,40 +1079,11 @@ export default function HomePage() {
     [topDevs, topBountyTakers, topUsers]
   );
 
-  // Get owner pubkeys from recent repos for metadata fetching
-  // CRITICAL: Normalize to lowercase to ensure consistent metadata lookup
-  const recentRepoOwnerPubkeys = useMemo(() => {
-    return recent
-      .map((r) => {
-        const ownerPubkey = getRepoOwnerPubkey(r as any, r.entity);
-        if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-          // CRITICAL: Normalize to lowercase for consistent metadata lookup
-          return ownerPubkey.toLowerCase();
-        }
-        return null;
-      })
-      .filter((p): p is string => p !== null);
-  }, [recent]);
-
   // Combine all pubkeys for metadata fetching
   // CRITICAL: Normalize all pubkeys to lowercase
   const allPubkeys = useMemo(() => {
-    const normalized = [
-      ...userPubkeys.map((p) => p.toLowerCase()),
-      ...recentRepoOwnerPubkeys,
-    ];
-    // Remove duplicates
-    const result = Array.from(new Set(normalized));
-    console.log("🔑 [Home] allPubkeys computed:", {
-      userPubkeys: userPubkeys.length,
-      recentRepoOwnerPubkeys: recentRepoOwnerPubkeys.length,
-      total: result.length,
-      sample: result.slice(0, 3).map((p) => p.slice(0, 16) + "..."),
-    });
-    return result;
-  }, [userPubkeys, recentRepoOwnerPubkeys]);
-
-  const userMetadata = useContributorMetadata(allPubkeys);
+    return Array.from(new Set(userPubkeys.map((p) => p.toLowerCase())));
+  }, [userPubkeys]);
 
   const canCurrentUserSeeRepo = useCallback(
     (repoLike: any): boolean => {
@@ -1066,6 +1101,56 @@ export default function HomePage() {
     },
     [pubkey]
   );
+
+  const isValidRecentRepoCard = useCallback(
+    (r: Repo) => {
+      if (r.entity === "gittr.space") return false;
+      if (r.entity && !r.entity.startsWith("npub")) return false;
+      if (r.deleted || r.archived) return false;
+      return canCurrentUserSeeRepo(r);
+    },
+    [canCurrentUserSeeRepo]
+  );
+
+  const displayRecentRepos = useMemo(() => {
+    const local = recent.filter(isValidRecentRepoCard);
+    if (local.length > 0) return local.slice(0, 12);
+    return platformRecentRepos.slice(0, 12).map(
+      (p): Repo => ({
+        slug: `${p.entity}/${p.repo}`,
+        entity: p.entity,
+        repo: p.repo,
+        name: p.repoName,
+        createdAt: p.lastActivity,
+        ownerPubkey: p.ownerPubkey,
+        description: p.description,
+        syncedFromNostr: true,
+      })
+    );
+  }, [recent, platformRecentRepos, isValidRecentRepoCard]);
+
+  const recentRepoOwnerPubkeys = useMemo(() => {
+    return displayRecentRepos
+      .map((r) => {
+        const ownerPubkey = getRepoOwnerPubkey(r as any, r.entity);
+        if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+          return ownerPubkey.toLowerCase();
+        }
+        return null;
+      })
+      .filter((p): p is string => p !== null);
+  }, [displayRecentRepos]);
+
+  const allPubkeysWithRecent = useMemo(() => {
+    return Array.from(
+      new Set([
+        ...allPubkeys,
+        ...recentRepoOwnerPubkeys,
+      ])
+    );
+  }, [allPubkeys, recentRepoOwnerPubkeys]);
+
+  const userMetadata = useContributorMetadata(allPubkeysWithRecent);
 
   // CRITICAL: useContributorMetadata already loads from cache, but we need to ensure
   // it's available immediately. The hook loads from "nostr_metadata_cache" which is
@@ -1927,14 +2012,14 @@ export default function HomePage() {
       </div>
 
       {/* Recent Activity - Full Width - Hidden on mobile */}
-      {statsLoaded && (
+      {(statsLoaded || displayRecentActivity.length > 0) && (
         <div className="hidden md:block mb-6 border border-[#383B42] rounded p-4">
           <h3 className="font-semibold mb-4 text-purple-400">
             ⚡ Recent Activity
           </h3>
-          {recentActivity.length > 0 ? (
+          {displayRecentActivity.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
-              {recentActivity.slice(0, 12).map((activity) => {
+              {displayRecentActivity.slice(0, 12).map((activity) => {
                 const getActivityIcon = () => {
                   switch (activity.type) {
                     case "pr_merged":
@@ -2041,9 +2126,9 @@ export default function HomePage() {
             </div>
           ) : (
             <div className="text-gray-400">
-              {statsLoaded
-                ? "No recent activity yet."
-                : "Loading recent activity..."}
+              {!statsLoaded && platformRecentActivities.length === 0
+                ? "Loading recent activity..."
+                : "No recent activity yet."}
             </div>
           )}
         </div>
@@ -2060,45 +2145,15 @@ export default function HomePage() {
               See all repos
             </Link>
           </div>
-          {recent.length === 0 ? (
+          {displayRecentRepos.length === 0 ? (
             <div className="text-gray-400">
-              {statsLoaded
-                ? "No repositories yet. Create or import one to get started."
-                : "Loading repositories..."}
+              {syncing && platformRecentRepos.length === 0
+                ? "Loading repositories..."
+                : "No repositories yet. Create or import one to get started."}
             </div>
           ) : (
             <ul className="divide-y divide-[#383B42]">
-              {recent
-                .filter((r: any) => {
-                  // CRITICAL: Exclude repos with "gittr.space" entity (corrupted repos)
-                  if (r.entity === "gittr.space") {
-                    console.log(
-                      "❌ [Home] Filtering out corrupted repo with entity 'gittr.space':",
-                      {
-                        repo: r.slug || r.repo,
-                        ownerPubkey: r.ownerPubkey?.slice(0, 16),
-                      }
-                    );
-                    return false;
-                  }
-
-                  // CRITICAL: Entity must be npub format (starts with "npub")
-                  if (r.entity && !r.entity.startsWith("npub")) {
-                    console.log(
-                      "❌ [Home] Filtering out repo with invalid entity format:",
-                      {
-                        repo: r.slug || r.repo,
-                        entity: r.entity,
-                      }
-                    );
-                    return false;
-                  }
-
-                  // Filter out deleted repos
-                  if (r.deleted || r.archived) return false;
-                  return canCurrentUserSeeRepo(r);
-                })
-                .map((r, index) => {
+              {displayRecentRepos.map((r, index) => {
                   const entity = r.entity;
                   const repo = r.repo || r.slug;
                   if (!entity || entity === "user") return null;

@@ -19,10 +19,50 @@ import {
   KIND_STATUS_APPLIED,
   KIND_STATUS_CLOSED,
 } from "./nostr/events";
+import { nip19 } from "nostr-tools";
+
 import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
 } from "./utils/entity-resolver";
+
+/** Home "Recent repositories" card — npub entity for links */
+export type PlatformRecentRepo = {
+  entity: string;
+  repo: string;
+  repoName: string;
+  ownerPubkey: string;
+  lastActivity: number;
+  description?: string;
+};
+
+/** Home "Recent Activity" when browser has no local gittr_activities */
+export type PlatformRecentActivity = {
+  id: string;
+  type: ActivityType;
+  timestamp: number;
+  user: string;
+  entity: string;
+  repo: string;
+  repoName: string;
+  metadata?: Activity["metadata"];
+};
+
+function hexPubkeyToNpub(pubkey: string): string {
+  const hex = (pubkey || "").trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(hex)) return pubkey;
+  try {
+    return nip19.npubEncode(hex);
+  } catch {
+    return hex.slice(0, 8);
+  }
+}
+
+function repoIdToNpubEntity(repoId: string, fallbackHex: string): string {
+  const parts = repoId.split("/");
+  const hex = parts[0] || fallbackHex;
+  return hexPubkeyToNpub(hex);
+}
 
 export interface RepoStats {
   repoId: string;
@@ -1566,4 +1606,185 @@ export async function getTopUsersFromNostr(
     `✅ [getTopUsersFromNostr] Returning ${users.length} users (map size ${userMap.size})`
   );
   return users;
+}
+
+/** Recent repos by last Nostr event time (not activity score). */
+export async function getRecentReposFromNostr(
+  subscribe: (
+    filters: any[],
+    relays: string[],
+    onEvent: (event: any, isAfterEose: boolean, relayURL?: string) => void,
+    maxDelayms?: number,
+    onEose?: (relayUrl: string, minCreatedAt: number) => void,
+    options?: any
+  ) => () => void,
+  relays: string[],
+  count = 12
+): Promise<PlatformRecentRepo[]> {
+  const repoMap = await countRepoActivitiesFromNostr(subscribe, relays, 999999);
+  return Array.from(repoMap.values())
+    .filter((r) => r.lastActivity > 0)
+    .sort((a, b) => b.lastActivity - a.lastActivity)
+    .slice(0, count)
+    .map((r) => {
+      const ownerHex = r.entity.toLowerCase();
+      return {
+        entity: repoIdToNpubEntity(r.repoId, ownerHex),
+        repo: r.repoName,
+        repoName: r.repoName,
+        ownerPubkey: ownerHex,
+        lastActivity: r.lastActivity,
+      };
+    });
+}
+
+function parseATagRepo(
+  aValue: string
+): { ownerPubkey: string; repoName: string } | null {
+  const match = aValue.match(/^30617:([0-9a-f]{64}):(.+)$/i);
+  if (!match?.[1] || !match[2]) return null;
+  return { ownerPubkey: match[1].toLowerCase(), repoName: match[2] };
+}
+
+/** Platform-wide timeline for logged-out / fresh browsers. */
+export function getRecentPlatformActivitiesFromNostr(
+  subscribe: (
+    filters: any[],
+    relays: string[],
+    onEvent: (event: any, isAfterEose: boolean, relayURL?: string) => void,
+    maxDelayms?: number,
+    onEose?: (relayUrl: string, minCreatedAt: number) => void,
+    options?: any
+  ) => () => void,
+  relays: string[],
+  count = 12
+): Promise<PlatformRecentActivity[]> {
+  const activeRelays = relays.filter(Boolean);
+  const items: PlatformRecentActivity[] = [];
+  const seen = new Set<string>();
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    let eoseCount = 0;
+    const expectedEose = activeRelays.length;
+
+    const push = (row: PlatformRecentActivity) => {
+      if (seen.has(row.id)) return;
+      seen.add(row.id);
+      items.push(row);
+    };
+
+    const filters = [
+      { kinds: [KIND_REPOSITORY_STATE], limit: 1500 },
+      { kinds: [KIND_PULL_REQUEST], limit: 800 },
+      { kinds: [KIND_ISSUE], limit: 800 },
+      { kinds: [KIND_STATUS_APPLIED], "#k": ["1618"], limit: 400 },
+      { kinds: [KIND_STATUS_CLOSED], "#k": ["1621"], limit: 400 },
+    ];
+
+    const unsub = subscribe(
+      filters,
+      activeRelays,
+      (event) => {
+        if (isPublisherBlocklisted(event.pubkey)) return;
+        const ts = (event.created_at || 0) * 1000;
+        const user = event.pubkey?.toLowerCase?.() || "";
+
+        if (event.kind === KIND_REPOSITORY_STATE) {
+          const dTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "d"
+          );
+          const repoName = dTag?.[1];
+          if (!repoName || !user) return;
+          const entity = hexPubkeyToNpub(user);
+          push({
+            id: event.id,
+            type: "commit_created",
+            timestamp: ts,
+            user,
+            entity,
+            repo: repoName,
+            repoName,
+            metadata: { commitId: event.id },
+          });
+          return;
+        }
+
+        const aTag = event.tags?.find(
+          (t: any) => Array.isArray(t) && t[0] === "a"
+        );
+        const parsed = aTag?.[1] ? parseATagRepo(String(aTag[1])) : null;
+        if (!parsed) return;
+        const entity = hexPubkeyToNpub(parsed.ownerPubkey);
+
+        if (event.kind === KIND_PULL_REQUEST) {
+          push({
+            id: event.id,
+            type: "pr_created",
+            timestamp: ts,
+            user,
+            entity,
+            repo: parsed.repoName,
+            repoName: parsed.repoName,
+          });
+        } else if (event.kind === KIND_ISSUE) {
+          push({
+            id: event.id,
+            type: "issue_created",
+            timestamp: ts,
+            user,
+            entity,
+            repo: parsed.repoName,
+            repoName: parsed.repoName,
+          });
+        } else if (event.kind === KIND_STATUS_APPLIED) {
+          push({
+            id: event.id,
+            type: "pr_merged",
+            timestamp: ts,
+            user,
+            entity,
+            repo: parsed.repoName,
+            repoName: parsed.repoName,
+          });
+        } else if (event.kind === KIND_STATUS_CLOSED) {
+          push({
+            id: event.id,
+            type: "issue_closed",
+            timestamp: ts,
+            user,
+            entity,
+            repo: parsed.repoName,
+            repoName: parsed.repoName,
+          });
+        }
+      },
+      undefined,
+      () => {
+        eoseCount++;
+        if (eoseCount >= expectedEose && !resolved) {
+          resolved = true;
+          setTimeout(() => {
+            unsub();
+            resolve(
+              items
+                .sort((a, b) => b.timestamp - a.timestamp)
+                .slice(0, count)
+            );
+          }, 200);
+        }
+      },
+      {}
+    );
+
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        unsub();
+        resolve(
+          items.sort((a, b) => b.timestamp - a.timestamp).slice(0, count)
+        );
+      }
+    }, 7000);
+  });
 }

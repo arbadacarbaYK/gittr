@@ -1,0 +1,63 @@
+digraph G {
+  graph [splines=true, bgcolor="white", fontname="Inter"];
+  node [shape=box, style="rounded", fontname="Inter", fontsize=11];
+  edge [fontname="Inter", fontsize=10];
+
+  subgraph cluster_gitserver {
+    label="Git Server";
+    color="#b0bec5";
+    style="rounded";
+
+    git [label="git", shape=box];
+    bridge [label="git-nostr-bridge", shape=box];
+    ssh [label="git-nostr-ssh", shape=box];
+    hook [label="git-nostr-hook\n(TODO)", shape=box];
+    db [label="git-nostr-db", shape=box];
+
+    git -> hook [style=dashed, label="Use"];
+    hook -> db [style=dashed, label="Use"];
+    git -> bridge [style=dashed, label="Use"];
+    bridge -> db [style=dashed, label="Use"];
+    ssh -> db [style=dashed, label="Use"];
+    ssh -> git [style=dashed, label="Use"];
+  }
+
+  subgraph cluster_user {
+    label="User";
+    color="#b0bec5";
+    style="rounded";
+    usergit [label="git"];
+    cli [label="git-nostr-cli"];
+    usergit -> cli [style=dashed, label="Use"];
+  }
+
+  subgraph cluster_relay {
+    label="Relay";
+    color="#b0bec5";
+    style="rounded";
+    relay [label="Relay"];
+  }
+
+  bridge -> relay [label="Subscribe / Publish"];
+  cli -> relay [label="Publish", dir=both];
+  cli -> ssh [style=dashed, label="Git over SSH"];
+
+  http_api [label="HTTP API\n(/api/event)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+  direct_chan [label="directEvents queue\n(HTTP events)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+  merged_chan [label="mergedEvents channel\n(HTTP + relay events)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+  dedupe [label="Seen cache +\ndeduplication\n(seenEventIDs)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+  watchall [label="Watch-all mode\n(empty gitRepoOwners)", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+  logging [label="Structured logging\n([Bridge], [Bridge API])", shape=box, style="filled", fillcolor="#d0f0ff", color="#0288d1"];
+
+  bridge -> http_api [style=dotted, dir=back, label="New\nentry point"];
+  http_api -> direct_chan [label="POST event"];
+  relay -> merged_chan [label="Relay events"];
+  direct_chan -> merged_chan [label="HTTP events"];
+  merged_chan -> dedupe [style=dashed];
+  dedupe -> bridge [label="merged stream"];
+  watchall -> bridge [style=dashed];
+  logging -> bridge [style=dashed];
+
+  legend [shape=note, label="Blue nodes = gittr additions\nGrey clusters = upstream blocks", fontsize=10];
+  legend -> http_api [style=invis];
+}
