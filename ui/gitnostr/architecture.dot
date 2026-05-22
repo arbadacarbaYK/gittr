@@ -1,0 +1,54 @@
+digraph G {
+  graph [splines=true, bgcolor="white", fontname="Inter", rankdir=LR];
+  node [shape=box, style="rounded", fontname="Inter", fontsize=11];
+  edge [fontname="Inter", fontsize=10];
+
+  subgraph cluster_relay {
+    label="Nostr relays";
+    color="#b0bec5";
+    style="rounded";
+    relay [label="wss:// relays\n(kinds 50, 51, 52,\n30617, 30618, …)"];
+  }
+
+  subgraph cluster_server {
+    label="Git server (your VPS)";
+    color="#b0bec5";
+    style="rounded";
+
+    bridge [label="git-nostr-bridge\nsubscribe + optional\nPOST /api/event"];
+    db [label="git-nostr-db\nSQLite ACL cache", shape=cylinder];
+    disk [label="repositoryDir\nbare .git repos", shape=folder];
+    sshd [label="sshd\nauthorized_keys"];
+    ssh [label="git-nostr-ssh\nACL + paywall"];
+    gitbin [label="git\nreceive-pack / upload-pack"];
+
+    bridge -> db;
+    bridge -> disk [label="mirror / init"];
+    bridge -> sshd [label="kind 52 keys"];
+    ssh -> db;
+    ssh -> gitbin;
+    sshd -> ssh [label="forced command"];
+    gitbin -> disk;
+  }
+
+  subgraph cluster_clients {
+    label="Clients";
+    color="#e3f2fd";
+    style="rounded";
+
+    gn [label="gn (git-nostr-cli)\npublish events", style="filled", fillcolor="#e3f2fd"];
+    web [label="gittr UI\nNIP-07 / nsec", style="filled", fillcolor="#e3f2fd"];
+    gitcli [label="git\nSSH or HTTPS", style="filled", fillcolor="#e3f2fd"];
+    nostrgit [label="git-remote-nostr\nnostr:// clone", style="filled", fillcolor="#e3f2fd"];
+  }
+
+  gn -> relay [label="publish"];
+  web -> relay [label="issues, PRs,\nrepo 30617"];
+  bridge -> relay [label="subscribe"];
+
+  web -> disk [label="gittr Next.js reads\nsame repositoryDir", style=dashed, color="#0288d1"];
+  bridge -> relay [label="POST /api/event", style=dashed, color="#0288d1", dir=both];
+
+  gitcli -> sshd [label="git@host:owner/repo.git"];
+  nostrgit -> disk [label="when repo mirrored\non bridge", style=dashed];
+}
