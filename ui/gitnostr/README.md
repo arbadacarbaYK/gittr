@@ -20,16 +20,12 @@ This will hopefully form part of a solution for creating a decentralized version
 
 I chose to build on top of the existing git tooling to allow the client side dev tools to remain largely unchanged for daily work (standard git commands work including push and pull)
 
-By storing the config on Nostr your repository configuration can be easily regenerated a new host if your current git provider decides to censor you.
-
-See a demo video here: https://www.youtube.com/watch?v=G-WzlC8XfW4
-
-There is much more to a decentralized github/gitlab experience than just a repository. It would also be advantageous to move pull requests and issues to the Nostr protocol. These should however be treated as separate projects that will hopefully be interopable with this project's approach to repository management.
+**Full stack:** this folder is the **git server** only. **[gittr](https://gittr.space)** adds **issues, PRs, commits, bounties, Pages, apps** on the same relays. Canonical README (diagram notes, no outdated “PRs are a separate project” text): **[github.com/arbadacarbaYK/gitnostr](https://github.com/arbadacarbaYK/gitnostr#how)**.
 
 
 # How
 
-![Architecture diagram](git-nostr.png)
+![Component diagram](git-nostr.png) — **ignore `git-nostr-hook`** (not shipped). Issues/PRs live in **gittr**, not in this diagram. See [upstream README → How](https://github.com/arbadacarbaYK/gitnostr#how).
 
 ## git-nostr-db
 
@@ -64,9 +60,7 @@ git-nostr-bridge will then react to these events and update the DB and create an
 
 # Setup Instructions
 
-**Currently this project is Linux only**
-**Go version 1.20+ is required**
-**It is recommended to use a local private relay for testing. Testing was performed using https://github.com/scsibug/nostr-rs-relay**
+**Linux**, **Go 1.20+**, **public wss relays** (same as gittr production)—not a required local nostr-rs-relay. Details: [gitnostr README → Setup](https://github.com/arbadacarbaYK/gitnostr#setup-instructions) · [gittr `GIT_NOSTR_BRIDGE_SETUP.md`](../../docs/GIT_NOSTR_BRIDGE_SETUP.md).
 
 **gittr.space:** Bridge-only install: clone **`https://github.com/arbadacarbaYK/gitnostr`**. Monorepo build: use **`ui/gitnostr/`** (this directory).
 
