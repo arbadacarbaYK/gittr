@@ -17,6 +17,16 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import {
+  SCHEMATA_NIP34,
+  SCHEMATA_NIP46,
+  SCHEMATA_NIP25,
+  SCHEMATA_NIP51,
+  SCHEMATA_NIP57,
+  SCHEMATA_NIP_C0,
+  SCHEMATA_REPO,
+} from "@/lib/nostr/schemata-links";
+
 export default function HelpPage() {
   const mermaidRef = useRef<HTMLDivElement>(null);
 
@@ -129,6 +139,27 @@ export default function HelpPage() {
           use Lightning bounties. Import from GitHub, GitLab, or Codeberg when
           you want a backup — not because gittr is a copy of another site.
         </p>
+        <p className="text-gray-400 max-w-3xl mt-3 text-sm">
+          <strong className="text-gray-300">NIPs &amp; event kinds:</strong>{" "}
+          <a
+            href={SCHEMATA_REPO}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-purple-400 hover:text-purple-300 underline"
+          >
+            Nostr schemata on gittr
+          </a>{" "}
+          (nostrability) — e.g.{" "}
+          <a
+            href={SCHEMATA_NIP34}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-purple-400 hover:text-purple-300 underline"
+          >
+            NIP-34
+          </a>{" "}
+          for git repos, issues, and PRs.
+        </p>
       </header>
 
       <section
@@ -210,6 +241,17 @@ export default function HelpPage() {
               >
                 Payments & Bounties
               </Link>
+            </li>
+            <li>
+              •{" "}
+              <a
+                href={SCHEMATA_REPO}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-purple-400 hover:text-purple-300"
+              >
+                Nostr schemata (NIPs)
+              </a>
             </li>
             <li>
               •{" "}
@@ -377,7 +419,16 @@ export default function HelpPage() {
                   >
                     Nowser
                   </a>{" "}
-                  to sign via NIP-46/NIP-07, or use a remote signer (NIP-46)
+                  to sign via{" "}
+                  <a
+                    href={SCHEMATA_NIP46}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-purple-400 hover:text-purple-300 underline"
+                  >
+                    NIP-46
+                  </a>
+                  /NIP-07, or use a remote signer (NIP-46)
                   with a hardware device.
                 </p>
                 <p className="text-sm text-gray-400 mt-2">
@@ -718,18 +769,33 @@ export default function HelpPage() {
               </h3>
               <ul className="list-disc list-inside space-y-1 ml-4 text-sm text-gray-300">
                 <li>
-                  <strong>Watch</strong> — saves to this browser and, with
-                  NIP-07, publishes your <strong>NIP-51 kind 10018</strong>{" "}
-                  followed-repos list. Each change sends <em>one</em> event
-                  whose <code className="text-gray-400">a</code> tags are the{" "}
-                  <em>full</em> current list (that is how the spec works; relays
-                  treat it as replaceable, not an endless log of micro-updates).
+                  <strong>Watch</strong> — publishes your{" "}
+                  <a
+                    href={SCHEMATA_NIP51}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-purple-400 hover:text-purple-300 underline"
+                  >
+                    NIP-51
+                  </a>{" "}
+                  kind <strong>10018</strong> followed-repos list (one
+                  replaceable event with the full <code className="text-gray-400">a</code>{" "}
+                  tag set each time).
                 </li>
                 <li>
-                  <strong>Star</strong> — bookmarks in this app for your{" "}
-                  <strong>Stars</strong> page (local list + counter). It is not
-                  the same as Watch and is not the same as a NIP-25 reaction
-                  unless we wire that separately.
+                  <strong>Star</strong> —{" "}
+                  <a
+                    href={SCHEMATA_NIP25}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-purple-400 hover:text-purple-300 underline"
+                  >
+                    NIP-25
+                  </a>{" "}
+                  kind <strong>7</strong> reaction on the repo&apos;s kind{" "}
+                  <strong>30617</strong> event (needs a published repo
+                  announcement on relays). Also listed on your{" "}
+                  <strong>Stars</strong> page. Not the same as Watch.
                 </li>
                 <li>
                   <strong>Zaps</strong> — shortcut to tip; totals combine Nostr
@@ -754,9 +820,27 @@ export default function HelpPage() {
                 File Sources & NIP-34 Architecture
               </h3>
               <p>
-                gittr.space follows the NIP-34 architecture for file storage.
-                Files are stored on git servers, not in Nostr events. The
-                repository's "About" sidebar shows where files come from:
+                gittr.space follows the{" "}
+                <a
+                  href={SCHEMATA_NIP34}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-400 hover:text-purple-300 underline"
+                >
+                  NIP-34
+                </a>{" "}
+                architecture for file storage. Files are stored on git servers
+                (via{" "}
+                <a
+                  href="https://gittr.space/arbadacarbaYK/gitnostr?file=docs/ARCHITECTURE.md&branch=main"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-400 hover:text-purple-300 underline"
+                >
+                  gitnostr bridge
+                </a>
+                ), not in Nostr events. The repository&apos;s &quot;About&quot;
+                sidebar shows where files come from:
               </p>
               <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
                 <li>
@@ -818,8 +902,17 @@ export default function HelpPage() {
                 </p>
                 <ul className="text-sm text-blue-100 space-y-1 list-disc list-inside ml-2 mb-3">
                   <li>
-                    <strong>NIP-34 Spec Compliance:</strong> Privacy is NOT
-                    encoded in NIP-34 event tags (per spec). The NIP-34 spec
+                    <strong>NIP-34 spec:</strong> Privacy is NOT encoded in
+                    NIP-34 event tags (see{" "}
+                    <a
+                      href={SCHEMATA_NIP34}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-purple-400 hover:text-purple-300 underline"
+                    >
+                      schemata NIP-34
+                    </a>
+                    ). The NIP-34 spec
                     does not include{" "}
                     <code className="bg-blue-900/50 px-1 rounded">
                       public-read
@@ -1149,10 +1242,15 @@ export default function HelpPage() {
                 from relays. <strong>Newest commit across all mirrors:</strong>{" "}
                 we currently show the first mirror that responds with a tree,
                 not a full compare of every server&apos;s HEAD — see{" "}
-                <code className="bg-gray-800 px-1 rounded">
-                  docs/FILE_FETCHING_INSIGHTS.md
-                </code>{" "}
-                in the repo.
+                <a
+                  href="https://gittr.space/arbadacarbaYK/gittr?file=docs/FILE_FETCHING_INSIGHTS.md&branch=main"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-400 hover:text-purple-300 underline"
+                >
+                  FILE_FETCHING_INSIGHTS.md
+                </a>
+                .
               </p>
             </div>
 
@@ -1323,7 +1421,7 @@ export default function HelpPage() {
               </p>
             </div>
 
-            <div className="mt-4 pt-4 border-t border-gray-700">
+            <div className="mt-4 pt-4 border-t border-gray-700 space-y-2">
               <p className="text-sm text-gray-400 mb-2">
                 For complete documentation on SSH and Git operations:
               </p>
@@ -1331,9 +1429,25 @@ export default function HelpPage() {
                 href="https://gittr.space/arbadacarbaYK/gittr?file=docs/SSH_GIT_GUIDE.md&branch=main"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-purple-400 hover:text-purple-300 underline text-sm"
+                className="text-purple-400 hover:text-purple-300 underline text-sm block"
               >
-                📖 SSH & Git Access Guide →
+                📖 SSH &amp; Git Access Guide (gittr) →
+              </a>
+              <a
+                href="https://gittr.space/arbadacarbaYK/gitnostr?file=SSH_GIT_GUIDE.md&branch=main"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-purple-400 hover:text-purple-300 underline text-sm block"
+              >
+                📖 gitnostr bridge SSH guide →
+              </a>
+              <a
+                href="https://gittr.space/arbadacarbaYK/gitnostr?file=docs/ARCHITECTURE.md&branch=main"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-purple-400 hover:text-purple-300 underline text-sm block"
+              >
+                📖 gitnostr infrastructure (no git hook — SSH + relays) →
               </a>
             </div>
           </div>
@@ -1478,12 +1592,12 @@ export default function HelpPage() {
                 Learn more about NIP-C0:
               </p>
               <a
-                href="https://github.com/nostr-protocol/nips/blob/master/C0.md"
+                href={SCHEMATA_NIP_C0}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-purple-400 hover:text-purple-300 underline text-sm"
               >
-                📖 NIP-C0 Specification →
+                📖 NIP-C0 on gittr schemata →
               </a>
             </div>
           </div>
@@ -1509,7 +1623,16 @@ export default function HelpPage() {
                 Zap a repository to tip the owner (and optionally split among
                 contributors). <strong>Owner only</strong> resolves where the
                 invoice is paid <em>to</em> using the priority below. When the
-                LNURL-pay endpoint supports NIP-57, gittr requests a real zap
+                LNURL-pay endpoint supports{" "}
+                <a
+                  href={SCHEMATA_NIP57}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-400 hover:text-purple-300 underline"
+                >
+                  NIP-57
+                </a>
+                , gittr requests a real zap
                 invoice. <strong>Split</strong> mode mints the invoice from{" "}
                 <strong>your</strong> LNbits wallet (repo payment config first,
                 then Settings → Account) plus the SplitPayments extension — it
@@ -2248,14 +2371,23 @@ export default function HelpPage() {
                 </a>{" "}
                 and{" "}
                 <a
-                  href="https://gittr.space/arbadacarbaYK/gittr?branch=main-helper-tools"
+                  href="https://gittr.space/arbadacarbaYK/gittr-helper-tools?branch=main"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-purple-400 hover:text-purple-300"
                 >
                   gittr-helper-tools
                 </a>
-                .
+                , and the{" "}
+                <a
+                  href={SCHEMATA_REPO}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-400 hover:text-purple-300"
+                >
+                  Nostr schemata
+                </a>{" "}
+                reference for NIPs and kinds.
               </p>
             </div>
           </div>
