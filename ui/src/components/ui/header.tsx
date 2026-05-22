@@ -90,11 +90,6 @@ export const DropdownItems = [
     mobile: false,
   },
   {
-    title: "Upgrade",
-    href: "/upgrade",
-    mobile: false,
-  },
-  {
     title: "Help",
     href: "/help",
   },

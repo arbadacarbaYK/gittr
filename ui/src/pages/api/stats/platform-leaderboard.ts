@@ -53,36 +53,37 @@ async function refreshLeaderboardCache(): Promise<void> {
   const snap = emptySnapshot();
   cache = snap;
 
-  await Promise.all([
-    withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
-      getTopReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 10)
-    ).then((topRepos) => {
-      snap.topRepos = topRepos;
-      snap.at = Date.now();
-    }),
-    withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
-      getTopUsersFromNostr(subscribe, PLATFORM_STATS_RELAYS, 10)
-    ).then((topUsers) => {
-      snap.topUsers = topUsers;
-      snap.at = Date.now();
-    }),
-    withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
-      getRecentReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 12)
-    ).then((recentRepos) => {
-      snap.recentRepos = recentRepos;
-      snap.at = Date.now();
-    }),
-    withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, (subscribe) =>
+  // One RelayPool for all four queries — avoids 4× websocket fan-out per refresh.
+  await withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, async (subscribe) => {
+    await Promise.all([
+      getTopReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 10).then(
+        (topRepos) => {
+          snap.topRepos = topRepos;
+          snap.at = Date.now();
+        }
+      ),
+      getTopUsersFromNostr(subscribe, PLATFORM_STATS_RELAYS, 10).then(
+        (topUsers) => {
+          snap.topUsers = topUsers;
+          snap.at = Date.now();
+        }
+      ),
+      getRecentReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 12).then(
+        (recentRepos) => {
+          snap.recentRepos = recentRepos;
+          snap.at = Date.now();
+        }
+      ),
       getRecentPlatformActivitiesFromNostr(
         subscribe,
         PLATFORM_STATS_RELAYS,
         12
-      )
-    ).then((recentActivities) => {
-      snap.recentActivities = recentActivities;
-      snap.at = Date.now();
-    }),
-  ]);
+      ).then((recentActivities) => {
+        snap.recentActivities = recentActivities;
+        snap.at = Date.now();
+      }),
+    ]);
+  });
 }
 
 function scheduleBackgroundRefresh(): void {
@@ -94,11 +95,6 @@ function scheduleBackgroundRefresh(): void {
     .finally(() => {
       refreshInFlight = null;
     });
-}
-
-// Warm cache when the API module loads so Home is instant after deploy/dev start.
-if (!cache) {
-  scheduleBackgroundRefresh();
 }
 
 export default async function handler(

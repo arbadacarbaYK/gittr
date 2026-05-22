@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 async function fetchRepoDescription(
   entity: string,
   repoName: string,
-  timeoutMs = 2000
+  timeoutMs = 800
 ): Promise<string | null> {
   try {
     // Resolve entity to pubkey
@@ -196,8 +196,7 @@ export async function generateMetadata({
       decodedRepo = resolvedParams.repo;
     }
 
-    // Debug logging
-    console.log(
+    logMeta(
       "[Metadata] Generating metadata for:",
       resolvedParams.entity,
       decodedRepo
