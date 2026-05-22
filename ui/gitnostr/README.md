@@ -51,11 +51,9 @@ Whenever a user tries to perform a git operation (push/pull) git-nostr-ssh will 
 Repository owners are always treated as `ADMIN` for their own repositories, even if a cached permission row is missing/stale.
 If a repository has a configured push paywall (`push_cost_sats > 0`), SSH write operations (`git-receive-pack`) also require a non-expired paid authorization grant in bridge SQLite. If a pending invoice already exists for the payer identity, SSH can print `pending invoice (BOLT11): ...` directly. Each successful push consumes one paid authorization.
 
-### git-nostr-hook
+### git-nostr-hook (not shipped)
 
-TODO: not implemented yet.
-
-Will enable fine grain branch control e.g. prevent pushing to specific branches or force pushing to a branch.
+Planned upstream idea only — **not built here**. See [gitnostr README → git-nostr-hook](https://github.com/arbadacarbaYK/gitnostr#git-nostr-hook-not-shipped).
 
 ### git-nostr-cli (gn)
 
