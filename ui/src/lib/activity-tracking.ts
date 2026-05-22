@@ -874,10 +874,9 @@ export function countActivitiesFromNostr(
   relays: string[],
   userPubkey: string
 ): Promise<NostrActivityCounts> {
-  // CRITICAL: Only use GRASP/git relays - regular relays don't have git events!
-  const { getGraspServers } = require("@/lib/utils/grasp-servers");
-  const graspRelays = getGraspServers(relays);
-  const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
+  // Use full relay set (same as platform leaderboard / countUserActivitiesFromNostr).
+  // Issues and PRs for mirrored repos often live on nos.lol / damus, not only GRASP hosts.
+  const activeRelays = relays.filter(Boolean);
 
   // CRITICAL: Normalize pubkey to lowercase for consistent querying
   // Nostr pubkeys are case-insensitive, but some relays might be strict
@@ -887,9 +886,7 @@ export function countActivitiesFromNostr(
     `🔍 [Nostr Activity Count] Starting query for ${normalizedPubkey.slice(
       0,
       8
-    )}... using ${activeRelays.length} GRASP/git relays (filtered from ${
-      relays.length
-    } total):`,
+    )}... using ${activeRelays.length} relays:`,
     activeRelays
   );
 

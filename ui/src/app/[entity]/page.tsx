@@ -62,11 +62,53 @@ import { getEventHash, getPublicKey, nip19, signEvent } from "nostr-tools";
 // Force dynamic rendering - metadata.ts needs to run on each request
 export const dynamic = "force-dynamic";
 
-// Check if string is a valid Nostr pubkey (npub or hex)
-function isValidPubkey(str: string): boolean {
-  if (str.startsWith("npub")) return str.length > 50;
-  // Hex pubkey is 64 chars
+function isHexPubkey(str: string): boolean {
   return /^[0-9a-f]{64}$/i.test(str);
+}
+
+function isNpubEntity(str: string): boolean {
+  return str.startsWith("npub") && str.length > 40;
+}
+
+function decodeNpubToHex(entity: string): string | null {
+  if (!isNpubEntity(entity)) return null;
+  try {
+    const decoded = nip19.decode(entity);
+    if (decoded.type === "npub" && typeof decoded.data === "string") {
+      const hex = decoded.data as string;
+      if (isHexPubkey(hex)) return hex.toLowerCase();
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function profileRepoRowKey(r: {
+  ownerPubkey?: string;
+  repo?: string;
+  slug?: string;
+}): string {
+  return `${(r.ownerPubkey || "").toLowerCase()}/${(r.repo || r.slug || "").toLowerCase()}`;
+}
+
+function mergeProfileRepoList(prev: any[], next: any[]): any[] {
+  const map = new Map<string, any>();
+  const latestMs = (r: any) =>
+    r.lastNostrEventCreatedAt != null
+      ? r.lastNostrEventCreatedAt * 1000
+      : r.updatedAt || r.createdAt || 0;
+  for (const r of next) map.set(profileRepoRowKey(r), r);
+  for (const r of prev) {
+    const k = profileRepoRowKey(r);
+    const existing = map.get(k);
+    if (!existing || latestMs(r) > latestMs(existing)) {
+      map.set(k, r);
+    }
+  }
+  return Array.from(map.values()).sort(
+    (a, b) => latestMs(b) - latestMs(a)
+  );
 }
 
 // Parse NIP-34 repository announcement format (minimal fields needed for lists)
@@ -532,8 +574,7 @@ export default function EntityPage({
     if (anonRepoSyncRef.current) return;
 
     anonRepoSyncRef.current = true;
-    const graspRelays = getGraspServers(defaultRelays);
-    const activeRelays = graspRelays.length > 0 ? graspRelays : defaultRelays;
+    const activeRelays = defaultRelays.filter(Boolean);
 
     const upsertRepo = (event: any, repoData: any) => {
       const existingRepos = JSON.parse(
@@ -791,7 +832,8 @@ export default function EntityPage({
     }
 
     // Check if it's a full pubkey or 8-char prefix (entity)
-    const isFullPubkey = isValidPubkey(entityParam);
+    const isHexEntity = isHexPubkey(entityParam);
+    const isNpub = isNpubEntity(entityParam);
     const isEntityPrefix =
       entityParam.length === 8 && /^[0-9a-f]{8}$/i.test(entityParam);
 
@@ -801,7 +843,7 @@ export default function EntityPage({
         localStorage.getItem("gittr_repos") || "[]"
       ) as any[];
 
-      if (isFullPubkey || isEntityPrefix) {
+      if (isHexEntity || isNpub || isEntityPrefix) {
         // It's a user profile (full pubkey or 8-char prefix)
         setIsPubkey(true);
 
@@ -835,16 +877,20 @@ export default function EntityPage({
             if (!r.entity || r.entity === "user") return false;
 
             // Helper to check if pubkey matches entityParam
+            const profileHex =
+              (isHexEntity ? entityParam : null) ||
+              decodeNpubToHex(entityParam) ||
+              (fullPubkeyForMeta && isHexPubkey(fullPubkeyForMeta)
+                ? fullPubkeyForMeta
+                : null);
+
             const pubkeyMatches = (pubkey: string | undefined) => {
               if (!pubkey || !/^[0-9a-f]{64}$/i.test(pubkey)) return false;
-              if (
-                isFullPubkey &&
-                pubkey.toLowerCase() === entityParam.toLowerCase()
-              )
-                return true;
+              const pk = pubkey.toLowerCase();
+              if (profileHex && pk === profileHex.toLowerCase()) return true;
               if (
                 isEntityPrefix &&
-                pubkey.toLowerCase().startsWith(entityParam.toLowerCase())
+                pk.startsWith(entityParam.toLowerCase())
               )
                 return true;
               return false;
@@ -898,13 +944,13 @@ export default function EntityPage({
 
             // Priority 6: If entityParam is full pubkey, match entities that are its prefix
             if (
-              isFullPubkey &&
+              isHexEntity &&
               r.entity.toLowerCase() === entityParam.slice(0, 8).toLowerCase()
             )
               return true;
 
             // Priority 7: If entityParam is npub, decode and match by pubkey
-            if (entityParam.startsWith("npub")) {
+            if (isNpub) {
               try {
                 const decoded = nip19.decode(entityParam);
                 if (decoded.type === "npub") {
@@ -942,9 +988,9 @@ export default function EntityPage({
 
             // Resolve target pubkey for comparison - use fullPubkeyForMeta if available, otherwise resolve from entityParam
             let targetPubkey: string | null = null;
-            if (isFullPubkey) {
+            if (isHexEntity || isNpub) {
               // If entityParam is npub, we need to decode it or use fullPubkeyForMeta
-              if (entityParam.startsWith("npub")) {
+              if (isNpub) {
                 try {
                   const decoded = nip19.decode(entityParam);
                   if (decoded.type === "npub") {
@@ -1022,8 +1068,11 @@ export default function EntityPage({
         // This handles the case where repos were created locally but not synced to localStorage
         // Resolve full pubkey for activities lookup (same logic as below)
         let pubkeyForActivities = entityParam;
-        if (isFullPubkey) {
+        if (isHexEntity) {
           pubkeyForActivities = entityParam;
+        } else if (isNpub) {
+          const decoded = decodeNpubToHex(entityParam);
+          if (decoded) pubkeyForActivities = decoded;
         } else if (
           fullPubkeyForMeta &&
           /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta)
@@ -1132,9 +1181,13 @@ export default function EntityPage({
 
                 const pubkeyMatches = (pubkey: string | undefined) => {
                   if (!pubkey || !/^[0-9a-f]{64}$/i.test(pubkey)) return false;
+                  const profileHexInner =
+                    (isHexEntity ? entityParam : null) ||
+                    decodeNpubToHex(entityParam) ||
+                    null;
                   if (
-                    isFullPubkey &&
-                    pubkey.toLowerCase() === entityParam.toLowerCase()
+                    profileHexInner &&
+                    pubkey.toLowerCase() === profileHexInner.toLowerCase()
                   )
                     return true;
                   if (
@@ -1159,14 +1212,14 @@ export default function EntityPage({
                 )
                   return true;
                 if (
-                  isFullPubkey &&
+                  isHexEntity &&
                   r.entity.toLowerCase() ===
                     entityParam.slice(0, 8).toLowerCase()
                 )
                   return true;
 
                 // Priority 7: If entityParam is npub, decode and match by pubkey
-                if (entityParam.startsWith("npub")) {
+                if (isNpub) {
                   try {
                     const decoded = nip19.decode(entityParam);
                     if (decoded.type === "npub") {
@@ -1204,8 +1257,8 @@ export default function EntityPage({
                   "contributor";
                 let targetPubkey: string | null = null;
 
-                if (isFullPubkey) {
-                  if (entityParam.startsWith("npub")) {
+                if (isHexEntity || isNpub) {
+                  if (isNpub) {
                     try {
                       const decoded = nip19.decode(entityParam);
                       if (decoded.type === "npub") {
@@ -1403,7 +1456,9 @@ export default function EntityPage({
 
             const deduplicatedUpdatedRepos = Array.from(dedupeMap.values());
 
-            setUserRepos(deduplicatedUpdatedRepos);
+            setUserRepos((prev) =>
+              mergeProfileRepoList(prev, deduplicatedUpdatedRepos)
+            );
             console.log(
               `✅ [Profile] After sync: ${
                 deduplicatedUpdatedRepos.length
@@ -1606,7 +1661,8 @@ export default function EntityPage({
           deletedReposFiltered: userReposList.length - filteredRepos.length,
           repoActivitiesCount: repoActivitiesForSync.length,
           entityParam,
-          isFullPubkey,
+          isHexEntity,
+          isNpub,
           isEntityPrefix,
           fullPubkeyForMeta: fullPubkeyForMeta?.slice(0, 8),
           sampleUserRepos: deduplicatedRepos.slice(0, 3).map((r: any) => ({
@@ -1618,14 +1674,17 @@ export default function EntityPage({
           allReposSample: allReposDebug,
         });
 
-        setUserRepos(deduplicatedRepos);
+        setUserRepos((prev) => mergeProfileRepoList(prev, deduplicatedRepos));
 
         // For activities, we need the full pubkey. If we only have prefix, find it from repos
         let fullPubkey = entityParam;
 
         // If entityParam is already a full pubkey, use it
-        if (isFullPubkey) {
-          fullPubkey = entityParam;
+        if (isHexEntity) {
+          fullPubkey = entityParam.toLowerCase();
+        } else if (isNpub) {
+          const decoded = decodeNpubToHex(entityParam);
+          if (decoded) fullPubkey = decoded;
         } else if (isEntityPrefix && userReposList.length > 0) {
           // Try to find full pubkey from repo ownerPubkeys first (most reliable)
           const repoWithOwnerPubkey = userReposList.find(
@@ -1688,14 +1747,12 @@ export default function EntityPage({
             setLoadingNostrCounts(true);
 
             // Use countActivitiesFromNostr to get accurate counts from the network
-            const graspRelays = getGraspServers(defaultRelays);
-            const activeRelays =
-              graspRelays.length > 0 ? graspRelays : defaultRelays;
+            const activeRelays = defaultRelays.filter(Boolean);
 
             // Skip if no relays available
             if (activeRelays.length === 0) {
               console.warn(
-                "⚠️ [Profile] No GRASP/git relays available for activity counting"
+                "⚠️ [Profile] No relays available for activity counting"
               );
               setLoadingNostrCounts(false);
               return;
@@ -2098,7 +2155,7 @@ export default function EntityPage({
       }
     } catch (error) {
       console.error("Failed to load profile:", error);
-      if (!isFullPubkey && !isEntityPrefix) {
+      if (!isHexEntity && !isNpub && !isEntityPrefix) {
         redirectedRef.current = true;
         router.replace("/explore");
       }
@@ -2109,6 +2166,72 @@ export default function EntityPage({
     fullPubkeyForMeta,
     currentUserPubkey,
   ]);
+
+  // Network repo list for any visitor (fixes logged-out profiles with correct count but empty list)
+  const profileHexForFetch = useMemo(() => {
+    const entity = resolvedParams.entity;
+    if (isHexPubkey(entity)) return entity.toLowerCase();
+    const fromNpub = decodeNpubToHex(entity);
+    if (fromNpub) return fromNpub;
+    if (fullPubkeyForMeta && isHexPubkey(fullPubkeyForMeta)) {
+      return fullPubkeyForMeta.toLowerCase();
+    }
+    return null;
+  }, [resolvedParams.entity, fullPubkeyForMeta]);
+
+  useEffect(() => {
+    if (!isPubkey || !profileHexForFetch) return;
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const res = await fetch(
+          `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(profileHexForFetch)}`
+        );
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as {
+          repos?: Array<{
+            entity: string;
+            repo: string;
+            name: string;
+            ownerPubkey: string;
+            lastActivity: number;
+            syncedFromNostr?: boolean;
+            lastNostrEventId?: string;
+            lastNostrEventCreatedAt?: number;
+          }>;
+        };
+        if (!Array.isArray(data.repos) || data.repos.length === 0 || cancelled) {
+          return;
+        }
+        setUserRepos((prev) =>
+          mergeProfileRepoList(
+            prev,
+            data.repos!.map((row) => ({
+              slug: row.repo,
+              entity: row.entity,
+              repo: row.repo,
+              name: row.name || row.repo,
+              ownerPubkey: row.ownerPubkey,
+              createdAt: row.lastActivity,
+              updatedAt: row.lastActivity,
+              lastNostrEventCreatedAt: row.lastNostrEventCreatedAt,
+              lastNostrEventId: row.lastNostrEventId,
+              syncedFromNostr: true,
+              fromNostr: true,
+            }))
+          )
+        );
+      } catch (e) {
+        console.warn("[Profile] profile-repos fetch failed:", e);
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [isPubkey, profileHexForFetch]);
 
   // Resolve pubkey from localStorage after mount to prevent hydration errors
   // Use ref to track last processed entity to prevent re-processing
@@ -2180,8 +2303,7 @@ export default function EntityPage({
 
     // If entityParam is already a full pubkey, use it directly
     if (
-      isValidPubkey(resolvedParams.entity) &&
-      resolvedParams.entity.length === 64
+      isHexPubkey(resolvedParams.entity)
     ) {
       console.log(
         `✅ [Profile] useEffect: Setting fullPubkeyForMeta from entity (full): ${resolvedParams.entity.slice(

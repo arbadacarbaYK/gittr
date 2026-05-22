@@ -48,7 +48,7 @@ export type PlatformRecentActivity = {
   metadata?: Activity["metadata"];
 };
 
-function hexPubkeyToNpub(pubkey: string): string {
+export function hexPubkeyToNpub(pubkey: string): string {
   const hex = (pubkey || "").trim().toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(hex)) return pubkey;
   try {
@@ -1016,13 +1016,12 @@ export function countRepoActivitiesFromNostr(
   relays: string[],
   sinceDays = 90 // Count activity from last 90 days (increased from 30 for better coverage)
 ): Promise<Map<string, RepoStats>> {
-  // CRITICAL: Only use GRASP/git relays - regular relays don't have git events!
-  const { getGraspServers } = require("@/lib/utils/grasp-servers");
-  const graspRelays = getGraspServers(relays);
-  const activeRelays = graspRelays.length > 0 ? graspRelays : relays; // Fallback if no GRASP relays
+  // Use the full relay set (same as countUserActivitiesFromNostr). Issues/PRs and many
+  // kind-30617/30618 events live on general relays (nos.lol, damus), not only GRASP hosts.
+  const activeRelays = relays.filter(Boolean);
 
   console.log(
-    `🔍 [Nostr Repo Stats] Starting query for all repos using ${activeRelays.length} GRASP/git relays (filtered from ${relays.length} total):`,
+    `🔍 [Nostr Repo Stats] Starting query for all repos using ${activeRelays.length} relays:`,
     activeRelays
   );
 
@@ -1039,34 +1038,34 @@ export function countRepoActivitiesFromNostr(
       // Repo announcements (kind 30617) - count unique repos (NO since - get all)
       {
         kinds: [KIND_REPOSITORY_NIP34],
-        limit: 5000, // Increased limit to get more repos
+        limit: 1200,
       },
       // Repo state events (kind 30618) - indicate pushes (NO since - get all)
       {
         kinds: [KIND_REPOSITORY_STATE],
-        limit: 5000, // Increased limit to get all pushes
+        limit: 1200,
       },
       // PR events (kind 1618) (NO since - get all)
       {
         kinds: [KIND_PULL_REQUEST],
-        limit: 2000,
+        limit: 800,
       },
       // PR merged status (kind 1631) (NO since - get all)
       {
         kinds: [KIND_STATUS_APPLIED],
         "#k": ["1618"], // Only PR status events
-        limit: 1000,
+        limit: 400,
       },
       // Issue events (kind 1621) (NO since - get all)
       {
         kinds: [KIND_ISSUE],
-        limit: 2000,
+        limit: 800,
       },
       // Issue closed status (kind 1632) (NO since - get all)
       {
         kinds: [KIND_STATUS_CLOSED],
         "#k": ["1621"], // Only issue status events
-        limit: 1000,
+        limit: 400,
       },
     ];
 
@@ -1514,7 +1513,7 @@ export async function getTopReposFromNostr(
     // Don't filter here again - pass all relays and let countRepoActivitiesFromNostr handle filtering
     // This ensures we don't accidentally filter out relays that might be needed
     console.log(
-      `🔍 [getTopReposFromNostr] Starting query with ${relays.length} relays (will be filtered to GRASP servers internally)`
+      `🔍 [getTopReposFromNostr] Starting query with ${relays.length} relays`
     );
     const repoMap = await countRepoActivitiesFromNostr(
       subscribe,
@@ -1600,6 +1599,16 @@ export async function getTopUsersFromNostr(
   ); // All-time (same window as platform repo leaderboard)
   const users = Array.from(userMap.values())
     .filter((u) => !isPublisherBlocklisted(u.pubkey) && u.activityCount > 0)
+    // Drop bulk GitHub-mirror ghost keys (issue spam, no repos/commits/merges on Nostr).
+    .filter(
+      (u) =>
+        !(
+          u.reposCreatedCount === 0 &&
+          u.commitCount === 0 &&
+          u.prMergedCount === 0 &&
+          u.activityCount >= 20
+        )
+    )
     .sort((a, b) => b.activityCount - a.activityCount)
     .slice(0, count);
   console.log(
@@ -1608,8 +1617,8 @@ export async function getTopUsersFromNostr(
   return users;
 }
 
-/** Recent repos by last Nostr event time (not activity score). */
-export async function getRecentReposFromNostr(
+/** Recent repos by latest kind 30617/30618 timestamp (for home + APIs — not activity score). */
+export function getLiveRecentReposFromNostr(
   subscribe: (
     filters: any[],
     relays: string[],
@@ -1621,21 +1630,111 @@ export async function getRecentReposFromNostr(
   relays: string[],
   count = 12
 ): Promise<PlatformRecentRepo[]> {
-  const repoMap = await countRepoActivitiesFromNostr(subscribe, relays, 999999);
-  return Array.from(repoMap.values())
-    .filter((r) => r.lastActivity > 0)
-    .sort((a, b) => b.lastActivity - a.lastActivity)
-    .slice(0, count)
-    .map((r) => {
-      const ownerHex = r.entity.toLowerCase();
-      return {
-        entity: repoIdToNpubEntity(r.repoId, ownerHex),
-        repo: r.repoName,
-        repoName: r.repoName,
-        ownerPubkey: ownerHex,
-        lastActivity: r.lastActivity,
-      };
-    });
+  const activeRelays = relays.filter(Boolean);
+  const byKey = new Map<string, PlatformRecentRepo>();
+
+  return new Promise((resolve) => {
+    let resolved = false;
+    let eoseCount = 0;
+    const expectedEose = activeRelays.length;
+
+    const noteRepo = (
+      ownerHex: string,
+      repoName: string,
+      tsMs: number,
+      description?: string
+    ) => {
+      if (!ownerHex || !repoName) return;
+      const key = `${ownerHex}/${repoName}`;
+      const existing = byKey.get(key);
+      if (!existing || tsMs > existing.lastActivity) {
+        byKey.set(key, {
+          entity: repoIdToNpubEntity(key, ownerHex),
+          repo: repoName,
+          repoName,
+          ownerPubkey: ownerHex,
+          lastActivity: tsMs,
+          description: description || existing?.description,
+        });
+      } else if (description && !existing.description) {
+        existing.description = description;
+      }
+    };
+
+    const filters = [
+      { kinds: [KIND_REPOSITORY_NIP34], limit: 800 },
+      { kinds: [KIND_REPOSITORY_STATE], limit: 600 },
+    ];
+
+    const finish = () => {
+      if (resolved) return;
+      resolved = true;
+      try {
+        unsub();
+      } catch {
+        /* ignore */
+      }
+      resolve(
+        Array.from(byKey.values())
+          .sort((a, b) => b.lastActivity - a.lastActivity)
+          .slice(0, count)
+      );
+    };
+
+    const unsub = subscribe(
+      filters,
+      activeRelays,
+      (event) => {
+        if (isPublisherBlocklisted(event.pubkey)) return;
+        const ts = (event.created_at || 0) * 1000;
+        const ownerHex = (event.pubkey || "").toLowerCase();
+        if (!/^[0-9a-f]{64}$/.test(ownerHex)) return;
+
+        if (event.kind === KIND_REPOSITORY_NIP34) {
+          const dTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "d"
+          );
+          const repoName = dTag?.[1];
+          if (typeof repoName !== "string" || !repoName) return;
+          let description: string | undefined;
+          try {
+            const content = JSON.parse(event.content || "{}");
+            if (content?.description) description = String(content.description);
+          } catch {
+            /* NIP-34 tags only */
+          }
+          noteRepo(ownerHex, repoName, ts, description);
+        } else if (event.kind === KIND_REPOSITORY_STATE) {
+          const dTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "d"
+          );
+          const repoName = dTag?.[1];
+          if (typeof repoName === "string" && repoName) {
+            noteRepo(ownerHex, repoName, ts);
+          }
+        }
+      },
+      undefined,
+      () => {
+        eoseCount++;
+        if (eoseCount >= expectedEose) {
+          setTimeout(finish, 200);
+        }
+      },
+      {}
+    );
+
+    setTimeout(finish, 8000);
+  });
+}
+
+/** @deprecated Snapshot helper — prefer getLiveRecentReposFromNostr for “recent” UI. */
+export async function getRecentReposFromNostr(
+  subscribe: Parameters<typeof getLiveRecentReposFromNostr>[0],
+  relays: string[],
+  count = 12
+): Promise<PlatformRecentRepo[]> {
+  return getLiveRecentReposFromNostr(subscribe, relays, count);
 }
 
 function parseATagRepo(

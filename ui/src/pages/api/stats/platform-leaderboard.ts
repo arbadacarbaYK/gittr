@@ -1,12 +1,14 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import fs from "fs/promises";
+import path from "path";
 
 import {
   withRelayPoolSubscribe,
   PLATFORM_STATS_RELAYS,
 } from "@/lib/nostr/server-relay-subscribe";
 import {
+  getLiveRecentReposFromNostr,
   getRecentPlatformActivitiesFromNostr,
-  getRecentReposFromNostr,
   getTopReposFromNostr,
   getTopUsersFromNostr,
   type PlatformRecentActivity,
@@ -15,17 +17,30 @@ import {
   type UserStats,
 } from "@/lib/stats";
 
-const CACHE_MS = 5 * 60 * 1000;
+/** In-memory cache after a successful relay refresh (short TTL). */
+const MEMORY_CACHE_MS = 2 * 60 * 1000;
+/** Disk snapshot is served immediately; background refresh if older than this. */
+const DISK_REFRESH_AFTER_MS = 3 * 60 * 60 * 1000;
+/** Still return disk data up to this age (stale-while-revalidate). */
+const DISK_SERVE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-let cache: {
+const SNAPSHOT_PATH = path.join(
+  process.cwd(),
+  "data",
+  "platform-leaderboard-snapshot.json"
+);
+
+type LeaderboardSnapshot = {
   at: number;
   topRepos: RepoStats[];
   topUsers: UserStats[];
   recentRepos: PlatformRecentRepo[];
   recentActivities: PlatformRecentActivity[];
-} | null = null;
+};
 
+let cache: LeaderboardSnapshot | null = null;
 let refreshInFlight: Promise<void> | null = null;
+let diskLoaded = false;
 
 export type PlatformLeaderboardResponse = {
   topRepos: RepoStats[];
@@ -33,19 +48,58 @@ export type PlatformLeaderboardResponse = {
   recentRepos: PlatformRecentRepo[];
   recentActivities: PlatformRecentActivity[];
   cached: boolean;
-  /** True while a relay refresh is still running (client may poll). */
   refreshing: boolean;
   relayCount: number;
+  snapshotAt?: number;
 };
 
-function emptySnapshot() {
+function emptySnapshot(): LeaderboardSnapshot {
   return {
-    at: Date.now(),
-    topRepos: [] as RepoStats[],
-    topUsers: [] as UserStats[],
-    recentRepos: [] as PlatformRecentRepo[],
-    recentActivities: [] as PlatformRecentActivity[],
+    at: 0,
+    topRepos: [],
+    topUsers: [],
+    recentRepos: [],
+    recentActivities: [],
   };
+}
+
+function hasAnyLeaderboardData(snap: LeaderboardSnapshot): boolean {
+  return (
+    snap.topRepos.length > 0 ||
+    snap.topUsers.length > 0 ||
+    snap.recentRepos.length > 0 ||
+    snap.recentActivities.length > 0
+  );
+}
+
+async function loadDiskSnapshot(): Promise<LeaderboardSnapshot | null> {
+  try {
+    const raw = await fs.readFile(SNAPSHOT_PATH, "utf8");
+    const parsed = JSON.parse(raw) as LeaderboardSnapshot;
+    if (!parsed || typeof parsed.at !== "number") return null;
+    if (Date.now() - parsed.at > DISK_SERVE_MAX_AGE_MS) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+async function persistDiskSnapshot(snap: LeaderboardSnapshot): Promise<void> {
+  try {
+    await fs.mkdir(path.dirname(SNAPSHOT_PATH), { recursive: true });
+    await fs.writeFile(SNAPSHOT_PATH, JSON.stringify(snap), "utf8");
+  } catch (e) {
+    console.error("[platform-leaderboard] failed to write disk snapshot", e);
+  }
+}
+
+async function ensureCacheFromDisk(): Promise<void> {
+  if (diskLoaded) return;
+  diskLoaded = true;
+  const disk = await loadDiskSnapshot();
+  if (disk && hasAnyLeaderboardData(disk)) {
+    cache = disk;
+  }
 }
 
 /** Fills cache as each relay query completes so GET can return partial data immediately. */
@@ -53,7 +107,6 @@ async function refreshLeaderboardCache(): Promise<void> {
   const snap = emptySnapshot();
   cache = snap;
 
-  // One RelayPool for all four queries — avoids 4× websocket fan-out per refresh.
   await withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, async (subscribe) => {
     await Promise.all([
       getTopReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 10).then(
@@ -68,7 +121,7 @@ async function refreshLeaderboardCache(): Promise<void> {
           snap.at = Date.now();
         }
       ),
-      getRecentReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 12).then(
+      getLiveRecentReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 12).then(
         (recentRepos) => {
           snap.recentRepos = recentRepos;
           snap.at = Date.now();
@@ -84,11 +137,18 @@ async function refreshLeaderboardCache(): Promise<void> {
       }),
     ]);
   });
+
+  if (hasAnyLeaderboardData(snap)) {
+    await persistDiskSnapshot(snap);
+  }
 }
 
 function scheduleBackgroundRefresh(): void {
   if (refreshInFlight) return;
-  if (cache && Date.now() - cache.at < CACHE_MS) return;
+  const now = Date.now();
+  if (cache && cache.at > 0 && now - cache.at < DISK_REFRESH_AFTER_MS) {
+    return;
+  }
   if (!cache) cache = emptySnapshot();
   refreshInFlight = refreshLeaderboardCache()
     .catch((e) => console.error("[platform-leaderboard] background refresh", e))
@@ -106,9 +166,14 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  await ensureCacheFromDisk();
+
   const forceRefresh = req.query.refresh === "1";
   const now = Date.now();
-  const cacheStale = cache && now - cache.at >= CACHE_MS;
+  const memoryFresh =
+    cache && cache.at > 0 && now - cache.at < MEMORY_CACHE_MS;
+  const diskNeedsRefresh =
+    !cache || cache.at === 0 || now - cache.at >= DISK_REFRESH_AFTER_MS;
 
   const respond = (cached: boolean, refreshing: boolean) => {
     if (!cache) {
@@ -118,9 +183,7 @@ export default async function handler(
     }
     res.setHeader(
       "Cache-Control",
-      cached
-        ? "public, max-age=60, stale-while-revalidate=300"
-        : "public, max-age=15, stale-while-revalidate=120"
+      "public, max-age=120, stale-while-revalidate=3600"
     );
     return res.status(200).json({
       topRepos: cache.topRepos,
@@ -130,20 +193,18 @@ export default async function handler(
       cached,
       refreshing,
       relayCount: PLATFORM_STATS_RELAYS.length,
+      snapshotAt: cache.at > 0 ? cache.at : undefined,
     });
   };
 
-  if (forceRefresh) {
-    if (!refreshInFlight) scheduleBackgroundRefresh();
-    return respond(!!cache, true);
-  }
-
-  if (!cache) {
+  if (forceRefresh || diskNeedsRefresh) {
     scheduleBackgroundRefresh();
-    return respond(true, true);
   }
 
-  if (cacheStale) scheduleBackgroundRefresh();
+  if (!cache || !hasAnyLeaderboardData(cache)) {
+    scheduleBackgroundRefresh();
+    return respond(false, true);
+  }
 
-  return respond(true, !!refreshInFlight);
+  return respond(memoryFresh || !diskNeedsRefresh, !!refreshInFlight);
 }

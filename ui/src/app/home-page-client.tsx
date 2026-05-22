@@ -21,7 +21,11 @@ import {
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
-import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import { getGraspServers } from "@/lib/utils/grasp-servers";
+import {
+  type Metadata,
+  useContributorMetadata,
+} from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
@@ -190,6 +194,20 @@ type Repo = {
   archived?: boolean;
 };
 
+/** Clean labels from bulk GitHub→Nostr mirrors (kind 0 name often includes this suffix). */
+function formatLeaderboardUserLabel(
+  raw: string,
+  meta?: Metadata
+): string {
+  const githubHandle = meta?.identities?.find(
+    (i) => i.platform === "github" && i.identity
+  )?.identity;
+  if (/mirrored user from github/i.test(raw) && githubHandle) {
+    return githubHandle;
+  }
+  return raw.replace(/\s*\(mirrored user from github\)\s*/gi, "").trim() || raw;
+}
+
 export default function HomePage() {
   const { isLoggedIn, name } = useSession();
   const { pubkey, defaultRelays, subscribe, addRelay } = useNostrContext();
@@ -234,6 +252,10 @@ export default function HomePage() {
     offlineCount: number;
   } | null>(null);
   const [recentActivity, setRecentActivity] = useState<Activity[]>([]);
+  const [liveRecentRepos, setLiveRecentRepos] = useState<PlatformRecentRepo[]>(
+    []
+  );
+  const [liveRecentReposLoading, setLiveRecentReposLoading] = useState(true);
   const [platformRecentRepos, setPlatformRecentRepos] = useState<
     PlatformRecentRepo[]
   >([]);
@@ -272,7 +294,7 @@ export default function HomePage() {
           (a, b) => (b.activityCount || 0) - (a.activityCount || 0)
         );
         setTopRepos(sortedRepos);
-        if (!refreshing || sortedRepos.length > 0) setLbTopReposReady(true);
+        if (sortedRepos.length > 0) setLbTopReposReady(true);
         if (sortedRepos.length > 0) {
           try {
             sessionStorage.setItem(
@@ -289,7 +311,7 @@ export default function HomePage() {
           (a, b) => (b.activityCount || 0) - (a.activityCount || 0)
         );
         setTopUsers(sortedUsers);
-        if (!refreshing || sortedUsers.length > 0) setLbTopUsersReady(true);
+        if (sortedUsers.length > 0) setLbTopUsersReady(true);
         if (sortedUsers.length > 0) {
           try {
             sessionStorage.setItem(
@@ -409,7 +431,7 @@ export default function HomePage() {
         if (cancelled || gen !== leaderboardFetchGen.current) return;
         applyLeaderboardPayload(data);
         if (data.refreshing) {
-          pollTimer = setTimeout(poll, 1200);
+          pollTimer = setTimeout(poll, 2500);
         }
       } catch (err) {
         console.warn("⚠️ [Home] Platform leaderboard fetch failed:", err);
@@ -430,6 +452,35 @@ export default function HomePage() {
       if (pollTimer) clearTimeout(pollTimer);
     };
   }, [applyLeaderboardPayload]);
+
+  // Live “Recent repositories” — not the 3h leaderboard snapshot (users check pushes here).
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const load = async () => {
+      try {
+        const res = await fetch("/api/stats/recent-repos");
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { repos?: PlatformRecentRepo[] };
+        if (Array.isArray(data.repos)) {
+          setLiveRecentRepos(data.repos);
+          setLiveRecentReposLoading(false);
+        }
+      } catch (e) {
+        console.warn("[Home] recent-repos fetch failed:", e);
+        if (!cancelled) setLiveRecentReposLoading(false);
+      }
+    };
+
+    void load();
+    timer = setInterval(load, 45_000);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, []);
 
   // Load repos and listen for updates from Nostr sync
   const loadRepos = useCallback(() => {
@@ -584,7 +635,7 @@ export default function HomePage() {
       console.log("📡 [Home] Starting Nostr sync for homepage...");
       setSyncing(true);
 
-      const allRelays = getAllRelays(defaultRelays);
+      const syncRelays = defaultRelays.filter(Boolean).slice(0, 8);
 
       // Map: repoKey (pubkey + d tag) -> array of events (for NIP-34 replaceable events)
       const nip34EventsByRepo = new Map<
@@ -596,8 +647,8 @@ export default function HomePage() {
       const eoseReceived = new Set<string>();
 
       const unsub = subscribe(
-        [{ kinds: [KIND_REPOSITORY_NIP34], limit: 5000 }],
-        allRelays,
+        [{ kinds: [KIND_REPOSITORY_NIP34], limit: 600 }],
+        syncRelays,
         (event: any, isAfterEose: boolean, relayURL?: string) => {
           try {
             if (event.kind !== KIND_REPOSITORY_NIP34) return;
@@ -823,7 +874,7 @@ export default function HomePage() {
                   nip34EventsByRepo.clear();
                 }
 
-                if (eoseCount >= Math.min(3, allRelays.length)) {
+                if (eoseCount >= Math.min(3, syncRelays.length)) {
                   setSyncing(false);
                 }
               }
@@ -1158,22 +1209,43 @@ export default function HomePage() {
     [canCurrentUserSeeRepo]
   );
 
+  const mapPlatformRecentToRepo = useCallback(
+    (p: PlatformRecentRepo): Repo => ({
+      slug: `${p.entity}/${p.repo}`,
+      entity: p.entity,
+      repo: p.repo,
+      name: p.repoName,
+      createdAt: p.lastActivity,
+      ownerPubkey: p.ownerPubkey,
+      description: p.description,
+      syncedFromNostr: true,
+    }),
+    []
+  );
+
+  // Same list for everyone: live relay query (/api/stats/recent-repos).
+  // Do not prefer localStorage when logged in — that hid platform-wide recents.
   const displayRecentRepos = useMemo(() => {
-    const local = recent.filter(isValidRecentRepoCard);
-    if (local.length > 0) return local.slice(0, 12);
-    return platformRecentRepos.slice(0, 12).map(
-      (p): Repo => ({
-        slug: `${p.entity}/${p.repo}`,
-        entity: p.entity,
-        repo: p.repo,
-        name: p.repoName,
-        createdAt: p.lastActivity,
-        ownerPubkey: p.ownerPubkey,
-        description: p.description,
-        syncedFromNostr: true,
-      })
-    );
-  }, [recent, platformRecentRepos, isValidRecentRepoCard]);
+    const fromLive = liveRecentRepos
+      .map(mapPlatformRecentToRepo)
+      .filter(isValidRecentRepoCard);
+    if (fromLive.length > 0) return fromLive.slice(0, 12);
+
+    if (!liveRecentReposLoading && platformRecentRepos.length > 0) {
+      return platformRecentRepos
+        .map(mapPlatformRecentToRepo)
+        .filter(isValidRecentRepoCard)
+        .slice(0, 12);
+    }
+
+    return [];
+  }, [
+    liveRecentRepos,
+    liveRecentReposLoading,
+    platformRecentRepos,
+    mapPlatformRecentToRepo,
+    isValidRecentRepoCard,
+  ]);
 
   const recentRepoOwnerPubkeys = useMemo(() => {
     return displayRecentRepos
@@ -1206,8 +1278,10 @@ export default function HomePage() {
   const getDisplayName = (pubkey: string) => {
     const normalizedPubkey = pubkey.toLowerCase();
     const meta = userMetadata[normalizedPubkey] || userMetadata[pubkey];
-    if (meta?.name || meta?.display_name) {
-      return meta.name || meta.display_name;
+    const raw = meta?.display_name || meta?.name;
+    if (raw && raw.trim().length > 0) {
+      const cleaned = formatLeaderboardUserLabel(raw, meta);
+      if (cleaned) return cleaned;
     }
     // Fallback to npub format (not shortened pubkey)
     try {
@@ -2191,7 +2265,7 @@ export default function HomePage() {
           </div>
           {displayRecentRepos.length === 0 ? (
             <div className="text-gray-400">
-              {!lbRecentReposReady && platformRecentRepos.length === 0
+              {liveRecentReposLoading
                 ? "Loading repositories..."
                 : "No repositories yet. Create or import one to get started."}
             </div>

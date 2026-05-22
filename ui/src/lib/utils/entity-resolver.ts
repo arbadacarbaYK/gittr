@@ -156,9 +156,19 @@ export function getEntityDisplayName(
   // Use Nostr metadata if available
   const meta = ownerMetadata[normalizedPubkey] || ownerMetadata[pubkey];
   if (meta) {
-    const name = meta.name || meta.display_name;
-    if (name && name.trim().length > 0 && name !== "Anonymous Nostrich") {
-      return name;
+    const raw = meta.display_name || meta.name;
+    if (raw && raw.trim().length > 0 && raw !== "Anonymous Nostrich") {
+      const githubHandle = meta.identities?.find(
+        (i: { platform?: string; identity?: string }) =>
+          i.platform === "github" && i.identity
+      )?.identity;
+      if (/mirrored user from github/i.test(raw) && githubHandle) {
+        return githubHandle;
+      }
+      const cleaned = raw
+        .replace(/\s*\(mirrored user from github\)\s*/gi, "")
+        .trim();
+      if (cleaned) return cleaned;
     }
   }
 

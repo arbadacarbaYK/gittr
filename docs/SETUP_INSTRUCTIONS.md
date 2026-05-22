@@ -58,6 +58,36 @@ yarn build
 
 PWA: optional; needs HTTPS in production (`ui/public/site.webmanifest`, `sw.js`).
 
+### Homepage “Most Active” leaderboard (server snapshot)
+
+The homepage cards call **`GET /api/stats/platform-leaderboard`**. Heavy Nostr relay scans no longer block the first paint:
+
+- Cached JSON: **`ui/data/platform-leaderboard-snapshot.json`** (created on the server after the first successful refresh).
+- **Serve immediately** from disk when the file exists; response may include `refreshing: true` while a background relay scan runs.
+- **Disk refresh** when the snapshot is older than **3 hours** (`DISK_REFRESH_AFTER_MS` in the API route).
+- Stale disk older than **7 days** is ignored and a full refresh is forced.
+- After deploy, warm the snapshot once: `curl -sS https://YOUR_DOMAIN/api/stats/platform-leaderboard | head` (first call may take minutes; later calls should be sub-second).
+
+Optional: tie refresh to your SEO/repo-discovery cron by hitting the same URL after indexing runs.
+
+### Homepage “Recent repositories” (live relay query)
+
+The **Recent repositories** strip is **not** taken from the 3h leaderboard snapshot. It uses a separate endpoint so pushes show up without waiting for the heavy platform stats job:
+
+- **`GET /api/stats/recent-repos`** — queries Nostr relays for the latest kind **30617/30618** announcements, sorted by `created_at`, returns up to 12 repos.
+- **Server cache ~45s** (`Cache-Control` + in-memory) so the homepage can poll without hammering relays.
+- The UI shows this list for **both logged-in and logged-out** users (do not substitute the visitor’s localStorage sync — that caused mismatched homepage lists).
+- Warm after deploy: `curl -sS https://YOUR_DOMAIN/api/stats/recent-repos | head` (first call can take several seconds while relays respond).
+
+### Profile repo list (logged-out visitors)
+
+Profile pages show a **repo count** from Nostr stats, but the grid used to rely on **localStorage** only (empty for anonymous visitors). Public profiles now load repos from the server:
+
+- **`GET /api/nostr/profile-repos?ownerPubkey=<64-char-hex>`** — fetches kind **30617/30618** for `authors: [pubkey]` on the platform stats relay set.
+- The profile page passes the decoded hex pubkey (npub URLs are decoded client-side; do not pass npub to this API).
+- Response is merged with local repos so a later empty local sync does not wipe network results.
+- Smoke test: `curl -sS 'https://YOUR_DOMAIN/api/nostr/profile-repos?ownerPubkey=<hex>' | jq '.repos | length'`
+
 ---
 
 ## 2. Bridge user and build

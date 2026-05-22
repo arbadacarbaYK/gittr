@@ -1,5 +1,9 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
-import { filterGraspMirrorPollutionFromFileTree } from "@/lib/utils/filter-grasp-mirror-pollution";
+import {
+  capRepoFileTreeForDisplay,
+  fileTreeListFromScrub,
+  filterGraspMirrorPollutionFromFileTree,
+} from "@/lib/utils/filter-grasp-mirror-pollution";
 import { sanitizeBridgeRepoName } from "@/lib/utils/sanitize-bridge-repo-name";
 
 import { exec } from "child_process";
@@ -402,10 +406,15 @@ export default async function handler(
               return a.path.localeCompare(b.path);
             });
 
-            const scrubbed = filterGraspMirrorPollutionFromFileTree(files, {
-              ownerPubkeyHex: ownerPubkey,
-            });
-            const payload = { files: scrubbed, branch: fallbackBranch };
+            const scrubbed = capRepoFileTreeForDisplay(
+              filterGraspMirrorPollutionFromFileTree(files, {
+                ownerPubkeyHex: ownerPubkey,
+              })
+            );
+            const payload = {
+              files: fileTreeListFromScrub(scrubbed),
+              branch: fallbackBranch,
+            };
             filesCache.set(cacheKey, { timestamp: Date.now(), payload });
             return res.status(200).json(payload);
           }
@@ -484,10 +493,15 @@ export default async function handler(
       return a.path.localeCompare(b.path);
     });
 
-    const scrubbed = filterGraspMirrorPollutionFromFileTree(files, {
-      ownerPubkeyHex: ownerPubkey,
-    });
-    const payload = { files: scrubbed, branch: actualBranch || branchStr };
+    const scrubbed = capRepoFileTreeForDisplay(
+      filterGraspMirrorPollutionFromFileTree(files, {
+        ownerPubkeyHex: ownerPubkey,
+      })
+    );
+    const payload = {
+      files: fileTreeListFromScrub(scrubbed),
+      branch: actualBranch || branchStr,
+    };
     filesCache.set(cacheKey, { timestamp: Date.now(), payload });
     return res.status(200).json(payload);
   } catch (error: any) {

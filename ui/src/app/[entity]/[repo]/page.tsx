@@ -122,7 +122,10 @@ import {
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import { filterDisplayCloneUrlsForSidebar } from "@/lib/utils/filter-display-clone-urls";
-import { filterGraspMirrorPollutionFromFileTree } from "@/lib/utils/filter-grasp-mirror-pollution";
+import {
+  capRepoFileTreeForDisplay,
+  filterGraspMirrorPollutionFromFileTree,
+} from "@/lib/utils/filter-grasp-mirror-pollution";
 import {
   type FetchStatus,
   addUpstreamSourceToCloneUrls,
@@ -708,11 +711,15 @@ export default function RepoCodePage() {
       filterGraspMirrorPollutionFromFileTree(list, { ownerPubkeyHex: ownerHex });
 
     let best: RepoFileEntry[] = [];
+    let bestLen = Number.MAX_SAFE_INTEGER;
     for (const list of candidates) {
       const filtered = scrub(list);
-      if (filtered.length > best.length) best = filtered;
+      if (filtered.length > 0 && filtered.length < bestLen) {
+        best = filtered;
+        bestLen = filtered.length;
+      }
     }
-    return best;
+    return capRepoFileTreeForDisplay(best).files;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, filesTreeVersionKey, repoData?.files?.length, repoData?.sourceUrl]);
 

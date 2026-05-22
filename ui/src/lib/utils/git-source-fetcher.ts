@@ -1290,6 +1290,48 @@ function scheduleBareCloneToBridge(
   );
 }
 
+type BridgeFilesPayload = {
+  files: Array<{ type: string; path: string; size?: number }>;
+  branch?: string;
+};
+
+const bridgeFilesInflight = new Map<string, Promise<BridgeFilesPayload | null>>();
+
+/** One bridge API call per owner/repo/branch — shared by parallel GRASP clone URLs. */
+export async function fetchBridgeFilesOnce(
+  ownerPubkey: string,
+  repo: string,
+  branch: string
+): Promise<BridgeFilesPayload | null> {
+  const key = `${ownerPubkey.toLowerCase()}:${repo}:${branch}`;
+  const existing = bridgeFilesInflight.get(key);
+  if (existing) return existing;
+
+  const promise = (async (): Promise<BridgeFilesPayload | null> => {
+    const bridgeUrl = `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
+      ownerPubkey
+    )}&repo=${encodeURIComponent(repo)}&branch=${encodeURIComponent(branch)}`;
+    try {
+      const response = await fetch(bridgeUrl, { cache: "no-store" });
+      if (!response.ok) return null;
+      const json = (await response.json()) as BridgeFilesPayload;
+      if (!Array.isArray(json.files)) {
+        return { files: [], branch: json.branch };
+      }
+      return json;
+    } catch {
+      return null;
+    }
+  })();
+
+  bridgeFilesInflight.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    bridgeFilesInflight.delete(key);
+  }
+}
+
 function notifyGraspRepoCloned(
   files: Array<{ type: string; path: string; size?: number }>,
   ownerPubkey: string,
@@ -1382,34 +1424,14 @@ async function fetchFromNostrGit(
         branch,
         url: bridgeUrl,
       });
-      const response = await fetch(bridgeUrl, {
-        cache: "no-store",
-        headers: {
-          "Cache-Control": "no-cache",
-          Pragma: "no-cache",
-        },
-      });
 
-      let bridgeJson: {
-        files?: unknown[];
-        branch?: string;
-        message?: string;
-      } | null = null;
+      const bridgeJson = await fetchBridgeFilesOnce(ownerPubkey, repo, branch);
 
-      if (response.ok) {
-        try {
-          bridgeJson = await response.json();
-        } catch (parseErr) {
-          console.warn(
-            "⚠️ [Git Source] git-nostr-bridge API OK but invalid JSON:",
-            parseErr
-          );
-        }
-        if (
-          bridgeJson?.files &&
-          Array.isArray(bridgeJson.files) &&
-          bridgeJson.files.length > 0
-        ) {
+      if (
+        bridgeJson?.files &&
+        Array.isArray(bridgeJson.files) &&
+        bridgeJson.files.length > 0
+      ) {
           console.log(
             `✅ [Git Source] Fetched ${bridgeJson.files.length} files from git-nostr-bridge` +
               (bridgeJson.branch ? ` (branch: ${bridgeJson.branch})` : "")
@@ -1431,40 +1453,18 @@ async function fetchFromNostrGit(
             resolvedBranch: resolved,
           };
         }
-        if (bridgeJson !== null) {
-          console.log(
-            `⚠️ [Git Source] git-nostr-bridge API returned OK but no files:`,
-            bridgeJson
-          );
-        }
-      } else {
-        const errorText = await response.text().catch(() => "");
-        console.log(
-          `⚠️ [Git Source] git-nostr-bridge API failed: ${
-            response.status
-          } - ${errorText.substring(0, 200)}`
-        );
-      }
-
-      // 404/500: not on disk or git error. 200 + empty files: bare placeholder or
-      // never-filled repo (see /api/nostr/repo/files — returns 200 with files: [] when
-      // there are no refs). In all these cases the clone API can git clone --bare from GRASP.
-      const emptyOk =
-        response.ok &&
-        bridgeJson &&
-        (!Array.isArray(bridgeJson.files) || bridgeJson.files.length === 0);
+      // Not on disk (null) or empty tree: trigger GRASP clone + mirror.
       const shouldTriggerClone =
-        emptyOk ||
-        (!response.ok && (response.status === 404 || response.status === 500));
+        !bridgeJson ||
+        !Array.isArray(bridgeJson.files) ||
+        bridgeJson.files.length === 0;
 
       if (shouldTriggerClone) {
-        const errorType = emptyOk
-          ? "empty on-disk repo (needs GRASP clone)"
-          : response.status === 404
+        const errorType = !bridgeJson
           ? "not cloned yet"
-          : "empty or corrupted";
+          : "empty on-disk repo (needs GRASP clone)";
         console.log(
-          `💡 [Git Source] Repository ${errorType} (${response.status}). Resolving via GRASP remote + mirror...`
+          `💡 [Git Source] Repository ${errorType}. Resolving via GRASP remote + mirror...`
         );
 
         const isGraspServerCheck = cloneUrl && isGraspServerFn(cloneUrl);
