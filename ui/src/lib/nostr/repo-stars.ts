@@ -116,12 +116,44 @@ export type RepoAnnouncementIdDetail = {
   ownerPubkey?: string;
 };
 
+function announcementCacheKey(entity: string, repo: string): string {
+  return `gittr:30617:${entity.toLowerCase()}:${repo.toLowerCase()}`;
+}
+
+export function readCachedRepoAnnouncementEventId(
+  entity: string,
+  repo: string
+): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const id = sessionStorage.getItem(announcementCacheKey(entity, repo));
+    return typeof id === "string" && /^[0-9a-f]{64}$/i.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+export function cacheRepoAnnouncementEventId(
+  entity: string,
+  repo: string,
+  eventId: string
+): void {
+  if (typeof window === "undefined") return;
+  if (!/^[0-9a-f]{64}$/i.test(eventId)) return;
+  try {
+    sessionStorage.setItem(announcementCacheKey(entity, repo), eventId);
+  } catch {
+    /* quota */
+  }
+}
+
 /** File-fetch on the Code tab already found a 30617 — tell the layout header immediately. */
 export function broadcastRepoAnnouncementEventId(
   detail: RepoAnnouncementIdDetail
 ): void {
   if (typeof window === "undefined") return;
   if (!/^[0-9a-f]{64}$/i.test(detail.eventId)) return;
+  cacheRepoAnnouncementEventId(detail.entity, detail.repo, detail.eventId);
   window.dispatchEvent(
     new CustomEvent(REPO_ANNOUNCEMENT_ID_EVENT, { detail })
   );

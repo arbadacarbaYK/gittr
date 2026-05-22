@@ -23,7 +23,9 @@ import {
   isRepoStarReaction,
   publishStarReaction,
   queryRepoAnnouncementEventId,
+  readCachedRepoAnnouncementEventId,
   REPO_ANNOUNCEMENT_ID_EVENT,
+  cacheRepoAnnouncementEventId,
   removeStarReaction,
   type RepoAnnouncementIdDetail,
   type RelaySubscribeFn,
@@ -236,7 +238,13 @@ export default function RepoLayoutClient({
     enabled: mounted && !!ownerHexForZaps,
   });
 
-  const [relayRepoEventId, setRelayRepoEventId] = useState<string | null>(null);
+  const [relayRepoEventId, setRelayRepoEventId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return readCachedRepoAnnouncementEventId(
+      resolvedParams.entity,
+      resolvedParams.repo
+    );
+  });
   const [resolvingRepoEventId, setResolvingRepoEventId] = useState(false);
 
   const repoNostrEventId = useMemo(() => {
@@ -249,12 +257,11 @@ export default function RepoLayoutClient({
     () =>
       !!(
         mounted &&
-        pubkey &&
         ownerPubkey &&
         /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
         repoNostrEventId
       ),
-    [mounted, pubkey, ownerPubkey, repoNostrEventId]
+    [mounted, ownerPubkey, repoNostrEventId]
   );
 
   const githubUpstreamUrl = useMemo(
@@ -406,6 +413,11 @@ export default function RepoLayoutClient({
         detail.repo?.toLowerCase() === resolvedParams.repo?.toLowerCase();
       if (!entityMatch || !repoMatch) return;
       if (/^[0-9a-f]{64}$/i.test(detail.eventId)) {
+        cacheRepoAnnouncementEventId(
+          resolvedParams.entity,
+          resolvedParams.repo,
+          detail.eventId
+        );
         setRelayRepoEventId(detail.eventId);
       }
     };
@@ -413,6 +425,15 @@ export default function RepoLayoutClient({
     return () =>
       window.removeEventListener(REPO_ANNOUNCEMENT_ID_EVENT, handler);
   }, [resolvedParams.entity, resolvedParams.repo]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const cached = readCachedRepoAnnouncementEventId(
+      resolvedParams.entity,
+      resolvedParams.repo
+    );
+    if (cached) setRelayRepoEventId((prev) => prev || cached);
+  }, [mounted, resolvedParams.entity, resolvedParams.repo]);
 
   useEffect(() => {
     githubHydrateKeyRef.current = "";
