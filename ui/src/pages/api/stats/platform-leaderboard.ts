@@ -72,6 +72,11 @@ function hasAnyLeaderboardData(snap: LeaderboardSnapshot): boolean {
   );
 }
 
+/** Disk snapshot saved with repos but user query failed/timed out — must re-fetch users. */
+function snapshotMissingTopUsers(snap: LeaderboardSnapshot | null): boolean {
+  return !!snap && snap.topRepos.length > 0 && snap.topUsers.length === 0;
+}
+
 async function loadDiskSnapshot(): Promise<LeaderboardSnapshot | null> {
   try {
     const raw = await fs.readFile(SNAPSHOT_PATH, "utf8");
@@ -107,35 +112,32 @@ async function refreshLeaderboardCache(): Promise<void> {
   const snap = emptySnapshot();
   cache = snap;
 
+  // Run top repos then top users sequentially — parallel subscribe() calls on one pool
+  // starved repo announcements and left topUsers empty while topRepos filled.
   await withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, async (subscribe) => {
-    await Promise.all([
-      getTopReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 10).then(
-        (topRepos) => {
-          snap.topRepos = topRepos;
-          snap.at = Date.now();
-        }
-      ),
-      getTopUsersFromNostr(subscribe, PLATFORM_STATS_RELAYS, 10).then(
-        (topUsers) => {
-          snap.topUsers = topUsers;
-          snap.at = Date.now();
-        }
-      ),
-      getLiveRecentReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 12).then(
-        (recentRepos) => {
-          snap.recentRepos = recentRepos;
-          snap.at = Date.now();
-        }
-      ),
+    snap.topRepos = await getTopReposFromNostr(
+      subscribe,
+      PLATFORM_STATS_RELAYS,
+      10
+    );
+    snap.at = Date.now();
+    snap.topUsers = await getTopUsersFromNostr(
+      subscribe,
+      PLATFORM_STATS_RELAYS,
+      10
+    );
+    snap.at = Date.now();
+    const [recentRepos, recentActivities] = await Promise.all([
+      getLiveRecentReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 12),
       getRecentPlatformActivitiesFromNostr(
         subscribe,
         PLATFORM_STATS_RELAYS,
         12
-      ).then((recentActivities) => {
-        snap.recentActivities = recentActivities;
-        snap.at = Date.now();
-      }),
+      ),
     ]);
+    snap.recentRepos = recentRepos;
+    snap.recentActivities = recentActivities;
+    snap.at = Date.now();
   });
 
   if (hasAnyLeaderboardData(snap)) {
@@ -143,10 +145,17 @@ async function refreshLeaderboardCache(): Promise<void> {
   }
 }
 
-function scheduleBackgroundRefresh(): void {
+function scheduleBackgroundRefresh(force = false): void {
   if (refreshInFlight) return;
   const now = Date.now();
-  if (cache && cache.at > 0 && now - cache.at < DISK_REFRESH_AFTER_MS) {
+  const repairUsers = snapshotMissingTopUsers(cache);
+  if (
+    !force &&
+    !repairUsers &&
+    cache &&
+    cache.at > 0 &&
+    now - cache.at < DISK_REFRESH_AFTER_MS
+  ) {
     return;
   }
   if (!cache) cache = emptySnapshot();
@@ -197,13 +206,19 @@ export default async function handler(
     });
   };
 
-  if (forceRefresh || diskNeedsRefresh) {
-    scheduleBackgroundRefresh();
+  const missingTopUsers = snapshotMissingTopUsers(cache);
+
+  if (forceRefresh || diskNeedsRefresh || missingTopUsers) {
+    scheduleBackgroundRefresh(forceRefresh || missingTopUsers);
   }
 
   if (!cache || !hasAnyLeaderboardData(cache)) {
-    scheduleBackgroundRefresh();
+    scheduleBackgroundRefresh(true);
     return respond(false, true);
+  }
+
+  if (missingTopUsers) {
+    return respond(true, true);
   }
 
   return respond(memoryFresh || !diskNeedsRefresh, !!refreshInFlight);

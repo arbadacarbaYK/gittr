@@ -1468,19 +1468,19 @@ export function countUserActivitiesFromNostr(
       {} // options parameter
     );
 
-    // Match repo leaderboard timeout so server API returns both cards together
+    // Repo announcements arrive slower than issue floods; allow more time than repo stats.
     setTimeout(() => {
       if (!resolved) {
         resolved = true;
         unsub();
         console.log(
-          `⏱️ [Nostr User Stats] Timeout after 7s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`,
+          `⏱️ [Nostr User Stats] Timeout after 18s (EOSE: ${eoseCount}/${expectedEose}), returning counts:`,
           userMap.size,
           "users"
         );
         resolve(userMap);
       }
-    }, 7000);
+    }, 18_000);
   });
 }
 
@@ -1573,6 +1573,16 @@ export async function getTopReposFromNostr(
   }
 }
 
+/** GitHub-mirror keys that only spam issues on Nostr (no repos/commits/merges). */
+export function isGithubMirrorGhostUser(u: UserStats): boolean {
+  return (
+    u.reposCreatedCount === 0 &&
+    u.commitCount === 0 &&
+    u.prMergedCount === 0 &&
+    u.activityCount >= 20
+  );
+}
+
 /**
  * Get top users from Nostr (network source of truth)
  * Counts directly from Nostr events, not localStorage
@@ -1597,22 +1607,19 @@ export async function getTopUsersFromNostr(
     relays,
     999999
   ); // All-time (same window as platform repo leaderboard)
-  const users = Array.from(userMap.values())
+  const ranked = Array.from(userMap.values())
     .filter((u) => !isPublisherBlocklisted(u.pubkey) && u.activityCount > 0)
-    // Drop bulk GitHub-mirror ghost keys (issue spam, no repos/commits/merges on Nostr).
-    .filter(
-      (u) =>
-        !(
-          u.reposCreatedCount === 0 &&
-          u.commitCount === 0 &&
-          u.prMergedCount === 0 &&
-          u.activityCount >= 20
-        )
-    )
-    .sort((a, b) => b.activityCount - a.activityCount)
-    .slice(0, count);
+    .sort((a, b) => b.activityCount - a.activityCount);
+
+  // Skip ghost keys but keep scanning — top-N by raw score are often all issue mirrors.
+  const users: UserStats[] = [];
+  for (const u of ranked) {
+    if (isGithubMirrorGhostUser(u)) continue;
+    users.push(u);
+    if (users.length >= count) break;
+  }
   console.log(
-    `✅ [getTopUsersFromNostr] Returning ${users.length} users (map size ${userMap.size})`
+    `✅ [getTopUsersFromNostr] Returning ${users.length} users (map size ${userMap.size}, ranked ${ranked.length})`
   );
   return users;
 }

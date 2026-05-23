@@ -306,13 +306,15 @@ export default function HomePage() {
           }
         }
       }
+      let hasTopUsers = false;
       if (Array.isArray(data.topUsers)) {
         const sortedUsers = [...data.topUsers].sort(
           (a, b) => (b.activityCount || 0) - (a.activityCount || 0)
         );
         setTopUsers(sortedUsers);
-        if (sortedUsers.length > 0) setLbTopUsersReady(true);
-        if (sortedUsers.length > 0) {
+        hasTopUsers = sortedUsers.length > 0;
+        if (hasTopUsers) setLbTopUsersReady(true);
+        if (hasTopUsers) {
           try {
             sessionStorage.setItem(
               "gittr_cached_topUsers",
@@ -358,7 +360,7 @@ export default function HomePage() {
       if (!refreshing) {
         setLeaderboardReady(true);
         setLbTopReposReady(true);
-        setLbTopUsersReady(true);
+        if (hasTopUsers) setLbTopUsersReady(true);
         setLbRecentReposReady(true);
         setLbRecentActivitiesReady(true);
       }
@@ -430,7 +432,10 @@ export default function HomePage() {
         };
         if (cancelled || gen !== leaderboardFetchGen.current) return;
         applyLeaderboardPayload(data);
-        if (data.refreshing) {
+        const missingTopUsers =
+          (data.topRepos?.length ?? 0) > 0 &&
+          (data.topUsers?.length ?? 0) === 0;
+        if (data.refreshing || missingTopUsers) {
           pollTimer = setTimeout(poll, 2500);
         }
       } catch (err) {
