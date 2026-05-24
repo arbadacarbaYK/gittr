@@ -8,6 +8,7 @@ Use these **on gittr** when pointing readers at our repositories. GitHub mirrors
 | **gitnostr** (bridge) | https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr |
 | **nsite-gateway** (Pages) | https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway |
 | **gittr-helper-tools** | https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-helper-tools |
+| **gittr-mcp** (agents) | https://github.com/arbadacarbaYK/gittr-mcp (separate repo; link GitHub until mirrored on gittr) |
 
 **Open a file:** add `?file=path/to.md&branch=main` (example: [GITTR_PAGES_CURATION.md](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs/GITTR_PAGES_CURATION.md&branch=main)).
 
