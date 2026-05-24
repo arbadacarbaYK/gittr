@@ -35,9 +35,8 @@ If you publish a list with **only** the new pubkey, you **replace** the whole li
 2. **Publish / update the mute list** (once per blocked pubkey):
 
    ```bash
-   cd /opt/ngit/ui
    export CURATION_USER="$(grep ^CURATION_USER= /opt/ngit/infra/nsite-gateway/.env | cut -d= -f2-)"
-   node scripts/publish-gittr-pages-mutelist.cjs
+   node /opt/ngit/scripts/publish-gittr-pages-mutelist.cjs
    cd /opt/ngit/infra/nsite-gateway && docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml up -d
    ```
 

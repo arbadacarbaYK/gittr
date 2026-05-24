@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Publish/update gittr NIP-51 mute list (kind 10000) — MERGE p tags, do not replace.
- * Run on server: cd /opt/ngit/ui && node scripts/publish-gittr-pages-mutelist.cjs
+ * Run on server: node /opt/ngit/scripts/publish-gittr-pages-mutelist.cjs
  */
 const fs = require("fs");
 const path = require("path");
@@ -41,8 +41,9 @@ function blocklistHexFromUiEnv() {
   if (!fs.existsSync(UI_ENV)) return [];
   const text = fs.readFileSync(UI_ENV, "utf8");
   const m = text.match(/^NEXT_PUBLIC_PUBLISHER_BLOCKLIST=(.+)$/m);
-  if (!m) return [];
-  let v = m[1].trim();
+  const raw = m?.[1];
+  if (!raw) return [];
+  let v = raw.trim();
   if (
     (v.startsWith('"') && v.endsWith('"')) ||
     (v.startsWith("'") && v.endsWith("'"))
@@ -52,7 +53,10 @@ function blocklistHexFromUiEnv() {
   const hex = [];
   for (const p of v.split(/[\s,;]+/).filter(Boolean)) {
     if (/^npub1/i.test(p)) {
-      hex.push(nip19.decode(p).data.toLowerCase());
+      const decoded = nip19.decode(p);
+      if (decoded.type === "npub") {
+        hex.push(decoded.data.toLowerCase());
+      }
     } else if (/^[0-9a-f]{64}$/i.test(p)) {
       hex.push(p.toLowerCase());
     }

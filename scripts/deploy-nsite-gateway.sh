@@ -118,6 +118,6 @@ REMOTE_SYNC
 echo "🐳 Building gittr gateway fork image and restarting stack…"
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "cd '${REMOTE}' && docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml build && docker compose -f docker-compose.yml -f docker-compose.gittr-gateway.yml up -d"
 
-scp -i "$KEY" -q "$ROOT/scripts/publish-gittr-pages-mutelist.cjs" "root@${HOST}:/opt/ngit/ui/scripts/" 2>/dev/null || true
+scp -i "$KEY" -q "$ROOT/scripts/publish-gittr-pages-mutelist.cjs" "root@${HOST}:/opt/ngit/scripts/" 2>/dev/null || true
 
 echo "✅ nsite gateway should be listening on host port 3040 (see SETUP_INSTRUCTIONS.md for HTTPS / reverse-proxy in front)."
