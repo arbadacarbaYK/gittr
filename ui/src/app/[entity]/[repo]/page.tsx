@@ -19841,7 +19841,6 @@ export default function RepoCodePage() {
                   ...c,
                   weight: c.weight ?? 0,
                 }))}
-                amount={10}
                 comment={`Zap for ${resolvedParams.entity}/${resolvedParams.repo}`}
               />
             </div>

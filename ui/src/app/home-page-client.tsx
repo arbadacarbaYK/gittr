@@ -1532,12 +1532,54 @@ export default function HomePage() {
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6 relative">
       <BoltSnow />
       <header className="mb-6">
-        <h1 className="text-2xl font-bold">Home</h1>
-        <p className="text-gray-400 mt-1" suppressHydrationWarning>
-          {mounted && isLoggedIn
-            ? `Welcome, ${name || "nostr user"}`
-            : "Welcome. Please log in to create and fork repos."}
-        </p>
+        <h1 className="text-2xl font-bold" suppressHydrationWarning>
+          {mounted && isLoggedIn && name
+            ? `Welcome, ${name}`
+            : "Welcome"}
+        </h1>
+        <div
+          className="text-gray-400 mt-3 space-y-3 text-sm leading-relaxed max-w-3xl"
+          suppressHydrationWarning
+        >
+          <p>
+            On gittr you can import your codebases from various external
+            sources and push an announcement on its whereabouts to Nostr. Now
+            your code can be discovered in all Nostr git clients! From there you
+            can either switch to full Nostr git mode and handle PRs and issues
+            only on Nostr git clients or just make your work more visible.
+          </p>
+          <p>
+            Alternatively you can also create repos directly on our bridge. To
+            start importing or creating a repo go to{" "}
+            <Link
+              href="/new"
+              className="text-purple-400 hover:text-purple-300 font-semibold"
+            >
+              NEW
+            </Link>
+            .
+          </p>
+          <p>
+            <Link href="/explore" className="text-purple-400 hover:underline">
+              Browse repos
+            </Link>{" "}
+            or{" "}
+            <a
+              href="/pages"
+              className="text-purple-400 hover:underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Pages
+            </a>{" "}
+            spun up from a repo and also check the{" "}
+            <Link href="/apps" className="text-purple-400 hover:underline">
+              Nostr Apps
+            </Link>{" "}
+            page. The space is getting bigger every day!
+          </p>
+          <p>Found a great repo? Zap it and make a dev happy.</p>
+        </div>
       </header>
 
       {/* Stats Cards */}
@@ -2522,7 +2564,7 @@ export default function HomePage() {
         <div className="flex items-center justify-center">
           <ZapButton
             recipient="npub1nur7st367ys7cqtjyv74alu84y209zsw8wagpxvrl3g9q2veqzuqjqh65s"
-            amount={10}
+            amount={21}
             comment="Donation to gittr.space"
             recipientMetadata={{
               lud16: "arbadacarba@btip.nl",

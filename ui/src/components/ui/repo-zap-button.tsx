@@ -31,7 +31,7 @@ export function RepoZapButton({
   repoId,
   ownerPubkey,
   contributors = [],
-  amount = 10, // Use 2-10 sats for testing (LNbits ~300 sats, NWC ~84 sats)
+  amount = 21,
   comment,
 }: RepoZapButtonProps) {
   const { pubkey: currentUserPubkey } = useNostrContext();
