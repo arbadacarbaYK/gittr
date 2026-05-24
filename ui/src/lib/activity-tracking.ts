@@ -336,6 +336,24 @@ export function aggregateContributionGraphByWeek(
   return out;
 }
 
+/** Human-readable range for the 52-week strip (rolling window, not Jan–Dec). */
+export function contributionTimelineRangeLabel(
+  weeks: Array<{ date: string; count: number }>
+): string {
+  if (weeks.length < 2) return "";
+  const first = weeks[0]?.date;
+  const last = weeks[weeks.length - 1]?.date;
+  if (!first || !last) return "";
+  const fmt = (iso: string) => {
+    const d = new Date(`${iso}T12:00:00.000Z`);
+    return d.toLocaleDateString(undefined, {
+      month: "short",
+      year: "numeric",
+    });
+  };
+  return `${fmt(first)} – ${fmt(last)}`;
+}
+
 function bumpContributionDay(
   bucket: Record<string, number>,
   createdAtSec: number

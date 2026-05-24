@@ -8,6 +8,7 @@ import {
   type NostrActivityCounts,
   aggregateContributionGraphByWeek,
   backfillActivities,
+  contributionTimelineRangeLabel,
   countActivitiesFromNostr,
   getContributionGraph,
   getUserActivities,
@@ -3103,6 +3104,11 @@ export default function EntityPage({
     [contributionWeeks]
   );
 
+  const timelineRangeLabel = useMemo(
+    () => contributionTimelineRangeLabel(contributionWeeks),
+    [contributionWeeks]
+  );
+
   // Early return check - MUST be after all hooks
   if (!isPubkey) {
     return null; // Redirecting
@@ -3574,12 +3580,16 @@ export default function EntityPage({
               </span>
             </div>
             <p className="text-xs sm:text-sm text-gray-400">
-              {Math.max(
-                timelineContributionTotal,
-                userStats?.activityCount || 0,
-                nostrActivityCounts?.total || 0
-              )}{" "}
-              contributions in the last year
+              {timelineContributionTotal} contribution
+              {timelineContributionTotal === 1 ? "" : "s"} in the last 52 weeks
+              {timelineRangeLabel ? ` (${timelineRangeLabel})` : ""}
+              {nostrActivityCounts?.total &&
+              nostrActivityCounts.total > timelineContributionTotal ? (
+                <span className="block mt-1 text-[11px] text-gray-500">
+                  {nostrActivityCounts.total} total on Nostr all-time (sidebar
+                  stats may include older activity)
+                </span>
+              ) : null}
             </p>
           </div>
         </div>
