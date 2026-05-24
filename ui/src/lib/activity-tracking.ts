@@ -234,19 +234,34 @@ export function getUserActivityCounts(
   return counts as Record<ActivityType, number>;
 }
 
+/** Local activity window for profile timeline (fast, no network). */
+export const CONTRIBUTION_LOCAL_DAYS = 730;
+
+/** @deprecated Use calendar year rows; kept for callers expecting one rolling strip. */
+export const CONTRIBUTION_WEEKS_SHOWN = 52;
+
+export type CalendarYearTimelineRow = {
+  year: number;
+  label: string;
+  weeks: Array<{ date: string; count: number }>;
+  total: number;
+  /** True when we may not have Jan–Dec data for that year yet (Nostr still loading). */
+  partial: boolean;
+};
+
 /**
- * Get contribution graph data (like GitHub's activity graph)
- * Returns array of {date: string, count: number} for last 52 weeks
+ * Get contribution graph data (daily buckets)
+ * Returns array of {date: string, count: number} for the last `dayCount` days
  */
 export function getContributionGraph(
-  userPubkey: string
+  userPubkey: string,
+  dayCount = CONTRIBUTION_LOCAL_DAYS
 ): Array<{ date: string; count: number }> {
   const activities = getUserActivities(userPubkey);
   const weeks: Record<string, number> = {};
 
-  // Initialize last 52 weeks
   const now = Date.now();
-  for (let i = 0; i < 365; i++) {
+  for (let i = 0; i < dayCount; i++) {
     const date = new Date(now - i * 24 * 60 * 60 * 1000);
     const dateStr = date.toISOString().split("T")[0];
     if (dateStr) {
@@ -268,8 +283,6 @@ export function getContributionGraph(
     .map(([date, count]) => ({ date, count }))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
-
-export const CONTRIBUTION_WEEKS_SHOWN = 52;
 
 /** Sunday-start week key (UTC) for grouping daily counts. */
 export function weekStartUtc(dateStr: string): string {
@@ -306,7 +319,8 @@ export function mergeReposIntoContributionGraph(
     const ts = repo.createdAt || repo.updatedAt;
     if (!ts || ts <= 0) continue;
     const dateStr = new Date(ts).toISOString().split("T")[0];
-    if (!dateStr || !map.has(dateStr)) continue;
+    if (!dateStr) continue;
+    if (!map.has(dateStr)) map.set(dateStr, 0);
     map.set(dateStr, (map.get(dateStr) || 0) + 1);
   }
   return graph.map((d) => ({
@@ -336,22 +350,65 @@ export function aggregateContributionGraphByWeek(
   return out;
 }
 
-/** Human-readable range for the 52-week strip (rolling window, not Jan–Dec). */
-export function contributionTimelineRangeLabel(
-  weeks: Array<{ date: string; count: number }>
-): string {
-  if (weeks.length < 2) return "";
-  const first = weeks[0]?.date;
-  const last = weeks[weeks.length - 1]?.date;
-  if (!first || !last) return "";
-  const fmt = (iso: string) => {
-    const d = new Date(`${iso}T12:00:00.000Z`);
-    return d.toLocaleDateString(undefined, {
-      month: "short",
-      year: "numeric",
-    });
-  };
-  return `${fmt(first)} – ${fmt(last)}`;
+function dateInCalendarYear(dateStr: string, year: number): boolean {
+  return dateStr >= `${year}-01-01` && dateStr <= `${year}-12-31`;
+}
+
+function addUtcDays(isoDate: string, days: number): string {
+  const d = new Date(`${isoDate}T12:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().split("T")[0]!;
+}
+
+/** One row per calendar year: previous year + current year (week buckets). */
+export function buildCalendarYearTimelineRows(
+  daily: Array<{ date: string; count: number }>,
+  options?: { years?: number[]; dataComplete?: boolean }
+): CalendarYearTimelineRow[] {
+  const now = new Date();
+  const currentYear = now.getUTCFullYear();
+  const years = options?.years ?? [currentYear - 1, currentYear];
+  const dailyMap = new Map(daily.map((d) => [d.date, d.count]));
+  const earliestDay =
+    daily.length > 0 ? daily[0]?.date : undefined;
+
+  return years.map((year) => {
+    const yearEnd =
+      year === currentYear
+        ? now.toISOString().split("T")[0]!
+        : `${year}-12-31`;
+    let cursor = weekStartUtc(`${year}-01-01`);
+    const endCursor = weekStartUtc(yearEnd);
+    const weeks: Array<{ date: string; count: number }> = [];
+
+    while (cursor <= endCursor) {
+      let weekCount = 0;
+      for (let d = 0; d < 7; d++) {
+        const dayStr = addUtcDays(cursor, d);
+        if (dateInCalendarYear(dayStr, year)) {
+          weekCount += dailyMap.get(dayStr) || 0;
+        }
+      }
+      weeks.push({ date: cursor, count: weekCount });
+      cursor = addUtcDays(cursor, 7);
+    }
+
+    const total = weeks.reduce((s, w) => s + w.count, 0);
+    const partial =
+      !options?.dataComplete &&
+      (year < currentYear
+        ? !earliestDay || earliestDay > `${year}-01-07`
+        : false);
+
+    const label =
+      year === currentYear
+        ? `${year} (Jan – today)`
+        : partial
+          ? `${year} (from ${earliestDay ?? "…"})`
+          : `${year}`;
+
+    return { year, label, weeks, total, partial };
+  });
 }
 
 function bumpContributionDay(

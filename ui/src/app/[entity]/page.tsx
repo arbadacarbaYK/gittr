@@ -6,9 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
   type NostrActivityCounts,
-  aggregateContributionGraphByWeek,
   backfillActivities,
-  contributionTimelineRangeLabel,
+  buildCalendarYearTimelineRows,
   countActivitiesFromNostr,
   getContributionGraph,
   getUserActivities,
@@ -210,6 +209,8 @@ export default function EntityPage({
   const [nostrActivityCounts, setNostrActivityCounts] =
     useState<NostrActivityCounts | null>(null);
   const [loadingNostrCounts, setLoadingNostrCounts] = useState(false);
+  /** Nostr per-day timeline merge finished (calendar rows may still show "partial" until then). */
+  const [timelineNostrLoaded, setTimelineNostrLoaded] = useState(false);
 
   // Get current user's pubkey for follow functionality - MUST be called before any early returns
   const {
@@ -1730,6 +1731,7 @@ export default function EntityPage({
         // CRITICAL: getUserActivities now filters out activities from deleted repos
         // Defer statistics loading to improve initial page load performance
         setTimeout(() => {
+          setTimelineNostrLoaded(false);
           const activities = getUserActivities(fullPubkey);
           const counts = getUserActivityCounts(fullPubkey);
           const seeded = seedProfileActivitiesFromRepos(
@@ -1759,33 +1761,34 @@ export default function EntityPage({
           // We just add any additional PRs/issues from Nostr that might not be in localStorage yet
           // CRITICAL: subscribe and defaultRelays should always be available from NostrContext
           // Even when not logged in, we can still query Nostr (read-only)
-          if (isLowMemoryDevice) {
-            setLoadingNostrCounts(false);
-            return;
-          }
-          if (subscribe && defaultRelays && defaultRelays.length > 0) {
+          const runProfileNostrActivity = () => {
+            if (isLowMemoryDevice) {
+              setLoadingNostrCounts(false);
+              return;
+            }
+            if (!subscribe || !defaultRelays?.length) {
+              setLoadingNostrCounts(false);
+              setTimelineNostrLoaded(true);
+              return;
+            }
             setLoadingNostrCounts(true);
 
-            // Use countActivitiesFromNostr to get accurate counts from the network
             const activeRelays = defaultRelays.filter(Boolean);
-
-            // Skip if no relays available
             if (activeRelays.length === 0) {
               console.warn(
                 "⚠️ [Profile] No relays available for activity counting"
               );
               setLoadingNostrCounts(false);
+              setTimelineNostrLoaded(true);
               return;
             }
 
-            // Use the proper function to count activities from Nostr
-            // CRITICAL: Normalize pubkey to lowercase for consistent querying
             const normalizedFullPubkey = fullPubkey.toLowerCase();
             console.log(
-              `🔍 [Profile] Starting Nostr activity count query for ${normalizedFullPubkey.slice(
+              `🔍 [Profile] Deferred Nostr activity query for ${normalizedFullPubkey.slice(
                 0,
                 8
-              )}... (logged in: ${isLoggedIn})`
+              )}...`
             );
             countActivitiesFromNostr(
               subscribe,
@@ -1797,6 +1800,8 @@ export default function EntityPage({
                   `✅ [Profile] Got Nostr activity counts:`,
                   nostrCounts
                 );
+                setNostrActivityCounts(nostrCounts);
+                setTimelineNostrLoaded(true);
 
                 // CRITICAL: Also query for PRs/issues created by OTHER users for this user's repos
                 // PRs/issues can be created by anyone, not just the repo owner
@@ -1947,6 +1952,7 @@ export default function EntityPage({
                             );
                           }
                           setLoadingNostrCounts(false);
+                          setTimelineNostrLoaded(true);
                         }, 1000);
                       }
                     },
@@ -1971,6 +1977,7 @@ export default function EntityPage({
                         );
                       }
                       setLoadingNostrCounts(false);
+                      setTimelineNostrLoaded(true);
                     }
                   }, 15000);
                 } else {
@@ -1985,6 +1992,7 @@ export default function EntityPage({
                     );
                   }
                   setLoadingNostrCounts(false);
+                  setTimelineNostrLoaded(true);
                 }
               })
               .catch((error) => {
@@ -1993,8 +2001,17 @@ export default function EntityPage({
                   error
                 );
                 setLoadingNostrCounts(false);
-                // Keep localStorage counts on error
+                setTimelineNostrLoaded(true);
               });
+          };
+
+          // Timeline: paint from local/repos first; Nostr merge after idle (keeps profile snappy)
+          if (typeof requestIdleCallback !== "undefined") {
+            requestIdleCallback(() => runProfileNostrActivity(), {
+              timeout: 3500,
+            });
+          } else {
+            setTimeout(runProfileNostrActivity, 2000);
           }
 
           // CRITICAL: Sync activities from multiple sources to get complete picture (for timeline graph)
@@ -3091,31 +3108,32 @@ export default function EntityPage({
     /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta) &&
     currentUserPubkey.toLowerCase() === fullPubkeyForMeta.toLowerCase();
 
-  const contributionWeeks = useMemo(() => {
+  const calendarYearRows = useMemo(() => {
     const daily = mergeContributionCountsByDay(
       mergeReposIntoContributionGraph(contributionGraph, userRepos),
       nostrActivityCounts?.contributionsByDay ?? {}
     );
-    return aggregateContributionGraphByWeek(daily);
-  }, [contributionGraph, userRepos, nostrActivityCounts]);
+    return buildCalendarYearTimelineRows(daily, {
+      dataComplete: timelineNostrLoaded,
+    });
+  }, [
+    contributionGraph,
+    userRepos,
+    nostrActivityCounts,
+    timelineNostrLoaded,
+  ]);
 
-  const timelineContributionTotal = useMemo(
-    () => contributionWeeks.reduce((sum, w) => sum + w.count, 0),
-    [contributionWeeks]
-  );
-
-  const timelineRangeLabel = useMemo(
-    () => contributionTimelineRangeLabel(contributionWeeks),
-    [contributionWeeks]
-  );
+  const timelineMaxCount = useMemo(() => {
+    const allWeeks = calendarYearRows.flatMap((r) => r.weeks);
+    return Math.max(...allWeeks.map((w) => w.count), 1);
+  }, [calendarYearRows]);
 
   // Early return check - MUST be after all hooks
   if (!isPubkey) {
     return null; // Redirecting
   }
 
-  const weeks = contributionWeeks;
-  const maxCount = Math.max(...weeks.map((w) => w.count), 1);
+  const maxCount = timelineMaxCount;
 
   // CRITICAL: Use more granular intensity levels to create visually distinct legend dots
   // Always use at least 6 distinct levels (excluding 0) for better visual differentiation
@@ -3526,37 +3544,53 @@ export default function EntityPage({
               Activity Timeline
             </h2>
             <Tooltip
-              content="Shows contributions over the last 52 weeks. Each square is one week; darker green means more activity. Data comes from Nostr (pushes, PRs, issues), repository creation dates, and git commits synced from the bridge. The row always fits the card width — no horizontal scroll."
+              content="Calendar years (previous + current): each square is one week; darker green means more activity. The profile loads local/repo data first, then enriches from Nostr in the background so the page stays fast."
               mobileClickable={true}
               className="inline-flex"
             >
               <HelpCircle className="w-4 h-4 text-gray-400 hover:text-gray-300 cursor-help" />
             </Tooltip>
           </div>
-          <div className="space-y-3">
-            <div
-              className="grid w-full gap-[3px]"
-              style={{
-                gridTemplateColumns: `repeat(${weeks.length}, minmax(0, 1fr))`,
-              }}
-              aria-label="Contribution activity by week"
-            >
-              {weeks.map((week, idx) => (
+          <div className="space-y-4">
+            {!timelineNostrLoaded && (
+              <p className="text-[11px] text-gray-500">
+                Showing local activity first — syncing more from Nostr…
+              </p>
+            )}
+            {calendarYearRows.map((row) => (
+              <div key={row.year} className="space-y-1.5">
+                <div className="flex items-baseline justify-between gap-2 text-xs text-gray-500">
+                  <span className="font-medium text-gray-400">{row.label}</span>
+                  <span className="tabular-nums text-gray-400">
+                    {row.total} contribution{row.total === 1 ? "" : "s"}
+                    {row.partial ? " · partial data" : ""}
+                  </span>
+                </div>
                 <div
-                  key={`${week.date}-${idx}`}
-                  className={`${getIntensity(
-                    week.count
-                  )} aspect-square w-full min-h-[8px] max-h-4 rounded-[3px] ${
-                    week.count > 0 ? "ring-1 ring-green-500/25" : ""
-                  }`}
-                  title={`Week of ${week.date}: ${week.count} contribution${
-                    week.count === 1 ? "" : "s"
-                  }`}
-                />
-              ))}
-            </div>
+                  className="grid w-full gap-[2px]"
+                  style={{
+                    gridTemplateColumns: `repeat(${Math.max(row.weeks.length, 1)}, minmax(0, 1fr))`,
+                  }}
+                  aria-label={`Contribution activity ${row.year}`}
+                >
+                  {row.weeks.map((week, idx) => (
+                    <div
+                      key={`${row.year}-${week.date}-${idx}`}
+                      className={`${getIntensity(
+                        week.count
+                      )} aspect-square w-full min-h-[7px] max-h-3.5 rounded-[2px] ${
+                        week.count > 0 ? "ring-1 ring-green-500/25" : ""
+                      }`}
+                      title={`Week of ${week.date}: ${week.count} contribution${
+                        week.count === 1 ? "" : "s"
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
             <div
-              className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 text-xs text-gray-500"
+              className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 text-xs text-gray-500 pt-1"
               role="img"
               aria-label="Contribution intensity legend"
             >
@@ -3579,18 +3613,6 @@ export default function EntityPage({
                 More
               </span>
             </div>
-            <p className="text-xs sm:text-sm text-gray-400">
-              {timelineContributionTotal} contribution
-              {timelineContributionTotal === 1 ? "" : "s"} in the last 52 weeks
-              {timelineRangeLabel ? ` (${timelineRangeLabel})` : ""}
-              {nostrActivityCounts?.total &&
-              nostrActivityCounts.total > timelineContributionTotal ? (
-                <span className="block mt-1 text-[11px] text-gray-500">
-                  {nostrActivityCounts.total} total on Nostr all-time (sidebar
-                  stats may include older activity)
-                </span>
-              ) : null}
-            </p>
           </div>
         </div>
 
