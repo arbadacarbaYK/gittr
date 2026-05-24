@@ -6,11 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
   type NostrActivityCounts,
+  aggregateContributionGraphByWeek,
   backfillActivities,
   countActivitiesFromNostr,
   getContributionGraph,
   getUserActivities,
   getUserActivityCounts,
+  mergeContributionCountsByDay,
+  mergeReposIntoContributionGraph,
+  seedProfileActivitiesFromRepos,
   syncIssuesAndPRsFromNostr,
   syncUserCommitsFromBridge,
 } from "@/lib/activity-tracking";
@@ -1727,11 +1731,26 @@ export default function EntityPage({
         setTimeout(() => {
           const activities = getUserActivities(fullPubkey);
           const counts = getUserActivityCounts(fullPubkey);
-          const graph = getContributionGraph(fullPubkey);
+          const seeded = seedProfileActivitiesFromRepos(
+            fullPubkey,
+            deduplicatedRepos
+          );
+          const graph = mergeReposIntoContributionGraph(
+            getContributionGraph(fullPubkey),
+            deduplicatedRepos
+          );
 
           // Set localStorage counts after page has rendered
           setActivityCounts(counts);
           setContributionGraph(graph);
+          if (seeded > 0) {
+            setContributionGraph(
+              mergeReposIntoContributionGraph(
+                getContributionGraph(fullPubkey),
+                deduplicatedRepos
+              )
+            );
+          }
 
           // CRITICAL: Use localStorage counts as base (includes bridge commits + synced PRs/issues)
           // Then add Nostr PRs/issues per repo in background
@@ -2009,7 +2028,7 @@ export default function EntityPage({
             if (isLowMemoryDevice) {
               return;
             }
-            syncUserCommitsFromBridge(fullPubkey)
+            syncUserCommitsFromBridge(fullPubkey, deduplicatedRepos)
               .then((syncedCount) => {
                 // Also sync issues/PRs from Nostr
                 const issuesPRsSynced = syncIssuesAndPRsFromNostr(fullPubkey);
@@ -2018,7 +2037,10 @@ export default function EntityPage({
                   // Update activities after sync
                   const updatedActivities = getUserActivities(fullPubkey);
                   const updatedCounts = getUserActivityCounts(fullPubkey);
-                  const updatedGraph = getContributionGraph(fullPubkey);
+                  const updatedGraph = mergeReposIntoContributionGraph(
+                    getContributionGraph(fullPubkey),
+                    deduplicatedRepos
+                  );
 
                   setActivityCounts(updatedCounts);
                   setContributionGraph(updatedGraph);
@@ -2060,7 +2082,10 @@ export default function EntityPage({
             if (issuesPRsSynced > 0) {
               const updatedActivities = getUserActivities(fullPubkey);
               const updatedCounts = getUserActivityCounts(fullPubkey);
-              const updatedGraph = getContributionGraph(fullPubkey);
+              const updatedGraph = mergeReposIntoContributionGraph(
+                getContributionGraph(fullPubkey),
+                deduplicatedRepos
+              );
 
               setActivityCounts(updatedCounts);
               setContributionGraph(updatedGraph);
@@ -3065,16 +3090,26 @@ export default function EntityPage({
     /^[0-9a-f]{64}$/i.test(fullPubkeyForMeta) &&
     currentUserPubkey.toLowerCase() === fullPubkeyForMeta.toLowerCase();
 
+  const contributionWeeks = useMemo(() => {
+    const daily = mergeContributionCountsByDay(
+      mergeReposIntoContributionGraph(contributionGraph, userRepos),
+      nostrActivityCounts?.contributionsByDay ?? {}
+    );
+    return aggregateContributionGraphByWeek(daily);
+  }, [contributionGraph, userRepos, nostrActivityCounts]);
+
+  const timelineContributionTotal = useMemo(
+    () => contributionWeeks.reduce((sum, w) => sum + w.count, 0),
+    [contributionWeeks]
+  );
+
   // Early return check - MUST be after all hooks
   if (!isPubkey) {
     return null; // Redirecting
   }
 
-  // Calculate contribution graph for display (last 52 days)
-  const weeks = contributionGraph.slice(-52);
+  const weeks = contributionWeeks;
   const maxCount = Math.max(...weeks.map((w) => w.count), 1);
-  /** Fixed cell size — do not use % height (collapses to 2px and looks like a hairline). */
-  const contributionCellPx = 12;
 
   // CRITICAL: Use more granular intensity levels to create visually distinct legend dots
   // Always use at least 6 distinct levels (excluding 0) for better visual differentiation
@@ -3485,7 +3520,7 @@ export default function EntityPage({
               Activity Timeline
             </h2>
             <Tooltip
-              content="Shows contributions over the last 52 days. Each square is one day; darker green means more activity. Data comes from git commits (bridge sync), pull requests and issues on Nostr, and repository events. Counts update as you push or open PRs/issues."
+              content="Shows contributions over the last 52 weeks. Each square is one week; darker green means more activity. Data comes from Nostr (pushes, PRs, issues), repository creation dates, and git commits synced from the bridge. The row always fits the card width — no horizontal scroll."
               mobileClickable={true}
               className="inline-flex"
             >
@@ -3494,28 +3529,25 @@ export default function EntityPage({
           </div>
           <div className="space-y-3">
             <div
-              className="overflow-x-auto overscroll-x-contain pb-1"
-              aria-label="Contribution activity by day"
+              className="grid w-full gap-[3px]"
+              style={{
+                gridTemplateColumns: `repeat(${weeks.length}, minmax(0, 1fr))`,
+              }}
+              aria-label="Contribution activity by week"
             >
-              <div className="flex w-max max-w-none gap-1">
-                {weeks.map((week, idx) => (
-                  <div
-                    key={idx}
-                    className={`${getIntensity(
-                      week.count
-                    )} shrink-0 rounded-[3px] ${
-                      week.count > 0 ? "ring-1 ring-green-500/25" : ""
-                    }`}
-                    style={{
-                      width: contributionCellPx,
-                      height: contributionCellPx,
-                    }}
-                    title={`${week.date}: ${week.count} contribution${
-                      week.count === 1 ? "" : "s"
-                    }`}
-                  />
-                ))}
-              </div>
+              {weeks.map((week, idx) => (
+                <div
+                  key={`${week.date}-${idx}`}
+                  className={`${getIntensity(
+                    week.count
+                  )} aspect-square w-full min-h-[8px] max-h-4 rounded-[3px] ${
+                    week.count > 0 ? "ring-1 ring-green-500/25" : ""
+                  }`}
+                  title={`Week of ${week.date}: ${week.count} contribution${
+                    week.count === 1 ? "" : "s"
+                  }`}
+                />
+              ))}
             </div>
             <div
               className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 text-xs text-gray-500"
@@ -3523,18 +3555,16 @@ export default function EntityPage({
               aria-label="Contribution intensity legend"
             >
               <span className="shrink-0 whitespace-nowrap">Less</span>
-              <div className="flex min-w-0 flex-wrap items-center justify-center gap-1">
+              <div className="flex min-w-0 flex-wrap items-center justify-center gap-1 px-1">
                 {intensityLevels.slice(1).map((level, idx) => {
                   const val = level ?? 0;
                   return (
                     <div
                       key={idx}
-                      className={`${getIntensity(val)} shrink-0 rounded-[3px]`}
-                      style={{
-                        width: contributionCellPx,
-                        height: contributionCellPx,
-                      }}
-                      title={`${val} contributions`}
+                      className={`${getIntensity(
+                        val
+                      )} h-3 w-3 shrink-0 rounded-[3px]`}
+                      title={`${val} contributions per week`}
                     />
                   );
                 })}
@@ -3544,7 +3574,12 @@ export default function EntityPage({
               </span>
             </div>
             <p className="text-xs sm:text-sm text-gray-400">
-              {userStats?.activityCount || 0} contributions in the last year
+              {Math.max(
+                timelineContributionTotal,
+                userStats?.activityCount || 0,
+                nostrActivityCounts?.total || 0
+              )}{" "}
+              contributions in the last year
             </p>
           </div>
         </div>

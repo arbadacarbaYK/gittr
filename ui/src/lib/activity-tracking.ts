@@ -60,10 +60,12 @@ export function recordActivity(
 ): void {
   try {
     const activities = getActivities();
+    const withTs = activity as Omit<Activity, "id"> & { timestamp?: number };
     const newActivity: Activity = {
-      ...activity,
+      ...withTs,
       id: `activity-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      timestamp: Date.now(),
+      timestamp:
+        typeof withTs.timestamp === "number" ? withTs.timestamp : Date.now(),
     };
 
     activities.push(newActivity);
@@ -265,6 +267,134 @@ export function getContributionGraph(
   return Object.entries(weeks)
     .map(([date, count]) => ({ date, count }))
     .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export const CONTRIBUTION_WEEKS_SHOWN = 52;
+
+/** Sunday-start week key (UTC) for grouping daily counts. */
+export function weekStartUtc(dateStr: string): string {
+  const d = new Date(`${dateStr}T12:00:00.000Z`);
+  const dow = d.getUTCDay();
+  d.setUTCDate(d.getUTCDate() - dow);
+  return d.toISOString().split("T")[0]!;
+}
+
+export function mergeContributionCountsByDay(
+  graph: Array<{ date: string; count: number }>,
+  extra: Record<string, number>
+): Array<{ date: string; count: number }> {
+  if (!extra || Object.keys(extra).length === 0) return graph;
+  const map = new Map(graph.map((d) => [d.date, d.count]));
+  for (const [date, add] of Object.entries(extra)) {
+    if (!add) continue;
+    map.set(date, (map.get(date) || 0) + add);
+  }
+  return graph.map((d) => ({
+    date: d.date,
+    count: map.get(d.date) ?? d.count,
+  }));
+}
+
+/** Add one contribution per repo on its Nostr creation date (visible on any viewer). */
+export function mergeReposIntoContributionGraph(
+  graph: Array<{ date: string; count: number }>,
+  repos: Array<{ createdAt?: number; updatedAt?: number }>
+): Array<{ date: string; count: number }> {
+  if (!repos.length) return graph;
+  const map = new Map(graph.map((d) => [d.date, d.count]));
+  for (const repo of repos) {
+    const ts = repo.createdAt || repo.updatedAt;
+    if (!ts || ts <= 0) continue;
+    const dateStr = new Date(ts).toISOString().split("T")[0];
+    if (!dateStr || !map.has(dateStr)) continue;
+    map.set(dateStr, (map.get(dateStr) || 0) + 1);
+  }
+  return graph.map((d) => ({
+    date: d.date,
+    count: map.get(d.date) ?? d.count,
+  }));
+}
+
+/** Last 52 weeks, summed — fits the profile card width (GitHub-style). */
+export function aggregateContributionGraphByWeek(
+  daily: Array<{ date: string; count: number }>
+): Array<{ date: string; count: number }> {
+  const byWeek = new Map<string, number>();
+  for (const { date, count } of daily) {
+    if (count <= 0) continue;
+    const key = weekStartUtc(date);
+    byWeek.set(key, (byWeek.get(key) || 0) + count);
+  }
+  const out: Array<{ date: string; count: number }> = [];
+  let cursor = weekStartUtc(new Date().toISOString().split("T")[0]!);
+  for (let i = 0; i < CONTRIBUTION_WEEKS_SHOWN; i++) {
+    out.unshift({ date: cursor, count: byWeek.get(cursor) || 0 });
+    const d = new Date(`${cursor}T12:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() - 7);
+    cursor = d.toISOString().split("T")[0]!;
+  }
+  return out;
+}
+
+function bumpContributionDay(
+  bucket: Record<string, number>,
+  createdAtSec: number
+): void {
+  const dateStr = new Date(createdAtSec * 1000).toISOString().split("T")[0];
+  if (!dateStr) return;
+  bucket[dateStr] = (bucket[dateStr] || 0) + 1;
+}
+
+/**
+ * Record repo_created activities from a profile repo list (for timeline + local cache).
+ */
+export function seedProfileActivitiesFromRepos(
+  userPubkey: string,
+  repos: Array<{
+    entity?: string;
+    repo?: string;
+    slug?: string;
+    name?: string;
+    createdAt?: number;
+    updatedAt?: number;
+    sourceUrl?: string;
+  }>
+): number {
+  if (!repos.length) return 0;
+  const normalized = userPubkey.toLowerCase();
+  const existing = getUserActivities(normalized);
+  const existingKeys = new Set(
+    existing.map((a) => {
+      const ts = Math.floor(a.timestamp / 1000) * 1000;
+      return `${a.type}:${a.repo}:${a.user}:${ts}`;
+    })
+  );
+  let added = 0;
+  for (const repo of repos) {
+    const entity = repo.entity;
+    const repoName = repo.repo || repo.slug;
+    if (!entity || !repoName || entity === "user") continue;
+    const owner = getRepoOwnerPubkey(repo, entity);
+    if (!owner || owner.toLowerCase() !== normalized) continue;
+    const ts = repo.createdAt || repo.updatedAt || Date.now();
+    const roundedTs = Math.floor(ts / 1000) * 1000;
+    const repoId = `${entity}/${repoName}`;
+    const activityId = `${
+      repo.sourceUrl ? "repo_imported" : "repo_created"
+    }:${repoId}:${owner}:${roundedTs}`;
+    if (existingKeys.has(activityId)) continue;
+    recordActivity({
+      type: repo.sourceUrl ? "repo_imported" : "repo_created",
+      user: owner,
+      repo: repoId,
+      entity,
+      repoName: repo.name || repoName,
+      timestamp: ts,
+    } as Omit<Activity, "id" | "timestamp"> & { timestamp: number });
+    existingKeys.add(activityId);
+    added++;
+  }
+  return added;
 }
 
 /**
@@ -783,12 +913,21 @@ export function syncIssuesAndPRsFromNostr(userPubkey: string): number {
  * This is called when viewing a profile to ensure activity bar is up-to-date
  */
 export async function syncUserCommitsFromBridge(
-  userPubkey: string
+  userPubkey: string,
+  profileRepos?: Array<{
+    entity?: string;
+    repo?: string;
+    slug?: string;
+    ownerPubkey?: string;
+    defaultBranch?: string;
+  }>
 ): Promise<number> {
   try {
-    const repos = JSON.parse(
-      localStorage.getItem("gittr_repos") || "[]"
-    ) as any[];
+    const repos = profileRepos?.length
+      ? profileRepos
+      : (JSON.parse(
+          localStorage.getItem("gittr_repos") || "[]"
+        ) as any[]);
     const userRepos = repos.filter((repo: any) => {
       if (!repo.entity || repo.entity === "user") return false;
       const ownerPubkey = getRepoOwnerPubkey(repo, repo.entity);
@@ -799,8 +938,9 @@ export async function syncUserCommitsFromBridge(
 
     let totalSynced = 0;
 
-    // Sync commits for each repo (limit to 10 repos to avoid overwhelming)
-    for (const repo of userRepos.slice(0, 10)) {
+    // Sync commits for each repo (cap per profile visit to avoid bridge overload)
+    const SYNC_REPO_LIMIT = profileRepos?.length ? 40 : 10;
+    for (const repo of userRepos.slice(0, SYNC_REPO_LIMIT)) {
       const ownerPubkey = getRepoOwnerPubkey(repo, repo.entity);
       if (!ownerPubkey) continue;
 
@@ -860,6 +1000,8 @@ export interface NostrActivityCounts {
   issuesCreated: number; // Issue events (kind 1621)
   issuesClosed: number; // Issue closed status (kind 1632)
   total: number; // Total activity count
+  /** Per-day counts from Nostr (for profile timeline on any client). */
+  contributionsByDay: Record<string, number>;
 }
 
 export function countActivitiesFromNostr(
@@ -899,6 +1041,7 @@ export function countActivitiesFromNostr(
       issuesCreated: 0,
       issuesClosed: 0,
       total: 0,
+      contributionsByDay: {},
     };
 
     const seenRepos = new Set<string>(); // Track unique repos (pubkey/repoName)
@@ -979,6 +1122,7 @@ export function countActivitiesFromNostr(
           if (eventPubkey === normalizedPubkey) {
             counts.pushes++;
             counts.total++;
+            bumpContributionDay(counts.contributionsByDay, event.created_at);
           }
         }
         // Count PR events (kind 1618)
@@ -989,6 +1133,7 @@ export function countActivitiesFromNostr(
             seenPRs.add(event.id);
             counts.prsCreated++;
             counts.total++;
+            bumpContributionDay(counts.contributionsByDay, event.created_at);
           }
         }
         // Count PR merged status (kind 1631)
@@ -1003,6 +1148,7 @@ export function countActivitiesFromNostr(
               // This is a PR merged status
               counts.prsMerged++;
               counts.total++;
+              bumpContributionDay(counts.contributionsByDay, event.created_at);
             }
           }
         }
@@ -1028,6 +1174,7 @@ export function countActivitiesFromNostr(
               // This is an issue closed status
               counts.issuesClosed++;
               counts.total++;
+              bumpContributionDay(counts.contributionsByDay, event.created_at);
             }
           }
         }
