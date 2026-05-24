@@ -2273,44 +2273,41 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
         {/* Contribution Graph */}
         <div className="lg:col-span-2 border border-[#383B42] rounded p-4">
           <h2 className="font-semibold mb-4">Activity Timeline</h2>
-          <div className="overflow-x-auto">
-            <div className="inline-block min-w-full">
-              <div
-                className="flex gap-1 mb-2"
-                style={{ width: `${weeks.length * 13}px` }}
-              >
+          <div className="space-y-3">
+            <div className="overflow-x-auto overscroll-x-contain pb-1">
+              <div className="flex w-max gap-1">
                 {weeks.map((week, idx) => (
                   <div
                     key={idx}
-                    className={`w-3 h-3 ${getIntensity(week.count)} rounded-[3px] flex-shrink-0 ${
+                    className={`h-3 w-3 shrink-0 ${getIntensity(week.count)} rounded-[3px] ${
                       week.count > 0 ? "ring-1 ring-green-500/25" : ""
                     }`}
                     title={`${week.date}: ${week.count} contributions`}
                   />
                 ))}
               </div>
-              <div className="flex justify-between text-xs text-gray-500 mt-2">
-                <span>Less</span>
-                <div className="flex gap-1 items-center">
-                  {intensityLevels.slice(1).map((level, idx) => {
-                    const val = level ?? 0;
-                    return (
-                      <div
-                        key={idx}
-                        className={`w-3 h-3 ${getIntensity(val)} rounded-[3px]`}
-                      />
-                    );
-                  })}
-                  <div
-                    className={`w-3 h-3 ${getIntensity(maxCount)} rounded-[3px]`}
-                  />
-                </div>
-                <span>More</span>
-              </div>
-              <p className="text-sm text-gray-400 mt-2">
-                {userStats?.activityCount || 0} contributions in the last year
-              </p>
             </div>
+            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 text-xs text-gray-500">
+              <span className="shrink-0 whitespace-nowrap">Less</span>
+              <div className="flex min-w-0 flex-wrap items-center justify-center gap-1">
+                {intensityLevels.slice(1).map((level, idx) => {
+                  const val = level ?? 0;
+                  return (
+                    <div
+                      key={idx}
+                      className={`h-3 w-3 shrink-0 ${getIntensity(val)} rounded-[3px]`}
+                    />
+                  );
+                })}
+                <div
+                  className={`h-3 w-3 shrink-0 ${getIntensity(maxCount)} rounded-[3px]`}
+                />
+              </div>
+              <span className="shrink-0 whitespace-nowrap text-right">More</span>
+            </div>
+            <p className="text-sm text-gray-400">
+              {userStats?.activityCount || 0} contributions in the last year
+            </p>
           </div>
         </div>
 
