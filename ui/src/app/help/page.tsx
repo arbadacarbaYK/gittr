@@ -18,6 +18,15 @@ import {
 import Link from "next/link";
 
 import {
+  GITTR_DOC_FILE_FETCHING,
+  GITTR_DOC_GITNOSTR_ARCHITECTURE,
+  GITTR_DOC_GITNOSTR_SSH,
+  GITTR_DOC_SSH_GIT,
+  GITTR_REPO_GITNOSTR,
+  GITTR_REPO_GITTR,
+  GITTR_REPO_HELPER_TOOLS,
+} from "@/lib/gittr-repo-links";
+import {
   SCHEMATA_NIP34,
   SCHEMATA_NIP46,
   SCHEMATA_NIP25,
@@ -832,7 +841,7 @@ export default function HelpPage() {
                 architecture for file storage. Files are stored on git servers
                 (via{" "}
                 <a
-                  href="https://gittr.space/arbadacarbaYK/gitnostr?file=docs/ARCHITECTURE.md&branch=main"
+                  href={GITTR_DOC_GITNOSTR_ARCHITECTURE}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-purple-400 hover:text-purple-300 underline"
@@ -1243,7 +1252,7 @@ export default function HelpPage() {
                 we currently show the first mirror that responds with a tree,
                 not a full compare of every server&apos;s HEAD — see{" "}
                 <a
-                  href="https://gittr.space/arbadacarbaYK/gittr?file=docs/FILE_FETCHING_INSIGHTS.md&branch=main"
+                  href={GITTR_DOC_FILE_FETCHING}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-purple-400 hover:text-purple-300 underline"
@@ -1426,7 +1435,7 @@ export default function HelpPage() {
                 For complete documentation on SSH and Git operations:
               </p>
               <a
-                href="https://gittr.space/arbadacarbaYK/gittr?file=docs/SSH_GIT_GUIDE.md&branch=main"
+                href={GITTR_DOC_SSH_GIT}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-purple-400 hover:text-purple-300 underline text-sm block"
@@ -1434,7 +1443,7 @@ export default function HelpPage() {
                 📖 SSH &amp; Git Access Guide (gittr) →
               </a>
               <a
-                href="https://gittr.space/arbadacarbaYK/gitnostr?file=SSH_GIT_GUIDE.md&branch=main"
+                href={GITTR_DOC_GITNOSTR_SSH}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-purple-400 hover:text-purple-300 underline text-sm block"
@@ -1442,7 +1451,7 @@ export default function HelpPage() {
                 📖 gitnostr bridge SSH guide →
               </a>
               <a
-                href="https://gittr.space/arbadacarbaYK/gitnostr?file=docs/ARCHITECTURE.md&branch=main"
+                href={GITTR_DOC_GITNOSTR_ARCHITECTURE}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-purple-400 hover:text-purple-300 underline text-sm block"
@@ -2318,13 +2327,13 @@ export default function HelpPage() {
                 </li>
                 <li>
                   <a
-                    href="https://gittr.space/arbadacarbaYK/gittr?branch=main"
+                    href={GITTR_REPO_GITTR}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-purple-400 hover:text-purple-300 flex items-center gap-2"
                   >
                     <Github className="h-4 w-4" />
-                    GitHub Mirror
+                    gittr source repo
                   </a>
                 </li>
                 <li>
@@ -2353,7 +2362,7 @@ export default function HelpPage() {
               <p>
                 If you have questions or hit issues, see the{" "}
                 <a
-                  href="https://gittr.space/arbadacarbaYK/gittr?branch=main"
+                  href={GITTR_REPO_GITTR}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-purple-400 hover:text-purple-300"
@@ -2362,7 +2371,7 @@ export default function HelpPage() {
                 </a>{" "}
                 source repo, plus{" "}
                 <a
-                  href="https://gittr.space/arbadacarbaYK/gitnostr?branch=main"
+                  href={GITTR_REPO_GITNOSTR}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-purple-400 hover:text-purple-300"
@@ -2371,7 +2380,7 @@ export default function HelpPage() {
                 </a>{" "}
                 and{" "}
                 <a
-                  href="https://gittr.space/arbadacarbaYK/gittr-helper-tools?branch=main"
+                  href={GITTR_REPO_HELPER_TOOLS}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-purple-400 hover:text-purple-300"

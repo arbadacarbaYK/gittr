@@ -10,7 +10,7 @@ Developers working locally can use gittr's bridge API to push their repositories
 2. Sign a Nostr event (kind 24242) with `challenge` in tags and your private key
 3. **POST** `/api/nostr/repo/push` with header: `Authorization: Nostr <base64(pubkey,sig,created_at)>`
 
-For a ready-made implementation (Node.js), use [gittr-mcp](https://gittr.space/arbadacarbaYK/gittr?branch=main-mcp): `pushToBridge({ ownerPubkey, repo, branch, files, privkey })` handles challenge and auth automatically.
+For a ready-made implementation (Node.js), use [gittr-mcp](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?branch=main-mcp): `pushToBridge({ ownerPubkey, repo, branch, files, privkey })` handles challenge and auth automatically.
 
 **Rate limits:** Push is limited per IP (10/min) and per Nostr identity (5/min). The push-challenge endpoint is limited (30/min per IP). On `429`, the response body includes `retry_after` (seconds); clients (e.g. gittr-mcp) should wait and retry.
 

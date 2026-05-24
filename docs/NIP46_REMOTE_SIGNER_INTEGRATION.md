@@ -483,7 +483,7 @@ All signing operations automatically use the remote signer:
 ## References
 
 - **NIP-46**: https://nips.nostr.com/46
-- **Snippets / learnings** (other clients): https://gittr.space/arbadacarbaYK/gittr-helper-tools?file=snippets/nip46-remote-signer/README.md&branch=main
+- **Snippets / learnings** (other clients): https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-helper-tools?file=snippets/nip46-remote-signer/README.md&branch=main
 - **NIP-07**: https://nips.nostr.com/07
 - **NIP-04**: https://nips.nostr.com/04 (Encryption)
 - **NIP-44**: https://nips.nostr.com/44 (Encryption v2)

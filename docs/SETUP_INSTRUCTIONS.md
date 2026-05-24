@@ -19,6 +19,7 @@ Install gittr (Next.js UI + API) and **git-nostr-bridge** on a Linux server. Pat
 | SEO / sitemap | [SEO.md](SEO.md) |
 | Event kinds / paywall product rules | [NIPS_AND_EVENT_KINDS.md](NIPS_AND_EVENT_KINDS.md) |
 | Local dev | [LOCAL_SETUP.md](LOCAL_SETUP.md) |
+| Doc links to our repos on gittr (not GitHub) | [gittr-repo-links.md](gittr-repo-links.md) |
 
 ---
 

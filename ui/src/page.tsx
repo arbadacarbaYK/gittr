@@ -2277,30 +2277,32 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
             <div className="inline-block min-w-full">
               <div
                 className="flex gap-1 mb-2"
-                style={{ width: `${weeks.length * 12}px` }}
+                style={{ width: `${weeks.length * 13}px` }}
               >
                 {weeks.map((week, idx) => (
                   <div
                     key={idx}
-                    className={`w-2 h-2 ${getIntensity(week.count)} rounded-sm`}
+                    className={`w-3 h-3 ${getIntensity(week.count)} rounded-[3px] flex-shrink-0 ${
+                      week.count > 0 ? "ring-1 ring-green-500/25" : ""
+                    }`}
                     title={`${week.date}: ${week.count} contributions`}
                   />
                 ))}
               </div>
               <div className="flex justify-between text-xs text-gray-500 mt-2">
                 <span>Less</span>
-                <div className="flex gap-1">
+                <div className="flex gap-1 items-center">
                   {intensityLevels.slice(1).map((level, idx) => {
                     const val = level ?? 0;
                     return (
                       <div
                         key={idx}
-                        className={`w-2 h-2 ${getIntensity(val)} rounded-sm`}
+                        className={`w-3 h-3 ${getIntensity(val)} rounded-[3px]`}
                       />
                     );
                   })}
                   <div
-                    className={`w-2 h-2 ${getIntensity(maxCount)} rounded-sm`}
+                    className={`w-3 h-3 ${getIntensity(maxCount)} rounded-[3px]`}
                   />
                 </div>
                 <span>More</span>

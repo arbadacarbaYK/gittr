@@ -1,5 +1,6 @@
 "use client";
 
+import { GITTR_DOC_SSH_GIT } from "@/lib/gittr-repo-links";
 import { Button } from "@/components/ui/button";
 
 import { AlertCircle, GitBranch, Key, Terminal, X } from "lucide-react";
@@ -229,7 +230,7 @@ export function SSHGitHelp({
             <p className="text-xs text-gray-400">
               For detailed documentation, see{" "}
               <a
-                href="https://gittr.space/arbadacarbaYK/gittr?file=docs/SSH_GIT_GUIDE.md&branch=main"
+                href={GITTR_DOC_SSH_GIT}
                 className="text-purple-400 hover:underline"
                 target="_blank"
                 rel="noopener noreferrer"

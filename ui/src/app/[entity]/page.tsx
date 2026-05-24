@@ -3070,9 +3070,11 @@ export default function EntityPage({
     return null; // Redirecting
   }
 
-  // Calculate contribution graph for display (last 52 weeks)
+  // Calculate contribution graph for display (last 52 days)
   const weeks = contributionGraph.slice(-52);
   const maxCount = Math.max(...weeks.map((w) => w.count), 1);
+  /** Fixed cell size — do not use % height (collapses to 2px and looks like a hairline). */
+  const contributionCellPx = 12;
 
   // CRITICAL: Use more granular intensity levels to create visually distinct legend dots
   // Always use at least 6 distinct levels (excluding 0) for better visual differentiation
@@ -3115,7 +3117,7 @@ export default function EntityPage({
   }
 
   const getIntensity = (count: number) => {
-    if (count === 0) return "bg-gray-800 border border-gray-700";
+    if (count === 0) return "bg-[#1a1f26] border border-gray-600/60";
     const level1 = intensityLevels[1] ?? 1;
     const level2 = intensityLevels[2] ?? 3;
     const level3 = intensityLevels[3] ?? 10;
@@ -3483,86 +3485,67 @@ export default function EntityPage({
               Activity Timeline
             </h2>
             <Tooltip
-              content="Shows contributions over the last 52 weeks (1 year). Each box represents one week. Darker green indicates more contributions. Data comes from: Git commits synced from git-nostr-bridge, Pull requests and issues from Nostr network, Repository creation events. Counts are updated in real-time as you push code or create PRs/issues."
+              content="Shows contributions over the last 52 days. Each square is one day; darker green means more activity. Data comes from git commits (bridge sync), pull requests and issues on Nostr, and repository events. Counts update as you push or open PRs/issues."
               mobileClickable={true}
               className="inline-flex"
             >
               <HelpCircle className="w-4 h-4 text-gray-400 hover:text-gray-300 cursor-help" />
             </Tooltip>
           </div>
-          <div className="w-full overflow-x-auto">
-            <div className="w-full min-w-max sm:min-w-0">
-              {/* Calculate box size to fit all weeks in container (52 weeks = 364 days) */}
-              {/* Use CSS grid or flex with calculated width to fit all boxes in one row */}
-              <div
-                className="flex gap-0.5 sm:gap-1 mb-2"
-                style={{ width: "100%", minWidth: "max-content" }}
-              >
-                {weeks.map((week, idx) => {
-                  // Calculate box width as percentage to fit all weeks: 100% / number of weeks
-                  // Use min 2px width, max 12px width for readability
-                  // Since we have 52 weeks, each box should be ~1.92% of container width
-                  const boxWidthPercent = 100 / weeks.length;
-                  const minBoxSize = 2; // Minimum 2px for visibility
-                  const maxBoxSize = 12; // Maximum 12px for readability
-
-                  // Use calc() to ensure boxes fit: min(max(calc(100% / weeks.length - gap), minBoxSize), maxBoxSize)
-                  // But since we can't use calc() in inline styles easily, use a fixed calculation
-                  // For 52 weeks with 1px gap, each box gets ~1.9% width
+          <div className="space-y-3">
+            <div
+              className="overflow-x-auto overscroll-x-contain pb-1"
+              aria-label="Contribution activity by day"
+            >
+              <div className="flex w-max max-w-none gap-1">
+                {weeks.map((week, idx) => (
+                  <div
+                    key={idx}
+                    className={`${getIntensity(
+                      week.count
+                    )} shrink-0 rounded-[3px] ${
+                      week.count > 0 ? "ring-1 ring-green-500/25" : ""
+                    }`}
+                    style={{
+                      width: contributionCellPx,
+                      height: contributionCellPx,
+                    }}
+                    title={`${week.date}: ${week.count} contribution${
+                      week.count === 1 ? "" : "s"
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+            <div
+              className="grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 text-xs text-gray-500"
+              role="img"
+              aria-label="Contribution intensity legend"
+            >
+              <span className="shrink-0 whitespace-nowrap">Less</span>
+              <div className="flex min-w-0 flex-wrap items-center justify-center gap-1">
+                {intensityLevels.slice(1).map((level, idx) => {
+                  const val = level ?? 0;
                   return (
                     <div
                       key={idx}
-                      className={`${getIntensity(
-                        week.count
-                      )} rounded-sm flex-shrink-0`}
+                      className={`${getIntensity(val)} shrink-0 rounded-[3px]`}
                       style={{
-                        width: `calc(${boxWidthPercent}% - ${
-                          ((weeks.length - 1) * 4) / weeks.length
-                        }px)`,
-                        minWidth: `${minBoxSize}px`,
-                        maxWidth: `${maxBoxSize}px`,
-                        height: `calc(${boxWidthPercent}% - ${
-                          ((weeks.length - 1) * 4) / weeks.length
-                        }px)`,
-                        minHeight: `${minBoxSize}px`,
-                        maxHeight: `${maxBoxSize}px`,
+                        width: contributionCellPx,
+                        height: contributionCellPx,
                       }}
-                      title={`${week.date}: ${week.count} contributions`}
+                      title={`${val} contributions`}
                     />
                   );
                 })}
               </div>
-              <div className="flex justify-between text-xs text-gray-500 mt-2">
-                <span>Less</span>
-                <div className="flex gap-1">
-                  {/* Show all intensity levels (excluding level 0) - each dot represents a distinct threshold */}
-                  {intensityLevels.slice(1).map((level, idx) => {
-                    const val = level ?? 0;
-                    const intensityClass = getIntensity(val);
-                    // Debug: Log to verify distinct colors
-                    if (idx === 0) {
-                      console.log(
-                        `🎨 [Activity Timeline] Legend dots for maxCount=${maxCount}:`,
-                        intensityLevels
-                          .slice(1)
-                          .map((l) => ({ level: l, color: getIntensity(l) }))
-                      );
-                    }
-                    return (
-                      <div
-                        key={idx}
-                        className={`w-2 h-2 ${intensityClass} rounded-sm`}
-                        title={`${val} contributions`}
-                      />
-                    );
-                  })}
-                </div>
-                <span>More</span>
-              </div>
-              <p className="text-xs sm:text-sm text-gray-400 mt-2">
-                {userStats?.activityCount || 0} contributions in the last year
-              </p>
+              <span className="shrink-0 whitespace-nowrap text-right">
+                More
+              </span>
             </div>
+            <p className="text-xs sm:text-sm text-gray-400">
+              {userStats?.activityCount || 0} contributions in the last year
+            </p>
           </div>
         </div>
 

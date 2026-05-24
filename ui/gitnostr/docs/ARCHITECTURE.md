@@ -13,7 +13,7 @@ Nostr holds **discovery and policy** (repos, permissions, SSH keys). Your server
 | **`git`** | Standard git binaries invoked by `git-nostr-ssh`. |
 | **nginx / HTTPS** (optional) | Smart HTTP git in front of the same bare repos (`git clone https://git.your-host/...`). |
 
-With **[gittr](https://gittr.space/arbadacarbaYK/gittr?branch=main)** on the same host: the Next.js app sets **`GIT_NOSTR_BRIDGE_REPOS_DIR`** to the **same** `repositoryDir` for file trees, commits API, and import—no second copy of the repos.
+With **[gittr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?branch=main)** on the same host: the Next.js app sets **`GIT_NOSTR_BRIDGE_REPOS_DIR`** to the **same** `repositoryDir` for file trees, commits API, and import—no second copy of the repos.
 
 ## How clients connect
 

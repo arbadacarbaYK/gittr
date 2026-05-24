@@ -1,6 +1,6 @@
 # File Fetch Flow (Bridge + gittr UI)
 
-How **git-nostr-bridge** mirrors repos on disk and how **[gittr](https://gittr.space/arbadacarbaYK/gittr?branch=main)** reads them. UI fetch order (localStorage → embedded → bridge disk → GRASP shallow → GitHub/GitLab): **[`docs/FILE_FETCHING_INSIGHTS.md`](https://gittr.space/arbadacarbaYK/gittr?file=docs/FILE_FETCHING_INSIGHTS.md&branch=main)**.
+How **git-nostr-bridge** mirrors repos on disk and how **[gittr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?branch=main)** reads them. UI fetch order (localStorage → embedded → bridge disk → GRASP shallow → GitHub/GitLab): **[`docs/FILE_FETCHING_INSIGHTS.md`](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs/FILE_FETCHING_INSIGHTS.md&branch=main)**.
 
 ## 1. Bridge + shared disk
 
@@ -17,7 +17,7 @@ Production: web UI **`gittr.space`**, git SSH/HTTPS **`git.gittr.space`**.
 
 ## 2. Code tab (file tree)
 
-See [`FILE_FETCHING_INSIGHTS.md`](https://gittr.space/arbadacarbaYK/gittr?file=docs/FILE_FETCHING_INSIGHTS.md&branch=main). Implementation: `ui/src/lib/utils/git-source-fetcher.ts`, `ui/src/app/[entity]/[repo]/page.tsx`.
+See [`FILE_FETCHING_INSIGHTS.md`](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=docs/FILE_FETCHING_INSIGHTS.md&branch=main). Implementation: `ui/src/lib/utils/git-source-fetcher.ts`, `ui/src/app/[entity]/[repo]/page.tsx`.
 
 ## 3. Shared branch, Commits, Issues, PRs
 

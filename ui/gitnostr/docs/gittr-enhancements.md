@@ -1,6 +1,6 @@
 # gittr.space Bridge Enhancements
 
-**Browse on gittr:** [arbadacarbaYK/gitnostr](https://gittr.space/arbadacarbaYK/gitnostr?branch=main) — also built from [gittr `ui/gitnostr/`](https://gittr.space/arbadacarbaYK/gittr?file=ui/gitnostr/README.md&branch=main).  
+**Browse on gittr:** [arbadacarbaYK/gitnostr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?branch=main) — also built from [gittr `ui/gitnostr/`](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?file=ui/gitnostr/README.md&branch=main).  
 This document describes production bridge features gittr relies on.
 
 ![Diagram of enhancements](./gittr-enhancements.png)

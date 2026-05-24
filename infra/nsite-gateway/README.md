@@ -2,7 +2,7 @@
 
 Public product name: **gittr Pages** (hostname: **`pages.gittr.space`** on production).
 
-Runs our gateway (**[arbadacarbaYK/nsite-gateway](https://github.com/arbadacarbaYK/nsite-gateway)**, forked from [hzrd149/nsite-gateway](https://github.com/hzrd149/nsite-gateway)) in Docker with a **gittr Pages** landing in `public/index.html`. Isolated from the main `ui/` Next.js app.
+Runs our gateway (**[arbadacarbaYK/nsite-gateway](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway)**, forked from [hzrd149/nsite-gateway](https://github.com/hzrd149/nsite-gateway)) in Docker with a **gittr Pages** landing in `public/index.html`. Isolated from the main `ui/` Next.js app.
 
 **Production:** build from **`../gittr-nsite-gateway`** (syncs this fork’s sources) so the gateway exposes **`GET /status/manifests.json`**. See **`infra/gittr-nsite-gateway/README.md`** and **`docker-compose.gittr-gateway.yml`**.
 

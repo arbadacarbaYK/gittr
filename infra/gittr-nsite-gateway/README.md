@@ -1,10 +1,10 @@
 # gittr Pages gateway (Docker image)
 
-Production **pages.gittr.space** runs this image, built from **[arbadacarbaYK/nsite-gateway](https://github.com/arbadacarbaYK/nsite-gateway)** branch **`master`** (forked from hzrd149 v3.6.2 + gittr features). Gateway docs: **that repo’s `README.md`**.
+Production **pages.gittr.space** runs this image, built from **[arbadacarbaYK/nsite-gateway](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway)** branch **`master`** (forked from hzrd149 v3.6.2 + gittr features). Gateway docs: **that repo’s `README.md`**.
 
 ## What we added (on hzrd149 v3.6.2)
 
-Full tables (feature names + pushed back or not): **[arbadacarbaYK/nsite-gateway README — What we added](https://github.com/arbadacarbaYK/nsite-gateway#what-we-added-gittr-pages)**.
+Full tables (feature names + pushed back or not): **[arbadacarbaYK/nsite-gateway README — What we added](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway#what-we-added-gittr-pages)**.
 
 **From hzrd149 (v3.6.2):** gateway **curation** (`CURATION_USER` reads kind `10000` from relays). **gittr-only on top:** `manifests.json`, `hasIndexHtml`, and **blocklist wiring** (`GITTR_SYNC_MUTED_PUBKEYS` + publish script merging `PUBLISHER_BLOCKLIST` into that mute list).
 
@@ -41,4 +41,4 @@ Old Docker overlay patches; **not used** when `gateway-src/` is synced from the 
 
 ## Merging from hzrd149 later
 
-In [arbadacarbaYK/nsite-gateway](https://github.com/arbadacarbaYK/nsite-gateway): merge or rebase tags from [hzrd149/nsite-gateway](https://github.com/hzrd149/nsite-gateway), resolve conflicts on gittr files, push `master`, redeploy.
+In [arbadacarbaYK/nsite-gateway](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway): merge or rebase tags from [hzrd149/nsite-gateway](https://github.com/hzrd149/nsite-gateway), resolve conflicts on gittr files, push `master`, redeploy.

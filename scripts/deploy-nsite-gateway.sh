@@ -39,7 +39,7 @@ ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "mkdir -p '${REMOTE}/public'"
 NSITE_GATEWAY_SRC="${NSITE_GATEWAY_SRC:-$ROOT/../nsite-gateway-pr}"
 if [[ ! -f "${NSITE_GATEWAY_SRC}/main.ts" ]]; then
   echo "❌ Missing nsite-gateway fork sources: ${NSITE_GATEWAY_SRC}"
-  echo "   Clone https://github.com/arbadacarbaYK/nsite-gateway (branch master), or set NSITE_GATEWAY_SRC."
+  echo "   Clone https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway (branch master), or set NSITE_GATEWAY_SRC."
   exit 1
 fi
 
