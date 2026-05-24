@@ -8,9 +8,11 @@
 | **Kind `10000` mute list** | **gittr operator** identity (`gittr@gittr.space`, pubkey in `.well-known/nostr.json`). | On **Nostr relays** — the gateway reads it. |
 | **Gateway `CURATION_USER`** | N/A — env tells the gateway **which pubkey’s** mute list to load. | `/opt/ngit/infra/nsite-gateway/.env` only. Can be **hex/npub** or **`nsec1…`** (server only; upstream uses nsec to decrypt hidden mutes if any). |
 
-hzrd149 did **not** invent kind `10000`. It is **[NIP-51](https://github.com/nostr-protocol/nips/blob/master/51.md)** (standard Nostr lists). His gateway added **curation**: load a curator’s public **`p`** tags from that list and hide those authors from the home page, **`/status`**, and **`manifests.json`**.
+hzrd149 did **not** invent kind `10000`. It is **[NIP-51](https://github.com/nostr-protocol/nips/blob/master/51.md)** (standard Nostr lists). His gateway (**v3.6.2+**) added **curation**: with **`CURATION_USER`**, the gateway **loads** a curator’s kind `10000` list from relays and hides public **`p`** tags from the built-in home page and **`/status`**. We use that in production.
 
-The upstream gateway **does not publish** mute lists. It only **reads** them from `NOSTR_RELAYS` and the curator’s NIP-65 outboxes. Optional **`CACHE_RELAYS=ws://localhost:4869`** only caches **fetched** events to a local relay — it is not a private “push channel” for kind `10000`. gittr publishes to the same public relays in `NOSTR_RELAYS` (see **`arbadacarbaYK/nsite-gateway`** branch **`gittr-pages`**, script `scripts/publish-curation-mutelist.cjs`).
+What **we** added on top: apply the same mutes on **`manifests.json`**, merge **`PUBLISHER_BLOCKLIST`** into the operator’s kind `10000` via **`scripts/publish-curation-mutelist.cjs`**, and **`GITTR_SYNC_MUTED_PUBKEYS`** on deploy until relays have caught up (`src/helpers/gittr-muted-pubkeys.ts`).
+
+hzrd149’s gateway **does not publish** mute lists — only **reads** them. Optional **`CACHE_RELAYS=ws://localhost:4869`** caches fetched events; it is not a publish pipeline. gittr publishes to the public relays in `NOSTR_RELAYS` when you run the publish script.
 
 ## Merge vs replace (like follow list)
 

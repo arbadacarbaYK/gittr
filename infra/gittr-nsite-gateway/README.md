@@ -6,9 +6,9 @@ Production **pages.gittr.space** runs this image, built from **[arbadacarbaYK/ns
 
 Full tables (feature names + pushed back or not): **[arbadacarbaYK/nsite-gateway README — What we added](https://github.com/arbadacarbaYK/nsite-gateway#what-we-added-gittr-pages)**.
 
-**gittr-only:** machine-readable site directory (`manifests.json`), homepage-only filter (`hasIndexHtml`), blocklist env backup (`GITTR_SYNC_MUTED_PUBKEYS`), curator mute-list script — all **not** pushed back.
+**From hzrd149 (v3.6.2):** gateway **curation** (`CURATION_USER` reads kind `10000` from relays). **gittr-only on top:** `manifests.json`, `hasIndexHtml`, and **blocklist wiring** (`GITTR_SYNC_MUTED_PUBKEYS` + publish script merging `PUBLISHER_BLOCKLIST` into that mute list).
 
-**Merged on hzrd149:** correct `/status` “updated” time + newest manifest per site — [PR #21](https://github.com/hzrd149/nsite-gateway/pull/21).
+**Merged to hzrd149:** correct `/status` “updated” time + newest manifest per site — [PR #21](https://github.com/hzrd149/nsite-gateway/pull/21).
 
 ## Build & deploy
 
