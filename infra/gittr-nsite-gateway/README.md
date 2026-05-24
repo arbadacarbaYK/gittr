@@ -1,6 +1,6 @@
 # gittr Pages gateway (Docker image)
 
-Production **pages.gittr.space** runs this image, built from **[arbadacarbaYK/nsite-gateway](https://github.com/arbadacarbaYK/nsite-gateway)** branch **`master`** (hzrd149 v3.6.2 + gittr features). We do **not** PR gittr-specific code upstream.
+Production **pages.gittr.space** runs this image, built from **[arbadacarbaYK/nsite-gateway](https://github.com/arbadacarbaYK/nsite-gateway)** branch **`master`** (hzrd149 v3.6.2 + gittr features). Fork docs (deploy, env, protocol): **that repo’s `README.md`**. We do **not** PR gittr-specific code upstream.
 
 ## What the fork adds (on top of hzrd149 v3.6.2)
 
