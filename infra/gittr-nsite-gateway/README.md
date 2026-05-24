@@ -4,12 +4,16 @@ Production **pages.gittr.space** runs this image, built from **[arbadacarbaYK/ns
 
 ## What we added (on hzrd149 v3.6.2)
 
-| Feature | Purpose |
-|---------|---------|
-| `GET /status/manifests.json` | JSON directory for gittr **`/pages`** |
-| `hasIndexHtml` | JSON feed lists only manifests with `/index.html` |
-| `GITTR_SYNC_MUTED_PUBKEYS` | Server env backup for **`PUBLISHER_BLOCKLIST`** until NIP-51 mute list is on relays |
-| `scripts/publish-curation-mutelist.cjs` | Operator script to publish curator mute list (see fork repo) |
+See **[arbadacarbaYK/nsite-gateway `README`](https://github.com/arbadacarbaYK/nsite-gateway#what-we-added-gittr-pages)** for the full table (including what was pushed back to hzrd149).
+
+| Feature | Purpose | Back to hzrd149? |
+|---------|---------|------------------|
+| `GET /status/manifests.json` | JSON directory for gittr **`/pages`** | **No** (fork only) |
+| `hasIndexHtml` | JSON feed lists only manifests with `/index.html` | **No** |
+| `GITTR_SYNC_MUTED_PUBKEYS` | Blocklist backup until mute list on relays | **No** |
+| `scripts/publish-curation-mutelist.cjs` | Publish curator mute list | **No** |
+
+Status “updated” / newest-manifest fix: **yes** — [hzrd149#21](https://github.com/hzrd149/nsite-gateway/pull/21) merged.
 
 HTML **`/status`** still lists all indexed manifests (operator view). **`manifests.json`** and gittr **`/pages`** are the public “working sites” directory.
 
