@@ -1,8 +1,8 @@
 # gittr Pages gateway (Docker image)
 
-Production **pages.gittr.space** runs this image, built from **[arbadacarbaYK/nsite-gateway](https://github.com/arbadacarbaYK/nsite-gateway)** branch **`master`** (hzrd149 v3.6.2 + gittr features). Fork docs (deploy, env, protocol): **that repo’s `README.md`**. We do **not** PR gittr-specific code upstream.
+Production **pages.gittr.space** runs this image, built from **[arbadacarbaYK/nsite-gateway](https://github.com/arbadacarbaYK/nsite-gateway)** branch **`master`** (forked from hzrd149 v3.6.2 + gittr features). Gateway docs: **that repo’s `README.md`**.
 
-## What the fork adds (on top of hzrd149 v3.6.2)
+## What we added (on hzrd149 v3.6.2)
 
 | Feature | Purpose |
 |---------|---------|
@@ -42,6 +42,6 @@ Details: **`docs/GITTR_PAGES_CURATION.md`**.
 
 Old Docker overlay patches; **not used** when `gateway-src/` is synced from the fork. Kept for reference only.
 
-## Pulling hzrd149 updates later
+## Merging from hzrd149 later
 
-In your fork clone: merge or rebase tag `v3.6.2` (or newer) from `hzrd149/nsite-gateway`, resolve conflicts on gittr files, push `master`, redeploy.
+In [arbadacarbaYK/nsite-gateway](https://github.com/arbadacarbaYK/nsite-gateway): merge or rebase tags from [hzrd149/nsite-gateway](https://github.com/hzrd149/nsite-gateway), resolve conflicts on gittr files, push `master`, redeploy.
