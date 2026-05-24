@@ -170,16 +170,27 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
             />
           </div>
           <p className="mt-3 text-xs leading-relaxed text-gray-500">
-            Operator view (all manifests, including file-only):{" "}
             <a
               className="font-medium text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
               href={statusPageUrl}
               rel="noopener noreferrer"
               target="_blank"
             >
-              gateway status
+              Open on gateway
               <ExternalLink className="mb-0.5 ml-0.5 inline h-3 w-3" />
             </a>
+            <span className="text-gray-600"> · </span>
+            <Link
+              className="font-medium text-[var(--color-accent-primary)] underline-offset-2 hover:underline"
+              href="/pages"
+            >
+              Open on gittr
+            </Link>
+            <span className="text-gray-600">
+              {" "}
+              — gateway status includes file-only manifests; this page lists
+              homepages only.
+            </span>
             {payload?.manifestsUrl ? (
               <>
                 {" "}
