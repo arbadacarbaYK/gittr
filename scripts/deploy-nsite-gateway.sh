@@ -36,10 +36,20 @@ fi
 echo "📦 Deploying nsite gateway → root@${HOST}:${REMOTE}"
 ssh -i "$KEY" -o BatchMode=yes "root@${HOST}" "mkdir -p '${REMOTE}/public'"
 
-NSITE_GATEWAY_SRC="${NSITE_GATEWAY_SRC:-$ROOT/../nsite-gateway-pr}"
-if [[ ! -f "${NSITE_GATEWAY_SRC}/main.ts" ]]; then
-  echo "❌ Missing nsite-gateway fork sources: ${NSITE_GATEWAY_SRC}"
-  echo "   Clone https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway (branch master), or set NSITE_GATEWAY_SRC."
+# Production fork: github.com/arbadacarbaYK/nsite-gateway (master). Local folder may be
+# named nsite-gateway or nsite-gateway-pr (legacy name from a draft upstream PR we never opened).
+if [[ -z "${NSITE_GATEWAY_SRC:-}" ]]; then
+  for candidate in "$ROOT/../nsite-gateway" "$ROOT/../nsite-gateway-pr"; do
+    if [[ -f "${candidate}/main.ts" ]]; then
+      NSITE_GATEWAY_SRC="$candidate"
+      break
+    fi
+  done
+fi
+if [[ -z "${NSITE_GATEWAY_SRC:-}" ]] || [[ ! -f "${NSITE_GATEWAY_SRC}/main.ts" ]]; then
+  echo "❌ Missing nsite-gateway fork sources (set NSITE_GATEWAY_SRC or clone beside gittr):"
+  echo "   git clone git@github.com:arbadacarbaYK/nsite-gateway.git ../nsite-gateway"
+  echo "   Branch master — not hzrd149 upstream; we deploy our fork only."
   exit 1
 fi
 

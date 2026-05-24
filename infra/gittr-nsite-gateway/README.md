@@ -12,7 +12,9 @@ Full tables (feature names + pushed back or not): **[arbadacarbaYK/nsite-gateway
 
 ## Build & deploy
 
-`scripts/deploy-nsite-gateway.sh` syncs a local clone of the fork (default: `../nsite-gateway-pr` on branch **`master`**) into `gateway-src/` and builds on the server. It **does not overwrite** an existing gateway `.env`.
+`scripts/deploy-nsite-gateway.sh` syncs a local clone of **our fork** (`arbadacarbaYK/nsite-gateway`, branch **`master`**) into `gateway-src/` and builds on the server. It **does not overwrite** an existing gateway `.env`.
+
+**Local folder name:** some machines still have `../nsite-gateway-pr` — that suffix is only a **historical directory name** from when a PR to [hzrd149/nsite-gateway](https://github.com/hzrd149/nsite-gateway) was drafted and never opened. Production does **not** push to hzrd149; deploy uses **`master` on our fork** only. Prefer cloning into `../nsite-gateway` today.
 
 ```bash
 export DEPLOY_HOST=your.server
@@ -22,7 +24,7 @@ export DEPLOY_HOST=your.server
 Local clone path override:
 
 ```bash
-export NSITE_GATEWAY_SRC=/path/to/nsite-gateway-pr
+export NSITE_GATEWAY_SRC=/path/to/nsite-gateway
 ```
 
 ## Curation vs gittr blocklist
