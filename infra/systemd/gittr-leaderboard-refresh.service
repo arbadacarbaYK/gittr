@@ -1,0 +1,19 @@
+[Unit]
+Description=gittr homepage platform leaderboard snapshot refresh
+Documentation=file:///opt/ngit/docs/SETUP_INSTRUCTIONS.md
+After=network-online.target gittr-frontend.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Override in /etc/default/gittr-leaderboard-refresh if the app listens elsewhere.
+Environment=GITTR_LEADERBOARD_URL=http://127.0.0.1:3000/api/stats/platform-leaderboard?refresh=1
+EnvironmentFile=-/etc/default/gittr-leaderboard-refresh
+ExecStart=/usr/bin/curl -fsS -o /dev/null --connect-timeout 15 --max-time 120 "${GITTR_LEADERBOARD_URL}"
+# API returns quickly and runs the heavy Nostr scan in the Next.js process.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gittr-leaderboard-refresh
+
+[Install]
+WantedBy=multi-user.target

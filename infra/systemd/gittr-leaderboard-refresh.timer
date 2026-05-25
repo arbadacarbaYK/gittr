@@ -1,0 +1,12 @@
+[Unit]
+Description=Hourly gittr platform leaderboard snapshot refresh
+Documentation=file:///opt/ngit/docs/SETUP_INSTRUCTIONS.md
+
+[Timer]
+OnCalendar=hourly
+AccuracySec=5min
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

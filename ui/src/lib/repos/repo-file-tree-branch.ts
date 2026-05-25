@@ -102,8 +102,8 @@ export function repoNavHref(
     extraParams instanceof URLSearchParams
       ? new URLSearchParams(extraParams.toString())
       : extraParams
-        ? new URLSearchParams()
-        : new URLSearchParams();
+      ? new URLSearchParams()
+      : new URLSearchParams();
   if (extraParams && !(extraParams instanceof URLSearchParams)) {
     for (const key of ["file", "path"] as const) {
       const v = extraParams.get(key);
@@ -141,14 +141,15 @@ export function shouldSyncBranchFromFetch(
   ) {
     return !cur || CANONICAL_DEFAULT_BRANCHES.has(cur);
   }
+  // e.g. GitHub Pages repos: tree listed from `gh-pages` while Nostr/default still says `main`
+  if (!userPickedBranch && b !== def) {
+    return !cur || cur === def;
+  }
   return false;
 }
 
 export function resolveActiveRepoBranch(
-  repo:
-    | { filesBranch?: string; defaultBranch?: string }
-    | null
-    | undefined,
+  repo: { filesBranch?: string; defaultBranch?: string } | null | undefined,
   selectedBranch: string
 ): string {
   const sel = (selectedBranch || "").trim();
@@ -156,32 +157,49 @@ export function resolveActiveRepoBranch(
   const filesBr = (repo?.filesBranch || "").trim();
   if (filesBr) return filesBr;
   return repoDefaultBranch(repo);
+}
+
+export type RepoBranchRoute = { entity: string; repo: string };
+
+export function userExplicitlyPickedBranch(
+  route: RepoBranchRoute | null | undefined,
+  selectedBranch: string
+): boolean {
+  const sel = (selectedBranch || "").trim();
+  if (!route || !sel) return false;
+  return readUserPickedRepoBranch(route.entity, route.repo) === sel;
 }
 
 export function resolveContentBranch(
-  repo:
-    | { filesBranch?: string; defaultBranch?: string }
-    | null
-    | undefined,
-  selectedBranch: string
+  repo: { filesBranch?: string; defaultBranch?: string } | null | undefined,
+  selectedBranch: string,
+  route?: RepoBranchRoute | null
 ): string {
-  // User-selected / URL branch wins; filesBranch is only which tree is cached in memory.
   const sel = (selectedBranch || "").trim();
-  if (sel) return sel;
   const filesBr = (repo?.filesBranch || "").trim();
+  const def = repoDefaultBranch(repo);
+  if (userExplicitlyPickedBranch(route, selectedBranch) && sel) {
+    return sel;
+  }
   if (filesBr) return filesBr;
-  return repoDefaultBranch(repo);
+  if (sel) return sel;
+  return def;
 }
 
 export function branchesToTryForContent(
-  repo:
-    | { filesBranch?: string; defaultBranch?: string }
-    | null
-    | undefined,
-  selectedBranch: string
+  repo: { filesBranch?: string; defaultBranch?: string } | null | undefined,
+  selectedBranch: string,
+  route?: RepoBranchRoute | null
 ): string[] {
-  const primary = resolveContentBranch(repo, selectedBranch);
-  return [primary, repo?.defaultBranch, selectedBranch, "main", "master"]
+  const primary = resolveContentBranch(repo, selectedBranch, route);
+  return [
+    primary,
+    repo?.filesBranch,
+    repo?.defaultBranch,
+    selectedBranch,
+    "main",
+    "master",
+  ]
     .map((b) => (typeof b === "string" ? b.trim() : ""))
     .filter((b): b is string => !!b)
     .filter((b, i, arr) => arr.indexOf(b) === i);

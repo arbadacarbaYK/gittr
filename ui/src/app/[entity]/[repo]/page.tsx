@@ -51,8 +51,8 @@ import {
 import { syncReadmeTextIntoRepoFiles } from "@/lib/gittr-pages/sync-readme-to-files";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
-import { broadcastRepoAnnouncementEventId } from "@/lib/nostr/repo-stars";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
+import { broadcastRepoAnnouncementEventId } from "@/lib/nostr/repo-stars";
 import {
   type Metadata,
   useContributorMetadata,
@@ -61,6 +61,22 @@ import useSession from "@/lib/nostr/useSession";
 import { buildNsiteSiteUrl, slugToNsiteDTag } from "@/lib/nsite/nsite-url";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { hasPrivateRepoAccess, hasWriteAccess } from "@/lib/repo-permissions";
+import { sidebarAboutText } from "@/lib/repos/repo-about-text";
+import {
+  type RepoBranchRoute,
+  branchesToTryForContent,
+  repoDefaultBranch,
+  resolveActiveRepoBranch,
+  resolveContentBranch,
+  shouldApplyFetchedFileTree,
+  shouldSyncBranchFromFetch,
+  writeUserPickedRepoBranch,
+} from "@/lib/repos/repo-file-tree-branch";
+import {
+  fetchGithubRepoDescription,
+  persistRepoDescription,
+  resolveRepoActivityDisplayMs,
+} from "@/lib/repos/repo-github-hub";
 import {
   type RepoFileEntry,
   type RepoLink,
@@ -82,40 +98,26 @@ import {
   saveStoredRepos,
 } from "@/lib/repos/storage";
 import {
+  hasGithubUpstreamMirror,
   markSourceTreeFresh,
-  writeUpstreamSourceSession,
   readSourceTreeFreshMs,
   resolveRepoUpstreamSource,
   resolveUpstreamSourceUrl,
   shouldPreferUpstreamContent,
   shouldPreferUpstreamMirror,
   shouldSkipLegacyKind51EmbeddedFiles,
-  hasGithubUpstreamMirror,
+  writeUpstreamSourceSession,
 } from "@/lib/repos/upstream-precedence";
-import { sidebarAboutText } from "@/lib/repos/repo-about-text";
-import {
-  resolveActiveRepoBranch,
-  resolveContentBranch,
-  branchesToTryForContent,
-  repoDefaultBranch,
-  shouldApplyFetchedFileTree,
-  shouldSyncBranchFromFetch,
-  writeUserPickedRepoBranch,
-} from "@/lib/repos/repo-file-tree-branch";
 import { inferGithubUpstreamFromRoute } from "@/lib/repos/upstream-precedence";
-import {
-  fetchGithubRepoDescription,
-  persistRepoDescription,
-  resolveRepoActivityDisplayMs,
-} from "@/lib/repos/repo-github-hub";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+import { cn } from "@/lib/utils";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {
   mergeOwnerPubkeyIntoContributors,
   sanitizeContributors,
 } from "@/lib/utils/contributors";
-import { fetchDeduped } from "@/lib/utils/deduped-fetch";
 import { formatDate24h } from "@/lib/utils/date-format";
+import { fetchDeduped } from "@/lib/utils/deduped-fetch";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import {
   getEntityDisplayName,
@@ -139,6 +141,8 @@ import {
   mergeGithubIssuesAfterRefetch,
   mergeGithubPrsAfterRefetch,
 } from "@/lib/utils/issue-pr-status";
+import { createMarkdownAnchor } from "@/lib/utils/markdown-anchor";
+import { MarkdownCode } from "@/lib/utils/markdown-code";
 import {
   nip34TagValuesFromRow,
   normalizeRelayWssUrl,
@@ -161,9 +165,6 @@ import {
   markRepoAsEdited,
   setRepoStatus,
 } from "@/lib/utils/repo-status";
-import { cn } from "@/lib/utils";
-import { createMarkdownAnchor } from "@/lib/utils/markdown-anchor";
-import { MarkdownCode } from "@/lib/utils/markdown-code";
 
 import {
   BookOpen,
@@ -338,9 +339,7 @@ const createMarkdownHeadingComponents = (
             <a
               href={`#${id}`}
               className="text-gray-400 hover:text-purple-300"
-              aria-label={
-                text ? `Link to ${text}` : "Link to heading"
-              }
+              aria-label={text ? `Link to ${text}` : "Link to heading"}
               title="Jump to this heading"
             >
               <Link2 className="h-3.5 w-3.5" />
@@ -422,10 +421,7 @@ const markdownProseCodeSafeComponents = {
   pre: ({ children }: { children?: ReactNode }) => <>{children}</>,
   /** Div avoids invalid `<p><div|pre>…` when fences map to CopyableCodeBlock (fixes hydration / DOM nesting). */
   p: ({ children, className, ...props }: any) => (
-    <div
-      {...props}
-      className={cn("mb-4 last:mb-0 max-w-full", className)}
-    >
+    <div {...props} className={cn("mb-4 last:mb-0 max-w-full", className)}>
       {children}
     </div>
   ),
@@ -482,6 +478,13 @@ export default function RepoCodePage() {
       repo: routeParams?.repo ?? "",
     }),
     [routeParams?.entity, routeParams?.repo]
+  );
+  const repoBranchRoute = useMemo<RepoBranchRoute>(
+    () => ({
+      entity: resolvedParams.entity,
+      repo: resolvedParams.repo,
+    }),
+    [resolvedParams.entity, resolvedParams.repo]
   );
   const decodedRepo = decodeURIComponent(resolvedParams.repo);
   const {
@@ -703,12 +706,20 @@ export default function RepoCodePage() {
     }
     const ownerHex =
       (repoData as { ownerPubkey?: string } | null)?.ownerPubkey &&
-      /^[0-9a-f]{64}$/i.test(String((repoData as { ownerPubkey?: string }).ownerPubkey))
-        ? String((repoData as { ownerPubkey?: string }).ownerPubkey).toLowerCase()
-        : resolveEntityToPubkey(resolvedParams.entity, repoData as StoredRepo) ||
-          undefined;
+      /^[0-9a-f]{64}$/i.test(
+        String((repoData as { ownerPubkey?: string }).ownerPubkey)
+      )
+        ? String(
+            (repoData as { ownerPubkey?: string }).ownerPubkey
+          ).toLowerCase()
+        : resolveEntityToPubkey(
+            resolvedParams.entity,
+            repoData as StoredRepo
+          ) || undefined;
     const scrub = (list: RepoFileEntry[]) =>
-      filterGraspMirrorPollutionFromFileTree(list, { ownerPubkeyHex: ownerHex });
+      filterGraspMirrorPollutionFromFileTree(list, {
+        ownerPubkeyHex: ownerHex,
+      });
 
     let best: RepoFileEntry[] = [];
     let bestLen = Number.MAX_SAFE_INTEGER;
@@ -721,7 +732,12 @@ export default function RepoCodePage() {
     }
     return capRepoFileTreeForDisplay(best).files;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, filesTreeVersionKey, repoData?.files?.length, repoData?.sourceUrl]);
+  }, [
+    mounted,
+    filesTreeVersionKey,
+    repoData?.files?.length,
+    repoData?.sourceUrl,
+  ]);
 
   useEffect(() => {
     if (safeFiles.length === 0) return;
@@ -1293,9 +1309,7 @@ export default function RepoCodePage() {
     if (!resolvedParams.repo) return;
 
     const branch =
-      selectedBranchRef.current ||
-      repoDataRef.current?.defaultBranch ||
-      "main";
+      selectedBranchRef.current || repoDataRef.current?.defaultBranch || "main";
     const existingFiles = repoDataRef.current?.files;
     const hasRichFileBodies =
       Array.isArray(existingFiles) &&
@@ -1409,7 +1423,12 @@ export default function RepoCodePage() {
         bridgeFetchInProgressRef.current = false;
       }
     })();
-  }, [repoOwnerPubkey, entityPubkey, resolvedParams.entity, resolvedParams.repo]);
+  }, [
+    repoOwnerPubkey,
+    entityPubkey,
+    resolvedParams.entity,
+    resolvedParams.repo,
+  ]);
   // Live counters synced with localStorage updates from layout actions
   const [liveStarCount, setLiveStarCount] = useState<number>(0);
   const [liveWatchCount, setLiveWatchCount] = useState<number>(0);
@@ -1932,11 +1951,7 @@ export default function RepoCodePage() {
     setCurrentFolderReadme(null);
     setLoadingFolderReadme(false);
     userPickedBranchRef.current = false;
-    writeUserPickedRepoBranch(
-      resolvedParams.entity,
-      resolvedParams.repo,
-      null
-    );
+    writeUserPickedRepoBranch(resolvedParams.entity, resolvedParams.repo, null);
   }, [resolvedParams.entity, resolvedParams.repo]);
   // Ref to track if we're updating state from URL (prevents loops)
   const updatingFromURLRef = useRef(false);
@@ -2742,8 +2757,7 @@ export default function RepoCodePage() {
                     // Also fix entityDisplayName - use npub format, not shortened pubkey
                     try {
                       repoToUpdate.entityDisplayName =
-                        nip19.npubEncode(event.pubkey).substring(0, 16) +
-                        "...";
+                        nip19.npubEncode(event.pubkey).substring(0, 16) + "...";
                     } catch {
                       repoToUpdate.entityDisplayName =
                         event.pubkey.substring(0, 16) + "...";
@@ -3782,10 +3796,10 @@ export default function RepoCodePage() {
                   );
                   const readme =
                     preferUpstream && upstreamFresh > 0
-                      ? ((prev as any)?.readme ?? "")
-                      : ((prev as any)?.readme ??
+                      ? (prev as any)?.readme ?? ""
+                      : (prev as any)?.readme ??
                         (updatedRepo as any)?.readme ??
-                        "");
+                        "";
                   return {
                     ...updatedRepo,
                     files: filesToPreserve,
@@ -3820,7 +3834,9 @@ export default function RepoCodePage() {
     (url: string) => {
       const normalized = url.trim();
       if (!normalized) return;
-      setEffectiveSourceUrl((prev) => (prev === normalized ? prev : normalized));
+      setEffectiveSourceUrl((prev) =>
+        prev === normalized ? prev : normalized
+      );
       writeUpstreamSourceSession(
         resolvedParams.entity,
         resolvedParams.repo,
@@ -4077,11 +4093,7 @@ export default function RepoCodePage() {
       setRepoData((prev) =>
         prev?.description === desc ? prev : { ...prev!, description: desc }
       );
-      persistRepoDescription(
-        resolvedParams.entity,
-        resolvedParams.repo,
-        desc
-      );
+      persistRepoDescription(resolvedParams.entity, resolvedParams.repo, desc);
     })();
 
     return () => {
@@ -4114,7 +4126,11 @@ export default function RepoCodePage() {
       return;
     }
 
-    const branch = selectedBranch || repoData?.defaultBranch || "main";
+    const branch = resolveContentBranch(
+      repoData,
+      selectedBranch,
+      repoBranchRoute
+    );
     const contentKey = `${sourceUrl}:${branch}`;
     if (upstreamContentLoadedKeyRef.current === contentKey) {
       return;
@@ -4129,9 +4145,9 @@ export default function RepoCodePage() {
             : null;
         let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
           sourceUrl
-        )}&path=${encodeURIComponent(
-          "README.md"
-        )}&branch=${encodeURIComponent(branch)}`;
+        )}&path=${encodeURIComponent("README.md")}&branch=${encodeURIComponent(
+          branch
+        )}`;
         if (githubToken) {
           apiUrl += `&githubToken=${encodeURIComponent(githubToken)}`;
         }
@@ -4155,7 +4171,6 @@ export default function RepoCodePage() {
           if (prev.readme === md) return prev;
           return { ...prev, readme: md };
         });
-
       } catch (e) {
         console.warn("[Upstream sync] Failed to load README:", e);
       }
@@ -4368,9 +4383,7 @@ export default function RepoCodePage() {
       fileFetchAttemptedRef.current = "";
       startTransition(() => {
         setRepoData((prev: any) =>
-          prev
-            ? { ...prev, files: [], filesBranch: undefined }
-            : prev
+          prev ? { ...prev, files: [], filesBranch: undefined } : prev
         );
         setBridgeFiles([]);
       });
@@ -4478,7 +4491,11 @@ export default function RepoCodePage() {
           if (localFiles.length > 0) {
             console.log(
               mustRefreshFromNetwork
-                ? `📂 [File Fetch] Repo has ${localFiles.length} files in localStorage — showing immediately, then refreshing from ${hasGithubMirror ? "GitHub/upstream" : "Nostr/bridge"}`
+                ? `📂 [File Fetch] Repo has ${
+                    localFiles.length
+                  } files in localStorage — showing immediately, then refreshing from ${
+                    hasGithubMirror ? "GitHub/upstream" : "Nostr/bridge"
+                  }`
                 : `✅ [File Fetch] Repo has ${localFiles.length} files in localStorage, using them (skipping server fetch)`
             );
             setRepoData((prev) =>
@@ -5108,10 +5125,7 @@ export default function RepoCodePage() {
           markSourceTreeFresh(
             resolvedParams.entity,
             resolvedParams.repo,
-            resolveRepoStorageAlias(
-              resolvedParams.entity,
-              resolvedParams.repo
-            )
+            resolveRepoStorageAlias(resolvedParams.entity, resolvedParams.repo)
           );
           console.log(
             `✅ [File Fetch] NIP-34: Successfully fetched ${files.length} files from clone URLs (immediate fetch)`
@@ -6120,8 +6134,8 @@ export default function RepoCodePage() {
                 Array.isArray(eventRepoData.files) &&
                 eventRepoData.files.length > 0;
 
-              const skipKind51EmbeddedFiles = shouldSkipLegacyKind51EmbeddedFiles(
-                {
+              const skipKind51EmbeddedFiles =
+                shouldSkipLegacyKind51EmbeddedFiles({
                   eventKind: event.kind,
                   kindRepository: KIND_REPOSITORY,
                   hasValidEmbeddedFiles: hasValidFiles,
@@ -6135,8 +6149,7 @@ export default function RepoCodePage() {
                     event.kind === KIND_REPOSITORY
                       ? eventRepoData?.lastEventCreatedAt
                       : undefined,
-                }
-              );
+                });
               if (skipKind51EmbeddedFiles) {
                 console.log(
                   "⏭️ [File Fetch] Skipping legacy kind-51 embedded file tree — GitHub/upstream refresh is authoritative"
@@ -6425,10 +6438,7 @@ export default function RepoCodePage() {
                           resolvedParams.entity,
                           resolvedParams.repo
                         ),
-                        readSourceTreeFreshMs(
-                          resolvedParams.entity,
-                          slugA
-                        )
+                        readSourceTreeFreshMs(resolvedParams.entity, slugA)
                       );
                     }
                     const repoLastNostrMs =
@@ -7140,8 +7150,7 @@ export default function RepoCodePage() {
 
                 // Only skip if we already have files (duplicate work). Same as initial clone-url fetch.
                 if (
-                  ((hasAttempted && hasFiles) ||
-                    (isInProgress && hasFiles)) &&
+                  ((hasAttempted && hasFiles) || (isInProgress && hasFiles)) &&
                   !mustRefreshEose
                 ) {
                   console.log(
@@ -9384,8 +9393,9 @@ export default function RepoCodePage() {
                                           githubToken
                                         )}`;
                                       }
-                                      const readmeResponse =
-                                        await fetchDeduped(readmeApiUrl);
+                                      const readmeResponse = await fetchDeduped(
+                                        readmeApiUrl
+                                      );
                                       if (readmeResponse.ok) {
                                         const readmeData =
                                           await readmeResponse.json();
@@ -10067,8 +10077,9 @@ export default function RepoCodePage() {
                                 githubToken
                               )}`;
                             }
-                            const readmeResponse =
-                              await fetchDeduped(readmeApiUrl);
+                            const readmeResponse = await fetchDeduped(
+                              readmeApiUrl
+                            );
                             if (readmeResponse.ok) {
                               const readmeData = await readmeResponse.json();
                               readmeContent = readmeData.content || "";
@@ -10249,7 +10260,6 @@ export default function RepoCodePage() {
         fileFetchInProgressRef.current = false;
       }
     })();
-
   }, [resolvedParams.entity, resolvedParams.repo]);
 
   // Extract URL params with state to prevent infinite loops
@@ -10339,13 +10349,9 @@ export default function RepoCodePage() {
     const branchList = (repoData as { branches?: string[] }).branches;
     if (urlBranch && branchList?.includes(urlBranch)) {
       if (userPickedBranchRef.current) {
-        setSelectedBranch((prev) =>
-          prev !== urlBranch ? urlBranch : prev
-        );
+        setSelectedBranch((prev) => (prev !== urlBranch ? urlBranch : prev));
       } else if (urlBranch === defaultBr) {
-        setSelectedBranch((prev) =>
-          prev !== urlBranch ? urlBranch : prev
-        );
+        setSelectedBranch((prev) => (prev !== urlBranch ? urlBranch : prev));
       } else {
         setSelectedBranch((prev) => (prev !== defaultBr ? defaultBr : prev));
         updateURL({ branch: undefined });
@@ -10473,7 +10479,11 @@ export default function RepoCodePage() {
           (f) => normPath(f.path || "") === wantReadme
         );
 
-        const branchesToTry = branchesToTryForContent(repoData, selectedBranch);
+        const branchesToTry = branchesToTryForContent(
+          repoData,
+          selectedBranch,
+          repoBranchRoute
+        );
         const sourceUrl =
           resolveRepoUpstreamSource(repoData) ||
           resolveUpstreamSourceUrl(effectiveSourceUrl);
@@ -10615,11 +10625,15 @@ export default function RepoCodePage() {
         // GRASP / nostr-git mirrors (same path as file tree multifetch)
         if (!preferUpstreamReadme && repoData) {
           const successfulSources =
-            (repoData as { successfulSources?: Array<{
-              sourceUrl?: string;
-              resolvedBranch?: string;
-              files?: unknown[];
-            }> })?.successfulSources || [];
+            (
+              repoData as {
+                successfulSources?: Array<{
+                  sourceUrl?: string;
+                  resolvedBranch?: string;
+                  files?: unknown[];
+                }>;
+              }
+            )?.successfulSources || [];
           for (const src of successfulSources) {
             if (
               !src?.sourceUrl ||
@@ -10628,8 +10642,7 @@ export default function RepoCodePage() {
             ) {
               continue;
             }
-            const srcBranch =
-              src.resolvedBranch || branchesToTry[0] || "main";
+            const srcBranch = src.resolvedBranch || branchesToTry[0] || "main";
             try {
               const cloneApi = `/api/git/file-content?sourceUrl=${encodeURIComponent(
                 src.sourceUrl
@@ -10664,7 +10677,8 @@ export default function RepoCodePage() {
               }
               for (const tryBranch of branchesToTryForContent(
                 repoData,
-                selectedBranch
+                selectedBranch,
+                repoBranchRoute
               )) {
                 try {
                   const cloneApi = `/api/git/file-content?sourceUrl=${encodeURIComponent(
@@ -10767,8 +10781,7 @@ export default function RepoCodePage() {
     repoData?.hasUnpushedEdits,
     repoData?.defaultBranch,
     (repoData as { filesBranch?: string })?.filesBranch,
-    (repoData as { successfulSources?: unknown[] })?.successfulSources
-      ?.length,
+    (repoData as { successfulSources?: unknown[] })?.successfulSources?.length,
     repoData?.ownerPubkey,
     (repoData as any)?.repositoryName,
     selectedBranch,
@@ -10795,7 +10808,11 @@ export default function RepoCodePage() {
     // Check if files are loaded - if not, wait for them
     const hasFiles = safeFiles.length > 0;
     const repoKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
-    const currentBranch = resolveContentBranch(repoData, selectedBranch);
+    const currentBranch = resolveContentBranch(
+      repoData,
+      selectedBranch,
+      repoBranchRoute
+    );
     const repoKeyWithBranch = `${repoKey}:${currentBranch}`;
     const filesAreLoading = fileFetchInProgressRef.current;
     const filesHaveBeenAttempted =
@@ -11070,7 +11087,11 @@ export default function RepoCodePage() {
           // If we found a valid git URL, construct raw URL
           if (ownerRepo) {
             const { owner, repo, hostname } = ownerRepo;
-            const branch = selectedBranch || repoData?.defaultBranch || "main";
+            const branch = resolveContentBranch(
+              repoData,
+              selectedBranch,
+              repoBranchRoute
+            );
 
             if (hostname === "github.com" || hostname.includes("github.com")) {
               const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
@@ -11139,7 +11160,11 @@ export default function RepoCodePage() {
           }
 
           if (ownerPubkeyForBridge && repoName) {
-            const branch = selectedBranch || repoData?.defaultBranch || "main";
+            const branch = resolveContentBranch(
+              repoData,
+              selectedBranch,
+              repoBranchRoute
+            );
             const bridgeApiUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
               ownerPubkeyForBridge
             )}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(
@@ -11558,7 +11583,9 @@ export default function RepoCodePage() {
         console.log(
           `✅ [File Fetch] Received files from GRASP clone completion event: ${files.length} files`
         );
-        const applyKey = `${resolvedParams.entity}/${resolvedParams.repo}:${files.length}:${files[0]?.path || ""}`;
+        const applyKey = `${resolvedParams.entity}/${resolvedParams.repo}:${
+          files.length
+        }:${files[0]?.path || ""}`;
         if (lastAppliedFileTreeKeyRef.current === applyKey) {
           return;
         }
@@ -11694,7 +11721,11 @@ export default function RepoCodePage() {
       const parts = u.pathname.split("/").filter(Boolean);
       const owner = parts[0];
       const repo = (parts[1] || resolvedParams.repo).replace(/\.git$/, "");
-      const branch = selectedBranch || repoData?.defaultBranch || "main";
+      const branch = resolveContentBranch(
+        repoData,
+        selectedBranch,
+        repoBranchRoute
+      );
       const encodedPath = encodePathSegments(path);
 
       if (u.hostname.includes("github.com")) {
@@ -11788,7 +11819,11 @@ export default function RepoCodePage() {
           bridgeRepo = parts[parts.length - 1] || bridgeRepo;
         }
         bridgeRepo = String(bridgeRepo).replace(/\.git$/, "");
-        const branch0 = resolveContentBranch(repoData, selectedBranch);
+        const branch0 = resolveContentBranch(
+          repoData,
+          selectedBranch,
+          repoBranchRoute
+        );
         try {
           const api0 = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
             ownerPk.toLowerCase()
@@ -12237,8 +12272,11 @@ export default function RepoCodePage() {
             isRefetchableUpstreamSourceUrl(sourceUrlForFetch)
           ) {
             try {
-              const branchToUse =
-                selectedBranch || repoData?.defaultBranch || "main";
+              const branchToUse = resolveContentBranch(
+                repoData,
+                selectedBranch,
+                repoBranchRoute
+              );
               // Get user's GitHub token for private repos
               const githubToken =
                 typeof window !== "undefined"
@@ -12338,7 +12376,11 @@ export default function RepoCodePage() {
       isRefetchableUpstreamSourceUrl(sourceUrlForPriorityFetch)
     ) {
       try {
-        const branchToUse = resolveContentBranch(repoData, selectedBranch);
+        const branchToUse = resolveContentBranch(
+          repoData,
+          selectedBranch,
+          repoBranchRoute
+        );
         // Get user's GitHub token for private repos
         const githubToken =
           typeof window !== "undefined"
@@ -12510,7 +12552,11 @@ export default function RepoCodePage() {
       }
       repoName = repoName.replace(/\.git$/, "");
 
-      const branch = selectedBranch || repoData?.defaultBranch || "main";
+      const branch = resolveContentBranch(
+        repoData,
+        selectedBranch,
+        repoBranchRoute
+      );
       const apiUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
         ownerPubkey
       )}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(
@@ -12917,7 +12963,11 @@ export default function RepoCodePage() {
               ),
         });
 
-        const branchesToTry = branchesToTryForContent(repoData, selectedBranch);
+        const branchesToTry = branchesToTryForContent(
+          repoData,
+          selectedBranch,
+          repoBranchRoute
+        );
 
         if (githubMatch) {
           const [, owner, repo] = githubMatch;
@@ -13151,11 +13201,13 @@ export default function RepoCodePage() {
         } else {
           const contentBranches = branchesToTryForContent(
             repoData,
-            selectedBranch
+            selectedBranch,
+            repoBranchRoute
           );
           for (const tryBranch of contentBranches) {
-            const resolvedFromSource = (sourceInfo as { resolvedBranch?: string })
-              .resolvedBranch;
+            const resolvedFromSource = (
+              sourceInfo as { resolvedBranch?: string }
+            ).resolvedBranch;
             const branchForFetch = resolvedFromSource || tryBranch;
             let apiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
               sourceUrl
@@ -13188,8 +13240,7 @@ export default function RepoCodePage() {
                     mp3: "audio/mpeg",
                     wav: "audio/wav",
                   };
-                  const mimeType =
-                    mimeTypes[ext] || "application/octet-stream";
+                  const mimeType = mimeTypes[ext] || "application/octet-stream";
                   const dataUrl = `data:${mimeType};base64,${data.content}`;
                   return { content: null, url: dataUrl, isBinary: true };
                 }
@@ -15372,7 +15423,9 @@ export default function RepoCodePage() {
                       <History className="h-4 w-4" />
                       <span className="hidden sm:inline">
                         {mounted
-                          ? `${safeFiles.filter((f) => f.type === "file").length} files`
+                          ? `${
+                              safeFiles.filter((f) => f.type === "file").length
+                            } files`
                           : "\u00a0"}
                       </span>
                     </span>
@@ -15392,7 +15445,8 @@ export default function RepoCodePage() {
                 </div>
               </div>
             )}
-            {mounted && fetchStatuses.length > 0 &&
+            {mounted &&
+              fetchStatuses.length > 0 &&
               (() => {
                 // Check if we have files - if so, show success message briefly, then hide
                 const hasFiles = safeFiles.length > 0;
@@ -15787,186 +15841,188 @@ export default function RepoCodePage() {
               (currentFolderReadme ||
                 repoData?.readme ||
                 loadingFolderReadme) && (
-              <div className="mt-4 rounded-md border dark:border-[#383B42]">
-                <div className="flex items-center gap-2 border-b p-2 dark:border-[#383B42]">
-                  <List className="text-gray-400 ml-2 h-4 w-4" />{" "}
-                  <span className="text-gray-400">
-                    {loadingFolderReadme &&
-                    !currentFolderReadme &&
-                    !repoData?.readme &&
-                    !safeFiles.some((f: { path?: string }) =>
-                      /^(readme\.md|readme)$/i.test(String(f?.path || ""))
-                    )
-                      ? "Loading README..."
-                      : "README.md"}
-                  </span>
-                </div>
-                <article
-                  id="readme"
-                  ref={readmePreviewRef}
-                  className="prose prose-invert max-w-full p-4 text-white prose-headings:text-white prose-p:text-gray-300 prose-a:text-purple-500 prose-strong:text-white prose-code:text-green-400 prose-pre:bg-gray-900 prose-code:bg-gray-900 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-code:inline"
-                >
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeRaw]}
-                    components={{
-                      ...readmeHeadingComponents,
-                      ...markdownProseCodeSafeComponents,
-                      img: ({ node, ...props }) => {
-                        // Transform relative image paths to absolute URLs
-                        let imageSrc = props.src || "";
+                <div className="mt-4 rounded-md border dark:border-[#383B42]">
+                  <div className="flex items-center gap-2 border-b p-2 dark:border-[#383B42]">
+                    <List className="text-gray-400 ml-2 h-4 w-4" />{" "}
+                    <span className="text-gray-400">
+                      {loadingFolderReadme &&
+                      !currentFolderReadme &&
+                      !repoData?.readme &&
+                      !safeFiles.some((f: { path?: string }) =>
+                        /^(readme\.md|readme)$/i.test(String(f?.path || ""))
+                      )
+                        ? "Loading README..."
+                        : "README.md"}
+                    </span>
+                  </div>
+                  <article
+                    id="readme"
+                    ref={readmePreviewRef}
+                    className="prose prose-invert max-w-full p-4 text-white prose-headings:text-white prose-p:text-gray-300 prose-a:text-purple-500 prose-strong:text-white prose-code:text-green-400 prose-pre:bg-gray-900 prose-code:bg-gray-900 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-code:inline"
+                  >
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeRaw]}
+                      components={{
+                        ...readmeHeadingComponents,
+                        ...markdownProseCodeSafeComponents,
+                        img: ({ node, ...props }) => {
+                          // Transform relative image paths to absolute URLs
+                          let imageSrc = props.src || "";
 
-                        // If src is already an absolute URL (http:// or https://) or data URL, use it as-is
-                        if (
-                          imageSrc.startsWith("http://") ||
-                          imageSrc.startsWith("https://") ||
-                          imageSrc.startsWith("data:")
-                        ) {
-                          return (
-                            <img
-                              {...props}
-                              className="max-w-full h-auto rounded"
-                              alt={props.alt || ""}
-                            />
-                          );
-                        }
-
-                        // For relative paths, resolve them using the repository's sourceUrl or API
-                        if (imageSrc && repoData) {
-                          try {
-                            // Get the branch to use
-                            const branch =
-                              selectedBranch ||
-                              repoData?.defaultBranch ||
-                              "main";
-
-                            // Resolve relative path: remove leading slash or ./ if present
-                            // Images in markdown are typically relative to the repository root
-                            let imagePath = imageSrc;
-                            if (imagePath.startsWith("./")) {
-                              imagePath = imagePath.slice(2);
-                            } else if (imagePath.startsWith("/")) {
-                              imagePath = imagePath.slice(1);
-                            }
-
-                            // Construct raw URL based on git provider (Nostr may set this after first paint)
-                            const sourceUrl = (
-                              effectiveSourceUrl ||
-                              repoData.sourceUrl ||
-                              (Array.isArray((repoData as { clone?: string[] }).clone)
-                                ? (repoData as { clone?: string[] }).clone?.find((u) =>
-                                    /github\.com/i.test(u)
-                                  )
-                                : "") ||
-                              ""
-                            ).replace(/\.git$/, "");
-                            const githubMatch = sourceUrl.match(
-                              /github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/
+                          // If src is already an absolute URL (http:// or https://) or data URL, use it as-is
+                          if (
+                            imageSrc.startsWith("http://") ||
+                            imageSrc.startsWith("https://") ||
+                            imageSrc.startsWith("data:")
+                          ) {
+                            return (
+                              <img
+                                {...props}
+                                className="max-w-full h-auto rounded"
+                                alt={props.alt || ""}
+                              />
                             );
-                            const gitlabMatch = sourceUrl.match(
-                              /gitlab\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/
-                            );
-                            const codebergMatch = sourceUrl.match(
-                              /codeberg\.org\/([^\/]+)\/([^\/]+?)(?:\.git)?$/
-                            );
+                          }
 
-                            if (githubMatch) {
-                              const [, owner, repo] = githubMatch;
-                              imageSrc = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
-                                branch
-                              )}/${imagePath}`;
-                            } else if (gitlabMatch) {
-                              // GitLab raw URL format: https://gitlab.com/owner/repo/-/raw/branch/path
-                              const [, owner, repo] = gitlabMatch;
-                              imageSrc = `https://gitlab.com/${owner}/${repo}/-/raw/${encodeURIComponent(
-                                branch
-                              )}/${imagePath}`;
-                            } else if (codebergMatch) {
-                              // Codeberg raw URL format: https://codeberg.org/owner/repo/raw/branch/path
-                              const [, owner, repo] = codebergMatch;
-                              imageSrc = `https://codeberg.org/${owner}/${repo}/raw/branch/${encodeURIComponent(
-                                branch
-                              )}/${imagePath}`;
-                            } else if (!sourceUrl) {
-                              // Upstream URL not resolved yet — skip broken relative img until hydrate/fetch completes
-                              imageSrc = "";
-                            } else {
-                              // For other git providers, try to construct a raw URL pattern
-                              // This is a best-effort approach for unknown providers
-                              try {
-                                const url = new URL(sourceUrl);
-                                const pathParts = url.pathname
-                                  .split("/")
-                                  .filter(Boolean);
-                                if (pathParts.length >= 2) {
-                                  const owner = pathParts[0];
-                                  const repo = pathParts[1];
-                                  // Try common raw URL patterns
-                                  imageSrc = `${url.protocol}//${
-                                    url.host
-                                  }/${owner}/${repo}/raw/${encodeURIComponent(
-                                    branch
-                                  )}/${imagePath}`;
-                                } else {
+                          // For relative paths, resolve them using the repository's sourceUrl or API
+                          if (imageSrc && repoData) {
+                            try {
+                              // Get the branch to use
+                              const branch =
+                                selectedBranch ||
+                                repoData?.defaultBranch ||
+                                "main";
+
+                              // Resolve relative path: remove leading slash or ./ if present
+                              // Images in markdown are typically relative to the repository root
+                              let imagePath = imageSrc;
+                              if (imagePath.startsWith("./")) {
+                                imagePath = imagePath.slice(2);
+                              } else if (imagePath.startsWith("/")) {
+                                imagePath = imagePath.slice(1);
+                              }
+
+                              // Construct raw URL based on git provider (Nostr may set this after first paint)
+                              const sourceUrl = (
+                                effectiveSourceUrl ||
+                                repoData.sourceUrl ||
+                                (Array.isArray(
+                                  (repoData as { clone?: string[] }).clone
+                                )
+                                  ? (
+                                      repoData as { clone?: string[] }
+                                    ).clone?.find((u) => /github\.com/i.test(u))
+                                  : "") ||
+                                ""
+                              ).replace(/\.git$/, "");
+                              const githubMatch = sourceUrl.match(
+                                /github\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/
+                              );
+                              const gitlabMatch = sourceUrl.match(
+                                /gitlab\.com\/([^\/]+)\/([^\/]+?)(?:\.git)?$/
+                              );
+                              const codebergMatch = sourceUrl.match(
+                                /codeberg\.org\/([^\/]+)\/([^\/]+?)(?:\.git)?$/
+                              );
+
+                              if (githubMatch) {
+                                const [, owner, repo] = githubMatch;
+                                imageSrc = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(
+                                  branch
+                                )}/${imagePath}`;
+                              } else if (gitlabMatch) {
+                                // GitLab raw URL format: https://gitlab.com/owner/repo/-/raw/branch/path
+                                const [, owner, repo] = gitlabMatch;
+                                imageSrc = `https://gitlab.com/${owner}/${repo}/-/raw/${encodeURIComponent(
+                                  branch
+                                )}/${imagePath}`;
+                              } else if (codebergMatch) {
+                                // Codeberg raw URL format: https://codeberg.org/owner/repo/raw/branch/path
+                                const [, owner, repo] = codebergMatch;
+                                imageSrc = `https://codeberg.org/${owner}/${repo}/raw/branch/${encodeURIComponent(
+                                  branch
+                                )}/${imagePath}`;
+                              } else if (!sourceUrl) {
+                                // Upstream URL not resolved yet — skip broken relative img until hydrate/fetch completes
+                                imageSrc = "";
+                              } else {
+                                // For other git providers, try to construct a raw URL pattern
+                                // This is a best-effort approach for unknown providers
+                                try {
+                                  const url = new URL(sourceUrl);
+                                  const pathParts = url.pathname
+                                    .split("/")
+                                    .filter(Boolean);
+                                  if (pathParts.length >= 2) {
+                                    const owner = pathParts[0];
+                                    const repo = pathParts[1];
+                                    // Try common raw URL patterns
+                                    imageSrc = `${url.protocol}//${
+                                      url.host
+                                    }/${owner}/${repo}/raw/${encodeURIComponent(
+                                      branch
+                                    )}/${imagePath}`;
+                                  } else {
+                                    console.warn(
+                                      "⚠️ [README] Could not parse sourceUrl for image:",
+                                      sourceUrl
+                                    );
+                                  }
+                                } catch (e) {
                                   console.warn(
-                                    "⚠️ [README] Could not parse sourceUrl for image:",
-                                    sourceUrl
+                                    "⚠️ [README] Failed to construct raw URL for image:",
+                                    imageSrc,
+                                    e
                                   );
                                 }
-                              } catch (e) {
-                                console.warn(
-                                  "⚠️ [README] Failed to construct raw URL for image:",
-                                  imageSrc,
-                                  e
-                                );
                               }
+                            } catch (e) {
+                              console.warn(
+                                "⚠️ [README] Failed to resolve image URL:",
+                                imageSrc,
+                                e
+                              );
+                              // Fallback to original src
                             }
-                          } catch (e) {
-                            console.warn(
-                              "⚠️ [README] Failed to resolve image URL:",
-                              imageSrc,
-                              e
-                            );
-                            // Fallback to original src
                           }
-                        }
 
-                        if (!imageSrc) return null;
+                          if (!imageSrc) return null;
 
-                        return (
-                          <div className="my-4 overflow-x-auto">
-                            <img
-                              {...props}
-                              src={imageSrc}
-                              className="max-w-full h-auto rounded"
-                              alt={props.alt || ""}
-                              style={{
-                                maxWidth: "100%",
-                                width: "auto",
-                                height: "auto",
-                              }}
-                              onError={(e) => {
-                                console.warn(
-                                  "⚠️ [README] Image failed to load:",
-                                  imageSrc
-                                );
-                                // Optionally hide broken images or show a placeholder
-                                (e.target as HTMLImageElement).style.display =
-                                  "none";
-                              }}
-                            />
-                          </div>
-                        );
-                      },
-                      a: readmeMarkdownAnchor,
-                      code: MarkdownCode,
-                    }}
-                  >
-                    {currentFolderReadme || repoData?.readme || ""}
-                  </ReactMarkdown>
-                </article>
-              </div>
-            )}
+                          return (
+                            <div className="my-4 overflow-x-auto">
+                              <img
+                                {...props}
+                                src={imageSrc}
+                                className="max-w-full h-auto rounded"
+                                alt={props.alt || ""}
+                                style={{
+                                  maxWidth: "100%",
+                                  width: "auto",
+                                  height: "auto",
+                                }}
+                                onError={(e) => {
+                                  console.warn(
+                                    "⚠️ [README] Image failed to load:",
+                                    imageSrc
+                                  );
+                                  // Optionally hide broken images or show a placeholder
+                                  (e.target as HTMLImageElement).style.display =
+                                    "none";
+                                }}
+                              />
+                            </div>
+                          );
+                        },
+                        a: readmeMarkdownAnchor,
+                        code: MarkdownCode,
+                      }}
+                    >
+                      {currentFolderReadme || repoData?.readme || ""}
+                    </ReactMarkdown>
+                  </article>
+                </div>
+              )}
             {selectedFile && (
               <div
                 ref={fileViewerRef}

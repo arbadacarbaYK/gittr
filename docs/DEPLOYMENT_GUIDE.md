@@ -20,6 +20,7 @@
 - [ ] Repo cloned, `ui/.env.local` from `.env.example`, `yarn build`
 - [ ] `git-nostr` user, bridge built, `git-nostr-bridge.json` (absolute paths, relays match UI)
 - [ ] systemd: `git-nostr-bridge`, `gittr-frontend`
+- [ ] Hourly homepage leaderboard: `./scripts/install-gittr-leaderboard-timer.sh <host>` (`gittr-leaderboard-refresh.timer`)
 - [ ] SSH: `authorized_keys` for `git@` → live file under `/home/git-nostr/.ssh/`
 - [ ] nginx + TLS (`certbot`); git subdomain → bridge HTTP or per [nginx.gittr.conf.example](../nginx.gittr.conf.example)
 - [ ] Smoke: site loads, bridge logs show relays, `git ls-remote` works

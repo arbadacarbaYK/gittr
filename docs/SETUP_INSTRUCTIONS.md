@@ -69,7 +69,21 @@ The homepage cards call **`GET /api/stats/platform-leaderboard`**. Heavy Nostr r
 - Stale disk older than **7 days** is ignored and a full refresh is forced.
 - After deploy, warm the snapshot once: `curl -sS https://YOUR_DOMAIN/api/stats/platform-leaderboard | head` (first call may take minutes; later calls should be sub-second).
 
-Optional: tie refresh to your SEO/repo-discovery cron by hitting the same URL after indexing runs.
+**Hourly refresh (recommended on production):** install the systemd timer so the snapshot updates even when nobody visits the homepage:
+
+```bash
+./scripts/install-gittr-leaderboard-timer.sh YOUR_SERVER_IP
+```
+
+This installs `gittr-leaderboard-refresh.timer` (runs every hour) and a oneshot service that calls `http://127.0.0.1:3000/api/stats/platform-leaderboard?refresh=1` on the app host. Unit files live in `infra/systemd/`. Override the URL in `/etc/default/gittr-leaderboard-refresh` if needed:
+
+```bash
+GITTR_LEADERBOARD_URL=http://127.0.0.1:3000/api/stats/platform-leaderboard?refresh=1
+```
+
+Check status: `systemctl list-timers gittr-leaderboard-refresh.timer` and `journalctl -u gittr-leaderboard-refresh.service --since today`.
+
+Optional: tie refresh to your SEO/repo-discovery cron by hitting the same URL after indexing runs (timer replaces a manual cron line for this endpoint).
 
 ### Homepage “Recent repositories” (live relay query)
 
