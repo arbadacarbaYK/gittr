@@ -7,6 +7,13 @@ import {
   PLATFORM_STATS_RELAYS,
 } from "@/lib/nostr/server-relay-subscribe";
 import {
+  hasAnyLeaderboardData,
+  loadPlatformLeaderboardSnapshot,
+  PLATFORM_LEADERBOARD_SNAPSHOT_PATH,
+  snapshotMissingTopUsers,
+  type LeaderboardSnapshot,
+} from "@/lib/platform-leaderboard-snapshot";
+import {
   getLiveRecentReposFromNostr,
   getRecentPlatformActivitiesFromNostr,
   getTopReposFromNostr,
@@ -21,24 +28,10 @@ import {
 const MEMORY_CACHE_MS = 2 * 60 * 1000;
 /** Disk snapshot is served immediately; background refresh if older than this. */
 const DISK_REFRESH_AFTER_MS = 3 * 60 * 60 * 1000;
-/** Still return disk data up to this age (stale-while-revalidate). */
-const DISK_SERVE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-const SNAPSHOT_PATH = path.join(
-  process.cwd(),
-  "data",
-  "platform-leaderboard-snapshot.json"
-);
+type LeaderboardSnapshotWritable = LeaderboardSnapshot;
 
-type LeaderboardSnapshot = {
-  at: number;
-  topRepos: RepoStats[];
-  topUsers: UserStats[];
-  recentRepos: PlatformRecentRepo[];
-  recentActivities: PlatformRecentActivity[];
-};
-
-let cache: LeaderboardSnapshot | null = null;
+let cache: LeaderboardSnapshotWritable | null = null;
 let refreshInFlight: Promise<void> | null = null;
 let diskLoaded = false;
 
@@ -53,7 +46,7 @@ export type PlatformLeaderboardResponse = {
   snapshotAt?: number;
 };
 
-function emptySnapshot(): LeaderboardSnapshot {
+function emptySnapshot(): LeaderboardSnapshotWritable {
   return {
     at: 0,
     topRepos: [],
@@ -63,36 +56,26 @@ function emptySnapshot(): LeaderboardSnapshot {
   };
 }
 
-function hasAnyLeaderboardData(snap: LeaderboardSnapshot): boolean {
-  return (
-    snap.topRepos.length > 0 ||
-    snap.topUsers.length > 0 ||
-    snap.recentRepos.length > 0 ||
-    snap.recentActivities.length > 0
-  );
-}
-
-/** Disk snapshot saved with repos but user query failed/timed out — must re-fetch users. */
-function snapshotMissingTopUsers(snap: LeaderboardSnapshot | null): boolean {
-  return !!snap && snap.topRepos.length > 0 && snap.topUsers.length === 0;
-}
-
-async function loadDiskSnapshot(): Promise<LeaderboardSnapshot | null> {
-  try {
-    const raw = await fs.readFile(SNAPSHOT_PATH, "utf8");
-    const parsed = JSON.parse(raw) as LeaderboardSnapshot;
-    if (!parsed || typeof parsed.at !== "number") return null;
-    if (Date.now() - parsed.at > DISK_SERVE_MAX_AGE_MS) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+function cloneSnapshot(snap: LeaderboardSnapshot): LeaderboardSnapshotWritable {
+  return {
+    at: snap.at,
+    topRepos: [...snap.topRepos],
+    topUsers: [...snap.topUsers],
+    recentRepos: [...snap.recentRepos],
+    recentActivities: [...snap.recentActivities],
+  };
 }
 
 async function persistDiskSnapshot(snap: LeaderboardSnapshot): Promise<void> {
   try {
-    await fs.mkdir(path.dirname(SNAPSHOT_PATH), { recursive: true });
-    await fs.writeFile(SNAPSHOT_PATH, JSON.stringify(snap), "utf8");
+    await fs.mkdir(path.dirname(PLATFORM_LEADERBOARD_SNAPSHOT_PATH), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      PLATFORM_LEADERBOARD_SNAPSHOT_PATH,
+      JSON.stringify(snap),
+      "utf8"
+    );
   } catch (e) {
     console.error("[platform-leaderboard] failed to write disk snapshot", e);
   }
@@ -101,32 +84,39 @@ async function persistDiskSnapshot(snap: LeaderboardSnapshot): Promise<void> {
 async function ensureCacheFromDisk(): Promise<void> {
   if (diskLoaded) return;
   diskLoaded = true;
-  const disk = await loadDiskSnapshot();
+  const disk = await loadPlatformLeaderboardSnapshot();
   if (disk && hasAnyLeaderboardData(disk)) {
-    cache = disk;
+    cache = cloneSnapshot(disk);
   }
 }
 
-/** Fills cache as each relay query completes so GET can return partial data immediately. */
+/**
+ * Refresh relays without clearing the in-memory snapshot first.
+ * Guests must keep seeing the last good disk/memory data while refresh runs.
+ */
 async function refreshLeaderboardCache(): Promise<void> {
-  const snap = emptySnapshot();
-  cache = snap;
+  const working =
+    cache && hasAnyLeaderboardData(cache)
+      ? cloneSnapshot(cache)
+      : emptySnapshot();
 
-  // Run top repos then top users sequentially — parallel subscribe() calls on one pool
-  // starved repo announcements and left topUsers empty while topRepos filled.
   await withRelayPoolSubscribe(PLATFORM_STATS_RELAYS, async (subscribe) => {
-    snap.topRepos = await getTopReposFromNostr(
+    working.topRepos = await getTopReposFromNostr(
       subscribe,
       PLATFORM_STATS_RELAYS,
       10
     );
-    snap.at = Date.now();
-    snap.topUsers = await getTopUsersFromNostr(
+    working.at = Date.now();
+    cache = cloneSnapshot(working);
+
+    working.topUsers = await getTopUsersFromNostr(
       subscribe,
       PLATFORM_STATS_RELAYS,
       10
     );
-    snap.at = Date.now();
+    working.at = Date.now();
+    cache = cloneSnapshot(working);
+
     const [recentRepos, recentActivities] = await Promise.all([
       getLiveRecentReposFromNostr(subscribe, PLATFORM_STATS_RELAYS, 12),
       getRecentPlatformActivitiesFromNostr(
@@ -135,13 +125,15 @@ async function refreshLeaderboardCache(): Promise<void> {
         12
       ),
     ]);
-    snap.recentRepos = recentRepos;
-    snap.recentActivities = recentActivities;
-    snap.at = Date.now();
+    working.recentRepos = recentRepos;
+    working.recentActivities = recentActivities;
+    working.at = Date.now();
+    cache = cloneSnapshot(working);
   });
 
-  if (hasAnyLeaderboardData(snap)) {
-    await persistDiskSnapshot(snap);
+  if (hasAnyLeaderboardData(working)) {
+    cache = cloneSnapshot(working);
+    await persistDiskSnapshot(working);
   }
 }
 
@@ -158,7 +150,6 @@ function scheduleBackgroundRefresh(force = false): void {
   ) {
     return;
   }
-  if (!cache) cache = emptySnapshot();
   refreshInFlight = refreshLeaderboardCache()
     .catch((e) => console.error("[platform-leaderboard] background refresh", e))
     .finally(() => {

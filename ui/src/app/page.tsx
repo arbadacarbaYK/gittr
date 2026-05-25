@@ -1,4 +1,8 @@
 import HomePageClient from "./home-page-client";
+import {
+  hasAnyLeaderboardData,
+  loadPlatformLeaderboardSnapshot,
+} from "@/lib/platform-leaderboard-snapshot";
 
 /**
  * Segment config must live in a Server Component. A `"use client"` page ignores
@@ -7,6 +11,18 @@ import HomePageClient from "./home-page-client";
  */
 export const dynamic = "force-dynamic";
 
-export default function Page() {
-  return <HomePageClient />;
+export default async function Page() {
+  const snapshot = await loadPlatformLeaderboardSnapshot();
+  const initialLeaderboard =
+    snapshot && hasAnyLeaderboardData(snapshot)
+      ? {
+          topRepos: snapshot.topRepos,
+          topUsers: snapshot.topUsers,
+          recentRepos: snapshot.recentRepos,
+          recentActivities: snapshot.recentActivities,
+          snapshotAt: snapshot.at,
+        }
+      : null;
+
+  return <HomePageClient initialLeaderboard={initialLeaderboard} />;
 }

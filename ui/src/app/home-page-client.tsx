@@ -208,7 +208,19 @@ function formatLeaderboardUserLabel(
   return raw.replace(/\s*\(mirrored user from github\)\s*/gi, "").trim() || raw;
 }
 
-export default function HomePage() {
+export type HomeInitialLeaderboard = {
+  topRepos: RepoStats[];
+  topUsers: UserStats[];
+  recentRepos: PlatformRecentRepo[];
+  recentActivities: PlatformRecentActivity[];
+  snapshotAt: number;
+} | null;
+
+export default function HomePage({
+  initialLeaderboard = null,
+}: {
+  initialLeaderboard?: HomeInitialLeaderboard;
+}) {
   const { isLoggedIn, name } = useSession();
   const { pubkey, defaultRelays, subscribe, addRelay } = useNostrContext();
   const [repos, setRepos] = useState<Repo[]>([]);
@@ -218,10 +230,14 @@ export default function HomePage() {
   useEffect(() => {
     setMounted(true);
   }, []);
-  const [topRepos, setTopRepos] = useState<RepoStats[]>([]);
+  const [topRepos, setTopRepos] = useState<RepoStats[]>(
+    () => initialLeaderboard?.topRepos ?? []
+  );
   const [topDevs, setTopDevs] = useState<UserStats[]>([]);
   const [topBountyTakers, setTopBountyTakers] = useState<UserStats[]>([]);
-  const [topUsers, setTopUsers] = useState<UserStats[]>([]);
+  const [topUsers, setTopUsers] = useState<UserStats[]>(
+    () => initialLeaderboard?.topUsers ?? []
+  );
   const [latestBounties, setLatestBounties] = useState<any[]>([]);
   const [openBounties, setOpenBounties] = useState<any[]>([]);
   const [ownBountyStats, setOwnBountyStats] = useState<{
@@ -258,10 +274,10 @@ export default function HomePage() {
   const [liveRecentReposLoading, setLiveRecentReposLoading] = useState(true);
   const [platformRecentRepos, setPlatformRecentRepos] = useState<
     PlatformRecentRepo[]
-  >([]);
+  >(() => initialLeaderboard?.recentRepos ?? []);
   const [platformRecentActivities, setPlatformRecentActivities] = useState<
     PlatformRecentActivity[]
-  >([]);
+  >(() => initialLeaderboard?.recentActivities ?? []);
   const [openPRsAndIssues, setOpenPRsAndIssues] = useState<{
     openPRs: number;
     openIssues: number;
@@ -269,11 +285,24 @@ export default function HomePage() {
     recentIssues: any[];
   } | null>(null);
   const [statsLoaded, setStatsLoaded] = useState(false);
-  const [leaderboardReady, setLeaderboardReady] = useState(false);
-  const [lbTopReposReady, setLbTopReposReady] = useState(false);
-  const [lbTopUsersReady, setLbTopUsersReady] = useState(false);
-  const [lbRecentReposReady, setLbRecentReposReady] = useState(false);
-  const [lbRecentActivitiesReady, setLbRecentActivitiesReady] = useState(false);
+  const hasInitialLeaderboard =
+    (initialLeaderboard?.topRepos.length ?? 0) > 0 ||
+    (initialLeaderboard?.topUsers.length ?? 0) > 0;
+  const [leaderboardReady, setLeaderboardReady] = useState(
+    () => hasInitialLeaderboard
+  );
+  const [lbTopReposReady, setLbTopReposReady] = useState(
+    () => (initialLeaderboard?.topRepos.length ?? 0) > 0
+  );
+  const [lbTopUsersReady, setLbTopUsersReady] = useState(
+    () => (initialLeaderboard?.topUsers.length ?? 0) > 0
+  );
+  const [lbRecentReposReady, setLbRecentReposReady] = useState(
+    () => (initialLeaderboard?.recentRepos.length ?? 0) > 0
+  );
+  const [lbRecentActivitiesReady, setLbRecentActivitiesReady] = useState(
+    () => (initialLeaderboard?.recentActivities.length ?? 0) > 0
+  );
   const [syncing, setSyncing] = useState(false);
   const leaderboardFetchGen = useRef(0);
 
@@ -357,6 +386,13 @@ export default function HomePage() {
           setLbRecentActivitiesReady(true);
         }
       }
+      const hasDisplayData =
+        (Array.isArray(data.topRepos) && data.topRepos.length > 0) ||
+        (Array.isArray(data.topUsers) && data.topUsers.length > 0);
+      // Show server snapshot immediately even while `refreshing: true` (do not wait 20s).
+      if (hasDisplayData) {
+        setLeaderboardReady(true);
+      }
       if (!refreshing) {
         setLeaderboardReady(true);
         setLbTopReposReady(true);
@@ -435,8 +471,13 @@ export default function HomePage() {
         const missingTopUsers =
           (data.topRepos?.length ?? 0) > 0 &&
           (data.topUsers?.length ?? 0) === 0;
-        if (data.refreshing || missingTopUsers) {
+        const hasBoth =
+          (data.topRepos?.length ?? 0) > 0 &&
+          (data.topUsers?.length ?? 0) > 0;
+        if ((data.refreshing || missingTopUsers) && !hasBoth) {
           pollTimer = setTimeout(poll, 2500);
+        } else if (data.refreshing && hasBoth) {
+          pollTimer = setTimeout(poll, 10000);
         }
       } catch (err) {
         console.warn("⚠️ [Home] Platform leaderboard fetch failed:", err);
@@ -1622,7 +1663,9 @@ export default function HomePage() {
                 })
             ) : (
               <div className="text-sm text-gray-500 py-2">
-                {leaderboardReady ? "No active repos yet" : "Loading..."}
+                {leaderboardReady || lbTopReposReady
+                  ? "No active repos yet"
+                  : "Loading..."}
               </div>
             )}
           </div>
@@ -1632,9 +1675,7 @@ export default function HomePage() {
         <div className="border border-[#383B42] rounded p-4 flex flex-col">
           <h3 className="font-semibold mb-3 text-yellow-400">⭐ Most Active</h3>
           <div className="space-y-2 flex-1">
-            {!leaderboardReady && topUsers.length === 0 ? (
-              <div className="text-sm text-gray-500 py-2">Loading...</div>
-            ) : topUsers.length > 0 ? (
+            {topUsers.length > 0 ? (
               topUsers.slice(0, 5).map((user, idx) => {
                 // Convert hex pubkey to npub format for profile link
                 let href = `/${user.pubkey}`;
@@ -1670,7 +1711,9 @@ export default function HomePage() {
               })
             ) : (
               <div className="text-sm text-gray-500 py-2">
-                {lbTopUsersReady ? "No active users yet" : "Loading..."}
+                {leaderboardReady || lbTopUsersReady
+                  ? "No active users yet"
+                  : "Loading..."}
               </div>
             )}
           </div>
