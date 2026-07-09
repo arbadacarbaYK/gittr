@@ -8,6 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveNostrSigner,
+} from "@/lib/nostr/signer";
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { type ClaimedIdentity } from "@/lib/nostr/useContributorMetadata";
@@ -36,7 +40,7 @@ type ProfileFormInputs = {
 };
 
 export default function ProfilePage() {
-  const { publish, subscribe, defaultRelays, pubkey } = useNostrContext();
+  const { publish, subscribe, defaultRelays, pubkey , remoteSigner} = useNostrContext();
   // CRITICAL: Use centralized metadata cache instead of separate useMetadata hook
   // The hook returns the FULL cache, not just the pubkeys passed to it
   const metadataMap = useContributorMetadata(
@@ -430,20 +434,13 @@ export default function ProfilePage() {
       return;
     }
 
-    // Check for NIP-07 first (preferred method - like repo pushing)
-    const hasNip07 = typeof window !== "undefined" && window.nostr;
-    let privateKey: string | null = null;
-
-    if (!hasNip07) {
-      // Fallback to stored private key only if NIP-07 not available
-      privateKey = await getNostrPrivateKey();
-      if (!privateKey) {
-        setUpdateStatus(
-          "❌ No signing method available. Please use a NIP-07 extension (like Alby or nos2x) or configure a private key in Settings."
-        );
-        return;
-      }
+    const signer = await resolveNostrSigner({ remoteSigner });
+    if (!signer) {
+      setUpdateStatus(`❌ ${NO_SIGNING_METHOD_MESSAGE}`);
+      return;
     }
+    const privateKey = signer.privateKey ?? null;
+    const hasNip07 = signer.usesWindowNostr;
 
     setUpdating(true);
     setUpdateStatus("Preparing profile update...");

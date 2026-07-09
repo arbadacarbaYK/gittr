@@ -4,10 +4,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PushPaywallStatus } from "@/components/ui/push-paywall-status";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
+import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveNostrSigner,
+} from "@/lib/nostr/signer";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { isOwner } from "@/lib/repo-permissions";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
@@ -43,6 +47,8 @@ export function ReposList({
   defaultRelays,
   ownerMetadata,
 }: ReposListProps) {
+  const { remoteSigner } = useNostrContext();
+
   // Function to resolve repo icon with priority (memoized to react to ownerMetadata changes):
   // 1. Stored logoUrl (user-set in repo settings)
   // 2. Logo file from repo (if files list has logo.*)
@@ -810,20 +816,14 @@ export function ReposList({
                       }
 
                       try {
-                        const hasNip07 =
-                          typeof window !== "undefined" && window.nostr;
-                        let privateKey: string | undefined;
-
-                        if (!hasNip07) {
-                          privateKey =
-                            (await getNostrPrivateKey()) || undefined;
-                          if (!privateKey) {
-                            alert(
-                              "No signing method available.\n\nPlease use a NIP-07 extension (like Alby or nos2x) or configure a private key in Settings."
-                            );
-                            return;
-                          }
+                        const signer = await resolveNostrSigner({
+                          remoteSigner,
+                        });
+                        if (!signer) {
+                          alert(NO_SIGNING_METHOD_MESSAGE);
+                          return;
                         }
+                        const privateKey = signer.privateKey;
 
                         const ownerPubkey =
                           getRepoOwnerPubkey(r, entity) || r.ownerPubkey || "";
@@ -838,10 +838,7 @@ export function ReposList({
                                 ownerPubkey.toLowerCase()
                               ] || undefined,
                             privateKey: privateKey || undefined,
-                            signer:
-                              typeof window !== "undefined" && window.nostr
-                                ? window.nostr.signEvent
-                                : undefined,
+                            signer: signer.signEvent,
                           });
                         if (!paymentAuth.ok) {
                           alert(
@@ -865,6 +862,7 @@ export function ReposList({
                           defaultRelays,
                           privateKey,
                           pubkey,
+                          remoteSigner,
                           onProgress: (message) => {
                             console.log(`[Push ${repoForUrl}] ${message}`);
                           },

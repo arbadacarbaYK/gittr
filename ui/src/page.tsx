@@ -10,6 +10,10 @@ import {
 } from "@/lib/activity-tracking";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
+import {
   type ClaimedIdentity,
   useContributorMetadata,
 } from "@/lib/nostr/useContributorMetadata";
@@ -63,12 +67,10 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
   );
 
   // Get current user's pubkey for follow functionality - MUST be called before any early returns
-  const {
-    pubkey: currentUserPubkey,
+  const {pubkey: currentUserPubkey,
     publish,
     defaultRelays,
-    subscribe,
-  } = useNostrContext();
+    subscribe, remoteSigner } = useNostrContext();
   const { isLoggedIn } = useSession();
 
   // For metadata lookup, use full pubkey if we resolved one, otherwise use entity
@@ -1816,12 +1818,15 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
     setFollowingLoading(true);
     try {
       // Check for NIP-07 first (preferred method - will open signing modal)
-      const hasNip07 = typeof window !== "undefined" && window.nostr;
-      let privateKey: string | undefined;
+      const signingCreds = await resolveSigningCredentials({ remoteSigner });
+      if (!signingCreds) {
+        alert(NO_SIGNING_METHOD_MESSAGE);
+        return;
+      }
+      const { hasNip07, privateKey } = signingCreds;
       let signerPubkey: string = currentUserPubkey;
 
       if (hasNip07 && window.nostr) {
-        // Use NIP-07 extension - this will trigger a popup for the user to sign
         try {
           signerPubkey = await window.nostr.getPublicKey();
         } catch (error: any) {
@@ -1830,16 +1835,10 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
             error
           );
         }
-      } else {
-        // Fallback to stored private key only if NIP-07 not available
-        privateKey = (await getNostrPrivateKey()) || undefined;
-        if (!privateKey) {
-          alert(
-            "No signing method available.\n\nPlease use a NIP-07 extension (like Alby or nos2x) or configure a private key in Settings."
-          );
-          setFollowingLoading(false);
-          return;
-        }
+      } else if (!privateKey) {
+        alert(NO_SIGNING_METHOD_MESSAGE);
+        setFollowingLoading(false);
+        return;
       }
 
       // Get current contact list

@@ -39,6 +39,7 @@ CLEAR_FOREIGN_REPOS_FIX.md
 
 # Local restore backups
 /_hetzner_backup/
+_local-only-backup/
 
 log*.txt
 *.log

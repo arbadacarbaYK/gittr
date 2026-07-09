@@ -9,6 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
 import { KIND_SSH_KEY, createSSHKeyEvent } from "@/lib/nostr/events";
 import useSession from "@/lib/nostr/useSession";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
@@ -43,7 +47,7 @@ interface SSHKey {
 }
 
 export default function SSHKeysPage() {
-  const { pubkey, publish, defaultRelays } = useNostrContext();
+  const { pubkey, publish, defaultRelays , remoteSigner } = useNostrContext();
   const { isLoggedIn } = useSession();
   const [keys, setKeys] = useState<SSHKey[]>([]);
   const [loading, setLoading] = useState(true);
@@ -465,8 +469,12 @@ export default function SSHKeysPage() {
       }
 
       // Get private key for signing
-      const hasNip07 = typeof window !== "undefined" && window.nostr;
-      let privateKey: string | null = null;
+      const signingCreds = await resolveSigningCredentials({ remoteSigner });
+      if (!signingCreds) {
+        alert(NO_SIGNING_METHOD_MESSAGE);
+        return;
+      }
+      const { hasNip07, privateKey } = signingCreds;
       let signerPubkey = pubkey;
 
       if (hasNip07 && window.nostr) {
@@ -474,17 +482,8 @@ export default function SSHKeysPage() {
           const pubkeyFromNip07 = await window.nostr.getPublicKey();
           signerPubkey = pubkeyFromNip07;
         } catch (err) {
-          console.warn("NIP-07 failed, trying private key:", err);
-          privateKey = await getNostrPrivateKey();
+          console.warn("NIP-07 failed:", err);
         }
-      } else {
-        privateKey = await getNostrPrivateKey();
-      }
-
-      if (!privateKey && !hasNip07) {
-        throw new Error(
-          "No signing method available. Please configure NIP-07 or private key."
-        );
       }
 
       // Prepare key content with title
@@ -637,9 +636,14 @@ export default function SSHKeysPage() {
         // Publish deletion event to Nostr (NIP-09: Deletion event)
         if (pubkey && publish && defaultRelays && defaultRelays.length > 0) {
           try {
-            const privateKey = await getNostrPrivateKey();
-            const hasNip07 = typeof window !== "undefined" && window.nostr;
-
+            const signingCreds = await resolveSigningCredentials({
+              remoteSigner,
+            });
+            if (!signingCreds) {
+              alert(NO_SIGNING_METHOD_MESSAGE);
+              return;
+            }
+            const { hasNip07, privateKey } = signingCreds;
             if (privateKey || hasNip07) {
               // Create NIP-09 deletion event pointing to the SSH key event
               // For SSH keys, we use the key's public key as the identifier

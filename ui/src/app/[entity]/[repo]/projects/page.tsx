@@ -6,9 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
 import { hasWriteAccess } from "@/lib/repo-permissions";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { formatDate24h, formatDateTime24h } from "@/lib/utils/date-format";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
@@ -62,7 +65,7 @@ export default function ProjectsPage() {
   const params = useParams();
   const entity = params?.entity as string;
   const repo = params?.repo as string;
-  const { pubkey: currentUserPubkey } = useNostrContext();
+  const { pubkey: currentUserPubkey, remoteSigner } = useNostrContext();
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [hasWrite, setHasWrite] = useState(false); // Write access (owner or maintainer)
@@ -157,8 +160,12 @@ export default function ProjectsPage() {
     }
 
     // Get private key for signing (required for project creation)
-    const privateKey = await getNostrPrivateKey();
-    const hasNip07 = typeof window !== "undefined" && window.nostr;
+    const signingCreds = await resolveSigningCredentials({ remoteSigner });
+    if (!signingCreds) {
+      alert(NO_SIGNING_METHOD_MESSAGE);
+      return;
+    }
+    const { hasNip07, privateKey } = signingCreds;
 
     if (!privateKey && !hasNip07) {
       alert(
@@ -296,8 +303,12 @@ export default function ProjectsPage() {
     }
 
     // Get private key for signing (required for project deletion)
-    const privateKey = await getNostrPrivateKey();
-    const hasNip07 = typeof window !== "undefined" && window.nostr;
+    const signingCreds = await resolveSigningCredentials({ remoteSigner });
+    if (!signingCreds) {
+      alert(NO_SIGNING_METHOD_MESSAGE);
+      return;
+    }
+    const { hasNip07, privateKey } = signingCreds;
 
     if (!privateKey && !hasNip07) {
       alert(
@@ -362,8 +373,12 @@ export default function ProjectsPage() {
     }
 
     // Get private key for signing (required for project edits)
-    const privateKey = await getNostrPrivateKey();
-    const hasNip07 = typeof window !== "undefined" && window.nostr;
+    const signingCreds = await resolveSigningCredentials({ remoteSigner });
+    if (!signingCreds) {
+      alert(NO_SIGNING_METHOD_MESSAGE);
+      return;
+    }
+    const { hasNip07, privateKey } = signingCreds;
 
     if (!privateKey && !hasNip07) {
       alert(
@@ -430,8 +445,14 @@ export default function ProjectsPage() {
     }
 
     // Get private key for signing (required for project edits)
-    const privateKey = await getNostrPrivateKey();
-    const hasNip07 = typeof window !== "undefined" && window.nostr;
+    const signingCreds = await resolveSigningCredentials({ remoteSigner });
+    if (!signingCreds) {
+      alert(NO_SIGNING_METHOD_MESSAGE);
+      setEditingProjectName(null);
+      setEditingProjectNameValue("");
+      return;
+    }
+    const { hasNip07, privateKey } = signingCreds;
 
     if (!privateKey && !hasNip07) {
       alert(

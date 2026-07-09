@@ -8,6 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import useLocalStorage from "@/lib/hooks/useLocalStorage";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
 import { KIND_GRASP_LIST, createGraspListEvent } from "@/lib/nostr/events";
 import {
   getUserGraspServers,
@@ -43,6 +47,7 @@ export default function RelaysPage() {
     subscribe,
     publish,
     pubkey,
+    remoteSigner,
   } = useNostrContext();
   const [relayStatuses, setRelayStatuses] = useState<Map<string, number>>(
     new Map()
@@ -555,27 +560,11 @@ export default function RelaysPage() {
     setGraspListStatus("Saving...");
 
     try {
-      // Get private key or use NIP-07
-      const hasNip07 = typeof window !== "undefined" && window.nostr;
-      let privateKey: string | null = null;
-
-      if (!hasNip07) {
-        // Try to get private key from localStorage
-        try {
-          const stored = localStorage.getItem("gittr_private_key");
-          if (stored) {
-            privateKey = stored;
-          }
-        } catch (e) {
-          console.warn("Failed to get private key:", e);
-        }
+      const signingCreds = await resolveSigningCredentials({ remoteSigner });
+      if (!signingCreds) {
+        throw new Error(NO_SIGNING_METHOD_MESSAGE);
       }
-
-      if (!hasNip07 && !privateKey) {
-        throw new Error(
-          "No signing method available. Please use NIP-07 extension or set private key."
-        );
-      }
+      const { hasNip07, privateKey } = signingCreds;
 
       // Create GRASP list event
       const graspListEvent =

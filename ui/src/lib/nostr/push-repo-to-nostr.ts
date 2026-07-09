@@ -30,6 +30,11 @@ import {
   publishWithConfirmation,
   storeRepoEventId,
 } from "./publish-with-confirmation";
+import type { RemoteSignerManager } from "./remoteSigner";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveNostrSigner,
+} from "./signer";
 
 /** GitHub `/api/import` uses `tag_name` + `body`; NIP-34 events use `tag` + `description`. */
 function normalizeOneReleaseForNip34(r: unknown): {
@@ -106,9 +111,10 @@ export interface PushRepoOptions {
     options?: any
   ) => () => void;
   defaultRelays: string[];
-  privateKey?: string; // Optional - will use NIP-07 if available
+  privateKey?: string; // Optional - resolved automatically if omitted
   pubkey: string;
   onProgress?: (message: string) => void;
+  remoteSigner?: RemoteSignerManager | null;
 }
 
 /**
@@ -131,6 +137,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     privateKey,
     pubkey,
     onProgress,
+    remoteSigner,
   } = options;
 
   // CRITICAL: Validate pubkey format - must be 64-char hex
@@ -150,8 +157,32 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     )}...${pubkey.substring(56)} (64-char hex, verified)`
   );
 
-  // Check for NIP-07 first
-  const hasNip07 = typeof window !== "undefined" && window.nostr;
+  let effectivePrivateKey = privateKey;
+  let bridgeSignerFn: ((event: any) => Promise<any>) | undefined;
+
+  if (!effectivePrivateKey) {
+    const resolved = await resolveNostrSigner({ remoteSigner });
+    if (!resolved) {
+      throw new Error(NO_SIGNING_METHOD_MESSAGE);
+    }
+    if (resolved.privateKey) {
+      effectivePrivateKey = resolved.privateKey;
+    }
+    bridgeSignerFn = resolved.signEvent;
+  }
+
+  const hasNip07 = typeof window !== "undefined" && !!window.nostr;
+
+  if (!hasNip07 && !effectivePrivateKey) {
+    throw new Error(NO_SIGNING_METHOD_MESSAGE);
+  }
+
+  const getBridgeSigner = () => {
+    if (hasNip07 && window.nostr) {
+      return window.nostr.signEvent.bind(window.nostr);
+    }
+    return bridgeSignerFn;
+  };
 
   try {
     // Step 1: Set status to "pushing" and record timestamp
@@ -1877,7 +1908,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         }
         throw new Error(`Signing failed: ${errorMessage}`);
       }
-    } else if (privateKey) {
+    } else if (effectivePrivateKey) {
       // Use private key (fallback)
       repoEvent = createRepositoryEvent(
         {
@@ -1941,7 +1972,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           clone: cloneUrls, // Include both git server URL and GitHub/GitLab/Codeberg sourceUrl
           relays: defaultRelays,
         },
-        privateKey
+        effectivePrivateKey
       );
 
       // Check event size (same check as NIP-07 path)
@@ -1967,9 +1998,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         );
       }
     } else {
-      throw new Error(
-        "No signing method available. Please use NIP-07 extension or configure a private key."
-      );
+      throw new Error(NO_SIGNING_METHOD_MESSAGE);
     }
 
     // Step 6: Publish with confirmation
@@ -2173,7 +2202,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           commitDate,
           authEvent: repoEvent,
           pubkey, // Pass user's pubkey for auth
-          signer: window.nostr.signEvent, // Pass NIP-07 signer for auth
+          signer: getBridgeSigner()!,
         }).catch((error: any) => {
           console.error("❌ [Push Repo] Bridge push failed:", error);
           onProgress?.(
@@ -2287,7 +2316,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           commitDate,
           authEvent: repoEvent,
           pubkey, // Pass user's pubkey for auth
-          signer: window.nostr.signEvent, // Pass NIP-07 signer for auth
+          signer: getBridgeSigner()!,
         }).catch((error: any) => {
           console.error("❌ [Push Repo] Bridge push failed:", error);
           onProgress?.(
@@ -2573,12 +2602,12 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           }
           throw signError; // Re-throw if not a cancellation
         }
-      } else if (privateKey) {
+      } else if (effectivePrivateKey) {
         const headBranch = resolveNip34HeadBranchName(refs, repo.defaultBranch);
         stateEvent = createRepositoryStateEvent(
           actualRepositoryName,
           refs,
-          privateKey,
+          effectivePrivateKey,
           `refs/heads/${headBranch}`
         );
       } else {

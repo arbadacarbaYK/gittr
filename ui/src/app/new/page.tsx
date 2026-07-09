@@ -3,19 +3,20 @@
 import { Suspense, useEffect, useState } from "react";
 
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { createRepositoryEvent } from "@/lib/nostr/events";
+import { buildUnsignedRepositoryEvent } from "@/lib/nostr/events";
 import {
   publishWithConfirmation,
   storeRepoEventId,
 } from "@/lib/nostr/publish-with-confirmation";
+import { resolveNostrSigner } from "@/lib/nostr/signer";
 import useSession from "@/lib/nostr/useSession";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
 import { validateRepoForForkOrSign } from "@/lib/utils/repo-corruption-check";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { getEventHash } from "nostr-tools";
 import { nip19 } from "nostr-tools";
 
 function slugify(text: string): string {
@@ -42,7 +43,8 @@ function NewRepoPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { name: userName, isLoggedIn } = useSession();
-  const { publish, subscribe, defaultRelays, pubkey } = useNostrContext();
+  const { publish, subscribe, defaultRelays, pubkey, remoteSigner } =
+    useNostrContext();
 
   useEffect(() => {
     setMounted(true);
@@ -366,9 +368,10 @@ function NewRepoPageContent() {
           // Publish to Nostr with ALL metadata so it persists across ports
           if (publish && pubkey) {
             try {
-              const privateKey = await getNostrPrivateKey();
-              if (privateKey) {
-                const repoEvent = createRepositoryEvent(
+              const signer = await resolveNostrSigner({ remoteSigner });
+              if (signer) {
+                const signerPubkey = await signer.getPublicKey();
+                const repoEvent = buildUnsignedRepositoryEvent(
                   {
                     repositoryName: repo,
                     publicRead: true,
@@ -399,10 +402,11 @@ function NewRepoPageContent() {
                     branches: d.branches || [],
                     releases: d.releases || [],
                   },
-                  privateKey
+                  signerPubkey
                 );
-
-                publish(repoEvent, defaultRelays);
+                repoEvent.id = getEventHash(repoEvent);
+                const signedRepoEvent = await signer.signEvent(repoEvent);
+                publish(signedRepoEvent, defaultRelays);
                 console.log(
                   "Published imported repo to Nostr with full metadata"
                 );
@@ -648,8 +652,8 @@ function NewRepoPageContent() {
         // Publish to Nostr with ALL metadata so it persists across ports
         if (publish && pubkey) {
           try {
-            const privateKey = await getNostrPrivateKey();
-            if (privateKey) {
+            const signer = await resolveNostrSigner({ remoteSigner });
+            if (signer) {
               // Get git server URL from env or use domain from env
               const domain =
                 process.env.NEXT_PUBLIC_DOMAIN ||
@@ -663,7 +667,8 @@ function NewRepoPageContent() {
                   : "");
 
               // Get relays from context (already includes user-configured relays)
-              const repoEvent = createRepositoryEvent(
+              const signerPubkey = await signer.getPublicKey();
+              const repoEvent = buildUnsignedRepositoryEvent(
                 {
                   repositoryName: repoSlug,
                   publicRead: true,
@@ -689,8 +694,10 @@ function NewRepoPageContent() {
                   clone: [gitServerUrl], // Git server URL where repo is hosted
                   relays: defaultRelays, // Nostr relays where repo events are published
                 },
-                privateKey
+                signerPubkey
               );
+              repoEvent.id = getEventHash(repoEvent);
+              const signedRepoEvent = await signer.signEvent(repoEvent);
 
               // Publish with confirmation and store event ID
               if (!subscribe) {
@@ -704,7 +711,7 @@ function NewRepoPageContent() {
               const result = await publishWithConfirmation(
                 publish,
                 subscribe,
-                repoEvent,
+                signedRepoEvent,
                 defaultRelays,
                 10000 // 10 second timeout
               );

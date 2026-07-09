@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useMetadata from "@/lib/nostr/useMetadata";
 import useSession from "@/lib/nostr/useSession";
@@ -16,7 +20,6 @@ import {
   loadStoredRepos,
   saveStoredRepos,
 } from "@/lib/repos/storage";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import {
   formatDate24h,
   formatDateTime24h,
@@ -76,7 +79,7 @@ export default function RepoReleasesPage({
   const [repoLogo, setRepoLogo] = useState<string | undefined>(undefined);
   const [tags, setTags] = useState<string[]>([]);
   const { name: userName, isLoggedIn, picture: userPicture } = useSession();
-  const { pubkey: currentUserPubkey } = useNostrContext();
+  const { pubkey: currentUserPubkey, remoteSigner } = useNostrContext();
   const userMetadata = useMetadata();
   const ownerSlug = useMemo(() => slugify(userName || ""), [userName]);
 
@@ -250,8 +253,12 @@ export default function RepoReleasesPage({
     }
 
     // Get private key for signing (required for release creation)
-    const privateKey = await getNostrPrivateKey();
-    const hasNip07 = typeof window !== "undefined" && window.nostr;
+    const signingCreds = await resolveSigningCredentials({ remoteSigner });
+    if (!signingCreds) {
+      alert(NO_SIGNING_METHOD_MESSAGE);
+      return;
+    }
+    const { hasNip07, privateKey } = signingCreds;
 
     if (!privateKey && !hasNip07) {
       alert(

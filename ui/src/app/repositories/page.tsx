@@ -20,6 +20,10 @@ import {
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveNostrSigner,
+} from "@/lib/nostr/signer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
@@ -31,7 +35,6 @@ import {
   loadStoredRepos,
   saveStoredRepos,
 } from "@/lib/repos/storage";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
@@ -114,7 +117,8 @@ export default function RepositoriesPage() {
   const syncedFromActivitiesRef = useRef<Set<string>>(new Set()); // Track which repos we've already synced
   const router = useRouter();
   const { name: userName, isLoggedIn } = useSession();
-  const { subscribe, publish, defaultRelays, pubkey } = useNostrContext();
+  const { subscribe, publish, defaultRelays, pubkey, remoteSigner } =
+    useNostrContext();
 
   useEffect(() => {
     setMounted(true);
@@ -3273,22 +3277,14 @@ export default function RepositoriesPage() {
                             }
 
                             try {
-                              // Check for NIP-07 first (preferred method)
-                              const hasNip07 =
-                                typeof window !== "undefined" && window.nostr;
-                              let privateKey: string | undefined;
-
-                              if (!hasNip07) {
-                                // Fallback to stored private key only if NIP-07 not available
-                                privateKey =
-                                  (await getNostrPrivateKey()) || undefined;
-                                if (!privateKey) {
-                                  alert(
-                                    "No signing method available.\n\nPlease use a NIP-07 extension (like Alby or nos2x) or configure a private key in Settings."
-                                  );
-                                  return;
-                                }
+                              const signer = await resolveNostrSigner({
+                                remoteSigner,
+                              });
+                              if (!signer) {
+                                alert(NO_SIGNING_METHOD_MESSAGE);
+                                return;
                               }
+                              const privateKey = signer.privateKey;
 
                               // CRITICAL: Validate repo before pushing (prevent signing corrupted repos)
                               const validation = validateRepoForForkOrSign(r);
@@ -3309,11 +3305,8 @@ export default function RepositoriesPage() {
                                   repo: repoForUrl,
                                   ownerPubkey: ownerPubkey.toLowerCase(),
                                   payerPubkey: pubkey,
-                                  signer:
-                                    typeof window !== "undefined" &&
-                                    window.nostr
-                                      ? window.nostr.signEvent
-                                      : undefined,
+                                  privateKey: privateKey || undefined,
+                                  signer: signer.signEvent,
                                 });
                               if (!paymentAuth.ok) {
                                 alert(
@@ -3335,8 +3328,9 @@ export default function RepositoriesPage() {
                                 publish,
                                 subscribe,
                                 defaultRelays,
-                                privateKey, // Optional - will use NIP-07 if available
+                                privateKey,
                                 pubkey,
+                                remoteSigner,
                                 onProgress: (message) => {
                                   console.log(
                                     `[Push ${repoForUrl}] ${message}`

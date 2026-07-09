@@ -16,9 +16,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { type Discussion, appendDiscussion } from "@/lib/discussions/storage";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
 import { KIND_LONG_FORM, createDiscussionEvent } from "@/lib/nostr/events";
 import useSession from "@/lib/nostr/useSession";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 
 import { X } from "lucide-react";
 import Link from "next/link";
@@ -48,6 +51,7 @@ export default function NewDiscussionPage() {
     publish,
     defaultRelays,
     pubkey: currentUserPubkey,
+    remoteSigner,
   } = useNostrContext();
 
   const handleSubmit = useCallback(
@@ -94,12 +98,17 @@ export default function NewDiscussionPage() {
         // Build and sign NIP-23 (kind 30023) event first so we have event.id for the discussion
         if (publish && defaultRelays && defaultRelays.length > 0) {
           try {
-            const privateKey = await getNostrPrivateKey();
-            const hasNip07 = typeof window !== "undefined" && window.nostr;
+            const signingCreds = await resolveSigningCredentials({
+              remoteSigner,
+            });
+            if (!signingCreds) {
+              console.warn("Cannot publish discussion: no signing method");
+            } else {
+            const { hasNip07, privateKey } = signingCreds;
             const { getPublicKey } = await import("nostr-tools");
             const authorPubkey = privateKey
               ? getPublicKey(privateKey)
-              : (await (hasNip07 ? window.nostr.getPublicKey() : null)) ??
+              : (await (hasNip07 ? window.nostr!.getPublicKey() : null)) ??
                 currentUserPubkey;
 
             if (hasNip07 && window.nostr) {
@@ -145,6 +154,7 @@ export default function NewDiscussionPage() {
                 "✅ Published discussion (NIP-23 30023) to Nostr:",
                 discussionEvent.id
               );
+            }
             }
           } catch (err) {
             console.error("Failed to publish discussion to Nostr:", err);

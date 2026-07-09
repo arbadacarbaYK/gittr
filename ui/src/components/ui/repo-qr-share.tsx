@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
 
 import { Copy, MessageCircle, Share2, X } from "lucide-react";
 import { getEventHash, getPublicKey, nip19, signEvent } from "nostr-tools";
@@ -20,7 +23,7 @@ export function RepoQRShare({ repoUrl, repoName, onClose }: RepoQRShareProps) {
   const [copied, setCopied] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [shared, setShared] = useState(false);
-  const { publish, defaultRelays, pubkey } = useNostrContext();
+  const { publish, defaultRelays, pubkey, remoteSigner } = useNostrContext();
 
   // Get QR style from settings
   const [qrStyle, setQrStyle] = useState("classic");
@@ -182,7 +185,12 @@ export function RepoQRShare({ repoUrl, repoName, onClose }: RepoQRShareProps) {
       }
 
       // Check for NIP-07 extension first (user's own key via extension)
-      const hasNip07 = typeof window !== "undefined" && window.nostr;
+      const signingCreds = await resolveSigningCredentials({ remoteSigner });
+      if (!signingCreds) {
+        alert(NO_SIGNING_METHOD_MESSAGE);
+        return;
+      }
+      const { hasNip07, privateKey } = signingCreds;
       let signedEvent: any;
 
       // Create a Kind 1 note with the repo link
@@ -222,19 +230,13 @@ export function RepoQRShare({ repoUrl, repoName, onClose }: RepoQRShareProps) {
           }
           throw signError;
         }
-      } else {
-        // Fallback to private key if available
-        const privateKey =
-          typeof window !== "undefined" ? await getNostrPrivateKey() : null;
-        if (!privateKey) {
-          alert(
-            "Please log in with NIP-07 extension or configure a private key to share on Nostr."
-          );
-          setSharing(false);
-          return;
-        }
+      } else if (privateKey) {
         event.sig = signEvent(event, privateKey);
         signedEvent = event;
+      } else {
+        alert(NO_SIGNING_METHOD_MESSAGE);
+        setSharing(false);
+        return;
       }
 
       // Publish to relays

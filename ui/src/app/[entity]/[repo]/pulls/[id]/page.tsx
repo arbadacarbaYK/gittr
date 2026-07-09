@@ -17,6 +17,10 @@ import { recordActivity } from "@/lib/activity-tracking";
 import { detectConflicts } from "@/lib/git/conflict-detection";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
+import {
   KIND_BOUNTY,
   KIND_CODE_SNIPPET,
   KIND_PR_UPDATE,
@@ -131,6 +135,7 @@ export default function PRDetailPage({
     pubkey: currentUserPubkey,
     publish,
     defaultRelays,
+    remoteSigner,
   } = useNostrContext();
   const { picture: userPicture, name: userName } = useSession();
   const [pr, setPR] = useState<PRData | null>(null);
@@ -462,23 +467,25 @@ export default function PRDetailPage({
       return;
     }
 
-    const hasNip07 = typeof window !== "undefined" && !!window.nostr;
-    if (hasNip07) {
+    const signingCreds = await resolveSigningCredentials({ remoteSigner });
+    if (signingCreds) {
+      const { hasNip07, privateKey, signer } = signingCreds;
       setMergePublishReady(true);
-      setMergePublishReason("NIP-07 signer available");
-      return;
-    }
-
-    const privateKey = await getNostrPrivateKey();
-    if (privateKey) {
-      setMergePublishReady(true);
-      setMergePublishReason("Local private key signer available");
+      setMergePublishReason(
+        signer.source === "remote"
+          ? "Remote signer available"
+          : hasNip07
+            ? "NIP-07 signer available"
+            : privateKey
+              ? "Local private key signer available"
+              : "Signer available"
+      );
       return;
     }
 
     setMergePublishReady(false);
     setMergePublishReason("No signer available (NIP-07/private key)");
-  }, [currentUserPubkey, prEventId, pr]);
+  }, [currentUserPubkey, prEventId, pr, remoteSigner]);
 
   const pushMergedRepoAfterPayment = useCallback(async () => {
     if (
@@ -491,15 +498,16 @@ export default function PRDetailPage({
       return;
     }
     try {
-      const privateKey = await getNostrPrivateKey();
+      const signingCreds = await resolveSigningCredentials({ remoteSigner });
       const pushResult = await pushRepoToNostr({
         repoSlug: resolvedParams.repo,
         entity: resolvedParams.entity,
         publish,
         subscribe,
         defaultRelays,
-        privateKey: privateKey || undefined,
+        privateKey: signingCreds?.privateKey || undefined,
         pubkey: currentUserPubkey,
+        remoteSigner,
         onProgress: (message) => {
           console.log(`[Merge Push Retry ${resolvedParams.repo}] ${message}`);
         },
@@ -548,8 +556,12 @@ export default function PRDetailPage({
     }
 
     // Get private key for signing (required for merge)
-    const privateKey = await getNostrPrivateKey();
-    const hasNip07 = typeof window !== "undefined" && window.nostr;
+    const signingCreds = await resolveSigningCredentials({ remoteSigner });
+    if (!signingCreds) {
+      alert(NO_SIGNING_METHOD_MESSAGE);
+      return;
+    }
+    const { hasNip07, privateKey } = signingCreds;
 
     if (!privateKey && !hasNip07) {
       alert(
@@ -932,8 +944,13 @@ export default function PRDetailPage({
             : resolveEntityToPubkey(resolvedParams.entity);
 
           if (repoOwnerPubkey) {
-            const privateKey = await getNostrPrivateKey();
-            const hasNip07 = typeof window !== "undefined" && window.nostr;
+            const signingCreds = await resolveSigningCredentials({
+              remoteSigner,
+            });
+            if (!signingCreds) {
+              console.warn("Cannot publish merge status: no signing method");
+            } else {
+            const { hasNip07, privateKey } = signingCreds;
 
             if (privateKey || hasNip07) {
               const ownerPubkeyHex =
@@ -993,6 +1010,7 @@ export default function PRDetailPage({
                   );
                 }
               }
+            }
             }
           }
         } catch (error) {
@@ -1246,8 +1264,13 @@ export default function PRDetailPage({
 
             // Publish bounty status update to Nostr (released)
             try {
-              const hasNip07 = typeof window !== "undefined" && window.nostr;
-              const privateKey = await getNostrPrivateKey();
+              const signingCreds = await resolveSigningCredentials({
+                remoteSigner,
+              });
+              if (!signingCreds) {
+                console.warn("Cannot publish bounty update: no signing method");
+              } else {
+              const { hasNip07, privateKey } = signingCreds;
 
               if (!currentUserPubkey) {
                 console.warn("Cannot publish bounty update: no user pubkey");
@@ -1325,6 +1348,7 @@ export default function PRDetailPage({
                     );
                   }
                 }
+              }
               }
             } catch (error) {
               console.error("Failed to publish bounty release event:", error);

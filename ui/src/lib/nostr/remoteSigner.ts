@@ -11,7 +11,9 @@ import {
 import type { Event as NostrEvent } from "nostr-tools";
 import { nip44 as nip44v2 } from "nostr-tools-v2";
 
+import { getAllRelays } from "./getAllRelays";
 import { WEB_STORAGE_KEYS } from "./localStorage";
+import { getDefaultRelayUrls } from "./relay-env";
 
 type PublishFn = (event: any, relays: string[]) => void;
 type SubscribeFn = (
@@ -50,6 +52,8 @@ export type ParsedNostrConnectUri = {
 
 export type ParsedRemoteSignerUri = ParsedBunkerUri | ParsedNostrConnectUri;
 
+export type ConnectParamFormat = "client-first" | "nip46" | "remote-first";
+
 export interface RemoteSignerSession {
   /** Remote signer (Amber) pubkey — empty only briefly during nostrconnect discovery. */
   remotePubkey: string;
@@ -61,6 +65,8 @@ export interface RemoteSignerSession {
   permissions?: string[];
   label?: string;
   lastConnected: number;
+  /** Which connect() param layout worked with this signer (Amber uses client-first). */
+  connectParamFormat?: ConnectParamFormat;
   /** True while waiting for the first inbound event to learn the signer pubkey. */
   nostrConnectPairing?: boolean;
 }
@@ -84,17 +90,128 @@ interface PendingRequest {
 
 const STORAGE_KEY = WEB_STORAGE_KEYS.REMOTE_SIGNER_SESSION;
 const REQUEST_TIMEOUT_MS = 15000;
+const SIGN_EVENT_TIMEOUT_MS = 120000;
 const CONNECT_TIMEOUT_MS = 25000;
+const SWITCH_RELAYS_TIMEOUT_MS = 8000;
 const CONNECT_RETRY_DELAYS_MS = [0, 1200, 2500];
 const HEX_64_RE = /^[0-9a-f]{64}$/i;
-const DEFAULT_REMOTE_PERMISSIONS = [
+export const DEFAULT_REMOTE_PERMISSIONS = [
   "get_public_key",
   "sign_event",
+  "sign_event:30617",
+  "sign_event:30618",
+  "sign_event:5",
   "nip04_encrypt",
   "nip04_decrypt",
   "nip44_encrypt",
   "nip44_decrypt",
 ];
+
+/** Relays signers like Amber reliably use for NIP-46 (pairing + sign_event). */
+const NIP46_PAIRING_RELAY_FALLBACKS = [
+  "wss://relay.damus.io",
+  "wss://nos.lol",
+];
+
+const normalizeRelayUrl = (url: string) =>
+  url.trim().toLowerCase().replace(/\/+$/, "");
+
+/**
+ * Relays embedded in nostrconnect QR / bunker URI — must overlap with what Amber listens on.
+ * Primary app relays (e.g. git.shakespeare.diy) come first; then common signer relays.
+ */
+export function getNip46PairingRelays(appRelays: string[], max = 8): string[] {
+  const merged: string[] = [];
+  const add = (url: string) => {
+    const normalized = normalizeRelayUrl(url);
+    if (normalized.startsWith("wss://") && !merged.includes(normalized)) {
+      merged.push(normalized);
+    }
+  };
+  // Operator / deployment relays first (NEXT_PUBLIC_NOSTR_RELAYS order matters)
+  appRelays.slice(0, 4).forEach(add);
+  NIP46_PAIRING_RELAY_FALLBACKS.forEach(add);
+  appRelays.slice(4).forEach(add);
+  return merged.slice(0, max);
+}
+
+function mergeSessionRelays(
+  sessionRelays: string[],
+  appRelays: string[]
+): string[] {
+  const merged: string[] = [];
+  const add = (url: string) => {
+    const normalized = normalizeRelayUrl(url);
+    if (normalized.startsWith("wss://") && !merged.includes(normalized)) {
+      merged.push(normalized);
+    }
+  };
+  sessionRelays.forEach(add);
+  getNip46PairingRelays(appRelays, 8).forEach(add);
+  appRelays.forEach(add);
+  return merged.slice(0, 16);
+}
+
+/** Build NIP-46 `connect` params — signers disagree on layout; Amber uses client-first. */
+function buildConnectParams(
+  session: RemoteSignerSession,
+  format: ConnectParamFormat,
+  options: { includeSecret?: boolean } = {}
+): string[] {
+  const { includeSecret = false } = options;
+  const perms =
+    session.permissions && session.permissions.length > 0
+      ? session.permissions.join(",")
+      : DEFAULT_REMOTE_PERMISSIONS.join(",");
+
+  const metadata = JSON.stringify({
+    name: session.label || "gittr",
+    url:
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "https://gittr.space",
+  });
+
+  switch (format) {
+    case "client-first": {
+      // Amber / most bunkers in the wild: [client_pubkey, secret?, perms]
+      const params: string[] = [session.clientPubkey];
+      if (includeSecret && session.secret) {
+        params.push(session.secret);
+      }
+      params.push(perms);
+      return params;
+    }
+    case "remote-first": {
+      const params: string[] = [session.remotePubkey];
+      if (includeSecret && session.secret) {
+        params.push(session.secret);
+      }
+      params.push(perms);
+      return params;
+    }
+    case "nip46":
+    default: {
+      // NIP-46 spec: [secret?, perms, metadata] — client id is event pubkey
+      const params: string[] = [];
+      if (includeSecret && session.secret) {
+        params.push(session.secret);
+      }
+      params.push(perms);
+      params.push(metadata);
+      return params;
+    }
+  }
+}
+
+function toSignEventTemplate(event: UnsignedEvent): string {
+  return JSON.stringify({
+    kind: event.kind,
+    content: event.content,
+    tags: event.tags,
+    created_at: event.created_at,
+  });
+}
 const extractHexPubkey = (value: unknown): string | undefined => {
   if (typeof value === "string" && HEX_64_RE.test(value)) {
     return value.toLowerCase();
@@ -204,9 +321,6 @@ function getStoredNostrConnectClientKey(
   return entry.clientSecretKey.toLowerCase();
 }
 
-const normalizeRelayUrl = (url: string) =>
-  url.trim().toLowerCase().replace(/\/+$/, "");
-
 const hexToBytes = (hex: string): Uint8Array => {
   const clean = hex.trim().toLowerCase();
   if (!/^[0-9a-f]+$/i.test(clean) || clean.length % 2 !== 0) {
@@ -293,12 +407,18 @@ export function parseRemoteSignerUri(input: string): ParsedRemoteSignerUri {
     if (!secret) {
       throw new Error("Security: bunker:// token requires a secret parameter");
     }
+    const permissions = params
+      .get("perms")
+      ?.split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
     const label = params.get("name") || params.get("label") || undefined;
     return {
       mode: "bunker",
       remotePubkey: pubkeyPart.toLowerCase(),
       relays,
       secret,
+      permissions,
       label,
     };
   }
@@ -402,6 +522,7 @@ export class RemoteSignerManager {
     error?: string
   ) => void;
   private lastError?: string;
+  private bootstrapInFlight: Promise<void> | null = null;
 
   constructor(deps: RemoteSignerDeps) {
     this.deps = deps;
@@ -423,6 +544,25 @@ export class RemoteSignerManager {
   }
 
   /**
+   * Single-flight bootstrap — safe to call from push/sign while page load is still pairing.
+   */
+  ensureBootstrapped(): Promise<void> {
+    if (this.state === "ready" && this.session?.userPubkey) {
+      return Promise.resolve();
+    }
+    if (this.bootstrapInFlight) {
+      return this.bootstrapInFlight;
+    }
+    if (!loadStoredRemoteSignerSession()) {
+      return Promise.resolve();
+    }
+    this.bootstrapInFlight = this.bootstrapFromStorage().finally(() => {
+      this.bootstrapInFlight = null;
+    });
+    return this.bootstrapInFlight;
+  }
+
+  /**
    * Attempt to rehydrate existing session from storage.
    */
   async bootstrapFromStorage() {
@@ -430,14 +570,149 @@ export class RemoteSignerManager {
     if (!stored) return;
     try {
       console.log("[RemoteSigner] Restoring session from storage");
+      this.notifyState("connecting");
       await this.activateSession(stored);
+      // Many signers (Amber/bunker) require a fresh connect RPC after reload
+      // before sign_event works — otherwise responses are "no permission".
+      try {
+        await this.reestablishConnection(this.requireSession());
+      } catch (reconnectErr) {
+        console.warn(
+          "[RemoteSigner] Reconnect on bootstrap failed; keeping cached session",
+          reconnectErr instanceof Error ? reconnectErr.message : reconnectErr
+        );
+      }
+      // Do not block UI on switch_relays — run in background.
+      void this.syncSessionRelays(this.requireSession()).catch((err) => {
+        console.warn(
+          "[RemoteSigner] Background switch_relays failed",
+          err instanceof Error ? err.message : err
+        );
+      });
       this.notifyState("ready");
     } catch (error: any) {
       console.error("[RemoteSigner] Failed to resume session:", error);
+      if (stored.userPubkey) {
+        try {
+          await this.activateSession({ ...stored, lastConnected: Date.now() });
+          this.notifyState("ready");
+          return;
+        } catch {
+          // Fall through to clear.
+        }
+      }
       this.clearSession();
       this.notifyState(
         "error",
         error?.message || "Failed to resume remote signer session"
+      );
+    }
+  }
+
+  /**
+   * Re-send NIP-46 connect with permissions (page reload / stale session).
+   */
+  private async reestablishConnection(
+    session: RemoteSignerSession,
+    forceReset = false
+  ) {
+    if (!session.clientPubkey || !session.remotePubkey) {
+      console.warn(
+        "[RemoteSigner] Skipping reconnect — incomplete session (missing client or remote pubkey)"
+      );
+      return;
+    }
+
+    if (forceReset) {
+      try {
+        await this.sendRequest(session, "logout", [], 5000);
+      } catch {
+        // Signer may already have dropped the session.
+      }
+    }
+
+    const connectParams = buildConnectParams(
+      session,
+      session.connectParamFormat || "nip46",
+      { includeSecret: false }
+    );
+
+    try {
+      await this.sendRequest(
+        session,
+        "connect",
+        connectParams,
+        CONNECT_TIMEOUT_MS
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/already connected/i.test(msg)) {
+        // OK — signer still considers this client paired
+      } else if (/timed out|connect timed out/i.test(msg)) {
+        console.warn(
+          "[RemoteSigner] connect on reestablish timed out; probing get_public_key"
+        );
+      } else {
+        throw err;
+      }
+    }
+
+    try {
+      await this.sendRequest(
+        session,
+        "get_public_key",
+        [],
+        CONNECT_TIMEOUT_MS
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/no permission/i.test(msg) && session.userPubkey) {
+        console.warn(
+          "[RemoteSigner] get_public_key denied but cached userPubkey exists — sign may still work after user approves on device"
+        );
+        return;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Align NIP-46 transport relays with gittr defaults + signer-friendly relays (NIP-46 switch_relays).
+   */
+  private async syncSessionRelays(session: RemoteSignerSession) {
+    if (!session.remotePubkey) return;
+    const appRelays = getAllRelays(getDefaultRelayUrls());
+    const merged = mergeSessionRelays(session.relays, appRelays);
+    if (merged.length === 0) return;
+
+    const relaysChanged =
+      merged.length !== session.relays.length ||
+      merged.some((relay, index) => relay !== session.relays[index]);
+
+    if (relaysChanged) {
+      try {
+        await this.sendRequest(
+          session,
+          "switch_relays",
+          [merged],
+          SWITCH_RELAYS_TIMEOUT_MS
+        );
+        console.log("[RemoteSigner] switch_relays acknowledged", {
+          relayCount: merged.length,
+        });
+      } catch (error) {
+        console.warn(
+          "[RemoteSigner] switch_relays failed; subscribing on merged relays locally",
+          error instanceof Error ? error.message : error
+        );
+      }
+      session.relays = merged;
+      persistRemoteSignerSession(session);
+      await this.ensureRelays(session.relays);
+      const openRelays = this.getOpenRelays(session.relays);
+      await this.startSubscription(
+        session,
+        openRelays.length > 0 ? openRelays : session.relays
       );
     }
   }
@@ -543,18 +818,13 @@ export class RemoteSignerManager {
         await nostrConnectWait;
       }
 
-      // NIP-46 connect params: [client_pubkey, optional_secret, optional_perms]
-      // We previously sent remote pubkey as first param, which breaks some signers
-      // (Amber may ACK connect but not establish request permissions for follow-ups).
-      const connectParams = [session.clientPubkey];
-      if (session.secret) {
-        connectParams.push(session.secret);
-      }
-      const requestedPermissions =
-        session.permissions && session.permissions.length > 0
-          ? session.permissions
-          : DEFAULT_REMOTE_PERMISSIONS;
-      connectParams.push(requestedPermissions.join(","));
+      // NIP-46 connect params: [optional_secret, optional_requested_perms, optional_client_metadata]
+      // Client identity is the pubkey on kind 24133 — do NOT pass clientPubkey in connect.
+      const connectFormats: ConnectParamFormat[] = [
+        "nip46",
+        "client-first",
+        "remote-first",
+      ];
       let connectErr: unknown;
       let connectAcked = false;
       let connectResponse: unknown;
@@ -563,12 +833,17 @@ export class RemoteSignerManager {
         if (delay > 0) {
           await new Promise((r) => setTimeout(r, delay));
         }
+        const connectFormat = connectFormats[i % connectFormats.length] ?? "nip46";
+        const connectParams = buildConnectParams(session, connectFormat, {
+          includeSecret: true,
+        });
         try {
           console.log("[RemoteSigner] Sending connect request", {
             attempt: i + 1,
             relayCount: session.relays.length,
             remotePubkey: `${session.remotePubkey.slice(0, 12)}…`,
             mode: config.mode,
+            connectFormat,
           });
           connectResponse = await this.sendRequest(
             session,
@@ -576,6 +851,7 @@ export class RemoteSignerManager {
             connectParams,
             CONNECT_TIMEOUT_MS
           );
+          session.connectParamFormat = connectFormat;
           connectErr = undefined;
           connectAcked = true;
           break;
@@ -682,6 +958,7 @@ export class RemoteSignerManager {
       session.userPubkey = resolvedUserPubkey;
       session.lastConnected = Date.now();
 
+      await this.syncSessionRelays(session);
       await this.activateSession(session);
       this.notifyState("ready");
 
@@ -714,8 +991,40 @@ export class RemoteSignerManager {
    */
   async signEvent(event: UnsignedEvent): Promise<NostrEvent> {
     const session = this.requireSession();
-    const payload = JSON.stringify(event);
-    const result = await this.sendRequest(session, "sign_event", [payload]);
+    const payload = toSignEventTemplate(event);
+    try {
+      return await this.signEventWithSession(session, payload);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/no permission/i.test(msg)) {
+        console.warn(
+          "[RemoteSigner] sign_event denied — logout + NIP-46 connect retry"
+        );
+        await this.reestablishConnection(session, true);
+        return await this.signEventWithSession(session, payload);
+      }
+      if (/timed out/i.test(msg)) {
+        console.warn(
+          "[RemoteSigner] sign_event timed out — syncing relays + reconnect"
+        );
+        await this.syncSessionRelays(session);
+        await this.reestablishConnection(session);
+        return await this.signEventWithSession(session, payload);
+      }
+      throw err;
+    }
+  }
+
+  private async signEventWithSession(
+    session: RemoteSignerSession,
+    payload: string
+  ): Promise<NostrEvent> {
+    const result = await this.sendRequest(
+      session,
+      "sign_event",
+      [payload],
+      SIGN_EVENT_TIMEOUT_MS
+    );
     const parsed = typeof result === "string" ? JSON.parse(result) : result;
     return parsed as NostrEvent;
   }
@@ -763,7 +1072,6 @@ export class RemoteSignerManager {
       session,
       openRelays.length > 0 ? openRelays : session.relays
     );
-    // Always capture current window.nostr before applying adapter
     // This ensures we preserve NIP-07 extension even if it loads after constructor
     if (typeof window !== "undefined" && window.nostr) {
       // Only update if we don't already have an original (first time activating)

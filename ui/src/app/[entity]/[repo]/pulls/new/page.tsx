@@ -9,6 +9,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { showToast } from "@/components/ui/toast";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
+import {
   KIND_PULL_REQUEST,
   KIND_STATUS_OPEN,
   createPullRequestEvent,
@@ -32,7 +36,6 @@ import {
   type StoredRepo,
   loadStoredRepos,
 } from "@/lib/repos/storage";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import {
   getRepoOwnerPubkey,
@@ -67,6 +70,7 @@ export default function NewPullRequestPage({
     pubkey: currentUserPubkey,
     publish,
     defaultRelays,
+    remoteSigner,
   } = useNostrContext();
   const { isLoggedIn } = useSession();
 
@@ -406,8 +410,13 @@ export default function NewPullRequestPage({
       }
 
       // Check for NIP-07 or private key
-      const hasNip07 = typeof window !== "undefined" && window.nostr;
-      const privateKey = hasNip07 ? null : await getNostrPrivateKey();
+      const signingCreds = await resolveSigningCredentials({ remoteSigner });
+      if (!signingCreds) {
+        showToast(NO_SIGNING_METHOD_MESSAGE, "error");
+        setCreating(false);
+        return;
+      }
+      const { hasNip07, privateKey } = signingCreds;
 
       if (!hasNip07 && !privateKey) {
         showToast(
@@ -963,8 +972,13 @@ export default function NewPullRequestPage({
 
           // Create and publish NIP-34 status event (kind 1630: Open)
           try {
-            const privateKey = await getNostrPrivateKey();
-            const hasNip07 = typeof window !== "undefined" && window.nostr;
+            const signingCreds = await resolveSigningCredentials({
+              remoteSigner,
+            });
+            if (!signingCreds) {
+              console.warn("Cannot publish status: no signing method");
+            } else {
+            const { hasNip07, privateKey } = signingCreds;
 
             if (privateKey || hasNip07) {
               let statusEvent: any;
@@ -1008,6 +1022,7 @@ export default function NewPullRequestPage({
                   statusEvent.id
                 );
               }
+            }
             }
           } catch (statusError) {
             console.error("Failed to publish status event:", statusError);

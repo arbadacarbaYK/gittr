@@ -52,6 +52,10 @@ import { syncReadmeTextIntoRepoFiles } from "@/lib/gittr-pages/sync-readme-to-fi
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveNostrSigner,
+} from "@/lib/nostr/signer";
 import { broadcastRepoAnnouncementEventId } from "@/lib/nostr/repo-stars";
 import {
   type Metadata,
@@ -109,7 +113,6 @@ import {
   writeUpstreamSourceSession,
 } from "@/lib/repos/upstream-precedence";
 import { inferGithubUpstreamFromRoute } from "@/lib/repos/upstream-precedence";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { cn } from "@/lib/utils";
 import { coalesceMetadataList } from "@/lib/utils/coalesce-metadata-list";
 import {
@@ -493,6 +496,7 @@ export default function RepoCodePage() {
     publish,
     defaultRelays,
     getRelayStatuses,
+    remoteSigner,
   } = useNostrContext();
   // Also get pubkey from session as fallback - use state to prevent hydration errors
   const [effectiveUserPubkey, setEffectiveUserPubkey] = useState<
@@ -19079,26 +19083,17 @@ export default function RepoCodePage() {
                                   }
 
                                   try {
-                                    // Check for NIP-07 first (preferred method)
-                                    const hasNip07 =
-                                      typeof window !== "undefined" &&
-                                      window.nostr;
-                                    let privateKey: string | undefined;
-
-                                    if (!hasNip07) {
-                                      // Fallback to stored private key only if NIP-07 not available
-                                      privateKey =
-                                        (await getNostrPrivateKey()) ||
-                                        undefined;
-                                      if (!privateKey) {
-                                        alert(
-                                          "No signing method available.\n\nPlease use a NIP-07 extension (like Alby or nos2x) or configure a private key in Settings."
-                                        );
-                                        return;
-                                      }
-                                    }
-
                                     setIsPushing(true);
+
+                                    const signer = await resolveNostrSigner({
+                                      remoteSigner,
+                                    });
+                                    if (!signer) {
+                                      alert(NO_SIGNING_METHOD_MESSAGE);
+                                      setIsPushing(false);
+                                      return;
+                                    }
+                                    const privateKey = signer.privateKey;
 
                                     // Warn user if they try to leave during push
                                     const beforeUnloadHandler = (

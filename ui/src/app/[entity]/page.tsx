@@ -20,6 +20,10 @@ import {
 } from "@/lib/activity-tracking";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
+import {
   KIND_ISSUE,
   KIND_PULL_REQUEST,
   KIND_REPOSITORY,
@@ -2755,8 +2759,13 @@ export default function EntityPage({
 
     setFollowingLoading(true);
     try {
-      // Check for NIP-07 first (preferred method - will open signing modal)
-      const hasNip07 = typeof window !== "undefined" && window.nostr;
+      const signingCreds = await resolveSigningCredentials({ remoteSigner });
+      if (!signingCreds) {
+        alert(NO_SIGNING_METHOD_MESSAGE);
+        setFollowingLoading(false);
+        return;
+      }
+      const { hasNip07, privateKey } = signingCreds;
       let signerPubkey: string = currentUserPubkey;
 
       // Check if remote signer is ready (for nowser/bunker)

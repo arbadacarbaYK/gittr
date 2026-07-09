@@ -14,6 +14,10 @@ import type { RepoLink } from "@/components/ui/repo-links";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
+import {
   KIND_REPOSITORY_NIP34,
   createRepositoryEvent,
   createRepositoryEventNip07,
@@ -111,7 +115,7 @@ async function syncRepositoryPushPolicyToBridge(
 export default function RepoSettingsPage() {
   const params = useParams();
   const router = useRouter();
-  const { publish, defaultRelays, pubkey } = useNostrContext();
+  const { publish, defaultRelays, pubkey, remoteSigner } = useNostrContext();
   const entity = params?.entity as string;
   const repo = params?.repo as string;
 
@@ -422,8 +426,13 @@ export default function RepoSettingsPage() {
       }
 
       // CRITICAL: Require signature for settings changes (owner must sign)
-      const privateKey = await getNostrPrivateKey();
-      const hasNip07 = typeof window !== "undefined" && window.nostr;
+      const signingCreds = await resolveSigningCredentials({ remoteSigner });
+      if (!signingCreds) {
+        alert(NO_SIGNING_METHOD_MESSAGE);
+        setSaving(false);
+        return;
+      }
+      const { hasNip07, privateKey } = signingCreds;
 
       if (!privateKey && !hasNip07) {
         alert(
@@ -626,8 +635,12 @@ export default function RepoSettingsPage() {
       return;
 
     // CRITICAL: Require signature for deletion (owner must sign)
-    const privateKey = await getNostrPrivateKey();
-    const hasNip07 = typeof window !== "undefined" && window.nostr;
+    const signingCreds = await resolveSigningCredentials({ remoteSigner });
+    if (!signingCreds) {
+      alert(NO_SIGNING_METHOD_MESSAGE);
+      return;
+    }
+    const { hasNip07, privateKey } = signingCreds;
 
     if (!privateKey && !hasNip07) {
       alert(
@@ -674,8 +687,14 @@ export default function RepoSettingsPage() {
         (async () => {
           try {
             // Sign with NIP-07 or private key
-            const hasNip07 = typeof window !== "undefined" && window.nostr;
-            const privateKey = hasNip07 ? null : await getNostrPrivateKey();
+            const signingCreds = await resolveSigningCredentials({
+              remoteSigner,
+            });
+            if (!signingCreds) {
+              console.warn("Cannot publish deletion: no signing method");
+              return;
+            }
+            const { hasNip07, privateKey } = signingCreds;
 
             if (hasNip07 || privateKey) {
               // Publish a replacement event with deleted: true

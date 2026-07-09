@@ -29,6 +29,11 @@ import {
   RemoteSignerManager,
   loadStoredRemoteSignerSession,
 } from "./remoteSigner";
+import {
+  type ResolvedNostrSigner,
+  hasStoredRemoteSignerSession,
+  resolveNostrSigner,
+} from "./signer";
 
 declare global {
   interface Window {
@@ -65,6 +70,9 @@ const NostrContext = createContext<{
   signOut?: () => void;
   getRelayStatuses?: () => [url: string, status: number][];
   remoteSigner?: RemoteSignerManager;
+  /** True when a signing backend is ready (NIP-07, remote signer, or nsec) */
+  signerReady?: boolean;
+  resolveSigner?: () => Promise<ResolvedNostrSigner | null>;
 }>({ defaultRelays, pubkey: null });
 
 export const useNostrContext = () => {
@@ -159,6 +167,10 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // Initialize remote signer manager
   const remoteSignerRef = useRef<RemoteSignerManager | null>(null);
   const [remoteSignerInitialized, setRemoteSignerInitialized] = useState(false);
+  const [signerReady, setSignerReady] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return !!window.nostr || hasStoredRemoteSignerSession();
+  });
 
   // Initialize remote signer manager with dependencies
   useEffect(() => {
@@ -224,10 +236,33 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     }
 
     // Bootstrap async connection (restores window.nostr adapter)
-    remoteSignerRef.current.bootstrapFromStorage().catch((error) => {
-      console.error("[NostrContext] Failed to bootstrap remote signer:", error);
-    });
+    remoteSignerRef.current
+      .ensureBootstrapped()
+      .then(() => {
+        setSignerReady(
+          !!window.nostr ||
+            remoteSignerRef.current?.getState() === "ready" ||
+            hasStoredRemoteSignerSession()
+        );
+      })
+      .catch((error) => {
+        console.error("[NostrContext] Failed to bootstrap remote signer:", error);
+      });
   }, [remoteSignerInitialized, pubkey, setPubKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.nostr) {
+      setSignerReady(true);
+      return;
+    }
+    void resolveNostrSigner({
+      remoteSigner: remoteSignerRef.current,
+      waitForRemote: false,
+    }).then((signer) => {
+      setSignerReady(!!signer);
+    });
+  }, [pubkey, remoteSignerInitialized]);
 
   const setAuthor = useCallback(
     (author: string) => {
@@ -280,6 +315,12 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     return relayPool.getRelayStatuses();
   }, []);
 
+  const resolveSigner = useCallback(async () => {
+    return resolveNostrSigner({
+      remoteSigner: remoteSignerRef.current,
+    });
+  }, []);
+
   return (
     <NostrContext.Provider
       value={{
@@ -293,6 +334,8 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         signOut,
         getRelayStatuses,
         remoteSigner: remoteSignerRef.current || undefined,
+        signerReady,
+        resolveSigner,
       }}
     >
       {children}

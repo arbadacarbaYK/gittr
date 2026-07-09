@@ -5,21 +5,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { recordActivity } from "@/lib/activity-tracking";
 import { mapGithubContributors } from "@/lib/github-mapping";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { createRepositoryEvent } from "@/lib/nostr/events";
+import { buildUnsignedRepositoryEvent } from "@/lib/nostr/events";
 import {
   publishWithConfirmation,
   storeRepoEventId,
 } from "@/lib/nostr/publish-with-confirmation";
+import { resolveNostrSigner } from "@/lib/nostr/signer";
 import useSession from "@/lib/nostr/useSession";
 import {
   LOCAL_STORAGE_REPOS_MANAGE_HINT,
   dedupeStoredReposByOwnerAndRepoLabel,
 } from "@/lib/repos/storage";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { useRouter } from "next/navigation";
+import { getEventHash } from "nostr-tools";
 import { nip19 } from "nostr-tools";
 
 function slugify(text: string): string {
@@ -115,7 +116,8 @@ export default function ImportPage() {
   const [status, setStatus] = useState("");
   const [showImportAllConfirm, setShowImportAllConfirm] = useState(false);
   const router = useRouter();
-  const { publish, subscribe, defaultRelays, pubkey } = useNostrContext();
+  const { publish, subscribe, defaultRelays, pubkey, remoteSigner } =
+    useNostrContext();
   const { name: userName, isLoggedIn } = useSession();
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -555,8 +557,8 @@ export default function ImportPage() {
 
                   if (publish && pubkey) {
                     try {
-                      const privateKey = await getNostrPrivateKey();
-                      if (privateKey) {
+                      const signer = await resolveNostrSigner({ remoteSigner });
+                      if (signer) {
                         // Get git server URL from env or use default
                         const gitServerUrl =
                           process.env.NEXT_PUBLIC_GIT_SERVER_URL ||
@@ -564,7 +566,8 @@ export default function ImportPage() {
                             ? `${window.location.protocol}//${window.location.host}`
                             : "https://gittr.space");
 
-                        const repoEvent = createRepositoryEvent(
+                        const signerPubkey = await signer.getPublicKey();
+                        const repoEvent = buildUnsignedRepositoryEvent(
                           {
                             repositoryName: repoSlug,
                             publicRead: rec.publicRead !== false, // Preserve privacy status from import
@@ -588,8 +591,10 @@ export default function ImportPage() {
                             clone: [gitServerUrl], // Git server URL where repo is hosted
                             relays: defaultRelays, // Nostr relays where repo events are published
                           },
-                          privateKey
+                          signerPubkey
                         );
+                        repoEvent.id = getEventHash(repoEvent);
+                        const signedRepoEvent = await signer.signEvent(repoEvent);
 
                         // Publish with confirmation and store event ID
                         try {
@@ -602,7 +607,7 @@ export default function ImportPage() {
                           const result = await publishWithConfirmation(
                             publish,
                             subscribe,
-                            repoEvent,
+                            signedRepoEvent,
                             defaultRelays,
                             10000 // 10 second timeout
                           );
@@ -1527,8 +1532,8 @@ export default function ImportPage() {
           // Publish to Nostr
           if (publish && pubkey) {
             try {
-              const privateKey = await getNostrPrivateKey();
-              if (privateKey) {
+              const signer = await resolveNostrSigner({ remoteSigner });
+              if (signer) {
                 // Get git server URL from env or use domain from env
                 const domain =
                   process.env.NEXT_PUBLIC_DOMAIN ||
@@ -1541,7 +1546,8 @@ export default function ImportPage() {
                     ? `${window.location.protocol}//${window.location.host}`
                     : "");
 
-                const repoEvent = createRepositoryEvent(
+                const signerPubkey = await signer.getPublicKey();
+                const repoEvent = buildUnsignedRepositoryEvent(
                   {
                     repositoryName: repoSlug,
                     publicRead: (rec as any).publicRead !== false, // Preserve privacy status from import
@@ -1564,8 +1570,10 @@ export default function ImportPage() {
                     clone: [gitServerUrl], // Git server URL where repo is hosted
                     relays: defaultRelays, // Nostr relays where repo events are published
                   },
-                  privateKey
+                  signerPubkey
                 );
+                repoEvent.id = getEventHash(repoEvent);
+                const signedRepoEvent = await signer.signEvent(repoEvent);
 
                 // Publish with confirmation and store event ID (for batch imports)
                 try {
@@ -1577,7 +1585,7 @@ export default function ImportPage() {
                     const result = await publishWithConfirmation(
                       publish,
                       subscribe,
-                      repoEvent,
+                      signedRepoEvent,
                       defaultRelays,
                       10000 // 10 second timeout
                     );

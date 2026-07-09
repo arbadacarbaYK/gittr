@@ -15,14 +15,15 @@ import {
   persistDiscussion,
 } from "@/lib/discussions/storage";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { createCommentEvent } from "@/lib/nostr/events";
+import { buildUnsignedCommentEvent } from "@/lib/nostr/events";
+import { NO_SIGNING_METHOD_MESSAGE, resolveNostrSigner } from "@/lib/nostr/signer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 
 import { ArrowLeft, MessageCircle, Reply } from "lucide-react";
 import Link from "next/link";
+import { getEventHash } from "nostr-tools";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
@@ -42,6 +43,7 @@ export default function DiscussionDetailPage({
     pubkey: currentUserPubkey,
     publish,
     defaultRelays,
+    remoteSigner,
   } = useNostrContext();
   const [discussion, setDiscussion] = useState<Discussion | null>(null);
   const [loading, setLoading] = useState(true);
@@ -99,14 +101,15 @@ export default function DiscussionDetailPage({
 
       if (publish && defaultRelays?.length) {
         try {
-          const privateKey = await getNostrPrivateKey();
-          if (privateKey) {
+          const signer = await resolveNostrSigner({ remoteSigner });
+          if (signer) {
             const parentComment = replyParentId
               ? discussion.comments.find(
                   (comment) => comment.id === replyParentId
                 )
               : null;
-            const commentEvent = createCommentEvent(
+            const pubkeyHex = await signer.getPublicKey();
+            const commentEvent = buildUnsignedCommentEvent(
               {
                 replyTo: replyParentId || discussion.id,
                 rootKind: 30023,
@@ -121,11 +124,15 @@ export default function DiscussionDetailPage({
                 repoName: resolvedParams.repo,
                 content: replyContent.trim(),
               },
-              privateKey
+              pubkeyHex
             );
-            publish(commentEvent, defaultRelays);
-            commentId = commentEvent.id;
+            commentEvent.id = getEventHash(commentEvent);
+            const signedCommentEvent = await signer.signEvent(commentEvent);
+            publish(signedCommentEvent, defaultRelays);
+            commentId = signedCommentEvent.id;
             newComment.id = commentId;
+          } else {
+            console.warn(NO_SIGNING_METHOD_MESSAGE);
           }
         } catch (err) {
           console.error("Failed to publish comment to Nostr:", err);
@@ -163,6 +170,7 @@ export default function DiscussionDetailPage({
     defaultRelays,
     resolvedParams.entity,
     resolvedParams.repo,
+    remoteSigner,
     replyContent,
     replyParentId,
   ]);

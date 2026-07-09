@@ -4,9 +4,10 @@
  * This publishes NIP-09 deletion events (kind 5) for known corrupted event IDs.
  * Note: Only works if you have the private key that published the original events.
  */
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+import { getEventHash } from "nostr-tools";
 
-import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
+import type { RemoteSignerManager } from "./remoteSigner";
+import { NO_SIGNING_METHOD_MESSAGE, resolveNostrSigner } from "./signer";
 
 // Known corrupted tides repo event IDs
 export const CORRUPTED_TIDES_EVENT_IDS = [
@@ -20,28 +21,19 @@ export const CORRUPTED_TIDES_EVENT_IDS = [
  */
 export async function createDeletionEvent(
   eventIdToDelete: string,
-  relayUrl?: string
+  relayUrl?: string,
+  remoteSigner?: RemoteSignerManager | null
 ): Promise<any> {
-  const privateKey = await getNostrPrivateKey();
-  const hasNip07 = typeof window !== "undefined" && window.nostr;
-
-  if (!privateKey && !hasNip07) {
-    throw new Error(
-      "No signing method available. Need private key or NIP-07 extension."
-    );
+  const signer = await resolveNostrSigner({ remoteSigner });
+  if (!signer) {
+    throw new Error(NO_SIGNING_METHOD_MESSAGE);
   }
 
-  const pubkey = privateKey
-    ? getPublicKey(privateKey)
-    : hasNip07
-    ? await window.nostr.getPublicKey()
-    : null;
+  const pubkey = await signer.getPublicKey();
   if (!pubkey) {
     throw new Error("Could not get public key");
   }
 
-  // NIP-09: Deletion events use kind 5
-  // Tags: [["e", eventId, relay, "deletion"]]
   const tags: string[][] = [["e", eventIdToDelete]];
   if (relayUrl && tags[0]) {
     tags[0].push(relayUrl);
@@ -51,7 +43,7 @@ export async function createDeletionEvent(
   }
 
   const deletionEvent = {
-    kind: 5, // NIP-09: Deletion
+    kind: 5,
     created_at: Math.floor(Date.now() / 1000),
     tags,
     content: `Deletion of corrupted tides repository event: ${eventIdToDelete}`,
@@ -61,34 +53,16 @@ export async function createDeletionEvent(
   };
 
   deletionEvent.id = getEventHash(deletionEvent);
-
-  if (hasNip07 && window.nostr) {
-    // Sign with NIP-07
-    const signedEvent = await window.nostr.signEvent(deletionEvent as any);
-    return signedEvent;
-  } else if (privateKey) {
-    // Sign with private key
-    deletionEvent.sig = signEvent(deletionEvent, privateKey);
-    return deletionEvent;
-  } else {
-    throw new Error("No signing method available");
-  }
+  return signer.signEvent(deletionEvent as any);
 }
 
 /**
  * Delete all known corrupted tides repos from Nostr relays
- *
- * WARNING: This only works if you have the private key that published the original events.
- * If the events were published by someone else, you cannot delete them.
- *
- * Alternative: If you don't have the original keys, you can:
- * 1. Contact relay operators to manually remove the events
- * 2. Publish updated repository events with deleted: true (if you're the owner)
- * 3. Rely on client-side filtering (which we've already implemented)
  */
 export async function deleteCorruptedTidesRepos(
   publish: (event: any, relays: string[]) => void,
-  defaultRelays: string[]
+  defaultRelays: string[],
+  remoteSigner?: RemoteSignerManager | null
 ): Promise<{ success: number; failed: number; errors: string[] }> {
   const results = {
     success: 0,
@@ -114,7 +88,11 @@ export async function deleteCorruptedTidesRepos(
           8
         )}...`
       );
-      const deletionEvent = await createDeletionEvent(eventId);
+      const deletionEvent = await createDeletionEvent(
+        eventId,
+        undefined,
+        remoteSigner
+      );
 
       console.log(
         `📤 Publishing deletion event to ${defaultRelays.length} relay(s)...`
@@ -137,16 +115,6 @@ export async function deleteCorruptedTidesRepos(
       ) {
         console.error(
           "💡 This event was likely published by someone else. You cannot delete it."
-        );
-        console.error("💡 Options:");
-        console.error(
-          "   1. Contact relay operators to manually remove the event"
-        );
-        console.error(
-          "   2. Rely on client-side filtering (already implemented)"
-        );
-        console.error(
-          "   3. If you're the owner, publish an updated event with deleted: true"
         );
       }
     }

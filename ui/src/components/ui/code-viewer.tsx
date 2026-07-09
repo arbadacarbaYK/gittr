@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
 import { KIND_CODE_SNIPPET, createCodeSnippetEvent } from "@/lib/nostr/events";
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 
 import { Share2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -43,7 +46,8 @@ export function CodeViewer({
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(
     null
   );
-  const { publish, subscribe, defaultRelays, pubkey } = useNostrContext();
+  const { publish, subscribe, defaultRelays, pubkey, remoteSigner } =
+    useNostrContext();
 
   // Track last processed hash to prevent re-processing
   const lastHashRef = useRef<string>("");
@@ -565,22 +569,22 @@ export function CodeViewer({
 
     setSnippetPublishing(true);
     try {
-      // Check for NIP-07 extension
-      const hasNip07 = typeof window !== "undefined" && window.nostr;
-      let privateKey: string | undefined;
+      const signingCreds = await resolveSigningCredentials({ remoteSigner });
+      if (!signingCreds) {
+        alert(NO_SIGNING_METHOD_MESSAGE);
+        setSnippetPublishing(false);
+        return;
+      }
+      const { hasNip07, privateKey } = signingCreds;
       let userPubkey: string | undefined = pubkey || undefined;
 
-      if (!hasNip07) {
-        // No NIP-07, need private key
-        privateKey = (await getNostrPrivateKey()) || undefined;
-        if (!privateKey) {
-          alert(
-            "No signing method available. Please use a NIP-07 extension or configure a private key in Settings."
-          );
-          setSnippetPublishing(false);
-          return;
-        }
-        // Derive pubkey from private key
+      if (!hasNip07 && !privateKey) {
+        alert(NO_SIGNING_METHOD_MESSAGE);
+        setSnippetPublishing(false);
+        return;
+      }
+
+      if (!hasNip07 && privateKey) {
         const { getPublicKey } = await import("nostr-tools");
         userPubkey = getPublicKey(privateKey);
       } else if (!userPubkey) {

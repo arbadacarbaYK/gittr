@@ -5,7 +5,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { rememberNostrConnectClientKey } from "@/lib/nostr/remoteSigner";
+import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import {
+  DEFAULT_REMOTE_PERMISSIONS,
+  getNip46PairingRelays,
+  rememberNostrConnectClientKey,
+} from "@/lib/nostr/remoteSigner";
 import { LoginType, checkType } from "@/lib/utils";
 
 import { Html5Qrcode } from "html5-qrcode";
@@ -16,7 +21,7 @@ import { generatePrivateKey, getPublicKey, nip05, nip19 } from "nostr-tools";
 import { QRCodeSVG } from "qrcode.react";
 
 export default function Login() {
-  const { setAuthor, remoteSigner } = useNostrContext();
+  const { setAuthor, remoteSigner, defaultRelays } = useNostrContext();
   const router = useRouter();
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -104,11 +109,7 @@ export default function Login() {
       throw new Error("Unable to generate token in this browser");
     }
     const clientSecretKey = generatePrivateKey();
-    const relays = [
-      "wss://nostr.oxtr.dev/",
-      "wss://theforest.nostr1.com/",
-      "wss://relay.primal.net/",
-    ];
+    const relays = getNip46PairingRelays(getAllRelays(defaultRelays));
     const tempClientPubkey = getPublicKey(clientSecretKey);
     const challengeBytes = new Uint8Array(8);
     window.crypto.getRandomValues(challengeBytes);
@@ -122,10 +123,10 @@ export default function Login() {
     query.set("name", "gittr");
     query.set(
       "perms",
-      "get_public_key,sign_event,nip04_encrypt,nip04_decrypt,nip44_encrypt,nip44_decrypt"
+      DEFAULT_REMOTE_PERMISSIONS.join(",")
     );
     return `nostrconnect://${tempClientPubkey}?${query.toString()}`;
-  }, []);
+  }, [defaultRelays]);
 
   const runRemoteConnect = useCallback(
     async (tokenToUse: string) => {

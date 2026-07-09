@@ -28,6 +28,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { GITTR_PAGES_ISSUE_PREFILL_KEY } from "@/lib/gittr-pages/gittr-pages-issue-draft";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
+import {
   KIND_ISSUE,
   KIND_STATUS_OPEN,
   createIssueEvent,
@@ -40,7 +44,6 @@ import {
   sendNotification,
 } from "@/lib/notifications";
 import { loadStoredRepos } from "@/lib/repos/storage";
-import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import {
   getRepoStorageKey,
   readRepoIssuesFromLocalStorage,
@@ -109,6 +112,7 @@ export default function RepoIssueNewPage() {
     publish,
     defaultRelays,
     pubkey: currentUserPubkey,
+    remoteSigner,
   } = useNostrContext();
 
   // Fetch metadata for assignees
@@ -260,8 +264,16 @@ export default function RepoIssueNewPage() {
       }
 
       // Check for NIP-07 first, then private key
-      const hasNip07 = typeof window !== "undefined" && window.nostr;
-      const privateKey = !hasNip07 ? await getNostrPrivateKey() : null;
+      const signingCreds = await resolveSigningCredentials({ remoteSigner });
+      if (!signingCreds) {
+        setErrorMsg(NO_SIGNING_METHOD_MESSAGE);
+        setTimeout(() => {
+          setErrorMsg("");
+        }, 8000);
+        setSubmitting(false);
+        return;
+      }
+      const { hasNip07, privateKey } = signingCreds;
 
       // If user is logged in but no signing method, guide them
       if (!hasNip07 && !privateKey) {
@@ -653,8 +665,13 @@ export default function RepoIssueNewPage() {
 
           // Create and publish NIP-34 status event (kind 1630: Open)
           try {
-            const privateKey = await getNostrPrivateKey();
-            const hasNip07 = typeof window !== "undefined" && window.nostr;
+            const signingCreds = await resolveSigningCredentials({
+              remoteSigner,
+            });
+            if (!signingCreds) {
+              console.warn("Cannot publish status: no signing method");
+            } else {
+            const { hasNip07, privateKey } = signingCreds;
 
             if (privateKey || hasNip07) {
               let statusEvent: any;
@@ -698,6 +715,7 @@ export default function RepoIssueNewPage() {
                   statusEvent.id
                 );
               }
+            }
             }
           } catch (statusError) {
             console.error("Failed to publish status event:", statusError);

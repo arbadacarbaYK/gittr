@@ -30,16 +30,6 @@ We use `html5-qrcode` (version `^2.3.8`) for QR code scanning in the browser.
 
 ## Implementation
 
-### Nostrconnect vs bunker (important)
-
-- **`bunker://`**: The host in the URI is the **remote signer’s** pubkey (e.g. Amber). The browser generates a fresh ephemeral client keypair and encrypts requests to that pubkey.
-- **`nostrconnect://`**: The host in the URI is the **client’s** pubkey (gittr’s key for this pairing). The signer’s pubkey is **unknown** until the first inbound kind `24133` after the user approves on the phone. Gittr therefore:
-  1. Subscribes with `{ kinds: [24133], "#p": [clientPubkey] }` (no `authors` filter) until the first decryptable reply.
-  2. Sets `remotePubkey` to that event’s author and continues with normal NIP-46 `connect` / `get_public_key`.
-- **Show QR in gittr** generates a short random `secret` challenge for the URI and stores the ephemeral client key **locally** by `clientPubkey`. During pairing, gittr only accepts the signer after decrypting an inbound `24133` where `result === secret`, then continues with `get_public_key`. It also **starts the NIP-46 session immediately** (subscribe + pending `connect`) so relays are listening before the phone sends the first reply. **Pair & Login** reads the latest generated token from a ref so React state cannot lag one frame behind. Avoid pressing Pair & Login with an **empty** token: paste a full URI or use **Show QR** first.
-
-The code uses `ParsedRemoteSignerUri` (`mode: "bunker" | "nostrconnect"`) in `parseRemoteSignerUri()` — see `ui/src/lib/nostr/remoteSigner.ts`.
-
 ### 1. Remote Signer Manager
 
 ```typescript
@@ -480,10 +470,22 @@ All signing operations automatically use the remote signer:
 5. **Preserve original `window.nostr`** - capture it before applying adapter, restore on disconnect
 6. **Synchronous pubkey restoration** - check localStorage during initialization to prevent UI flickering
 
+## Unified signing (`signer.ts`)
+
+All UI actions that need to sign Nostr events (push to Nostr, profile publish, issues, SSH keys, etc.) must use **`resolveNostrSigner()`** or **`resolveSigningCredentials()`** from `ui/src/lib/nostr/signer.ts` — not a raw `window.nostr` / `getNostrPrivateKey()` check.
+
+Why: after login with a remote signer, `pubkey` is restored immediately from localStorage, but `window.nostr` (the NIP-07 adapter) is attached asynchronously during `bootstrapFromStorage()`. Code that only checks `window.nostr` fails with “No signing method” even though the user is logged in.
+
+The resolver:
+1. Waits up to 8s for remote signer bootstrap when a stored NIP-46 session exists
+2. Falls back to NIP-07 extension, then stored nsec in Settings
+3. Returns `{ signEvent, getPublicKey, usesWindowNostr, privateKey? }` for bridge auth and event signing
+
+`NostrContext` exposes `resolveSigner()` and `signerReady` for components that need reactive UI state.
+
 ## References
 
 - **NIP-46**: https://nips.nostr.com/46
-- **Snippets / learnings** (other clients): https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-helper-tools?file=snippets/nip46-remote-signer/README.md&branch=main
 - **NIP-07**: https://nips.nostr.com/07
 - **NIP-04**: https://nips.nostr.com/04 (Encryption)
 - **NIP-44**: https://nips.nostr.com/44 (Encryption v2)

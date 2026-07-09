@@ -1202,12 +1202,11 @@ export function createLabelOverlayEvent(
 // Create and sign a Nostr comment event (NIP-22 kind 1111)
 // Per NIP-22: https://nips.nostr.com/22
 // NIP-22 uses uppercase tags (E, P) instead of lowercase (e, p) for event/pubkey references
-export function createCommentEvent(
+export function buildUnsignedCommentEvent(
   comment: CommentEvent,
-  privateKey: string
+  pubkeyHex: string
 ): any {
-  const pubkey = getPublicKey(privateKey);
-
+  const pubkey = pubkeyHex.toLowerCase();
   const tags: string[][] = [];
 
   // Repo context tags (custom extension, not in NIP-22)
@@ -1267,7 +1266,7 @@ export function createCommentEvent(
     }
   }
 
-  const event = {
+  return {
     kind: KIND_COMMENT, // NIP-22: kind 1111
     created_at: Math.floor(Date.now() / 1000),
     tags,
@@ -1276,7 +1275,14 @@ export function createCommentEvent(
     id: "",
     sig: "",
   };
+}
 
+export function createCommentEvent(
+  comment: CommentEvent,
+  privateKey: string
+): any {
+  const pubkey = getPublicKey(privateKey);
+  const event = buildUnsignedCommentEvent(comment, pubkey);
   event.id = getEventHash(event);
   event.sig = signEvent(event, privateKey);
   return event;

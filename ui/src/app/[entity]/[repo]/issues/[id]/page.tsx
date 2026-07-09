@@ -22,6 +22,10 @@ import { Reactions } from "@/components/ui/reactions";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
+import {
   KIND_BOUNTY,
   KIND_CODE_SNIPPET,
   KIND_COMMENT,
@@ -124,6 +128,7 @@ export default function IssueDetailPage({
     pubkey: currentUserPubkey,
     publish,
     defaultRelays,
+    remoteSigner,
   } = useNostrContext();
   const { name: userName } = useSession();
   const [issue, setIssue] = useState<Issue | null>(null);
@@ -515,32 +520,67 @@ export default function IssueDetailPage({
 
               // Publish bounty cancellation event to Nostr
               try {
-                const privateKey = await getNostrPrivateKey();
+                const signingCreds = await resolveSigningCredentials({
+                  remoteSigner,
+                });
 
                 if (
                   publish &&
                   defaultRelays &&
                   defaultRelays.length > 0 &&
-                  privateKey
+                  signingCreds
                 ) {
-                  const bountyEvent = createBountyEvent(
-                    {
-                      issueId: issue.id,
-                      repoEntity: entity,
-                      repoName: repo,
-                      amount: issue.bountyAmount || 0,
-                      status: "pending", // Cancelled bounties are marked as pending (not released)
-                      withdrawId: issue.bountyWithdrawId,
-                      lnurl: issue.bountyLnurl,
-                      withdrawUrl: issue.bountyWithdrawUrl,
-                      creator: issue.bountyCreator || currentUserPubkey || "",
-                      createdAt: issue.createdAt,
-                    },
-                    privateKey
-                  );
+                  let bountyEvent: any;
+                  if (signingCreds.hasNip07 && window.nostr) {
+                    const authorPubkey = await window.nostr.getPublicKey();
+                    bountyEvent = {
+                      kind: KIND_BOUNTY,
+                      created_at: Math.floor(Date.now() / 1000),
+                      tags: [
+                        ["e", issue.id, "", "issue"],
+                        ["repo", entity, repo],
+                        ["status", "pending"],
+                        ["p", issue.bountyCreator || authorPubkey, "creator"],
+                      ],
+                      content: JSON.stringify({
+                        amount: issue.bountyAmount || 0,
+                        status: "pending",
+                        withdrawId: issue.bountyWithdrawId,
+                        lnurl: issue.bountyLnurl,
+                        withdrawUrl: issue.bountyWithdrawUrl,
+                        creator: issue.bountyCreator || authorPubkey,
+                        createdAt: issue.createdAt,
+                      }),
+                      pubkey: authorPubkey,
+                      id: "",
+                      sig: "",
+                    };
+                    bountyEvent.id = getEventHash(bountyEvent);
+                    bountyEvent = await window.nostr.signEvent(bountyEvent);
+                  } else if (signingCreds.privateKey) {
+                    bountyEvent = createBountyEvent(
+                      {
+                        issueId: issue.id,
+                        repoEntity: entity,
+                        repoName: repo,
+                        amount: issue.bountyAmount || 0,
+                        status: "pending", // Cancelled bounties are marked as pending (not released)
+                        withdrawId: issue.bountyWithdrawId,
+                        lnurl: issue.bountyLnurl,
+                        withdrawUrl: issue.bountyWithdrawUrl,
+                        creator: issue.bountyCreator || currentUserPubkey || "",
+                        createdAt: issue.createdAt,
+                      },
+                      signingCreds.privateKey
+                    );
+                  } else {
+                    bountyEvent = null;
+                  }
 
-                  publish(bountyEvent, defaultRelays);
-                  console.log("Published bounty cancellation event to Nostr");
+                  if (bountyEvent) {
+                    publish(bountyEvent, defaultRelays);
+                    console.log("Published bounty cancellation event to Nostr");
+                  }
                 }
               } catch (nostrError) {
                 console.error(
@@ -757,7 +797,8 @@ export default function IssueDetailPage({
             repo;
 
           let overlayEvent: any | null = null;
-          if (typeof window !== "undefined" && window.nostr) {
+          const signingCreds = await resolveSigningCredentials({ remoteSigner });
+          if (signingCreds?.hasNip07 && typeof window !== "undefined" && window.nostr) {
             const createdAt = Math.floor(Date.now() / 1000);
             const tags: string[][] = [["L", "gittr.issue"]];
             if (issueEventId) {
@@ -781,9 +822,8 @@ export default function IssueDetailPage({
             overlayEvent = await window.nostr.signEvent(
               unsignedOverlayEvent as UnsignedEvent
             );
-          } else {
-            const privateKey = await getNostrPrivateKey();
-            if (privateKey) {
+          } else if (signingCreds?.privateKey) {
+            const privateKey = signingCreds.privateKey;
               overlayEvent = createLabelOverlayEvent(
                 {
                   targetEventId: issueEventId || undefined,
@@ -797,7 +837,6 @@ export default function IssueDetailPage({
                 },
                 privateKey
               );
-            }
           }
           if (overlayEvent) {
             publish(overlayEvent, defaultRelays);
@@ -937,8 +976,12 @@ export default function IssueDetailPage({
 
         // Publish bounty event to Nostr
         try {
-          const hasNip07 = typeof window !== "undefined" && window.nostr;
-          const privateKey = await getNostrPrivateKey();
+          const signingCreds = await resolveSigningCredentials({ remoteSigner });
+          if (!signingCreds) {
+            console.warn("Cannot publish bounty: no signing method");
+            return;
+          }
+          const { hasNip07, privateKey } = signingCreds;
 
           if (!currentUserPubkey) {
             console.warn("Cannot publish bounty: no user pubkey");
@@ -1027,13 +1070,12 @@ export default function IssueDetailPage({
     if (!commentContent.trim() || !issue || !currentUserPubkey) return;
 
     try {
-      const hasNip07 = typeof window !== "undefined" && window.nostr;
-      const privateKey = !hasNip07 ? await getNostrPrivateKey() : null;
-
-      if (!hasNip07 && !privateKey) {
-        alert("Please sign in to add comments.");
+      const signingCreds = await resolveSigningCredentials({ remoteSigner });
+      if (!signingCreds) {
+        alert(NO_SIGNING_METHOD_MESSAGE);
         return;
       }
+      const { hasNip07, privateKey } = signingCreds;
 
       const commentId = `comment-${Date.now()}-${Math.random()
         .toString(36)
