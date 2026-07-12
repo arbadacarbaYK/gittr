@@ -66,15 +66,17 @@ export default async function handler(
     // But we can provide a fast response with what we know
     const baseUrl = getPublicSiteUrl();
 
-    // Try to resolve icon URL (fast - just constructs URL)
-    let iconUrl = `${baseUrl}/opengraph-image`; // Default fallback
-
-    if (ownerPubkey) {
-      // Try repo logo first
-      const cleanRepoName = decodedRepo.replace(/\.git$/, "");
-      iconUrl = `${baseUrl}/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
-        ownerPubkey
-      )}&repo=${encodeURIComponent(cleanRepoName)}&path=logo.png&branch=main`;
+    // Icon is resolved server-side via metadata-icon-resolver (crawler-safe URLs only).
+    const { resolveRepoIconForMetadata } = await import(
+      "@/lib/utils/metadata-icon-resolver"
+    );
+    let iconUrl = await resolveRepoIconForMetadata(
+      decodedEntity,
+      decodedRepo,
+      baseUrl
+    );
+    if (!iconUrl.startsWith("http")) {
+      iconUrl = `${baseUrl}${iconUrl.startsWith("/") ? "" : "/"}${iconUrl}`;
     }
 
     // Return metadata structure

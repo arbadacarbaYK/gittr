@@ -108,9 +108,26 @@ server {
     # Git HTTP backend via FCGI (git-http-backend)
     # URL format: https://git.gittr.space/{pubkey}/{repo}.git
     # This allows git clone https://git.gittr.space/{pubkey}/{repo}.git
+    # Private repos: nginx auth_request checks ACL via Next.js before fcgiwrap.
     # NOTE: fcgiwrap runs as www-data (must be in group git-nostr). Owner hex dirs under GIT_PROJECT_ROOT need mode 0750;
     #       0700 causes 404 here while SSH still works. See docs/GIT_NOSTR_BRIDGE_SETUP.md.
+    location = /_git_auth {
+        internal;
+        proxy_pass http://127.0.0.1:3000/api/git/http-auth;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Original-URI $request_uri;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Nostr-Auth-Event $http_x_nostr_auth_event;
+        proxy_set_header X-Nostr-Pubkey $http_x_nostr_pubkey;
+        proxy_set_header X-Nostr-Signature $http_x_nostr_signature;
+    }
+
     location ~ ^/([^/]+)/(.+\.git)(.*)$ {
+        auth_request /_git_auth;
+        auth_request_set $git_auth_status $upstream_status;
+        error_page 401 403 = @git_auth_denied;
+
         root /home/git-nostr/git-nostr-repositories;
         fastcgi_pass unix:/var/run/fcgiwrap.socket;
         include fastcgi_params;
@@ -135,6 +152,11 @@ server {
             add_header Content-Length 0;
             return 204;
         }
+    }
+
+    location @git_auth_denied {
+        default_type text/plain;
+        return 403 "Repository is private or you lack permission. Use SSH or pass Nostr auth headers (X-Nostr-Auth-Event).\n";
     }
 }
 

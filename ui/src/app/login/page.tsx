@@ -11,7 +11,7 @@ import {
   getNip46PairingRelays,
   rememberNostrConnectClientKey,
 } from "@/lib/nostr/remoteSigner";
-import { LoginType, checkType } from "@/lib/utils";
+import { LoginType, checkType, isRemoteSignerUri, normalizePastedRemoteToken } from "@/lib/utils";
 
 import { Html5Qrcode } from "html5-qrcode";
 import { Camera, Puzzle, Scan, Shield, X } from "lucide-react";
@@ -25,6 +25,7 @@ export default function Login() {
   const router = useRouter();
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
   // Use state for NIP-07 detection to prevent hydration mismatch
   const [hasNip07, setHasNip07] = useState(false);
@@ -68,11 +69,70 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    await handleLogin();
+    setLoginError(null);
+    try {
+      await handleLogin();
+    } catch (error: any) {
+      console.error("[Login] Sign in failed:", error);
+      setLoginError(error?.message || "Sign in failed");
+    }
   };
 
+  const runRemoteConnect = useCallback(
+    async (tokenToUse: string) => {
+      if (!remoteSigner) {
+        setRemoteError(
+          "Remote signer manager not ready yet. Please try again in a moment."
+        );
+        return;
+      }
+      const token = normalizePastedRemoteToken(tokenToUse);
+      if (!token) {
+        setRemoteError("Paste a bunker:// or nostrconnect:// token.");
+        return;
+      }
+      setRemoteBusy(true);
+      setRemoteError(null);
+      try {
+        const result = await remoteSigner.connect(token);
+        if (result?.npub && setAuthor) {
+          setAuthor(result.npub);
+        } else {
+          const session = remoteSigner?.getSession();
+          if (session?.userPubkey && setAuthor) {
+            const npub = nip19.npubEncode(session.userPubkey);
+            setAuthor(npub);
+          } else {
+            throw new Error("Remote signer paired but no public key was returned.");
+          }
+        }
+        setRemoteBusy(false);
+        setRemoteModalOpen(false);
+        setRemoteToken("");
+        setGeneratedNostrConnect("");
+        setShowPairingQR(false);
+        latestNostrConnectRef.current = "";
+        router.push("/");
+      } catch (error: any) {
+        console.error("[Login] Remote signer pairing failed:", error);
+        setRemoteBusy(false);
+        setRemoteError(error?.message || "Unable to pair with remote signer");
+      }
+    },
+    [remoteSigner, router, setAuthor]
+  );
+
   const handleLogin = useCallback(async () => {
-    const cred = inputRef.current?.value || "";
+    const cred = inputRef.current?.value?.trim() || "";
+
+    if (isRemoteSignerUri(cred)) {
+      setRemoteModalOpen(true);
+      setRemoteToken(cred);
+      setRemoteError(null);
+      await runRemoteConnect(cred);
+      return;
+    }
+
     let loginType = checkType(cred);
     let npub = "";
 
@@ -87,20 +147,37 @@ export default function Login() {
       case LoginType.hex:
         npub = nip19.npubEncode(cred);
         break;
-      case LoginType.nip07:
+      case LoginType.nip07: {
         const hex = await window.nostr.getPublicKey();
         npub = nip19.npubEncode(hex);
         break;
-      case LoginType.nip05:
+      }
+      case LoginType.nip05: {
         const profile = await nip05.queryProfile(cred);
-        npub = nip19.npubEncode(profile?.pubkey || "");
+        if (!profile?.pubkey) {
+          throw new Error("NIP-05 profile did not return a public key.");
+        }
+        npub = nip19.npubEncode(profile.pubkey);
+        break;
+      }
       default:
         break;
     }
-    // Set Author and return to root
+
+    if (!npub) {
+      if (!cred) {
+        throw new Error(
+          "Enter npub, hex pubkey, or NIP-05 — or use Pair Remote Signer for bunker:// tokens."
+        );
+      }
+      throw new Error(
+        "Unrecognized login. For bunker:// or nostrconnect:// tokens, use Pair Remote Signer above."
+      );
+    }
+
     setAuthor && setAuthor(npub);
     router.push("/");
-  }, [setAuthor, router]);
+  }, [setAuthor, router, runRemoteConnect]);
 
   const remoteSession = remoteSigner?.getSession();
 
@@ -120,7 +197,7 @@ export default function Login() {
     const query = new URLSearchParams();
     relays.forEach((relay) => query.append("relay", relay));
     query.set("secret", challengeSecret);
-    query.set("name", "gittr");
+    query.set("name", "gittr.space");
     query.set(
       "perms",
       DEFAULT_REMOTE_PERMISSIONS.join(",")
@@ -128,55 +205,14 @@ export default function Login() {
     return `nostrconnect://${tempClientPubkey}?${query.toString()}`;
   }, [defaultRelays]);
 
-  const runRemoteConnect = useCallback(
-    async (tokenToUse: string) => {
-      if (!remoteSigner) {
-        setRemoteError(
-          "Remote signer manager not ready yet. Please try again in a moment."
-        );
-        return;
-      }
-      const token = tokenToUse.trim();
-      if (!token) {
-        setRemoteError("Paste a bunker:// or nostrconnect:// token.");
-        return;
-      }
-      setRemoteBusy(true);
-      setRemoteError(null);
-      try {
-        const result = await remoteSigner.connect(token);
-        if (result?.npub && setAuthor) {
-          setAuthor(result.npub);
-        } else {
-          const session = remoteSigner?.getSession();
-          if (session?.userPubkey && setAuthor) {
-            const npub = nip19.npubEncode(session.userPubkey);
-            setAuthor(npub);
-          }
-        }
-        setRemoteBusy(false);
-        setRemoteModalOpen(false);
-        setRemoteToken("");
-        setGeneratedNostrConnect("");
-        setShowPairingQR(false);
-        latestNostrConnectRef.current = "";
-        router.push("/");
-      } catch (error: any) {
-        console.error("[Login] Remote signer pairing failed:", error);
-        setRemoteBusy(false);
-        setRemoteError(error?.message || "Unable to pair with remote signer");
-      }
-    },
-    [remoteSigner, router, setAuthor]
-  );
-
   const handleRemoteConnect = useCallback(() => {
-    const token =
-      remoteToken.trim() ||
-      generatedNostrConnect.trim() ||
-      latestNostrConnectRef.current.trim();
+    const token = remoteToken.trim();
+    if (!token) {
+      setRemoteError("Paste a bunker:// or nostrconnect:// token.");
+      return;
+    }
     return runRemoteConnect(token);
-  }, [runRemoteConnect, remoteToken, generatedNostrConnect]);
+  }, [runRemoteConnect, remoteToken]);
 
   const handleRemoteDisconnect = useCallback(() => {
     remoteSigner?.disconnect();
@@ -463,6 +499,9 @@ export default function Login() {
                   Sign in
                 </Button>
               </div>
+              {loginError ? (
+                <p className="text-sm text-red-400">{loginError}</p>
+              ) : null}
             </form>
             {mounted && hasNip07 ? (
               <div className="mt-6">
@@ -710,11 +749,11 @@ export default function Login() {
                     />
                   </div>
                   <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="flex-1"
-                      onClick={async () => {
+                  <Button
+                    variant="outline"
+                    type="button"
+                    className="flex-1"
+                    onClick={async () => {
                         try {
                           await navigator.clipboard.writeText(
                             generatedNostrConnect || remoteToken
@@ -744,13 +783,24 @@ export default function Login() {
                   style={{ minHeight: "250px" }}
                 />
               ) : (
-                <Input
+                <textarea
                   id="remote-token"
                   name="remote-token"
-                  placeholder="bunker://<pubkey>?relay=wss://..."
+                  placeholder="bunker://<pubkey>?relay=wss://...&secret=..."
                   value={remoteToken}
-                  onChange={(e) => setRemoteToken(e.target.value)}
-                  className="font-mono text-xs"
+                  onChange={(e) => {
+                    const v = normalizePastedRemoteToken(e.target.value);
+                    setRemoteToken(v);
+                    setRemoteError(null);
+                    if (v.startsWith("bunker://")) {
+                      setGeneratedNostrConnect("");
+                      setShowPairingQR(false);
+                      latestNostrConnectRef.current = "";
+                    }
+                  }}
+                  rows={4}
+                  className="font-mono text-xs w-full rounded-md border border-zinc-700 bg-black/40 px-3 py-2 text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  spellCheck={false}
                 />
               )}
               {remoteError ? (
@@ -772,11 +822,16 @@ export default function Login() {
             </div>
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
               <Button
+                type="button"
                 className="flex-1"
                 onClick={handleRemoteConnect}
-                disabled={remoteBusy}
+                disabled={remoteBusy || !remoteSigner}
               >
-                {remoteBusy ? "Pairing..." : "Pair & Login"}
+                {remoteBusy
+                  ? "Pairing..."
+                  : !remoteSigner
+                    ? "Preparing signer..."
+                    : "Pair & Login"}
               </Button>
               <Button
                 variant="ghost"

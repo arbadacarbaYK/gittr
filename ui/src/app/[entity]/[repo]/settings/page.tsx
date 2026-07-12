@@ -1254,8 +1254,11 @@ export default function RepoSettingsPage() {
         <div>
           <Label>Repository Visibility</Label>
           <p className="text-sm text-gray-400 mt-1 mb-3">
-            Control who can view this repository. Private repositories are only
-            visible to owners and contributors.
+            Private repositories hide their code, files and clone access from
+            everyone except owners and contributors — in the web UI, the API
+            and SSH. Note: the repository <em>name and description</em> stay
+            publicly visible, because the Nostr announcement (kind 30617) is a
+            public relay event that cannot be retracted.
           </p>
           <div className="flex items-center gap-4">
             <Button

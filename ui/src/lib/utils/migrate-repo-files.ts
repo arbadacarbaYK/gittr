@@ -5,6 +5,7 @@
  * This function checks localStorage for repos without files and triggers
  * a re-fetch from either Nostr events or git-nostr-bridge.
  */
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 
 export interface MigrationResult {
   totalRepos: number;
@@ -199,7 +200,7 @@ export async function migrateRepoFiles(
           branch
         )}`;
 
-        const response = await fetch(url);
+        const response = await fetchBridgeRead(url);
         const data = await response.json();
 
         if (

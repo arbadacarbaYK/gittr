@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { use, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -476,8 +477,7 @@ export default function NewPullRequestPage({
               ? (repoData as any).defaultBranch.trim()
               : "main";
 
-          const commitsRes = await fetch(
-            `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
+          const commitsRes = await fetchBridgeRead(`/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
               finalOwnerPubkey
             )}&repo=${encodeURIComponent(
               actualRepositoryName

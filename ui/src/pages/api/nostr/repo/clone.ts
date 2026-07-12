@@ -1,6 +1,7 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
 import { sanitizeBridgeRepoName } from "@/lib/utils/sanitize-bridge-repo-name";
+import { assertRepoReadAccess } from "@/lib/repo-read-access";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync } from "fs";
@@ -246,6 +247,12 @@ export default async function handler(
 
   // Repository path: reposDir/{ownerPubkey}/{repoName}.git
   const repoPath = join(reposDir, ownerPubkey, `${repoSanitized}.git`);
+
+  // Private repos: only owner/contributors may trigger/inspect clones.
+  const access = await assertRepoReadAccess(req, ownerPubkey, repoSanitized);
+  if (!access.ok) {
+    return res.status(access.status).json({ error: access.error });
+  }
 
   try {
     // Placeholder bare repos (git init --bare, no commits) must not short-circuit:

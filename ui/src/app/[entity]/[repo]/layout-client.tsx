@@ -32,7 +32,11 @@ import {
 } from "@/lib/nostr/repo-stars";
 import { showToast } from "@/components/ui/toast";
 import { useRepoNip57ZapBadgeTotal } from "@/lib/nostr/useRepoNip57ZapBadgeTotal";
-import { canManageSettings, isOwner } from "@/lib/repo-permissions";
+import {
+  canManageSettings,
+  hasPrivateRepoAccess,
+  isOwner,
+} from "@/lib/repo-permissions";
 import {
   type StoredContributor,
   type StoredRepo,
@@ -223,6 +227,19 @@ export default function RepoLayoutClient({
   const publicReadRaw = repo?.publicRead;
   const isPrivateRepo =
     publicReadRaw === false || publicReadRaw === "false" || publicReadRaw === 0;
+
+  const canViewPrivateContent = useMemo(() => {
+    if (!isPrivateRepo) return true;
+    if (!pubkey || !repo) return false;
+    const repoOwnerPubkey = getRepoOwnerPubkey(repo, resolvedParams.entity);
+    const maintainers: string[] = (repo as { maintainers?: string[] }).maintainers || [];
+    return hasPrivateRepoAccess(
+      pubkey,
+      repo.contributors,
+      repoOwnerPubkey,
+      maintainers
+    );
+  }, [isPrivateRepo, pubkey, repo, resolvedParams.entity]);
 
   const ownerHexForZaps = useMemo(() => {
     if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) return "";
@@ -1424,15 +1441,15 @@ export default function RepoLayoutClient({
     };
   }, []); // Add empty dependency array to prevent re-running on every render
 
-  // Filter menu items based on permissions (hide Settings for non-owners)
+  // Filter menu items: hide all tabs for unauthorized private-repo viewers;
+  // hide Settings for non-owners on repos the viewer can access.
   const filteredMenuItems = useMemo(() => {
+    if (!canViewPrivateContent) return [];
     return menuItems.filter((item) => {
-      // Always show all items except Settings
       if (item.link !== "settings") return true;
-      // Only show Settings if user is owner
       return isOwnerUser;
     });
-  }, [isOwnerUser]);
+  }, [isOwnerUser, canViewPrivateContent]);
 
   // Memoize the number of visible menu items to prevent recalculation on every render
   const pinnedOverflowItems = useMemo(
@@ -1562,6 +1579,8 @@ export default function RepoLayoutClient({
             </span>
           </div>
 
+          {canViewPrivateContent ? (
+          <>
           <DropdownMenu>
             <DropdownMenuTrigger
               className={clsx(
@@ -1736,6 +1755,8 @@ export default function RepoLayoutClient({
               </Button>
             </div>
           </div>
+          </>
+          ) : null}
         </div>
 
         <div className="flex justify-between items-center gap-4">

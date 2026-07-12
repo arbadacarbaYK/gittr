@@ -5,6 +5,7 @@ import {
   filterGraspMirrorPollutionFromFileTree,
 } from "@/lib/utils/filter-grasp-mirror-pollution";
 import { sanitizeBridgeRepoName } from "@/lib/utils/sanitize-bridge-repo-name";
+import { assertRepoReadAccess } from "@/lib/repo-read-access";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "fs";
@@ -217,6 +218,12 @@ export default async function handler(
 
   // Repository path: reposDir/{ownerPubkey}/{repoName}.git
   const repoPath = join(reposDir, ownerPubkey, `${repoSanitized}.git`);
+
+  // Private repos: only owner/contributors may read (same ACL as SSH).
+  const access = await assertRepoReadAccess(req, ownerPubkey, repoSanitized);
+  if (!access.ok) {
+    return res.status(access.status).json({ error: access.error });
+  }
 
   try {
     console.log("🔍 Checking repository path:", repoPath);

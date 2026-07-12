@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import {
   type ReactNode,
   startTransition,
@@ -1346,7 +1347,7 @@ export default function RepoCodePage() {
         )}&repo=${encodeURIComponent(
           resolvedParams.repo
         )}&branch=${encodeURIComponent(branch)}`;
-        const response = await fetch(bridgeUrl, {
+        const response = await fetchBridgeRead(bridgeUrl, {
           cache: "no-store",
           headers: {
             "Cache-Control": "no-cache",
@@ -1482,14 +1483,20 @@ export default function RepoCodePage() {
 
   useEffect(() => {
     if (!isPushing || pushStartedAt === null) return;
+    // Backup watchdog only — the push promise itself surfaces errors via alert.
+    // 180s > sign_event timeout (120s) so the real error fires first; if we
+    // still land here, tell the user instead of silently resetting the button.
     const timeout = window.setTimeout(() => {
-      if (Date.now() - pushStartedAt >= 120_000) {
+      if (Date.now() - pushStartedAt >= 180_000) {
         console.warn(
-          "⚠️ [Push UI] Auto-resetting stuck push state after 120s timeout"
+          "⚠️ [Push UI] Auto-resetting stuck push state after 180s timeout"
         );
         setIsPushing(false);
+        alert(
+          "❌ Push timed out.\n\nThe signing request got no response. Open your signer app (e.g. Amber) on your phone, make sure it is online, then push again."
+        );
       }
-    }, 120_000);
+    }, 180_000);
     return () => window.clearTimeout(timeout);
   }, [isPushing, pushStartedAt]);
 
@@ -3016,8 +3023,7 @@ export default function RepoCodePage() {
               repo.repo ||
               repo.slug ||
               resolvedParams.repo;
-            const refsRes = await fetch(
-              `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
+            const refsRes = await fetchBridgeRead(`/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
                 ownerPubkey
               )}&repo=${encodeURIComponent(actualRepoName)}`
             );
@@ -8187,7 +8193,7 @@ export default function RepoCodePage() {
               }
             );
 
-            const response = await fetch(url);
+            const response = await fetchBridgeRead(url);
 
             // Log response details before parsing (simplified to avoid Object logging)
             console.log(
@@ -10604,7 +10610,7 @@ export default function RepoCodePage() {
                 )}&path=${encodeURIComponent(
                   readmeFile.path
                 )}&branch=${encodeURIComponent(branch)}`;
-                const bridgeResp = await fetch(bridgeUrl);
+                const bridgeResp = await fetchBridgeRead(bridgeUrl);
                 if (bridgeResp.ok) {
                   const data = await bridgeResp.json();
                   if (
@@ -11178,7 +11184,7 @@ export default function RepoCodePage() {
             // For images, we can try to fetch and convert to data URL, or use the API URL directly
             // Since it's a logo file, try fetching it to get a data URL
             try {
-              const response = await fetch(bridgeApiUrl);
+              const response = await fetchBridgeRead(bridgeApiUrl);
               if (response.ok) {
                 const data = await response.json();
                 if (data.content) {
@@ -11834,7 +11840,7 @@ export default function RepoCodePage() {
           )}&repo=${encodeURIComponent(bridgeRepo)}&path=${encodeURIComponent(
             path
           )}&branch=${encodeURIComponent(branch0)}`;
-          const r0 = await fetch(api0);
+          const r0 = await fetchBridgeRead(api0);
           if (r0.ok) {
             const d0 = await r0.json();
             if (d0.content !== undefined) {
@@ -12647,7 +12653,7 @@ export default function RepoCodePage() {
               `💡 [fetchGithubRaw] GRASP repo ${errorType} (${response.status}), triggering clone...`
             );
             try {
-              const cloneResponse = await fetch("/api/nostr/repo/clone", {
+              const cloneResponse = await fetchBridgeRead("/api/nostr/repo/clone", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -14523,7 +14529,9 @@ export default function RepoCodePage() {
           <p className="text-gray-500 text-xs">
             Via CLI/API: Private repos require authentication. Use{" "}
             <code className="bg-gray-800 px-1 rounded">git clone</code> with SSH
-            keys or contact the owner for access.
+            keys, or HTTPS with a signed{" "}
+            <code className="bg-gray-800 px-1 rounded">X-Nostr-Auth-Event</code>{" "}
+            header. Contact the owner for access.
           </p>
         </div>
       </div>

@@ -4,7 +4,10 @@ import {
   resolveUserIconForMetadata,
 } from "@/lib/utils/metadata-icon-resolver";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
-import { normalizeSocialImageUrl } from "@/lib/utils/social-image";
+import {
+  normalizeSocialImageUrl,
+  openGraphImageDescriptor,
+} from "@/lib/utils/social-image";
 
 import { type Metadata } from "next";
 import { nip19 } from "nostr-tools";
@@ -270,64 +273,47 @@ export async function generateMetadata({
       1500
     );
 
-    // Resolve repository icon URL for Open Graph (also non-blocking)
-    // Priority: repo logo -> owner profile picture -> default logo
-    let iconUrl = `${baseUrl}/opengraph-image`; // Default fallback
+    // Resolve icon: repo announcement logo → bridge logo OG endpoint → owner picture → default card
+    const defaultCard = `${baseUrl}/opengraph-image`;
     const iconUrlPromise = (async () => {
       try {
-        // Try repo logo first
         let resolvedIcon = await resolveRepoIconForMetadata(
           resolvedParams.entity,
           decodedRepo,
           baseUrl
         );
-
-        // Ensure iconUrl is absolute
         if (!resolvedIcon.startsWith("http")) {
           resolvedIcon = `${baseUrl}${
             resolvedIcon.startsWith("/") ? "" : "/"
           }${resolvedIcon}`;
         }
-
-        // If repo logo is just the default, try owner profile picture
-        if (resolvedIcon === `${baseUrl}/opengraph-image` && ownerPubkey) {
-          try {
-            const ownerIcon = await resolveUserIconForMetadata(
-              resolvedParams.entity,
-              baseUrl,
-              800
-            );
-            if (ownerIcon !== `${baseUrl}/opengraph-image`) {
-              resolvedIcon = ownerIcon;
-            }
-          } catch (error) {
-            // Fall back to default logo
-            console.warn("[Metadata] Failed to fetch owner icon:", error);
+        if (resolvedIcon !== defaultCard) {
+          return resolvedIcon;
+        }
+        if (ownerPubkey) {
+          const ownerIcon = await resolveUserIconForMetadata(
+            resolvedParams.entity,
+            baseUrl,
+            1000
+          );
+          if (ownerIcon && ownerIcon !== defaultCard && ownerIcon.startsWith("https://")) {
+            return ownerIcon;
           }
         }
-
-        return resolvedIcon;
-      } catch (error) {
-        // If resolution fails, use default logo
-        console.warn(
-          "[Metadata] Failed to resolve repo icon, using default:",
-          error
-        );
-        return `${baseUrl}/opengraph-image`;
+        return defaultCard;
+      } catch {
+        return defaultCard;
       }
     })();
 
-    // Wait for both with a timeout - if they take too long, use fallbacks
     const [repoDescription, resolvedIconUrl] = await Promise.race([
       Promise.all([repoDescriptionPromise, iconUrlPromise]),
       new Promise<[string | null, string]>((resolve) =>
-        setTimeout(() => resolve([null, `${baseUrl}/opengraph-image`]), 2000)
+        setTimeout(() => resolve([null, defaultCard]), 2000)
       ),
-    ]).catch(
-      () => [null, `${baseUrl}/opengraph-image`] as [string | null, string]
-    );
+    ]).catch(() => [null, defaultCard] as [string | null, string]);
 
-    iconUrl = normalizeSocialImageUrl(resolvedIconUrl || iconUrl, baseUrl);
+    const iconUrl = normalizeSocialImageUrl(resolvedIconUrl || defaultCard, baseUrl);
 
     // Build description text - use repo description if available, otherwise generic
     const description = repoDescription
@@ -360,12 +346,11 @@ export async function generateMetadata({
         type: "website",
         siteName: "gittr",
         images: [
-          {
-            url: iconUrl,
-            width: 1200,
-            height: 630,
-            alt: `${decodedRepo} repository on gittr`,
-          },
+          openGraphImageDescriptor(
+            iconUrl,
+            baseUrl,
+            `${decodedRepo} repository on gittr`
+          ),
         ],
       },
       twitter: {

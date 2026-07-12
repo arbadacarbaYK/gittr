@@ -53,6 +53,7 @@ import {
   nostrProfileViewerUrl,
 } from "@/lib/utils/nostr-profile-viewer-url";
 import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
+import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 
 import {
   CheckCircle2,
@@ -1592,10 +1593,9 @@ export default function EntityPage({
             // Don't show repos that are currently pushing
             if (r.status === "pushing") return false;
 
-            // Filter out private repos (unless user is the owner)
+            // Filter out private repos unless the viewer is owner or contributor
             // NOTE: Repos without publicRead field (undefined) are treated as public (default)
             if (r.publicRead === false) {
-              // Check if current user is the owner
               const repoOwnerPubkey =
                 r.ownerPubkey ||
                 (r.entity && r.entity.startsWith("npub")
@@ -1610,13 +1610,14 @@ export default function EntityPage({
                       }
                     })()
                   : null);
-              const isOwner =
-                currentUserPubkey &&
-                repoOwnerPubkey &&
-                currentUserPubkey.toLowerCase() ===
-                  repoOwnerPubkey.toLowerCase();
-              if (!isOwner) {
-                return false; // Hide private repos from non-owners
+              const hasAccess = hasPrivateRepoAccess(
+                currentUserPubkey,
+                r.contributors || [],
+                repoOwnerPubkey,
+                (r as { maintainers?: string[] }).maintainers || []
+              );
+              if (!hasAccess) {
+                return false;
               }
             }
           }

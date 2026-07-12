@@ -11,9 +11,8 @@ import {
 import type { Event as NostrEvent } from "nostr-tools";
 import { nip44 as nip44v2 } from "nostr-tools-v2";
 
-import { getAllRelays } from "./getAllRelays";
 import { WEB_STORAGE_KEYS } from "./localStorage";
-import { getDefaultRelayUrls } from "./relay-env";
+import { isGraspServer } from "../utils/grasp-servers";
 
 type PublishFn = (event: any, relays: string[]) => void;
 type SubscribeFn = (
@@ -52,8 +51,6 @@ export type ParsedNostrConnectUri = {
 
 export type ParsedRemoteSignerUri = ParsedBunkerUri | ParsedNostrConnectUri;
 
-export type ConnectParamFormat = "client-first" | "nip46" | "remote-first";
-
 export interface RemoteSignerSession {
   /** Remote signer (Amber) pubkey — empty only briefly during nostrconnect discovery. */
   remotePubkey: string;
@@ -65,8 +62,6 @@ export interface RemoteSignerSession {
   permissions?: string[];
   label?: string;
   lastConnected: number;
-  /** Which connect() param layout worked with this signer (Amber uses client-first). */
-  connectParamFormat?: ConnectParamFormat;
   /** True while waiting for the first inbound event to learn the signer pubkey. */
   nostrConnectPairing?: boolean;
 }
@@ -92,7 +87,6 @@ const STORAGE_KEY = WEB_STORAGE_KEYS.REMOTE_SIGNER_SESSION;
 const REQUEST_TIMEOUT_MS = 15000;
 const SIGN_EVENT_TIMEOUT_MS = 120000;
 const CONNECT_TIMEOUT_MS = 25000;
-const SWITCH_RELAYS_TIMEOUT_MS = 8000;
 const CONNECT_RETRY_DELAYS_MS = [0, 1200, 2500];
 const HEX_64_RE = /^[0-9a-f]{64}$/i;
 export const DEFAULT_REMOTE_PERMISSIONS = [
@@ -113,95 +107,69 @@ const NIP46_PAIRING_RELAY_FALLBACKS = [
   "wss://nos.lol",
 ];
 
+/** Amber bunker default relays — must overlap QR pairing when user has no prior session. */
+const NIP46_SIGNER_DEFAULT_RELAYS = [
+  "wss://relay.primal.net",
+  "wss://theforest.nostr1.com",
+  "wss://nostr.oxtr.dev",
+];
+
 const normalizeRelayUrl = (url: string) =>
   url.trim().toLowerCase().replace(/\/+$/, "");
 
 /**
- * Relays embedded in nostrconnect QR / bunker URI — must overlap with what Amber listens on.
- * Primary app relays (e.g. git.shakespeare.diy) come first; then common signer relays.
+ * Relays embedded in nostrconnect QR — must NOT include GRASP/git relays (they reject kind 24133).
+ * Use signer-friendly WSS relays that overlap Amber's bunker defaults.
  */
-export function getNip46PairingRelays(appRelays: string[], max = 8): string[] {
+export function getNip46PairingRelays(appRelays: string[], max = 5): string[] {
   const merged: string[] = [];
   const add = (url: string) => {
     const normalized = normalizeRelayUrl(url);
-    if (normalized.startsWith("wss://") && !merged.includes(normalized)) {
+    if (
+      normalized.startsWith("wss://") &&
+      !merged.includes(normalized) &&
+      !isGraspServer(normalized)
+    ) {
       merged.push(normalized);
     }
   };
-  // Operator / deployment relays first (NEXT_PUBLIC_NOSTR_RELAYS order matters)
-  appRelays.slice(0, 4).forEach(add);
+  NIP46_SIGNER_DEFAULT_RELAYS.forEach(add);
   NIP46_PAIRING_RELAY_FALLBACKS.forEach(add);
-  appRelays.slice(4).forEach(add);
+  appRelays.filter((r) => !isGraspServer(r)).forEach(add);
   return merged.slice(0, max);
 }
 
-function mergeSessionRelays(
-  sessionRelays: string[],
-  appRelays: string[]
-): string[] {
-  const merged: string[] = [];
-  const add = (url: string) => {
-    const normalized = normalizeRelayUrl(url);
-    if (normalized.startsWith("wss://") && !merged.includes(normalized)) {
-      merged.push(normalized);
-    }
-  };
-  sessionRelays.forEach(add);
-  getNip46PairingRelays(appRelays, 8).forEach(add);
-  appRelays.forEach(add);
-  return merged.slice(0, 16);
-}
+export const DEFAULT_REMOTE_SIGNER_LABEL = "gittr.space";
 
-/** Build NIP-46 `connect` params — signers disagree on layout; Amber uses client-first. */
-function buildConnectParams(
-  session: RemoteSignerSession,
-  format: ConnectParamFormat,
-  options: { includeSecret?: boolean } = {}
-): string[] {
-  const { includeSecret = false } = options;
+/**
+ * NIP-46 `connect` params — the ONE canonical layout every real signer parses:
+ * `[remote-signer-pubkey, optional_secret, optional_requested_perms, optional_client_metadata]`.
+ *
+ * Verified against source of:
+ * - Amber/quartz `BunkerRequestConnect.parse`: params[0]=remoteKey, params[1]=secret,
+ *   params[2]=perms, params[3]=metadata (secret/perms back-filled with "" when metadata present)
+ * - bunker46 `bunker-rpc.handler.ts`: secret = params[1], perms = params[2]
+ * - nostr-tools `nip46.ts` BunkerSigner: sends [remoteSignerPubkey, secret]
+ *
+ * Any other layout makes Amber read a non-secret string as the secret → "invalid secret".
+ */
+function buildConnectParams(session: RemoteSignerSession): string[] {
   const perms =
     session.permissions && session.permissions.length > 0
       ? session.permissions.join(",")
       : DEFAULT_REMOTE_PERMISSIONS.join(",");
 
   const metadata = JSON.stringify({
-    name: session.label || "gittr",
+    name: session.label || DEFAULT_REMOTE_SIGNER_LABEL,
     url:
       typeof window !== "undefined"
         ? window.location.origin
         : "https://gittr.space",
   });
 
-  switch (format) {
-    case "client-first": {
-      // Amber / most bunkers in the wild: [client_pubkey, secret?, perms]
-      const params: string[] = [session.clientPubkey];
-      if (includeSecret && session.secret) {
-        params.push(session.secret);
-      }
-      params.push(perms);
-      return params;
-    }
-    case "remote-first": {
-      const params: string[] = [session.remotePubkey];
-      if (includeSecret && session.secret) {
-        params.push(session.secret);
-      }
-      params.push(perms);
-      return params;
-    }
-    case "nip46":
-    default: {
-      // NIP-46 spec: [secret?, perms, metadata] — client id is event pubkey
-      const params: string[] = [];
-      if (includeSecret && session.secret) {
-        params.push(session.secret);
-      }
-      params.push(perms);
-      params.push(metadata);
-      return params;
-    }
-  }
+  // Metadata must sit at index 3, so secret/perms slots are back-filled with ""
+  // exactly like quartz's buildParams does.
+  return [session.remotePubkey, session.secret || "", perms, metadata];
 }
 
 function toSignEventTemplate(event: UnsignedEvent): string {
@@ -299,6 +267,85 @@ export function rememberNostrConnectClientKey(
     createdAt: now,
   };
   persistNostrConnectClientKeyMap(map);
+}
+
+type BunkerClientKeyEntry = {
+  remotePubkey: string;
+  bunkerSecret: string;
+  clientSecretKey: string;
+  clientPubkey: string;
+  createdAt: number;
+};
+
+const bunkerClientStorageKey = (
+  remotePubkey: string,
+  secret?: string
+): string => `${remotePubkey.toLowerCase()}:${(secret || "").toLowerCase()}`;
+
+const loadBunkerClientKeyMap = (): Record<string, BunkerClientKeyEntry> => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(WEB_STORAGE_KEYS.BUNKER_CLIENT_KEYS);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed as Record<string, BunkerClientKeyEntry>;
+  } catch {
+    return {};
+  }
+};
+
+const persistBunkerClientKeyMap = (
+  map: Record<string, BunkerClientKeyEntry>
+) => {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(
+      WEB_STORAGE_KEYS.BUNKER_CLIENT_KEYS,
+      JSON.stringify(map)
+    );
+  } catch {
+    // Ignore storage errors (quota/private mode).
+  }
+};
+
+export function rememberBunkerClientKey(
+  remotePubkey: string,
+  secret: string | undefined,
+  clientSecretKey: string
+) {
+  if (!HEX_64_RE.test(remotePubkey) || !HEX_64_RE.test(clientSecretKey)) return;
+  const map = loadBunkerClientKeyMap();
+  const key = bunkerClientStorageKey(remotePubkey, secret);
+  const clientPubkey = getPublicKey(clientSecretKey).toLowerCase();
+  map[key] = {
+    remotePubkey: remotePubkey.toLowerCase(),
+    bunkerSecret: (secret || "").toLowerCase(),
+    clientSecretKey: clientSecretKey.toLowerCase(),
+    clientPubkey,
+    createdAt: Date.now(),
+  };
+  persistBunkerClientKeyMap(map);
+}
+
+function getStoredBunkerClientKey(
+  remotePubkey: string,
+  secret?: string
+): { clientSecretKey: string; clientPubkey: string } | undefined {
+  if (!HEX_64_RE.test(remotePubkey)) return undefined;
+  const map = loadBunkerClientKeyMap();
+  const entry = map[bunkerClientStorageKey(remotePubkey, secret)];
+  if (
+    !entry ||
+    !HEX_64_RE.test(entry.clientSecretKey || "") ||
+    !HEX_64_RE.test(entry.clientPubkey || "")
+  ) {
+    return undefined;
+  }
+  return {
+    clientSecretKey: entry.clientSecretKey.toLowerCase(),
+    clientPubkey: entry.clientPubkey.toLowerCase(),
+  };
 }
 
 function getStoredNostrConnectClientKey(
@@ -402,11 +449,6 @@ export function parseRemoteSignerUri(input: string): ParsedRemoteSignerUri {
       throw new Error("Remote signer token missing relay query param");
     }
     const secret = params.get("secret")?.trim() || undefined;
-    // Security hardening: signer-initiated bunker URIs should include a secret
-    // to prevent relay-level hijacking/race attacks during pairing.
-    if (!secret) {
-      throw new Error("Security: bunker:// token requires a secret parameter");
-    }
     const permissions = params
       .get("perms")
       ?.split(",")
@@ -582,13 +624,6 @@ export class RemoteSignerManager {
           reconnectErr instanceof Error ? reconnectErr.message : reconnectErr
         );
       }
-      // Do not block UI on switch_relays — run in background.
-      void this.syncSessionRelays(this.requireSession()).catch((err) => {
-        console.warn(
-          "[RemoteSigner] Background switch_relays failed",
-          err instanceof Error ? err.message : err
-        );
-      });
       this.notifyState("ready");
     } catch (error: any) {
       console.error("[RemoteSigner] Failed to resume session:", error);
@@ -631,11 +666,9 @@ export class RemoteSignerManager {
       }
     }
 
-    const connectParams = buildConnectParams(
-      session,
-      session.connectParamFormat || "nip46",
-      { includeSecret: false }
-    );
+    // Same client key + same secret → Amber answers "ack" silently (no popup),
+    // because it recognizes the app by our client pubkey.
+    const connectParams = buildConnectParams(session);
 
     try {
       await this.sendRequest(
@@ -677,45 +710,12 @@ export class RemoteSignerManager {
   }
 
   /**
-   * Align NIP-46 transport relays with gittr defaults + signer-friendly relays (NIP-46 switch_relays).
+   * IMPORTANT: gittr must NEVER push its own relay list at the signer.
+   * Per Amber's source, `switch_relays` ignores the client's params and answers
+   * with the SIGNER's relays — sending our list only desyncs both sides and
+   * breaks sign_event. NIP-46 transport stays on the URI relays; gittr publishes
+   * signed events to app relays itself.
    */
-  private async syncSessionRelays(session: RemoteSignerSession) {
-    if (!session.remotePubkey) return;
-    const appRelays = getAllRelays(getDefaultRelayUrls());
-    const merged = mergeSessionRelays(session.relays, appRelays);
-    if (merged.length === 0) return;
-
-    const relaysChanged =
-      merged.length !== session.relays.length ||
-      merged.some((relay, index) => relay !== session.relays[index]);
-
-    if (relaysChanged) {
-      try {
-        await this.sendRequest(
-          session,
-          "switch_relays",
-          [merged],
-          SWITCH_RELAYS_TIMEOUT_MS
-        );
-        console.log("[RemoteSigner] switch_relays acknowledged", {
-          relayCount: merged.length,
-        });
-      } catch (error) {
-        console.warn(
-          "[RemoteSigner] switch_relays failed; subscribing on merged relays locally",
-          error instanceof Error ? error.message : error
-        );
-      }
-      session.relays = merged;
-      persistRemoteSignerSession(session);
-      await this.ensureRelays(session.relays);
-      const openRelays = this.getOpenRelays(session.relays);
-      await this.startSubscription(
-        session,
-        openRelays.length > 0 ? openRelays : session.relays
-      );
-    }
-  }
 
   /**
    * Pair using bunker/nostrconnect URI
@@ -754,15 +754,34 @@ export class RemoteSignerManager {
       userPubkey: "",
       secret: config.secret,
       permissions: config.permissions,
-      label: config.label,
+      label: config.label || DEFAULT_REMOTE_SIGNER_LABEL,
       lastConnected: Date.now(),
       nostrConnectPairing: config.mode === "nostrconnect",
     };
 
     if (config.mode === "bunker") {
-      const generatedClientSecret = generatePrivateKey();
-      session.clientSecretKey = generatedClientSecret;
-      session.clientPubkey = getPublicKey(session.clientSecretKey);
+      const storedBunkerClient =
+        getStoredBunkerClientKey(config.remotePubkey, config.secret) ||
+        (previousSession &&
+        sessionMatchesConfig(previousSession) &&
+        HEX_64_RE.test(previousSession.clientSecretKey || "")
+          ? {
+              clientSecretKey: previousSession.clientSecretKey,
+              clientPubkey: previousSession.clientPubkey,
+            }
+          : undefined);
+      if (storedBunkerClient) {
+        session.clientSecretKey = storedBunkerClient.clientSecretKey;
+        session.clientPubkey = storedBunkerClient.clientPubkey;
+      } else {
+        session.clientSecretKey = generatePrivateKey();
+        session.clientPubkey = getPublicKey(session.clientSecretKey);
+      }
+      rememberBunkerClientKey(
+        config.remotePubkey,
+        config.secret,
+        session.clientSecretKey
+      );
     } else {
       const storedClientSecret = getStoredNostrConnectClientKey(
         config.clientPubkey
@@ -787,9 +806,10 @@ export class RemoteSignerManager {
       // Make pairing responses routable in handleIncomingEvent during connect phase.
       this.session = session;
       await this.ensureRelays(session.relays);
-      await this.waitForRelayOpen(session.relays, 10000);
-      const openRelays = this.getOpenRelays(session.relays);
-      if (openRelays.length === 0) {
+      await this.waitForRelayOpen(session.relays, 2500);
+      await this.waitForDirectPoolRelays(session.relays, 8000);
+      const transportRelays = this.resolveTransportRelays(session.relays);
+      if (transportRelays.length === 0) {
         throw new Error(
           "Could not connect to any bunker relay. Check network/relay availability and retry."
         );
@@ -813,18 +833,14 @@ export class RemoteSignerManager {
           };
         });
       }
-      await this.startSubscription(session, openRelays);
+      await this.startSubscription(session, transportRelays);
       if (nostrConnectWait) {
         await nostrConnectWait;
       }
 
-      // NIP-46 connect params: [optional_secret, optional_requested_perms, optional_client_metadata]
-      // Client identity is the pubkey on kind 24133 — do NOT pass clientPubkey in connect.
-      const connectFormats: ConnectParamFormat[] = [
-        "nip46",
-        "client-first",
-        "remote-first",
-      ];
+      // Single canonical connect layout (see buildConnectParams) — retries only
+      // cover relay/transport flakiness, never alternate param orders.
+      const connectParams = buildConnectParams(session);
       let connectErr: unknown;
       let connectAcked = false;
       let connectResponse: unknown;
@@ -833,17 +849,13 @@ export class RemoteSignerManager {
         if (delay > 0) {
           await new Promise((r) => setTimeout(r, delay));
         }
-        const connectFormat = connectFormats[i % connectFormats.length] ?? "nip46";
-        const connectParams = buildConnectParams(session, connectFormat, {
-          includeSecret: true,
-        });
         try {
           console.log("[RemoteSigner] Sending connect request", {
             attempt: i + 1,
             relayCount: session.relays.length,
             remotePubkey: `${session.remotePubkey.slice(0, 12)}…`,
             mode: config.mode,
-            connectFormat,
+            clientPubkey: `${session.clientPubkey.slice(0, 8)}…`,
           });
           connectResponse = await this.sendRequest(
             session,
@@ -851,7 +863,6 @@ export class RemoteSignerManager {
             connectParams,
             CONNECT_TIMEOUT_MS
           );
-          session.connectParamFormat = connectFormat;
           connectErr = undefined;
           connectAcked = true;
           break;
@@ -859,10 +870,15 @@ export class RemoteSignerManager {
           connectErr = err;
           const errMsg = err instanceof Error ? err.message : String(err);
           if (/already connected/i.test(errMsg)) {
-            // Amber can return this when session is already established.
+            // Amber: this client key is already paired — session is live.
             connectErr = undefined;
             connectAcked = true;
             break;
+          }
+          if (config.mode === "bunker" && /invalid secret/i.test(errMsg)) {
+            throw new Error(
+              "The signer rejected this bunker secret. Create a fresh bunker connection in your signer app and paste the new token — each secret pairs once."
+            );
           }
           console.warn(
             `[RemoteSigner] connect attempt ${i + 1} failed:`,
@@ -958,7 +974,6 @@ export class RemoteSignerManager {
       session.userPubkey = resolvedUserPubkey;
       session.lastConnected = Date.now();
 
-      await this.syncSessionRelays(session);
       await this.activateSession(session);
       this.notifyState("ready");
 
@@ -1004,12 +1019,13 @@ export class RemoteSignerManager {
         return await this.signEventWithSession(session, payload);
       }
       if (/timed out/i.test(msg)) {
-        console.warn(
-          "[RemoteSigner] sign_event timed out — syncing relays + reconnect"
+        // A second silent 120s retry only hides the failure from the user.
+        // Repair transport for the NEXT attempt, then fail loudly with a hint.
+        console.warn("[RemoteSigner] sign_event timed out");
+        void this.ensureDirectTransport(session).catch(() => undefined);
+        throw new Error(
+          "The remote signer did not respond to the signing request. Open your signer app (e.g. Amber) on your phone, make sure it is online and connected, then try again."
         );
-        await this.syncSessionRelays(session);
-        await this.reestablishConnection(session);
-        return await this.signEventWithSession(session, payload);
       }
       throw err;
     }
@@ -1114,6 +1130,89 @@ export class RemoteSignerManager {
     });
   }
 
+  private resolveTransportRelays(relays: string[]): string[] {
+    if (!relays || relays.length === 0) return [];
+    const open = this.getOpenRelays(relays);
+    // NIP-46 uses directPool for transport; do not hard-fail when the app relaypool
+    // has not finished opening URI relays (e.g. Amber bunker primal/oxtr defaults).
+    return open.length > 0 ? open : relays;
+  }
+
+  /**
+   * Re-open dead directPool sockets before publishing a NIP-46 request.
+   * nostr-tools v1 relays never auto-reconnect: after a silent drop the
+   * subscription is dead and trySend discards messages, so requests would
+   * vanish and every RPC would "time out" even though Amber is online.
+   */
+  private async ensureDirectTransport(session: RemoteSignerSession) {
+    const targets = session.relays.filter((r) =>
+      normalizeRelayUrl(r).startsWith("wss://")
+    );
+    if (targets.length === 0) return;
+    let reconnected = false;
+    await Promise.all(
+      targets.map(async (url) => {
+        try {
+          const relay: any = await Promise.race([
+            this.directPool.ensureRelay(url),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("ensureRelay timeout")), 5000)
+            ),
+          ]);
+          // 3 = CLOSED. Never touch CONNECTING/OPEN sockets — re-dialing a
+          // connecting socket replaces it and thrashes the connection.
+          if (relay && relay.status === 3) {
+            await Promise.race([
+              relay.connect(),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("connect timeout")), 5000)
+              ),
+            ]);
+            reconnected = true;
+          }
+        } catch {
+          // Other relays may still work; publish path retries too.
+        }
+      })
+    );
+    if (reconnected) {
+      console.log(
+        "[RemoteSigner] Direct transport re-opened; refreshing NIP-46 subscription"
+      );
+      try {
+        await this.startSubscription(session);
+      } catch (error) {
+        console.warn(
+          "[RemoteSigner] Failed to refresh subscription after reconnect:",
+          error
+        );
+      }
+    }
+  }
+
+  private async waitForDirectPoolRelays(relays: string[], timeoutMs = 8000) {
+    const targets = relays
+      .map((r) => normalizeRelayUrl(r))
+      .filter((r) => r.startsWith("wss://"));
+    if (targets.length === 0) return;
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        try {
+          sub.unsub();
+        } catch {
+          /* ignore */
+        }
+        resolve();
+      };
+      const sub = this.directPool.sub(targets, [{ kinds: [1], limit: 0 }]);
+      sub.on("eose", finish);
+      setTimeout(finish, Math.min(timeoutMs, 4000));
+    });
+  }
+
   private async waitForRelayOpen(relays: string[], timeoutMs = 8000) {
     if (!this.deps.getRelayStatuses || relays.length === 0) return;
     const targets = new Set(relays.map((r) => normalizeRelayUrl(r)));
@@ -1153,7 +1252,8 @@ export class RemoteSignerManager {
   ) {
     let lastError: unknown;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const candidateRelays = this.getOpenRelays(baseRelays);
+      const open = this.getOpenRelays(baseRelays);
+      const candidateRelays = open.length > 0 ? open : baseRelays;
       if (candidateRelays.length === 0) {
         await new Promise((resolve) => setTimeout(resolve, 300));
         continue;
@@ -1339,7 +1439,14 @@ export class RemoteSignerManager {
           message.result = "ack";
         } else if (!message.error) {
           const result = message?.result;
+          // bunker46 (and NIP-46 nostrconnect responses) echo the pairing
+          // secret as the connect result instead of "ack".
+          const secretEcho =
+            typeof result === "string" &&
+            !!this.session?.secret &&
+            result === this.session.secret;
           const maybeConnectDone =
+            secretEcho ||
             result === "ack" ||
             result === "ok" ||
             result === true ||
@@ -1440,6 +1547,9 @@ export class RemoteSignerManager {
     timeoutMs = REQUEST_TIMEOUT_MS
   ): Promise<any> {
     await this.ensureRelays(session.relays);
+    // Repair the dedicated NIP-46 transport first — dead sockets silently
+    // swallow requests AND responses (the "push fails silently" symptom).
+    await this.ensureDirectTransport(session);
     await this.waitForRelayOpen(session.relays, 6000);
     const id = randomRequestId();
     const payload = JSON.stringify({

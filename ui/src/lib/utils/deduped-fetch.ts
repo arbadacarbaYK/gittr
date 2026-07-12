@@ -1,4 +1,6 @@
 /** Coalesce identical in-flight browser fetches (avoids connection-limit storms on repo pages). */
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
+
 const inflight = new Map<string, Promise<Response>>();
 
 export function fetchDeduped(
@@ -11,7 +13,9 @@ export function fetchDeduped(
     return existing.then((response) => response.clone());
   }
 
-  const promise = fetch(url, init).finally(() => {
+  // fetchBridgeRead retries with signed Nostr auth on 401/403 so private
+  // repos stay readable for their owner/contributors.
+  const promise = fetchBridgeRead(url, init).finally(() => {
     if (inflight.get(key) === promise) inflight.delete(key);
   });
   inflight.set(key, promise);

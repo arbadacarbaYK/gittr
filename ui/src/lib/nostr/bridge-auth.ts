@@ -11,6 +11,8 @@ type CachedBridgeAuth = {
   pubkey: string;
   created_at: number;
   header: string;
+  /** base64 of the full signed kind-24242 auth event (verifiable server-side) */
+  eventHeader?: string;
 };
 
 const memoryAuthCache = new Map<string, CachedBridgeAuth>();
@@ -71,9 +73,13 @@ export async function getBridgeAuthHeaders(
   const normalizedPubkey = pubkey.toLowerCase();
   const cached = readCachedAuth(normalizedPubkey);
   if (cached?.header) {
-    return new Headers({
+    const headers = new Headers({
       Authorization: `Nostr ${cached.header}`,
     });
+    if (cached.eventHeader) {
+      headers.set("X-Nostr-Auth-Event", cached.eventHeader);
+    }
+    return headers;
   }
 
   // Step 1: Get challenge from bridge
@@ -99,7 +105,10 @@ export async function getBridgeAuthHeaders(
   const hash = getEventHash(unsignedEvent);
   const signed = await signer({ ...unsignedEvent, id: hash });
 
-  // Step 3: Create NIP-98 style auth header
+  // Step 3: Create auth headers.
+  // X-Nostr-Auth-Event carries the FULL signed event — the only header the
+  // server can verify with real nostr-tools signature checks. The legacy
+  // Authorization payload is kept for older deployments.
   const authPayload = {
     pubkey: normalizedPubkey,
     sig: signed.sig,
@@ -109,14 +118,25 @@ export async function getBridgeAuthHeaders(
   const authHeader = Buffer.from(JSON.stringify(authPayload)).toString(
     "base64"
   );
+  // NIP-07/NIP-46 signers usually return the full signed event; fall back to
+  // assembling one when only the signature comes back.
+  const fullEvent =
+    signed && signed.id && signed.sig && signed.pubkey
+      ? signed
+      : { ...unsignedEvent, id: hash, sig: signed.sig };
+  const eventHeader = Buffer.from(JSON.stringify(fullEvent)).toString(
+    "base64"
+  );
   writeCachedAuth({
     pubkey: normalizedPubkey,
     created_at,
     header: authHeader,
+    eventHeader,
   });
 
   return new Headers({
     Authorization: `Nostr ${authHeader}`,
+    "X-Nostr-Auth-Event": eventHeader,
   });
 }
 

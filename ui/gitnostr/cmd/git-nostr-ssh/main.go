@@ -173,8 +173,6 @@ func main() {
 		permission = &ownerPerm
 	}
 
-	row = db.QueryRow("SELECT PublicRead,PublicWrite FROM RepositoryPermission WHERE OwnerPubKey=? AND RepositoryName=? AND TargetPubKey=?", ownerPubKey, repoName, targetPubKey)
-
 	var consumePaywallGrant bool
 
 	switch verb {

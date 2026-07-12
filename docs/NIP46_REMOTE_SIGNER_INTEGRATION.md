@@ -469,6 +469,9 @@ All signing operations automatically use the remote signer:
 4. **The NIP-07 adapter includes `getRelays()` and `nip44` support** for complete compatibility
 5. **Preserve original `window.nostr`** - capture it before applying adapter, restore on disconnect
 6. **Synchronous pubkey restoration** - check localStorage during initialization to prevent UI flickering
+7. **Repair transport before every request** - `nostr-tools` v1 relay sockets never auto-reconnect. After a silent drop, `trySend` discards messages and the 24133 subscription is dead, so every RPC "times out" even though the signer is online. `sendRequest` calls `ensureDirectTransport()` first: re-dial only sockets in CLOSED state (never CONNECTING — re-dialing a connecting socket replaces and thrashes it) and re-run `startSubscription` after any reconnect, because v1 relays do not re-send REQ on reconnect.
+8. **Never call `relay.connect()` on a CONNECTING socket** - `nostr-relaypool`'s `connect()` replaces the WebSocket whenever `readyState !== OPEN`. Calling it once per request (e.g. from `addRelay`) kills every in-flight connection and the relay never reaches OPEN. Only dial when status is CLOSED (3).
+9. **Fail loudly on sign timeout** - a silent second 120s retry after a `sign_event` timeout just hides the failure. Throw an actionable error ("open your signer app, make sure it is online") so the UI can show it; repair transport in the background for the next attempt.
 
 ## Unified signing (`signer.ts`)
 
@@ -485,6 +488,7 @@ The resolver:
 
 ## References
 
+- **gittr-helper-tools snippet**: [nip46-remote-signer](https://github.com/arbadacarbaYK/gittr-helper-tools/tree/main/snippets/nip46-remote-signer) (`signer-resolver.ts` + README)
 - **NIP-46**: https://nips.nostr.com/46
 - **NIP-07**: https://nips.nostr.com/07
 - **NIP-04**: https://nips.nostr.com/04 (Encryption)

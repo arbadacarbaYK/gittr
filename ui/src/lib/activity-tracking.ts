@@ -5,6 +5,7 @@
  * CRITICAL: Activity counts should come from Nostr events (network), not localStorage
  * People use multiple clients, so we need to count what's actually on Nostr
  */
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import {
   KIND_ISSUE,
   KIND_PULL_REQUEST,
@@ -699,8 +700,7 @@ export async function syncCommitsFromBridge(
 ): Promise<number> {
   try {
     // Fetch commits from bridge API
-    const response = await fetch(
-      `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
+    const response = await fetchBridgeRead(`/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
         ownerPubkey
       )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
         branch

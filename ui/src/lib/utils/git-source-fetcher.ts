@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { filterGraspMirrorPollutionFromFileTree } from "@/lib/utils/filter-grasp-mirror-pollution";
 
 /**
@@ -1182,7 +1183,7 @@ async function readBridgeFilesFromUrl(
   fallbackBranch: string
 ): Promise<GitSourceFilesResult | null> {
   try {
-    const response = await fetch(bridgeUrl, {
+    const response = await fetchBridgeRead(bridgeUrl, {
       cache: "no-store",
       headers: {
         "Cache-Control": "no-cache",
@@ -1312,7 +1313,7 @@ export async function fetchBridgeFilesOnce(
       ownerPubkey
     )}&repo=${encodeURIComponent(repo)}&branch=${encodeURIComponent(branch)}`;
     try {
-      const response = await fetch(bridgeUrl, { cache: "no-store" });
+      const response = await fetchBridgeRead(bridgeUrl, { cache: "no-store" });
       if (!response.ok) return null;
       const json = (await response.json()) as BridgeFilesPayload;
       if (!Array.isArray(json.files)) {

@@ -178,7 +178,7 @@ export default function NewFilePage({
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Enter file content here..."
-            className="w-full border p-2 text-black rounded font-mono"
+            className="w-full bg-[#0E1116] border border-[#383B42] text-white p-2 rounded font-mono"
             rows={20}
           />
         </div>

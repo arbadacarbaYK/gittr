@@ -2,14 +2,15 @@
  * Server-side utility for resolving repository icons and user profile pictures
  * for Open Graph metadata generation.
  *
- * This mirrors the client-side logo resolution logic but works server-side
- * without requiring localStorage or client-side hooks.
+ * Social crawlers (Telegram, X) require HTTPS URLs that return raw image bytes.
+ * Never use /api/nostr/repo/file-content here — it returns JSON.
  */
+import {
+  fetchRepoLogoUrlFromNostr,
+  readRepoLogoFromBridge,
+} from "@/lib/og-repo-image";
 import { nip19 } from "nostr-tools";
 
-/**
- * Resolves entity (npub or pubkey) to full pubkey
- */
 function resolveEntityToPubkey(entity: string): string | null {
   if (!entity) return null;
 
@@ -31,83 +32,87 @@ function resolveEntityToPubkey(entity: string): string | null {
   return null;
 }
 
+function cleanRepoName(repoName: string): string {
+  let decodedRepo = repoName;
+  try {
+    if (repoName.includes("%")) {
+      decodedRepo = decodeURIComponent(repoName);
+    }
+  } catch {
+    decodedRepo = repoName;
+  }
+  if (decodedRepo.includes("/")) {
+    const parts = decodedRepo.split("/");
+    decodedRepo = parts[parts.length - 1] || decodedRepo;
+  }
+  return decodedRepo.replace(/\.git$/, "");
+}
+
 /**
- * Resolves repository icon URL for Open Graph metadata
+ * Resolve a crawler-safe repository icon URL.
  *
  * Priority:
- * 1. Logo file from repo (logo.png, logo.svg, etc.) - via API endpoint for Nostr-native repos
- * 2. Platform default
- *
- * Note: We construct URLs based on common patterns. The browser/social media crawler
- * will fetch them. If a logo doesn't exist, it will fall back to the default.
+ * 1. HTTPS logo from kind 30617 `web` tags (announcement)
+ * 2. `/api/og/repo-image` when logo.png (etc.) exists on the bridge
+ * 3. Platform default card — caller should try owner profile picture next
  */
 export async function resolveRepoIconForMetadata(
   entity: string,
   repoName: string,
   baseUrl: string
 ): Promise<string> {
-  // Note: repoName is expected to be already URL-decoded by the caller
-  // If it contains encoded characters, try to decode safely
-  let decodedRepo: string;
+  const defaultCard = `${baseUrl}/opengraph-image`;
+  const ownerPubkey = resolveEntityToPubkey(entity);
+  if (!ownerPubkey) return defaultCard;
+
+  const cleanedRepo = cleanRepoName(repoName);
+
+  // 1) Logo URL published on the Nostr announcement (external HTTPS image)
   try {
-    // Only decode if the string contains percent-encoded characters
-    // This prevents errors when repo names contain '%' that isn't part of encoding
-    if (repoName.includes("%")) {
-      decodedRepo = decodeURIComponent(repoName);
-    } else {
-      decodedRepo = repoName;
+    const announcedLogo = await fetchRepoLogoUrlFromNostr(
+      ownerPubkey,
+      cleanedRepo,
+      1000
+    );
+    if (announcedLogo && announcedLogo.startsWith("https://")) {
+      return announcedLogo;
     }
   } catch {
-    // If decoding fails (e.g., invalid % encoding), use original string
-    decodedRepo = repoName;
+    // fall through
   }
 
-  const ownerPubkey = resolveEntityToPubkey(entity);
-
-  // For Nostr-native repos, try API endpoint for logo files
-  if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-    // Clean repo name (handle paths like "host.example/my-repo")
-    let cleanRepoName = decodedRepo;
-    if (cleanRepoName.includes("/")) {
-      const parts = cleanRepoName.split("/");
-      cleanRepoName = parts[parts.length - 1] || cleanRepoName;
+  // 2) Logo file in the bridge bare repo — dedicated binary OG endpoint
+  try {
+    const onDisk = await readRepoLogoFromBridge(ownerPubkey, cleanedRepo);
+    if (onDisk) {
+      return `${baseUrl}/api/og/repo-image?ownerPubkey=${encodeURIComponent(
+        ownerPubkey
+      )}&repo=${encodeURIComponent(cleanedRepo)}`;
     }
-    cleanRepoName = cleanRepoName.replace(/\.git$/, "");
-
-    // Try logo.png first (most common), then logo.svg
-    // The browser will try to fetch these URLs - if they don't exist, it will fall back
-    const logoPath = "logo.png";
-    return `${baseUrl}/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
-      ownerPubkey
-    )}&repo=${encodeURIComponent(cleanRepoName)}&path=${encodeURIComponent(
-      logoPath
-    )}&branch=main`;
+  } catch {
+    // fall through
   }
 
-  // Fallback to platform default social card image (PNG endpoint, crawler-safe)
-  return `${baseUrl}/opengraph-image`;
+  return defaultCard;
 }
 
 /**
- * Resolves user profile picture URL for Open Graph metadata
- *
- * Priority:
- * 1. Nostr profile picture (from metadata)
- * 2. Platform default
+ * Resolves user profile picture URL for Open Graph metadata.
+ * Returns platform default when no HTTPS profile picture is available.
  */
 export async function resolveUserIconForMetadata(
   entity: string,
   baseUrl: string,
   timeoutMs = 1000
 ): Promise<string> {
+  const defaultCard = `${baseUrl}/opengraph-image`;
   const ownerPubkey = resolveEntityToPubkey(entity);
 
   if (!ownerPubkey) {
-    return `${baseUrl}/opengraph-image`;
+    return defaultCard;
   }
 
   try {
-    // Fetch user metadata with timeout to keep it fast
     const { fetchUserMetadata } = await import(
       "@/lib/nostr/fetch-metadata-server"
     );
@@ -118,16 +123,16 @@ export async function resolveUserIconForMetadata(
       ),
     ]);
 
-    if (ownerMetadata?.picture && ownerMetadata.picture.startsWith("http")) {
-      return ownerMetadata.picture;
+    const picture = ownerMetadata?.picture;
+    if (typeof picture === "string" && picture.startsWith("https://")) {
+      return picture;
     }
   } catch (error) {
-    // Fall back to default logo
     console.warn(
       "[Metadata Icon Resolver] Failed to fetch user metadata:",
       error
     );
   }
 
-  return `${baseUrl}/opengraph-image`;
+  return defaultCard;
 }

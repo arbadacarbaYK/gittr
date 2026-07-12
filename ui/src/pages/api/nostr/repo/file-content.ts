@@ -1,4 +1,5 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { assertRepoReadAccess } from "@/lib/repo-read-access";
 
 import { exec } from "child_process";
 import { existsSync } from "fs";
@@ -206,6 +207,12 @@ export default async function handler(
   }
 
   const repoPath = join(reposDir, ownerPubkey, `${repoName}.git`);
+
+  // Private repos: only owner/contributors may read (same ACL as SSH).
+  const access = await assertRepoReadAccess(req, ownerPubkey, repoName);
+  if (!access.ok) {
+    return res.status(access.status).json({ error: access.error });
+  }
 
   try {
     // Check if repository exists

@@ -946,7 +946,7 @@ export function CodeViewer({
                   value={snippetDescription}
                   onChange={(e) => setSnippetDescription(e.target.value)}
                   placeholder="What does this code do?"
-                  className="w-full bg-[#0a0d11] border border-[#383B42] rounded p-2 text-sm"
+                  className="w-full bg-[#0a0d11] border border-[#383B42] text-zinc-100 placeholder:text-zinc-500 rounded p-2 text-sm"
                   rows={3}
                 />
               </div>

@@ -11,6 +11,7 @@ import { SimplePool } from "nostr-tools";
 
 const KIND_SSH_KEY = 52;
 const KIND_REPOSITORY_ANNOUNCEMENT = 30617;
+const KIND_HTTP_AUTH = 24242; // generic signed challenge from getBridgeAuthHeaders
 const AUTH_EVENT_MAX_AGE_SECONDS = 10 * 60;
 
 /**
@@ -50,10 +51,14 @@ export async function verifyNostrAuth(req: NextApiRequest): Promise<{
         return { authorized: false, error: "Invalid auth event signature" };
       }
 
-      if (parsedEvent.kind !== KIND_REPOSITORY_ANNOUNCEMENT) {
+      if (
+        parsedEvent.kind !== KIND_REPOSITORY_ANNOUNCEMENT &&
+        parsedEvent.kind !== KIND_HTTP_AUTH
+      ) {
         return {
           authorized: false,
-          error: "Auth event must be a repository announcement (kind 30617)",
+          error:
+            "Auth event must be a repository announcement (kind 30617) or signed auth challenge (kind 24242)",
         };
       }
 

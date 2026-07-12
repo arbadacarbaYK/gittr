@@ -2,6 +2,7 @@
  * Push local repository to Nostr
  * Gathers all repo data and publishes complete repository event
  */
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import {
   type StoredRepo,
   loadRepoDeletedPaths,
@@ -35,6 +36,11 @@ import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
 } from "./signer";
+
+function resolveWssRelayForGitHost(domain: string): string {
+  const host = domain.trim().toLowerCase().replace(/\/+$/, "");
+  return host.startsWith("wss://") ? host.replace(/\/+$/, "") : `wss://${host}`;
+}
 
 /** GitHub `/api/import` uses `tag_name` + `body`; NIP-34 events use `tag` + `description`. */
 function normalizeOneReleaseForNip34(r: unknown): {
@@ -912,7 +918,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         try {
-          const response = await fetch(url, { signal: controller.signal });
+          const response = await fetchBridgeRead(url, { signal: controller.signal });
           clearTimeout(timeoutId);
           return response;
         } catch (error: any) {
@@ -1590,7 +1596,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         ) {
           const domain = cloneUrl.replace(/^https?:\/\//, "").split("/")[0];
           if (domain) {
-            const potentialRelayUrl = `wss://${domain}`;
+            const potentialRelayUrl = resolveWssRelayForGitHost(domain);
             if (
               defaultRelays.some((r) => {
                 const normalized = normalizeRelayWssUrl(r);
@@ -1603,6 +1609,11 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
               relayUrlsFromCloneUrls.add(potentialRelayUrl);
               console.log(
                 `🔗 [Push Repo] Found matching relay for clone URL: ${cloneUrl} -> ${potentialRelayUrl}`
+              );
+            } else if (domain.toLowerCase() === "git.gittr.space") {
+              relayUrlsFromCloneUrls.add(potentialRelayUrl);
+              console.log(
+                `🔗 [Push Repo] Mapped git.gittr.space clone to operator relay: ${potentialRelayUrl}`
               );
             } else {
               console.log(
@@ -1731,7 +1742,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           )}&repo=${encodeURIComponent(
             actualRepositoryName
           )}&branch=${encodeURIComponent(branch)}&limit=100`;
-          const commitsResponse = await fetch(commitsUrl);
+          const commitsResponse = await fetchBridgeRead(commitsUrl);
           if (commitsResponse.ok) {
             const commitsData = await commitsResponse.json();
             if (
@@ -2251,8 +2262,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
               "⚠️ Bridge push still running; continuing with second signature using latest available refs"
             );
             try {
-              const refsResponse = await fetch(
-                `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
+              const refsResponse = await fetchBridgeRead(`/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
                   pubkey
                 )}&repo=${encodeURIComponent(actualRepositoryName)}`
               );
@@ -2352,8 +2362,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           } else {
             // Fallback: try to get existing refs
             try {
-              const refsResponse = await fetch(
-                `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
+              const refsResponse = await fetchBridgeRead(`/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
                   pubkey
                 )}&repo=${encodeURIComponent(actualRepositoryName)}`
               );
@@ -2449,8 +2458,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         try {
           // Wait a moment for bridge to process the push
           await new Promise((resolve) => setTimeout(resolve, 3000));
-          const retryRefsResponse = await fetch(
-            `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
+          const retryRefsResponse = await fetchBridgeRead(`/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
               pubkey
             )}&repo=${encodeURIComponent(actualRepositoryName)}`
           );

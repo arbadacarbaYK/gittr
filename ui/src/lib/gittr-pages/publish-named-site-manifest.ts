@@ -1,3 +1,4 @@
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import {
   isStrictJsonUtf8Document,
   manifestUploadContentType,
@@ -345,7 +346,7 @@ async function fetchFileFromBridge(
     path: normalizeFilePath(path),
     branch,
   });
-  const res = await fetch(`/api/nostr/repo/file-content?${qs.toString()}`);
+  const res = await fetchBridgeRead(`/api/nostr/repo/file-content?${qs.toString()}`);
   if (!res.ok) return null;
   try {
     const data = (await res.json()) as GitFileContentJson;

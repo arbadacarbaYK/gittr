@@ -72,7 +72,9 @@ journalctl -u git-nostr-bridge -f
 
 ## HTTP API
 
-Bridge serves git smart HTTP (default **:8080**) — nginx on `git.yourdomain` proxies to it. See [nginx.gittr.conf.example](../nginx.gittr.conf.example).
+Bridge serves an optional HTTP listener (default **:8080**) for **`POST /api/event`** — nginx on `git.yourdomain` proxies to it for fast event injection. See [nginx.gittr.conf.example](../nginx.gittr.conf.example).
+
+**HTTPS smart git** (`git clone https://git.yourdomain/...`) uses `git-http-backend` via fcgiwrap. Private repos are gated by nginx `auth_request` to the Next.js endpoint `/api/git/http-auth`, which mirrors SSH ACL (owner + `RepositoryPermission`). Authorized users can pass `X-Nostr-Auth-Event` (same header as bridge API pushes) via `git -c http.extraHeader=...`.
 
 ## Docker
 

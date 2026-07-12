@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import {
   useCallback,
   useEffect,
@@ -367,8 +368,7 @@ export default function RepoIssueNewPage() {
                 ? (repoData as any).defaultBranch.trim()
                 : "main";
 
-            const commitsRes = await fetch(
-              `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
+            const commitsRes = await fetchBridgeRead(`/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
                 finalOwnerPubkey
               )}&repo=${encodeURIComponent(
                 actualRepositoryName

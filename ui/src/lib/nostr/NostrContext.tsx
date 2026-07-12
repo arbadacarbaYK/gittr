@@ -87,18 +87,22 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const addRelay = useCallback((url: string) => {
     try {
       const relay: any = relayPool.addOrGetRelay(url);
-      // Force an active connect attempt for relays used by remote signer pairing.
-      // Relying on lazy/implicit connect can leave relay status stuck closed and
-      // cause NIP-46 pairing requests to time out.
+      // Only dial when the socket is fully CLOSED (status 3). nostr-relaypool's
+      // connect() replaces the WebSocket whenever readyState !== OPEN, so calling
+      // it while a socket is still CONNECTING kills the in-flight connection.
+      // Repeated addRelay calls (one per NIP-46 request) then thrash the socket
+      // forever and the relay never reaches OPEN — requests silently vanish.
       try {
-        relay?.connect?.();
+        if (typeof relay?.status !== "number" || relay.status === 3) {
+          relay?.connect?.();
+          console.log(`[NostrContext] Connecting relay: ${url}`);
+        }
       } catch (connectError) {
         console.warn(
           `[NostrContext] Relay connect() failed for ${url}:`,
           connectError
         );
       }
-      console.log(`[NostrContext] Added relay to pool: ${url}`);
       return relay;
     } catch (error) {
       console.error(`[NostrContext] Failed to add relay ${url}:`, error);
@@ -166,6 +170,9 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   // Initialize remote signer manager
   const remoteSignerRef = useRef<RemoteSignerManager | null>(null);
+  const [remoteSigner, setRemoteSigner] = useState<RemoteSignerManager | null>(
+    null
+  );
   const [remoteSignerInitialized, setRemoteSignerInitialized] = useState(false);
   const [signerReady, setSignerReady] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -207,6 +214,7 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       removeRelay,
       getRelayStatuses: () => relayPool.getRelayStatuses(),
     });
+    setRemoteSigner(remoteSignerRef.current);
 
     setRemoteSignerInitialized(true);
   }, [addRelay, removeRelay]);
@@ -266,15 +274,26 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   const setAuthor = useCallback(
     (author: string) => {
-      const { type, data } = (
-        nip19 as unknown as {
-          decode: (author: string) => { type: string; data: string };
-        }
-      ).decode(author);
-      if (type !== "npub") {
+      const trimmed = (author || "").trim();
+      if (!trimmed) {
+        throw new Error("Missing npub — sign in did not return a public key.");
+      }
+      let decoded: { type: string; data: string };
+      try {
+        decoded = (
+          nip19 as unknown as {
+            decode: (author: string) => { type: string; data: string };
+          }
+        ).decode(trimmed);
+      } catch (error) {
+        const msg =
+          error instanceof Error ? error.message : "Invalid npub encoding";
+        throw new Error(`Could not read npub: ${msg}`);
+      }
+      if (decoded.type !== "npub") {
         throw new Error("Please use npub");
       }
-      setPubKey(data);
+      setPubKey(decoded.data);
     },
     [setPubKey]
   );
@@ -333,7 +352,7 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         pubkey,
         signOut,
         getRelayStatuses,
-        remoteSigner: remoteSignerRef.current || undefined,
+        remoteSigner: remoteSigner ?? undefined,
         signerReady,
         resolveSigner,
       }}

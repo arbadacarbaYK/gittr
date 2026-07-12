@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -161,8 +162,7 @@ export default function CommitsPage({
           rec?.name ||
           repo;
         if (ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk) && repoName) {
-          const res = await fetch(
-            `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
+          const res = await fetchBridgeRead(`/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
               ownerPk
             )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
               branch

@@ -313,7 +313,7 @@ Notes:
 ### "Network is unreachable" (port 22)
 - Verify SSH port 22 is accessible: `ssh -v git-nostr@git.gittr.space`
 - Check if your network/firewall blocks port 22
-- Try HTTPS clone instead: `git clone https://git.gittr.space/<owner-identifier>/<repo-name>.git`
+- Try HTTPS clone instead: `git clone https://git.gittr.space/<owner-identifier>/<repo-name>.git` (public repos only without auth; private repos need SSH or Nostr auth headers — see [NIPS_AND_EVENT_KINDS.md](NIPS_AND_EVENT_KINDS.md))
 
 ## Security Notes
 

@@ -23,10 +23,19 @@ const regexMap: { [key: string]: LoginType } = {
 export function checkType(str: string): LoginType {
   let type = LoginType.default;
   Object.keys(regexMap).forEach((regex) => {
-    console.log(regex);
     if (new RegExp(regex).test(str)) {
       type = regexMap[regex] || LoginType.default;
     }
   });
   return type;
+}
+
+export function isRemoteSignerUri(str: string): boolean {
+  const t = str.trim();
+  return t.startsWith("bunker://") || t.startsWith("nostrconnect://");
+}
+
+/** Collapse accidental newlines/spaces from mobile paste. */
+export function normalizePastedRemoteToken(raw: string): string {
+  return raw.trim().replace(/\s+/g, "");
 }
