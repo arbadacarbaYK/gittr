@@ -1,5 +1,6 @@
 import { isPublisherBlocklisted } from "@/lib/moderation/publisher-blocklist";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
+import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
 import { getDefaultRelayUrls } from "@/lib/nostr/relay-env";
 
 import { type Event, SimplePool, nip19 } from "nostr-tools";
@@ -124,8 +125,10 @@ export async function fetchSitemapRepoPathsFromNostr(): Promise<
     const pathToModified = new Map<string, number>();
 
     for (const ev of nip34ByKey.values()) {
+      if (isPublisherBlocklisted(ev.pubkey)) continue;
       if (deletedIds.has(ev.id)) continue;
       if (isDeletedNip34(ev, deletedAddresses)) continue;
+      if (!isPublicReadFromEvent(ev)) continue;
       const d = getTag(ev, "d");
       if (!d) continue;
       try {
@@ -142,6 +145,7 @@ export async function fetchSitemapRepoPathsFromNostr(): Promise<
     for (const ev of kind51ByKey.values()) {
       if (isPublisherBlocklisted(ev.pubkey)) continue;
       if (deletedIds.has(ev.id)) continue;
+      if (!isPublicReadFromEvent(ev)) continue;
       const name = parseKind51RepoName(ev.content);
       if (!name) continue;
       try {

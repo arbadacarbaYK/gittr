@@ -22,7 +22,7 @@ The sitemap **exists in code everywhere** (`ui/src/app/sitemap.ts`). It is **not
 When something requests `/sitemap.xml`, Next.js runs `sitemap()` which:
 
 1. Adds static URLs: `/`, `/explore`, `/help`, `/pages`
-2. **Queries Nostr relays** (`NEXT_PUBLIC_NOSTR_RELAYS`) for repository announcements (kinds **51** and **30617**), applies deletions and publisher blocklist → `npub…/repo` URLs
+2. **Queries Nostr relays** (`NEXT_PUBLIC_NOSTR_RELAYS`) for repository announcements (kinds **51** and **30617**), applies deletions, publisher blocklist, and **skips private repos** (`public-read: false` on kind 30617) → `npub…/repo` URLs
 3. Fetches **gittr Pages** manifest from `NEXT_PUBLIC_GITTR_PAGES_URL` (default `https://pages.gittr.space`) → published site URLs
 4. Optionally merges lines from **`nostr-pushed-repos.txt`** (gitignored)
 
@@ -51,8 +51,10 @@ SITEMAP_SKIP_NOSTR=1 SITEMAP_SKIP_GITTR_PAGES=1 yarn build
 
 ```bash
 cp nostr-pushed-repos.example.txt nostr-pushed-repos.txt
-# Add lines: npub1…/my-repo
+# Add lines: npub1…/my-repo  (public repos only — private repos must not be listed)
 ```
+
+**Private repositories:** Omitted from `/sitemap.xml`, home “recent repos”, and platform leaderboard when the Nostr announcement has `public-read: false` (or the bridge DB marks `PublicRead = 0`). Repo pages emit `noindex` for private repos. The optional `nostr-pushed-repos.txt` file is manual — do not list private paths there. Server script `scripts/scan-gittr-http-pushed-repos.sh` skips private rows when the bridge SQLite DB is present.
 
 Paths checked: repo root `nostr-pushed-repos.txt` or `ui/nostr-pushed-repos.txt`. Deploy script copies root file to the server when present.
 

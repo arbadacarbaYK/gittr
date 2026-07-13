@@ -92,6 +92,22 @@ async function loadRepoVisibility(
   }
 }
 
+/** SEO + metadata: bridge DB wins when a row exists; otherwise use Nostr tag hint. */
+export async function isRepoPubliclyIndexable(
+  ownerHex: string,
+  repoName: string,
+  nostrPublicRead = true
+): Promise<boolean> {
+  const visibility = await loadRepoVisibility(
+    ownerHex,
+    normalizeRepoName(repoName)
+  );
+  if (visibility?.rowKnown) {
+    return visibility.publicRead;
+  }
+  return nostrPublicRead !== false;
+}
+
 async function loadCallerPermission(
   ownerHex: string,
   repoName: string,

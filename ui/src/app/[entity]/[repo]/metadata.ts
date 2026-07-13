@@ -1,4 +1,5 @@
 import { buildRepoFallbackDescription } from "@/lib/seo/site-metadata";
+import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
 import {
   resolveRepoIconForMetadata,
   resolveUserIconForMetadata,
@@ -13,14 +14,14 @@ import { type Metadata } from "next";
 import { nip19 } from "nostr-tools";
 
 /**
- * Fast server-side function to fetch repository description from Nostr
- * Uses timeout to prevent blocking metadata generation
+ * Fast server-side fetch of repo announcement fields from Nostr (description + public-read).
  */
-async function fetchRepoDescription(
+async function fetchRepoAnnouncementMeta(
   entity: string,
   repoName: string,
   timeoutMs = 2000
-): Promise<string | null> {
+): Promise<{ description: string | null; nostrPublicRead: boolean }> {
+  const fallback = { description: null as string | null, nostrPublicRead: true };
   try {
     // Resolve entity to pubkey
     let ownerPubkey: string | null = null;
@@ -37,7 +38,7 @@ async function fetchRepoDescription(
       }
     }
 
-    if (!ownerPubkey) return null;
+    if (!ownerPubkey) return fallback;
 
     // Query Nostr directly for repository event (kind 30617 or 51)
     // Use Promise.race with timeout to prevent blocking
@@ -61,7 +62,7 @@ async function fetchRepoDescription(
 
         pool = new RelayPool(DEFAULT_RELAYS);
 
-        return new Promise<string | null>((resolve) => {
+        return new Promise<{ description: string | null; nostrPublicRead: boolean }>((resolve) => {
           let resolved = false;
           const timeout = setTimeout(() => {
             if (!resolved) {
@@ -71,7 +72,7 @@ async function fetchRepoDescription(
               } catch (closeError) {
                 // Ignore errors during cleanup
               }
-              resolve(null);
+              resolve(fallback);
             }
           }, timeoutMs);
 
@@ -97,7 +98,6 @@ async function fetchRepoDescription(
                 }
 
                 try {
-                  // Parse NIP-34 event
                   const content = JSON.parse(event.content || "{}");
                   const description = content.description || null;
 
@@ -107,9 +107,12 @@ async function fetchRepoDescription(
                   );
                   const tagDescription = descTag?.[1] || null;
 
-                  resolve(description || tagDescription);
+                  resolve({
+                    description: description || tagDescription,
+                    nostrPublicRead: isPublicReadFromEvent(event),
+                  });
                 } catch {
-                  resolve(null);
+                  resolve(fallback);
                 }
               },
               undefined,
@@ -123,7 +126,7 @@ async function fetchRepoDescription(
                   } catch (closeError) {
                     // Ignore errors during cleanup
                   }
-                  resolve(null);
+                  resolve(fallback);
                 }
               }
             );
@@ -137,7 +140,7 @@ async function fetchRepoDescription(
               } catch (closeError) {
                 // Ignore errors during cleanup
               }
-              resolve(null);
+              resolve(fallback);
             }
           }
         });
@@ -150,18 +153,18 @@ async function fetchRepoDescription(
         }
         // Timeout or other error - return null to use fallback
         console.warn("[Metadata] Failed to fetch repo description:", error);
-        return null;
+        return fallback;
       }
     })();
 
-    const timeoutPromise = new Promise<null>((resolve) =>
-      setTimeout(() => resolve(null), timeoutMs)
+    const timeoutPromise = new Promise<typeof fallback>((resolve) =>
+      setTimeout(() => resolve(fallback), timeoutMs)
     );
 
     return await Promise.race([queryPromise, timeoutPromise]);
   } catch (error) {
     console.warn("[Metadata] Error fetching repo description:", error);
-    return null;
+    return fallback;
   }
 }
 
@@ -267,7 +270,7 @@ export async function generateMetadata({
 
     // Fetch repo description (with timeout to keep it fast) - make it non-blocking
     // Start the fetch but don't wait for it - use a fast fallback
-    const repoDescriptionPromise = fetchRepoDescription(
+    const repoDescriptionPromise = fetchRepoAnnouncementMeta(
       resolvedParams.entity,
       decodedRepo,
       1500
@@ -306,14 +309,35 @@ export async function generateMetadata({
       }
     })();
 
-    const [repoDescription, resolvedIconUrl] = await Promise.race([
+    const [repoMeta, resolvedIconUrl] = await Promise.race([
       Promise.all([repoDescriptionPromise, iconUrlPromise]),
-      new Promise<[string | null, string]>((resolve) =>
-        setTimeout(() => resolve([null, defaultCard]), 2000)
+      new Promise<[{ description: string | null; nostrPublicRead: boolean }, string]>(
+        (resolve) =>
+          setTimeout(
+            () => resolve([{ description: null, nostrPublicRead: true }, defaultCard]),
+            2000
+          )
       ),
-    ]).catch(() => [null, defaultCard] as [string | null, string]);
+    ]).catch(
+      () =>
+        [{ description: null, nostrPublicRead: true }, defaultCard] as [
+          { description: string | null; nostrPublicRead: boolean },
+          string,
+        ]
+    );
 
+    const repoDescription = repoMeta.description;
     const iconUrl = normalizeSocialImageUrl(resolvedIconUrl || defaultCard, baseUrl);
+
+    let indexable = true;
+    if (ownerPubkey) {
+      const { isRepoPubliclyIndexable } = await import("@/lib/repo-read-access");
+      indexable = await isRepoPubliclyIndexable(
+        ownerPubkey,
+        decodedRepo,
+        repoMeta.nostrPublicRead
+      );
+    }
 
     // Build description text - use repo description if available, otherwise generic
     const description = repoDescription
@@ -326,11 +350,15 @@ export async function generateMetadata({
       title,
       description: description.substring(0, 50),
       iconUrl,
+      indexable,
     });
 
     return {
       title,
       description,
+      robots: indexable
+        ? { index: true, follow: true }
+        : { index: false, follow: false },
       keywords: [
         "git",
         "nostr",

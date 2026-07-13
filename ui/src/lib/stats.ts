@@ -19,6 +19,7 @@ import {
   KIND_STATUS_APPLIED,
   KIND_STATUS_CLOSED,
 } from "./nostr/events";
+import { isPublicReadFromEvent } from "./nostr/repo-public-read";
 import { nip19 } from "nostr-tools";
 
 import {
@@ -1027,6 +1028,7 @@ export function countRepoActivitiesFromNostr(
 
   return new Promise((resolve) => {
     const repoMap = new Map<string, RepoStats>();
+    const privateRepoIds = new Set<string>();
     // REMOVED since filter - count ALL activities from all time, not just last 90 days
     // This ensures we capture all historical activity, not just recent
 
@@ -1082,6 +1084,12 @@ export function countRepoActivitiesFromNostr(
           const repoName = dTag?.[1];
           if (repoName && event.pubkey && typeof repoName === "string") {
             const repoId = `${event.pubkey}/${repoName}`;
+            if (!isPublicReadFromEvent(event)) {
+              privateRepoIds.add(repoId);
+              repoMap.delete(repoId);
+              return;
+            }
+            privateRepoIds.delete(repoId);
             // Only create repo entry if it doesn't exist, don't count announcement as activity
             if (!repoMap.has(repoId)) {
               repoMap.set(repoId, {
@@ -1106,6 +1114,7 @@ export function countRepoActivitiesFromNostr(
           const repoName = dTag?.[1];
           if (repoName && event.pubkey && typeof repoName === "string") {
             const repoId = `${event.pubkey}/${repoName}`;
+            if (privateRepoIds.has(repoId)) return;
             const existing = repoMap.get(repoId) || {
               repoId,
               repoName: repoName,
@@ -1138,6 +1147,7 @@ export function countRepoActivitiesFromNostr(
             if (match && match[1] && match[2]) {
               const [, ownerPubkey, repoName] = match;
               const repoId = `${ownerPubkey}/${repoName}`;
+              if (privateRepoIds.has(repoId)) return;
               const existing = repoMap.get(repoId) || {
                 repoId,
                 repoName: repoName,
@@ -1174,6 +1184,7 @@ export function countRepoActivitiesFromNostr(
               if (match && match[1] && match[2]) {
                 const [, ownerPubkey, repoName] = match;
                 const repoId = `${ownerPubkey}/${repoName}`;
+                if (privateRepoIds.has(repoId)) return;
                 const existing = repoMap.get(repoId) || {
                   repoId,
                   repoName: repoName,
@@ -1207,6 +1218,7 @@ export function countRepoActivitiesFromNostr(
             if (match && match[1] && match[2]) {
               const [, ownerPubkey, repoName] = match;
               const repoId = `${ownerPubkey}/${repoName}`;
+              if (privateRepoIds.has(repoId)) return;
               const existing = repoMap.get(repoId) || {
                 repoId,
                 repoName: repoName,
@@ -1243,6 +1255,7 @@ export function countRepoActivitiesFromNostr(
               if (match && match[1] && match[2]) {
                 const [, ownerPubkey, repoName] = match;
                 const repoId = `${ownerPubkey}/${repoName}`;
+                if (privateRepoIds.has(repoId)) return;
                 const existing = repoMap.get(repoId) || {
                   repoId,
                   repoName: repoName,
@@ -1273,6 +1286,9 @@ export function countRepoActivitiesFromNostr(
           resolved = true;
           setTimeout(() => {
             unsub();
+            for (const repoId of privateRepoIds) {
+              repoMap.delete(repoId);
+            }
             console.log(
               `✅ [Nostr Repo Stats] Counted activities for ${repoMap.size} repos from Nostr`
             );
@@ -1303,6 +1319,9 @@ export function countRepoActivitiesFromNostr(
           totalActivities,
           "total activities"
         );
+        for (const repoId of privateRepoIds) {
+          repoMap.delete(repoId);
+        }
         resolve(repoMap);
       }
     }, 7000);
@@ -1639,6 +1658,7 @@ export function getLiveRecentReposFromNostr(
 ): Promise<PlatformRecentRepo[]> {
   const activeRelays = relays.filter(Boolean);
   const byKey = new Map<string, PlatformRecentRepo>();
+  const privateRepoIds = new Set<string>();
 
   return new Promise((resolve) => {
     let resolved = false;
@@ -1703,6 +1723,13 @@ export function getLiveRecentReposFromNostr(
           );
           const repoName = dTag?.[1];
           if (typeof repoName !== "string" || !repoName) return;
+          const repoKey = `${ownerHex}/${repoName}`;
+          if (!isPublicReadFromEvent(event)) {
+            privateRepoIds.add(repoKey);
+            byKey.delete(repoKey);
+            return;
+          }
+          privateRepoIds.delete(repoKey);
           let description: string | undefined;
           try {
             const content = JSON.parse(event.content || "{}");
@@ -1717,6 +1744,8 @@ export function getLiveRecentReposFromNostr(
           );
           const repoName = dTag?.[1];
           if (typeof repoName === "string" && repoName) {
+            const repoKey = `${ownerHex}/${repoName}`;
+            if (privateRepoIds.has(repoKey)) return;
             noteRepo(ownerHex, repoName, ts);
           }
         }

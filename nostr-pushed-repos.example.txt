@@ -1,3 +1,4 @@
-# Copy to nostr-pushed-repos.txt (gitignored). One public URL path per line:
+# Copy to nostr-pushed-repos.txt (gitignored). One **public** URL path per line:
 #   npub1.../repo-slug
+# Do not add private repositories — they are excluded automatically from the Nostr sitemap query.
 # Used by ui/src/app/sitemap.ts when present next to the ui/ app or repo root.
