@@ -1,4 +1,6 @@
 import { buildRepoFallbackDescription } from "@/lib/seo/site-metadata";
+import { fetchRepoAnnouncementMeta } from "@/lib/seo/fetch-repo-announcement-meta";
+import { isRepoPubliclyIndexable } from "@/lib/repo-read-access";
 import {
   resolveRepoIconForMetadata,
   resolveUserIconForMetadata,
@@ -18,156 +20,6 @@ import RepoLayoutClient from "./layout-client";
 // Force dynamic rendering to ensure fresh metadata for social media crawlers
 // Social media platforms cache aggressively on their end, so we ensure our content is always fresh
 export const dynamic = "force-dynamic";
-
-async function fetchRepoDescription(
-  entity: string,
-  repoName: string,
-  timeoutMs = 800
-): Promise<string | null> {
-  try {
-    // Resolve entity to pubkey
-    let ownerPubkey: string | null = null;
-    if (/^[0-9a-f]{64}$/i.test(entity)) {
-      ownerPubkey = entity.toLowerCase();
-    } else if (entity.startsWith("npub")) {
-      try {
-        const { nip19 } = await import("nostr-tools");
-        const decoded = nip19.decode(entity);
-        if (decoded.type === "npub") {
-          ownerPubkey = (decoded.data as string).toLowerCase();
-        }
-      } catch {
-        // Invalid npub
-      }
-    }
-
-    if (!ownerPubkey) return null;
-
-    // Query Nostr directly for repository event (kind 30617 or 51)
-    // Use Promise.race with timeout to prevent blocking
-    const queryPromise = (async () => {
-      let pool: any = null;
-      try {
-        // Use dynamic import to avoid SSR issues
-        const { RelayPool } = await import("nostr-relaypool");
-        const { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } = await import(
-          "@/lib/nostr/events"
-        );
-
-        const DEFAULT_RELAYS = [
-          "wss://relay.damus.io",
-          "wss://relay.noderunners.network",
-          "wss://nos.lol",
-          "wss://relay.ngit.dev",
-          "wss://gitnostr.com",
-          "wss://relay.azzamo.net",
-        ];
-
-        pool = new RelayPool(DEFAULT_RELAYS);
-
-        return new Promise<string | null>((resolve) => {
-          let resolved = false;
-          const timeout = setTimeout(() => {
-            if (!resolved) {
-              resolved = true;
-              try {
-                pool?.close();
-              } catch (closeError) {
-                // Ignore errors during cleanup
-              }
-              resolve(null);
-            }
-          }, timeoutMs);
-
-          try {
-            pool.subscribe(
-              [
-                {
-                  kinds: [KIND_REPOSITORY, KIND_REPOSITORY_NIP34],
-                  authors: [ownerPubkey],
-                  "#d": [repoName], // Query for specific repo
-                  limit: 1,
-                },
-              ],
-              DEFAULT_RELAYS,
-              (event: any) => {
-                if (resolved) return;
-                resolved = true;
-                clearTimeout(timeout);
-                try {
-                  pool?.close();
-                } catch (closeError) {
-                  // Ignore errors during cleanup
-                }
-
-                try {
-                  // Parse NIP-34 event
-                  const content = JSON.parse(event.content || "{}");
-                  const description = content.description || null;
-
-                  // Also check description tag (NIP-34 standard)
-                  const descTag = event.tags.find(
-                    (t: string[]) => t[0] === "description"
-                  );
-                  const tagDescription = descTag?.[1] || null;
-
-                  resolve(description || tagDescription);
-                } catch {
-                  resolve(null);
-                }
-              },
-              undefined,
-              () => {
-                // EOSE - no more events
-                if (!resolved) {
-                  resolved = true;
-                  clearTimeout(timeout);
-                  try {
-                    pool?.close();
-                  } catch (closeError) {
-                    // Ignore errors during cleanup
-                  }
-                  resolve(null);
-                }
-              }
-            );
-          } catch (subscribeError) {
-            // If subscribe() throws, ensure pool is closed and promise resolves
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeout);
-              try {
-                pool?.close();
-              } catch (closeError) {
-                // Ignore errors during cleanup
-              }
-              resolve(null);
-            }
-          }
-        });
-      } catch (error) {
-        // Ensure pool is closed even if error occurs before subscribe
-        try {
-          pool?.close();
-        } catch (closeError) {
-          // Ignore errors during cleanup
-        }
-        // Timeout or other error - return null to use fallback
-        console.warn("[Metadata] Failed to fetch repo description:", error);
-        return null;
-      }
-    })();
-
-    const timeoutPromise = new Promise<null>((resolve) =>
-      setTimeout(() => resolve(null), timeoutMs)
-    );
-
-    return await Promise.race([queryPromise, timeoutPromise]);
-  } catch (error) {
-    console.warn("[Metadata] Error fetching repo description:", error);
-    return null;
-  }
-}
 
 export async function generateMetadata({
   params,
@@ -271,7 +123,7 @@ export async function generateMetadata({
 
     // Fetch repo description (with timeout to keep it fast) - make it non-blocking
     // Start the fetch but don't wait for it - use a fast fallback
-    const repoDescriptionPromise = fetchRepoDescription(
+    const repoMetaPromise = fetchRepoAnnouncementMeta(
       resolvedParams.entity,
       decodedRepo,
       1500
@@ -343,16 +195,35 @@ export async function generateMetadata({
     })();
 
     // Wait for both with a timeout - if they take too long, use fallbacks
-    const [repoDescription, resolvedIconUrl] = await Promise.race([
-      Promise.all([repoDescriptionPromise, iconUrlPromise]),
-      new Promise<[string | null, string]>((resolve) =>
-        setTimeout(() => resolve([null, `${baseUrl}/opengraph-image`]), 2000)
+    const [repoMeta, resolvedIconUrl] = await Promise.race([
+      Promise.all([repoMetaPromise, iconUrlPromise]),
+      new Promise<[{ description: string | null; nostrPublicRead: boolean }, string]>(
+        (resolve) =>
+          setTimeout(
+            () => resolve([{ description: null, nostrPublicRead: true }, `${baseUrl}/opengraph-image`]),
+            2000
+          )
       ),
     ]).catch(
-      () => [null, `${baseUrl}/opengraph-image`] as [string | null, string]
+      () =>
+        [{ description: null, nostrPublicRead: true }, `${baseUrl}/opengraph-image`] as [
+          { description: string | null; nostrPublicRead: boolean },
+          string,
+        ]
     );
 
     iconUrl = normalizeSocialImageUrl(resolvedIconUrl || iconUrl, baseUrl);
+
+    const repoDescription = repoMeta.description;
+
+    let indexable = true;
+    if (ownerPubkey) {
+      indexable = await isRepoPubliclyIndexable(
+        ownerPubkey,
+        decodedRepo,
+        repoMeta.nostrPublicRead
+      );
+    }
 
     // Build description text - use repo description if available, otherwise generic
     const description = repoDescription
@@ -361,15 +232,21 @@ export async function generateMetadata({
         : repoDescription
       : buildRepoFallbackDescription(resolvedParams.entity, decodedRepo);
 
-    console.log("[Metadata] Final metadata:", {
-      title,
-      description: description.substring(0, 50),
-      iconUrl,
-    });
+    if (devMeta) {
+      console.log("[Metadata] Final metadata:", {
+        title,
+        description: description.substring(0, 50),
+        iconUrl,
+        indexable,
+      });
+    }
 
     return {
       title,
       description,
+      robots: indexable
+        ? { index: true, follow: true }
+        : { index: false, follow: false },
       keywords: [
         "nostr git",
         "NIP-34",
