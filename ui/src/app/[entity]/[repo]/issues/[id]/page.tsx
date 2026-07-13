@@ -205,7 +205,10 @@ export default function IssueDetailPage({
           id: issueData.id || id,
           number: (issueData as { number?: string }).number,
           title: issueData.title || "",
-          description: issueData.description || issueData.body || "",
+          description:
+            issueData.description ||
+            (issueData as { body?: string }).body ||
+            "",
           author: issueData.author || "unknown",
           createdAt: issueData.createdAt || Date.now(),
           status: issueData.status || "open",
