@@ -196,6 +196,20 @@ export default function IssueDetailPage({
     repoContributorPubkeys
   );
 
+  const normalizeAssignees = useCallback((raw: unknown): string[] => {
+    const list = Array.isArray(raw) ? raw : [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const v of list) {
+      const pubkey = String(v || "").trim().toLowerCase();
+      if (!/^[a-f0-9]{64}$/.test(pubkey)) continue;
+      if (seen.has(pubkey)) continue;
+      seen.add(pubkey);
+      out.push(pubkey);
+    }
+    return out;
+  }, []);
+
   // Load issue data
   useEffect(() => {
     try {
@@ -217,7 +231,7 @@ export default function IssueDetailPage({
           createdAt: issueData.createdAt || Date.now(),
           status: issueData.status || "open",
           labels: issueData.labels || [],
-          assignees: issueData.assignees || [],
+          assignees: normalizeAssignees(issueData.assignees),
           linkedPR: issueData.linkedPR,
           bountyAmount: issueData.bountyAmount,
           bountyWithdrawId: issueData.bountyWithdrawId,
@@ -299,7 +313,7 @@ export default function IssueDetailPage({
     } finally {
       setLoading(false);
     }
-  }, [entity, repo, id, currentUserPubkey]);
+  }, [entity, repo, id, currentUserPubkey, normalizeAssignees]);
 
   // Load available labels from repo topics
   useEffect(() => {
@@ -749,7 +763,10 @@ export default function IssueDetailPage({
           return;
         }
 
-        if (issue.assignees.includes(pubkey)) {
+        pubkey = pubkey.toLowerCase();
+
+        const current = normalizeAssignees(issue.assignees);
+        if (current.includes(pubkey)) {
           return; // Already assigned
         }
 
@@ -763,7 +780,7 @@ export default function IssueDetailPage({
             : i
         );
         localStorage.setItem(key, JSON.stringify(updated));
-        setIssue({ ...issue, assignees: [...issue.assignees, pubkey] });
+        setIssue({ ...issue, assignees: [...current, pubkey] });
         setAssigneeSearch("");
       } catch (error) {
         alert(
@@ -773,7 +790,7 @@ export default function IssueDetailPage({
         );
       }
     },
-    [issue, isOwner, entity, repo, id]
+    [issue, isOwner, entity, repo, id, normalizeAssignees]
   );
 
   const handleRemoveAssignee = useCallback(
@@ -781,6 +798,7 @@ export default function IssueDetailPage({
       if (!issue || !isOwner) return;
 
       try {
+        const normalized = String(pubkey || "").trim().toLowerCase();
         const key = getRepoStorageKey("gittr_issues", entity, repo);
         const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
         const rowIdx = findIssueRowIndexByRouteParam(issues, id);
@@ -789,20 +807,24 @@ export default function IssueDetailPage({
           j === rowIdx
             ? {
                 ...i,
-                assignees: (i.assignees || []).filter((a) => a !== pubkey),
+                assignees: normalizeAssignees(i.assignees).filter(
+                  (a) => a !== normalized
+                ),
               }
             : i
         );
         localStorage.setItem(key, JSON.stringify(updated));
         setIssue({
           ...issue,
-          assignees: issue.assignees.filter((a) => a !== pubkey),
+          assignees: normalizeAssignees(issue.assignees).filter(
+            (a) => a !== normalized
+          ),
         });
       } catch (error) {
         console.error("Failed to remove assignee:", error);
       }
     },
-    [issue, isOwner, entity, repo, id]
+    [issue, isOwner, entity, repo, id, normalizeAssignees]
   );
 
   const handleToggleLabel = useCallback(
@@ -1956,7 +1978,9 @@ export default function IssueDetailPage({
                           size="sm"
                           className="w-full"
                           onClick={() => handleAddAssignee(currentUserPubkey)}
-                          disabled={issue.assignees.includes(currentUserPubkey)}
+                          disabled={normalizeAssignees(issue.assignees).includes(
+                            currentUserPubkey.toLowerCase()
+                          )}
                         >
                           <User className="mr-2 h-4 w-4" />
                           Assign yourself
@@ -1972,7 +1996,10 @@ export default function IssueDetailPage({
                             <div className="space-y-1 max-h-40 overflow-y-auto">
                               {repoContributors
                                 .filter(
-                                  (c) => !issue.assignees.includes(c.pubkey)
+                                  (c) =>
+                                    !normalizeAssignees(issue.assignees).includes(
+                                      c.pubkey.toLowerCase()
+                                    )
                                 )
                                 .map((contributor) => {
                                   const meta =
