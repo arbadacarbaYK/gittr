@@ -270,6 +270,21 @@ export default function ClientLayout({
     return () => window.removeEventListener("load", registerServiceWorker);
   }, []);
 
+  // After deploy, stale lazy-loaded chunks 404 — one hard reload fixes it.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onChunkError = (event: ErrorEvent) => {
+      const msg = event.message || "";
+      if (!/loading chunk|chunkloaderror/i.test(msg)) return;
+      const key = "gittr_chunk_reload";
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+      window.location.reload();
+    };
+    window.addEventListener("error", onChunkError);
+    return () => window.removeEventListener("error", onChunkError);
+  }, []);
+
   return (
     <NostrProvider>
       <div className="dark min-h-screen theme-bg-primary theme-text-primary">

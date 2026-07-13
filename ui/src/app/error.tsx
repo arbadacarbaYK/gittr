@@ -17,17 +17,30 @@ export default function Error({
     console.error("Application error:", error);
   }, [error]);
 
+  const isChunkError =
+    /loading chunk|chunkloaderror|failed to fetch dynamically imported module/i.test(
+      error.message || ""
+    );
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-8">
       <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
       <h2 className="text-2xl font-bold mb-2">Something went wrong!</h2>
       <p className="text-gray-400 mb-4 text-center max-w-md">
-        {error.message || "An unexpected error occurred."}
+        {isChunkError
+          ? "The app was updated while this tab was open. Reload to get the latest version."
+          : error.message || "An unexpected error occurred."}
       </p>
       <div className="flex gap-4">
-        <Button onClick={reset} variant="default">
-          Try again
-        </Button>
+        {isChunkError ? (
+          <Button onClick={() => window.location.reload()} variant="default">
+            Reload page
+          </Button>
+        ) : (
+          <Button onClick={reset} variant="default">
+            Try again
+          </Button>
+        )}
         <Button onClick={() => (window.location.href = "/")} variant="outline">
           Go home
         </Button>

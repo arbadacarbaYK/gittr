@@ -1,13 +1,18 @@
-const CACHE_NAME = "gittr-pwa-v1";
+const CACHE_NAME = "gittr-pwa-v3";
+
 const CORE_ASSETS = [
-  "/",
   "/offline.html",
   "/site.webmanifest",
   "/favicon.ico",
   "/android-chrome-192x192.png",
   "/android-chrome-512x512.png",
-  "/apple-touch-icon.png"
+  "/apple-touch-icon.png",
 ];
+
+/** Next.js hashed chunks must never be cache-first — stale chunks 404 after deploy. */
+function isNextAsset(pathname) {
+  return pathname.startsWith("/_next/");
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -37,7 +42,13 @@ self.addEventListener("fetch", (event) => {
 
   const requestUrl = new URL(request.url);
   const isSameOrigin = requestUrl.origin === self.location.origin;
-  const isApiRequest = isSameOrigin && requestUrl.pathname.startsWith("/api/");
+  if (!isSameOrigin) return;
+
+  if (isNextAsset(requestUrl.pathname)) {
+    return;
+  }
+
+  const isApiRequest = requestUrl.pathname.startsWith("/api/");
   const isNavigation = request.mode === "navigate";
 
   if (isNavigation) {
@@ -51,20 +62,17 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (isSameOrigin) {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached;
-        return fetch(request).then((response) => {
-          if (!response || response.status !== 200) return response;
-          const responseClone = response.clone();
-          caches
-            .open(CACHE_NAME)
-            .then((cache) => cache.put(request, responseClone));
-          return response;
-        });
-      })
-    );
-  }
+  event.respondWith(
+    caches.match(request).then((cached) => {
+      if (cached) return cached;
+      return fetch(request).then((response) => {
+        if (!response || response.status !== 200) return response;
+        const responseClone = response.clone();
+        caches
+          .open(CACHE_NAME)
+          .then((cache) => cache.put(request, responseClone));
+        return response;
+      });
+    })
+  );
 });
-
