@@ -79,14 +79,22 @@ export function hopsFromOracleBody(
 
 export function wotLabel(
   hops: number | null,
-  opts?: { loggedOut?: boolean; self?: boolean }
+  opts?: { loggedOut?: boolean }
 ): string {
   if (opts?.loggedOut) return "—";
-  if (opts?.self) return "";
   if (hops === null) return "Outside your network";
   if (hops === 0) return "";
   if (hops === 1) return "In your network";
   return `${hops} hops from you`;
+}
+
+/** Shown on your own profile — how people who follow you see you. */
+export function wotSelfPreviewLabel(): string {
+  return "Followers see: In their network";
+}
+
+export function wotSelfPreviewTitle(): string {
+  return "People who follow you see your profile one hop away (In their network). Others see distance from their own follow graph.";
 }
 
 export function wotBadgeClassName(hops: number | null): string {

@@ -7,7 +7,8 @@ gittr shows a **viewer-relative** trust badge next to Nostr identities when you 
 | **In your network** | 1 hop (you follow them, or extension/oracle agrees) |
 | **N hops from you** | Connected through the follow graph within max hops |
 | **Outside your network** | No path found within the search limit |
-| *(hidden)* | Logged out, or viewing your own profile |
+| **Followers see: In their network** | Your own profile — preview of how people who follow you see you |
+| *(hidden)* | Logged out |
 
 ## Data sources (priority)
 

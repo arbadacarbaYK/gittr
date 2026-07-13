@@ -2,7 +2,12 @@
 
 import { cn } from "@/lib/utils";
 import { useWoTDistance } from "@/lib/nostr/useWoTDistance";
-import { wotBadgeClassName, wotLabel } from "@/lib/nostr/wot";
+import {
+  wotBadgeClassName,
+  wotLabel,
+  wotSelfPreviewLabel,
+  wotSelfPreviewTitle,
+} from "@/lib/nostr/wot";
 
 import { Network } from "lucide-react";
 
@@ -23,7 +28,30 @@ export function TrustBadge({
 }: TrustBadgeProps) {
   const wot = useWoTDistance(targetPubkey);
 
-  if (wot.status === "idle" || wot.status === "self") return null;
+  if (wot.status === "idle") return null;
+
+  if (wot.status === "self") {
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-medium leading-none",
+          size === "md" ? "text-xs" : "text-[10px]",
+          wotBadgeClassName(1),
+          className
+        )}
+        title={wotSelfPreviewTitle()}
+      >
+        <Network
+          className={cn(
+            "shrink-0 opacity-80",
+            size === "md" ? "h-3.5 w-3.5" : "h-3 w-3"
+          )}
+          aria-hidden
+        />
+        <span>{wotSelfPreviewLabel()}</span>
+      </span>
+    );
+  }
 
   if (wot.status === "logged_out") {
     if (!showWhenLoggedOut) return null;
