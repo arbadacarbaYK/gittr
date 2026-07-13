@@ -68,6 +68,7 @@ import {
 import { findIssueRowIndexByRouteParam } from "@/lib/utils/issue-pr-status";
 import { extractMentionedPubkeys } from "@/lib/utils/mention-detection";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import { fetchGithubIssueComments } from "@/lib/utils/sync-github-issue-comments";
 
 import {
   CheckCircle2,
@@ -116,6 +117,8 @@ interface Comment {
   edited?: boolean;
   editedAt?: number;
   nostrEventId?: string; // Nostr event ID if published
+  url?: string;
+  source?: "nostr" | "github" | "local";
 }
 
 export default function IssueDetailPage({
@@ -454,6 +457,61 @@ export default function IssueDetailPage({
       unsub();
     };
   }, [subscribe, defaultRelays, issue?.id, issueEventId, entity, repo]);
+
+  // Sync GitHub comments into the same localStorage timeline so issue detail shows the
+  // full GitHub conversation after "Refetch from GitHub".
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!issue?.id) return;
+
+    try {
+      const repos = loadStoredRepos();
+      const repoData: StoredRepo | undefined =
+        findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+      if (!repoData) return;
+
+      void (async () => {
+        const ghComments = await fetchGithubIssueComments({
+          repo: repoData,
+          issueId: issue.id,
+          issueNumber: issue.number,
+        });
+        if (!ghComments || ghComments.length === 0) return;
+
+        const commentsKey = `gittr_issue_comments_${entity}_${repo}_${issue.id}`;
+        const stored = JSON.parse(
+          localStorage.getItem(commentsKey) || "[]"
+        ) as Comment[];
+
+        const existingIds = new Set(
+          (Array.isArray(stored) ? stored : []).map((c) => String(c?.id || ""))
+        );
+
+        const merged: Comment[] = [
+          ...(Array.isArray(stored) ? stored : []),
+          ...ghComments
+            .filter((c) => !existingIds.has(c.id))
+            .map((c) => ({
+              id: c.id,
+              author: c.author,
+              content: c.content,
+              createdAt: c.createdAt,
+              edited: c.edited,
+              editedAt: c.editedAt,
+              url: c.url,
+              source: "github" as const,
+            })),
+        ];
+
+        merged.sort((a, b) => a.createdAt - b.createdAt);
+
+        localStorage.setItem(commentsKey, JSON.stringify(merged));
+        setComments(merged);
+      })();
+    } catch {
+      /* ignore */
+    }
+  }, [entity, repo, issue?.id, issue?.number]);
 
   const handleToggleStatus = useCallback(async () => {
     if (!issue || !isOwner) return;
