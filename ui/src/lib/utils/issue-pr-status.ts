@@ -356,6 +356,15 @@ export function loadMergedIssueComments(
   return out;
 }
 
+/** Comment count for list rows (merged GitHub + Nostr localStorage buckets). */
+export function countMergedIssueComments(
+  entity: string,
+  repo: string,
+  issue: { id?: string; linkedIds?: string[] }
+): number {
+  return loadMergedIssueComments(entity, repo, issue).length;
+}
+
 /**
  * After refetch from GitHub, merge imported PR rows with existing localStorage:
  * - Keeps Nostr-only rows (id not `pr-<n>`, e.g. hex event ids) so relay PRs are not erased.

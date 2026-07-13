@@ -34,7 +34,7 @@ import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
-import { normalizeIssueListStatus } from "@/lib/utils/issue-pr-status";
+import { normalizeIssueListStatus, countMergedIssueComments } from "@/lib/utils/issue-pr-status";
 import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
@@ -150,7 +150,10 @@ export default function RepoIssuesPage({
           taskCompleted: null,
           linkedPR: 0,
           assignees: it.assignees || [],
-          comments: 0,
+          comments: countMergedIssueComments(resolvedParams.entity, resolvedParams.repo, {
+            id: idStr,
+            linkedIds: it.linkedIds,
+          }),
           createdAt,
           updatedAt,
           needsNostrRepublish: Boolean(repoUnpushed && isNostrHex),

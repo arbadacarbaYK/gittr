@@ -65,6 +65,7 @@ import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
+import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import {
   findIssueRowIndexByRouteParam,
   loadMergedIssueComments,
@@ -125,6 +126,14 @@ interface Comment {
   source?: "nostr" | "github" | "local";
 }
 
+function isGithubCommentAuthor(author: string): boolean {
+  return !/^[0-9a-f]{64}$/i.test(String(author || "").trim());
+}
+
+function githubProfileUrl(login: string): string {
+  return `https://github.com/${encodeURIComponent(login)}`;
+}
+
 export default function IssueDetailPage({
   params,
 }: {
@@ -137,6 +146,7 @@ export default function IssueDetailPage({
     publish,
     defaultRelays,
     remoteSigner,
+    subscribe,
   } = useNostrContext();
   const { name: userName } = useSession();
   const [issue, setIssue] = useState<Issue | null>(null);
@@ -207,110 +217,138 @@ export default function IssueDetailPage({
     [issue?.assignees]
   );
 
-  // Load issue data
-  useEffect(() => {
+  const loadIssueFromStorage = useCallback(() => {
     try {
-      const key = getRepoStorageKey("gittr_issues", entity, repo);
       const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
       const rowIdx = findIssueRowIndexByRouteParam(issues, id);
       const issueData = rowIdx >= 0 ? issues[rowIdx] : undefined;
 
-      if (issueData) {
-        setIssue({
-          id: issueData.id || id,
-          number: (issueData as { number?: string }).number,
-          title: issueData.title || "",
-          description:
-            issueData.description ||
-            (issueData as { body?: string }).body ||
-            "",
-          author: issueData.author || "unknown",
-          createdAt: issueData.createdAt || Date.now(),
-          status: issueData.status || "open",
-          labels: issueData.labels || [],
-          assignees: normalizeAssignees(issueData.assignees),
-          linkedPR: issueData.linkedPR,
-          bountyAmount: issueData.bountyAmount,
-          bountyWithdrawId: issueData.bountyWithdrawId,
-          bountyLnurl: issueData.bountyLnurl,
-          bountyWithdrawUrl: issueData.bountyWithdrawUrl,
-          bountyStatus: issueData.bountyStatus,
-        });
-
-        // Check if current user is owner and get repo owner pubkey for display
-        const repos = loadStoredRepos();
-        const repoData = findRepoByEntityAndName<StoredRepo>(
-          repos,
-          entity,
-          repo
-        );
-        const ownerPk = getRepoOwnerPubkey(repoData, entity);
-        const userPk = currentUserPubkey?.toLowerCase();
-        setIsOwner(
-          Boolean(userPk && ownerPk && ownerPk.toLowerCase() === userPk)
-        );
-
-        // Get owner pubkey for display name
-        if (
-          repoData?.ownerPubkey &&
-          /^[a-f0-9]{64}$/i.test(repoData.ownerPubkey)
-        ) {
-          setRepoOwnerPubkey(repoData.ownerPubkey);
-        } else if (repoData?.contributors && repoData.contributors.length > 0) {
-          const owner =
-            repoData.contributors.find(
-              (c): c is StoredContributor => c.weight === 100 || !c.weight
-            ) || repoData.contributors[0];
-          if (owner?.pubkey && /^[a-f0-9]{64}$/i.test(owner.pubkey)) {
-            setRepoOwnerPubkey(owner.pubkey);
-          }
-        }
-
-        // Load repo contributors for assignee dropdown
-        if (
-          repoData &&
-          repoData.contributors &&
-          Array.isArray(repoData.contributors)
-        ) {
-          // Filter to only contributors with valid 64-char pubkeys
-          const validContributors = repoData.contributors
-            .filter(
-              (c): c is StoredContributor & { pubkey: string } =>
-                c.pubkey !== undefined &&
-                typeof c.pubkey === "string" &&
-                c.pubkey.length === 64 &&
-                /^[0-9a-f]{64}$/i.test(c.pubkey)
-            )
-            .map((c) => ({
-              pubkey: c.pubkey.toLowerCase(),
-              name: c.name,
-              picture: c.picture,
-              weight: c.weight || 0,
-              role: c.role,
-            }));
-          setRepoContributors(validContributors);
-        } else {
-          setRepoContributors([]);
-        }
-
-        // Get issue event ID for NIP-10 threading (if available)
-        if (issueData.id && /^[0-9a-f]{64}$/i.test(issueData.id)) {
-          setIssueEventId(issueData.id);
-        }
-
-        // Load comments from localStorage (merged GitHub + Nostr buckets)
-        const storedComments = loadMergedIssueComments(entity, repo, {
-          id: issueData.id,
-          linkedIds: (issueData as { linkedIds?: string[] }).linkedIds,
-        }) as Comment[];
-        setComments(storedComments);
+      if (!issueData) {
+        setIssue(null);
+        setComments([]);
+        return;
       }
+
+      setIssue({
+        id: issueData.id || id,
+        number: (issueData as { number?: string }).number,
+        title: issueData.title || "",
+        description:
+          issueData.description ||
+          (issueData as { body?: string }).body ||
+          "",
+        author: issueData.author || "unknown",
+        createdAt: issueData.createdAt || Date.now(),
+        status: issueData.status || "open",
+        labels: issueData.labels || [],
+        assignees: normalizeAssignees(issueData.assignees),
+        linkedPR: issueData.linkedPR,
+        bountyAmount: issueData.bountyAmount,
+        bountyWithdrawId: issueData.bountyWithdrawId,
+        bountyLnurl: issueData.bountyLnurl,
+        bountyWithdrawUrl: issueData.bountyWithdrawUrl,
+        bountyStatus: issueData.bountyStatus,
+      });
+
+      const repos = loadStoredRepos();
+      const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+      const ownerPk = getRepoOwnerPubkey(repoData, entity);
+      const userPk = currentUserPubkey?.toLowerCase();
+      setIsOwner(Boolean(userPk && ownerPk && ownerPk.toLowerCase() === userPk));
+
+      if (
+        repoData?.ownerPubkey &&
+        /^[a-f0-9]{64}$/i.test(repoData.ownerPubkey)
+      ) {
+        setRepoOwnerPubkey(repoData.ownerPubkey);
+      } else if (repoData?.contributors && repoData.contributors.length > 0) {
+        const owner =
+          repoData.contributors.find(
+            (c): c is StoredContributor => c.weight === 100 || !c.weight
+          ) || repoData.contributors[0];
+        if (owner?.pubkey && /^[a-f0-9]{64}$/i.test(owner.pubkey)) {
+          setRepoOwnerPubkey(owner.pubkey);
+        }
+      }
+
+      if (
+        repoData &&
+        repoData.contributors &&
+        Array.isArray(repoData.contributors)
+      ) {
+        const validContributors = repoData.contributors
+          .filter(
+            (c): c is StoredContributor & { pubkey: string } =>
+              c.pubkey !== undefined &&
+              typeof c.pubkey === "string" &&
+              c.pubkey.length === 64 &&
+              /^[0-9a-f]{64}$/i.test(c.pubkey)
+          )
+          .map((c) => ({
+            pubkey: c.pubkey.toLowerCase(),
+            name: c.name,
+            picture: c.picture,
+            weight: c.weight || 0,
+            role: c.role,
+          }));
+        setRepoContributors(validContributors);
+      } else {
+        setRepoContributors([]);
+      }
+
+      if (issueData.id && /^[0-9a-f]{64}$/i.test(issueData.id)) {
+        setIssueEventId(issueData.id);
+      } else {
+        setIssueEventId(null);
+      }
+
+      const storedComments = loadMergedIssueComments(entity, repo, {
+        id: issueData.id,
+        linkedIds: (issueData as { linkedIds?: string[] }).linkedIds,
+      }) as Comment[];
+      setComments(storedComments);
     } catch (error) {
       console.error("Failed to load issue:", error);
     } finally {
       setLoading(false);
     }
   }, [entity, repo, id, currentUserPubkey, normalizeAssignees]);
+
+  // Load issue from localStorage; refresh when sync completes elsewhere.
+  useEffect(() => {
+    setLoading(true);
+    loadIssueFromStorage();
+  }, [loadIssueFromStorage]);
+
+  useEffect(() => {
+    const onIssueUpdated = () => loadIssueFromStorage();
+    window.addEventListener("gittr:issue-updated", onIssueUpdated);
+    return () =>
+      window.removeEventListener("gittr:issue-updated", onIssueUpdated);
+  }, [loadIssueFromStorage]);
+
+  // Sync issues (status, list) from GitHub upstream when opening issue detail.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+
+    void (async () => {
+      const repos = loadStoredRepos();
+      const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+      const { synced } = await hydrateRepoFromGithub(entity, repo, {
+        repoRecord: repoData,
+        subscribe,
+        defaultRelays,
+      });
+      if (!cancelled && synced) {
+        loadIssueFromStorage();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [entity, repo, subscribe, defaultRelays, loadIssueFromStorage]);
 
   // Load available labels from repo topics
   useEffect(() => {
@@ -337,7 +375,6 @@ export default function IssueDetailPage({
   }, [entity, repo]);
 
   // Subscribe to comments from Nostr relays
-  const { subscribe } = useNostrContext();
   useEffect(() => {
     if (!subscribe || !defaultRelays || !issue?.id || !issueEventId) return;
 
@@ -528,6 +565,7 @@ export default function IssueDetailPage({
         const commentsKey = `gittr_issue_comments_${entity}_${repo}_${issue.id}`;
         localStorage.setItem(commentsKey, JSON.stringify(merged));
         setComments(merged);
+        window.dispatchEvent(new Event("gittr:issue-updated"));
       })();
     } catch (err) {
       console.warn("[gittr] GitHub comment sync failed:", err);
@@ -1737,6 +1775,17 @@ export default function IssueDetailPage({
                     allComments: Comment[]
                   ) => {
                     const authorMeta = commentAuthorMetadata[comment.author];
+                    const isGithub =
+                      comment.source === "github" ||
+                      isGithubCommentAuthor(comment.author);
+                    const authorLabel = isGithub
+                      ? `@${comment.author}`
+                      : authorMeta?.display_name ||
+                        authorMeta?.name ||
+                        comment.author.slice(0, 8) + "...";
+                    const authorHref = isGithub
+                      ? comment.url || githubProfileUrl(comment.author)
+                      : `/${comment.author}`;
                     const indent = comment.depth * 32; // 32px per level
 
                     return (
@@ -1753,21 +1802,28 @@ export default function IssueDetailPage({
                                 <AvatarImage src={authorMeta.picture} />
                               ) : null}
                               <AvatarFallback className="bg-gray-700 text-white text-xs">
-                                {authorMeta?.display_name ||
-                                  authorMeta?.name ||
-                                  comment.author.slice(0, 2).toUpperCase()}
+                                {isGithub
+                                  ? comment.author.slice(0, 2).toUpperCase()
+                                  : authorMeta?.display_name ||
+                                    authorMeta?.name ||
+                                    comment.author.slice(0, 2).toUpperCase()}
                               </AvatarFallback>
                             </Avatar>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-2">
-                                <Link
-                                  href={`/${comment.author}`}
+                              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                <a
+                                  href={authorHref}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
                                   className="font-semibold hover:text-purple-400"
                                 >
-                                  {authorMeta?.display_name ||
-                                    authorMeta?.name ||
-                                    comment.author.slice(0, 8) + "..."}
-                                </Link>
+                                  {authorLabel}
+                                </a>
+                                {isGithub && (
+                                  <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-600">
+                                    GitHub
+                                  </span>
+                                )}
                                 <span className="text-xs text-gray-500">
                                   {formatDateTime24h(comment.createdAt)}
                                 </span>

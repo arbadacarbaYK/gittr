@@ -26,6 +26,7 @@ import {
 import {
   mergeGithubIssuesAfterRefetch,
   normalizeIssueListStatus,
+  countMergedIssueComments,
 } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
@@ -161,7 +162,10 @@ export default function IssuesPage({}) {
             taskCompleted: null,
             linkedPR: 0,
             assignees: issue.assignees || [],
-            comments: 0,
+            comments: countMergedIssueComments(entity, repoName, {
+              id: idStr,
+              linkedIds: issue.linkedIds,
+            }),
             status: issue.status || "open",
             createdAt,
             updatedAt,
@@ -263,7 +267,10 @@ export default function IssuesPage({}) {
               taskCompleted: null,
               linkedPR: 0,
               assignees: issue.assignees || [],
-              comments: 0,
+              comments: countMergedIssueComments(entity, repoName, {
+                id: idStr,
+                linkedIds: issue.linkedIds,
+              }),
               status: issue.status || "open",
               createdAt,
               updatedAt,
@@ -595,7 +602,10 @@ export default function IssuesPage({}) {
                 taskCompleted: null,
                 linkedPR: 0,
                 assignees: i.assignees || [],
-                comments: 0,
+                comments: countMergedIssueComments(e, rn, {
+                  id: idStr,
+                  linkedIds: i.linkedIds,
+                }),
                 status: i.status || "open",
                 createdAt,
                 updatedAt,
