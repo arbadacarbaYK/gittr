@@ -42,6 +42,63 @@ function resolveWssRelayForGitHost(domain: string): string {
   return host.startsWith("wss://") ? host.replace(/\/+$/, "") : `wss://${host}`;
 }
 
+const NGINX_SAFE_PUSH_BYTES = 9 * 1024 * 1024;
+
+function isUpstreamForgeSourceUrl(sourceUrl: string): boolean {
+  return /(?:github|gitlab|codeberg)\.(?:com|org)/i.test(sourceUrl);
+}
+
+function estimatePushPayloadBytes(content: string | undefined): number {
+  return content ? content.length * 1.4 + 200 : 500;
+}
+
+/** Wait for bridge to clone an upstream mirror and return refs with commit SHAs. */
+async function pollBridgeRepoRefs(
+  ownerPubkey: string,
+  repoName: string,
+  branch: string,
+  maxWaitMs: number
+): Promise<Array<{ ref: string; commit: string }>> {
+  const started = Date.now();
+  const delayMs = 1500;
+  while (Date.now() - started < maxWaitMs) {
+    try {
+      const existsRes = await fetch(
+        `/api/nostr/repo/exists?ownerPubkey=${encodeURIComponent(
+          ownerPubkey
+        )}&repo=${encodeURIComponent(repoName)}`
+      );
+      if (existsRes.ok) {
+        const existsData = await existsRes.json();
+        if (existsData.exists === true) {
+          const refsRes = await fetchBridgeRead(
+            `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
+              ownerPubkey
+            )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
+              branch
+            )}`
+          );
+          if (refsRes.ok) {
+            const refsData = await refsRes.json();
+            const refs = refsData.refs || refsData;
+            if (
+              Array.isArray(refs) &&
+              refs.length > 0 &&
+              refs.some((r: { commit?: string }) => r.commit)
+            ) {
+              return refs;
+            }
+          }
+        }
+      }
+    } catch {
+      // retry until maxWaitMs
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return [];
+}
+
 /** GitHub `/api/import` uses `tag_name` + `body`; NIP-34 events use `tag` + `description`. */
 function normalizeOneReleaseForNip34(r: unknown): {
   tag: string;
@@ -575,6 +632,29 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       return !isDeleted;
     });
 
+    const upstreamSourceUrl =
+      normalizeGithubSourceUrl(repo.sourceUrl || "") || repo.sourceUrl || "";
+    const hasLocalFileContent = baseFiles.some(
+      (f: any) => f.content && String(f.content).length > 0
+    );
+    const hasOverrideContent = Object.values(savedOverrides).some(
+      (v) => typeof v === "string" && v.length > 0
+    );
+    const deferToBridgeSourceClone =
+      Boolean(upstreamSourceUrl) &&
+      isUpstreamForgeSourceUrl(upstreamSourceUrl) &&
+      !hasLocalFileContent &&
+      !hasOverrideContent;
+
+    if (deferToBridgeSourceClone) {
+      onProgress?.(
+        "⚡ Upstream mirror — bridge will clone from source (skipping slow per-file upload)"
+      );
+      console.log(
+        `⚡ [Push Repo] Deferring HTTP file push — bridge clones from ${upstreamSourceUrl}`
+      );
+    }
+
     if (deletedPaths.length > 0) {
       const filteredCount = allFiles.length - baseFiles.length;
       if (filteredCount > 0) {
@@ -646,7 +726,10 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     const MAX_TEXT_FILE_SIZE_KB = 10; // Only include content for small text files
 
     const bridgeFilesMap = new Map<string, BridgeFilePayload>();
+    const filesForBridge: any[] = [];
+    const filesNeedingContent: any[] = [];
 
+    if (!deferToBridgeSourceClone) {
     const setBridgeEntry = (
       path: string,
       content: string | undefined,
@@ -872,9 +955,6 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     // We'll try to fetch missing content from the bridge API as a fallback
     // Filter out files without content - these can't be pushed to bridge
     // Directories (no extension, no content) are automatically excluded
-    const filesForBridge: any[] = [];
-    const filesNeedingContent: any[] = [];
-
     for (const file of Array.from(bridgeFilesMap.values())) {
       // Skip directories (they don't have content and shouldn't be in the push)
       if (!file.path || file.path.endsWith("/")) {
@@ -900,14 +980,24 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       }
     }
 
-    // Try to fetch missing content from bridge API (for imported repos where files are already on bridge)
-    // CRITICAL: Add timeout to prevent hanging on large repos
-    if (filesNeedingContent.length > 0) {
+    // Try to fetch missing content (for imported repos / tree-only localStorage index).
+    // CRITICAL: Add timeout to prevent hanging on large repos.
+    // Upstream mirrors with no local edits skip this entirely — bridge clones from source.
+    if (filesNeedingContent.length > 0 && !deferToBridgeSourceClone) {
+      const fetchSourceLabel = upstreamSourceUrl
+        ? `upstream (${upstreamSourceUrl})`
+        : "bridge API";
       onProgress?.(
-        `🔍 Fetching ${filesNeedingContent.length} file(s) from bridge API (missing from localStorage)...`
+        `🔍 Fetching ${filesNeedingContent.length} file(s) from ${fetchSourceLabel} (missing from localStorage)...`
+      );
+      const totalFetchTimeoutMs = Math.min(
+        600000,
+        45000 + filesNeedingContent.length * 2000
       );
       onProgress?.(
-        `⏱️ This may take a moment for large repos - timeout after 2 minutes`
+        `⏱️ Large repos may take a few minutes (timeout after ${Math.round(
+          totalFetchTimeoutMs / 60000
+        )} min)`
       );
 
       // Helper function to add timeout to fetch
@@ -930,10 +1020,10 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         }
       };
 
-      // Limit concurrent fetches to avoid overwhelming the API
-      const BATCH_SIZE = 5;
+      // Prefer upstream source when known — bridge 404 is useless before first clone.
+      const BATCH_SIZE = upstreamSourceUrl ? 15 : 8;
       const FILE_FETCH_TIMEOUT = 30000; // 30 seconds per file
-      const TOTAL_FETCH_TIMEOUT = 120000; // 2 minutes total for all files
+      const TOTAL_FETCH_TIMEOUT = totalFetchTimeoutMs;
       const fetchStartTime = Date.now();
 
       for (let i = 0; i < filesNeedingContent.length; i += BATCH_SIZE) {
@@ -951,55 +1041,80 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
         const batch = filesNeedingContent.slice(i, i + BATCH_SIZE);
         await Promise.all(
           batch.map(async (file) => {
-            try {
-              const response = await fetchWithTimeout(
-                `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
-                  pubkey
-                )}&repo=${encodeURIComponent(
-                  actualRepositoryName
+            const branch = repo.defaultBranch || "main";
+
+            // Fast path: server-side upstream fetch (one hop, no bridge 404).
+            if (upstreamSourceUrl) {
+              try {
+                const sourceApiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+                  upstreamSourceUrl
                 )}&path=${encodeURIComponent(
                   file.path
-                )}&branch=${encodeURIComponent(repo.defaultBranch || "main")}`,
-                FILE_FETCH_TIMEOUT
-              );
-
-              if (response.ok) {
-                const data = await response.json();
-                if (data.content && data.content.length > 0) {
-                  // For binary files, ensure content is base64 (bridge API returns base64 for binary)
-                  if (file.isBinary) {
-                    // Bridge API should already return base64 for binary files
-                    file.content = data.content;
-                  } else {
-                    file.content = data.content;
+                )}&branch=${encodeURIComponent(branch)}`;
+                const sourceApiResponse = await fetchWithTimeout(
+                  sourceApiUrl,
+                  FILE_FETCH_TIMEOUT
+                );
+                if (sourceApiResponse.ok) {
+                  const sourceApiData = await sourceApiResponse.json();
+                  if (sourceApiData.content && sourceApiData.content.length > 0) {
+                    file.content = sourceApiData.content;
+                    filesForBridge.push(file);
+                    return;
                   }
-                  filesForBridge.push(file);
-                  console.log(
-                    `✅ [Push Repo] Fetched content for ${file.path} from bridge API`
-                  );
-                  return;
                 }
-              } else if (response.status === 404) {
-                // File doesn't exist on bridge yet - will be excluded
-                console.warn(
-                  `⚠️ [Push Repo] File ${file.path} not found on bridge (404)`
-                );
+              } catch (err: any) {
+                if (!err?.message?.includes("timeout")) {
+                  console.warn(
+                    `⚠️ [Push Repo] Upstream fetch failed for ${file.path}:`,
+                    err?.message || err
+                  );
+                }
               }
-            } catch (err: any) {
-              if (err.message && err.message.includes("timeout")) {
-                console.warn(
-                  `⏱️ [Push Repo] Timeout fetching ${file.path} from bridge API (${FILE_FETCH_TIMEOUT}ms)`
+            } else {
+              try {
+                const response = await fetchWithTimeout(
+                  `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+                    pubkey
+                  )}&repo=${encodeURIComponent(
+                    actualRepositoryName
+                  )}&path=${encodeURIComponent(
+                    file.path
+                  )}&branch=${encodeURIComponent(branch)}`,
+                  FILE_FETCH_TIMEOUT
                 );
-              } else {
-                console.warn(
-                  `⚠️ [Push Repo] Failed to fetch ${file.path} from bridge API:`,
-                  err
-                );
+
+                if (response.ok) {
+                  const data = await response.json();
+                  if (data.content && data.content.length > 0) {
+                    file.content = data.content;
+                    filesForBridge.push(file);
+                    console.log(
+                      `✅ [Push Repo] Fetched content for ${file.path} from bridge API`
+                    );
+                    return;
+                  }
+                } else if (response.status === 404) {
+                  console.warn(
+                    `⚠️ [Push Repo] File ${file.path} not found on bridge (404)`
+                  );
+                }
+              } catch (err: any) {
+                if (err.message && err.message.includes("timeout")) {
+                  console.warn(
+                    `⏱️ [Push Repo] Timeout fetching ${file.path} from bridge API (${FILE_FETCH_TIMEOUT}ms)`
+                  );
+                } else {
+                  console.warn(
+                    `⚠️ [Push Repo] Failed to fetch ${file.path} from bridge API:`,
+                    err
+                  );
+                }
               }
             }
 
-            // If we couldn't fetch from bridge, try fetching from source (GitHub/GitLab/Codeberg)
-            if (repo.sourceUrl) {
+            // Legacy fallback: per-file GitHub/GitLab/Codeberg fetch
+            if (repo.sourceUrl && !upstreamSourceUrl) {
               try {
                 console.log(
                   `🔍 [Push Repo] Trying to fetch ${file.path} from source (${repo.sourceUrl})...`
@@ -1171,7 +1286,12 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     // CRITICAL: If we have no files at all (bridgeFilesMap is empty), try to fetch file list from GitHub first
     // ALSO: If bridgeFilesMap has files but none have content, we need to fetch file list and content
     // This handles the case where localStorage has file metadata but no content
-    if (bridgeFilesMap.size === 0 && repo.sourceUrl && baseFiles.length === 0) {
+    if (
+      !deferToBridgeSourceClone &&
+      bridgeFilesMap.size === 0 &&
+      repo.sourceUrl &&
+      baseFiles.length === 0
+    ) {
       console.error(
         `❌ [Push Repo] CRITICAL: No files found in localStorage! Attempting to fetch file list from GitHub...`,
         {
@@ -1323,6 +1443,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
     // we MUST fetch from GitHub NOW (not wait for refetch)
     // This handles the case where localStorage has file metadata but no content
     if (
+      !deferToBridgeSourceClone &&
       filesForBridge.length === 0 &&
       (bridgeFilesMap.size > 0 || baseFiles.length > 0) &&
       repo.sourceUrl
@@ -1454,7 +1575,24 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       }
     }
 
-    if (filesForBridge.length === 0 && bridgeFilesMap.size > 0) {
+    } else {
+      onProgress?.(
+        `📦 ${baseFiles.length} file(s) on upstream — bridge clones from ${upstreamSourceUrl} (no per-file upload)`
+      );
+      console.log(`📊 [Push Repo] Deferred upstream clone:`, {
+        totalFilesInRepo: baseFiles.length,
+        repoSourceUrl: upstreamSourceUrl,
+        actualRepositoryName,
+        pubkey: pubkey ? `${pubkey.substring(0, 8)}...` : "none",
+        entity,
+      });
+    }
+
+    if (deferToBridgeSourceClone) {
+      onProgress?.(
+        `✅ Skipping per-file upload — bridge will clone all files from upstream`
+      );
+    } else if (filesForBridge.length === 0 && bridgeFilesMap.size > 0) {
       console.error(
         `❌ [Push Repo] CRITICAL: No files with content to push to bridge!`,
         {
@@ -1474,7 +1612,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       onProgress?.(
         `✅ ${filesForBridge.length} file(s) ready for bridge push (from localStorage)`
       );
-    } else if (bridgeFilesMap.size === 0) {
+    } else if (bridgeFilesMap.size === 0 && baseFiles.length === 0) {
       console.error(`❌ [Push Repo] CRITICAL: No files found in repo at all!`, {
         baseFilesLength: baseFiles.length,
         repoFilesLength: repo.files?.length || 0,
@@ -2177,9 +2315,66 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
       // So we don't block the second signature on bridge push completion
       let refs: Array<{ ref: string; commit: string }> = [];
 
-      if (filesForBridge && filesForBridge.length > 0) {
+      if (deferToBridgeSourceClone) {
+        onProgress?.("⏳ Waiting for bridge to clone from upstream...");
+        const clonedRefs = await pollBridgeRepoRefs(
+          pubkey,
+          actualRepositoryName,
+          repo.defaultBranch || "main",
+          90000
+        );
+        if (clonedRefs.length > 0) {
+          refs = clonedRefs;
+          const refsWithCommits = refs.filter(
+            (r) => r.commit && r.commit.length > 0
+          ).length;
+          onProgress?.(
+            `✅ Bridge cloned from upstream (${refsWithCommits} refs with commits)`
+          );
+          console.log(
+            `✅ [Push Repo] Skipped HTTP file push — bridge cloned ${refs.length} refs from upstream`
+          );
+        } else {
+          onProgress?.(
+            "⚠️ Bridge clone still in progress — state event will sync when ready"
+          );
+        }
+      } else if (filesForBridge && filesForBridge.length > 0) {
+        const oversizedPaths: string[] = [];
+        const pushableFiles = filesForBridge.filter((file) => {
+          const est = estimatePushPayloadBytes(file.content);
+          if (est > NGINX_SAFE_PUSH_BYTES) {
+            oversizedPaths.push(file.path);
+            return false;
+          }
+          return true;
+        });
+        if (oversizedPaths.length > 0) {
+          onProgress?.(
+            `ℹ️ Skipping ${oversizedPaths.length} oversized file(s) — bridge gets them from source clone`
+          );
+          console.warn(
+            `⚠️ [Push Repo] Skipping ${oversizedPaths.length} file(s) over nginx limit:`,
+            oversizedPaths.slice(0, 8)
+          );
+        }
+
+        if (pushableFiles.length === 0) {
+          onProgress?.(
+            "ℹ️ No files small enough for HTTP push — waiting for bridge source clone..."
+          );
+          const clonedRefs = await pollBridgeRepoRefs(
+            pubkey,
+            actualRepositoryName,
+            repo.defaultBranch || "main",
+            60000
+          );
+          if (clonedRefs.length > 0) {
+            refs = clonedRefs;
+          }
+        } else {
         onProgress?.(
-          `📤 Pushing ${filesForBridge.length} file(s) to bridge...`
+          `📤 Pushing ${pushableFiles.length} file(s) to bridge...`
         );
         onProgress?.(
           `⏱️ This may take several minutes for large repos (timeout: 5 minutes)`
@@ -2199,7 +2394,8 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           repoSlug: actualRepositoryName,
           entity,
           branch: repo.defaultBranch || "main",
-          filesCount: filesForBridge.length,
+          filesCount: pushableFiles.length,
+          skippedOversized: oversizedPaths.length,
           commitDate,
           bridgePath: `{reposDir}/${pubkey}/${actualRepositoryName}.git`,
         });
@@ -2209,7 +2405,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
           repoSlug: actualRepositoryName,
           entity,
           branch: repo.defaultBranch || "main",
-          files: filesForBridge,
+          files: pushableFiles,
           commitDate,
           authEvent: repoEvent,
           pubkey, // Pass user's pubkey for auth
@@ -2307,6 +2503,7 @@ export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
             "⚠️ Bridge push error - proceeding with second signature anyway"
           );
           // Continue anyway - we'll try to get refs, but may fail
+        }
         }
       } else {
         // No files to push - but we still need to create a new commit with --allow-empty

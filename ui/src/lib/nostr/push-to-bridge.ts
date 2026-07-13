@@ -20,6 +20,11 @@ interface PushBridgeParams {
 // Using chunks of 8MB max to stay safely under the limit
 const CHUNK_SIZE = 30; // Number of files per chunk
 const MAX_CHUNK_SIZE_BYTES = 8 * 1024 * 1024; // 8MB per chunk (safe margin below 10MB nginx limit)
+const NGINX_SAFE_SINGLE_FILE_BYTES = 9 * 1024 * 1024;
+
+function estimateChunkPayloadBytes(file: BridgeFilePayload): number {
+  return file.content ? file.content.length * 1.4 + 200 : 500;
+}
 
 function chunkFiles(files: BridgeFilePayload[]): BridgeFilePayload[][] {
   const chunks: BridgeFilePayload[][] = [];
@@ -98,10 +103,28 @@ export async function pushFilesToBridge({
 
   // files can be an empty array [] - that's valid, we'll create an empty commit
 
+  const oversizedPaths: string[] = [];
+  const pushableFiles = files.filter((file) => {
+    const est = estimateChunkPayloadBytes(file);
+    if (est > NGINX_SAFE_SINGLE_FILE_BYTES) {
+      oversizedPaths.push(file.path);
+      return false;
+    }
+    return true;
+  });
+  if (oversizedPaths.length > 0) {
+    console.warn(
+      `⚠️ [Bridge Push] Skipping ${oversizedPaths.length} file(s) over nginx body limit:`,
+      oversizedPaths.slice(0, 5)
+    );
+  }
+
   // CRITICAL: Chunk files to avoid 413 Request Entity Too Large errors
-  const chunks = chunkFiles(files);
+  const chunks = chunkFiles(pushableFiles);
   console.log(
-    `📦 [Bridge Push] Chunking ${files.length} files into ${chunks.length} chunk(s)`
+    `📦 [Bridge Push] Chunking ${pushableFiles.length} files into ${chunks.length} chunk(s)${
+      oversizedPaths.length > 0 ? ` (${oversizedPaths.length} oversized skipped)` : ""
+    }`
   );
 
   if (chunks.length === 0) {
