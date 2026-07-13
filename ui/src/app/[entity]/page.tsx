@@ -3300,6 +3300,12 @@ export default function EntityPage({
                     <span>{nip05}</span>
                   </div>
                 )}
+                {isOwnProfile && isLoggedIn && (
+                  <p className="text-xs text-gray-500 mb-2">
+                    Web of Trust badges appear on other people&apos;s profiles
+                    (not your own). Open someone you follow to try it.
+                  </p>
+                )}
                 {about && (
                   <p className="text-gray-300 mb-3 sm:mb-4 max-w-2xl break-words text-sm sm:text-base">
                     {about}
