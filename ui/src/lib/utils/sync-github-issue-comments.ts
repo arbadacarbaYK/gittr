@@ -1,4 +1,8 @@
 import { type StoredRepo } from "@/lib/repos/storage";
+import {
+  resolveGithubUpstreamForTabs,
+  resolveRepoUpstreamSource,
+} from "@/lib/repos/upstream-precedence";
 
 export type GithubIssueCommentRow = {
   id: string;
@@ -39,21 +43,62 @@ export function githubIssueNumberFromSyntheticId(
   return m?.[1] ? m[1] : null;
 }
 
+/** Resolve GitHub issue number from stored row, synthetic id, or URL segment. */
+export function resolveGithubIssueNumber(opts: {
+  issueId?: string;
+  issueNumber?: string | number;
+  routeIssueId?: string;
+}): string {
+  const fromRow = String(opts.issueNumber ?? "").trim();
+  if (fromRow && /^\d+$/.test(fromRow)) return fromRow;
+
+  const fromSynthetic = githubIssueNumberFromSyntheticId(opts.issueId);
+  if (fromSynthetic) return fromSynthetic;
+
+  const route = decodeURIComponent(String(opts.routeIssueId ?? "").trim());
+  if (/^\d+$/.test(route)) return route;
+
+  return "";
+}
+
 export async function fetchGithubIssueComments(opts: {
   repo: StoredRepo | null | undefined;
   issueId: string | undefined;
   issueNumber: string | undefined;
+  entity?: string;
+  repoSlug?: string;
+  routeIssueId?: string;
 }): Promise<GithubIssueCommentRow[]> {
-  const sourceUrl = (opts.repo as any)?.sourceUrl || (opts.repo as any)?.source;
-  if (!sourceUrl || typeof sourceUrl !== "string") return [];
+  const sourceUrl =
+    resolveRepoUpstreamSource(opts.repo) ||
+    (opts.entity && opts.repoSlug
+      ? resolveGithubUpstreamForTabs(opts.entity, opts.repoSlug, opts.repo)
+      : "");
+
+  if (!sourceUrl) {
+    console.warn("[gittr] GitHub comments: no upstream sourceUrl", {
+      entity: opts.entity,
+      repo: opts.repoSlug,
+    });
+    return [];
+  }
+
   const parsed = parseGithubOwnerRepo(sourceUrl);
   if (!parsed) return [];
 
-  const issueNumber =
-    String(opts.issueNumber || "").trim() ||
-    githubIssueNumberFromSyntheticId(opts.issueId) ||
-    "";
-  if (!issueNumber) return [];
+  const issueNumber = resolveGithubIssueNumber({
+    issueId: opts.issueId,
+    issueNumber: opts.issueNumber,
+    routeIssueId: opts.routeIssueId,
+  });
+  if (!issueNumber) {
+    console.warn("[gittr] GitHub comments: could not resolve issue number", {
+      issueId: opts.issueId,
+      issueNumber: opts.issueNumber,
+      routeIssueId: opts.routeIssueId,
+    });
+    return [];
+  }
 
   const endpoint = `/repos/${parsed.owner}/${parsed.repo}/issues/${encodeURIComponent(
     issueNumber
@@ -61,7 +106,12 @@ export async function fetchGithubIssueComments(opts: {
   const proxyUrl = `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`;
 
   const response = await fetch(proxyUrl);
-  if (!response.ok) return [];
+  if (!response.ok) {
+    console.warn(
+      `[gittr] GitHub comments fetch failed ${response.status} for ${parsed.owner}/${parsed.repo}#${issueNumber}`
+    );
+    return [];
+  }
 
   const list = (await response.json()) as unknown;
   if (!Array.isArray(list)) return [];

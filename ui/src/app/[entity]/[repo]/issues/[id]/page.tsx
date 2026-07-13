@@ -65,7 +65,11 @@ import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
-import { findIssueRowIndexByRouteParam } from "@/lib/utils/issue-pr-status";
+import {
+  findIssueRowIndexByRouteParam,
+  loadMergedIssueComments,
+  normalizeAssigneePubkeys,
+} from "@/lib/utils/issue-pr-status";
 import { extractMentionedPubkeys } from "@/lib/utils/mention-detection";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { fetchGithubIssueComments } from "@/lib/utils/sync-github-issue-comments";
@@ -196,19 +200,12 @@ export default function IssueDetailPage({
     repoContributorPubkeys
   );
 
-  const normalizeAssignees = useCallback((raw: unknown): string[] => {
-    const list = Array.isArray(raw) ? raw : [];
-    const out: string[] = [];
-    const seen = new Set<string>();
-    for (const v of list) {
-      const pubkey = String(v || "").trim().toLowerCase();
-      if (!/^[a-f0-9]{64}$/.test(pubkey)) continue;
-      if (seen.has(pubkey)) continue;
-      seen.add(pubkey);
-      out.push(pubkey);
-    }
-    return out;
-  }, []);
+  const normalizeAssignees = normalizeAssigneePubkeys;
+
+  const displayAssignees = useMemo(
+    () => normalizeAssigneePubkeys(issue?.assignees),
+    [issue?.assignees]
+  );
 
   // Load issue data
   useEffect(() => {
@@ -301,11 +298,11 @@ export default function IssueDetailPage({
           setIssueEventId(issueData.id);
         }
 
-        // Load comments from localStorage
-        const commentsKey = `gittr_issue_comments_${entity}_${repo}_${issueData.id}`;
-        const storedComments = JSON.parse(
-          localStorage.getItem(commentsKey) || "[]"
-        ) as Comment[];
+        // Load comments from localStorage (merged GitHub + Nostr buckets)
+        const storedComments = loadMergedIssueComments(entity, repo, {
+          id: issueData.id,
+          linkedIds: (issueData as { linkedIds?: string[] }).linkedIds,
+        }) as Comment[];
         setComments(storedComments);
       }
     } catch (error) {
@@ -472,8 +469,7 @@ export default function IssueDetailPage({
     };
   }, [subscribe, defaultRelays, issue?.id, issueEventId, entity, repo]);
 
-  // Sync GitHub comments into the same localStorage timeline so issue detail shows the
-  // full GitHub conversation after "Refetch from GitHub".
+  // Auto-fetch GitHub issue comments on page load (no separate refetch step).
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!issue?.id) return;
@@ -482,20 +478,30 @@ export default function IssueDetailPage({
       const repos = loadStoredRepos();
       const repoData: StoredRepo | undefined =
         findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
-      if (!repoData) return;
 
       void (async () => {
         const ghComments = await fetchGithubIssueComments({
           repo: repoData,
+          entity,
+          repoSlug: repo,
           issueId: issue.id,
           issueNumber: issue.number,
+          routeIssueId: id,
         });
         if (!ghComments || ghComments.length === 0) return;
 
-        const commentsKey = `gittr_issue_comments_${entity}_${repo}_${issue.id}`;
-        const stored = JSON.parse(
-          localStorage.getItem(commentsKey) || "[]"
-        ) as Comment[];
+        const linkedIds = (
+          issue as Issue & { linkedIds?: string[] }
+        ).linkedIds;
+        const commentIds = [
+          issue.id,
+          ...(Array.isArray(linkedIds) ? linkedIds : []),
+        ].filter(Boolean);
+
+        const stored = loadMergedIssueComments(entity, repo, {
+          id: issue.id,
+          linkedIds: commentIds.filter((cid) => cid !== issue.id),
+        }) as Comment[];
 
         const existingIds = new Set(
           (Array.isArray(stored) ? stored : []).map((c) => String(c?.id || ""))
@@ -519,13 +525,14 @@ export default function IssueDetailPage({
 
         merged.sort((a, b) => a.createdAt - b.createdAt);
 
+        const commentsKey = `gittr_issue_comments_${entity}_${repo}_${issue.id}`;
         localStorage.setItem(commentsKey, JSON.stringify(merged));
         setComments(merged);
       })();
-    } catch {
-      /* ignore */
+    } catch (err) {
+      console.warn("[gittr] GitHub comment sync failed:", err);
     }
-  }, [entity, repo, issue?.id, issue?.number]);
+  }, [entity, repo, id, issue?.id, issue?.number]);
 
   const handleToggleStatus = useCallback(async () => {
     if (!issue || !isOwner) return;
@@ -2078,9 +2085,9 @@ export default function IssueDetailPage({
                 </DropdownMenu>
               )}
             </div>
-            {issue.assignees.length > 0 ? (
+            {displayAssignees.length > 0 ? (
               <div className="space-y-2">
-                {issue.assignees.map((pubkey) => {
+                {displayAssignees.map((pubkey) => {
                   const meta = assigneeMetadata[pubkey];
                   const displayName =
                     meta?.display_name ||

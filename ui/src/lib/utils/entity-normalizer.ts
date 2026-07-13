@@ -11,6 +11,11 @@
  */
 import { nip19 } from "nostr-tools";
 
+import {
+  dedupeIssueRowsByNumber,
+  migrateIssueCommentBuckets,
+} from "@/lib/utils/issue-pr-status";
+
 /**
  * Normalizes an entity identifier to npub format for localStorage
  *
@@ -156,6 +161,20 @@ export function readRepoIssuesFromLocalStorage(
     return nb - na;
   });
 
+  const deduped = dedupeIssueRowsByNumber(out) as Array<
+    Record<string, unknown>
+  >;
+  for (const row of deduped) {
+    const linked = row.linkedIds;
+    if (
+      Array.isArray(linked) &&
+      linked.length > 0 &&
+      typeof row.id === "string"
+    ) {
+      migrateIssueCommentBuckets(entity, repo, row.id, linked as string[]);
+    }
+  }
+
   const sortForCompare = (list: unknown[]) =>
     [...list].sort((a, b) =>
       issueStableMergeKey(a).localeCompare(issueStableMergeKey(b))
@@ -164,10 +183,10 @@ export function readRepoIssuesFromLocalStorage(
   try {
     const prev = readIssuesArrayRaw(canonicalKey);
     const changed =
-      JSON.stringify(sortForCompare(out)) !==
+      JSON.stringify(sortForCompare(deduped)) !==
       JSON.stringify(sortForCompare(prev));
-    if (changed && out.length >= 0) {
-      localStorage.setItem(canonicalKey, JSON.stringify(out));
+    if (changed && deduped.length >= 0) {
+      localStorage.setItem(canonicalKey, JSON.stringify(deduped));
       for (const k of keys) {
         if (k !== canonicalKey) {
           localStorage.removeItem(k);
@@ -178,7 +197,7 @@ export function readRepoIssuesFromLocalStorage(
     /* quota or private mode */
   }
 
-  return out;
+  return deduped;
 }
 
 /** All localStorage keys that may hold this repo's gittr-only PRs (hex vs npub routes). */

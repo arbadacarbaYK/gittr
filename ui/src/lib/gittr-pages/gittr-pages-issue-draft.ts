@@ -35,7 +35,7 @@ export function buildGittrPagesManifestIssueDraft(
     ],
   };
 
-  const body = `This issue was opened from **gittr** on this same repo (\`${entity}/${repo}\`). It exists only here and on Nostr when you submit it — **gittr issues are not mirrored to any external forge** (there is no automatic GitHub/GitLab issue sync).
+  const body = `This issue was opened from **gittr** on this repo (\`${entity}/${repo}\`). gittr tracks work **here on Nostr** and, when the repo has a GitHub upstream, can **refetch issues and comments from GitHub** into the same timeline — so one issue number may combine relay events and forge data in this UI.
 
 ## If you do not see “Publish Pages manifest” in the sidebar
 
