@@ -433,6 +433,7 @@ export default function ImportPage() {
                             ? new Date(issue.created_at).getTime()
                             : Date.now(),
                           body: issue.body || "",
+                          description: issue.body || "",
                           html_url: issue.html_url || "",
                         })
                       );
@@ -1393,6 +1394,7 @@ export default function ImportPage() {
                   ? new Date(issue.created_at).getTime()
                   : Date.now(),
                 body: issue.body || "",
+                description: issue.body || "",
                 html_url: issue.html_url || "",
               }));
               localStorage.setItem(issuesKey, JSON.stringify(formattedIssues));

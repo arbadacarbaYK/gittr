@@ -18109,6 +18109,7 @@ export default function RepoCodePage() {
                                                     ).getTime()
                                                   : Date.now(),
                                                 body: issue.body || "",
+                                                description: issue.body || "",
                                                 html_url: issue.html_url || "",
                                               })
                                             );

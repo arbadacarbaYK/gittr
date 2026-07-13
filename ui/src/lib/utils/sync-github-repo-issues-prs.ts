@@ -80,6 +80,7 @@ export async function syncGithubIssuesForRepo(
             ? new Date(String(it.updated_at)).getTime()
             : undefined,
           body: String(it.body || ""),
+          description: String(it.body || ""),
           html_url: String(it.html_url || ""),
         };
       });
