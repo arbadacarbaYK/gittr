@@ -33,6 +33,7 @@ import { RepoGittrPagesPanel } from "@/components/ui/repo-gittr-pages-panel";
 import { RepoLinks } from "@/components/ui/repo-links";
 import { RepoZapButton } from "@/components/ui/repo-zap-button";
 import { SSHGitHelp } from "@/components/ui/ssh-git-help";
+import { TrustBadge } from "@/components/ui/trust-badge";
 import { Tooltip } from "@/components/ui/tooltip";
 import { getActivities } from "@/lib/activity-tracking";
 import {
@@ -15358,6 +15359,7 @@ export default function RepoCodePage() {
                           );
                         })()}
                       </a>
+                      <TrustBadge targetPubkey={ownerPubkeyForLink} />
                       <span className="text-gray-400 whitespace-nowrap">
                         forked
                       </span>
@@ -15376,36 +15378,39 @@ export default function RepoCodePage() {
                       </a>
                     </>
                   ) : (
-                    <a
-                      href={
-                        ownerPubkeyForLink &&
-                        /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink)
-                          ? `/${nip19.npubEncode(ownerPubkeyForLink)}`
-                          : `/${resolvedParams.entity}`
-                      }
-                      onClick={(e) => {
-                        e.preventDefault();
-                        window.location.href =
+                    <>
+                      <a
+                        href={
                           ownerPubkeyForLink &&
                           /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink)
                             ? `/${nip19.npubEncode(ownerPubkeyForLink)}`
-                            : `/${resolvedParams.entity}`;
-                      }}
-                      className="text-purple-500 hover:underline font-semibold"
-                    >
-                      {(() => {
-                        if (!mounted) {
-                          return resolvedParams.entity?.startsWith("npub")
-                            ? `${resolvedParams.entity.substring(0, 16)}...`
-                            : resolvedParams.entity || "U";
+                            : `/${resolvedParams.entity}`
                         }
-                        return getEntityDisplayName(
-                          ownerPubkeyForLink,
-                          ownerMetadataRef.current,
-                          resolvedParams.entity
-                        );
-                      })()}
-                    </a>
+                        onClick={(e) => {
+                          e.preventDefault();
+                          window.location.href =
+                            ownerPubkeyForLink &&
+                            /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink)
+                              ? `/${nip19.npubEncode(ownerPubkeyForLink)}`
+                              : `/${resolvedParams.entity}`;
+                        }}
+                        className="text-purple-500 hover:underline font-semibold"
+                      >
+                        {(() => {
+                          if (!mounted) {
+                            return resolvedParams.entity?.startsWith("npub")
+                              ? `${resolvedParams.entity.substring(0, 16)}...`
+                              : resolvedParams.entity || "U";
+                          }
+                          return getEntityDisplayName(
+                            ownerPubkeyForLink,
+                            ownerMetadataRef.current,
+                            resolvedParams.entity
+                          );
+                        })()}
+                      </a>
+                      <TrustBadge targetPubkey={ownerPubkeyForLink} />
+                    </>
                   )}
                   {mounted &&
                     (() => {

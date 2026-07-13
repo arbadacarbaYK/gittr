@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { buttonVariants } from "@/components/ui/button";
+import { TrustBadge } from "@/components/ui/trust-badge";
 import { isPublisherBlocklisted } from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
@@ -880,6 +881,9 @@ export function AppsDirectoryClient() {
                                 {authorMeta.nip05}
                               </p>
                             ) : null}
+                            <div className="mt-1">
+                              <TrustBadge targetPubkey={app.pubkey} />
+                            </div>
                           </div>
                         </div>
                         {app.attributedPubkeys.length > 0 ? (

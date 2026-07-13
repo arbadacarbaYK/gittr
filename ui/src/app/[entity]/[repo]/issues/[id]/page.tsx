@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { NostrUserSearch } from "@/components/ui/nostr-user-search";
 import { Reactions } from "@/components/ui/reactions";
+import { TrustBadge } from "@/components/ui/trust-badge";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
@@ -1539,22 +1540,25 @@ export default function IssueDetailPage({
             <h1 className="text-2xl font-bold">{issue.title}</h1>
             <Badge className="bg-gray-700">#{id}</Badge>
           </div>
-          <div className="text-sm text-gray-400">
-            {issue.status === "open" ? "Opened" : "Closed"}{" "}
-            {formatDateTime24h(issue.createdAt)} by{" "}
-            <Link
-              href={`/${issue.author}`}
-              className="hover:text-purple-400 flex items-center gap-1"
-            >
-              {(() => {
-                const meta = authorMetadata[issue.author];
-                return (
-                  meta?.display_name ||
-                  meta?.name ||
-                  issue.author.slice(0, 8) + "..."
-                );
-              })()}
-            </Link>
+          <div className="text-sm text-gray-400 flex flex-wrap items-center gap-2">
+            <span>
+              {issue.status === "open" ? "Opened" : "Closed"}{" "}
+              {formatDateTime24h(issue.createdAt)} by{" "}
+              <Link
+                href={`/${issue.author}`}
+                className="hover:text-purple-400 inline-flex items-center gap-1"
+              >
+                {(() => {
+                  const meta = authorMetadata[issue.author];
+                  return (
+                    meta?.display_name ||
+                    meta?.name ||
+                    issue.author.slice(0, 8) + "..."
+                  );
+                })()}
+              </Link>
+            </span>
+            <TrustBadge targetPubkey={issue.author} />
           </div>
         </div>
         {isOwner && (

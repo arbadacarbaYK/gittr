@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { TrustBadge } from "@/components/ui/trust-badge";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import {
   formatDate24h,
@@ -593,6 +594,7 @@ export default function BountyHuntPage() {
                           })()}
                         </span>
                       </Link>
+                      <TrustBadge targetPubkey={issue.author} />
                     </div>
                   </div>
                 </div>

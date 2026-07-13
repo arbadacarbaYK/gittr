@@ -51,6 +51,10 @@ declare global {
         encrypt(pubkey: string, plaintext: string): Promise<string>;
         decrypt(pubkey: string, ciphertext: string): Promise<string>;
       };
+      /** nostr-wot browser extension — https://nostr-wot.com/docs/extension */
+      wot?: {
+        getDistance(target: string): Promise<number | null>;
+      };
     };
   }
 }

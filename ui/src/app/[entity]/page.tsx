@@ -3,6 +3,7 @@
 import { use, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { TrustBadge } from "@/components/ui/trust-badge";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
   type NostrActivityCounts,
@@ -3283,9 +3284,16 @@ export default function EntityPage({
           <div className="flex-1 w-full min-w-0">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-0 mb-3 sm:mb-4">
               <div className="flex-1 min-w-0">
-                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 break-words">
-                  {displayName}
-                </h1>
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold break-words">
+                    {displayName}
+                  </h1>
+                  <TrustBadge
+                    targetPubkey={fullPubkeyForMeta}
+                    size="md"
+                    className="mt-1"
+                  />
+                </div>
                 {nip05 && (
                   <div className="flex items-center gap-2 text-gray-400 mb-2">
                     <CheckCircle2 className="w-4 h-4 text-green-500" />
