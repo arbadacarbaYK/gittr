@@ -3,7 +3,10 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PushPaywallStatus } from "@/components/ui/push-paywall-status";
-import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
+import {
+  formatPushRepoSuccessAlert,
+  pushRepoToNostr,
+} from "@/lib/nostr/push-repo-to-nostr";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   NO_SIGNING_METHOD_MESSAGE,
@@ -877,21 +880,7 @@ export function ReposList({
                           );
                           window.dispatchEvent(new Event("storage"));
 
-                          if (result.confirmed) {
-                            alert(
-                              `✅ Repository pushed to Nostr!\nEvent ID: ${result.eventId?.slice(
-                                0,
-                                16
-                              )}...`
-                            );
-                          } else {
-                            alert(
-                              `⚠️ Repository published but awaiting confirmation.\nEvent ID: ${result.eventId?.slice(
-                                0,
-                                16
-                              )}...`
-                            );
-                          }
+                          alert(formatPushRepoSuccessAlert(result));
                         } else {
                           alert(`❌ Failed to push: ${result.error}`);
                         }

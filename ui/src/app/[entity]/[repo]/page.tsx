@@ -53,7 +53,10 @@ import {
 import { syncReadmeTextIntoRepoFiles } from "@/lib/gittr-pages/sync-readme-to-files";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
-import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
+import {
+  formatPushRepoSuccessAlert,
+  pushRepoToNostr,
+} from "@/lib/nostr/push-repo-to-nostr";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
@@ -19668,39 +19671,7 @@ export default function RepoCodePage() {
                                       }
 
                                       // Show success message
-                                      if (
-                                        result.confirmed &&
-                                        result.stateEventId
-                                      ) {
-                                        const announcementId =
-                                          result.eventId?.slice(0, 16) ||
-                                          "unknown";
-                                        const stateId =
-                                          result.stateEventId?.slice(0, 16) ||
-                                          "unknown";
-                                        alert(
-                                          `✅ Repository pushed to Nostr!\n\n✅ Announcement event (30617): ${announcementId}...\n✅ State event (30618): ${stateId}...\n\nBoth events published and confirmed.\n\nNote: older PR/issue events on relays are still there unchanged. If you changed files before this push, reopen Nostr PRs in gittr to be sure they still match the repo you just published.`
-                                        );
-                                      } else if (result.stateEventId) {
-                                        // Both events published but not yet confirmed
-                                        const announcementId =
-                                          result.eventId?.slice(0, 16) ||
-                                          "unknown";
-                                        const stateId =
-                                          result.stateEventId?.slice(0, 16) ||
-                                          "unknown";
-                                        alert(
-                                          `⚠️ Repository published but awaiting confirmation.\n\n✅ Announcement event (30617): ${announcementId}...\n✅ State event (30618): ${stateId}...\n\nBoth events published - confirmation may take a few moments.\n\nNote: older PR/issue events on relays are unchanged—reopen Nostr PRs if file changes might make them stale.`
-                                        );
-                                      } else {
-                                        // Only first event published (shouldn't happen with the fix, but handle gracefully)
-                                        alert(
-                                          `⚠️ Repository partially published.\n\nEvent ID: ${result.eventId?.slice(
-                                            0,
-                                            16
-                                          )}...\n\nSecond signature may not have completed. Please try pushing again.`
-                                        );
-                                      }
+                                      alert(formatPushRepoSuccessAlert(result));
 
                                       // CRITICAL: Refresh repo data from localStorage and check bridge
                                       // This updates the status without a full page reload

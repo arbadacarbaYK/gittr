@@ -180,17 +180,55 @@ export interface PushRepoOptions {
   remoteSigner?: RemoteSignerManager | null;
 }
 
-/**
- * Push repository to Nostr with all current state
- */
-export async function pushRepoToNostr(options: PushRepoOptions): Promise<{
+export type PushRepoResult = {
   success: boolean;
   eventId?: string; // Announcement event ID (kind 30617)
   stateEventId?: string; // State event ID (kind 30618) - only present if both events published
   confirmed: boolean;
   error?: string;
   filesForBridge?: BridgeFilePayload[];
-}> {
+};
+
+/** Shared success/partial popup copy for repo page and My Repositories. */
+export function formatPushRepoSuccessAlert(result: {
+  eventId?: string;
+  stateEventId?: string;
+  confirmed: boolean;
+}): string {
+  const announcementId = result.eventId?.slice(0, 16) || "unknown";
+  if (result.confirmed && result.stateEventId) {
+    const stateId = result.stateEventId.slice(0, 16) || "unknown";
+    return (
+      `✅ Repository pushed to Nostr!\n\n` +
+      `✅ Announcement event (30617): ${announcementId}...\n` +
+      `✅ State event (30618): ${stateId}...\n\n` +
+      `Both events published and confirmed.\n\n` +
+      `Note: older PR/issue events on relays are still there unchanged. If you changed files before this push, reopen Nostr PRs in gittr to be sure they still match the repo you just published.`
+    );
+  }
+  if (result.stateEventId) {
+    const stateId = result.stateEventId.slice(0, 16) || "unknown";
+    return (
+      `⚠️ Repository published but awaiting confirmation.\n\n` +
+      `✅ Announcement event (30617): ${announcementId}...\n` +
+      `✅ State event (30618): ${stateId}...\n\n` +
+      `Both events published - confirmation may take a few moments.\n\n` +
+      `Note: older PR/issue events on relays are unchanged—reopen Nostr PRs if file changes might make them stale.`
+    );
+  }
+  return (
+    `⚠️ Repository partially published.\n\n` +
+    `Event ID: ${announcementId}...\n\n` +
+    `Second signature may not have completed. Please try pushing again.`
+  );
+}
+
+/**
+ * Push repository to Nostr with all current state
+ */
+export async function pushRepoToNostr(
+  options: PushRepoOptions
+): Promise<PushRepoResult> {
   const {
     repoSlug,
     entity,

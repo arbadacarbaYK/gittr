@@ -19,7 +19,10 @@ import {
 } from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
-import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
+import {
+  formatPushRepoSuccessAlert,
+  pushRepoToNostr,
+} from "@/lib/nostr/push-repo-to-nostr";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
@@ -3347,21 +3350,7 @@ export default function RepositoriesPage() {
                                 );
                                 setRepos([...updatedRepos]);
 
-                                if (result.confirmed) {
-                                  alert(
-                                    `✅ Repository pushed to Nostr!\nEvent ID: ${result.eventId?.slice(
-                                      0,
-                                      16
-                                    )}...`
-                                  );
-                                } else {
-                                  alert(
-                                    `⚠️ Repository published but awaiting confirmation.\nEvent ID: ${result.eventId?.slice(
-                                      0,
-                                      16
-                                    )}...`
-                                  );
-                                }
+                                alert(formatPushRepoSuccessAlert(result));
                               } else {
                                 alert(`❌ Failed to push: ${result.error}`);
                               }
