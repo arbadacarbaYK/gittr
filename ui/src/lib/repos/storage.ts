@@ -4,6 +4,7 @@ import {
   normalizeRepoSlugForMatch,
 } from "@/lib/utils/entity-normalizer";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
+import { mergeStoredContributorLists } from "@/lib/utils/repo-contributors-from-nostr";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { markRepoAsEdited } from "@/lib/utils/repo-status";
 
@@ -540,10 +541,19 @@ export function dedupeStoredReposByOwnerAndRepoLabel(
       map.set(k, r);
       continue;
     }
-    map.set(
-      k,
-      nostrEventRecencyScore(r) >= nostrEventRecencyScore(prev) ? r : prev
+    const winner =
+      nostrEventRecencyScore(r) >= nostrEventRecencyScore(prev) ? r : prev;
+    const loser = winner === r ? prev : r;
+    const mergedContributors = mergeStoredContributorLists(
+      winner.contributors,
+      loser.contributors
     );
+    map.set(k, {
+      ...winner,
+      ...(mergedContributors.length > 0
+        ? { contributors: mergedContributors as StoredContributor[] }
+        : {}),
+    });
   }
   return Array.from(map.values());
 }

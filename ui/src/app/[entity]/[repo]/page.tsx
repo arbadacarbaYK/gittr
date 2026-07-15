@@ -121,6 +121,7 @@ import {
   mergeOwnerPubkeyIntoContributors,
   sanitizeContributors,
 } from "@/lib/utils/contributors";
+import { mergeContributorsFromNostrEvent } from "@/lib/utils/repo-contributors-from-nostr";
 import { formatDate24h } from "@/lib/utils/date-format";
 import { fetchDeduped } from "@/lib/utils/deduped-fetch";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
@@ -1394,6 +1395,14 @@ export default function RepoCodePage() {
 
         bridgeFetchDoneKeyRef.current = bridgeKey;
         setBridgeFiles(filesToApply);
+        const storedRepoRow = findRepoByEntityAndName<StoredRepo>(
+          loadStoredRepos(),
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        const storedContributors = Array.isArray(storedRepoRow?.contributors)
+          ? storedRepoRow!.contributors
+          : [];
         setRepoData((prev: any) => {
           const base =
             prev ||
@@ -1404,13 +1413,17 @@ export default function RepoCodePage() {
               files: [],
               name: resolvedParams.repo,
               description: "",
-              contributors: [],
+              contributors: storedContributors,
               defaultBranch: branch,
             } as StoredRepo);
           const updated = {
             ...base,
             files: filesToApply,
             clone: (base as { clone?: string[] }).clone,
+            contributors:
+              Array.isArray(base.contributors) && base.contributors.length > 0
+                ? base.contributors
+                : storedContributors,
           };
           repoDataRef.current = updated;
           return updated;
@@ -1864,6 +1877,173 @@ export default function RepoCodePage() {
     resolvedOwnerPubkey,
     decodedRepo,
     mounted,
+  ]);
+
+  const contributorsHydratedRef = useRef<string>("");
+
+  // Re-fetch GitHub/GitLab/Codeberg contributors when Nostr metadata-only events drop import data
+  useEffect(() => {
+    if (!mounted) return;
+
+    const sourceUrl =
+      repoData?.sourceUrl ||
+      effectiveSourceUrl ||
+      repoData?.forkedFrom ||
+      null;
+    if (!sourceUrl) return;
+    if (
+      !sourceUrl.includes("github.com") &&
+      !sourceUrl.includes("gitlab.com") &&
+      !sourceUrl.includes("codeberg.org")
+    ) {
+      return;
+    }
+
+    const current = repoData?.contributors;
+    const sanitizedCurrent = sanitizeContributors(current, {
+      keepNameOnly: true,
+    });
+    const hasGitHostIdentity = sanitizedCurrent.some(
+      (c) => c.githubLogin || (c as { login?: string }).login
+    );
+    if (hasGitHostIdentity && sanitizedCurrent.length > 1) return;
+
+    const hydrateKey = `${resolvedParams.entity}/${resolvedParams.repo}:${sourceUrl}`;
+    if (contributorsHydratedRef.current === hydrateKey) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(
+          `/api/git/contributors?sourceUrl=${encodeURIComponent(sourceUrl)}`
+        );
+        if (!response.ok || cancelled) return;
+        const contributorsData: unknown = await response.json();
+        if (
+          !Array.isArray(contributorsData) ||
+          contributorsData.length === 0 ||
+          cancelled
+        ) {
+          return;
+        }
+
+        const parsed: GitHubContributor[] = contributorsData
+          .filter(
+            (
+              item
+            ): item is Partial<GitHubContributor> & { login: string } =>
+              typeof item?.login === "string" && item.login.trim().length > 0
+          )
+          .map((item) => ({
+            login: item.login.trim(),
+            avatar_url:
+              typeof item.avatar_url === "string" ? item.avatar_url : "",
+            contributions:
+              typeof item.contributions === "number" ? item.contributions : 0,
+          }));
+        if (parsed.length === 0 || cancelled) return;
+
+        let contributors = mapGithubContributors(
+          parsed,
+          effectiveUserPubkey || undefined,
+          userPicture || undefined,
+          true
+        );
+        contributors = normalizeContributors(contributors);
+
+        contributors = mergeOwnerPubkeyIntoContributors(
+          contributors,
+          repoData?.ownerPubkey ||
+            (typeof ownerPubkeyForLink === "string" &&
+            /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink)
+              ? ownerPubkeyForLink
+              : undefined),
+          repoData?.entityDisplayName
+        );
+
+        const existingPubkeys = new Set(
+          sanitizedCurrent
+            .map((c) => c.pubkey?.toLowerCase())
+            .filter((v): v is string => Boolean(v))
+        );
+        const existingLogins = new Set(
+          sanitizedCurrent
+            .map((c) => c.githubLogin?.toLowerCase())
+            .filter((v): v is string => Boolean(v))
+        );
+        sanitizedCurrent.forEach((c) => {
+          const pk = c.pubkey?.toLowerCase();
+          const login = c.githubLogin?.toLowerCase();
+          if (pk && !existingPubkeys.has(pk)) {
+            contributors.push({ ...c, weight: c.weight ?? 0 });
+            existingPubkeys.add(pk);
+          } else if (login && !existingLogins.has(login)) {
+            contributors.push({ ...c, weight: c.weight ?? 0 });
+            existingLogins.add(login);
+          }
+        });
+
+        contributors = normalizeContributors(contributors);
+        if (contributors.length === 0 || cancelled) return;
+
+        contributorsHydratedRef.current = hydrateKey;
+        setRepoData((prev) =>
+          prev
+            ? {
+                ...prev,
+                contributors,
+                sourceUrl: prev.sourceUrl || sourceUrl,
+              }
+            : prev
+        );
+
+        try {
+          const repos = loadStoredRepos();
+          const updated = repos.map((r) => {
+            const match = findRepoByEntityAndName<StoredRepo>(
+              [r],
+              resolvedParams.entity,
+              resolvedParams.repo
+            );
+            return match
+              ? { ...r, contributors, sourceUrl: r.sourceUrl || sourceUrl }
+              : r;
+          });
+          saveStoredRepos(updated);
+        } catch (persistErr) {
+          console.warn(
+            "⚠️ [Repo] Could not persist hydrated contributors:",
+            persistErr
+          );
+        }
+
+        console.log(
+          `✅ [Repo] Hydrated ${contributors.length} contributor(s) from ${sourceUrl}`
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("⚠️ [Repo] Contributor hydration failed:", error);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    mounted,
+    repoData?.sourceUrl,
+    repoData?.forkedFrom,
+    repoData?.contributors,
+    repoData?.ownerPubkey,
+    repoData?.entityDisplayName,
+    effectiveSourceUrl,
+    effectiveUserPubkey,
+    userPicture,
+    resolvedParams.entity,
+    resolvedParams.repo,
+    normalizeContributors,
+    ownerPubkeyForLink,
   ]);
 
   // Helper function to generate href for repo links (avoids duplication)
@@ -6852,6 +7032,89 @@ export default function RepoCodePage() {
                       "❌ [File Fetch] Event has NO sourceUrl or forkedFrom - cannot fetch from git server"
                     );
                   }
+                }
+
+                // Metadata-only NIP-34 (30617): merge contributors from tags + local import data
+                try {
+                  const reposForContrib = loadStoredRepos();
+                  const existingStored = findRepoByEntityAndName<StoredRepo>(
+                    reposForContrib,
+                    resolvedParams.entity,
+                    resolvedParams.repo
+                  );
+                  const mergedContributors = mergeContributorsFromNostrEvent({
+                    eventPubkey: event.pubkey,
+                    contributorTags,
+                    eventContributors: eventRepoData.contributors,
+                    maintainers: eventRepoData.maintainers,
+                    existingContributors: [
+                      ...(Array.isArray(repoDataRef.current?.contributors)
+                        ? repoDataRef.current.contributors
+                        : []),
+                      ...(Array.isArray(existingStored?.contributors)
+                        ? existingStored.contributors
+                        : []),
+                    ],
+                  });
+
+                  if (mergedContributors.length > 0) {
+                    setRepoData((prev: any) => {
+                      if (!prev) return prev;
+                      const sameLength =
+                        Array.isArray(prev.contributors) &&
+                        prev.contributors.length === mergedContributors.length;
+                      if (
+                        sameLength &&
+                        JSON.stringify(prev.contributors) ===
+                          JSON.stringify(mergedContributors)
+                      ) {
+                        return prev;
+                      }
+                      return {
+                        ...prev,
+                        contributors: mergedContributors,
+                        ...(eventRepoData.maintainers
+                          ? { maintainers: eventRepoData.maintainers }
+                          : {}),
+                      };
+                    });
+
+                    const updatedRepos = reposForContrib.map((r) => {
+                      const matchesOwner =
+                        r.ownerPubkey &&
+                        ownerPubkey &&
+                        (r.ownerPubkey === ownerPubkey ||
+                          r.ownerPubkey.toLowerCase() ===
+                            ownerPubkey.toLowerCase());
+                      const matchesRepo =
+                        r.repo === resolvedParams.repo ||
+                        r.slug === resolvedParams.repo ||
+                        r.name === resolvedParams.repo;
+                      const matchesEntity =
+                        r.entity === resolvedParams.entity ||
+                        (r.entity &&
+                          resolvedParams.entity &&
+                          r.entity.toLowerCase() ===
+                            resolvedParams.entity.toLowerCase());
+                      if ((matchesOwner || matchesEntity) && matchesRepo) {
+                        return {
+                          ...r,
+                          contributors:
+                            mergedContributors as StoredContributor[],
+                        };
+                      }
+                      return r;
+                    });
+                    saveStoredRepos(updatedRepos);
+                    console.log(
+                      `✅ [File Fetch] Hydrated ${mergedContributors.length} contributor(s) from NIP-34 metadata (no embedded files)`
+                    );
+                  }
+                } catch (contribMergeError) {
+                  console.warn(
+                    "⚠️ [File Fetch] Failed to merge contributors from metadata-only event:",
+                    contribMergeError
+                  );
                 }
 
                 // CRITICAL: Even if event doesn't have files, we should still try git-nostr-bridge
@@ -20035,9 +20298,9 @@ export default function RepoCodePage() {
             <h3 className="mb-4 font-bold">
               Contributors{" "}
               <Badge className="ml-2">
-                {repoData?.contributors?.filter(
-                  (c) => c.pubkey && /^[0-9a-f]{64}$/i.test(c.pubkey)
-                ).length || 0}
+                {sanitizeContributors(repoData?.contributors, {
+                  keepNameOnly: true,
+                }).length || 0}
               </Badge>
             </h3>
             <Contributors contributors={repoData?.contributors || []} />
