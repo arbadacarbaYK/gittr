@@ -1487,6 +1487,11 @@ export default function RepoCodePage() {
     null
   ); // sourceUrl from local repo or Nostr event
 
+  // Bump this when a push finishes (or is cancelled) so a pending watchdog
+  // cannot fire while a blocking alert() is open — React state alone is not
+  // enough because alert() freezes the handler before effects can clear.
+  const pushGenerationRef = useRef(0);
+
   // Keep a local timer for push operations so the UI can recover from stalled flows.
   useEffect(() => {
     if (isPushing && pushStartedAt === null) {
@@ -1503,14 +1508,17 @@ export default function RepoCodePage() {
     // Backup watchdog only — the push promise itself surfaces errors via alert.
     // 180s > sign_event timeout (120s) so the real error fires first; if we
     // still land here, tell the user instead of silently resetting the button.
+    const generation = pushGenerationRef.current;
     const timeout = window.setTimeout(() => {
+      if (pushGenerationRef.current !== generation) return;
       if (Date.now() - pushStartedAt >= 180_000) {
         console.warn(
           "⚠️ [Push UI] Auto-resetting stuck push state after 180s timeout"
         );
+        pushGenerationRef.current += 1;
         setIsPushing(false);
         alert(
-          "❌ Push timed out.\n\nThe signing request got no response. Open your signer app (e.g. Amber) on your phone, make sure it is online, then push again."
+          "❌ Push timed out.\n\nThe signing request got no response. Check your browser extension (Alby/nos2x) or remote signer app (e.g. Amber), make sure it is online, then push again."
         );
       }
     }, 180_000);
@@ -19363,14 +19371,16 @@ export default function RepoCodePage() {
                                   }
 
                                   try {
+                                    pushGenerationRef.current += 1;
                                     setIsPushing(true);
 
                                     const signer = await resolveNostrSigner({
                                       remoteSigner,
                                     });
                                     if (!signer) {
-                                      alert(NO_SIGNING_METHOD_MESSAGE);
+                                      pushGenerationRef.current += 1;
                                       setIsPushing(false);
+                                      alert(NO_SIGNING_METHOD_MESSAGE);
                                       return;
                                     }
                                     const privateKey = signer.privateKey;
@@ -19393,10 +19403,11 @@ export default function RepoCodePage() {
                                     const validation =
                                       validateRepoForForkOrSign(repo);
                                     if (!validation.valid) {
+                                      pushGenerationRef.current += 1;
+                                      setIsPushing(false);
                                       alert(
                                         `Cannot push corrupted repository: ${validation.error}`
                                       );
-                                      setIsPushing(false);
                                       return;
                                     }
 
@@ -19446,16 +19457,18 @@ export default function RepoCodePage() {
                                         );
                                         setPushPaymentError(null);
                                         setShowPushPaymentQR(true);
+                                        pushGenerationRef.current += 1;
                                         setIsPushing(false);
                                         return;
                                       }
+                                      pushGenerationRef.current += 1;
+                                      setIsPushing(false);
                                       alert(
                                         `Push blocked: ${
                                           paymentAuth.error ||
                                           "payment authorization failed"
                                         }`
                                       );
-                                      setIsPushing(false);
                                       return;
                                     }
 
@@ -19617,6 +19630,14 @@ export default function RepoCodePage() {
                                       );
                                     }
 
+                                    // Push finished — disarm the 180s watchdog BEFORE any
+                                    // blocking alert(). Leaving success/error dialogs open
+                                    // used to keep isPushing=true and falsely blame Amber.
+                                    const finishPushUi = () => {
+                                      pushGenerationRef.current += 1;
+                                      setIsPushing(false);
+                                    };
+
                                     if (result.success && result.eventId) {
                                       // Consume exactly one paid push intent after successful Nostr push.
                                       // This keeps paywall state aligned even if optional bridge sync returns conflicts.
@@ -19670,7 +19691,8 @@ export default function RepoCodePage() {
                                         // Do not run a second bridge push from this page.
                                       }
 
-                                      // Show success message
+                                      finishPushUi();
+                                      // Show success message (after clearing push state)
                                       alert(formatPushRepoSuccessAlert(result));
 
                                       // CRITICAL: Refresh repo data from localStorage and check bridge
@@ -19809,6 +19831,7 @@ export default function RepoCodePage() {
                                         window.location.reload();
                                       }
                                     } else {
+                                      finishPushUi();
                                       alert(
                                         `❌ Failed to push: ${
                                           result.error || "Unknown error"
@@ -19820,12 +19843,15 @@ export default function RepoCodePage() {
                                       "Failed to push repo:",
                                       error
                                     );
+                                    pushGenerationRef.current += 1;
+                                    setIsPushing(false);
                                     alert(
                                       `Failed to push: ${
                                         error.message || "Unknown error"
                                       }`
                                     );
                                   } finally {
+                                    pushGenerationRef.current += 1;
                                     setIsPushing(false);
                                   }
                                 }}
