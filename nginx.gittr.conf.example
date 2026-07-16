@@ -137,16 +137,21 @@ server {
         fastcgi_param PATH_INFO $uri;
         fastcgi_param REMOTE_USER $remote_user;
         
-        # CORS headers for GRASP protocol compliance (allows other Nostr git clients and other clients to clone)
+        # CORS for browser NIP-34 clients (gitworkshop.dev / isomorphic-git).
+        # Must allow Git-Protocol — otherwise preflight fails and clients fall
+        # back to a CORS proxy with "unreachable via CORS proxy" errors even
+        # when CLI `git clone` works fine.
         add_header Access-Control-Allow-Origin * always;
         add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
-        add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
+        add_header Access-Control-Allow-Headers "Content-Type, Authorization, Git-Protocol, Accept, Range, X-Nostr-Auth-Event" always;
+        add_header Access-Control-Expose-Headers "Content-Type, Location" always;
         
         # Handle preflight OPTIONS requests
         if ($request_method = OPTIONS) {
             add_header Access-Control-Allow-Origin * always;
             add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
-            add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
+            add_header Access-Control-Allow-Headers "Content-Type, Authorization, Git-Protocol, Accept, Range, X-Nostr-Auth-Event" always;
+            add_header Access-Control-Expose-Headers "Content-Type, Location" always;
             add_header Access-Control-Max-Age 1728000;
             add_header Content-Type 'text/plain charset=UTF-8';
             add_header Content-Length 0;
