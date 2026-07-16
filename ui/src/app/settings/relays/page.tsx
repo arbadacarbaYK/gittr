@@ -44,10 +44,8 @@ const WS_OPEN = 1;
 const WS_CLOSING = 2;
 const WS_CLOSED = 3;
 
-/** Keep showing Connected briefly across reconnect blips (ws=null → status 3). */
-const OPEN_STICKY_MS = 45_000;
-const EVENT_DELIVERY_MS = 90_000;
-const WARMUP_CONNECTING_MS = 20_000;
+/** Don't spam connect() more often than this while a relay stays CLOSED. */
+const RECONNECT_NUDGE_MS = 8_000;
 
 function normalizeRelayUrl(url: string): string {
   return url.trim().replace(/\/+$/, "").toLowerCase();
@@ -62,12 +60,14 @@ function isValidReadyState(status: number): boolean {
   );
 }
 
-function labelReadyState(status: number | undefined, attempts = 0): string {
-  if (status === undefined) return attempts >= 3 ? "Failed" : "Unknown";
+/** Labels match live readyState — no sticky / guessed Connected. */
+function labelReadyState(status: number | undefined): string {
+  if (status === undefined) return "Unknown";
   if (status === WS_CONNECTING) return "Connecting...";
   if (status === WS_OPEN) return "Connected";
   if (status === WS_CLOSING) return "Closing...";
-  if (status === WS_CLOSED) return attempts >= 3 ? "Failed" : "Disconnected";
+  // CLOSED: socket is down; pool auto-reconnects (and we also nudge connect()).
+  if (status === WS_CLOSED) return "Reconnecting...";
   return "Unknown";
 }
 
@@ -100,22 +100,8 @@ export default function RelaysPage() {
   const [defaultRelaysExpanded, setDefaultRelaysExpanded] = useState(false);
   const [userRelaysExpanded, setUserRelaysExpanded] = useState(true);
   const [graspListExpanded, setGraspListExpanded] = useState(true);
-  const [statusCheckAttempts, setStatusCheckAttempts] = useState<
-    Map<string, number>
-  >(new Map());
-  const statusCheckAttemptsRef = useRef(statusCheckAttempts);
-  statusCheckAttemptsRef.current = statusCheckAttempts;
   const statusCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  // Track which relays have successfully delivered events (better indicator than WebSocket status)
-  const [relaysWithEvents, setRelaysWithEvents] = useState<Map<string, number>>(
-    new Map()
-  ); // Map<relayURL, timestamp>
-  // Keep a ref so the status poller can read event delivery without restarting its interval
-  const relaysWithEventsRef = useRef(relaysWithEvents);
-  relaysWithEventsRef.current = relaysWithEvents;
-  /** Last time a relay was observed OPEN (or proven via event delivery). */
-  const lastOpenAtRef = useRef<Map<string, number>>(new Map());
-  const statusPollStartedAtRef = useRef<number>(Date.now());
+  const lastReconnectNudgeRef = useRef<Map<string, number>>(new Map());
 
   // GRASP list state
   const [graspListServers, setGraspListServers] = useState<string[]>([]);
@@ -309,73 +295,25 @@ export default function RelaysPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addRelay, (userRelays || []).length]); // Re-run if user relays change
 
-  // Track actual event delivery from relays (better indicator than WebSocket status)
-  useEffect(() => {
-    if (!subscribe) return;
-
-    // Subscribe to a common event type (kind 0 metadata) to test relay health
-    // This will help us identify which relays are actually working
-    const testUnsub = subscribe(
-      [{ kinds: [0], limit: 1 }], // Query for any metadata event (very common)
-      [...defaultRelaysList, ...(userRelays || []).map((r) => r.url)],
-      (event, isAfterEose, relayURL) => {
-        // Track that this relay successfully delivered an event
-        if (relayURL && typeof relayURL === "string") {
-          const key = normalizeRelayUrl(relayURL);
-          const now = Date.now();
-          lastOpenAtRef.current.set(key, now);
-          setRelaysWithEvents((prev) => {
-            const updated = new Map(prev);
-            updated.set(key, now);
-            return updated;
-          });
-        }
-      },
-      undefined,
-      undefined,
-      { unsubscribeOnEose: true } // Auto-unsubscribe after EOSE to avoid spam
-    );
-
-    // Clean up after 10 seconds (enough time to test all relays)
-    const cleanup = setTimeout(() => {
-      if (testUnsub) testUnsub();
-    }, 10000);
-
-    return () => {
-      clearTimeout(cleanup);
-      if (testUnsub) testUnsub();
-    };
-  }, [subscribe, defaultRelaysList, (userRelays || []).length]);
-
-  // Check relay statuses with retry limit (max 3 attempts per relay)
+  // Poll live WebSocket readyState from the pool; nudge CLOSED relays to reconnect.
   useEffect(() => {
     if (!getRelayStatuses) return;
-    statusPollStartedAtRef.current = Date.now();
 
     const updateStatuses = () => {
       try {
         const statuses = getRelayStatuses();
-        const rawByNorm = new Map<string, number>();
-        const newAttempts = new Map(statusCheckAttemptsRef.current);
-        const eventDelivery = relaysWithEventsRef.current;
+        const poolByNorm = new Map<string, number>();
         const now = Date.now();
-        const warmingUp = now - statusPollStartedAtRef.current < WARMUP_CONNECTING_MS;
 
         if (Array.isArray(statuses)) {
           statuses.forEach((item: any) => {
-            // Tuple format: [url, readyState]
             if (Array.isArray(item) && item.length >= 2) {
               const [url, status] = item;
               if (url && typeof status === "number" && isValidReadyState(status)) {
-                rawByNorm.set(normalizeRelayUrl(url), status);
-                if (status === WS_OPEN) {
-                  lastOpenAtRef.current.set(normalizeRelayUrl(url), now);
-                  newAttempts.delete(normalizeRelayUrl(url));
-                }
+                poolByNorm.set(normalizeRelayUrl(url), status);
               }
               return;
             }
-            // Object format fallback (status / staus typo in older typings)
             if (item && typeof item === "object") {
               const url = item.url || item.relay;
               const status =
@@ -389,12 +327,7 @@ export default function RelaysPage() {
                 typeof status === "number" &&
                 isValidReadyState(status)
               ) {
-                const key = normalizeRelayUrl(url);
-                rawByNorm.set(key, status);
-                if (status === WS_OPEN) {
-                  lastOpenAtRef.current.set(key, now);
-                  newAttempts.delete(key);
-                }
+                poolByNorm.set(normalizeRelayUrl(url), status);
               }
             }
           });
@@ -414,90 +347,49 @@ export default function RelaysPage() {
 
         allRelaysToCheck.forEach((url: string) => {
           const key = normalizeRelayUrl(url);
-          const lastEventTime = mapGetNormalized(eventDelivery, key);
-          const recentlyDelivered =
-            !!lastEventTime && now - lastEventTime < EVENT_DELIVERY_MS;
-          const lastOpen = lastOpenAtRef.current.get(key) || 0;
-          const recentlyOpen = lastOpen > 0 && now - lastOpen < OPEN_STICKY_MS;
-          const poolStatus = rawByNorm.get(key);
+          const poolStatus = poolByNorm.get(key);
 
-          if (recentlyDelivered) {
-            lastOpenAtRef.current.set(key, now);
-            statusMap.set(url, WS_OPEN);
-            newAttempts.delete(key);
-            return;
-          }
-
-          if (poolStatus === WS_OPEN) {
-            statusMap.set(url, WS_OPEN);
-            newAttempts.delete(key);
-            return;
-          }
-
-          // Pool often reports CLOSED (3) for a beat while auto-reconnecting.
-          // Keep Connected if we saw OPEN / events recently.
-          if (recentlyOpen) {
-            statusMap.set(url, WS_OPEN);
-            return;
-          }
-
-          if (poolStatus === WS_CONNECTING || poolStatus === WS_CLOSING) {
+          // Live status only — never invent Connected from events / sticky cache.
+          if (poolStatus !== undefined) {
             statusMap.set(url, poolStatus);
-            return;
-          }
-
-          if (poolStatus === WS_CLOSED) {
-            // Still warming up / reconnecting — don't paint the whole list red.
-            statusMap.set(url, warmingUp ? WS_CONNECTING : WS_CLOSED);
-            if (!warmingUp) {
-              const attempts = newAttempts.get(key) || 0;
-              newAttempts.set(key, Math.min(attempts + 1, 3));
-            }
-            return;
-          }
-
-          // Not in pool yet
-          const attempts = newAttempts.get(key) || 0;
-          if (warmingUp || attempts < 3) {
-            statusMap.set(url, WS_CONNECTING);
-            newAttempts.set(key, attempts + 1);
           } else {
-            statusMap.set(url, WS_CLOSED);
+            // Not in pool yet → treat as connecting and ensure it's dialed.
+            statusMap.set(url, WS_CONNECTING);
+          }
+
+          const effective = statusMap.get(url);
+          if (
+            addRelay &&
+            (effective === WS_CLOSED || poolStatus === undefined)
+          ) {
+            const lastNudge = lastReconnectNudgeRef.current.get(key) || 0;
+            if (now - lastNudge >= RECONNECT_NUDGE_MS) {
+              lastReconnectNudgeRef.current.set(key, now);
+              addRelay(url);
+            }
           }
         });
 
-        const connected = Array.from(statusMap.values()).filter(
-          (s) => s === WS_OPEN
-        ).length;
-        const connecting = Array.from(statusMap.values()).filter(
-          (s) => s === WS_CONNECTING
-        ).length;
-        const closed = Array.from(statusMap.values()).filter(
-          (s) => s === WS_CLOSED || s === WS_CLOSING
-        ).length;
-        console.log("[RelaysPage] Status summary:", {
+        console.log("[RelaysPage] Live status summary:", {
           total: statusMap.size,
-          connected,
-          connecting,
-          closed,
-          poolSample: Array.from(rawByNorm.entries()).slice(0, 5),
-          sample: Array.from(statusMap.entries())
-            .slice(0, 5)
-            .map(([url, s]) => [url, labelReadyState(s)]),
+          connected: [...statusMap.values()].filter((s) => s === WS_OPEN).length,
+          connecting: [...statusMap.values()].filter((s) => s === WS_CONNECTING)
+            .length,
+          closed: [...statusMap.values()].filter((s) => s === WS_CLOSED).length,
+          sample: [...statusMap.entries()]
+            .slice(0, 6)
+            .map(([u, s]) => [u, labelReadyState(s)]),
         });
 
-        setStatusCheckAttempts(newAttempts);
         setRelayStatuses(statusMap);
       } catch (error) {
         console.error("[RelaysPage] Failed to get relay statuses:", error);
       }
     };
 
-    // First paint quickly, then poll — do not depend on relaysWithEvents or the
-    // interval restarts every time a health-check event arrives.
     updateStatuses();
-    const initialTimeout = setTimeout(updateStatuses, 1500);
-    statusCheckIntervalRef.current = setInterval(updateStatuses, 5000);
+    const initialTimeout = setTimeout(updateStatuses, 1000);
+    statusCheckIntervalRef.current = setInterval(updateStatuses, 3000);
 
     return () => {
       clearTimeout(initialTimeout);
@@ -505,17 +397,18 @@ export default function RelaysPage() {
         clearInterval(statusCheckIntervalRef.current);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- statusCheckAttempts read via closure; event delivery via ref
-  }, [getRelayStatuses, defaultRelaysList, (userRelays || []).length]);
+  }, [
+    getRelayStatuses,
+    addRelay,
+    defaultRelaysList,
+    (userRelays || []).length,
+  ]);
 
   const isConnected = (url: string) =>
     mapGetNormalized(relayStatuses, url) === WS_OPEN;
 
   const getStatusLabel = (url: string) =>
-    labelReadyState(
-      mapGetNormalized(relayStatuses, url),
-      mapGetNormalized(statusCheckAttempts, normalizeRelayUrl(url)) || 0
-    );
+    labelReadyState(mapGetNormalized(relayStatuses, url));
 
   // Load user's GRASP list
   useEffect(() => {
@@ -667,13 +560,17 @@ export default function RelaysPage() {
                 className={`text-xs px-2 py-1 rounded font-medium ${
                   connected
                     ? "text-green-400 bg-green-900/30"
-                    : status === WS_CONNECTING
+                    : status === WS_CONNECTING || status === WS_CLOSED
                     ? "text-yellow-400 bg-yellow-900/30"
                     : status === WS_CLOSING
                     ? "text-orange-400 bg-orange-900/30"
                     : "text-red-400 bg-red-900/30"
                 }`}
-                title={getStatusLabel(relay)}
+                title={
+                  status === WS_CLOSED
+                    ? "Socket closed — live readyState 3; reconnect in progress"
+                    : getStatusLabel(relay)
+                }
               >
                 {getStatusLabel(relay)}
               </span>
