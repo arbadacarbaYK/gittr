@@ -714,7 +714,8 @@ export function ReposList({
           <span>
             {hostOnlyBroken.length} repo(s) need a republish — broken clone
             URL (host only / localhost). Other clients can’t see files until
-            fixed. One Push + signatures per repo; can take a while.
+            fixed. One Push + signatures per repo; this can take a while,
+            please leave the tab open until finished.
           </span>
           <Button
             type="button"

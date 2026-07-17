@@ -205,7 +205,11 @@ export function storeRepoEventId(
   entity: string,
   eventId: string,
   confirmed: boolean,
-  stateEventId?: string
+  stateEventId?: string,
+  /** Fresh clone URLs from the event just published (fixes badge sticking on host-only). */
+  cloneUrls?: string[] | null,
+  /** Prefer signed event created_at so relay echoes are not treated as older. */
+  eventCreatedAtSeconds?: number | null
 ): void {
   try {
     const repos = JSON.parse(
@@ -217,17 +221,29 @@ export function storeRepoEventId(
     );
 
     if (repoIndex >= 0) {
-      const eventCreatedAt = Math.floor(Date.now() / 1000); // Event timestamp
+      const eventCreatedAt =
+        typeof eventCreatedAtSeconds === "number" &&
+        Number.isFinite(eventCreatedAtSeconds) &&
+        eventCreatedAtSeconds > 0
+          ? Math.floor(eventCreatedAtSeconds)
+          : Math.floor(Date.now() / 1000);
       const existingRepo = repos[repoIndex];
 
       // Ensure repo, slug, and name fields are set (migration should have done this, but be safe)
       const repoValue =
         existingRepo.repo || existingRepo.slug || existingRepo.name || repoSlug;
 
-      // Filter out localhost from clone URLs if they exist
-      let filteredClone = existingRepo.clone;
-      if (Array.isArray(existingRepo.clone)) {
-        filteredClone = existingRepo.clone.filter(
+      // Prefer newly published clone URLs; otherwise keep existing (drop localhost noise)
+      let nextClone: string[] | undefined = existingRepo.clone;
+      if (Array.isArray(cloneUrls) && cloneUrls.length > 0) {
+        nextClone = cloneUrls.filter(
+          (url: string) =>
+            !!url?.trim() &&
+            !url.includes("localhost") &&
+            !url.includes("127.0.0.1")
+        );
+      } else if (Array.isArray(existingRepo.clone)) {
+        nextClone = existingRepo.clone.filter(
           (url: string) =>
             url && !url.includes("localhost") && !url.includes("127.0.0.1")
         );
@@ -250,8 +266,7 @@ export function storeRepoEventId(
         status: confirmed ? "live_soon" : existingRepo.status || "local",
         syncedFromNostr: confirmed ? true : existingRepo.syncedFromNostr,
         hasUnpushedEdits: false, // Clear unpushed edits flag after successful push
-        // Filter out localhost from clone URLs
-        clone: filteredClone,
+        clone: nextClone,
         // Don't update lastModifiedAt on push - only update when user actually edits files
         // lastModifiedAt should only be updated by markRepoAsEdited() when files are actually modified
       };

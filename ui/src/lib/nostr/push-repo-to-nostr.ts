@@ -2398,8 +2398,18 @@ export async function pushRepoToNostr(
     // As long as the event was published (has eventId), we should continue to publish the state event
     // The final confirmed status will reflect whether BOTH events are confirmed
     if (result.eventId) {
-      // Step 7: Store event ID and update status
-      storeRepoEventId(repoSlug, entity, result.eventId, result.confirmed);
+      // Step 7: Store event ID and the clone URLs we just published (clears host-only badge)
+      storeRepoEventId(
+        repoSlug,
+        entity,
+        result.eventId,
+        result.confirmed,
+        undefined,
+        cloneUrls,
+        typeof repoEvent?.created_at === "number"
+          ? repoEvent.created_at
+          : undefined
+      );
       if (result.confirmed) {
         // Published on Nostr; clone/files may still be catching up → "Published, live soon"
         setRepoStatus(repoSlug, entity, "live_soon");
@@ -3165,7 +3175,11 @@ export async function pushRepoToNostr(
           entity,
           result.eventId,
           result.confirmed,
-          stateResult.eventId
+          stateResult.eventId,
+          cloneUrls,
+          typeof repoEvent?.created_at === "number"
+            ? repoEvent.created_at
+            : undefined
         );
       }
 
@@ -3197,7 +3211,17 @@ export async function pushRepoToNostr(
     } else {
       // First event was published but we couldn't continue to second signature
       // This should only happen if there was an error, not just lack of confirmation
-      storeRepoEventId(repoSlug, entity, result.eventId, result.confirmed);
+      storeRepoEventId(
+        repoSlug,
+        entity,
+        result.eventId,
+        result.confirmed,
+        undefined,
+        cloneUrls,
+        typeof repoEvent?.created_at === "number"
+          ? repoEvent.created_at
+          : undefined
+      );
       setRepoStatus(repoSlug, entity, "local"); // Revert to local if not confirmed
       onProgress?.(
         "⚠️ First event published but second signature could not proceed"

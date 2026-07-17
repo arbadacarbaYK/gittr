@@ -23,6 +23,7 @@ import {
   formatPushRepoSuccessAlert,
   pushRepoToNostr,
 } from "@/lib/nostr/push-repo-to-nostr";
+import { usableCloneUrls } from "@/lib/nostr/clone-url-quality";
 import {
   CLONE_REPUBLISH_BADGE_LABEL,
   CLONE_REPUBLISH_BADGE_TITLE,
@@ -1671,12 +1672,27 @@ export default function RepositoriesPage() {
               // GRASP-01: Store clone and relays tags from event.tags
               // Keep unusable clones (host-only / localhost) so My Repositories can
               // show "Please republish". Discovery (HP/explore) filters separately.
-              clone:
-                cloneTags.length > 0
-                  ? cloneTags.filter((url: string) => !!url?.trim())
-                  : (repoData.clone || existingRepo?.clone || []).filter(
-                      (url: string) => !!url?.trim()
-                    ),
+              // Prefer existing usable clones over a newer event that only has
+              // host-only / empty clones (relay lag after a successful republish).
+              clone: (() => {
+                const fromEvent =
+                  cloneTags.length > 0
+                    ? cloneTags.filter((url: string) => !!url?.trim())
+                    : (repoData.clone || []).filter(
+                        (url: string) => !!url?.trim()
+                      );
+                const existing = (existingRepo?.clone || []).filter(
+                  (url: string) => !!url?.trim()
+                );
+                if (
+                  usableCloneUrls(fromEvent).length === 0 &&
+                  usableCloneUrls(existing).length > 0
+                ) {
+                  return existing;
+                }
+                if (fromEvent.length > 0) return fromEvent;
+                return existing;
+              })(),
               relays:
                 relaysTags.length > 0
                   ? relaysTags
@@ -3203,7 +3219,8 @@ export default function RepositoriesPage() {
                     {needsCloneRepublish.length} repo(s) need a republish —
                     clone URL is only a bare host, localhost, or similar. Hidden
                     from explore until fixed. Each repo needs its own Push /
-                    signatures; this can take a while.
+                    signatures; this can take a while, please leave the tab open
+                    until finished.
                   </span>
                   <Button
                     type="button"
