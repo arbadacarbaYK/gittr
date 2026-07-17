@@ -3,10 +3,11 @@
  * Stores the event ID in the repository data when confirmed
  */
 import {
+  type StoredRepo,
   loadStoredRepos,
   saveStoredRepos,
-  type StoredRepo,
 } from "../repos/storage";
+
 import { KIND_REPOSITORY, resolveNip34HeadBranchName } from "./events";
 
 export interface PublishResult {
@@ -124,7 +125,9 @@ export async function publishWithConfirmation(
  * @param stateEventId - Optional state event ID (kind 30618) - if provided, stores it separately
  */
 /** Extract branch/tag names from bridge or state-event refs for localStorage. */
-export function refsToRepoMetadata(refs: Array<{ ref: string; commit?: string }>): {
+export function refsToRepoMetadata(
+  refs: Array<{ ref: string; commit?: string }>
+): {
   branches: string[];
   tags: Array<{ name: string; commit?: string }>;
 } {
@@ -168,11 +171,10 @@ export function persistRepoRefsMetadata(
       ? branches.includes("main")
         ? "main"
         : branches.includes("master")
-          ? "master"
-          : branches.find(
-              (b) =>
-                !b.startsWith("dependabot/") && !b.startsWith("renovate/")
-            ) || rawDefault
+        ? "master"
+        : branches.find(
+            (b) => !b.startsWith("dependabot/") && !b.startsWith("renovate/")
+          ) || rawDefault
       : rawDefault;
 
   try {
@@ -245,13 +247,12 @@ export function storeRepoEventId(
         ...(stateEventId
           ? { stateEventId, lastStateEventId: stateEventId }
           : {}),
-        status: confirmed ? "live" : existingRepo.status || "local",
+        status: confirmed ? "live_soon" : existingRepo.status || "local",
         syncedFromNostr: confirmed ? true : existingRepo.syncedFromNostr,
         hasUnpushedEdits: false, // Clear unpushed edits flag after successful push
         // Filter out localhost from clone URLs
         clone: filteredClone,
         // Don't update lastModifiedAt on push - only update when user actually edits files
-        // This prevents status from switching back to "live_with_edits" immediately after push
         // lastModifiedAt should only be updated by markRepoAsEdited() when files are actually modified
       };
       localStorage.setItem("gittr_repos", JSON.stringify(repos));

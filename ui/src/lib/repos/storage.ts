@@ -899,8 +899,7 @@ export function mergeRepoFileIndexes(
       if (nl > pl) {
         by.set(key, row);
       } else if (nl === pl && nl === 0) {
-        const prevMeta =
-          (prev.size ?? 0) + String(prev.sha || "").length;
+        const prevMeta = (prev.size ?? 0) + String(prev.sha || "").length;
         const nextMeta = (row.size ?? 0) + String(row.sha || "").length;
         if (nextMeta > prevMeta) by.set(key, row);
       }

@@ -1,8 +1,9 @@
-import HomePageClient from "./home-page-client";
 import {
   hasAnyLeaderboardData,
   loadPlatformLeaderboardSnapshot,
 } from "@/lib/platform-leaderboard-snapshot";
+
+import HomePageClient from "./home-page-client";
 
 /**
  * Segment config must live in a Server Component. A `"use client"` page ignores

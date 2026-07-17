@@ -58,7 +58,9 @@ export async function syncGithubIssuesForRepo(
       .map((item: unknown) => {
         const it = item as Record<string, unknown>;
         const user = it.user as { login?: string } | undefined;
-        const labels = it.labels as Array<{ name?: string } | string> | undefined;
+        const labels = it.labels as
+          | Array<{ name?: string } | string>
+          | undefined;
         return {
           id: `issue-${it.number}`,
           entity,
@@ -69,7 +71,9 @@ export async function syncGithubIssuesForRepo(
           author: user?.login || "",
           labels: Array.isArray(labels)
             ? labels.map((l) =>
-                typeof l === "string" ? l : String((l as { name?: string }).name || "")
+                typeof l === "string"
+                  ? l
+                  : String((l as { name?: string }).name || "")
               )
             : [],
           assignees: [],
@@ -128,12 +132,14 @@ export async function syncGithubPullsForRepo(
         status: it.merged_at
           ? "merged"
           : it.state === "closed"
-            ? "closed"
-            : "open",
+          ? "closed"
+          : "open",
         author: user?.login || "",
         labels: Array.isArray(labels)
           ? labels.map((l) =>
-              typeof l === "string" ? l : String((l as { name?: string }).name || "")
+              typeof l === "string"
+                ? l
+                : String((l as { name?: string }).name || "")
             )
           : [],
         assignees: [],

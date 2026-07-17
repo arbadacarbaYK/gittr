@@ -3,9 +3,9 @@
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import {
+  type StoredRepo,
   loadStoredRepos,
   saveStoredRepos,
-  type StoredRepo,
 } from "@/lib/repos/storage";
 import {
   readUpstreamSourceSession,
@@ -13,13 +13,14 @@ import {
   resolveRepoUpstreamSource,
   writeUpstreamSourceSession,
 } from "@/lib/repos/upstream-precedence";
-import { isRefetchableUpstreamSourceUrl } from "@/lib/utils/git-source-fetcher";
 import { resolveEntityToPubkey } from "@/lib/utils/entity-resolver";
+import { isRefetchableUpstreamSourceUrl } from "@/lib/utils/git-source-fetcher";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import {
   syncGithubIssuesForRepo,
   syncGithubPullsForRepo,
 } from "@/lib/utils/sync-github-repo-issues-prs";
+
 import { nip19 } from "nostr-tools";
 
 export type GithubRepoMeta = {
@@ -36,10 +37,7 @@ export function githubPushedSessionKey(entity: string, repo: string): string {
   return `gittr_github_pushed_ms__${entity}__${repo}`;
 }
 
-export function readGithubPushedSession(
-  entity: string,
-  repo: string
-): number {
+export function readGithubPushedSession(entity: string, repo: string): number {
   if (typeof window === "undefined") return 0;
   try {
     const raw = sessionStorage.getItem(githubPushedSessionKey(entity, repo));
@@ -88,7 +86,11 @@ export function findStoredRepoForRoute(
 function extractGithubUrlFromEventTags(tags: string[][]): string {
   for (const tag of tags) {
     if (!Array.isArray(tag)) continue;
-    if (tag[0] === "source" && tag[1] && isRefetchableUpstreamSourceUrl(tag[1])) {
+    if (
+      tag[0] === "source" &&
+      tag[1] &&
+      isRefetchableUpstreamSourceUrl(tag[1])
+    ) {
       const u = String(tag[1]);
       if (u.includes("github.com")) return u;
     }
@@ -189,7 +191,9 @@ export function persistGithubSourceOnRepo(
   const existing = repos[idx]!;
   const clones = Array.isArray(existing.clone) ? [...existing.clone] : [];
   if (!clones.some((c) => String(c).includes("github.com"))) {
-    clones.unshift(normalized.endsWith(".git") ? normalized : `${normalized}.git`);
+    clones.unshift(
+      normalized.endsWith(".git") ? normalized : `${normalized}.git`
+    );
   }
   repos[idx] = {
     ...existing,
@@ -222,12 +226,8 @@ export async function fetchGithubRepoMeta(
       updated_at?: string;
       description?: string | null;
     };
-    const pushedAtMs = j.pushed_at
-      ? new Date(j.pushed_at).getTime()
-      : 0;
-    const updatedAtMs = j.updated_at
-      ? new Date(j.updated_at).getTime()
-      : 0;
+    const pushedAtMs = j.pushed_at ? new Date(j.pushed_at).getTime() : 0;
+    const updatedAtMs = j.updated_at ? new Date(j.updated_at).getTime() : 0;
     const description =
       typeof j.description === "string" ? j.description.trim() : "";
     return {

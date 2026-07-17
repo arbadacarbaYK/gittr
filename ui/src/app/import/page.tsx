@@ -588,14 +588,17 @@ export default function ImportPage() {
                             defaultBranch: rec.defaultBranch,
                             branches: rec.branches,
                             releases: rec.releases,
-                            // GRASP-01: Add clone and relays tags
-                            clone: [gitServerUrl], // Git server URL where repo is hosted
-                            relays: defaultRelays, // Nostr relays where repo events are published
+                            // Host-only gitServerUrl is expanded to /npub/repo.git in
+                            // buildUnsignedRepositoryEvent (required by gitworkshop / NIP-34).
+                            clone: [gitServerUrl],
+                            relays: defaultRelays,
                           },
                           signerPubkey
                         );
                         repoEvent.id = getEventHash(repoEvent);
-                        const signedRepoEvent = await signer.signEvent(repoEvent);
+                        const signedRepoEvent = await signer.signEvent(
+                          repoEvent
+                        );
 
                         // Publish with confirmation and store event ID
                         try {
@@ -1568,9 +1571,10 @@ export default function ImportPage() {
                     defaultBranch: rec.defaultBranch,
                     branches: rec.branches,
                     releases: rec.releases,
-                    // GRASP-01: Add clone and relays tags
-                    clone: [gitServerUrl], // Git server URL where repo is hosted
-                    relays: defaultRelays, // Nostr relays where repo events are published
+                    // Host-only gitServerUrl is expanded to /npub/repo.git in
+                    // buildUnsignedRepositoryEvent (required by gitworkshop / NIP-34).
+                    clone: [gitServerUrl],
+                    relays: defaultRelays,
                   },
                   signerPubkey
                 );

@@ -1,9 +1,9 @@
 "use client";
 
-import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { use, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import {
   type RepoFileEntry,
   type StoredRepo,
@@ -533,7 +533,8 @@ export default function ArchitecturePage({
 
     // Priority 3: Try git-nostr-bridge API (for cloned repos)
     try {
-      const response = await fetchBridgeRead(`/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
+      const response = await fetchBridgeRead(
+        `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
           ownerPubkey
         )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
           branch

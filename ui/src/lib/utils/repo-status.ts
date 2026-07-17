@@ -1,20 +1,44 @@
 /**
  * Repository Status Management
- * Tracks whether repos are local-only, being pushed, or live on Nostr
- * Also tracks if a live repo has unpushed edits
+ * Tracks whether repos are local-only, being pushed, or live on Nostr.
+ *
+ * Status meanings (user-facing):
+ * - local: not published yet
+ * - pushing / push_failed: in-flight publish
+ * - live_soon: announced on Nostr; clone/files finishing (“Published, live soon”)
+ * - live: fully live (“Live on Nostr”)
+ * - live_with_edits: was live, has local changes not pushed yet
  */
 
 export type RepoStatus =
   | "local"
   | "pushing"
   | "live"
+  | "live_soon"
   | "live_with_edits"
   | "push_failed";
 
+/** True when the repo is already on Nostr (including transitional / edits). */
+export function isPublishedRepoStatus(status: RepoStatus): boolean {
+  return (
+    status === "live" || status === "live_soon" || status === "live_with_edits"
+  );
+}
+
+/** True when the UI should still offer Push (incomplete publish or local edits). */
+export function statusNeedsPushAction(status: RepoStatus): boolean {
+  return (
+    status === "local" ||
+    status === "live_soon" ||
+    status === "live_with_edits" ||
+    status === "push_failed"
+  );
+}
+
 /**
  * Check if repository exists in bridge database (async)
- * This is the source of truth - only repos in bridge DB are truly "live"
- * Updates the repo in localStorage with bridgeProcessed flag
+ * This is the source of truth for clone/file serving readiness.
+ * Updates the repo in localStorage with bridgeProcessed flag.
  */
 export async function checkBridgeExists(
   ownerPubkey: string,
@@ -23,7 +47,7 @@ export async function checkBridgeExists(
 ): Promise<boolean> {
   try {
     if (!ownerPubkey || !/^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-      return false; // Invalid pubkey
+      return false;
     }
 
     const response = await fetch(
@@ -35,9 +59,6 @@ export async function checkBridgeExists(
     if (response.ok) {
       const data = await response.json();
       const exists = data.exists === true;
-      // Update repo in localStorage with bridgeProcessed flag
-      // CRITICAL: Use repositoryName from Nostr event (exact name used by git-nostr-bridge)
-      // Priority: repositoryName > repo > slug
       try {
         const repos = JSON.parse(
           localStorage.getItem("gittr_repos") || "[]"
@@ -58,13 +79,6 @@ export async function checkBridgeExists(
             bridgeProcessed: exists,
           };
           localStorage.setItem("gittr_repos", JSON.stringify(repos));
-          console.log(
-            `✅ [Bridge Check] Updated bridgeProcessed=${exists} for repo: ${repoName}`
-          );
-        } else {
-          console.warn(
-            `⚠️ [Bridge Check] Could not find repo in localStorage: ${repoName} (entity: ${entity})`
-          );
         }
       } catch (storageError) {
         console.warn("Failed to update bridgeProcessed flag:", storageError);
@@ -76,33 +90,24 @@ export async function checkBridgeExists(
     return false;
   } catch (error) {
     console.warn("Failed to check bridge:", error);
-    return false; // On error, assume not in bridge (conservative)
+    return false;
   }
 }
 
 /**
- * Get the current status of a repository
- * - "local": Only exists locally, not published to Nostr
- * - "pushing": Currently being pushed to Nostr
- * - "live": Published to Nostr AND processed by bridge (bridge has the repo)
+ * Get the current status of a repository.
  *
- * CRITICAL: "live" status requires BOTH:
- * 1. Event ID exists (event was published to Nostr)
- * 2. Bridge has processed the event (repo exists in bridge database)
- *
- * This prevents false "live" status when events are published but not yet processed by bridge.
+ * live = announcement on Nostr and past the short post-publish window
+ *        (or bridge-confirmed). Matches what discovery/gitworkshop already show.
+ * live_soon = just published; clone/bridge may still be catching up (~5 min).
+ * live_with_edits = was live, local changes not pushed.
  */
 export function getRepoStatus(repo: any): RepoStatus {
-  // Check if repo has a "status" field explicitly set (highest priority)
   if (repo.status === "pushing") return "pushing";
   if (repo.status === "push_failed") return "push_failed";
 
-  // Check if bridge has processed this repo
-  // This is stored as a flag when we verify with the bridge
-  // Check the raw value, not coerced to boolean, to distinguish undefined from false
   const bridgeProcessed = repo.bridgeProcessed;
 
-  // Check if repo has announcement event ID (kind 30617) - was published to Nostr
   const hasAnnouncementEventId = !!(
     repo.nostrEventId ||
     repo.lastNostrEventId ||
@@ -110,16 +115,8 @@ export function getRepoStatus(repo: any): RepoStatus {
     repo.fromNostr
   );
 
-  // CRITICAL: Check if repo has state event ID (kind 30618) - required for full NIP-34 compliance
-  // Both announcement AND state events are required for "live" status
-  // ngit and other Nostr git clients need the state event to recognize "Nostr state"
   const hasStateEventId = !!(repo.stateEventId || repo.lastStateEventId);
 
-  // Check if repo has files (if it was pushed empty, it needs files pushed)
-  const hasFiles =
-    repo.files && Array.isArray(repo.files) && repo.files.length > 0;
-
-  // Check if repo has unpushed edits (hasLastNostrEventId but was modified after)
   const hasUnpushedEdits =
     repo.hasUnpushedEdits === true ||
     (repo.lastNostrEventId &&
@@ -127,87 +124,76 @@ export function getRepoStatus(repo: any): RepoStatus {
       repo.lastNostrEventCreatedAt &&
       repo.lastModifiedAt > repo.lastNostrEventCreatedAt * 1000);
 
-  // CRITICAL: Only mark as "live" if BOTH announcement AND state events exist AND bridge has processed it
-  // This ensures full NIP-34 compliance - both events are required for ngit clients
-  if (hasAnnouncementEventId && hasStateEventId && bridgeProcessed === true) {
-    // Both events published AND bridge processed - truly "live"
-    if (hasAnnouncementEventId && !hasFiles) {
-      return "live_with_edits"; // Pushed but no files yet
-    }
-    return hasUnpushedEdits ? "live_with_edits" : "live";
-  }
-
-  // CRITICAL: For repos synced from Nostr (syncedFromNostr or fromNostr), be more lenient
-  // If they're old (more than 1 hour), assume they're live even without state event or bridge verification
-  // This handles repos that were published before state events were required
   const isSyncedFromNostr = !!(repo.syncedFromNostr || repo.fromNostr);
   const eventCreatedAt =
-    repo.lastNostrEventCreatedAt || repo.nostrEventCreatedAt;
-  const isOldRepo =
-    eventCreatedAt && Date.now() / 1000 - eventCreatedAt >= 3600; // More than 1 hour old
+    repo.lastNostrEventCreatedAt || repo.nostrEventCreatedAt || 0;
+  const ageSec =
+    eventCreatedAt > 0
+      ? Date.now() / 1000 - eventCreatedAt
+      : Number.POSITIVE_INFINITY;
+  /** Short window after Push where bridge/clone may still be settling. */
+  const isVeryRecentPush = ageSec < 300;
+  /** Missing local flags but announce is old enough to treat as settled. */
+  const isSettledAnnounce = ageSec >= 600;
 
-  if (isSyncedFromNostr && hasAnnouncementEventId && isOldRepo) {
-    // Repo was synced from Nostr and is old - optimistically show as "live"
-    // Bridge check will update this when it runs, but for now assume it's live
+  // Fully ready: both NIP-34 events + bridge has the bare repo
+  if (hasAnnouncementEventId && hasStateEventId && bridgeProcessed === true) {
     return hasUnpushedEdits ? "live_with_edits" : "live";
   }
 
-  // If announcement event exists but state event is missing:
-  if (hasAnnouncementEventId && !hasStateEventId) {
-    // Announcement published but state event missing - not fully "live"
-    // This can happen if user cancelled the second signature or state event failed
-    // OR if repo was published before state events were required
-    // For recent pushes, show as "awaiting bridge", for old ones assume live
-    if (isOldRepo) {
-      // Old repo without state event - assume it's live (backward compatibility)
-      return hasUnpushedEdits ? "live_with_edits" : "live";
-    }
-    return "live_with_edits"; // Show as "Published (Awaiting Bridge)" - state event needed
+  // Discovery stubs / legacy: synced from network with no local timestamps → live
+  if (isSyncedFromNostr && hasAnnouncementEventId && !eventCreatedAt) {
+    return hasUnpushedEdits ? "live_with_edits" : "live";
   }
 
-  // If announcement event exists but bridge hasn't processed it yet:
-  // CRITICAL: If both events exist and were confirmed, show as "live" even if bridge hasn't processed yet
-  // The bridge will update it later, but the repo is already live on Nostr
-  // Bridge processing is for file serving, not for determining if repo is "live"
+  // Synced long enough that transitional UI is misleading
+  if (isSyncedFromNostr && hasAnnouncementEventId && isSettledAnnounce) {
+    return hasUnpushedEdits ? "live_with_edits" : "live";
+  }
+
+  // Announcement published but state event missing (second sign cancelled, etc.)
+  if (hasAnnouncementEventId && !hasStateEventId) {
+    if (isSettledAnnounce) {
+      return hasUnpushedEdits ? "live_with_edits" : "live";
+    }
+    return "live_soon";
+  }
+
+  // Both events on Nostr; bridge flag may still be catching up locally.
+  // Do NOT require local `files[]` — My Repositories often has no file cache,
+  // which previously stuck repos on "Published, live soon" forever.
   if (
     hasAnnouncementEventId &&
     hasStateEventId &&
     (bridgeProcessed === undefined || bridgeProcessed === false)
   ) {
-    // Only show "awaiting bridge" if it's a very recent push (within 5 minutes) AND no files
-    // This handles the edge case where bridge might still be processing files
-    const isVeryRecentPush =
-      eventCreatedAt && Date.now() / 1000 - eventCreatedAt < 300; // Within 5 minutes
-    const hasNoFiles =
-      !hasFiles || (Array.isArray(repo.files) && repo.files.length === 0);
-
-    if (isVeryRecentPush && hasNoFiles) {
-      // Very recent push with no files - bridge might still be processing, show as "awaiting bridge"
-      return "live_with_edits"; // Show as "Published (Awaiting Bridge)" for very recent pushes
-    } else {
-      // Both events exist - repo is live on Nostr, show as "live" even if bridge hasn't processed yet
-      // Bridge processing is for file serving, not for determining live status
-      return hasUnpushedEdits ? "live_with_edits" : "live";
+    if (hasUnpushedEdits && !isVeryRecentPush) {
+      return "live_with_edits";
     }
+    if (isVeryRecentPush) {
+      return "live_soon";
+    }
+    return "live";
   }
 
-  // Only check explicit status if no event ID exists
+  if (repo.status === "live_soon") {
+    // Stale persisted status after a successful push — promote once past the window
+    if (!isVeryRecentPush && hasAnnouncementEventId) {
+      return hasUnpushedEdits ? "live_with_edits" : "live";
+    }
+    return "live_soon";
+  }
   if (repo.status === "live_with_edits") return "live_with_edits";
   if (repo.status === "live") {
-    // Explicit "live" status - only downgrade if there are actual unpushed edits
-    // This handles repos that were marked "live" before bridge verification was added
-    // But don't downgrade if there are no edits (optimistic - assume it's live)
     return hasUnpushedEdits ? "live_with_edits" : "live";
   }
   if (repo.status === "local") return "local";
 
-  // Default to "local" - repos need to be explicitly pushed and confirmed by bridge
   return "local";
 }
 
 /**
  * Query Nostr for state event (30618) when missing from localStorage
- * This restores the state event ID if localStorage was cleared but the event exists on relays
  */
 export async function queryStateEventFromNostr(
   subscribe: (
@@ -237,7 +223,7 @@ export async function queryStateEventFromNostr(
         resolved = true;
         resolve(foundStateEventId);
       }
-    }, 5000); // 5 second timeout
+    }, 5000);
 
     const unsub = subscribe(
       [
@@ -249,7 +235,7 @@ export async function queryStateEventFromNostr(
         },
       ],
       defaultRelays,
-      (event: any, isAfterEose: boolean, relayURL?: string) => {
+      (event: any) => {
         if (event.kind === KIND_REPOSITORY_STATE && !resolved) {
           foundStateEventId = event.id;
           resolved = true;
@@ -258,10 +244,9 @@ export async function queryStateEventFromNostr(
           resolve(foundStateEventId);
         }
       },
-      5000 // 5 second timeout
+      5000
     );
 
-    // Also handle EOSE (End of Stored Events)
     setTimeout(() => {
       if (!resolved) {
         resolved = true;
@@ -273,9 +258,6 @@ export async function queryStateEventFromNostr(
   });
 }
 
-/**
- * Set repository status
- */
 export function setRepoStatus(
   repoSlug: string,
   entity: string,
@@ -299,9 +281,6 @@ export function setRepoStatus(
   }
 }
 
-/**
- * Get status badge styling
- */
 export function getStatusBadgeStyle(status: RepoStatus): {
   bg: string;
   text: string;
@@ -332,11 +311,17 @@ export function getStatusBadgeStyle(status: RepoStatus): {
         text: "text-green-300",
         label: "Live on Nostr",
       };
-    case "live_with_edits":
+    case "live_soon":
       return {
         bg: "bg-orange-600/30",
         text: "text-orange-300",
-        label: "Published (Awaiting Bridge)", // More accurate: published to Nostr but bridge hasn't processed yet
+        label: "Published, live soon",
+      };
+    case "live_with_edits":
+      return {
+        bg: "bg-amber-600/30",
+        text: "text-amber-300",
+        label: "Has unpublished edits",
       };
     default:
       return {
@@ -347,11 +332,6 @@ export function getStatusBadgeStyle(status: RepoStatus): {
   }
 }
 
-/**
- * Mark repository as having unpushed edits
- * Call this when repo is modified locally after being published
- * Also ensures local repos stay as "local" status so push button appears
- */
 export function markRepoAsEdited(repoSlug: string, entity: string): void {
   try {
     const repos = JSON.parse(
@@ -371,27 +351,19 @@ export function markRepoAsEdited(repoSlug: string, entity: string): void {
       );
 
       if (wasLive) {
-        // Repo was previously live - mark as having unpushed edits
         repos[repoIndex] = {
           ...repo,
           hasUnpushedEdits: true,
           lastModifiedAt: Date.now(),
         };
         localStorage.setItem("gittr_repos", JSON.stringify(repos));
-        console.log(
-          `📝 [markRepoAsEdited] Marked live repo as having unpushed edits: ${repoSlug}`
-        );
       } else {
-        // Repo was never pushed - ensure it's marked as "local" so push button appears
         repos[repoIndex] = {
           ...repo,
-          status: "local", // Explicitly set to local
+          status: "local",
           lastModifiedAt: Date.now(),
         };
         localStorage.setItem("gittr_repos", JSON.stringify(repos));
-        console.log(
-          `📝 [markRepoAsEdited] Ensured local repo status is "local": ${repoSlug}`
-        );
       }
     }
   } catch (error) {
@@ -399,9 +371,6 @@ export function markRepoAsEdited(repoSlug: string, entity: string): void {
   }
 }
 
-/**
- * Clear unpushed edits flag (called after successful push)
- */
 export function clearUnpushedEdits(
   repoSlug: string,
   entity: string,
@@ -423,6 +392,8 @@ export function clearUnpushedEdits(
         hasUnpushedEdits: false,
         lastNostrEventId: eventId,
         lastNostrEventCreatedAt: eventCreatedAt,
+        // Transitional until bridgeProcessed flips true via checkBridgeExists
+        status: "live_soon",
         lastModifiedAt: Date.now(),
       };
       localStorage.setItem("gittr_repos", JSON.stringify(repos));

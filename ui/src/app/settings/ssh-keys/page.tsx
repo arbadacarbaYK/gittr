@@ -9,11 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { KIND_SSH_KEY, createSSHKeyEvent } from "@/lib/nostr/events";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
-import { KIND_SSH_KEY, createSSHKeyEvent } from "@/lib/nostr/events";
 import useSession from "@/lib/nostr/useSession";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import {
@@ -47,7 +47,7 @@ interface SSHKey {
 }
 
 export default function SSHKeysPage() {
-  const { pubkey, publish, defaultRelays , remoteSigner } = useNostrContext();
+  const { pubkey, publish, defaultRelays, remoteSigner } = useNostrContext();
   const { isLoggedIn } = useSession();
   const [keys, setKeys] = useState<SSHKey[]>([]);
   const [loading, setLoading] = useState(true);

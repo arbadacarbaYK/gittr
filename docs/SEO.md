@@ -22,7 +22,7 @@ The sitemap **exists in code everywhere** (`ui/src/app/sitemap.ts`). It is **not
 When something requests `/sitemap.xml`, Next.js runs `sitemap()` which:
 
 1. Adds static URLs: `/`, `/explore`, `/help`, `/pages`
-2. **Queries Nostr relays** (`NEXT_PUBLIC_NOSTR_RELAYS`) for repository announcements (kinds **51** and **30617**), applies deletions, publisher blocklist, and **skips private repos** (`public-read: false` on kind 30617) → `npub…/repo` URLs
+2. **Queries Nostr relays** (`NEXT_PUBLIC_NOSTR_RELAYS`) for repository announcements (kinds **51** and **30617**), applies deletions, publisher blocklist, **skips private repos** (`public-read: false` on kind 30617), and **skips announces whose only `clone` tags are localhost/private** (same cheap filter as homepage recent + explore; no bridge/file probe) → `npub…/repo` URLs
 3. Fetches **gittr Pages** manifest from `NEXT_PUBLIC_GITTR_PAGES_URL` (default `https://pages.gittr.space`) → published site URLs
 4. Optionally merges lines from **`nostr-pushed-repos.txt`** (gitignored)
 

@@ -13,7 +13,9 @@ export function gittrRepoFile(
   file: string,
   branch = "main"
 ): string {
-  return `${GITTR_OWNER_BASE}/${repo}?file=${encodeURIComponent(file)}&branch=${branch}`;
+  return `${GITTR_OWNER_BASE}/${repo}?file=${encodeURIComponent(
+    file
+  )}&branch=${branch}`;
 }
 
 export const GITTR_REPO_GITTR = gittrRepoBrowse("gittr");
@@ -29,5 +31,11 @@ export const GITTR_DOC_FILE_FETCHING = gittrRepoFile(
   "gittr",
   "docs/FILE_FETCHING_INSIGHTS.md"
 );
-export const GITTR_DOC_SSH_GIT = gittrRepoFile("gittr", "docs/SSH_GIT_GUIDE.md");
-export const GITTR_DOC_GITNOSTR_SSH = gittrRepoFile("gitnostr", "SSH_GIT_GUIDE.md");
+export const GITTR_DOC_SSH_GIT = gittrRepoFile(
+  "gittr",
+  "docs/SSH_GIT_GUIDE.md"
+);
+export const GITTR_DOC_GITNOSTR_SSH = gittrRepoFile(
+  "gitnostr",
+  "SSH_GIT_GUIDE.md"
+);

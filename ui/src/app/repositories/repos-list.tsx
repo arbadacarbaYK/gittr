@@ -3,22 +3,35 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PushPaywallStatus } from "@/components/ui/push-paywall-status";
+import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  CLONE_REPUBLISH_BADGE_LABEL,
+  CLONE_REPUBLISH_BADGE_TITLE,
+  cloneListNeedsRepublish,
+  repairHostOnlyCloneAnnounces,
+} from "@/lib/nostr/repair-host-only-clones";
 import {
   formatPushRepoSuccessAlert,
   pushRepoToNostr,
 } from "@/lib/nostr/push-repo-to-nostr";
-import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
 } from "@/lib/nostr/signer";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
-import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { isOwner } from "@/lib/repo-permissions";
+import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { formatDateTime24h } from "@/lib/utils/date-format";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
-import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
+import {
+  getRepoStatus,
+  getStatusBadgeStyle,
+  isPublishedRepoStatus,
+  statusNeedsPushAction,
+} from "@/lib/utils/repo-status";
+
+import { useState } from "react";
 
 import { Globe, Loader2, Lock, Upload } from "lucide-react";
 import { nip19 } from "nostr-tools";
@@ -51,6 +64,7 @@ export function ReposList({
   ownerMetadata,
 }: ReposListProps) {
   const { remoteSigner } = useNostrContext();
+  const [repairingHostOnly, setRepairingHostOnly] = useState(false);
 
   // Function to resolve repo icon with priority (memoized to react to ownerMetadata changes):
   // 1. Stored logoUrl (user-set in repo settings)
@@ -286,12 +300,9 @@ export function ReposList({
             repoName &&
             logoPath
           ) {
-            const branch = repo.defaultBranch || "main";
-            return `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+            return `/api/og/repo-image?ownerPubkey=${encodeURIComponent(
               ownerPubkey
-            )}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(
-              logoPath
-            )}&branch=${encodeURIComponent(branch)}`;
+            )}&repo=${encodeURIComponent(repoName)}`;
           }
         }
       }
@@ -561,14 +572,14 @@ export function ReposList({
     const statusA = getRepoStatus(a);
     const statusB = getRepoStatus(b);
 
-    // Status priority: pushing > push_failed > local > live_with_edits > live
-    // This ensures repos needing attention appear first
+    // Status priority: pushing > push_failed > local > edits > live soon > live
     const statusPriority: Record<string, number> = {
-      pushing: 0, // Highest priority - currently being worked on
-      push_failed: 1, // Needs attention
-      local: 2, // Needs to be pushed
-      live_with_edits: 3, // Has changes to push
-      live: 4, // Everything is good
+      pushing: 0,
+      push_failed: 1,
+      local: 2,
+      live_with_edits: 3,
+      live_soon: 4,
+      live: 5,
     };
 
     const priorityA = statusPriority[statusA] ?? 5;
@@ -613,11 +624,8 @@ export function ReposList({
       const existingStatus = getRepoStatus(existing);
 
       if (
-        (status === "local" &&
-          (existingStatus === "live" ||
-            existingStatus === "live_with_edits")) ||
-        (existingStatus === "local" &&
-          (status === "live" || status === "live_with_edits"))
+        (status === "local" && isPublishedRepoStatus(existingStatus)) ||
+        (existingStatus === "local" && isPublishedRepoStatus(status))
       ) {
         const localVersion = status === "local" ? r : existing;
         const nostrVersion = status === "local" ? existing : r;
@@ -655,8 +663,76 @@ export function ReposList({
 
   const deduplicatedRepos = Array.from(dedupeMap.values());
 
+  const hostOnlyBroken = deduplicatedRepos.filter((r: any) =>
+    cloneListNeedsRepublish(r.clone)
+  );
+
+  const runHostOnlyRepair = async () => {
+    if (!pubkey || !publish || !subscribe || !defaultRelays?.length) {
+      alert("Sign in and wait for relays before fixing clone URLs.");
+      return;
+    }
+    if (hostOnlyBroken.length === 0) return;
+    const ok = window.confirm(
+      `${hostOnlyBroken.length} of your repo(s) only announce broken clone URLs (bare git.gittr.space, localhost, or private addresses).\n\n` +
+        `This runs Push to Nostr once per repo — you may need to approve several signatures (nsec, browser extension, or remote signer). It can take a while.\n\n` +
+        `Republish all ${hostOnlyBroken.length} now?`
+    );
+    if (!ok) return;
+    setRepairingHostOnly(true);
+    try {
+      const { repaired, failed } = await repairHostOnlyCloneAnnounces({
+        repoSlugs: hostOnlyBroken.map((r: any) => ({
+          entity: r.entity,
+          repoSlug: r.repositoryName || r.repo || r.slug,
+        })),
+        publish,
+        subscribe,
+        defaultRelays,
+        pubkey,
+        remoteSigner,
+        onProgress: (m) => console.log("[repair host-only]", m),
+      });
+      alert(
+        `Republished ${repaired.length} repo(s).` +
+          (failed.length
+            ? `\nFailed: ${failed.map((f) => `${f.repo}: ${f.error}`).join("; ")}`
+            : "")
+      );
+      window.dispatchEvent(new Event("storage"));
+    } catch (e: any) {
+      alert(`Repair failed: ${e?.message || e}`);
+    } finally {
+      setRepairingHostOnly(false);
+    }
+  };
+
   return (
     <div className="space-y-2">
+      {hostOnlyBroken.length > 0 && (
+        <div className="mb-3 rounded border border-amber-700/50 bg-amber-950/40 p-3 text-sm text-amber-100 flex flex-wrap items-center gap-3 justify-between">
+          <span>
+            {hostOnlyBroken.length} repo(s) need a republish — broken clone
+            URL (host only / localhost). Other clients can’t see files until
+            fixed. One Push + signatures per repo; can take a while.
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            disabled={repairingHostOnly}
+            onClick={() => void runHostOnlyRepair()}
+            className="shrink-0"
+          >
+            {repairingHostOnly ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-1" /> Republishing…
+              </>
+            ) : (
+              `Republish broken clones (${hostOnlyBroken.length})`
+            )}
+          </Button>
+        </div>
+      )}
       {deduplicatedRepos.map((r: any, index: number) => {
         const entity = r.entity!;
         // CRITICAL: For URLs and bridge operations, use repositoryName from Nostr event (exact name used by git-nostr-bridge)
@@ -687,7 +763,8 @@ export function ReposList({
 
         const iconUrl = resolveRepoIcon(r);
         const status = getRepoStatus(r);
-        const isLocal = status === "local" || status === "live_with_edits";
+        const needsRepublish = cloneListNeedsRepublish(r.clone);
+        const isLocal = statusNeedsPushAction(status) || needsRepublish;
         const isPushing = pushingRepos.has(`${entity}/${repoForUrl}`);
 
         const repoKey = `${entity}/${repoForUrl}`;
@@ -755,6 +832,14 @@ export function ReposList({
                           </span>
                         );
                       })()}
+                      {needsRepublish && (
+                        <span
+                          className="text-xs px-2 py-0.5 rounded bg-amber-900/60 text-amber-200 border border-amber-700/50 flex-shrink-0"
+                          title={CLONE_REPUBLISH_BADGE_TITLE}
+                        >
+                          {CLONE_REPUBLISH_BADGE_LABEL}
+                        </span>
+                      )}
                       {/* CRITICAL: Always render badge to prevent hydration mismatches */}
                       {/* suppressHydrationWarning because publicRead might differ between server and client */}
                       <div suppressHydrationWarning>
@@ -903,7 +988,11 @@ export function ReposList({
                     }}
                   >
                     <Upload className="h-3 w-3 mr-1" />
-                    {isPushing ? "Pushing..." : "Push to Nostr"}
+                    {isPushing
+                      ? "Pushing..."
+                      : needsRepublish
+                        ? "Republish"
+                        : "Push to Nostr"}
                   </Button>
                   <PushPaywallStatus
                     entity={entity}

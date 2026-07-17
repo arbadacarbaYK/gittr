@@ -1,4 +1,3 @@
-import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import {
   isStrictJsonUtf8Document,
   manifestUploadContentType,
@@ -8,6 +7,7 @@ import {
   gittrPagesBlossomOrigin,
   gittrPagesBlossomServerTag,
 } from "@/lib/gittr-pages/gittr-pages-blossom-origin";
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { KIND_NSITE_NAMED } from "@/lib/nostr/events";
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import {
@@ -346,7 +346,9 @@ async function fetchFileFromBridge(
     path: normalizeFilePath(path),
     branch,
   });
-  const res = await fetchBridgeRead(`/api/nostr/repo/file-content?${qs.toString()}`);
+  const res = await fetchBridgeRead(
+    `/api/nostr/repo/file-content?${qs.toString()}`
+  );
   if (!res.ok) return null;
   try {
     const data = (await res.json()) as GitFileContentJson;

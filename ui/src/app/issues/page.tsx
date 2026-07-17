@@ -9,6 +9,7 @@ import { KIND_ISSUE, KIND_LABEL_OVERLAY } from "@/lib/nostr/events";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { loadStoredRepos } from "@/lib/repos/storage";
+import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
 import { repoAllowsUserToManagePRsAndIssues } from "@/lib/stats";
 import {
   formatDate24h,
@@ -24,12 +25,11 @@ import {
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import {
+  countMergedIssueComments,
   mergeGithubIssuesAfterRefetch,
   normalizeIssueListStatus,
-  countMergedIssueComments,
 } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
 import { syncGithubIssuesForRepo } from "@/lib/utils/sync-github-repo-issues-prs";
 
 import { clsx } from "clsx";

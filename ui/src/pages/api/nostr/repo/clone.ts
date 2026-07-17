@@ -1,7 +1,7 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
-import { sanitizeBridgeRepoName } from "@/lib/utils/sanitize-bridge-repo-name";
 import { assertRepoReadAccess } from "@/lib/repo-read-access";
+import { sanitizeBridgeRepoName } from "@/lib/utils/sanitize-bridge-repo-name";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync } from "fs";

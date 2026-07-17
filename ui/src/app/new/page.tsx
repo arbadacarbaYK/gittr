@@ -690,9 +690,10 @@ function NewRepoPageContent() {
                   defaultBranch: rec.defaultBranch,
                   branches: rec.branches,
                   releases: rec.releases,
-                  // GRASP-01: Add clone and relays tags
-                  clone: [gitServerUrl], // Git server URL where repo is hosted
-                  relays: defaultRelays, // Nostr relays where repo events are published
+                  // Host-only gitServerUrl is expanded to /npub/repo.git in
+                  // buildUnsignedRepositoryEvent (required by gitworkshop / NIP-34).
+                  clone: [gitServerUrl],
+                  relays: defaultRelays,
                 },
                 signerPubkey
               );

@@ -464,7 +464,9 @@ async function fetchGitHubViaRepoFilesApi(
       const data = await res.json();
       if (data?.files && Array.isArray(data.files) && data.files.length > 0) {
         console.log(
-          `✅ [Git Source] GitHub via /api/git/repo-files: ${data.files.length} files (branch: ${data.defaultBranch || tryBranch})`
+          `✅ [Git Source] GitHub via /api/git/repo-files: ${
+            data.files.length
+          } files (branch: ${data.defaultBranch || tryBranch})`
         );
         return {
           files: data.files,
@@ -1230,7 +1232,9 @@ async function fetchGraspViaRepoFilesApi(
     });
     if (!res.ok) {
       console.warn(
-        `⚠️ [Git Source] GRASP remote shallow clone failed: ${res.status} (${httpsCloneUrl.slice(0, 72)}...)`
+        `⚠️ [Git Source] GRASP remote shallow clone failed: ${
+          res.status
+        } (${httpsCloneUrl.slice(0, 72)}...)`
       );
       return null;
     }
@@ -1243,7 +1247,9 @@ async function fetchGraspViaRepoFilesApi(
         ? data.defaultBranch.trim()
         : branch;
     console.log(
-      `✅ [Git Source] GRASP remote shallow clone: ${data.files.length} files (${httpsCloneUrl.slice(0, 72)}...)`
+      `✅ [Git Source] GRASP remote shallow clone: ${
+        data.files.length
+      } files (${httpsCloneUrl.slice(0, 72)}...)`
     );
     return { files: data.files, resolvedBranch };
   } catch (e) {
@@ -1296,7 +1302,10 @@ type BridgeFilesPayload = {
   branch?: string;
 };
 
-const bridgeFilesInflight = new Map<string, Promise<BridgeFilesPayload | null>>();
+const bridgeFilesInflight = new Map<
+  string,
+  Promise<BridgeFilesPayload | null>
+>();
 
 /** One bridge API call per owner/repo/branch — shared by parallel GRASP clone URLs. */
 export async function fetchBridgeFilesOnce(
@@ -1433,27 +1442,27 @@ async function fetchFromNostrGit(
         Array.isArray(bridgeJson.files) &&
         bridgeJson.files.length > 0
       ) {
-          console.log(
-            `✅ [Git Source] Fetched ${bridgeJson.files.length} files from git-nostr-bridge` +
-              (bridgeJson.branch ? ` (branch: ${bridgeJson.branch})` : "")
-          );
-          const resolved =
-            typeof bridgeJson.branch === "string" && bridgeJson.branch.trim()
-              ? bridgeJson.branch.trim()
-              : branch;
-          const rawFiles = bridgeJson.files as Array<{
-            type: string;
-            path: string;
-            size?: number;
-          }>;
-          const files = filterGraspMirrorPollutionFromFileTree(rawFiles, {
-            ownerPubkeyHex: ownerPubkey,
-          });
-          return {
-            files,
-            resolvedBranch: resolved,
-          };
-        }
+        console.log(
+          `✅ [Git Source] Fetched ${bridgeJson.files.length} files from git-nostr-bridge` +
+            (bridgeJson.branch ? ` (branch: ${bridgeJson.branch})` : "")
+        );
+        const resolved =
+          typeof bridgeJson.branch === "string" && bridgeJson.branch.trim()
+            ? bridgeJson.branch.trim()
+            : branch;
+        const rawFiles = bridgeJson.files as Array<{
+          type: string;
+          path: string;
+          size?: number;
+        }>;
+        const files = filterGraspMirrorPollutionFromFileTree(rawFiles, {
+          ownerPubkeyHex: ownerPubkey,
+        });
+        return {
+          files,
+          resolvedBranch: resolved,
+        };
+      }
       // Not on disk (null) or empty tree: trigger GRASP clone + mirror.
       const shouldTriggerClone =
         !bridgeJson ||
@@ -1511,33 +1520,21 @@ async function fetchFromNostrGit(
 
             if (cloneResponse.ok) {
               const cloneData = await cloneResponse.json();
-              console.log(
-                `✅ [Git Source] Bare mirror clone OK:`,
-                cloneData
-              );
+              console.log(`✅ [Git Source] Bare mirror clone OK:`, cloneData);
 
               const mirrored = await awaitBridgeFilesAfterClone(
                 bridgeUrl,
                 branch
               );
               if (mirrored?.files?.length) {
-                notifyGraspRepoCloned(
-                  mirrored.files,
-                  ownerPubkey,
-                  repo
-                );
+                notifyGraspRepoCloned(mirrored.files, ownerPubkey, repo);
                 return mirrored;
               }
 
               console.log(
                 `⚠️ [Git Source] Mirror clone OK but bridge not readable yet; background poll`
               );
-              startBackgroundBridgePoll(
-                bridgeUrl,
-                branch,
-                ownerPubkey,
-                repo
-              );
+              startBackgroundBridgePoll(bridgeUrl, branch, ownerPubkey, repo);
             } else {
               const cloneError = await cloneResponse
                 .json()
@@ -1861,9 +1858,7 @@ export async function fetchFilesFromMultipleSources(
     }
   }
 
-  let sources = dedupeGitSourcesByUrl(
-    prioritizedCloneUrls.map(parseGitSource)
-  );
+  let sources = dedupeGitSourcesByUrl(prioritizedCloneUrls.map(parseGitSource));
   if (githubPreflightDone) {
     sources = sources.filter((s) => s.type !== "github");
   }

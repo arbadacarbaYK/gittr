@@ -1,9 +1,10 @@
-import type { NextApiRequest, NextApiResponse } from "next";
 import {
   assertRepoReadAccess,
   assertRepoWriteAccess,
   parseGitHttpUri,
 } from "@/lib/repo-read-access";
+
+import type { NextApiRequest, NextApiResponse } from "next";
 
 /**
  * Internal auth gate for nginx `auth_request` on git.gittr.space.

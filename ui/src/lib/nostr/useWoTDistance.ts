@@ -6,10 +6,10 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import {
   KIND_CONTACT_LIST,
+  type WoTDistanceResult,
   normalizeHexPubkey,
   parseContactListPubkeys,
   resolveWoTDistance,
-  type WoTDistanceResult,
 } from "@/lib/nostr/wot";
 
 export type WoTDistanceState =

@@ -1,15 +1,14 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-
 import {
   DEFAULT_WOT_MAX_HOPS,
   DEFAULT_WOT_ORACLE_URL,
+  type WoTOracleDistanceResponse,
   hopsFromOracleBody,
   normalizeHexPubkey,
-  type WoTOracleDistanceResponse,
 } from "@/lib/nostr/wot";
 
-const ORACLE_URL =
-  process.env.WOT_ORACLE_URL?.trim() || DEFAULT_WOT_ORACLE_URL;
+import type { NextApiRequest, NextApiResponse } from "next";
+
+const ORACLE_URL = process.env.WOT_ORACLE_URL?.trim() || DEFAULT_WOT_ORACLE_URL;
 
 export default async function handler(
   req: NextApiRequest,
@@ -39,7 +38,10 @@ export default async function handler(
     ? Math.min(10, Math.max(1, maxHopsRaw))
     : DEFAULT_WOT_MAX_HOPS;
 
-  const url = new URL("/distance", ORACLE_URL.endsWith("/") ? ORACLE_URL : `${ORACLE_URL}/`);
+  const url = new URL(
+    "/distance",
+    ORACLE_URL.endsWith("/") ? ORACLE_URL : `${ORACLE_URL}/`
+  );
   url.searchParams.set("from", from);
   url.searchParams.set("to", to);
   url.searchParams.set("max_hops", String(maxHops));
@@ -71,6 +73,8 @@ export default async function handler(
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "fetch failed";
-    return res.status(502).json({ error: "WoT oracle fetch failed", detail: message });
+    return res
+      .status(502)
+      .json({ error: "WoT oracle fetch failed", detail: message });
   }
 }

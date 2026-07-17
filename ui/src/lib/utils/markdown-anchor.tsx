@@ -91,7 +91,10 @@ function splitHash(href: string): { path: string; hash: string } {
 }
 
 /** Old gittr URLs used path segments for files; normalize to ?path= (preserve #L… hash). */
-function rewriteGittrRepoPath(href: string, ctx?: MarkdownAnchorContext): string {
+function rewriteGittrRepoPath(
+  href: string,
+  ctx?: MarkdownAnchorContext
+): string {
   const { path: pathOnly, hash } = splitHash(href);
   let working = pathOnly;
 
@@ -175,7 +178,9 @@ export function resolveRepoMarkdownHref(
 
   const repoBasePath = ctx.getRepoLink("");
   let resolved = resolveRepoRelativePath(pathPart, ctx.basePath);
-  resolved = normalizeRepoPath(resolved.replace(/^\.\//, "").replace(/^\.$/, ""));
+  resolved = normalizeRepoPath(
+    resolved.replace(/^\.\//, "").replace(/^\.$/, "")
+  );
 
   if (!resolved) {
     return repoBasePath + hash;
@@ -208,7 +213,10 @@ function resolveLinkTarget(
   if (explicitTarget) return explicitTarget;
   if (href.startsWith("#")) return undefined;
   if (href.startsWith("/")) return undefined;
-  if (typeof window !== "undefined" && href.startsWith(window.location.origin)) {
+  if (
+    typeof window !== "undefined" &&
+    href.startsWith(window.location.origin)
+  ) {
     return undefined;
   }
   return "_blank";
@@ -231,9 +239,7 @@ function MarkdownAnchorInner({
   const youtubeMatch = rawHref.match(YOUTUBE_REGEX);
   if (youtubeMatch?.[1]) {
     const videoId = youtubeMatch[1];
-    return (
-      <YoutubeEmbed videoId={videoId} />
-    );
+    return <YoutubeEmbed videoId={videoId} />;
   }
 
   let resolvedHref = rawHref;

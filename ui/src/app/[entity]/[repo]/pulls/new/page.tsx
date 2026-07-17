@@ -1,6 +1,5 @@
 "use client";
 
-import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { use, useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -9,10 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { showToast } from "@/components/ui/toast";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import {
-  NO_SIGNING_METHOD_MESSAGE,
-  resolveSigningCredentials,
-} from "@/lib/nostr/signer";
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import {
   KIND_PULL_REQUEST,
   KIND_STATUS_OPEN,
@@ -20,6 +16,10 @@ import {
   createStatusEvent,
 } from "@/lib/nostr/events";
 import { pushPrRef } from "@/lib/nostr/push-pr-ref";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import {
@@ -477,7 +477,8 @@ export default function NewPullRequestPage({
               ? (repoData as any).defaultBranch.trim()
               : "main";
 
-          const commitsRes = await fetchBridgeRead(`/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
+          const commitsRes = await fetchBridgeRead(
+            `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
               finalOwnerPubkey
             )}&repo=${encodeURIComponent(
               actualRepositoryName
@@ -978,51 +979,51 @@ export default function NewPullRequestPage({
             if (!signingCreds) {
               console.warn("Cannot publish status: no signing method");
             } else {
-            const { hasNip07, privateKey } = signingCreds;
+              const { hasNip07, privateKey } = signingCreds;
 
-            if (privateKey || hasNip07) {
-              let statusEvent: any;
+              if (privateKey || hasNip07) {
+                let statusEvent: any;
 
-              if (hasNip07 && window.nostr) {
-                const authorPubkey = await window.nostr.getPublicKey();
-                statusEvent = {
-                  kind: KIND_STATUS_OPEN,
-                  created_at: Math.floor(Date.now() / 1000),
-                  tags: [
-                    ["e", prEvent.id, "", "root"],
-                    ["p", finalOwnerPubkey],
-                    ["p", authorPubkey],
-                    ["a", `30617:${finalOwnerPubkey}:${repo}`],
-                  ],
-                  content: `Opened PR #${prId}`,
-                  pubkey: authorPubkey,
-                  id: "",
-                  sig: "",
-                };
-                statusEvent.id = getEventHash(statusEvent);
-                statusEvent = await window.nostr.signEvent(statusEvent);
-              } else if (privateKey && prEvent.id && finalOwnerPubkey) {
-                statusEvent = createStatusEvent(
-                  {
-                    statusKind: KIND_STATUS_OPEN,
-                    rootEventId: prEvent.id,
-                    ownerPubkey: finalOwnerPubkey,
-                    rootEventAuthor: authorPubkey,
-                    repoName: repo || "",
+                if (hasNip07 && window.nostr) {
+                  const authorPubkey = await window.nostr.getPublicKey();
+                  statusEvent = {
+                    kind: KIND_STATUS_OPEN,
+                    created_at: Math.floor(Date.now() / 1000),
+                    tags: [
+                      ["e", prEvent.id, "", "root"],
+                      ["p", finalOwnerPubkey],
+                      ["p", authorPubkey],
+                      ["a", `30617:${finalOwnerPubkey}:${repo}`],
+                    ],
                     content: `Opened PR #${prId}`,
-                  },
-                  privateKey
-                );
-              }
+                    pubkey: authorPubkey,
+                    id: "",
+                    sig: "",
+                  };
+                  statusEvent.id = getEventHash(statusEvent);
+                  statusEvent = await window.nostr.signEvent(statusEvent);
+                } else if (privateKey && prEvent.id && finalOwnerPubkey) {
+                  statusEvent = createStatusEvent(
+                    {
+                      statusKind: KIND_STATUS_OPEN,
+                      rootEventId: prEvent.id,
+                      ownerPubkey: finalOwnerPubkey,
+                      rootEventAuthor: authorPubkey,
+                      repoName: repo || "",
+                      content: `Opened PR #${prId}`,
+                    },
+                    privateKey
+                  );
+                }
 
-              if (statusEvent) {
-                publish(statusEvent, defaultRelays);
-                console.log(
-                  "✅ Published NIP-34 status event (open):",
-                  statusEvent.id
-                );
+                if (statusEvent) {
+                  publish(statusEvent, defaultRelays);
+                  console.log(
+                    "✅ Published NIP-34 status event (open):",
+                    statusEvent.id
+                  );
+                }
               }
-            }
             }
           } catch (statusError) {
             console.error("Failed to publish status event:", statusError);

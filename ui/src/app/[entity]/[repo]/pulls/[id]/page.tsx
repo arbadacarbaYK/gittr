@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CodeSnippetRenderer } from "@/components/ui/code-snippet-renderer";
 import { ConflictDetector } from "@/components/ui/conflict-detector";
-import { MarkdownCode } from "@/lib/utils/markdown-code";
 import { FileDiffViewer } from "@/components/ui/file-diff-viewer";
 import { PaymentQR } from "@/components/ui/payment-qr";
 import { PRReviewSection } from "@/components/ui/pr-review-section";
@@ -16,10 +15,6 @@ import { ZapButton } from "@/components/ui/zap-button";
 import { recordActivity } from "@/lib/activity-tracking";
 import { detectConflicts } from "@/lib/git/conflict-detection";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import {
-  NO_SIGNING_METHOD_MESSAGE,
-  resolveSigningCredentials,
-} from "@/lib/nostr/signer";
 import {
   KIND_BOUNTY,
   KIND_CODE_SNIPPET,
@@ -32,6 +27,10 @@ import {
   createStatusEvent,
 } from "@/lib/nostr/events";
 import { pushRepoToNostr } from "@/lib/nostr/push-repo-to-nostr";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import {
@@ -71,6 +70,7 @@ import {
   findPullRequestRowIndexByRouteParam,
   isGithubStylePrId,
 } from "@/lib/utils/issue-pr-status";
+import { MarkdownCode } from "@/lib/utils/markdown-code";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import {
@@ -475,10 +475,10 @@ export default function PRDetailPage({
         signer.source === "remote"
           ? "Remote signer available"
           : hasNip07
-            ? "NIP-07 signer available"
-            : privateKey
-              ? "Local private key signer available"
-              : "Signer available"
+          ? "NIP-07 signer available"
+          : privateKey
+          ? "Local private key signer available"
+          : "Signer available"
       );
       return;
     }
@@ -950,67 +950,67 @@ export default function PRDetailPage({
             if (!signingCreds) {
               console.warn("Cannot publish merge status: no signing method");
             } else {
-            const { hasNip07, privateKey } = signingCreds;
+              const { hasNip07, privateKey } = signingCreds;
 
-            if (privateKey || hasNip07) {
-              const ownerPubkeyHex =
-                repoOwnerPubkey.length === 64
-                  ? repoOwnerPubkey
-                  : resolveEntityToPubkey(resolvedParams.entity) || "";
+              if (privateKey || hasNip07) {
+                const ownerPubkeyHex =
+                  repoOwnerPubkey.length === 64
+                    ? repoOwnerPubkey
+                    : resolveEntityToPubkey(resolvedParams.entity) || "";
 
-              if (ownerPubkeyHex) {
-                let statusEvent: any;
+                if (ownerPubkeyHex) {
+                  let statusEvent: any;
 
-                if (hasNip07 && window.nostr) {
-                  const authorPubkey = await window.nostr.getPublicKey();
-                  statusEvent = {
-                    kind: KIND_STATUS_APPLIED,
-                    created_at: Math.floor(Date.now() / 1000),
-                    tags: [
-                      ["e", rootEventId, "", "root"],
-                      ["p", ownerPubkeyHex],
-                      ["p", pr.author],
-                      ["a", `30617:${ownerPubkeyHex}:${resolvedParams.repo}`],
-                      ["merge-commit", commitId],
-                      ["r", commitId],
-                    ],
-                    content: `Merged PR #${pr.id}`,
-                    pubkey: authorPubkey,
-                    id: "",
-                    sig: "",
-                  };
-                  statusEvent.id = getEventHash(statusEvent);
-                  statusEvent = await window.nostr.signEvent(statusEvent);
-                } else if (privateKey) {
-                  statusEvent = createStatusEvent(
-                    {
-                      statusKind: KIND_STATUS_APPLIED,
-                      rootEventId,
-                      ownerPubkey: ownerPubkeyHex,
-                      rootEventAuthor: pr.author,
-                      repoName: resolvedParams.repo,
-                      mergeCommitId: commitId,
+                  if (hasNip07 && window.nostr) {
+                    const authorPubkey = await window.nostr.getPublicKey();
+                    statusEvent = {
+                      kind: KIND_STATUS_APPLIED,
+                      created_at: Math.floor(Date.now() / 1000),
+                      tags: [
+                        ["e", rootEventId, "", "root"],
+                        ["p", ownerPubkeyHex],
+                        ["p", pr.author],
+                        ["a", `30617:${ownerPubkeyHex}:${resolvedParams.repo}`],
+                        ["merge-commit", commitId],
+                        ["r", commitId],
+                      ],
                       content: `Merged PR #${pr.id}`,
-                    },
-                    privateKey
-                  );
-                }
+                      pubkey: authorPubkey,
+                      id: "",
+                      sig: "",
+                    };
+                    statusEvent.id = getEventHash(statusEvent);
+                    statusEvent = await window.nostr.signEvent(statusEvent);
+                  } else if (privateKey) {
+                    statusEvent = createStatusEvent(
+                      {
+                        statusKind: KIND_STATUS_APPLIED,
+                        rootEventId,
+                        ownerPubkey: ownerPubkeyHex,
+                        rootEventAuthor: pr.author,
+                        repoName: resolvedParams.repo,
+                        mergeCommitId: commitId,
+                        content: `Merged PR #${pr.id}`,
+                      },
+                      privateKey
+                    );
+                  }
 
-                if (
-                  publish &&
-                  defaultRelays &&
-                  defaultRelays.length > 0 &&
-                  statusEvent
-                ) {
-                  publish(statusEvent, defaultRelays);
-                  mergeStatusPublished = true;
-                  console.log(
-                    "✅ Published NIP-34 status event (merged):",
-                    statusEvent.id
-                  );
+                  if (
+                    publish &&
+                    defaultRelays &&
+                    defaultRelays.length > 0 &&
+                    statusEvent
+                  ) {
+                    publish(statusEvent, defaultRelays);
+                    mergeStatusPublished = true;
+                    console.log(
+                      "✅ Published NIP-34 status event (merged):",
+                      statusEvent.id
+                    );
+                  }
                 }
               }
-            }
             }
           }
         } catch (error) {
@@ -1270,85 +1270,85 @@ export default function PRDetailPage({
               if (!signingCreds) {
                 console.warn("Cannot publish bounty update: no signing method");
               } else {
-              const { hasNip07, privateKey } = signingCreds;
+                const { hasNip07, privateKey } = signingCreds;
 
-              if (!currentUserPubkey) {
-                console.warn("Cannot publish bounty update: no user pubkey");
-              } else {
-                let bountyEvent: any;
+                if (!currentUserPubkey) {
+                  console.warn("Cannot publish bounty update: no user pubkey");
+                } else {
+                  let bountyEvent: any;
 
-                if (hasNip07 && window.nostr) {
-                  const authorPubkey = await window.nostr.getPublicKey();
+                  if (hasNip07 && window.nostr) {
+                    const authorPubkey = await window.nostr.getPublicKey();
 
-                  bountyEvent = {
-                    kind: KIND_BOUNTY,
-                    created_at: Math.floor(Date.now() / 1000),
-                    tags: [
-                      ["e", linkedIssue.id, "", "issue"],
-                      ["repo", resolvedParams.entity, resolvedParams.repo],
-                      ["status", "released"],
-                      [
-                        "p",
-                        linkedIssue.bountyCreator || authorPubkey,
-                        "creator",
+                    bountyEvent = {
+                      kind: KIND_BOUNTY,
+                      created_at: Math.floor(Date.now() / 1000),
+                      tags: [
+                        ["e", linkedIssue.id, "", "issue"],
+                        ["repo", resolvedParams.entity, resolvedParams.repo],
+                        ["status", "released"],
+                        [
+                          "p",
+                          linkedIssue.bountyCreator || authorPubkey,
+                          "creator",
+                        ],
+                        ["p", recipientPubkey, "claimed_by"],
                       ],
-                      ["p", recipientPubkey, "claimed_by"],
-                    ],
-                    content: JSON.stringify({
-                      amount: linkedIssue.bountyAmount,
-                      status: "released",
-                      withdrawId: linkedIssue.bountyWithdrawId,
-                      lnurl: linkedIssue.bountyLnurl,
-                      withdrawUrl: linkedIssue.bountyWithdrawUrl,
-                      releasedAt: Date.now(),
-                    }),
-                    pubkey: authorPubkey,
-                    id: "",
-                    sig: "",
-                  };
+                      content: JSON.stringify({
+                        amount: linkedIssue.bountyAmount,
+                        status: "released",
+                        withdrawId: linkedIssue.bountyWithdrawId,
+                        lnurl: linkedIssue.bountyLnurl,
+                        withdrawUrl: linkedIssue.bountyWithdrawUrl,
+                        releasedAt: Date.now(),
+                      }),
+                      pubkey: authorPubkey,
+                      id: "",
+                      sig: "",
+                    };
 
-                  bountyEvent.id = getEventHash(bountyEvent);
-                  bountyEvent = await window.nostr.signEvent(bountyEvent);
-                } else if (privateKey) {
-                  bountyEvent = createBountyEvent(
-                    {
-                      issueId: linkedIssue.id,
-                      repoEntity: resolvedParams.entity,
-                      repoName: resolvedParams.repo,
-                      amount: linkedIssue.bountyAmount || 0,
-                      status: "released",
-                      withdrawId: linkedIssue.bountyWithdrawId,
-                      lnurl: linkedIssue.bountyLnurl,
-                      withdrawUrl: linkedIssue.bountyWithdrawUrl,
-                      creator: linkedIssue.bountyCreator || currentUserPubkey,
-                      createdAt: Date.now(),
-                      releasedAt: Date.now(),
-                      claimedBy: recipientPubkey,
-                    },
-                    privateKey
-                  );
-                }
-
-                if (
-                  publish &&
-                  defaultRelays &&
-                  defaultRelays.length > 0 &&
-                  bountyEvent
-                ) {
-                  try {
-                    publish(bountyEvent, defaultRelays);
-                    console.log(
-                      "Published bounty release event to Nostr:",
-                      bountyEvent.id
-                    );
-                  } catch (error) {
-                    console.error(
-                      "Failed to publish bounty release to Nostr:",
-                      error
+                    bountyEvent.id = getEventHash(bountyEvent);
+                    bountyEvent = await window.nostr.signEvent(bountyEvent);
+                  } else if (privateKey) {
+                    bountyEvent = createBountyEvent(
+                      {
+                        issueId: linkedIssue.id,
+                        repoEntity: resolvedParams.entity,
+                        repoName: resolvedParams.repo,
+                        amount: linkedIssue.bountyAmount || 0,
+                        status: "released",
+                        withdrawId: linkedIssue.bountyWithdrawId,
+                        lnurl: linkedIssue.bountyLnurl,
+                        withdrawUrl: linkedIssue.bountyWithdrawUrl,
+                        creator: linkedIssue.bountyCreator || currentUserPubkey,
+                        createdAt: Date.now(),
+                        releasedAt: Date.now(),
+                        claimedBy: recipientPubkey,
+                      },
+                      privateKey
                     );
                   }
+
+                  if (
+                    publish &&
+                    defaultRelays &&
+                    defaultRelays.length > 0 &&
+                    bountyEvent
+                  ) {
+                    try {
+                      publish(bountyEvent, defaultRelays);
+                      console.log(
+                        "Published bounty release event to Nostr:",
+                        bountyEvent.id
+                      );
+                    } catch (error) {
+                      console.error(
+                        "Failed to publish bounty release to Nostr:",
+                        error
+                      );
+                    }
+                  }
                 }
-              }
               }
             } catch (error) {
               console.error("Failed to publish bounty release event:", error);

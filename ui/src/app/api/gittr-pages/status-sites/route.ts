@@ -1,9 +1,9 @@
 import { parseGatewayManifestsJson } from "@/lib/gittr-pages/gateway-manifests-json";
+import { filterBrowsableGatewaySites } from "@/lib/gittr-pages/gateway-site-browseability";
 import {
   parseGatewayStatusHtml,
   parseGatewayStatusMeta,
 } from "@/lib/gittr-pages/parse-gateway-status-html";
-import { filterBrowsableGatewaySites } from "@/lib/gittr-pages/gateway-site-browseability";
 import { filterGatewaySitesByPublisherBlocklist } from "@/lib/moderation/publisher-blocklist";
 
 import { NextResponse } from "next/server";
@@ -62,9 +62,7 @@ export async function GET() {
 
     const html = await res.text();
     const sites = filterBrowsableGatewaySites(
-      filterGatewaySitesByPublisherBlocklist(
-        parseGatewayStatusHtml(html, base)
-      )
+      filterGatewaySitesByPublisherBlocklist(parseGatewayStatusHtml(html, base))
     );
     const meta = parseGatewayStatusMeta(html);
 

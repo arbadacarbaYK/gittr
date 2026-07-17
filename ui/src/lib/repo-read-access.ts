@@ -9,12 +9,13 @@
  * Authentication reuses verifyNostrAuth (signed kind 24242/30617 event in
  * X-Nostr-Auth-Event, built client-side by getBridgeAuthHeaders).
  */
-import type { NextApiRequest } from "next";
-import { exec } from "child_process";
-import { promisify } from "util";
-import { nip19 } from "nostr-tools";
 import { resolveBridgeDbPath } from "@/lib/resolve-bridge-db-path";
 import { verifyNostrAuth } from "@/pages/api/nostr/repo/push-auth";
+
+import { exec } from "child_process";
+import type { NextApiRequest } from "next";
+import { nip19 } from "nostr-tools";
+import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
@@ -255,10 +256,7 @@ export function parseGitHttpUri(uri: string): {
   const service = (params.get("service") || "").toLowerCase();
 
   let operation: GitHttpOperation = "read";
-  if (
-    service === "git-receive-pack" ||
-    tail.includes("git-receive-pack")
-  ) {
+  if (service === "git-receive-pack" || tail.includes("git-receive-pack")) {
     operation = "write";
   }
 

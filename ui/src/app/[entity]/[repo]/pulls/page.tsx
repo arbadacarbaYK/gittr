@@ -5,15 +5,9 @@ import { use, useCallback, useEffect, useMemo, useState } from "react";
 
 import FilterBar from "@/components/filter-bar";
 import IssuesPrFilterMenuRow from "@/components/issues-pr-filter-toolbar";
-import {
-  filterListBySearchQuery,
-  parseListSearchQuery,
-  setListSearchOpenClosed,
-} from "@/lib/utils/issue-pr-list-search";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { loadStoredRepos } from "@/lib/repos/storage";
 import {
   KIND_PULL_REQUEST,
   KIND_STATUS_APPLIED,
@@ -22,6 +16,8 @@ import {
   KIND_STATUS_OPEN,
 } from "@/lib/nostr/events";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
+import { loadStoredRepos } from "@/lib/repos/storage";
 import {
   formatDate24h,
   formatDateTime24h,
@@ -37,12 +33,16 @@ import {
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
 import {
+  filterListBySearchQuery,
+  parseListSearchQuery,
+  setListSearchOpenClosed,
+} from "@/lib/utils/issue-pr-list-search";
+import {
   mergeNostrKind1618FileSnapshot,
   normalizePrListStatus,
   prStatusForNostrKind1618Merge,
 } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 
 import { clsx } from "clsx";
 import {
@@ -237,7 +237,9 @@ export default function RepoPullsPage({
           resolvedParams.repo
         );
         if (!r) {
-          const pk = resolveEntityToPubkey(resolvedParams.entity)?.toLowerCase();
+          const pk = resolveEntityToPubkey(
+            resolvedParams.entity
+          )?.toLowerCase();
           r = repos.find((x) => {
             const nameMatch = [x.repo, x.slug, x.name].some(
               (n) =>
@@ -508,10 +510,7 @@ export default function RepoPullsPage({
               if (!prToUpdate.nostrEventId) {
                 prToUpdate.nostrEventId = event.id;
               }
-              localStorage.setItem(
-                prStorageKey,
-                JSON.stringify(existingPRs)
-              );
+              localStorage.setItem(prStorageKey, JSON.stringify(existingPRs));
               if (typeof window !== "undefined") {
                 window.dispatchEvent(new Event("gittr:pr-updated"));
               }
@@ -583,9 +582,7 @@ export default function RepoPullsPage({
       );
 
       // Subscribe to status events (NIP-34 kinds 1630-1633) for all PRs in this repo
-      const allPRs = JSON.parse(
-        localStorage.getItem(prStorageKey) || "[]"
-      );
+      const allPRs = JSON.parse(localStorage.getItem(prStorageKey) || "[]");
       const prEventIds = allPRs
         .map((pr: any) => pr.nostrEventId || pr.id)
         .filter(Boolean);
@@ -617,9 +614,7 @@ export default function RepoPullsPage({
             if (!rootTag || !rootTag[1]) return;
 
             const prEventId = rootTag[1];
-            const prs = JSON.parse(
-              localStorage.getItem(prStorageKey) || "[]"
-            );
+            const prs = JSON.parse(localStorage.getItem(prStorageKey) || "[]");
             const prIndex = prs.findIndex(
               (p: any) => (p.nostrEventId || p.id) === prEventId
             );
@@ -650,10 +645,7 @@ export default function RepoPullsPage({
                     ? { sourcePrStillOpen: false }
                     : {}),
                 };
-                localStorage.setItem(
-                  prStorageKey,
-                  JSON.stringify(prs)
-                );
+                localStorage.setItem(prStorageKey, JSON.stringify(prs));
                 if (typeof window !== "undefined") {
                   window.dispatchEvent(new Event("gittr:pr-updated"));
                 }
@@ -913,10 +905,10 @@ export default function RepoPullsPage({
                   {githubSyncState === "loading"
                     ? "Loading pull requests…"
                     : githubSyncState === "no-mirror"
-                      ? "No GitHub mirror found for this repo. Open the Code tab first, or add a github.com clone URL on Nostr."
-                      : issueStatus === "open"
-                        ? "No open pull requests."
-                        : "No closed pull requests."}
+                    ? "No GitHub mirror found for this repo. Open the Code tab first, or add a github.com clone URL on Nostr."
+                    : issueStatus === "open"
+                    ? "No open pull requests."
+                    : "No closed pull requests."}
                 </li>
               ) : null}
               {displayPRs.map((item, idx) => (

@@ -31,7 +31,11 @@ import {
   isNostrProfileMirrorWebsite,
   nostrProfileViewerUrl,
 } from "@/lib/utils/nostr-profile-viewer-url";
-import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
+import {
+  getRepoStatus,
+  getStatusBadgeStyle,
+  isPublishedRepoStatus,
+} from "@/lib/utils/repo-status";
 
 import {
   CheckCircle2,
@@ -67,10 +71,13 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
   );
 
   // Get current user's pubkey for follow functionality - MUST be called before any early returns
-  const {pubkey: currentUserPubkey,
+  const {
+    pubkey: currentUserPubkey,
     publish,
     defaultRelays,
-    subscribe, remoteSigner } = useNostrContext();
+    subscribe,
+    remoteSigner,
+  } = useNostrContext();
   const { isLoggedIn } = useSession();
 
   // For metadata lookup, use full pubkey if we resolved one, otherwise use entity
@@ -1077,14 +1084,7 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 // Local repos and push_failed repos should be private and not visible to others
                 if (!viewingOwnProfile) {
                   const status = getRepoStatus(r);
-                  // Only show "live" or "live_with_edits" repos on public profiles
-                  // "local", "pushing", and "push_failed" repos are private and should not be visible
-                  if (
-                    status === "local" ||
-                    status === "pushing" ||
-                    status === "push_failed"
-                  )
-                    return false;
+                  if (!isPublishedRepoStatus(status)) return false;
                 }
 
                 return true;
@@ -1203,8 +1203,6 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
           // BUT: Also check if repo exists in Nostr repos list (might be from another source)
           if (!viewingOwnProfile) {
             const status = getRepoStatus(r);
-            // Only show "live" or "live_with_edits" repos on public profiles
-            // "local" repos are private and should not be visible
             // EXCEPTION: If repo has ownerPubkey matching the profile, it might be from Nostr
             // Check if repo exists in the main repos list (from Nostr)
             const existsInNostr = repos.some((nr: any) => {
@@ -1221,8 +1219,13 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
             });
 
             // If status is local but repo exists in Nostr repos, show it (might be syncing)
-            if (status === "local" && !existsInNostr) return false;
-            if (status === "pushing") return false; // Don't show repos that are currently pushing
+            if (isPublishedRepoStatus(status)) {
+              /* show */
+            } else if (status === "local" && existsInNostr) {
+              /* show — syncing into published */
+            } else {
+              return false;
+            }
           }
 
           return true;
@@ -2278,7 +2281,9 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                 {weeks.map((week, idx) => (
                   <div
                     key={idx}
-                    className={`h-3 w-3 shrink-0 ${getIntensity(week.count)} rounded-[3px] ${
+                    className={`h-3 w-3 shrink-0 ${getIntensity(
+                      week.count
+                    )} rounded-[3px] ${
                       week.count > 0 ? "ring-1 ring-green-500/25" : ""
                     }`}
                     title={`${week.date}: ${week.count} contributions`}
@@ -2294,15 +2299,21 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                   return (
                     <div
                       key={idx}
-                      className={`h-3 w-3 shrink-0 ${getIntensity(val)} rounded-[3px]`}
+                      className={`h-3 w-3 shrink-0 ${getIntensity(
+                        val
+                      )} rounded-[3px]`}
                     />
                   );
                 })}
                 <div
-                  className={`h-3 w-3 shrink-0 ${getIntensity(maxCount)} rounded-[3px]`}
+                  className={`h-3 w-3 shrink-0 ${getIntensity(
+                    maxCount
+                  )} rounded-[3px]`}
                 />
               </div>
-              <span className="shrink-0 whitespace-nowrap text-right">More</span>
+              <span className="shrink-0 whitespace-nowrap text-right">
+                More
+              </span>
             </div>
             <p className="text-sm text-gray-400">
               {userStats?.activityCount || 0} contributions in the last year
@@ -2476,14 +2487,9 @@ export default function EntityPage({ params }: { params: { entity: string } }) {
                         /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
                         repoName
                       ) {
-                        const branch = repo.defaultBranch || "main";
-                        iconUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+                        iconUrl = `/api/og/repo-image?ownerPubkey=${encodeURIComponent(
                           ownerPubkey
-                        )}&repo=${encodeURIComponent(
-                          repoName
-                        )}&path=${encodeURIComponent(
-                          logoPath
-                        )}&branch=${encodeURIComponent(branch)}`;
+                        )}&repo=${encodeURIComponent(repoName)}`;
                       }
                     }
                   }

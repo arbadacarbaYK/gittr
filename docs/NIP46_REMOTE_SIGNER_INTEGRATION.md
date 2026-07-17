@@ -472,6 +472,8 @@ All signing operations automatically use the remote signer:
 7. **Repair transport before every request** - `nostr-tools` v1 relay sockets never auto-reconnect. After a silent drop, `trySend` discards messages and the 24133 subscription is dead, so every RPC "times out" even though the signer is online. `sendRequest` calls `ensureDirectTransport()` first: re-dial only sockets in CLOSED state (never CONNECTING — re-dialing a connecting socket replaces and thrashes it) and re-run `startSubscription` after any reconnect, because v1 relays do not re-send REQ on reconnect.
 8. **Never call `relay.connect()` on a CONNECTING socket** - `nostr-relaypool`'s `connect()` replaces the WebSocket whenever `readyState !== OPEN`. Calling it once per request (e.g. from `addRelay`) kills every in-flight connection and the relay never reaches OPEN. Only dial when status is CLOSED (3).
 9. **Fail loudly on sign timeout** - a silent second 120s retry after a `sign_event` timeout just hides the failure. Throw an actionable error ("open your signer app, make sure it is online") so the UI can show it; repair transport in the background for the next attempt.
+10. **Do not mark ready after a failed reconnect probe** - restoring a cached session without a successful NIP-46 round-trip used to leave `state === "ready"` while Amber was offline. Callers then started a 120s `sign_event` that never popped Amber. Bootstrap keeps the cached pubkey/adapter for UI, but `isRpcHealthy()` stays false until `connect`/`get_public_key` succeeds; `signEvent` probes first and fails fast with an Amber hint.
+11. **Never merge bunker URI relays into the user relay list** - the NIP-07 adapter's `getRelays()` returns NIP-46 transport relays. Relays Settings must not treat those as user prefs or reconnect-nudge them (that thrashes Amber transport).
 
 ## Unified signing (`signer.ts`)
 
@@ -480,9 +482,12 @@ All UI actions that need to sign Nostr events (push to Nostr, profile publish, i
 Why: after login with a remote signer, `pubkey` is restored immediately from localStorage, but `window.nostr` (the NIP-07 adapter) is attached asynchronously during `bootstrapFromStorage()`. Code that only checks `window.nostr` fails with “No signing method” even though the user is logged in.
 
 The resolver:
-1. Waits up to 8s for remote signer bootstrap when a stored NIP-46 session exists
-2. Falls back to NIP-07 extension, then stored nsec in Settings
-3. Returns `{ signEvent, getPublicKey, usesWindowNostr, privateKey? }` for bridge auth and event signing
+1. Waits for remote signer bootstrap when a stored NIP-46 session exists
+2. Treats the remote manager as ready only when a live NIP-46 RPC has succeeded (`isRpcHealthy`) — adapter `getPublicKey()` alone is not enough
+3. Falls back to a real NIP-07 extension (no stored bunker session), then stored nsec in Settings
+4. Returns `{ signEvent, getPublicKey, usesWindowNostr, privateKey? }` for bridge auth and event signing
+
+**GRASP list (Settings → Relays):** Save uses `signer.signEvent` (same path as push). Add/remove servers locally, then publish kind `10317`. With Amber, the UI shows “Waiting for signer…”; if Amber is offline you get a fast failure instead of a silent 2-minute hang.
 
 `NostrContext` exposes `resolveSigner()` and `signerReady` for components that need reactive UI state.
 

@@ -2,13 +2,11 @@
  * Web of Trust (WoT) helpers — extension, oracle API, and display labels.
  * @see https://nostr-wot.com/docs
  */
-
 import { nip19 } from "nostr-tools";
 
 export const KIND_CONTACT_LIST = 3;
 
-export const DEFAULT_WOT_ORACLE_URL =
-  "https://wot-oracle.mappingbitcoin.com";
+export const DEFAULT_WOT_ORACLE_URL = "https://wot-oracle.mappingbitcoin.com";
 
 export const DEFAULT_WOT_MAX_HOPS = 4;
 
@@ -69,8 +67,8 @@ export function hopsFromOracleBody(
     body.hops !== undefined && body.hops !== null
       ? body.hops
       : body.distance !== undefined && body.distance !== null
-        ? body.distance
-        : null;
+      ? body.distance
+      : null;
   if (raw === null || raw === undefined) return null;
   if (typeof raw !== "number" || !Number.isFinite(raw)) return null;
   if (raw < 0) return null;
@@ -179,7 +177,10 @@ export async function fetchWoTDistanceFromOracle(
     const body = (await res.json()) as WoTOracleDistanceResponse;
     const hops = hopsFromOracleBody(body);
     if (hops === null) {
-      distanceCache.set(key, { value: null, expires: Date.now() + CACHE_TTL_MS });
+      distanceCache.set(key, {
+        value: null,
+        expires: Date.now() + CACHE_TTL_MS,
+      });
       return null;
     }
     const result: WoTDistanceResult = {

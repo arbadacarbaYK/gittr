@@ -1,8 +1,8 @@
 import {
-  mergeOwnerPubkeyIntoContributors,
-  sanitizeContributors,
   type ContributorLike,
   type ContributorRole,
+  mergeOwnerPubkeyIntoContributors,
+  sanitizeContributors,
 } from "@/lib/utils/contributors";
 
 export type RepoContributor = ContributorLike & {
@@ -111,8 +111,7 @@ export function mergeContributorsFromNostrEvent(options: {
     if (existingIndex >= 0 && contributors[existingIndex]) {
       const mergedContributor: RepoContributor = {
         ...contributors[existingIndex],
-        name:
-          existingContributor.name || contributors[existingIndex]?.name,
+        name: existingContributor.name || contributors[existingIndex]?.name,
         picture:
           existingContributor.picture || contributors[existingIndex]?.picture,
         githubLogin:

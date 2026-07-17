@@ -5,12 +5,18 @@
  * CRITICAL: New functions count from Nostr events (network source of truth)
  * Old functions use localStorage (kept for fallback)
  */
+import { nip19 } from "nostr-tools";
+
 import {
   type Activity,
   ActivityType,
   getActivities,
 } from "./activity-tracking";
 import { isPublisherBlocklisted } from "./moderation/publisher-blocklist";
+import {
+  normalizeNip34RepoIdentifier,
+  shouldHideNip34EventForUnusableClones,
+} from "./nostr/clone-url-quality";
 import {
   KIND_ISSUE,
   KIND_PULL_REQUEST,
@@ -20,12 +26,13 @@ import {
   KIND_STATUS_CLOSED,
 } from "./nostr/events";
 import { isPublicReadFromEvent } from "./nostr/repo-public-read";
-import { nip19 } from "nostr-tools";
-
 import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
 } from "./utils/entity-resolver";
+
+/** Re-export for callers that imported from stats. */
+export { normalizeNip34RepoIdentifier } from "./nostr/clone-url-quality";
 
 /** Home "Recent repositories" card — npub entity for links */
 export type PlatformRecentRepo = {
@@ -1621,11 +1628,7 @@ export async function getTopUsersFromNostr(
   console.log(
     `🔍 [getTopUsersFromNostr] Starting query with ${relays.length} relays`
   );
-  const userMap = await countUserActivitiesFromNostr(
-    subscribe,
-    relays,
-    999999
-  ); // All-time (same window as platform repo leaderboard)
+  const userMap = await countUserActivitiesFromNostr(subscribe, relays, 999999); // All-time (same window as platform repo leaderboard)
   const ranked = Array.from(userMap.values())
     .filter((u) => !isPublisherBlocklisted(u.pubkey) && u.activityCount > 0)
     .sort((a, b) => b.activityCount - a.activityCount);
@@ -1659,6 +1662,8 @@ export function getLiveRecentReposFromNostr(
   const activeRelays = relays.filter(Boolean);
   const byKey = new Map<string, PlatformRecentRepo>();
   const privateRepoIds = new Set<string>();
+  /** Announces whose clone tags are all localhost/private — keep off discovery. */
+  const unusableCloneRepoIds = new Set<string>();
 
   return new Promise((resolve) => {
     let resolved = false;
@@ -1673,6 +1678,7 @@ export function getLiveRecentReposFromNostr(
     ) => {
       if (!ownerHex || !repoName) return;
       const key = `${ownerHex}/${repoName}`;
+      if (unusableCloneRepoIds.has(key) || privateRepoIds.has(key)) return;
       const existing = byKey.get(key);
       if (!existing || tsMs > existing.lastActivity) {
         byKey.set(key, {
@@ -1721,8 +1727,14 @@ export function getLiveRecentReposFromNostr(
           const dTag = event.tags?.find(
             (t: any) => Array.isArray(t) && t[0] === "d"
           );
-          const repoName = dTag?.[1];
-          if (typeof repoName !== "string" || !repoName) return;
+          const nameTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "name"
+          );
+          const repoName = normalizeNip34RepoIdentifier(
+            typeof dTag?.[1] === "string" ? dTag[1] : "",
+            typeof nameTag?.[1] === "string" ? nameTag[1] : ""
+          );
+          if (!repoName) return;
           const repoKey = `${ownerHex}/${repoName}`;
           if (!isPublicReadFromEvent(event)) {
             privateRepoIds.add(repoKey);
@@ -1730,6 +1742,13 @@ export function getLiveRecentReposFromNostr(
             return;
           }
           privateRepoIds.delete(repoKey);
+          // Local-forge / localhost-only clone announces — not discoverable.
+          if (shouldHideNip34EventForUnusableClones(event)) {
+            unusableCloneRepoIds.add(repoKey);
+            byKey.delete(repoKey);
+            return;
+          }
+          unusableCloneRepoIds.delete(repoKey);
           let description: string | undefined;
           try {
             const content = JSON.parse(event.content || "{}");
@@ -1742,10 +1761,19 @@ export function getLiveRecentReposFromNostr(
           const dTag = event.tags?.find(
             (t: any) => Array.isArray(t) && t[0] === "d"
           );
-          const repoName = dTag?.[1];
-          if (typeof repoName === "string" && repoName) {
+          const nameTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "name"
+          );
+          const repoName = normalizeNip34RepoIdentifier(
+            typeof dTag?.[1] === "string" ? dTag[1] : "",
+            typeof nameTag?.[1] === "string" ? nameTag[1] : ""
+          );
+          if (repoName) {
             const repoKey = `${ownerHex}/${repoName}`;
             if (privateRepoIds.has(repoKey)) return;
+            if (unusableCloneRepoIds.has(repoKey)) return;
+            // State alone must not invent a discovery card (no clone check).
+            if (!byKey.has(repoKey)) return;
             noteRepo(ownerHex, repoName, ts);
           }
         }
@@ -1902,9 +1930,7 @@ export function getRecentPlatformActivitiesFromNostr(
           setTimeout(() => {
             unsub();
             resolve(
-              items
-                .sort((a, b) => b.timestamp - a.timestamp)
-                .slice(0, count)
+              items.sort((a, b) => b.timestamp - a.timestamp).slice(0, count)
             );
           }, 200);
         }

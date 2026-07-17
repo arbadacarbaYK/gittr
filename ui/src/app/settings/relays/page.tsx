@@ -8,11 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import useLocalStorage from "@/lib/hooks/useLocalStorage";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { KIND_GRASP_LIST, createGraspListEvent } from "@/lib/nostr/events";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
-import { KIND_GRASP_LIST, createGraspListEvent } from "@/lib/nostr/events";
 import {
   getUserGraspServers,
   parseGraspListEvent,
@@ -28,7 +28,7 @@ import {
   Server,
   XIcon,
 } from "lucide-react";
-import { getEventHash, getPublicKey, signEvent } from "nostr-tools";
+import { getEventHash } from "nostr-tools";
 import { type FieldValues, useForm } from "react-hook-form";
 
 type RelayType = "relay" | "gitserver";
@@ -71,10 +71,7 @@ function labelReadyState(status: number | undefined): string {
   return "Unknown";
 }
 
-function mapGetNormalized<T>(
-  map: Map<string, T>,
-  url: string
-): T | undefined {
+function mapGetNormalized<T>(map: Map<string, T>, url: string): T | undefined {
   if (map.has(url)) return map.get(url);
   const needle = normalizeRelayUrl(url);
   for (const [key, value] of map) {
@@ -213,9 +210,12 @@ export default function RelaysPage() {
     }
   };
 
-  // CRITICAL: Load user relays from NIP-07 extension if available
+  // Load user relays from a real NIP-07 extension only.
+  // Remote-signer adapter getRelays() returns bunker transport relays — merging
+  // those into the user's list + reconnect-nudging them breaks NIP-46.
   useEffect(() => {
     if (typeof window === "undefined" || !window.nostr) return;
+    if (remoteSigner?.getSession()) return;
 
     const loadNip07Relays = async () => {
       try {
@@ -309,7 +309,11 @@ export default function RelaysPage() {
           statuses.forEach((item: any) => {
             if (Array.isArray(item) && item.length >= 2) {
               const [url, status] = item;
-              if (url && typeof status === "number" && isValidReadyState(status)) {
+              if (
+                url &&
+                typeof status === "number" &&
+                isValidReadyState(status)
+              ) {
                 poolByNorm.set(normalizeRelayUrl(url), status);
               }
               return;
@@ -338,6 +342,10 @@ export default function RelaysPage() {
           );
         }
 
+        const bunkerTransport = new Set(
+          (remoteSigner?.getTransportRelayUrls?.() || []).map(normalizeRelayUrl)
+        );
+
         const allRelaysToCheck = [
           ...defaultRelaysList,
           ...(userRelays || []).map((r) => r.url),
@@ -348,6 +356,7 @@ export default function RelaysPage() {
         allRelaysToCheck.forEach((url: string) => {
           const key = normalizeRelayUrl(url);
           const poolStatus = poolByNorm.get(key);
+          const isBunkerTransport = bunkerTransport.has(key);
 
           // Live status only — never invent Connected from events / sticky cache.
           if (poolStatus !== undefined) {
@@ -357,9 +366,12 @@ export default function RelaysPage() {
             statusMap.set(url, WS_CONNECTING);
           }
 
+          // Never reconnect-nudge bunker URI relays from this page — that
+          // thrashes NIP-46 transport (Amber sign_event never arrives).
           const effective = statusMap.get(url);
           if (
             addRelay &&
+            !isBunkerTransport &&
             (effective === WS_CLOSED || poolStatus === undefined)
           ) {
             const lastNudge = lastReconnectNudgeRef.current.get(key) || 0;
@@ -372,7 +384,8 @@ export default function RelaysPage() {
 
         console.log("[RelaysPage] Live status summary:", {
           total: statusMap.size,
-          connected: [...statusMap.values()].filter((s) => s === WS_OPEN).length,
+          connected: [...statusMap.values()].filter((s) => s === WS_OPEN)
+            .length,
           connecting: [...statusMap.values()].filter((s) => s === WS_CONNECTING)
             .length,
           closed: [...statusMap.values()].filter((s) => s === WS_CLOSED).length,
@@ -402,6 +415,7 @@ export default function RelaysPage() {
     addRelay,
     defaultRelaysList,
     (userRelays || []).length,
+    remoteSigner,
   ]);
 
   const isConnected = (url: string) =>
@@ -438,7 +452,7 @@ export default function RelaysPage() {
     loadGraspList();
   }, [pubkey, subscribe, defaultRelays]);
 
-  // Save GRASP list to Nostr
+  // Save GRASP list to Nostr (add/remove servers, then publish kind 10317)
   const saveGraspList = async () => {
     if (!pubkey || !publish || !defaultRelays) {
       setGraspListStatus("Error: Not logged in");
@@ -447,22 +461,27 @@ export default function RelaysPage() {
     }
 
     setGraspListSaving(true);
-    setGraspListStatus("Saving...");
+    setGraspListStatus(
+      remoteSigner?.getSession()
+        ? "Waiting for signer (approve in Amber)…"
+        : "Saving…"
+    );
 
     try {
-      const signingCreds = await resolveSigningCredentials({ remoteSigner });
+      const signingCreds = await resolveSigningCredentials({
+        remoteSigner,
+        maxWaitMs: 30_000,
+      });
       if (!signingCreds) {
         throw new Error(NO_SIGNING_METHOD_MESSAGE);
       }
-      const { hasNip07, privateKey } = signingCreds;
+      const { signer, privateKey } = signingCreds;
 
-      // Create GRASP list event
       const graspListEvent =
-        hasNip07 && window.nostr
-          ? await (async () => {
-              const { getEventHash } = await import("nostr-tools");
-              const signerPubkey = await window.nostr.getPublicKey();
-
+        signer.source === "nsec" && privateKey
+          ? createGraspListEvent({ graspServers: graspListServers }, privateKey)
+          : await (async () => {
+              const signerPubkey = await signer.getPublicKey();
               let event: any = {
                 kind: KIND_GRASP_LIST,
                 created_at: Math.floor(Date.now() / 1000),
@@ -472,26 +491,18 @@ export default function RelaysPage() {
                 id: "",
                 sig: "",
               };
-
               event.id = getEventHash(event);
-              event = await window.nostr.signEvent(event);
+              event = await signer.signEvent(event);
               return event;
-            })()
-          : createGraspListEvent(
-              { graspServers: graspListServers },
-              privateKey!
-            );
+            })();
 
-      // Publish to relays
-      if (publish) {
-        await publish(graspListEvent, defaultRelays);
-        setGraspListStatus("✅ Saved to Nostr!");
-        setTimeout(() => setGraspListStatus(""), 3000);
-      }
+      await publish(graspListEvent, defaultRelays);
+      setGraspListStatus("✅ Saved to Nostr!");
+      setTimeout(() => setGraspListStatus(""), 3000);
     } catch (error: any) {
       console.error("[GRASP List] Failed to save:", error);
       setGraspListStatus(`Error: ${error.message || "Failed to save"}`);
-      setTimeout(() => setGraspListStatus(""), 5000);
+      setTimeout(() => setGraspListStatus(""), 8000);
     } finally {
       setGraspListSaving(false);
     }

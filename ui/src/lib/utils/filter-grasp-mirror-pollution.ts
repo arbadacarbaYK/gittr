@@ -8,10 +8,12 @@ const NPUB_DIR = /^npub1[a-z0-9]+$/i;
 const HEX_DIR = /^[0-9a-f]{64}$/i;
 
 function firstPathSegment(path: string): string {
-  return String(path || "")
-    .replace(/^\//, "")
-    .split("/")
-    .filter(Boolean)[0] || "";
+  return (
+    String(path || "")
+      .replace(/^\//, "")
+      .split("/")
+      .filter(Boolean)[0] || ""
+  );
 }
 
 export function isGraspMirrorFilesystemPollutionPath(path: string): boolean {
@@ -20,7 +22,7 @@ export function isGraspMirrorFilesystemPollutionPath(path: string): boolean {
 }
 
 export function filterGraspMirrorPollutionFromFileTree<
-  T extends { path: string },
+  T extends { path: string }
 >(files: T[], opts?: { ownerPubkeyHex?: string }): T[] {
   if (!Array.isArray(files) || files.length === 0) return files;
 

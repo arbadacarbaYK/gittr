@@ -1,13 +1,16 @@
+import { isPublisherBlocklisted } from "@/lib/moderation/publisher-blocklist";
+import {
+  KIND_REPOSITORY_NIP34,
+  KIND_REPOSITORY_STATE,
+} from "@/lib/nostr/events";
+import {
+  PLATFORM_STATS_RELAYS,
+  withRelayPoolSubscribe,
+} from "@/lib/nostr/server-relay-subscribe";
+import { hexPubkeyToNpub } from "@/lib/stats";
+
 import type { NextApiRequest, NextApiResponse } from "next";
 import { nip19 } from "nostr-tools";
-
-import {
-  withRelayPoolSubscribe,
-  PLATFORM_STATS_RELAYS,
-} from "@/lib/nostr/server-relay-subscribe";
-import { KIND_REPOSITORY_NIP34, KIND_REPOSITORY_STATE } from "@/lib/nostr/events";
-import { isPublisherBlocklisted } from "@/lib/moderation/publisher-blocklist";
-import { hexPubkeyToNpub } from "@/lib/stats";
 
 export type ProfileRepoRow = {
   entity: string;
@@ -88,7 +91,9 @@ export default async function handler(
           content?: string;
         }) => {
           if (isPublisherBlocklisted(event.pubkey)) return;
-          const dTag = event.tags?.find((t) => Array.isArray(t) && t[0] === "d");
+          const dTag = event.tags?.find(
+            (t) => Array.isArray(t) && t[0] === "d"
+          );
           const repoName = dTag?.[1];
           if (typeof repoName !== "string" || !repoName) return;
           const key = `${event.pubkey.toLowerCase()}/${repoName}`;
@@ -143,10 +148,15 @@ export default async function handler(
       (a, b) => b.lastActivity - a.lastActivity
     );
 
-    res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=120");
+    res.setHeader(
+      "Cache-Control",
+      "public, max-age=60, stale-while-revalidate=120"
+    );
     return res.status(200).json({ repos });
   } catch (e) {
     console.error("[profile-repos]", e);
-    return res.status(500).json({ error: "Failed to load profile repositories" });
+    return res
+      .status(500)
+      .json({ error: "Failed to load profile repositories" });
   }
 }

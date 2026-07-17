@@ -231,6 +231,7 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 			err := cloneRepository(cloneUrl, repoPath)
 			if err == nil {
 				log.Printf("✅ [Bridge] Successfully cloned repository from source URL: %s\n", cloneUrl)
+				ensureUploadPackBrowserCaps(repoPath)
 				return nil
 			}
 			log.Printf("⚠️ [Bridge] Failed to clone from source URL, will try clone URLs: %v\n", err)
@@ -255,6 +256,7 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 			err := cloneRepository(httpsUrl, repoPath)
 			if err == nil {
 				log.Printf("✅ [Bridge] Successfully cloned repository from clone URL: %s\n", httpsUrl)
+				ensureUploadPackBrowserCaps(repoPath)
 				return nil
 			}
 			log.Printf("⚠️ [Bridge] Failed to clone from clone URL, will create empty repo: %v\n", err)
@@ -269,6 +271,8 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 		if err != nil {
 			return fmt.Errorf("git init --bare failed : %w", err)
 		}
+
+		ensureUploadPackBrowserCaps(repoPath)
 
 		// CRITICAL: Set HEAD to "main" branch so git clone works properly
 		// This ensures empty repos can be cloned and pushed to immediately
@@ -331,6 +335,15 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 }
 
 // Clone repository from URL to path
+// ensureUploadPackBrowserCaps advertises partial-clone filter + tip SHA wants.
+// gitworkshop's explorer requires the "filter" capability; without it info/refs
+// succeeds but tree fetch fails as "upload-pack failed".
+func ensureUploadPackBrowserCaps(repoPath string) {
+	_ = exec.Command("git", "--git-dir", repoPath, "config", "uploadpack.allowFilter", "true").Run()
+	_ = exec.Command("git", "--git-dir", repoPath, "config", "uploadpack.allowAnySHA1InWant", "true").Run()
+	_ = exec.Command("git", "--git-dir", repoPath, "config", "uploadpack.allowReachableSHA1InWant", "true").Run()
+}
+
 func cloneRepository(cloneUrl, repoPath string) error {
 	// Normalize URL: convert git:// to https://, git@ to https://
 	normalizedUrl := cloneUrl

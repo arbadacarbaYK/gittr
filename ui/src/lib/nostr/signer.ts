@@ -3,6 +3,7 @@
  * Supports NIP-07 extensions, NIP-46 remote signers, and stored nsec keys.
  */
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
+
 import type { Event as NostrEvent, UnsignedEvent } from "nostr-tools";
 
 import {
@@ -28,10 +29,12 @@ export interface ResolvedNostrSigner {
 export function isRemoteSignerReady(
   remoteSigner?: RemoteSignerManager | null
 ): boolean {
-  return !!(
-    remoteSigner?.getSession()?.userPubkey &&
-    remoteSigner?.getState() === "ready"
-  );
+  if (!remoteSigner?.getSession()?.userPubkey) return false;
+  // Prefer live RPC health when available (cached pubkey alone is not enough).
+  if (typeof remoteSigner.isRpcHealthy === "function") {
+    return remoteSigner.isRpcHealthy();
+  }
+  return remoteSigner.getState() === "ready";
 }
 
 export function hasStoredRemoteSignerSession(): boolean {
@@ -61,29 +64,12 @@ export async function waitForRemoteSigner(
       new Promise<void>((resolve) => setTimeout(resolve, maxWaitMs)),
     ]);
   } catch {
-    // Fall through to polling.
+    // Bootstrap may leave session cached but unhealthy — that is OK.
   }
 
-  const start = Date.now();
-  while (Date.now() - start < maxWaitMs) {
-    if (isRemoteSignerReady(remoteSigner)) {
-      return true;
-    }
-    if (typeof window !== "undefined" && window.nostr) {
-      try {
-        await window.nostr.getPublicKey();
-        return true;
-      } catch {
-        // Keep waiting.
-      }
-    }
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-
-  return (
-    isRemoteSignerReady(remoteSigner) ||
-    (typeof window !== "undefined" && !!window.nostr)
-  );
+  // Do not treat adapter getPublicKey() as success: it returns a cached pubkey
+  // even when Amber is offline. Live probing happens in signEvent().
+  return isRemoteSignerReady(remoteSigner);
 }
 
 export interface ResolveSignerOptions {
@@ -101,26 +87,15 @@ export async function resolveNostrSigner(
 ): Promise<ResolvedNostrSigner | null> {
   const { remoteSigner, waitForRemote = true, maxWaitMs = 8000 } = options;
 
-  if (hasStoredRemoteSignerSession() && waitForRemote) {
+  const hasRemoteSession = hasStoredRemoteSignerSession();
+
+  if (hasRemoteSession && waitForRemote) {
     await waitForRemoteSigner(remoteSigner, maxWaitMs);
   }
 
-  if (typeof window !== "undefined" && window.nostr) {
-    const remoteReady = isRemoteSignerReady(remoteSigner);
-    try {
-      const getPublicKey = () => window.nostr!.getPublicKey();
-      await getPublicKey();
-      return {
-        source: remoteReady ? "remote" : "nip07",
-        getPublicKey,
-        signEvent: (event) => window.nostr!.signEvent(event),
-        usesWindowNostr: true,
-      };
-    } catch (error) {
-      console.warn("[Signer] window.nostr is present but not usable:", error);
-    }
-  }
-
+  // Prefer the manager API when a NIP-46 session exists. The window.nostr
+  // adapter returns a cached pubkey even when Amber is offline — that used to
+  // make GRASP save / push start a 120s sign_event that never pops Amber.
   if (remoteSigner && isRemoteSignerReady(remoteSigner)) {
     return {
       source: "remote",
@@ -132,8 +107,60 @@ export async function resolveNostrSigner(
         return pubkey;
       },
       signEvent: (event) => remoteSigner.signEvent(event),
-      usesWindowNostr: false,
+      usesWindowNostr: true,
     };
+  }
+
+  if (hasRemoteSession && remoteSigner) {
+    // Session exists but Amber has not answered yet — still return a signer
+    // that will probe on sign (fail fast with Amber hint) rather than null.
+    const pubkey = remoteSigner.getUserPubkey();
+    if (pubkey) {
+      return {
+        source: "remote",
+        getPublicKey: async () => pubkey,
+        signEvent: (event) => remoteSigner.signEvent(event),
+        usesWindowNostr: true,
+      };
+    }
+  }
+
+  // Bunker session stored: use the NIP-46 adapter on window.nostr even when the
+  // caller forgot to pass `remoteSigner` (repo-page push used to hit this).
+  // Do NOT treat this as a browser NIP-07 extension — Amber must stay in charge.
+  if (hasRemoteSession && typeof window !== "undefined" && window.nostr) {
+    try {
+      const getPublicKey = () => window.nostr!.getPublicKey();
+      const pubkey = await getPublicKey();
+      if (pubkey) {
+        return {
+          source: "remote",
+          getPublicKey,
+          signEvent: (event) => window.nostr!.signEvent(event),
+          usesWindowNostr: true,
+        };
+      }
+    } catch (error) {
+      console.warn(
+        "[Signer] Remote session present but window.nostr adapter not usable:",
+        error
+      );
+    }
+  }
+
+  if (typeof window !== "undefined" && window.nostr && !hasRemoteSession) {
+    try {
+      const getPublicKey = () => window.nostr!.getPublicKey();
+      await getPublicKey();
+      return {
+        source: "nip07",
+        getPublicKey,
+        signEvent: (event) => window.nostr!.signEvent(event),
+        usesWindowNostr: true,
+      };
+    } catch (error) {
+      console.warn("[Signer] window.nostr is present but not usable:", error);
+    }
   }
 
   const privateKey = await getNostrPrivateKey();

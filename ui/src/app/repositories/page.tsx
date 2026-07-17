@@ -24,14 +24,20 @@ import {
   pushRepoToNostr,
 } from "@/lib/nostr/push-repo-to-nostr";
 import {
+  CLONE_REPUBLISH_BADGE_LABEL,
+  CLONE_REPUBLISH_BADGE_TITLE,
+  cloneListNeedsRepublish,
+  repairHostOnlyCloneAnnounces,
+} from "@/lib/nostr/repair-host-only-clones";
+import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
 } from "@/lib/nostr/signer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
-import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import { isOwner } from "@/lib/repo-permissions";
+import { repoCardDescriptionText } from "@/lib/repos/repo-about-text";
 import {
   type StoredRepo,
   clearForeignReposFromStorage,
@@ -49,7 +55,13 @@ import {
   validateRepoForForkOrSign,
 } from "@/lib/utils/repo-corruption-check";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
+import {
+  checkBridgeExists,
+  getRepoStatus,
+  getStatusBadgeStyle,
+  isPublishedRepoStatus,
+  statusNeedsPushAction,
+} from "@/lib/utils/repo-status";
 
 import { Globe, Loader2, Lock, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -116,6 +128,7 @@ export default function RepositoriesPage() {
   const [showClearForeignConfirm, setShowClearForeignConfirm] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [pushingRepos, setPushingRepos] = useState<Set<string>>(new Set());
+  const [repairingCloneUrls, setRepairingCloneUrls] = useState(false);
   const [clickedRepo, setClickedRepo] = useState<string | null>(null); // Track which repo is being navigated to
   const syncedFromActivitiesRef = useRef<Set<string>>(new Set()); // Track which repos we've already synced
   const router = useRouter();
@@ -568,13 +581,9 @@ export default function RepositoriesPage() {
               repoName &&
               logoPath
             ) {
-              const branch = repo.defaultBranch || "main";
-              // Construct API URL - this will work for native Nostr repos
-              return `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+              return `/api/og/repo-image?ownerPubkey=${encodeURIComponent(
                 ownerPubkey
-              )}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(
-                logoPath
-              )}&branch=${encodeURIComponent(branch)}`;
+              )}&repo=${encodeURIComponent(repoName)}`;
             }
           }
         }
@@ -872,7 +881,50 @@ export default function RepositoriesPage() {
       handleRepoUpdate as EventListener
     );
 
+    // Bridge readiness so badges move off "Published, live soon" when bare repo exists
+    let bridgeTimer: ReturnType<typeof setTimeout> | null = null;
+    const checkBridges = () => {
+      if (!pubkey) return;
+      const all = loadStoredRepos();
+      for (const r of all) {
+        if (
+          !(r as any).ownerPubkey ||
+          (r as any).ownerPubkey.toLowerCase() !== pubkey.toLowerCase()
+        ) {
+          continue;
+        }
+        const hasEventId = !!(
+          (r as any).nostrEventId ||
+          (r as any).lastNostrEventId ||
+          (r as any).stateEventId ||
+          (r as any).lastStateEventId
+        );
+        const repoName =
+          (r as any).repositoryName || r.repo || r.slug || r.name;
+        const ownerPubkey = (r as any).ownerPubkey as string;
+        if (
+          hasEventId &&
+          (r as any).bridgeProcessed !== true &&
+          /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
+          repoName &&
+          r.entity
+        ) {
+          void checkBridgeExists(ownerPubkey, repoName, r.entity).then(() => {
+            loadRepos();
+          });
+        }
+      }
+    };
+    const scheduleBridgeCheck = () => {
+      if (bridgeTimer) clearTimeout(bridgeTimer);
+      bridgeTimer = setTimeout(checkBridges, 400);
+    };
+    scheduleBridgeCheck();
+    window.addEventListener("ngit:repo-created", scheduleBridgeCheck);
+    window.addEventListener("ngit:repo-imported", scheduleBridgeCheck);
+
     return () => {
+      if (bridgeTimer) clearTimeout(bridgeTimer);
       window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener(
         "gittr:repo-created",
@@ -882,8 +934,10 @@ export default function RepositoriesPage() {
         "gittr:repo-imported",
         handleRepoUpdate as EventListener
       );
+      window.removeEventListener("ngit:repo-created", scheduleBridgeCheck);
+      window.removeEventListener("ngit:repo-imported", scheduleBridgeCheck);
     };
-  }, [loadRepos]);
+  }, [loadRepos, pubkey]);
 
   // Sync from Nostr relays - query for ALL public repos (Nostr cloud)
   // This allows users to see repos from all users, not just their own
@@ -1615,20 +1669,13 @@ export default function RepositoriesPage() {
               // Repository links
               links: repoData.links || existingRepo?.links,
               // GRASP-01: Store clone and relays tags from event.tags
-              // CRITICAL: Filter out localhost URLs - they're not real git servers
+              // Keep unusable clones (host-only / localhost) so My Repositories can
+              // show "Please republish". Discovery (HP/explore) filters separately.
               clone:
                 cloneTags.length > 0
-                  ? cloneTags.filter(
-                      (url: string) =>
-                        url &&
-                        !url.includes("localhost") &&
-                        !url.includes("127.0.0.1")
-                    )
+                  ? cloneTags.filter((url: string) => !!url?.trim())
                   : (repoData.clone || existingRepo?.clone || []).filter(
-                      (url: string) =>
-                        url &&
-                        !url.includes("localhost") &&
-                        !url.includes("127.0.0.1")
+                      (url: string) => !!url?.trim()
                     ),
               relays:
                 relaysTags.length > 0
@@ -3041,13 +3088,10 @@ export default function RepositoriesPage() {
               const status = getRepoStatus(r);
               const existingStatus = getRepoStatus(existing);
 
-              // If one is local and one is live, merge them
+              // If one is local and one is published, merge them
               if (
-                (status === "local" &&
-                  (existingStatus === "live" ||
-                    existingStatus === "live_with_edits")) ||
-                (existingStatus === "local" &&
-                  (status === "live" || status === "live_with_edits"))
+                (status === "local" && isPublishedRepoStatus(existingStatus)) ||
+                (existingStatus === "local" && isPublishedRepoStatus(status))
               ) {
                 // Merge: keep Nostr version as base, but preserve local logoUrl and unpushed edits
                 const localVersion = status === "local" ? r : existing;
@@ -3095,7 +3139,91 @@ export default function RepositoriesPage() {
 
           const deduplicatedRepos = Array.from(dedupeMap.values());
 
-          return deduplicatedRepos.map((r: any, index: number) => {
+          const needsCloneRepublish = deduplicatedRepos.filter((r: any) =>
+            cloneListNeedsRepublish(r.clone)
+          );
+
+          const runBatchCloneRepublish = async () => {
+            if (!pubkey || !publish || !subscribe || !defaultRelays?.length) {
+              alert("Sign in and wait for relays before republishing.");
+              return;
+            }
+            if (needsCloneRepublish.length === 0) return;
+            const ok = window.confirm(
+              `${needsCloneRepublish.length} of your repo(s) only announce broken clone URLs (bare git.gittr.space, localhost, or private addresses).\n\n` +
+                `This runs Push to Nostr once per repo — you may need to approve several signatures (nsec, browser extension, or remote signer). It can take a while.\n\n` +
+                `Republish all ${needsCloneRepublish.length} now?`
+            );
+            if (!ok) return;
+            setRepairingCloneUrls(true);
+            try {
+              const signer = await resolveNostrSigner({ remoteSigner });
+              if (!signer) {
+                alert(NO_SIGNING_METHOD_MESSAGE);
+                return;
+              }
+              const { repaired, failed } = await repairHostOnlyCloneAnnounces({
+                repoSlugs: needsCloneRepublish.map((r: any) => ({
+                  entity: r.entity,
+                  repoSlug: r.repositoryName || r.repo || r.slug,
+                })),
+                publish,
+                subscribe,
+                defaultRelays,
+                pubkey,
+                remoteSigner,
+                privateKey: signer.privateKey,
+                onProgress: (m) => console.log("[repair clone URLs]", m),
+              });
+              const updatedRepos = JSON.parse(
+                localStorage.getItem("gittr_repos") || "[]"
+              );
+              setRepos([...updatedRepos]);
+              alert(
+                `Republished ${repaired.length} of ${needsCloneRepublish.length} repo(s).` +
+                  (failed.length
+                    ? `\nFailed: ${failed
+                        .map((f) => `${f.repo}: ${f.error}`)
+                        .join("; ")}`
+                    : "")
+              );
+              window.dispatchEvent(new Event("storage"));
+            } catch (e: any) {
+              alert(`Republish failed: ${e?.message || e}`);
+            } finally {
+              setRepairingCloneUrls(false);
+            }
+          };
+
+          return (
+            <>
+              {needsCloneRepublish.length > 0 && (
+                <div className="mb-3 rounded border border-amber-700/50 bg-amber-950/40 p-3 text-sm text-amber-100 flex flex-wrap items-center gap-3 justify-between">
+                  <span>
+                    {needsCloneRepublish.length} repo(s) need a republish —
+                    clone URL is only a bare host, localhost, or similar. Hidden
+                    from explore until fixed. Each repo needs its own Push /
+                    signatures; this can take a while.
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={repairingCloneUrls}
+                    onClick={() => void runBatchCloneRepublish()}
+                    className="shrink-0"
+                  >
+                    {repairingCloneUrls ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-1" />{" "}
+                        Republishing…
+                      </>
+                    ) : (
+                      `Republish broken clones (${needsCloneRepublish.length})`
+                    )}
+                  </Button>
+                </div>
+              )}
+              {deduplicatedRepos.map((r: any, index: number) => {
             // Entity is guaranteed to be valid here
             const entity = r.entity!;
             // CRITICAL: For URLs and bridge operations, use repositoryName from Nostr event (exact name used by git-nostr-bridge)
@@ -3148,7 +3276,9 @@ export default function RepositoriesPage() {
             const iconUrl = resolveRepoIcon(r);
 
             const status = getRepoStatus(r);
-            const isLocal = status === "local" || status === "live_with_edits";
+            const needsRepublish = cloneListNeedsRepublish(r.clone);
+            const isLocal =
+              statusNeedsPushAction(status) || needsRepublish;
             const isPushing = pushingRepos.has(`${entity}/${repoForUrl}`);
 
             const repoKey = `${entity}/${repoForUrl}`;
@@ -3228,6 +3358,14 @@ export default function RepositoriesPage() {
                             </span>
                           );
                         })()}
+                        {needsRepublish && (
+                          <span
+                            className="text-xs px-2 py-0.5 rounded bg-amber-900/60 text-amber-200 border border-amber-700/50 flex-shrink-0"
+                            title={CLONE_REPUBLISH_BADGE_TITLE}
+                          >
+                            {CLONE_REPUBLISH_BADGE_LABEL}
+                          </span>
+                        )}
                         <Badge className="border border-gray-600 text-gray-300 bg-transparent text-xs flex items-center gap-1 flex-shrink-0">
                           {r.publicRead !== false ? (
                             <>
@@ -3371,7 +3509,11 @@ export default function RepositoriesPage() {
                           }}
                         >
                           <Upload className="h-3 w-3 mr-1" />
-                          {isPushing ? "Pushing..." : "Push to Nostr"}
+                          {isPushing
+                            ? "Pushing..."
+                            : needsRepublish
+                              ? "Republish"
+                              : "Push to Nostr"}
                         </Button>
                       )}
                     <div className="opacity-70 text-xs sm:text-sm whitespace-nowrap">
@@ -3403,7 +3545,9 @@ export default function RepositoriesPage() {
                 </div>
               </div>
             );
-          });
+          })}
+            </>
+          );
         })()}
       </div>
     </div>

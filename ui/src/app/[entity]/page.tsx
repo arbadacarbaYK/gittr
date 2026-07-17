@@ -3,8 +3,8 @@
 import { use, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { TrustBadge } from "@/components/ui/trust-badge";
 import { Tooltip } from "@/components/ui/tooltip";
+import { TrustBadge } from "@/components/ui/trust-badge";
 import {
   type NostrActivityCounts,
   backfillActivities,
@@ -21,10 +21,6 @@ import {
 } from "@/lib/activity-tracking";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
-  NO_SIGNING_METHOD_MESSAGE,
-  resolveSigningCredentials,
-} from "@/lib/nostr/signer";
-import {
   KIND_ISSUE,
   KIND_PULL_REQUEST,
   KIND_REPOSITORY,
@@ -33,10 +29,15 @@ import {
   KIND_STATUS_CLOSED,
 } from "@/lib/nostr/events";
 import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
+import {
   type ClaimedIdentity,
   useContributorMetadata,
 } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
+import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
 import { getNostrPrivateKey } from "@/lib/security/encryptedStorage";
 import { type UserStats } from "@/lib/stats";
 import {
@@ -48,13 +49,16 @@ import {
 } from "@/lib/utils/entity-resolver";
 import { getGraspServers } from "@/lib/utils/grasp-servers";
 import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
-import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
 import {
   isNostrProfileMirrorWebsite,
   nostrProfileViewerUrl,
 } from "@/lib/utils/nostr-profile-viewer-url";
-import { getRepoStatus, getStatusBadgeStyle } from "@/lib/utils/repo-status";
-import { hasPrivateRepoAccess } from "@/lib/repo-permissions";
+import { isRepoCorrupted } from "@/lib/utils/repo-corruption-check";
+import {
+  getRepoStatus,
+  getStatusBadgeStyle,
+  isPublishedRepoStatus,
+} from "@/lib/utils/repo-status";
 
 import {
   CheckCircle2,
@@ -99,7 +103,11 @@ function profileRepoRowKey(r: {
   repo?: string;
   slug?: string;
 }): string {
-  return `${(r.ownerPubkey || "").toLowerCase()}/${(r.repo || r.slug || "").toLowerCase()}`;
+  return `${(r.ownerPubkey || "").toLowerCase()}/${(
+    r.repo ||
+    r.slug ||
+    ""
+  ).toLowerCase()}`;
 }
 
 function mergeProfileRepoList(prev: any[], next: any[]): any[] {
@@ -116,9 +124,7 @@ function mergeProfileRepoList(prev: any[], next: any[]): any[] {
       map.set(k, r);
     }
   }
-  return Array.from(map.values()).sort(
-    (a, b) => latestMs(b) - latestMs(a)
-  );
+  return Array.from(map.values()).sort((a, b) => latestMs(b) - latestMs(a));
 }
 
 // Parse NIP-34 repository announcement format (minimal fields needed for lists)
@@ -286,6 +292,7 @@ export default function EntityPage({
   // Check if current user is following this profile
   const [isFollowing, setIsFollowing] = useState(false);
   const [followingLoading, setFollowingLoading] = useState(false);
+  const [pictureLoadFailed, setPictureLoadFailed] = useState(false);
   const [contactList, setContactList] = useState<string[]>([]);
 
   // CRITICAL: Only fetch metadata if we have a valid 64-char pubkey
@@ -900,10 +907,7 @@ export default function EntityPage({
               if (!pubkey || !/^[0-9a-f]{64}$/i.test(pubkey)) return false;
               const pk = pubkey.toLowerCase();
               if (profileHex && pk === profileHex.toLowerCase()) return true;
-              if (
-                isEntityPrefix &&
-                pk.startsWith(entityParam.toLowerCase())
-              )
+              if (isEntityPrefix && pk.startsWith(entityParam.toLowerCase()))
                 return true;
               return false;
             };
@@ -1430,14 +1434,8 @@ export default function EntityPage({
               // Local repos and push_failed repos should be private and not visible to others
               if (!viewingOwnProfile) {
                 const status = getRepoStatus(r);
-                // Only show "live" or "live_with_edits" repos on public profiles
-                // "local", "pushing", and "push_failed" repos are private and should not be visible
-                if (
-                  status === "local" ||
-                  status === "pushing" ||
-                  status === "push_failed"
-                )
-                  return false;
+                // Public profiles: only published statuses (live / live soon / edits)
+                if (!isPublishedRepoStatus(status)) return false;
               }
 
               return true;
@@ -2235,7 +2233,9 @@ export default function EntityPage({
     const load = async () => {
       try {
         const res = await fetch(
-          `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(profileHexForFetch)}`
+          `/api/nostr/profile-repos?ownerPubkey=${encodeURIComponent(
+            profileHexForFetch
+          )}`
         );
         if (!res.ok || cancelled) return;
         const data = (await res.json()) as {
@@ -2250,7 +2250,11 @@ export default function EntityPage({
             lastNostrEventCreatedAt?: number;
           }>;
         };
-        if (!Array.isArray(data.repos) || data.repos.length === 0 || cancelled) {
+        if (
+          !Array.isArray(data.repos) ||
+          data.repos.length === 0 ||
+          cancelled
+        ) {
           return;
         }
         setUserRepos((prev) =>
@@ -2351,9 +2355,7 @@ export default function EntityPage({
     }
 
     // If entityParam is already a full pubkey, use it directly
-    if (
-      isHexPubkey(resolvedParams.entity)
-    ) {
+    if (isHexPubkey(resolvedParams.entity)) {
       console.log(
         `✅ [Profile] useEffect: Setting fullPubkeyForMeta from entity (full): ${resolvedParams.entity.slice(
           0,
@@ -2523,6 +2525,11 @@ export default function EntityPage({
       ? getUserMetadata(currentUserPubkey.toLowerCase(), metadataMap)?.picture
       : null) ||
     null;
+
+  // Reset when kind-0 picture URL changes (dead Blossom hosts must not stick empty)
+  useEffect(() => {
+    setPictureLoadFailed(false);
+  }, [picture]);
 
   // CRITICAL: Banner lookup - unified for own and foreign profiles
   // userMeta already uses getUserMetadata which handles all lookup strategies
@@ -3127,12 +3134,7 @@ export default function EntityPage({
     return buildCalendarYearTimelineRows(daily, {
       dataComplete: timelineNostrLoaded,
     });
-  }, [
-    contributionGraph,
-    userRepos,
-    nostrActivityCounts,
-    timelineNostrLoaded,
-  ]);
+  }, [contributionGraph, userRepos, nostrActivityCounts, timelineNostrLoaded]);
 
   const timelineMaxCount = useMemo(() => {
     const allWeeks = calendarYearRows.flatMap((r) => r.weeks);
@@ -3223,56 +3225,22 @@ export default function EntityPage({
         <div className="flex flex-col md:flex-row items-start gap-4 sm:gap-6">
           {/* Avatar */}
           <div className="relative">
-            {picture && picture.startsWith("http") ? (
+            {picture && picture.startsWith("http") && !pictureLoadFailed ? (
               <img
                 src={picture}
                 alt={displayName}
                 className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full border-4 border-[#171B21] shrink-0 object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
-                  const fallback = (e.target as HTMLElement)
-                    .nextElementSibling as HTMLElement;
-                  if (fallback) fallback.style.display = "flex";
-                }}
+                onError={() => setPictureLoadFailed(true)}
               />
-            ) : null}
-            <div
-              className={`w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full border-4 border-[#171B21] bg-purple-600 flex items-center justify-center text-2xl sm:text-3xl md:text-4xl font-bold text-white shrink-0 ${
-                picture && picture.startsWith("http") ? "hidden" : ""
-              }`}
-            >
-              {/* Use first 2 chars of displayName, but ensure it's not from npub or pubkey */}
-              {(() => {
-                if (
-                  displayName &&
-                  displayName.length > 0 &&
-                  !displayName.startsWith("npub") &&
-                  !/^[0-9a-f]{8,64}$/i.test(displayName) &&
-                  displayName.length <= 20
-                ) {
-                  return displayName.substring(0, 2).toUpperCase();
-                }
-                // Try to get initials from userMeta
-                if (
-                  userMeta?.name &&
-                  !userMeta.name.startsWith("npub") &&
-                  !/^[0-9a-f]{8,64}$/i.test(userMeta.name)
-                ) {
-                  return userMeta.name.substring(0, 2).toUpperCase();
-                }
-                if (
-                  userMeta?.display_name &&
-                  !userMeta.display_name.startsWith("npub") &&
-                  !/^[0-9a-f]{8,64}$/i.test(userMeta.display_name)
-                ) {
-                  return userMeta.display_name.substring(0, 2).toUpperCase();
-                }
-                // Last resort: use pubkey prefix
-                return fullPubkeyForMeta
-                  ? fullPubkeyForMeta.slice(0, 2).toUpperCase()
-                  : "??";
-              })()}
-            </div>
+            ) : (
+              <div className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full border-4 border-[#171B21] bg-[#22262C] flex items-center justify-center text-2xl sm:text-3xl md:text-4xl font-bold text-white shrink-0 overflow-hidden">
+                <img
+                  src="/logo.svg"
+                  alt=""
+                  className="h-2/3 w-2/3 object-contain"
+                />
+              </div>
+            )}
             {nip05 && (
               <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-green-500 rounded-full p-1">
                 <CheckCircle2 className="w-4 h-4 text-white" />
@@ -3587,7 +3555,10 @@ export default function EntityPage({
                 <div
                   className="grid w-full gap-[2px]"
                   style={{
-                    gridTemplateColumns: `repeat(${Math.max(row.weeks.length, 1)}, minmax(0, 1fr))`,
+                    gridTemplateColumns: `repeat(${Math.max(
+                      row.weeks.length,
+                      1
+                    )}, minmax(0, 1fr))`,
                   }}
                   aria-label={`Contribution activity ${row.year}`}
                 >
@@ -3980,14 +3951,9 @@ export default function EntityPage({
                         /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
                         repoName
                       ) {
-                        const branch = repo.defaultBranch || "main";
-                        iconUrl = `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+                        iconUrl = `/api/og/repo-image?ownerPubkey=${encodeURIComponent(
                           ownerPubkey
-                        )}&repo=${encodeURIComponent(
-                          repoName
-                        )}&path=${encodeURIComponent(
-                          logoPath
-                        )}&branch=${encodeURIComponent(branch)}`;
+                        )}&repo=${encodeURIComponent(repoName)}`;
                       }
                     }
                   }

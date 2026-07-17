@@ -115,7 +115,9 @@ export function normalizeAssigneePubkeys(raw: unknown): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const v of list) {
-    const pubkey = String(v || "").trim().toLowerCase();
+    const pubkey = String(v || "")
+      .trim()
+      .toLowerCase();
     if (!/^[a-f0-9]{64}$/.test(pubkey)) continue;
     if (seen.has(pubkey)) continue;
     seen.add(pubkey);
@@ -139,13 +141,10 @@ function mergeIssueRowFields(
   rows: Record<string, unknown>[]
 ): Record<string, unknown> {
   if (rows.length === 0) return {};
-  const sorted = [...rows].sort(
-    (a, b) => rowTimestamp(b) - rowTimestamp(a)
-  );
+  const sorted = [...rows].sort((a, b) => rowTimestamp(b) - rowTimestamp(a));
   const latest = sorted[0];
   if (!latest) return {};
-  const nostrRow =
-    rows.find((r) => isNostrHexIssueId(r.id)) ?? latest;
+  const nostrRow = rows.find((r) => isNostrHexIssueId(r.id)) ?? latest;
   const githubRow = rows.find((r) => isGithubStyleIssueId(r.id));
 
   const ids = rows
@@ -154,8 +153,8 @@ function mergeIssueRowFields(
   const canonicalId = isNostrHexIssueId(nostrRow.id)
     ? String(nostrRow.id).toLowerCase()
     : githubRow
-      ? String(githubRow.id)
-      : String(latest.id ?? "");
+    ? String(githubRow.id)
+    : String(latest.id ?? "");
 
   const linkedIds = [...new Set(ids.filter((id) => id !== canonicalId))];
 
@@ -169,9 +168,7 @@ function mergeIssueRowFields(
     for (const label of (row.labels as string[] | undefined) || []) {
       if (typeof label === "string" && label.trim()) labels.add(label);
     }
-    assignees.push(
-      ...normalizeAssigneePubkeys(row.assignees as unknown)
-    );
+    assignees.push(...normalizeAssigneePubkeys(row.assignees as unknown));
     const st = normalizeIssueListStatus(String(row.status ?? "open"));
     if (st === "closed") status = "closed";
     const ca = Number(row.createdAt ?? 0) || 0;
@@ -293,7 +290,9 @@ export function migrateIssueCommentBuckets(
       if (!Array.isArray(altComments)) continue;
       for (const c of altComments) {
         const cid = String((c as { id?: string })?.id || "");
-        const neid = String((c as { nostrEventId?: string })?.nostrEventId || "");
+        const neid = String(
+          (c as { nostrEventId?: string })?.nostrEventId || ""
+        );
         if ((cid && seen.has(cid)) || (neid && seen.has(neid))) continue;
         if (cid) seen.add(cid);
         if (neid) seen.add(neid);
@@ -337,7 +336,9 @@ export function loadMergedIssueComments(
       if (!Array.isArray(list)) continue;
       for (const c of list) {
         const cid = String((c as { id?: string })?.id || "");
-        const neid = String((c as { nostrEventId?: string })?.nostrEventId || "");
+        const neid = String(
+          (c as { nostrEventId?: string })?.nostrEventId || ""
+        );
         const dedupeKey = neid || cid;
         if (dedupeKey && seen.has(dedupeKey)) continue;
         if (dedupeKey) seen.add(dedupeKey);

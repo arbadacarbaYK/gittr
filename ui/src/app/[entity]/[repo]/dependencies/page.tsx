@@ -1,9 +1,9 @@
 "use client";
 
-import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { use, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import {
   type RepoFileEntry,
   type StoredRepo,
@@ -2383,7 +2383,8 @@ export default function DependenciesPage({
       path: string;
     }> | null> {
       try {
-        const response = await fetchBridgeRead(`/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
+        const response = await fetchBridgeRead(
+          `/api/nostr/repo/files?ownerPubkey=${encodeURIComponent(
             ownerPubkey
           )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
             branch
@@ -2487,7 +2488,8 @@ export default function DependenciesPage({
 
     // Try git-nostr-bridge API
     try {
-      const response = await fetchBridgeRead(`/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+      const response = await fetchBridgeRead(
+        `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
           ownerPubkey
         )}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(
           filePath

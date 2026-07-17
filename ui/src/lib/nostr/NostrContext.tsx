@@ -258,7 +258,10 @@ const NostrProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         );
       })
       .catch((error) => {
-        console.error("[NostrContext] Failed to bootstrap remote signer:", error);
+        console.error(
+          "[NostrContext] Failed to bootstrap remote signer:",
+          error
+        );
       });
   }, [remoteSignerInitialized, pubkey, setPubKey]);
 

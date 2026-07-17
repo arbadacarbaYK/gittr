@@ -11,8 +11,9 @@ import {
 import type { Event as NostrEvent } from "nostr-tools";
 import { nip44 as nip44v2 } from "nostr-tools-v2";
 
-import { WEB_STORAGE_KEYS } from "./localStorage";
 import { isGraspServer } from "../utils/grasp-servers";
+
+import { WEB_STORAGE_KEYS } from "./localStorage";
 
 type PublishFn = (event: any, relays: string[]) => void;
 type SubscribeFn = (
@@ -94,6 +95,7 @@ export const DEFAULT_REMOTE_PERMISSIONS = [
   "sign_event",
   "sign_event:30617",
   "sign_event:30618",
+  "sign_event:10317",
   "sign_event:5",
   "nip04_encrypt",
   "nip04_decrypt",
@@ -102,10 +104,7 @@ export const DEFAULT_REMOTE_PERMISSIONS = [
 ];
 
 /** Relays signers like Amber reliably use for NIP-46 (pairing + sign_event). */
-const NIP46_PAIRING_RELAY_FALLBACKS = [
-  "wss://relay.damus.io",
-  "wss://nos.lol",
-];
+const NIP46_PAIRING_RELAY_FALLBACKS = ["wss://relay.damus.io", "wss://nos.lol"];
 
 /** Amber bunker default relays — must overlap QR pairing when user has no prior session. */
 const NIP46_SIGNER_DEFAULT_RELAYS = [
@@ -565,6 +564,9 @@ export class RemoteSignerManager {
   ) => void;
   private lastError?: string;
   private bootstrapInFlight: Promise<void> | null = null;
+  /** True only after a successful NIP-46 RPC round-trip in this page lifetime. */
+  private rpcHealthy = false;
+  private healthProbeInFlight: Promise<void> | null = null;
 
   constructor(deps: RemoteSignerDeps) {
     this.deps = deps;
@@ -585,11 +587,25 @@ export class RemoteSignerManager {
     return this.session?.userPubkey;
   }
 
+  /** Cached bunker/nostrconnect session exists and last NIP-46 RPC succeeded. */
+  isRpcHealthy() {
+    return !!(
+      this.session?.userPubkey &&
+      this.rpcHealthy &&
+      this.state === "ready"
+    );
+  }
+
+  /** Relays from the paired bunker URI — NIP-46 transport only, not user relay prefs. */
+  getTransportRelayUrls(): string[] {
+    return (this.session?.relays || []).map(normalizeRelayUrl);
+  }
+
   /**
    * Single-flight bootstrap — safe to call from push/sign while page load is still pairing.
    */
   ensureBootstrapped(): Promise<void> {
-    if (this.state === "ready" && this.session?.userPubkey) {
+    if (this.state === "ready" && this.session?.userPubkey && this.rpcHealthy) {
       return Promise.resolve();
     }
     if (this.bootstrapInFlight) {
@@ -605,6 +621,45 @@ export class RemoteSignerManager {
   }
 
   /**
+   * Live probe before signing. Cached pubkey alone is not proof Amber can answer.
+   */
+  async ensureRpcHealthy(timeoutMs = CONNECT_TIMEOUT_MS): Promise<void> {
+    if (this.isRpcHealthy()) return;
+    if (this.healthProbeInFlight) {
+      await this.healthProbeInFlight;
+      if (this.isRpcHealthy()) return;
+    }
+    const session = this.session || loadStoredRemoteSignerSession();
+    if (!session?.userPubkey) {
+      throw new Error("Remote signer not paired");
+    }
+    this.healthProbeInFlight = (async () => {
+      if (!this.session) {
+        await this.activateSession(session);
+      }
+      this.notifyState("connecting");
+      try {
+        await this.reestablishConnection(this.requireSession());
+        this.rpcHealthy = true;
+        this.notifyState("ready");
+      } catch (err) {
+        this.rpcHealthy = false;
+        const msg = err instanceof Error ? err.message : String(err);
+        this.notifyState(
+          "error",
+          "Could not reach your remote signer. Open Amber (or your bunker app), keep it online, then try again."
+        );
+        throw new Error(
+          `Remote signer is not responding (${msg}). Open your signer app (e.g. Amber) on your phone, make sure it is online and connected to its bunker relays, then try again.`
+        );
+      }
+    })().finally(() => {
+      this.healthProbeInFlight = null;
+    });
+    await this.healthProbeInFlight;
+  }
+
+  /**
    * Attempt to rehydrate existing session from storage.
    */
   async bootstrapFromStorage() {
@@ -612,25 +667,38 @@ export class RemoteSignerManager {
     if (!stored) return;
     try {
       console.log("[RemoteSigner] Restoring session from storage");
+      this.rpcHealthy = false;
       this.notifyState("connecting");
       await this.activateSession(stored);
       // Many signers (Amber/bunker) require a fresh connect RPC after reload
       // before sign_event works — otherwise responses are "no permission".
       try {
         await this.reestablishConnection(this.requireSession());
+        this.rpcHealthy = true;
+        this.notifyState("ready");
       } catch (reconnectErr) {
+        this.rpcHealthy = false;
         console.warn(
-          "[RemoteSigner] Reconnect on bootstrap failed; keeping cached session",
+          "[RemoteSigner] Reconnect on bootstrap failed; keeping cached session (not ready until Amber answers)",
           reconnectErr instanceof Error ? reconnectErr.message : reconnectErr
         );
+        // Keep adapter + cached pubkey for UI, but do NOT claim ready — otherwise
+        // callers start a 120s sign_event that never reaches Amber.
+        this.notifyState(
+          "error",
+          "Remote signer session restored but Amber did not respond. Open the signer app and try again."
+        );
       }
-      this.notifyState("ready");
     } catch (error: any) {
       console.error("[RemoteSigner] Failed to resume session:", error);
+      this.rpcHealthy = false;
       if (stored.userPubkey) {
         try {
           await this.activateSession({ ...stored, lastConnected: Date.now() });
-          this.notifyState("ready");
+          this.notifyState(
+            "error",
+            "Remote signer session cached but not connected. Open Amber and try again."
+          );
           return;
         } catch {
           // Fall through to clear.
@@ -691,12 +759,7 @@ export class RemoteSignerManager {
     }
 
     try {
-      await this.sendRequest(
-        session,
-        "get_public_key",
-        [],
-        CONNECT_TIMEOUT_MS
-      );
+      await this.sendRequest(session, "get_public_key", [], CONNECT_TIMEOUT_MS);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (/no permission/i.test(msg) && session.userPubkey) {
@@ -1005,6 +1068,9 @@ export class RemoteSignerManager {
    * Sign event through remote signer (NIP-46 sign_event).
    */
   async signEvent(event: UnsignedEvent): Promise<NostrEvent> {
+    // Probe first so we fail in ~25s with a clear Amber hint instead of
+    // waiting the full 120s sign timeout on a dead/stale session.
+    await this.ensureRpcHealthy();
     const session = this.requireSession();
     const payload = toSignEventTemplate(event);
     try {
@@ -1015,13 +1081,17 @@ export class RemoteSignerManager {
         console.warn(
           "[RemoteSigner] sign_event denied — logout + NIP-46 connect retry"
         );
+        this.rpcHealthy = false;
         await this.reestablishConnection(session, true);
+        this.rpcHealthy = true;
+        this.notifyState("ready");
         return await this.signEventWithSession(session, payload);
       }
       if (/timed out/i.test(msg)) {
         // A second silent 120s retry only hides the failure from the user.
         // Repair transport for the NEXT attempt, then fail loudly with a hint.
         console.warn("[RemoteSigner] sign_event timed out");
+        this.rpcHealthy = false;
         void this.ensureDirectTransport(session).catch(() => undefined);
         throw new Error(
           "The remote signer did not respond to the signing request. Open your signer app (e.g. Amber) on your phone, make sure it is online and connected, then try again."
@@ -1100,6 +1170,8 @@ export class RemoteSignerManager {
   }
 
   private clearSession() {
+    this.rpcHealthy = false;
+    this.healthProbeInFlight = null;
     this.nostrConnectSignerResolved = undefined;
     this.session = null;
     persistRemoteSignerSession(null);
@@ -1529,6 +1601,10 @@ export class RemoteSignerManager {
       if (message.error) {
         pending.reject(new Error(message.error));
       } else {
+        this.rpcHealthy = true;
+        if (this.state !== "ready" && this.session?.userPubkey) {
+          this.notifyState("ready");
+        }
         pending.resolve(message.result);
       }
     } catch (error) {

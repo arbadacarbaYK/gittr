@@ -347,7 +347,10 @@ export default async function handler(
   );
   if (rateLimitExempt) {
     console.log(
-      `ℹ️ [Bridge Push] Rate limit exempt: pubkey=${authResult.pubkey?.slice(0, 8)}...`
+      `ℹ️ [Bridge Push] Rate limit exempt: pubkey=${authResult.pubkey?.slice(
+        0,
+        8
+      )}...`
     );
   }
 
@@ -355,10 +358,7 @@ export default async function handler(
     const ipLimit = await rateLimiters.push(req as any);
     if (ipLimit) {
       const body = await ipLimit.json();
-      res.setHeader(
-        "Retry-After",
-        ipLimit.headers.get("Retry-After") ?? "60"
-      );
+      res.setHeader("Retry-After", ipLimit.headers.get("Retry-After") ?? "60");
       return res.status(429).json(body);
     }
   }

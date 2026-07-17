@@ -1,12 +1,13 @@
-import fs from "fs/promises";
-import path from "path";
-
 import type {
   PlatformRecentActivity,
   PlatformRecentRepo,
   RepoStats,
   UserStats,
 } from "@/lib/stats";
+
+import path from "path";
+
+import fs from "fs/promises";
 
 export const PLATFORM_LEADERBOARD_SNAPSHOT_PATH = path.join(
   process.cwd(),

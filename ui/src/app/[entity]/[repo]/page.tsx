@@ -1,6 +1,5 @@
 "use client";
 
-import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import {
   type ReactNode,
   startTransition,
@@ -33,8 +32,8 @@ import { RepoGittrPagesPanel } from "@/components/ui/repo-gittr-pages-panel";
 import { RepoLinks } from "@/components/ui/repo-links";
 import { RepoZapButton } from "@/components/ui/repo-zap-button";
 import { SSHGitHelp } from "@/components/ui/ssh-git-help";
-import { TrustBadge } from "@/components/ui/trust-badge";
 import { Tooltip } from "@/components/ui/tooltip";
+import { TrustBadge } from "@/components/ui/trust-badge";
 import { getActivities } from "@/lib/activity-tracking";
 import {
   type GitHubContributor,
@@ -52,16 +51,17 @@ import {
 } from "@/lib/gittr-pages/readme-section";
 import { syncReadmeTextIntoRepoFiles } from "@/lib/gittr-pages/sync-readme-to-files";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import {
   formatPushRepoSuccessAlert,
   pushRepoToNostr,
 } from "@/lib/nostr/push-repo-to-nostr";
+import { broadcastRepoAnnouncementEventId } from "@/lib/nostr/repo-stars";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
 } from "@/lib/nostr/signer";
-import { broadcastRepoAnnouncementEventId } from "@/lib/nostr/repo-stars";
 import {
   type Metadata,
   useContributorMetadata,
@@ -124,7 +124,6 @@ import {
   mergeOwnerPubkeyIntoContributors,
   sanitizeContributors,
 } from "@/lib/utils/contributors";
-import { mergeContributorsFromNostrEvent } from "@/lib/utils/repo-contributors-from-nostr";
 import { formatDate24h } from "@/lib/utils/date-format";
 import { fetchDeduped } from "@/lib/utils/deduped-fetch";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
@@ -160,6 +159,7 @@ import {
   normalizeGithubSourceUrl,
   pickHttpSourceUrl,
 } from "@/lib/utils/normalize-github-source-url";
+import { mergeContributorsFromNostrEvent } from "@/lib/utils/repo-contributors-from-nostr";
 import {
   isRepoCorrupted,
   validateRepoForForkOrSign,
@@ -173,6 +173,7 @@ import {
   getRepoStatus,
   markRepoAsEdited,
   setRepoStatus,
+  statusNeedsPushAction,
 } from "@/lib/utils/repo-status";
 
 import {
@@ -1897,10 +1898,7 @@ export default function RepoCodePage() {
     if (!mounted) return;
 
     const sourceUrl =
-      repoData?.sourceUrl ||
-      effectiveSourceUrl ||
-      repoData?.forkedFrom ||
-      null;
+      repoData?.sourceUrl || effectiveSourceUrl || repoData?.forkedFrom || null;
     if (!sourceUrl) return;
     if (
       !sourceUrl.includes("github.com") &&
@@ -1940,9 +1938,7 @@ export default function RepoCodePage() {
 
         const parsed: GitHubContributor[] = contributorsData
           .filter(
-            (
-              item
-            ): item is Partial<GitHubContributor> & { login: string } =>
+            (item): item is Partial<GitHubContributor> & { login: string } =>
               typeof item?.login === "string" && item.login.trim().length > 0
           )
           .map((item) => ({
@@ -3215,7 +3211,8 @@ export default function RepoCodePage() {
               repo.repo ||
               repo.slug ||
               resolvedParams.repo;
-            const refsRes = await fetchBridgeRead(`/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
+            const refsRes = await fetchBridgeRead(
+              `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
                 ownerPubkey
               )}&repo=${encodeURIComponent(actualRepoName)}`
             );
@@ -10675,22 +10672,9 @@ export default function RepoCodePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlBranch, urlFile, urlPath, safeFiles.length, repoData?.defaultBranch]); // Use specific properties instead of full repoData
 
-  // Load README from current folder when path changes
-  useEffect(() => {
-    if (selectedFile || fileContent) {
-      folderReadmeLoadGenRef.current += 1;
-      setCurrentFolderReadme(null);
-      setLoadingFolderReadme(false);
-      return;
-    }
-
-    if (!safeFiles || safeFiles.length === 0) {
-      folderReadmeLoadGenRef.current += 1;
-      setCurrentFolderReadme(null);
-      setLoadingFolderReadme(false);
-      return;
-    }
-
+  // Stable key so multifetch tree merges don't cancel an in-flight README load.
+  const folderReadmePathKey = useMemo(() => {
+    if (!safeFiles || safeFiles.length === 0) return "";
     const folderPrefix = currentPath
       ? currentPath.endsWith("/")
         ? currentPath
@@ -10702,12 +10686,31 @@ export default function RepoCodePage() {
       `${folderPrefix}README`,
       `${folderPrefix}readme`,
     ];
-
-    const readmeFile = safeFiles.find((f: any) => {
+    const hit = safeFiles.find((f: any) => {
       if (!readmeVariants.includes(f.path)) return false;
       const t = String(f.type || "file").toLowerCase();
       return t !== "dir" && t !== "tree" && t !== "folder";
     });
+    return hit?.path || "";
+  }, [safeFiles, currentPath]);
+
+  // Load README from current folder when path changes
+  useEffect(() => {
+    if (selectedFile || fileContent) {
+      folderReadmeLoadGenRef.current += 1;
+      setCurrentFolderReadme(null);
+      setLoadingFolderReadme(false);
+      return;
+    }
+
+    if (!folderReadmePathKey) {
+      folderReadmeLoadGenRef.current += 1;
+      setCurrentFolderReadme(null);
+      setLoadingFolderReadme(false);
+      return;
+    }
+
+    const readmeFile = { path: folderReadmePathKey, type: "file" };
 
     if (!readmeFile) {
       folderReadmeLoadGenRef.current += 1;
@@ -10817,13 +10820,15 @@ export default function RepoCodePage() {
           }
         }
 
-        // Nostr / gittr routes: bridge only when upstream is not the canonical mirror
+        // Bridge fallback: always try gittr bridge after upstream miss.
+        // preferUpstreamReadme used to SKIP bridge entirely — then a slow/failed
+        // GitHub fetch left the folder README blank even when files were on the bridge.
         const isNostrEntityRoute =
           !!resolvedParams.entity &&
           (resolvedParams.entity.startsWith("npub") ||
             /^[0-9a-f]{64}$/i.test(resolvedParams.entity));
 
-        if (isNostrEntityRoute && repoData && !preferUpstreamReadme) {
+        if (isNostrEntityRoute && repoData) {
           let ownerPubkey: string | null =
             (repoData as any).ownerPubkey &&
             /^[0-9a-f]{64}$/i.test(String((repoData as any).ownerPubkey))
@@ -10907,8 +10912,9 @@ export default function RepoCodePage() {
           }
         }
 
-        // GRASP / nostr-git mirrors (same path as file tree multifetch)
-        if (!preferUpstreamReadme && repoData) {
+        // GRASP / nostr-git mirrors (same path as file tree multifetch).
+        // Also used as fallback when preferUpstreamReadme upstream fetch missed.
+        if (repoData) {
           const successfulSources =
             (
               repoData as {
@@ -10992,7 +10998,6 @@ export default function RepoCodePage() {
         }
 
         if (
-          !preferUpstreamReadme &&
           row &&
           typeof (row as any).content === "string" &&
           String((row as any).content).trim().length > 0
@@ -11024,8 +11029,8 @@ export default function RepoCodePage() {
           }
         }
 
-        // Never use embedded README bodies from gittr_files when GitHub/upstream is canonical.
-        if (!preferUpstreamReadme) {
+        // Local embedded README (last resort after bridge/upstream attempts).
+        {
           const repos = loadStoredRepos();
           const repo = findRepoByEntityAndName(
             repos,
@@ -11059,7 +11064,7 @@ export default function RepoCodePage() {
     };
   }, [
     currentPath,
-    safeFiles,
+    folderReadmePathKey,
     repoData?.sourceUrl,
     repoData?.forkedFrom,
     (repoData as { clone?: string[] })?.clone?.join("|") ?? "",
@@ -12928,15 +12933,18 @@ export default function RepoCodePage() {
               `💡 [fetchGithubRaw] GRASP repo ${errorType} (${response.status}), triggering clone...`
             );
             try {
-              const cloneResponse = await fetchBridgeRead("/api/nostr/repo/clone", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  cloneUrl: graspCloneUrl,
-                  ownerPubkey,
-                  repo: repoName,
-                }),
-              });
+              const cloneResponse = await fetchBridgeRead(
+                "/api/nostr/repo/clone",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    cloneUrl: graspCloneUrl,
+                    ownerPubkey,
+                    repo: repoName,
+                  }),
+                }
+              );
               if (cloneResponse.ok) {
                 console.log(
                   `✅ [fetchGithubRaw] Clone triggered, polling for file...`
@@ -19430,10 +19438,11 @@ export default function RepoCodePage() {
                                           ] || undefined,
                                         privateKey: privateKey || undefined,
                                         signer:
-                                          typeof window !== "undefined" &&
+                                          signer.signEvent ||
+                                          (typeof window !== "undefined" &&
                                           window.nostr
                                             ? window.nostr.signEvent
-                                            : undefined,
+                                            : undefined),
                                       });
                                     if (!paymentAuth.ok) {
                                       if (
@@ -19584,8 +19593,9 @@ export default function RepoCodePage() {
                                       publish,
                                       subscribe,
                                       defaultRelays,
-                                      privateKey, // Optional - will use NIP-07 if available
+                                      privateKey, // Optional - will use NIP-07 / Amber if available
                                       pubkey: currentUserPubkey,
+                                      remoteSigner,
                                       onProgress: (message) => {
                                         console.log(
                                           `[Push ${resolvedParams.repo}] ${message}`
@@ -19878,11 +19888,11 @@ export default function RepoCodePage() {
                                 signed.
                               </p>
                               {(repo?.hasUnpushedEdits === true ||
-                                getRepoStatus(repo) === "live_with_edits" ||
-                                getRepoStatus(repo) === "local") && (
+                                statusNeedsPushAction(getRepoStatus(repo))) && (
                                 <p className="text-xs text-amber-400 mt-1">
-                                  Local changes are not visible in other clients
-                                  yet. Push to Nostr to publish them.
+                                  {getRepoStatus(repo) === "live_soon"
+                                    ? "Published on Nostr — clone/files are still finishing. It will show as Live on Nostr shortly."
+                                    : "Local changes are not visible in other clients yet. Push to Nostr to publish them."}
                                 </p>
                               )}
                             </>

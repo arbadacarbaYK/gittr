@@ -124,9 +124,7 @@ export async function getBridgeAuthHeaders(
     signed && signed.id && signed.sig && signed.pubkey
       ? signed
       : { ...unsignedEvent, id: hash, sig: signed.sig };
-  const eventHeader = Buffer.from(JSON.stringify(fullEvent)).toString(
-    "base64"
-  );
+  const eventHeader = Buffer.from(JSON.stringify(fullEvent)).toString("base64");
   writeCachedAuth({
     pubkey: normalizedPubkey,
     created_at,

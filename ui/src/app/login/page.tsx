@@ -11,7 +11,12 @@ import {
   getNip46PairingRelays,
   rememberNostrConnectClientKey,
 } from "@/lib/nostr/remoteSigner";
-import { LoginType, checkType, isRemoteSignerUri, normalizePastedRemoteToken } from "@/lib/utils";
+import {
+  LoginType,
+  checkType,
+  isRemoteSignerUri,
+  normalizePastedRemoteToken,
+} from "@/lib/utils";
 
 import { Html5Qrcode } from "html5-qrcode";
 import { Camera, Puzzle, Scan, Shield, X } from "lucide-react";
@@ -103,7 +108,9 @@ export default function Login() {
             const npub = nip19.npubEncode(session.userPubkey);
             setAuthor(npub);
           } else {
-            throw new Error("Remote signer paired but no public key was returned.");
+            throw new Error(
+              "Remote signer paired but no public key was returned."
+            );
           }
         }
         setRemoteBusy(false);
@@ -198,10 +205,7 @@ export default function Login() {
     relays.forEach((relay) => query.append("relay", relay));
     query.set("secret", challengeSecret);
     query.set("name", "gittr.space");
-    query.set(
-      "perms",
-      DEFAULT_REMOTE_PERMISSIONS.join(",")
-    );
+    query.set("perms", DEFAULT_REMOTE_PERMISSIONS.join(","));
     return `nostrconnect://${tempClientPubkey}?${query.toString()}`;
   }, [defaultRelays]);
 
@@ -749,11 +753,11 @@ export default function Login() {
                     />
                   </div>
                   <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    type="button"
-                    className="flex-1"
-                    onClick={async () => {
+                    <Button
+                      variant="outline"
+                      type="button"
+                      className="flex-1"
+                      onClick={async () => {
                         try {
                           await navigator.clipboard.writeText(
                             generatedNostrConnect || remoteToken
@@ -830,8 +834,8 @@ export default function Login() {
                 {remoteBusy
                   ? "Pairing..."
                   : !remoteSigner
-                    ? "Preparing signer..."
-                    : "Pair & Login"}
+                  ? "Preparing signer..."
+                  : "Pair & Login"}
               </Button>
               <Button
                 variant="ghost"

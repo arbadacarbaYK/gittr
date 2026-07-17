@@ -1,6 +1,5 @@
 "use client";
 
-import { cn } from "@/lib/utils";
 import { useWoTDistance } from "@/lib/nostr/useWoTDistance";
 import {
   wotBadgeClassName,
@@ -8,6 +7,7 @@ import {
   wotSelfPreviewLabel,
   wotSelfPreviewTitle,
 } from "@/lib/nostr/wot";
+import { cn } from "@/lib/utils";
 
 import { Network } from "lucide-react";
 
@@ -90,9 +90,7 @@ export function TrustBadge({
   if (!label) return null;
 
   const mutual = wot.result?.mutual;
-  const title = mutual
-    ? `${label} (mutual follow)`
-    : `${label} · Web of Trust`;
+  const title = mutual ? `${label} (mutual follow)` : `${label} · Web of Trust`;
 
   return (
     <span
@@ -105,7 +103,10 @@ export function TrustBadge({
       title={title}
     >
       <Network
-        className={cn("shrink-0 opacity-80", size === "md" ? "h-3.5 w-3.5" : "h-3 w-3")}
+        className={cn(
+          "shrink-0 opacity-80",
+          size === "md" ? "h-3.5 w-3.5" : "h-3 w-3"
+        )}
         aria-hidden
       />
       <span>{label}</span>

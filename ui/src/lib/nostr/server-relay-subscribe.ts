@@ -15,7 +15,12 @@ export type NostrSubscribeFn = (
   filters: unknown[],
   relays: string[],
   onEvent: (
-    event: { kind: number; pubkey: string; created_at: number; tags?: string[][] },
+    event: {
+      kind: number;
+      pubkey: string;
+      created_at: number;
+      tags?: string[][];
+    },
     isAfterEose: boolean,
     relayURL?: string
   ) => void,

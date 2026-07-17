@@ -1,11 +1,11 @@
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import { assertRepoReadAccess } from "@/lib/repo-read-access";
 import {
   capRepoFileTreeForDisplay,
   fileTreeListFromScrub,
   filterGraspMirrorPollutionFromFileTree,
 } from "@/lib/utils/filter-grasp-mirror-pollution";
 import { sanitizeBridgeRepoName } from "@/lib/utils/sanitize-bridge-repo-name";
-import { assertRepoReadAccess } from "@/lib/repo-read-access";
 
 import { exec } from "child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "fs";

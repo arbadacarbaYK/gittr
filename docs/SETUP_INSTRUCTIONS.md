@@ -230,6 +230,10 @@ NEXT_PUBLIC_GIT_SERVER_URL=https://git.your.domain
 NEXT_PUBLIC_GITTR_PAGES_URL=https://pages.your.domain
 ```
 
+`NEXT_PUBLIC_GIT_SERVER_URL` may be the **host only** (e.g. `https://git.gittr.space`). Announcements must still publish **full** clone URLs (`https://git…/<npub>/<repo>.git`). The UI expands host-only values in `buildUnsignedRepositoryEvent`; do not hand-publish bare hosts into kind 30617. On **My Repositories**, owners with only unusable clones (host-only / localhost) see a **Please republish** badge and can batch-republish (one Push + signatures per repo; nsec / NIP-07 / remote signer).
+
+**gittr-mcp:** filter/CORS/`uploadpack` fixes on the git vhost apply to MCP users automatically when they clone that host. MCP **code** updates need `git pull` or a new `.mcpb` — see [gittr-mcp README](https://github.com/arbadacarbaYK/gittr-mcp#do-mcp-users-get-gittrs-filter--cors-server-fixes).
+
 ---
 
 ## 6. Optional: Telegram

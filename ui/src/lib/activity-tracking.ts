@@ -6,6 +6,7 @@
  * People use multiple clients, so we need to count what's actually on Nostr
  */
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
+
 import {
   KIND_ISSUE,
   KIND_PULL_REQUEST,
@@ -370,14 +371,11 @@ export function buildCalendarYearTimelineRows(
   const currentYear = now.getUTCFullYear();
   const years = options?.years ?? [currentYear - 1, currentYear];
   const dailyMap = new Map(daily.map((d) => [d.date, d.count]));
-  const earliestDay =
-    daily.length > 0 ? daily[0]?.date : undefined;
+  const earliestDay = daily.length > 0 ? daily[0]?.date : undefined;
 
   return years.map((year) => {
     const yearEnd =
-      year === currentYear
-        ? now.toISOString().split("T")[0]!
-        : `${year}-12-31`;
+      year === currentYear ? now.toISOString().split("T")[0]! : `${year}-12-31`;
     let cursor = weekStartUtc(`${year}-01-01`);
     const endCursor = weekStartUtc(yearEnd);
     const weeks: Array<{ date: string; count: number }> = [];
@@ -405,8 +403,8 @@ export function buildCalendarYearTimelineRows(
       year === currentYear
         ? `${year} (Jan – today)`
         : partial
-          ? `${year} (from ${earliestDay ?? "…"})`
-          : `${year}`;
+        ? `${year} (from ${earliestDay ?? "…"})`
+        : `${year}`;
 
     return { year, label, weeks, total, partial };
   });
@@ -700,7 +698,8 @@ export async function syncCommitsFromBridge(
 ): Promise<number> {
   try {
     // Fetch commits from bridge API
-    const response = await fetchBridgeRead(`/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
+    const response = await fetchBridgeRead(
+      `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
         ownerPubkey
       )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
         branch
@@ -1000,9 +999,7 @@ export async function syncUserCommitsFromBridge(
   try {
     const repos = profileRepos?.length
       ? profileRepos
-      : (JSON.parse(
-          localStorage.getItem("gittr_repos") || "[]"
-        ) as any[]);
+      : (JSON.parse(localStorage.getItem("gittr_repos") || "[]") as any[]);
     const userRepos = repos.filter((repo: any) => {
       if (!repo.entity || repo.entity === "user") return false;
       const ownerPubkey = getRepoOwnerPubkey(repo, repo.entity);

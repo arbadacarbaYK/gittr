@@ -1,6 +1,6 @@
-import { buildRepoFallbackDescription } from "@/lib/seo/site-metadata";
-import { fetchRepoAnnouncementMeta } from "@/lib/seo/fetch-repo-announcement-meta";
 import { isRepoPubliclyIndexable } from "@/lib/repo-read-access";
+import { fetchRepoAnnouncementMeta } from "@/lib/seo/fetch-repo-announcement-meta";
+import { buildRepoFallbackDescription } from "@/lib/seo/site-metadata";
 import {
   resolveRepoIconForMetadata,
   resolveUserIconForMetadata,
@@ -197,19 +197,24 @@ export async function generateMetadata({
     // Wait for both with a timeout - if they take too long, use fallbacks
     const [repoMeta, resolvedIconUrl] = await Promise.race([
       Promise.all([repoMetaPromise, iconUrlPromise]),
-      new Promise<[{ description: string | null; nostrPublicRead: boolean }, string]>(
-        (resolve) =>
-          setTimeout(
-            () => resolve([{ description: null, nostrPublicRead: true }, `${baseUrl}/opengraph-image`]),
-            2000
-          )
+      new Promise<
+        [{ description: string | null; nostrPublicRead: boolean }, string]
+      >((resolve) =>
+        setTimeout(
+          () =>
+            resolve([
+              { description: null, nostrPublicRead: true },
+              `${baseUrl}/opengraph-image`,
+            ]),
+          2000
+        )
       ),
     ]).catch(
       () =>
-        [{ description: null, nostrPublicRead: true }, `${baseUrl}/opengraph-image`] as [
-          { description: string | null; nostrPublicRead: boolean },
-          string,
-        ]
+        [
+          { description: null, nostrPublicRead: true },
+          `${baseUrl}/opengraph-image`,
+        ] as [{ description: string | null; nostrPublicRead: boolean }, string]
     );
 
     iconUrl = normalizeSocialImageUrl(resolvedIconUrl || iconUrl, baseUrl);

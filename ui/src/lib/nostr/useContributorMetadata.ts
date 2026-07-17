@@ -205,200 +205,153 @@ export function useContributorMetadata(pubkeys: string[]) {
   const lastSubscriptionTimeRef = useRef<number>(0);
   const subscriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasFetchedOnMountRef = useRef<boolean>(false);
+  /** Bumped by debounce timer so a deferred subscribe actually runs. */
+  const [subscribeTick, setSubscribeTick] = useState(0);
   const pubkeysKey = useMemo(() => {
-    if (pubkeys.length === 0) {
-      const emptyKey = "";
-      // Don't update ref here - let useEffect detect the change
-      return emptyKey;
-    }
-    const sorted = pubkeys.slice().sort(); // Create copy to avoid mutating original
-    const newKey = sorted.join(",");
-    // Don't update ref here - let useEffect detect the change
-    return newKey;
-  }, [pubkeys.length, pubkeys.join(",")]); // Still depend on length and join for React's dependency tracking
+    if (pubkeys.length === 0) return "";
+    return pubkeys.slice().sort().join(",");
+  }, [pubkeys.length, pubkeys.join(",")]);
 
   useEffect(() => {
+    const previousKey = pubkeysKeyRef.current;
+    const keyChanged = previousKey !== pubkeysKey;
+    const wasEmpty = previousKey === "";
+    const isNowNonEmpty = pubkeysKey !== "" && keyChanged;
+
     if (contributorMetaVerbose()) {
       console.log(`🔄 [useContributorMetadata] useEffect triggered:`, {
         pubkeysLength: pubkeys.length,
-        pubkeysKey:
-          pubkeysKey.slice(0, 50) + (pubkeysKey.length > 50 ? "..." : ""),
-        previousKey:
-          pubkeysKeyRef.current.slice(0, 50) +
-          (pubkeysKeyRef.current.length > 50 ? "..." : ""),
-        keyChanged: pubkeysKey !== pubkeysKeyRef.current,
-        wasEmpty: pubkeysKeyRef.current === "",
-        isNowNonEmpty:
-          pubkeysKey !== "" && pubkeysKey !== pubkeysKeyRef.current,
+        keyChanged,
+        wasEmpty,
+        isNowNonEmpty,
+        subscribeTick,
       });
     }
 
-    // CRITICAL: Debounce subscriptions to prevent excessive re-subscriptions
-    // Only allow re-subscription if at least 2 seconds have passed since last subscription
-    // BUT: Always allow subscription when pubkeys change from empty to non-empty
-    const now = Date.now();
-    const timeSinceLastSubscription = now - lastSubscriptionTimeRef.current;
-    const DEBOUNCE_MS = 2000; // 2 seconds debounce
-    const wasEmpty = pubkeysKeyRef.current === "";
-    const isNowNonEmpty =
-      pubkeysKey !== "" && pubkeysKey !== pubkeysKeyRef.current;
-
-    // Clear any pending subscription
     if (subscriptionTimeoutRef.current) {
       clearTimeout(subscriptionTimeoutRef.current);
       subscriptionTimeoutRef.current = null;
     }
 
-    // If we just subscribed recently, debounce the new subscription
-    // UNLESS: pubkeys changed from empty to non-empty (this is important!)
+    if (!subscribe) {
+      return;
+    }
+
+    const validPubkeys = pubkeys.filter((p) => /^[0-9a-f]{64}$/i.test(p));
+    if (validPubkeys.length === 0) {
+      pubkeysKeyRef.current = pubkeysKey;
+      return;
+    }
+
+    // Paint from cache immediately — do NOT invalidate module cache every run
+    // (that forced constant “cache miss” refetches and cancelled in-flight batches).
+    const currentCache = loadMetadataCache();
+    if (Object.keys(currentCache).length > 0) {
+      setMetadataMap((prev) => {
+        const merged = { ...prev, ...currentCache };
+        return Object.keys(merged).length > Object.keys(prev).length
+          ? merged
+          : prev;
+      });
+    }
+
+    const missingFromCache = validPubkeys.filter((p) => {
+      const normalized = p.toLowerCase();
+      return !metadataMap[normalized] && !currentCache[normalized];
+    });
+
+    // Warm cache: mark key handled and skip relay work (still merge cache above).
+    if (missingFromCache.length === 0) {
+      pubkeysKeyRef.current = pubkeysKey;
+      hasFetchedOnMountRef.current = true;
+      return;
+    }
+
+    // Only fetch missing pubkeys when the list grows — never re-fetch everyone.
+    const pubkeysToSubscribe = missingFromCache;
+
+    const now = Date.now();
+    const timeSinceLastSubscription = now - lastSubscriptionTimeRef.current;
+    const DEBOUNCE_MS = 800;
     if (
       timeSinceLastSubscription < DEBOUNCE_MS &&
       lastSubscriptionTimeRef.current > 0 &&
       !(wasEmpty && isNowNonEmpty)
     ) {
-      console.log(
-        `⏭️ [useContributorMetadata] Debouncing subscription (${timeSinceLastSubscription}ms < ${DEBOUNCE_MS}ms)`
-      );
-      // Skip this subscription attempt - will be handled by the timeout
-      return;
-    }
-
-    // Update last subscription time
-    lastSubscriptionTimeRef.current = now;
-    // CRITICAL: Validate all pubkeys are full 64-char hex (not shortened, not npub) FIRST
-    const invalidPubkeys = pubkeys.filter((p) => !/^[0-9a-f]{64}$/i.test(p));
-
-    // Filter out invalid pubkeys - only subscribe for valid ones
-    const validPubkeys = pubkeys.filter((p) => /^[0-9a-f]{64}$/i.test(p));
-
-    // CRITICAL: Only re-subscribe if pubkeysKey actually changed (content changed, not just array reference)
-    // BUT: Always subscribe on first render (when ref is empty) or if metadata is missing from cache
-    const isFirstRender = pubkeysKeyRef.current === "";
-    const keyChanged = pubkeysKeyRef.current !== pubkeysKey;
-    const shouldSkip = !isFirstRender && !keyChanged && pubkeysKey !== "";
-
-    // CRITICAL: Check cache directly (not just state) to ensure we don't miss cached metadata
-    // The state might not be updated yet, but the cache might have the data
-    // CRITICAL: Invalidate module cache first to ensure we get fresh data from localStorage
-    // This prevents stale module cache from preventing fresh fetches
-    invalidateModuleCache();
-    const currentCache = loadMetadataCache();
-
-    // Merge cache into state if cache has entries not in state
-    // This ensures state is up-to-date with cache
-    if (Object.keys(currentCache).length > 0) {
-      setMetadataMap((prev) => {
-        const merged = { ...prev, ...currentCache };
-        // Only update if there are new entries
-        if (Object.keys(merged).length > Object.keys(prev).length) {
-          return merged;
-        }
-        return prev;
-      });
-    }
-
-    // Check if any pubkeys are missing from cache (check both state and cache)
-    const missingFromCache = validPubkeys.filter((p) => {
-      const normalized = p.toLowerCase();
-      // Check both metadataMap state and currentCache to ensure we don't miss cached data
-      return !metadataMap[normalized] && !currentCache[normalized];
-    });
-
-    // CRITICAL: On first mount with pubkeys, always fetch from Nostr to ensure fresh data
-    // This ensures metadata is fetched even if cache exists (cache might be stale)
-    const isFirstMountWithPubkeys =
-      !hasFetchedOnMountRef.current && validPubkeys.length > 0;
-
-    // CRITICAL: Only subscribe if:
-    // 1. First render, OR
-    // 2. First mount with pubkeys (force fetch to ensure fresh data), OR
-    // 3. Key changed AND there are missing pubkeys, OR
-    // 4. Key didn't change BUT there are new missing pubkeys (pubkeys list grew)
-    // This prevents re-subscribing for ALL pubkeys when only a few new ones are added
-    if (
-      shouldSkip &&
-      missingFromCache.length === 0 &&
-      !isFirstMountWithPubkeys
-    ) {
-      // Same content and all metadata is cached, skip re-subscription to prevent render loops
-      // UNLESS it's the first mount (force fetch to ensure fresh data)
-      return;
-    }
-
-    // Mark that we've fetched on mount
-    if (isFirstMountWithPubkeys) {
-      hasFetchedOnMountRef.current = true;
-    }
-
-    // CRITICAL: If key didn't change but we have missing pubkeys, only subscribe for the missing ones
-    // This prevents re-subscribing for hundreds of pubkeys when only a few are new
-    const pubkeysToSubscribe =
-      !keyChanged &&
-      missingFromCache.length > 0 &&
-      missingFromCache.length < validPubkeys.length / 2
-        ? missingFromCache // Only subscribe for missing ones if they're a small subset
-        : validPubkeys; // Otherwise subscribe for all (first render or major change)
-
-    if (contributorMetaVerbose() && (isFirstRender || keyChanged)) {
-      console.log(
-        `🔍 [useContributorMetadata] Hook called with ${pubkeys.length} pubkeys`,
-        {
-          isFirstRender,
-          keyChanged,
-          validPubkeys: validPubkeys.length,
-          missingFromCache: missingFromCache.length,
-          cachedCount: Object.keys(metadataMap).length,
-        }
-      );
-    }
-
-    // CRITICAL: Don't skip if subscribe is available - we need to fetch metadata even if pubkeys are empty initially
-    // The pubkeys will be populated when repos load, and we need to subscribe then
-    if (!subscribe) {
-      console.log(
-        `⏭️ [useContributorMetadata] Skipping subscription: subscribe=false`
-      );
-      return;
-    }
-
-    // If no valid pubkeys, return early (this is normal during initial load before repos are loaded)
-    // The hook will re-run when pubkeys become available
-    if (validPubkeys.length === 0) {
-      return;
-    }
-    if (invalidPubkeys.length > 0) {
-      console.error("❌ [useContributorMetadata] INVALID PUBKEYS DETECTED:", {
-        invalidCount: invalidPubkeys.length,
-        invalidPubkeys: invalidPubkeys.slice(0, 5).map((p) => ({
-          value: p,
-          length: p.length,
-          isNpub: p.startsWith("npub"),
-          isShort: p.length === 8,
-        })),
-      });
-    }
-
-    // Only log when actually subscribing (not skipping)
-    // if (!shouldSkip && pubkeysToSubscribe.length > 0) {
-    //   console.log(`📡 [useContributorMetadata] Subscribing for ${pubkeysToSubscribe.length} pubkeys (${missingFromCache.length} missing from cache)`);
-    // }
-
-    if (pubkeysToSubscribe.length === 0) {
+      const wait = DEBOUNCE_MS - timeSinceLastSubscription;
       if (contributorMetaVerbose()) {
-        console.warn(
-          "⚠️ [useContributorMetadata] No pubkeys to subscribe for!"
+        console.log(
+          `⏭️ [useContributorMetadata] Debouncing ${wait}ms then retry`
         );
       }
+      subscriptionTimeoutRef.current = setTimeout(() => {
+        setSubscribeTick((t) => t + 1);
+      }, wait);
       return;
     }
 
-    // CRITICAL: Batch subscriptions to prevent overwhelming relays (especially when not logged in)
-    // Large batches can cause rate limiting, connection drops, or browser-specific issues
-    // Firefox seems more sensitive to this than Brave, especially for unauthenticated requests
-    const BATCH_SIZE = 25; // Subscribe to 25 pubkeys at a time
-    const BATCH_DELAY_MS = 500; // 500ms delay between batches to avoid overwhelming relays
+    lastSubscriptionTimeRef.current = now;
+    // CRITICAL: remember this key so growth only fetches *new* missing pubkeys
+    // and does not thrash (cancel) in-flight batches forever.
+    pubkeysKeyRef.current = pubkeysKey;
+    hasFetchedOnMountRef.current = true;
 
-    // Split pubkeys into batches
+    if (contributorMetaVerbose()) {
+      console.log(
+        `🔍 [useContributorMetadata] Fetching ${pubkeysToSubscribe.length}/${validPubkeys.length} missing profiles`,
+        { keyChanged, cached: Object.keys(currentCache).length }
+      );
+    }
+
+    // Fast path: server-side batch (browser WS to many relays often fills ~0 profiles).
+    const httpAbort = { cancelled: false };
+    void (async () => {
+      try {
+        const httpBatches: string[][] = [];
+        for (let i = 0; i < pubkeysToSubscribe.length; i += 80) {
+          httpBatches.push(pubkeysToSubscribe.slice(i, i + 80));
+        }
+        for (const batch of httpBatches) {
+          if (httpAbort.cancelled) return;
+          const res = await fetch("/api/nostr/profiles", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pubkeys: batch }),
+          });
+          if (!res.ok) continue;
+          const data = (await res.json()) as {
+            profiles?: Record<string, Metadata>;
+          };
+          const profiles = data.profiles || {};
+          if (Object.keys(profiles).length === 0) continue;
+          setMetadataMap((prev) => {
+            const next = { ...prev };
+            for (const [pk, meta] of Object.entries(profiles)) {
+              const key = pk.toLowerCase();
+              const existing = next[key];
+              if (
+                !existing ||
+                (meta.created_at || 0) >= (existing.created_at || 0)
+              ) {
+                next[key] = { ...meta, created_at: meta.created_at };
+              }
+            }
+            saveMetadataCache(next);
+            return next;
+          });
+        }
+      } catch (e) {
+        if (contributorMetaVerbose()) {
+          console.warn("[useContributorMetadata] HTTP profiles failed:", e);
+        }
+      }
+    })();
+
+    // Batch subscriptions — snappier than 25@500ms once thrash is fixed
+    const BATCH_SIZE = 40;
+    const BATCH_DELAY_MS = 200;
+
+    // Split pubkeys into batches (WS supplement while HTTP runs in parallel)
     const batches: string[][] = [];
     for (let i = 0; i < pubkeysToSubscribe.length; i += BATCH_SIZE) {
       batches.push(pubkeysToSubscribe.slice(i, i + BATCH_SIZE));
@@ -424,7 +377,7 @@ export function useContributorMetadata(pubkeys: string[]) {
                 authors: batch, // Subscribe to this batch of pubkeys
               },
             ],
-            defaultRelays,
+            allRelays.length > 0 ? allRelays : defaultRelays,
             (event, isAfterEose, relayURL) => {
               // Process ALL metadata events (even after EOSE - some relays send delayed events)
               if (event.kind === 0) {
@@ -693,6 +646,7 @@ export function useContributorMetadata(pubkeys: string[]) {
     timeouts.push(overallTimeout);
 
     return () => {
+      httpAbort.cancelled = true;
       // Clean up all batch subscriptions and timeouts
       if (contributorMetaVerbose()) {
         console.log(
@@ -713,7 +667,7 @@ export function useContributorMetadata(pubkeys: string[]) {
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subscribe, pubkeysKey, allRelays.join(",")]); // Use allRelays instead of defaultRelays
+  }, [subscribe, pubkeysKey, allRelays.join(","), subscribeTick]);
 
   // Track last saved metadata to prevent unnecessary saves
   const lastSavedMetadataRef = useRef<string>("");

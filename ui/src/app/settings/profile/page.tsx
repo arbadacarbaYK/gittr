@@ -8,11 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveNostrSigner,
 } from "@/lib/nostr/signer";
-import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { type ClaimedIdentity } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
@@ -40,7 +40,8 @@ type ProfileFormInputs = {
 };
 
 export default function ProfilePage() {
-  const { publish, subscribe, defaultRelays, pubkey , remoteSigner} = useNostrContext();
+  const { publish, subscribe, defaultRelays, pubkey, remoteSigner } =
+    useNostrContext();
   // CRITICAL: Use centralized metadata cache instead of separate useMetadata hook
   // The hook returns the FULL cache, not just the pubkeys passed to it
   const metadataMap = useContributorMetadata(

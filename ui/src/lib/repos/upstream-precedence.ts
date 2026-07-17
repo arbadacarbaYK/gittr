@@ -182,10 +182,7 @@ export function markSourceTreeFresh(
   try {
     sessionStorage.setItem(sourceTreeFreshStorageKey(entity, repo), stamp);
     if (altRepo && altRepo !== repo) {
-      sessionStorage.setItem(
-        sourceTreeFreshStorageKey(entity, altRepo),
-        stamp
-      );
+      sessionStorage.setItem(sourceTreeFreshStorageKey(entity, altRepo), stamp);
     }
   } catch {
     /* ignore */
@@ -237,7 +234,10 @@ export function shouldSkipLegacyKind51EmbeddedFiles(opts: {
   }
   return shouldPreferUpstreamContent(opts.entity, {
     sourceUrl:
-      opts.eventSourceUrl || opts.sourceUrl || opts.eventForkedFrom || opts.forkedFrom,
+      opts.eventSourceUrl ||
+      opts.sourceUrl ||
+      opts.eventForkedFrom ||
+      opts.forkedFrom,
     forkedFrom: opts.eventForkedFrom || opts.forkedFrom,
     clone: opts.clone,
   });

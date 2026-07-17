@@ -3,6 +3,7 @@
  * Gathers all repo data and publishes complete repository event
  */
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
+
 import {
   type StoredRepo,
   loadRepoDeletedPaths,
@@ -32,10 +33,7 @@ import {
   storeRepoEventId,
 } from "./publish-with-confirmation";
 import type { RemoteSignerManager } from "./remoteSigner";
-import {
-  NO_SIGNING_METHOD_MESSAGE,
-  resolveNostrSigner,
-} from "./signer";
+import { NO_SIGNING_METHOD_MESSAGE, resolveNostrSigner } from "./signer";
 
 function resolveWssRelayForGitHost(domain: string): string {
   const host = domain.trim().toLowerCase().replace(/\/+$/, "");
@@ -260,29 +258,53 @@ export async function pushRepoToNostr(
 
   let effectivePrivateKey = privateKey;
   let bridgeSignerFn: ((event: any) => Promise<any>) | undefined;
+  let resolvedGetPublicKey: (() => Promise<string>) | undefined;
+  let resolvedSource: "nip07" | "remote" | "nsec" | undefined;
 
   if (!effectivePrivateKey) {
     const resolved = await resolveNostrSigner({ remoteSigner });
     if (!resolved) {
       throw new Error(NO_SIGNING_METHOD_MESSAGE);
     }
+    resolvedSource = resolved.source;
     if (resolved.privateKey) {
       effectivePrivateKey = resolved.privateKey;
     }
     bridgeSignerFn = resolved.signEvent;
+    resolvedGetPublicKey = resolved.getPublicKey;
   }
 
+  // Remote/NIP-07 both expose window.nostr (adapter or extension). Also accept
+  // a resolved signEvent when the caller omitted remoteSigner but resolve still
+  // found a bunker session / adapter.
   const hasNip07 = typeof window !== "undefined" && !!window.nostr;
+  const canSignWithResolved =
+    !!bridgeSignerFn &&
+    (resolvedSource === "remote" || resolvedSource === "nip07");
 
-  if (!hasNip07 && !effectivePrivateKey) {
+  if (!hasNip07 && !effectivePrivateKey && !canSignWithResolved) {
     throw new Error(NO_SIGNING_METHOD_MESSAGE);
   }
 
   const getBridgeSigner = () => {
+    // Prefer the resolved signer (manager.signEvent probes Amber health).
+    if (bridgeSignerFn) {
+      return bridgeSignerFn;
+    }
     if (hasNip07 && window.nostr) {
       return window.nostr.signEvent.bind(window.nostr);
     }
-    return bridgeSignerFn;
+    return undefined;
+  };
+
+  const getSignerPublicKey = async (): Promise<string> => {
+    if (resolvedGetPublicKey) {
+      return resolvedGetPublicKey();
+    }
+    if (hasNip07 && window.nostr) {
+      return window.nostr.getPublicKey();
+    }
+    throw new Error(NO_SIGNING_METHOD_MESSAGE);
   };
 
   try {
@@ -393,6 +415,24 @@ export async function pushRepoToNostr(
         console.warn(`⚠️ [Push Repo] Skipping localhost clone URL: ${trimmed}`);
         return;
       }
+      // Host-only URLs (e.g. https://git.gittr.space) are useless for NIP-34 clients —
+      // gitworkshop treats them as the clone target and fails with CORS/proxy errors.
+      // Real GRASP clones look like https://host/<npub>/<repo>.git
+      try {
+        const parsed = new URL(trimmed);
+        const path = parsed.pathname.replace(/\/+$/, "");
+        if (
+          (parsed.protocol === "https:" || parsed.protocol === "http:") &&
+          (!path || path === "")
+        ) {
+          console.warn(
+            `⚠️ [Push Repo] Skipping host-only clone URL (missing /npub/repo.git path): ${trimmed}`
+          );
+          return;
+        }
+      } catch {
+        // keep non-URL forms (should not happen for HTTPS GRASP)
+      }
       if (!cloneUrls.includes(trimmed)) {
         cloneUrls.push(trimmed);
       }
@@ -490,10 +530,18 @@ export async function pushRepoToNostr(
           );
         }
       } else {
-        addCloneUrl(cleanUrl);
-        console.log(
-          `🔗 [Push Repo] Added configured git server URL: ${cleanUrl}`
-        );
+        // Non-GRASP configured server: only add if it already looks like a repo URL.
+        // Never publish the bare host as a NIP-34 clone value.
+        if (/\/.+\.git$/i.test(cleanUrl) || /\/[^/]+\/[^/]+/.test(cleanUrl)) {
+          addCloneUrl(cleanUrl);
+          console.log(
+            `🔗 [Push Repo] Added configured git server URL: ${cleanUrl}`
+          );
+        } else {
+          console.warn(
+            `⚠️ [Push Repo] Configured NEXT_PUBLIC_GIT_SERVER_URL is not a full repo clone URL and is not a known GRASP host — not adding as clone: ${cleanUrl}`
+          );
+        }
       }
     } else if (!configuredGitServerUrl || !configuredGitServerUrl.trim()) {
       // Log warning if no git server URL is configured (repos created locally need this)
@@ -768,458 +816,810 @@ export async function pushRepoToNostr(
     const filesNeedingContent: any[] = [];
 
     if (!deferToBridgeSourceClone) {
-    const setBridgeEntry = (
-      path: string,
-      content: string | undefined,
-      isBinary: boolean
-    ) => {
-      if (!path) return;
-      const existing = bridgeFilesMap.get(path);
-      if (!existing) {
-        bridgeFilesMap.set(path, { path, content, isBinary });
-        return;
-      }
-      if (content && !existing.content) {
-        bridgeFilesMap.set(path, { path, content, isBinary });
-      } else if (existing.isBinary !== isBinary) {
-        bridgeFilesMap.set(path, { ...existing, isBinary });
-      }
-    };
-
-    const isDirectoryTreeEntry = (path: string, file: any): boolean =>
-      file?.type === "dir" ||
-      file?.type === "tree" ||
-      !path ||
-      path.endsWith("/");
-
-    const filesWithOverrides = baseFiles
-      .map((file: any) => {
-        const filePath = file.path || "";
-        // CRITICAL: Normalize path before processing
-        const normalizedPath = normalizeFilePath(filePath);
-
-        // Skip invalid paths (empty after normalization, like "/")
-        if (!normalizedPath) {
-          return null;
+      const setBridgeEntry = (
+        path: string,
+        content: string | undefined,
+        isBinary: boolean
+      ) => {
+        if (!path) return;
+        const existing = bridgeFilesMap.get(path);
+        if (!existing) {
+          bridgeFilesMap.set(path, { path, content, isBinary });
+          return;
         }
-
-        // Folder rows from git tree index — not pushable files
-        if (isDirectoryTreeEntry(normalizedPath, file)) {
-          return null;
-        }
-
-        const isBinary =
-          file.isBinary !== undefined
-            ? file.isBinary
-            : isBinaryFile(normalizedPath);
-
-        // Get content from overrides (check both original and normalized path)
-        const fileContent =
-          savedOverrides[filePath] !== undefined
-            ? savedOverrides[filePath]
-            : savedOverrides[normalizedPath] !== undefined
-            ? savedOverrides[normalizedPath]
-            : file.content || "";
-
-        // Calculate content size (base64 is ~33% larger than raw)
-        const contentSizeBytes = fileContent ? (fileContent.length * 3) / 4 : 0;
-        const contentSizeKB = contentSizeBytes / 1024;
-
-        // For binary files: Always exclude content (only metadata)
-        // For text files: Include content only if small (< 10KB)
-        const shouldIncludeContent =
-          !isBinary && contentSizeKB < MAX_TEXT_FILE_SIZE_KB;
-
-        const fileEntry: any = {
-          ...file,
-          path: normalizedPath, // CRITICAL: Use normalized path in event
-          // Only include content for small text files
-          content: shouldIncludeContent ? fileContent : undefined,
-          isBinary: isBinary,
-          // Keep metadata (type, size, sha, url) for all files
-        };
-
-        // CRITICAL: For binary files without content, ensure we have at least path and isBinary flag
-        // Other clients will fetch these from git servers using clone URLs
-        if (isBinary && !fileEntry.content) {
-          // Ensure binary files have proper metadata for client discovery
-          // Clients will use clone URLs to fetch the actual file content
-          fileEntry.type = fileEntry.type || "file";
-        }
-
-        // CRITICAL: For bridge push, we need the actual content (including binary files)
-        // Binary files are stored as base64 in overrides, so we must include them for bridge push
-        // Even though they're excluded from the Nostr event (metadata-only), they need to be in the bridge
-        // Check multiple sources in order of reliability:
-        // 1. savedOverrides (via fileContent - already checked above)
-        // 2. file.content directly
-        // 3. file.data (alternative field name)
-        // 4. Check overrides again with normalized path (in case path wasn't normalized when stored)
-        let bridgeContent = fileContent; // This already checks savedOverrides[filePath] and savedOverrides[normalizedPath]
-
-        if (!bridgeContent || bridgeContent === "") {
-          // Try file.content directly
-          bridgeContent =
-            file.content &&
-            typeof file.content === "string" &&
-            file.content.length > 0
-              ? file.content
-              : undefined;
-        }
-
-        if (!bridgeContent || bridgeContent === "") {
-          // Try file.data (alternative field name)
-          bridgeContent =
-            file.data && typeof file.data === "string" && file.data.length > 0
-              ? file.data
-              : undefined;
-        }
-
-        // For binary files, we MUST have content for bridge push (base64 encoded)
-        // Without it, other clients can't fetch the file from the git server
-        if (isBinary) {
-          if (bridgeContent && bridgeContent.length > 0) {
-            // CRITICAL: Ensure binary content is pure base64 (no data: URL prefix)
-            // FileReader.readAsDataURL returns "data:image/png;base64,..." but we need just the base64 part
-            const cleanBase64 = bridgeContent.includes(",")
-              ? bridgeContent.split(",")[1] || bridgeContent
-              : bridgeContent;
-            setBridgeEntry(normalizedPath, cleanBase64, isBinary);
-            console.log(
-              `✅ [Push Repo] Binary file ${normalizedPath} included in bridge push (${cleanBase64.length} chars base64)`
-            );
-          } else {
-            // CRITICAL: Binary files without content can't be pushed to bridge
-            // This means other clients won't be able to fetch the file
-            console.error(
-              `❌ [Push Repo] Binary file ${normalizedPath} has NO content for bridge push - other clients will NOT be able to fetch this file!`
-            );
-            console.error(
-              `   Checked sources: savedOverrides[${filePath}], savedOverrides[${normalizedPath}], file.content, file.data`
-            );
-            // Still add to map but mark as missing content (will be in missingFiles array)
-            setBridgeEntry(normalizedPath, undefined, isBinary);
-          }
-        } else {
-          // CRITICAL: For text files, if we don't have content yet, still add to map
-          // It will be fetched later from bridge or GitHub
-          // But log a warning if content is missing
-          if (!bridgeContent || bridgeContent === "") {
-            console.warn(
-              `⚠️ [Push Repo] Text file ${normalizedPath} has NO content in localStorage - will try to fetch from bridge/GitHub`
-            );
-          }
-          setBridgeEntry(normalizedPath, bridgeContent, isBinary);
-        }
-
-        return fileEntry;
-      })
-      .filter((f: any) => f !== null); // Filter out null entries (invalid paths)
-
-    // Add any new files from overrides that aren't in the base files
-    // CRITICAL: Also filter out deleted files from overrides
-    for (const [overridePath, overrideContent] of Object.entries(
-      savedOverrides
-    )) {
-      // Normalize override path for comparison
-      const normalizedOverridePath = normalizeFilePath(overridePath);
-
-      // Skip invalid paths (empty after normalization, like "/")
-      if (!normalizedOverridePath) {
-        continue;
-      }
-
-      // Skip if file is marked as deleted (check exact match and partial matches)
-      const isDeleted = normalizedDeletedPaths.some((deletedPath) => {
-        return (
-          normalizedOverridePath === deletedPath ||
-          normalizedOverridePath.includes(deletedPath) ||
-          deletedPath.includes(normalizedOverridePath)
-        );
-      });
-      if (isDeleted) {
-        console.log(
-          `🗑️ [Push Repo] Skipping deleted file from overrides: ${overridePath} (normalized: ${normalizedOverridePath})`
-        );
-        continue;
-      }
-
-      // Skip if already in filesWithOverrides
-      if (
-        !filesWithOverrides.find(
-          (f: any) => normalizeFilePath(f.path || "") === normalizedOverridePath
-        )
-      ) {
-        const isBinary = isBinaryFile(normalizedOverridePath);
-        const contentSizeBytes = overrideContent
-          ? (overrideContent.length * 3) / 4
-          : 0;
-        const contentSizeKB = contentSizeBytes / 1024;
-        const shouldIncludeContent =
-          !isBinary && contentSizeKB < MAX_TEXT_FILE_SIZE_KB;
-
-        const newFileEntry: any = {
-          type: "file",
-          path: normalizedOverridePath, // CRITICAL: Use normalized path in event
-          // Only include content for small text files
-          content: shouldIncludeContent ? overrideContent : undefined,
-          isBinary: isBinary,
-        };
-
-        // CRITICAL: For binary files without content, ensure proper metadata
-        // Other clients will fetch these from git servers using clone URLs
-        if (isBinary && !newFileEntry.content) {
-          // Binary file metadata is sufficient - clients will fetch from git server
-        }
-
-        setBridgeEntry(normalizedOverridePath, overrideContent, isBinary);
-        filesWithOverrides.push(newFileEntry);
-      }
-    }
-
-    // CRITICAL: Per NIP-34, files should NOT be included in Nostr events
-    // Files are stored on git servers (via git-nostr-bridge), not in Nostr events
-    // The files array is only used for bridge push, not for the Nostr event content
-    const totalFiles = filesWithOverrides.length;
-
-    if (totalFiles > 0) {
-      onProgress?.(
-        `📦 Preparing ${totalFiles} file(s) for bridge push (files are NOT included in Nostr event per NIP-34)`
-      );
-    }
-
-    // CRITICAL: Files should already be in localStorage from import/create workflow
-    // However, for imported repos, files might be on the bridge already but not in localStorage
-    // We'll try to fetch missing content from the bridge API as a fallback
-    // Filter out files without content - these can't be pushed to bridge
-    // Directories (no extension, no content) are automatically excluded
-    for (const file of Array.from(bridgeFilesMap.values())) {
-      // Skip directories (they don't have content and shouldn't be in the push)
-      if (!file.path || file.path.endsWith("/")) {
-        continue;
-      }
-
-      // Check if it's a directory by checking if it has no extension and no content
-      const hasExtension =
-        file.path.includes(".") &&
-        file.path.split(".").pop()?.length &&
-        file.path.split(".").pop()!.length < 10;
-      if (!hasExtension && (!file.content || file.content.length === 0)) {
-        // Likely a directory - skip
-        continue;
-      }
-
-      // Files with content are ready to push
-      if (file.content && file.content.length > 0) {
-        filesForBridge.push(file);
-      } else {
-        // File needs content - try to fetch from bridge API
-        filesNeedingContent.push(file);
-      }
-    }
-
-    // Try to fetch missing content (for imported repos / tree-only localStorage index).
-    // CRITICAL: Add timeout to prevent hanging on large repos.
-    // Upstream mirrors with no local edits skip this entirely — bridge clones from source.
-    if (filesNeedingContent.length > 0 && !deferToBridgeSourceClone) {
-      const fetchSourceLabel = upstreamSourceUrl
-        ? `upstream (${upstreamSourceUrl})`
-        : "bridge API";
-      onProgress?.(
-        `🔍 Fetching ${filesNeedingContent.length} file(s) from ${fetchSourceLabel} (missing from localStorage)...`
-      );
-      const totalFetchTimeoutMs = Math.min(
-        600000,
-        45000 + filesNeedingContent.length * 2000
-      );
-      onProgress?.(
-        `⏱️ Large repos may take a few minutes (timeout after ${Math.round(
-          totalFetchTimeoutMs / 60000
-        )} min)`
-      );
-
-      // Helper function to add timeout to fetch
-      const fetchWithTimeout = async (
-        url: string,
-        timeoutMs = 30000
-      ): Promise<Response> => {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-        try {
-          const response = await fetchBridgeRead(url, { signal: controller.signal });
-          clearTimeout(timeoutId);
-          return response;
-        } catch (error: any) {
-          clearTimeout(timeoutId);
-          if (error.name === "AbortError") {
-            throw new Error(`Request timeout after ${timeoutMs}ms`);
-          }
-          throw error;
+        if (content && !existing.content) {
+          bridgeFilesMap.set(path, { path, content, isBinary });
+        } else if (existing.isBinary !== isBinary) {
+          bridgeFilesMap.set(path, { ...existing, isBinary });
         }
       };
 
-      // Prefer upstream source when known — bridge 404 is useless before first clone.
-      const BATCH_SIZE = upstreamSourceUrl ? 15 : 8;
-      const FILE_FETCH_TIMEOUT = 30000; // 30 seconds per file
-      const TOTAL_FETCH_TIMEOUT = totalFetchTimeoutMs;
-      const fetchStartTime = Date.now();
+      const isDirectoryTreeEntry = (path: string, file: any): boolean =>
+        file?.type === "dir" ||
+        file?.type === "tree" ||
+        !path ||
+        path.endsWith("/");
 
-      for (let i = 0; i < filesNeedingContent.length; i += BATCH_SIZE) {
-        // Check if we've exceeded total timeout
-        if (Date.now() - fetchStartTime > TOTAL_FETCH_TIMEOUT) {
-          console.warn(
-            `⚠️ [Push Repo] File fetch timeout after ${TOTAL_FETCH_TIMEOUT}ms - skipping remaining files`
-          );
-          onProgress?.(
-            `⚠️ File fetch timeout - skipping remaining files. Files should be in localStorage from import.`
-          );
-          break;
+      const filesWithOverrides = baseFiles
+        .map((file: any) => {
+          const filePath = file.path || "";
+          // CRITICAL: Normalize path before processing
+          const normalizedPath = normalizeFilePath(filePath);
+
+          // Skip invalid paths (empty after normalization, like "/")
+          if (!normalizedPath) {
+            return null;
+          }
+
+          // Folder rows from git tree index — not pushable files
+          if (isDirectoryTreeEntry(normalizedPath, file)) {
+            return null;
+          }
+
+          const isBinary =
+            file.isBinary !== undefined
+              ? file.isBinary
+              : isBinaryFile(normalizedPath);
+
+          // Get content from overrides (check both original and normalized path)
+          const fileContent =
+            savedOverrides[filePath] !== undefined
+              ? savedOverrides[filePath]
+              : savedOverrides[normalizedPath] !== undefined
+              ? savedOverrides[normalizedPath]
+              : file.content || "";
+
+          // Calculate content size (base64 is ~33% larger than raw)
+          const contentSizeBytes = fileContent
+            ? (fileContent.length * 3) / 4
+            : 0;
+          const contentSizeKB = contentSizeBytes / 1024;
+
+          // For binary files: Always exclude content (only metadata)
+          // For text files: Include content only if small (< 10KB)
+          const shouldIncludeContent =
+            !isBinary && contentSizeKB < MAX_TEXT_FILE_SIZE_KB;
+
+          const fileEntry: any = {
+            ...file,
+            path: normalizedPath, // CRITICAL: Use normalized path in event
+            // Only include content for small text files
+            content: shouldIncludeContent ? fileContent : undefined,
+            isBinary: isBinary,
+            // Keep metadata (type, size, sha, url) for all files
+          };
+
+          // CRITICAL: For binary files without content, ensure we have at least path and isBinary flag
+          // Other clients will fetch these from git servers using clone URLs
+          if (isBinary && !fileEntry.content) {
+            // Ensure binary files have proper metadata for client discovery
+            // Clients will use clone URLs to fetch the actual file content
+            fileEntry.type = fileEntry.type || "file";
+          }
+
+          // CRITICAL: For bridge push, we need the actual content (including binary files)
+          // Binary files are stored as base64 in overrides, so we must include them for bridge push
+          // Even though they're excluded from the Nostr event (metadata-only), they need to be in the bridge
+          // Check multiple sources in order of reliability:
+          // 1. savedOverrides (via fileContent - already checked above)
+          // 2. file.content directly
+          // 3. file.data (alternative field name)
+          // 4. Check overrides again with normalized path (in case path wasn't normalized when stored)
+          let bridgeContent = fileContent; // This already checks savedOverrides[filePath] and savedOverrides[normalizedPath]
+
+          if (!bridgeContent || bridgeContent === "") {
+            // Try file.content directly
+            bridgeContent =
+              file.content &&
+              typeof file.content === "string" &&
+              file.content.length > 0
+                ? file.content
+                : undefined;
+          }
+
+          if (!bridgeContent || bridgeContent === "") {
+            // Try file.data (alternative field name)
+            bridgeContent =
+              file.data && typeof file.data === "string" && file.data.length > 0
+                ? file.data
+                : undefined;
+          }
+
+          // For binary files, we MUST have content for bridge push (base64 encoded)
+          // Without it, other clients can't fetch the file from the git server
+          if (isBinary) {
+            if (bridgeContent && bridgeContent.length > 0) {
+              // CRITICAL: Ensure binary content is pure base64 (no data: URL prefix)
+              // FileReader.readAsDataURL returns "data:image/png;base64,..." but we need just the base64 part
+              const cleanBase64 = bridgeContent.includes(",")
+                ? bridgeContent.split(",")[1] || bridgeContent
+                : bridgeContent;
+              setBridgeEntry(normalizedPath, cleanBase64, isBinary);
+              console.log(
+                `✅ [Push Repo] Binary file ${normalizedPath} included in bridge push (${cleanBase64.length} chars base64)`
+              );
+            } else {
+              // CRITICAL: Binary files without content can't be pushed to bridge
+              // This means other clients won't be able to fetch the file
+              console.error(
+                `❌ [Push Repo] Binary file ${normalizedPath} has NO content for bridge push - other clients will NOT be able to fetch this file!`
+              );
+              console.error(
+                `   Checked sources: savedOverrides[${filePath}], savedOverrides[${normalizedPath}], file.content, file.data`
+              );
+              // Still add to map but mark as missing content (will be in missingFiles array)
+              setBridgeEntry(normalizedPath, undefined, isBinary);
+            }
+          } else {
+            // CRITICAL: For text files, if we don't have content yet, still add to map
+            // It will be fetched later from bridge or GitHub
+            // But log a warning if content is missing
+            if (!bridgeContent || bridgeContent === "") {
+              console.warn(
+                `⚠️ [Push Repo] Text file ${normalizedPath} has NO content in localStorage - will try to fetch from bridge/GitHub`
+              );
+            }
+            setBridgeEntry(normalizedPath, bridgeContent, isBinary);
+          }
+
+          return fileEntry;
+        })
+        .filter((f: any) => f !== null); // Filter out null entries (invalid paths)
+
+      // Add any new files from overrides that aren't in the base files
+      // CRITICAL: Also filter out deleted files from overrides
+      for (const [overridePath, overrideContent] of Object.entries(
+        savedOverrides
+      )) {
+        // Normalize override path for comparison
+        const normalizedOverridePath = normalizeFilePath(overridePath);
+
+        // Skip invalid paths (empty after normalization, like "/")
+        if (!normalizedOverridePath) {
+          continue;
         }
 
-        const batch = filesNeedingContent.slice(i, i + BATCH_SIZE);
-        await Promise.all(
-          batch.map(async (file) => {
-            const branch = repo.defaultBranch || "main";
+        // Skip if file is marked as deleted (check exact match and partial matches)
+        const isDeleted = normalizedDeletedPaths.some((deletedPath) => {
+          return (
+            normalizedOverridePath === deletedPath ||
+            normalizedOverridePath.includes(deletedPath) ||
+            deletedPath.includes(normalizedOverridePath)
+          );
+        });
+        if (isDeleted) {
+          console.log(
+            `🗑️ [Push Repo] Skipping deleted file from overrides: ${overridePath} (normalized: ${normalizedOverridePath})`
+          );
+          continue;
+        }
 
-            // Fast path: server-side upstream fetch (one hop, no bridge 404).
-            if (upstreamSourceUrl) {
-              try {
-                const sourceApiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
-                  upstreamSourceUrl
-                )}&path=${encodeURIComponent(
-                  file.path
-                )}&branch=${encodeURIComponent(branch)}`;
-                const sourceApiResponse = await fetchWithTimeout(
-                  sourceApiUrl,
-                  FILE_FETCH_TIMEOUT
-                );
-                if (sourceApiResponse.ok) {
-                  const sourceApiData = await sourceApiResponse.json();
-                  if (sourceApiData.content && sourceApiData.content.length > 0) {
-                    file.content = sourceApiData.content;
-                    filesForBridge.push(file);
-                    return;
-                  }
-                }
-              } catch (err: any) {
-                if (!err?.message?.includes("timeout")) {
-                  console.warn(
-                    `⚠️ [Push Repo] Upstream fetch failed for ${file.path}:`,
-                    err?.message || err
-                  );
-                }
-              }
-            } else {
-              try {
-                const response = await fetchWithTimeout(
-                  `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
-                    pubkey
-                  )}&repo=${encodeURIComponent(
-                    actualRepositoryName
+        // Skip if already in filesWithOverrides
+        if (
+          !filesWithOverrides.find(
+            (f: any) =>
+              normalizeFilePath(f.path || "") === normalizedOverridePath
+          )
+        ) {
+          const isBinary = isBinaryFile(normalizedOverridePath);
+          const contentSizeBytes = overrideContent
+            ? (overrideContent.length * 3) / 4
+            : 0;
+          const contentSizeKB = contentSizeBytes / 1024;
+          const shouldIncludeContent =
+            !isBinary && contentSizeKB < MAX_TEXT_FILE_SIZE_KB;
+
+          const newFileEntry: any = {
+            type: "file",
+            path: normalizedOverridePath, // CRITICAL: Use normalized path in event
+            // Only include content for small text files
+            content: shouldIncludeContent ? overrideContent : undefined,
+            isBinary: isBinary,
+          };
+
+          // CRITICAL: For binary files without content, ensure proper metadata
+          // Other clients will fetch these from git servers using clone URLs
+          if (isBinary && !newFileEntry.content) {
+            // Binary file metadata is sufficient - clients will fetch from git server
+          }
+
+          setBridgeEntry(normalizedOverridePath, overrideContent, isBinary);
+          filesWithOverrides.push(newFileEntry);
+        }
+      }
+
+      // CRITICAL: Per NIP-34, files should NOT be included in Nostr events
+      // Files are stored on git servers (via git-nostr-bridge), not in Nostr events
+      // The files array is only used for bridge push, not for the Nostr event content
+      const totalFiles = filesWithOverrides.length;
+
+      if (totalFiles > 0) {
+        onProgress?.(
+          `📦 Preparing ${totalFiles} file(s) for bridge push (files are NOT included in Nostr event per NIP-34)`
+        );
+      }
+
+      // CRITICAL: Files should already be in localStorage from import/create workflow
+      // However, for imported repos, files might be on the bridge already but not in localStorage
+      // We'll try to fetch missing content from the bridge API as a fallback
+      // Filter out files without content - these can't be pushed to bridge
+      // Directories (no extension, no content) are automatically excluded
+      for (const file of Array.from(bridgeFilesMap.values())) {
+        // Skip directories (they don't have content and shouldn't be in the push)
+        if (!file.path || file.path.endsWith("/")) {
+          continue;
+        }
+
+        // Check if it's a directory by checking if it has no extension and no content
+        const hasExtension =
+          file.path.includes(".") &&
+          file.path.split(".").pop()?.length &&
+          file.path.split(".").pop()!.length < 10;
+        if (!hasExtension && (!file.content || file.content.length === 0)) {
+          // Likely a directory - skip
+          continue;
+        }
+
+        // Files with content are ready to push
+        if (file.content && file.content.length > 0) {
+          filesForBridge.push(file);
+        } else {
+          // File needs content - try to fetch from bridge API
+          filesNeedingContent.push(file);
+        }
+      }
+
+      // Try to fetch missing content (for imported repos / tree-only localStorage index).
+      // CRITICAL: Add timeout to prevent hanging on large repos.
+      // Upstream mirrors with no local edits skip this entirely — bridge clones from source.
+      if (filesNeedingContent.length > 0 && !deferToBridgeSourceClone) {
+        const fetchSourceLabel = upstreamSourceUrl
+          ? `upstream (${upstreamSourceUrl})`
+          : "bridge API";
+        onProgress?.(
+          `🔍 Fetching ${filesNeedingContent.length} file(s) from ${fetchSourceLabel} (missing from localStorage)...`
+        );
+        const totalFetchTimeoutMs = Math.min(
+          600000,
+          45000 + filesNeedingContent.length * 2000
+        );
+        onProgress?.(
+          `⏱️ Large repos may take a few minutes (timeout after ${Math.round(
+            totalFetchTimeoutMs / 60000
+          )} min)`
+        );
+
+        // Helper function to add timeout to fetch
+        const fetchWithTimeout = async (
+          url: string,
+          timeoutMs = 30000
+        ): Promise<Response> => {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+          try {
+            const response = await fetchBridgeRead(url, {
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+            return response;
+          } catch (error: any) {
+            clearTimeout(timeoutId);
+            if (error.name === "AbortError") {
+              throw new Error(`Request timeout after ${timeoutMs}ms`);
+            }
+            throw error;
+          }
+        };
+
+        // Prefer upstream source when known — bridge 404 is useless before first clone.
+        const BATCH_SIZE = upstreamSourceUrl ? 15 : 8;
+        const FILE_FETCH_TIMEOUT = 30000; // 30 seconds per file
+        const TOTAL_FETCH_TIMEOUT = totalFetchTimeoutMs;
+        const fetchStartTime = Date.now();
+
+        for (let i = 0; i < filesNeedingContent.length; i += BATCH_SIZE) {
+          // Check if we've exceeded total timeout
+          if (Date.now() - fetchStartTime > TOTAL_FETCH_TIMEOUT) {
+            console.warn(
+              `⚠️ [Push Repo] File fetch timeout after ${TOTAL_FETCH_TIMEOUT}ms - skipping remaining files`
+            );
+            onProgress?.(
+              `⚠️ File fetch timeout - skipping remaining files. Files should be in localStorage from import.`
+            );
+            break;
+          }
+
+          const batch = filesNeedingContent.slice(i, i + BATCH_SIZE);
+          await Promise.all(
+            batch.map(async (file) => {
+              const branch = repo.defaultBranch || "main";
+
+              // Fast path: server-side upstream fetch (one hop, no bridge 404).
+              if (upstreamSourceUrl) {
+                try {
+                  const sourceApiUrl = `/api/git/file-content?sourceUrl=${encodeURIComponent(
+                    upstreamSourceUrl
                   )}&path=${encodeURIComponent(
                     file.path
-                  )}&branch=${encodeURIComponent(branch)}`,
-                  FILE_FETCH_TIMEOUT
-                );
-
-                if (response.ok) {
-                  const data = await response.json();
-                  if (data.content && data.content.length > 0) {
-                    file.content = data.content;
-                    filesForBridge.push(file);
-                    console.log(
-                      `✅ [Push Repo] Fetched content for ${file.path} from bridge API`
-                    );
-                    return;
+                  )}&branch=${encodeURIComponent(branch)}`;
+                  const sourceApiResponse = await fetchWithTimeout(
+                    sourceApiUrl,
+                    FILE_FETCH_TIMEOUT
+                  );
+                  if (sourceApiResponse.ok) {
+                    const sourceApiData = await sourceApiResponse.json();
+                    if (
+                      sourceApiData.content &&
+                      sourceApiData.content.length > 0
+                    ) {
+                      file.content = sourceApiData.content;
+                      filesForBridge.push(file);
+                      return;
+                    }
                   }
-                } else if (response.status === 404) {
-                  console.warn(
-                    `⚠️ [Push Repo] File ${file.path} not found on bridge (404)`
-                  );
+                } catch (err: any) {
+                  if (!err?.message?.includes("timeout")) {
+                    console.warn(
+                      `⚠️ [Push Repo] Upstream fetch failed for ${file.path}:`,
+                      err?.message || err
+                    );
+                  }
                 }
-              } catch (err: any) {
-                if (err.message && err.message.includes("timeout")) {
-                  console.warn(
-                    `⏱️ [Push Repo] Timeout fetching ${file.path} from bridge API (${FILE_FETCH_TIMEOUT}ms)`
+              } else {
+                try {
+                  const response = await fetchWithTimeout(
+                    `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+                      pubkey
+                    )}&repo=${encodeURIComponent(
+                      actualRepositoryName
+                    )}&path=${encodeURIComponent(
+                      file.path
+                    )}&branch=${encodeURIComponent(branch)}`,
+                    FILE_FETCH_TIMEOUT
                   );
-                } else {
-                  console.warn(
-                    `⚠️ [Push Repo] Failed to fetch ${file.path} from bridge API:`,
-                    err
-                  );
+
+                  if (response.ok) {
+                    const data = await response.json();
+                    if (data.content && data.content.length > 0) {
+                      file.content = data.content;
+                      filesForBridge.push(file);
+                      console.log(
+                        `✅ [Push Repo] Fetched content for ${file.path} from bridge API`
+                      );
+                      return;
+                    }
+                  } else if (response.status === 404) {
+                    console.warn(
+                      `⚠️ [Push Repo] File ${file.path} not found on bridge (404)`
+                    );
+                  }
+                } catch (err: any) {
+                  if (err.message && err.message.includes("timeout")) {
+                    console.warn(
+                      `⏱️ [Push Repo] Timeout fetching ${file.path} from bridge API (${FILE_FETCH_TIMEOUT}ms)`
+                    );
+                  } else {
+                    console.warn(
+                      `⚠️ [Push Repo] Failed to fetch ${file.path} from bridge API:`,
+                      err
+                    );
+                  }
                 }
               }
-            }
 
-            // Legacy fallback: per-file GitHub/GitLab/Codeberg fetch
-            if (repo.sourceUrl && !upstreamSourceUrl) {
-              try {
-                console.log(
-                  `🔍 [Push Repo] Trying to fetch ${file.path} from source (${repo.sourceUrl})...`
-                );
-                const sourceMatch = repo.sourceUrl.match(
-                  /(?:github|gitlab|codeberg)\.(?:com|org)\/([^\/]+)\/([^\/]+)/i
-                );
-                if (sourceMatch && sourceMatch[1] && sourceMatch[2]) {
-                  const [, owner, repoNameRaw] = sourceMatch;
-                  // CRITICAL: Strip .git suffix from repoName for raw URLs (raw.githubusercontent.com doesn't use .git)
-                  const repoName = repoNameRaw.replace(/\.git$/, "");
-                  const platform = repo.sourceUrl.includes("github")
-                    ? "github"
-                    : repo.sourceUrl.includes("gitlab")
-                    ? "gitlab"
-                    : "codeberg";
-                  const branch = repo.defaultBranch || "main";
+              // Legacy fallback: per-file GitHub/GitLab/Codeberg fetch
+              if (repo.sourceUrl && !upstreamSourceUrl) {
+                try {
+                  console.log(
+                    `🔍 [Push Repo] Trying to fetch ${file.path} from source (${repo.sourceUrl})...`
+                  );
+                  const sourceMatch = repo.sourceUrl.match(
+                    /(?:github|gitlab|codeberg)\.(?:com|org)\/([^\/]+)\/([^\/]+)/i
+                  );
+                  if (sourceMatch && sourceMatch[1] && sourceMatch[2]) {
+                    const [, owner, repoNameRaw] = sourceMatch;
+                    // CRITICAL: Strip .git suffix from repoName for raw URLs (raw.githubusercontent.com doesn't use .git)
+                    const repoName = repoNameRaw.replace(/\.git$/, "");
+                    const platform = repo.sourceUrl.includes("github")
+                      ? "github"
+                      : repo.sourceUrl.includes("gitlab")
+                      ? "gitlab"
+                      : "codeberg";
+                    const branch = repo.defaultBranch || "main";
 
-                  // Fetch file content from source
-                  // CRITICAL: For GitHub, use Contents API which returns base64 for binary, text for text
-                  // For text files, we can use raw.githubusercontent.com for faster fetching
-                  let sourceFileUrl: string;
-                  let useRaw = false;
+                    // Fetch file content from source
+                    // CRITICAL: For GitHub, use Contents API which returns base64 for binary, text for text
+                    // For text files, we can use raw.githubusercontent.com for faster fetching
+                    let sourceFileUrl: string;
+                    let useRaw = false;
 
-                  if (platform === "github") {
-                    // Try raw URL first for text files (faster, no API rate limit)
-                    if (!file.isBinary) {
-                      sourceFileUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(
-                        branch
-                      )}/${encodeURIComponent(file.path)}`;
+                    if (platform === "github") {
+                      // Try raw URL first for text files (faster, no API rate limit)
+                      if (!file.isBinary) {
+                        sourceFileUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(
+                          branch
+                        )}/${encodeURIComponent(file.path)}`;
+                        useRaw = true;
+                      } else {
+                        // For binary, use Contents API to get base64
+                        // Note: GitHub API uses repoName with or without .git, but we'll use the normalized one
+                        sourceFileUrl = `/api/github/proxy?endpoint=${encodeURIComponent(
+                          `/repos/${owner}/${repoName}/contents/${encodeURIComponent(
+                            file.path
+                          )}?ref=${encodeURIComponent(branch)}`
+                        )}`;
+                      }
+                    } else if (platform === "gitlab") {
+                      sourceFileUrl = `/api/gitlab/proxy?endpoint=${encodeURIComponent(
+                        `/projects/${encodeURIComponent(
+                          `${owner}/${repoName}`
+                        )}/repository/files/${encodeURIComponent(
+                          file.path
+                        )}/raw?ref=${encodeURIComponent(branch)}`
+                      )}`;
                       useRaw = true;
                     } else {
-                      // For binary, use Contents API to get base64
-                      // Note: GitHub API uses repoName with or without .git, but we'll use the normalized one
-                      sourceFileUrl = `/api/github/proxy?endpoint=${encodeURIComponent(
+                      sourceFileUrl = `/api/codeberg/proxy?endpoint=${encodeURIComponent(
                         `/repos/${owner}/${repoName}/contents/${encodeURIComponent(
                           file.path
                         )}?ref=${encodeURIComponent(branch)}`
                       )}`;
                     }
-                  } else if (platform === "gitlab") {
-                    sourceFileUrl = `/api/gitlab/proxy?endpoint=${encodeURIComponent(
-                      `/projects/${encodeURIComponent(
-                        `${owner}/${repoName}`
-                      )}/repository/files/${encodeURIComponent(
-                        file.path
-                      )}/raw?ref=${encodeURIComponent(branch)}`
-                    )}`;
-                    useRaw = true;
-                  } else {
-                    sourceFileUrl = `/api/codeberg/proxy?endpoint=${encodeURIComponent(
-                      `/repos/${owner}/${repoName}/contents/${encodeURIComponent(
-                        file.path
-                      )}?ref=${encodeURIComponent(branch)}`
-                    )}`;
-                  }
 
-                  const sourceResponse = await fetchWithTimeout(
-                    sourceFileUrl,
-                    FILE_FETCH_TIMEOUT
+                    const sourceResponse = await fetchWithTimeout(
+                      sourceFileUrl,
+                      FILE_FETCH_TIMEOUT
+                    );
+                    if (sourceResponse.ok) {
+                      if (useRaw || (!file.isBinary && platform === "github")) {
+                        // Raw content (text files from GitHub raw, or GitLab raw)
+                        if (file.isBinary) {
+                          // Binary from raw URL - convert to base64
+                          const arrayBuffer =
+                            await sourceResponse.arrayBuffer();
+                          // Browser-compatible base64 encoding
+                          const bytes = new Uint8Array(arrayBuffer);
+                          let binary = "";
+                          for (let i = 0; i < bytes.length; i++) {
+                            const byte = bytes[i];
+                            if (byte !== undefined) {
+                              binary += String.fromCharCode(byte);
+                            }
+                          }
+                          file.content = btoa(binary);
+                        } else {
+                          // Text file
+                          file.content = await sourceResponse.text();
+                        }
+                        filesForBridge.push(file);
+                        console.log(
+                          `✅ [Push Repo] Fetched ${
+                            file.isBinary ? "binary" : "text"
+                          } content for ${file.path} from ${platform} (raw)`
+                        );
+                        return;
+                      } else {
+                        // Contents API response (GitHub for binary, Codeberg)
+                        const sourceData = await sourceResponse.json();
+                        if (sourceData.content) {
+                          if (sourceData.encoding === "base64") {
+                            // Already base64 encoded
+                            file.content = sourceData.content;
+                          } else {
+                            // Not base64 - for binary files, this shouldn't happen (GitHub API always returns base64 for binary)
+                            // For text files, use content as-is
+                            if (file.isBinary) {
+                              console.warn(
+                                `⚠️ [Push Repo] Binary file ${file.path} from ${platform} API has encoding "${sourceData.encoding}" (expected "base64") - may be corrupted`
+                              );
+                              // Try to use as-is (might be base64 without encoding field)
+                              file.content = sourceData.content;
+                            } else {
+                              file.content = sourceData.content;
+                            }
+                          }
+                          filesForBridge.push(file);
+                          console.log(
+                            `✅ [Push Repo] Fetched ${
+                              file.isBinary ? "binary" : "text"
+                            } content for ${
+                              file.path
+                            } from ${platform} (API) - ${
+                              file.content.length
+                            } chars`
+                          );
+                          return;
+                        }
+                      }
+                    } else {
+                      console.warn(
+                        `⚠️ [Push Repo] Source fetch failed for ${file.path}: ${sourceResponse.status} ${sourceResponse.statusText}`
+                      );
+                    }
+                  }
+                } catch (sourceError: any) {
+                  console.warn(
+                    `⚠️ [Push Repo] Failed to fetch ${file.path} from source:`,
+                    sourceError?.message || sourceError
                   );
-                  if (sourceResponse.ok) {
-                    if (useRaw || (!file.isBinary && platform === "github")) {
-                      // Raw content (text files from GitHub raw, or GitLab raw)
+                }
+              }
+
+              // If we still couldn't fetch, exclude the file
+              console.warn(
+                `⚠️ [Push Repo] Excluding file from bridge push (no content available): ${file.path}`
+              );
+              console.warn(
+                `   💡 This file should have been loaded during import/create. If it's missing, re-import the repository.`
+              );
+            })
+          );
+        }
+
+        // CRITICAL: After fetching, log results
+        console.log(
+          `📊 [Push Repo] After fetching: ${
+            filesForBridge.length
+          } files with content, ${
+            filesNeedingContent.length - filesForBridge.length
+          } still missing content`
+        );
+      }
+
+      // CRITICAL: Log detailed info about files
+      console.log(`📊 [Push Repo] File analysis:`, {
+        totalFilesInRepo: baseFiles.length,
+        bridgeFilesMapSize: bridgeFilesMap.size,
+        filesWithContent: filesForBridge.length,
+        filesNeedingContent: filesNeedingContent.length,
+        repoSourceUrl: repo.sourceUrl,
+        hasFilesInLocalStorage: baseFiles.length > 0,
+        actualRepositoryName,
+        pubkey: pubkey ? `${pubkey.substring(0, 8)}...` : "none",
+        entity,
+        filePathsSample: Array.from(bridgeFilesMap.keys()).slice(0, 10),
+      });
+
+      // CRITICAL: If we have no files at all (bridgeFilesMap is empty), try to fetch file list from GitHub first
+      // ALSO: If bridgeFilesMap has files but none have content, we need to fetch file list and content
+      // This handles the case where localStorage has file metadata but no content
+      if (
+        !deferToBridgeSourceClone &&
+        bridgeFilesMap.size === 0 &&
+        repo.sourceUrl &&
+        baseFiles.length === 0
+      ) {
+        console.error(
+          `❌ [Push Repo] CRITICAL: No files found in localStorage! Attempting to fetch file list from GitHub...`,
+          {
+            repoSourceUrl: repo.sourceUrl,
+            baseFilesLength: baseFiles.length,
+            repoFilesLength: repo.files?.length || 0,
+          }
+        );
+
+        onProgress?.(
+          "🚨 Emergency: No files in localStorage - fetching file list from GitHub..."
+        );
+        const githubMatch = repo.sourceUrl.match(
+          /github\.com\/([^\/]+)\/([^\/]+)/
+        );
+        if (githubMatch && githubMatch[1] && githubMatch[2]) {
+          const [, owner, repoNameRaw] = githubMatch;
+          // CRITICAL: Strip .git suffix from repoName for raw URLs (raw.githubusercontent.com doesn't use .git)
+          const repoName = repoNameRaw.replace(/\.git$/, "");
+          const branch = repo.defaultBranch || "main";
+
+          try {
+            // Fetch file tree from GitHub API
+            // Note: GitHub API accepts repoName with or without .git, but we'll use the normalized one
+            const treeUrl = `/api/github/proxy?endpoint=${encodeURIComponent(
+              `/repos/${owner}/${repoName}/git/trees/${encodeURIComponent(
+                branch
+              )}?recursive=1`
+            )}`;
+            const treeResponse = await fetch(treeUrl);
+
+            if (treeResponse.ok) {
+              const treeData = await treeResponse.json();
+              if (treeData.tree && Array.isArray(treeData.tree)) {
+                // Filter to only files (not directories)
+                const fileEntries = treeData.tree.filter(
+                  (entry: any) => entry.type === "blob" && entry.path
+                );
+                console.log(
+                  `✅ [Push Repo] Emergency: Fetched ${fileEntries.length} file paths from GitHub`
+                );
+
+                // Add ALL files to bridgeFilesMap (without content yet) - NO LIMIT
+                fileEntries.forEach((entry: any) => {
+                  const normalizedPath = normalizeFilePath(entry.path);
+                  if (normalizedPath) {
+                    const isBinary = isBinaryFile(normalizedPath);
+                    setBridgeEntry(normalizedPath, undefined, isBinary);
+                  }
+                });
+
+                // Now fetch content for ALL files - NO LIMIT
+                const filesToFetch = Array.from(bridgeFilesMap.keys());
+                console.log(
+                  `🚨 [Push Repo] Emergency: Now fetching content for ALL ${filesToFetch.length} files...`
+                );
+
+                const BATCH_SIZE = 5;
+                for (let i = 0; i < filesToFetch.length; i += BATCH_SIZE) {
+                  const batch = filesToFetch.slice(i, i + BATCH_SIZE);
+                  await Promise.all(
+                    batch.map(async (filePath) => {
+                      try {
+                        const file = bridgeFilesMap.get(filePath);
+                        if (!file) return;
+
+                        const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(
+                          branch
+                        )}/${encodeURIComponent(filePath)}`;
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(
+                          () => controller.abort(),
+                          10000
+                        );
+
+                        try {
+                          const response = await fetch(rawUrl, {
+                            headers: { "User-Agent": "gittr-space" },
+                            signal: controller.signal,
+                          });
+                          clearTimeout(timeoutId);
+
+                          if (response.ok) {
+                            // CRITICAL: Handle binary files correctly - convert to base64
+                            if (file.isBinary) {
+                              const arrayBuffer = await response.arrayBuffer();
+                              // Browser-compatible base64 encoding
+                              const bytes = new Uint8Array(arrayBuffer);
+                              let binary = "";
+                              for (let i = 0; i < bytes.length; i++) {
+                                const byte = bytes[i];
+                                if (byte !== undefined) {
+                                  binary += String.fromCharCode(byte);
+                                }
+                              }
+                              const base64 = btoa(binary);
+                              if (base64 && base64.length > 0) {
+                                file.content = base64;
+                                filesForBridge.push(file);
+                                console.log(
+                                  `✅ [Push Repo] Emergency fetch: Got binary ${filePath} (${base64.length} chars base64)`
+                                );
+                              }
+                            } else {
+                              const content = await response.text();
+                              if (content && content.length > 0) {
+                                file.content = content;
+                                filesForBridge.push(file);
+                                console.log(
+                                  `✅ [Push Repo] Emergency fetch: Got text ${filePath} (${content.length} chars)`
+                                );
+                              }
+                            }
+                          }
+                        } catch (fetchError: any) {
+                          clearTimeout(timeoutId);
+                          if (fetchError.name !== "AbortError") {
+                            console.warn(
+                              `⚠️ [Push Repo] Emergency fetch failed for ${filePath}:`,
+                              fetchError?.message
+                            );
+                          }
+                        }
+                      } catch (e: any) {
+                        console.warn(
+                          `⚠️ [Push Repo] Emergency fetch error for ${filePath}:`,
+                          e?.message
+                        );
+                      }
+                    })
+                  );
+                }
+
+                console.log(
+                  `📊 [Push Repo] After emergency file list + content fetch: ${filesForBridge.length} files with content`
+                );
+              }
+            }
+          } catch (treeError: any) {
+            console.error(
+              `❌ [Push Repo] Failed to fetch file tree from GitHub:`,
+              treeError
+            );
+          }
+        }
+      }
+
+      // CRITICAL: If we still have no files with content, but we have files in the repo,
+      // we MUST fetch from GitHub NOW (not wait for refetch)
+      // This handles the case where localStorage has file metadata but no content
+      if (
+        !deferToBridgeSourceClone &&
+        filesForBridge.length === 0 &&
+        (bridgeFilesMap.size > 0 || baseFiles.length > 0) &&
+        repo.sourceUrl
+      ) {
+        console.error(
+          `❌ [Push Repo] CRITICAL: No files with content after fetching! Attempting emergency GitHub fetch...`,
+          {
+            bridgeFilesMapSize: bridgeFilesMap.size,
+            baseFilesLength: baseFiles.length,
+            filesNeedingContent: filesNeedingContent.length,
+            repoSourceUrl: repo.sourceUrl,
+            allFilePaths: Array.from(bridgeFilesMap.keys()).slice(0, 10),
+            baseFilePaths: baseFiles.slice(0, 10).map((f: any) => f.path),
+          }
+        );
+
+        // EMERGENCY: Fetch ALL files from GitHub right now - NO LIMIT
+        onProgress?.(
+          "🚨 Emergency: Fetching ALL files from GitHub (this may take a moment)..."
+        );
+        const githubMatch = repo.sourceUrl.match(
+          /github\.com\/([^\/]+)\/([^\/]+)/
+        );
+        if (githubMatch && githubMatch[1] && githubMatch[2]) {
+          const [, owner, repoNameRaw] = githubMatch;
+          // CRITICAL: Strip .git suffix from repoName for raw URLs (raw.githubusercontent.com doesn't use .git)
+          const repoName = repoNameRaw.replace(/\.git$/, "");
+          const branch = repo.defaultBranch || "main";
+
+          // CRITICAL: If bridgeFilesMap is empty but baseFiles exist, populate it first
+          if (bridgeFilesMap.size === 0 && baseFiles.length > 0) {
+            console.log(
+              `🚨 [Push Repo] Emergency: bridgeFilesMap is empty but baseFiles exist (${baseFiles.length}) - populating from baseFiles...`
+            );
+            baseFiles.forEach((file: any) => {
+              const normalizedPath = normalizeFilePath(file.path || "");
+              if (normalizedPath) {
+                const isBinary = isBinaryFile(normalizedPath);
+                setBridgeEntry(normalizedPath, undefined, isBinary);
+              }
+            });
+            console.log(
+              `✅ [Push Repo] Emergency: Populated bridgeFilesMap with ${bridgeFilesMap.size} files from baseFiles`
+            );
+          }
+
+          const allFilesToFetch = Array.from(bridgeFilesMap.keys()); // NO LIMIT - fetch ALL files
+
+          console.log(
+            `🚨 [Push Repo] Emergency fetch: Fetching ALL ${allFilesToFetch.length} files from GitHub...`
+          );
+
+          const BATCH_SIZE = 5;
+          for (let i = 0; i < allFilesToFetch.length; i += BATCH_SIZE) {
+            const batch = allFilesToFetch.slice(i, i + BATCH_SIZE);
+            await Promise.all(
+              batch.map(async (filePath) => {
+                try {
+                  const file = bridgeFilesMap.get(filePath);
+                  if (!file || (file.content && file.content.length > 0))
+                    return; // Skip if already has content
+
+                  const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(
+                    branch
+                  )}/${encodeURIComponent(filePath)}`;
+                  const controller = new AbortController();
+                  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+                  try {
+                    const response = await fetch(rawUrl, {
+                      headers: { "User-Agent": "gittr-space" },
+                      signal: controller.signal,
+                    });
+                    clearTimeout(timeoutId);
+
+                    if (response.ok) {
+                      // CRITICAL: Handle binary files correctly - convert to base64
                       if (file.isBinary) {
-                        // Binary from raw URL - convert to base64
-                        const arrayBuffer = await sourceResponse.arrayBuffer();
+                        const arrayBuffer = await response.arrayBuffer();
                         // Browser-compatible base64 encoding
                         const bytes = new Uint8Array(arrayBuffer);
                         let binary = "";
@@ -1229,390 +1629,49 @@ export async function pushRepoToNostr(
                             binary += String.fromCharCode(byte);
                           }
                         }
-                        file.content = btoa(binary);
+                        const base64 = btoa(binary);
+                        if (base64 && base64.length > 0) {
+                          file.content = base64;
+                          filesForBridge.push(file);
+                          console.log(
+                            `✅ [Push Repo] Emergency fetch: Got binary ${filePath} (${base64.length} chars base64)`
+                          );
+                        }
                       } else {
-                        // Text file
-                        file.content = await sourceResponse.text();
-                      }
-                      filesForBridge.push(file);
-                      console.log(
-                        `✅ [Push Repo] Fetched ${
-                          file.isBinary ? "binary" : "text"
-                        } content for ${file.path} from ${platform} (raw)`
-                      );
-                      return;
-                    } else {
-                      // Contents API response (GitHub for binary, Codeberg)
-                      const sourceData = await sourceResponse.json();
-                      if (sourceData.content) {
-                        if (sourceData.encoding === "base64") {
-                          // Already base64 encoded
-                          file.content = sourceData.content;
-                        } else {
-                          // Not base64 - for binary files, this shouldn't happen (GitHub API always returns base64 for binary)
-                          // For text files, use content as-is
-                          if (file.isBinary) {
-                            console.warn(
-                              `⚠️ [Push Repo] Binary file ${file.path} from ${platform} API has encoding "${sourceData.encoding}" (expected "base64") - may be corrupted`
-                            );
-                            // Try to use as-is (might be base64 without encoding field)
-                            file.content = sourceData.content;
-                          } else {
-                            file.content = sourceData.content;
-                          }
-                        }
-                        filesForBridge.push(file);
-                        console.log(
-                          `✅ [Push Repo] Fetched ${
-                            file.isBinary ? "binary" : "text"
-                          } content for ${file.path} from ${platform} (API) - ${
-                            file.content.length
-                          } chars`
-                        );
-                        return;
-                      }
-                    }
-                  } else {
-                    console.warn(
-                      `⚠️ [Push Repo] Source fetch failed for ${file.path}: ${sourceResponse.status} ${sourceResponse.statusText}`
-                    );
-                  }
-                }
-              } catch (sourceError: any) {
-                console.warn(
-                  `⚠️ [Push Repo] Failed to fetch ${file.path} from source:`,
-                  sourceError?.message || sourceError
-                );
-              }
-            }
-
-            // If we still couldn't fetch, exclude the file
-            console.warn(
-              `⚠️ [Push Repo] Excluding file from bridge push (no content available): ${file.path}`
-            );
-            console.warn(
-              `   💡 This file should have been loaded during import/create. If it's missing, re-import the repository.`
-            );
-          })
-        );
-      }
-
-      // CRITICAL: After fetching, log results
-      console.log(
-        `📊 [Push Repo] After fetching: ${
-          filesForBridge.length
-        } files with content, ${
-          filesNeedingContent.length - filesForBridge.length
-        } still missing content`
-      );
-    }
-
-    // CRITICAL: Log detailed info about files
-    console.log(`📊 [Push Repo] File analysis:`, {
-      totalFilesInRepo: baseFiles.length,
-      bridgeFilesMapSize: bridgeFilesMap.size,
-      filesWithContent: filesForBridge.length,
-      filesNeedingContent: filesNeedingContent.length,
-      repoSourceUrl: repo.sourceUrl,
-      hasFilesInLocalStorage: baseFiles.length > 0,
-      actualRepositoryName,
-      pubkey: pubkey ? `${pubkey.substring(0, 8)}...` : "none",
-      entity,
-      filePathsSample: Array.from(bridgeFilesMap.keys()).slice(0, 10),
-    });
-
-    // CRITICAL: If we have no files at all (bridgeFilesMap is empty), try to fetch file list from GitHub first
-    // ALSO: If bridgeFilesMap has files but none have content, we need to fetch file list and content
-    // This handles the case where localStorage has file metadata but no content
-    if (
-      !deferToBridgeSourceClone &&
-      bridgeFilesMap.size === 0 &&
-      repo.sourceUrl &&
-      baseFiles.length === 0
-    ) {
-      console.error(
-        `❌ [Push Repo] CRITICAL: No files found in localStorage! Attempting to fetch file list from GitHub...`,
-        {
-          repoSourceUrl: repo.sourceUrl,
-          baseFilesLength: baseFiles.length,
-          repoFilesLength: repo.files?.length || 0,
-        }
-      );
-
-      onProgress?.(
-        "🚨 Emergency: No files in localStorage - fetching file list from GitHub..."
-      );
-      const githubMatch = repo.sourceUrl.match(
-        /github\.com\/([^\/]+)\/([^\/]+)/
-      );
-      if (githubMatch && githubMatch[1] && githubMatch[2]) {
-        const [, owner, repoNameRaw] = githubMatch;
-        // CRITICAL: Strip .git suffix from repoName for raw URLs (raw.githubusercontent.com doesn't use .git)
-        const repoName = repoNameRaw.replace(/\.git$/, "");
-        const branch = repo.defaultBranch || "main";
-
-        try {
-          // Fetch file tree from GitHub API
-          // Note: GitHub API accepts repoName with or without .git, but we'll use the normalized one
-          const treeUrl = `/api/github/proxy?endpoint=${encodeURIComponent(
-            `/repos/${owner}/${repoName}/git/trees/${encodeURIComponent(
-              branch
-            )}?recursive=1`
-          )}`;
-          const treeResponse = await fetch(treeUrl);
-
-          if (treeResponse.ok) {
-            const treeData = await treeResponse.json();
-            if (treeData.tree && Array.isArray(treeData.tree)) {
-              // Filter to only files (not directories)
-              const fileEntries = treeData.tree.filter(
-                (entry: any) => entry.type === "blob" && entry.path
-              );
-              console.log(
-                `✅ [Push Repo] Emergency: Fetched ${fileEntries.length} file paths from GitHub`
-              );
-
-              // Add ALL files to bridgeFilesMap (without content yet) - NO LIMIT
-              fileEntries.forEach((entry: any) => {
-                const normalizedPath = normalizeFilePath(entry.path);
-                if (normalizedPath) {
-                  const isBinary = isBinaryFile(normalizedPath);
-                  setBridgeEntry(normalizedPath, undefined, isBinary);
-                }
-              });
-
-              // Now fetch content for ALL files - NO LIMIT
-              const filesToFetch = Array.from(bridgeFilesMap.keys());
-              console.log(
-                `🚨 [Push Repo] Emergency: Now fetching content for ALL ${filesToFetch.length} files...`
-              );
-
-              const BATCH_SIZE = 5;
-              for (let i = 0; i < filesToFetch.length; i += BATCH_SIZE) {
-                const batch = filesToFetch.slice(i, i + BATCH_SIZE);
-                await Promise.all(
-                  batch.map(async (filePath) => {
-                    try {
-                      const file = bridgeFilesMap.get(filePath);
-                      if (!file) return;
-
-                      const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(
-                        branch
-                      )}/${encodeURIComponent(filePath)}`;
-                      const controller = new AbortController();
-                      const timeoutId = setTimeout(
-                        () => controller.abort(),
-                        10000
-                      );
-
-                      try {
-                        const response = await fetch(rawUrl, {
-                          headers: { "User-Agent": "gittr-space" },
-                          signal: controller.signal,
-                        });
-                        clearTimeout(timeoutId);
-
-                        if (response.ok) {
-                          // CRITICAL: Handle binary files correctly - convert to base64
-                          if (file.isBinary) {
-                            const arrayBuffer = await response.arrayBuffer();
-                            // Browser-compatible base64 encoding
-                            const bytes = new Uint8Array(arrayBuffer);
-                            let binary = "";
-                            for (let i = 0; i < bytes.length; i++) {
-                              const byte = bytes[i];
-                              if (byte !== undefined) {
-                                binary += String.fromCharCode(byte);
-                              }
-                            }
-                            const base64 = btoa(binary);
-                            if (base64 && base64.length > 0) {
-                              file.content = base64;
-                              filesForBridge.push(file);
-                              console.log(
-                                `✅ [Push Repo] Emergency fetch: Got binary ${filePath} (${base64.length} chars base64)`
-                              );
-                            }
-                          } else {
-                            const content = await response.text();
-                            if (content && content.length > 0) {
-                              file.content = content;
-                              filesForBridge.push(file);
-                              console.log(
-                                `✅ [Push Repo] Emergency fetch: Got text ${filePath} (${content.length} chars)`
-                              );
-                            }
-                          }
-                        }
-                      } catch (fetchError: any) {
-                        clearTimeout(timeoutId);
-                        if (fetchError.name !== "AbortError") {
-                          console.warn(
-                            `⚠️ [Push Repo] Emergency fetch failed for ${filePath}:`,
-                            fetchError?.message
+                        const content = await response.text();
+                        if (content && content.length > 0) {
+                          file.content = content;
+                          filesForBridge.push(file);
+                          console.log(
+                            `✅ [Push Repo] Emergency fetch: Got text ${filePath} (${content.length} chars)`
                           );
                         }
                       }
-                    } catch (e: any) {
+                    }
+                  } catch (fetchError: any) {
+                    clearTimeout(timeoutId);
+                    if (fetchError.name !== "AbortError") {
                       console.warn(
-                        `⚠️ [Push Repo] Emergency fetch error for ${filePath}:`,
-                        e?.message
+                        `⚠️ [Push Repo] Emergency fetch failed for ${filePath}:`,
+                        fetchError?.message
                       );
                     }
-                  })
-                );
-              }
-
-              console.log(
-                `📊 [Push Repo] After emergency file list + content fetch: ${filesForBridge.length} files with content`
-              );
-            }
-          }
-        } catch (treeError: any) {
-          console.error(
-            `❌ [Push Repo] Failed to fetch file tree from GitHub:`,
-            treeError
-          );
-        }
-      }
-    }
-
-    // CRITICAL: If we still have no files with content, but we have files in the repo,
-    // we MUST fetch from GitHub NOW (not wait for refetch)
-    // This handles the case where localStorage has file metadata but no content
-    if (
-      !deferToBridgeSourceClone &&
-      filesForBridge.length === 0 &&
-      (bridgeFilesMap.size > 0 || baseFiles.length > 0) &&
-      repo.sourceUrl
-    ) {
-      console.error(
-        `❌ [Push Repo] CRITICAL: No files with content after fetching! Attempting emergency GitHub fetch...`,
-        {
-          bridgeFilesMapSize: bridgeFilesMap.size,
-          baseFilesLength: baseFiles.length,
-          filesNeedingContent: filesNeedingContent.length,
-          repoSourceUrl: repo.sourceUrl,
-          allFilePaths: Array.from(bridgeFilesMap.keys()).slice(0, 10),
-          baseFilePaths: baseFiles.slice(0, 10).map((f: any) => f.path),
-        }
-      );
-
-      // EMERGENCY: Fetch ALL files from GitHub right now - NO LIMIT
-      onProgress?.(
-        "🚨 Emergency: Fetching ALL files from GitHub (this may take a moment)..."
-      );
-      const githubMatch = repo.sourceUrl.match(
-        /github\.com\/([^\/]+)\/([^\/]+)/
-      );
-      if (githubMatch && githubMatch[1] && githubMatch[2]) {
-        const [, owner, repoNameRaw] = githubMatch;
-        // CRITICAL: Strip .git suffix from repoName for raw URLs (raw.githubusercontent.com doesn't use .git)
-        const repoName = repoNameRaw.replace(/\.git$/, "");
-        const branch = repo.defaultBranch || "main";
-
-        // CRITICAL: If bridgeFilesMap is empty but baseFiles exist, populate it first
-        if (bridgeFilesMap.size === 0 && baseFiles.length > 0) {
-          console.log(
-            `🚨 [Push Repo] Emergency: bridgeFilesMap is empty but baseFiles exist (${baseFiles.length}) - populating from baseFiles...`
-          );
-          baseFiles.forEach((file: any) => {
-            const normalizedPath = normalizeFilePath(file.path || "");
-            if (normalizedPath) {
-              const isBinary = isBinaryFile(normalizedPath);
-              setBridgeEntry(normalizedPath, undefined, isBinary);
-            }
-          });
-          console.log(
-            `✅ [Push Repo] Emergency: Populated bridgeFilesMap with ${bridgeFilesMap.size} files from baseFiles`
-          );
-        }
-
-        const allFilesToFetch = Array.from(bridgeFilesMap.keys()); // NO LIMIT - fetch ALL files
-
-        console.log(
-          `🚨 [Push Repo] Emergency fetch: Fetching ALL ${allFilesToFetch.length} files from GitHub...`
-        );
-
-        const BATCH_SIZE = 5;
-        for (let i = 0; i < allFilesToFetch.length; i += BATCH_SIZE) {
-          const batch = allFilesToFetch.slice(i, i + BATCH_SIZE);
-          await Promise.all(
-            batch.map(async (filePath) => {
-              try {
-                const file = bridgeFilesMap.get(filePath);
-                if (!file || (file.content && file.content.length > 0)) return; // Skip if already has content
-
-                const rawUrl = `https://raw.githubusercontent.com/${owner}/${repoName}/${encodeURIComponent(
-                  branch
-                )}/${encodeURIComponent(filePath)}`;
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-                try {
-                  const response = await fetch(rawUrl, {
-                    headers: { "User-Agent": "gittr-space" },
-                    signal: controller.signal,
-                  });
-                  clearTimeout(timeoutId);
-
-                  if (response.ok) {
-                    // CRITICAL: Handle binary files correctly - convert to base64
-                    if (file.isBinary) {
-                      const arrayBuffer = await response.arrayBuffer();
-                      // Browser-compatible base64 encoding
-                      const bytes = new Uint8Array(arrayBuffer);
-                      let binary = "";
-                      for (let i = 0; i < bytes.length; i++) {
-                        const byte = bytes[i];
-                        if (byte !== undefined) {
-                          binary += String.fromCharCode(byte);
-                        }
-                      }
-                      const base64 = btoa(binary);
-                      if (base64 && base64.length > 0) {
-                        file.content = base64;
-                        filesForBridge.push(file);
-                        console.log(
-                          `✅ [Push Repo] Emergency fetch: Got binary ${filePath} (${base64.length} chars base64)`
-                        );
-                      }
-                    } else {
-                      const content = await response.text();
-                      if (content && content.length > 0) {
-                        file.content = content;
-                        filesForBridge.push(file);
-                        console.log(
-                          `✅ [Push Repo] Emergency fetch: Got text ${filePath} (${content.length} chars)`
-                        );
-                      }
-                    }
                   }
-                } catch (fetchError: any) {
-                  clearTimeout(timeoutId);
-                  if (fetchError.name !== "AbortError") {
-                    console.warn(
-                      `⚠️ [Push Repo] Emergency fetch failed for ${filePath}:`,
-                      fetchError?.message
-                    );
-                  }
+                } catch (e: any) {
+                  console.warn(
+                    `⚠️ [Push Repo] Emergency fetch error for ${filePath}:`,
+                    e?.message
+                  );
                 }
-              } catch (e: any) {
-                console.warn(
-                  `⚠️ [Push Repo] Emergency fetch error for ${filePath}:`,
-                  e?.message
-                );
-              }
-            })
+              })
+            );
+          }
+
+          console.log(
+            `📊 [Push Repo] After emergency fetch: ${filesForBridge.length} files with content`
           );
         }
-
-        console.log(
-          `📊 [Push Repo] After emergency fetch: ${filesForBridge.length} files with content`
-        );
       }
-    }
-
     } else {
       onProgress?.(
         `📦 ${baseFiles.length} file(s) on upstream — bridge clones from ${upstreamSourceUrl} (no per-file upload)`
@@ -1664,10 +1723,14 @@ export async function pushRepoToNostr(
 
     let repoEvent: any;
 
-    if (hasNip07 && window.nostr) {
-      // Use NIP-07 - create unsigned event, hash it, then sign with extension
+    if ((hasNip07 && window.nostr) || canSignWithResolved) {
+      // NIP-07 extension or NIP-46 remote (Amber) via resolved signer / adapter
       const { getEventHash, nip19 } = await import("nostr-tools");
-      const signerPubkey = await window.nostr.getPublicKey();
+      const signWithResolved = getBridgeSigner();
+      if (!signWithResolved) {
+        throw new Error(NO_SIGNING_METHOD_MESSAGE);
+      }
+      const signerPubkey = await getSignerPublicKey();
 
       // NIP-34: Build tags array with required metadata
       const nip34Tags: string[][] = [
@@ -1685,7 +1748,7 @@ export async function pushRepoToNostr(
       // CRITICAL: Always include "description" tag (other clients expect it)
       const description =
         (repo.description || "").trim() ||
-          (repoName ? "" : `Repository: ${actualRepositoryName}`);
+        (repoName ? "" : `Repository: ${actualRepositoryName}`);
       if (description) {
         nip34Tags.push(["description", description]);
       }
@@ -2064,7 +2127,7 @@ export async function pushRepoToNostr(
       // Handle user cancellation gracefully
       console.log(`✍️ [Push Repo] Signing event with NIP-07...`);
       try {
-        repoEvent = await window.nostr.signEvent(repoEvent);
+        repoEvent = await signWithResolved(repoEvent);
 
         // CRITICAL: Verify clone tags are still present after signing
         const cloneTagsAfterSign = repoEvent.tags.filter(
@@ -2338,7 +2401,8 @@ export async function pushRepoToNostr(
       // Step 7: Store event ID and update status
       storeRepoEventId(repoSlug, entity, result.eventId, result.confirmed);
       if (result.confirmed) {
-        setRepoStatus(repoSlug, entity, "live");
+        // Published on Nostr; clone/files may still be catching up → "Published, live soon"
+        setRepoStatus(repoSlug, entity, "live_soon");
         onProgress?.("✅ Published to Nostr!");
       } else {
         onProgress?.(
@@ -2411,137 +2475,142 @@ export async function pushRepoToNostr(
             refs = clonedRefs;
           }
         } else {
-        onProgress?.(
-          `📤 Pushing ${pushableFiles.length} file(s) to bridge...`
-        );
-        onProgress?.(
-          `⏱️ This may take several minutes for large repos (timeout: 5 minutes)`
-        );
-
-        // CRITICAL: For large repos, start bridge push but don't block second signature
-        // We'll try to get refs after a short wait, then proceed with second signature
-        // The bridge push will continue in background
-        const { pushFilesToBridge } = await import("./push-to-bridge");
-        // CRITICAL: Use current time as commit date (when this push happens)
-        // This ensures each push creates a commit with the date of when it was pushed
-        // other Nostr git clients will show this date as the "last commit" date
-        const commitDate = Math.floor(Date.now() / 1000);
-        // CRITICAL: Log bridge push parameters for debugging
-        console.log(`📤 [Push Repo] Pushing to bridge:`, {
-          ownerPubkey: pubkey ? `${pubkey.substring(0, 8)}...` : "none",
-          repoSlug: actualRepositoryName,
-          entity,
-          branch: repo.defaultBranch || "main",
-          filesCount: pushableFiles.length,
-          skippedOversized: oversizedPaths.length,
-          commitDate,
-          bridgePath: `{reposDir}/${pubkey}/${actualRepositoryName}.git`,
-        });
-
-        const bridgePushPromise = pushFilesToBridge({
-          ownerPubkey: pubkey,
-          repoSlug: actualRepositoryName,
-          entity,
-          branch: repo.defaultBranch || "main",
-          files: pushableFiles,
-          commitDate,
-          authEvent: repoEvent,
-          pubkey, // Pass user's pubkey for auth
-          signer: getBridgeSigner()!,
-        }).catch((error: any) => {
-          console.error("❌ [Push Repo] Bridge push failed:", error);
           onProgress?.(
-            "⚠️ Bridge push failed - state event may have empty commits"
+            `📤 Pushing ${pushableFiles.length} file(s) to bridge...`
           );
-          return null;
-        });
-
-        // Don't block the second signature on full bridge push completion.
-        // Wait briefly for fresh refs, then continue to state-event signing.
-        onProgress?.(
-          "⏳ Waiting briefly for bridge refs before second signature..."
-        );
-        try {
-          const QUICK_REF_TIMEOUT = 12000;
-          const timeoutPromise = new Promise((resolve) =>
-            setTimeout(resolve, QUICK_REF_TIMEOUT)
+          onProgress?.(
+            `⏱️ This may take several minutes for large repos (timeout: 5 minutes)`
           );
-          const pushResult = await Promise.race([
-            bridgePushPromise,
-            timeoutPromise.then(() => null),
-          ]);
 
-          if (pushResult && pushResult.refs && Array.isArray(pushResult.refs)) {
-            refs = pushResult.refs;
-            const refsWithCommits = refs.filter(
-              (r) => r.commit && r.commit.length > 0
-            ).length;
-            console.log(
-              `✅ [Push Repo] Got ${refs.length} refs with ${refsWithCommits} commit SHAs from completed bridge push`
-            );
-            if (refsWithCommits > 0) {
-              onProgress?.(
-                `✅ Got ${refsWithCommits} refs with commit SHAs from all chunks - ready to publish state event!`
-              );
-            } else {
-              console.warn(
-                `⚠️ [Push Repo] Bridge push completed but no commit SHAs in refs`
-              );
-              onProgress?.(
-                "⚠️ Bridge push completed but no commit SHAs - state event will have empty commits"
-              );
-            }
-          } else {
+          // CRITICAL: For large repos, start bridge push but don't block second signature
+          // We'll try to get refs after a short wait, then proceed with second signature
+          // The bridge push will continue in background
+          const { pushFilesToBridge } = await import("./push-to-bridge");
+          // CRITICAL: Use current time as commit date (when this push happens)
+          // This ensures each push creates a commit with the date of when it was pushed
+          // other Nostr git clients will show this date as the "last commit" date
+          const commitDate = Math.floor(Date.now() / 1000);
+          // CRITICAL: Log bridge push parameters for debugging
+          console.log(`📤 [Push Repo] Pushing to bridge:`, {
+            ownerPubkey: pubkey ? `${pubkey.substring(0, 8)}...` : "none",
+            repoSlug: actualRepositoryName,
+            entity,
+            branch: repo.defaultBranch || "main",
+            filesCount: pushableFiles.length,
+            skippedOversized: oversizedPaths.length,
+            commitDate,
+            bridgePath: `{reposDir}/${pubkey}/${actualRepositoryName}.git`,
+          });
+
+          const bridgePushPromise = pushFilesToBridge({
+            ownerPubkey: pubkey,
+            repoSlug: actualRepositoryName,
+            entity,
+            branch: repo.defaultBranch || "main",
+            files: pushableFiles,
+            commitDate,
+            authEvent: repoEvent,
+            pubkey, // Pass user's pubkey for auth
+            signer: getBridgeSigner()!,
+          }).catch((error: any) => {
+            console.error("❌ [Push Repo] Bridge push failed:", error);
             onProgress?.(
-              "⚠️ Bridge push still running; continuing with second signature using latest available refs"
+              "⚠️ Bridge push failed - state event may have empty commits"
             );
-            try {
-              const refsResponse = await fetchBridgeRead(`/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
-                  pubkey
-                )}&repo=${encodeURIComponent(actualRepositoryName)}`
+            return null;
+          });
+
+          // Don't block the second signature on full bridge push completion.
+          // Wait briefly for fresh refs, then continue to state-event signing.
+          onProgress?.(
+            "⏳ Waiting briefly for bridge refs before second signature..."
+          );
+          try {
+            const QUICK_REF_TIMEOUT = 12000;
+            const timeoutPromise = new Promise((resolve) =>
+              setTimeout(resolve, QUICK_REF_TIMEOUT)
+            );
+            const pushResult = await Promise.race([
+              bridgePushPromise,
+              timeoutPromise.then(() => null),
+            ]);
+
+            if (
+              pushResult &&
+              pushResult.refs &&
+              Array.isArray(pushResult.refs)
+            ) {
+              refs = pushResult.refs;
+              const refsWithCommits = refs.filter(
+                (r) => r.commit && r.commit.length > 0
+              ).length;
+              console.log(
+                `✅ [Push Repo] Got ${refs.length} refs with ${refsWithCommits} commit SHAs from completed bridge push`
               );
-              if (refsResponse.ok) {
-                const refsData = await refsResponse.json();
-                if (refsData.refs && Array.isArray(refsData.refs)) {
-                  const fetchedRefs = refsData.refs;
-                  const refsWithCommits = fetchedRefs.filter(
-                    (r: any) => r.commit && r.commit.length > 0
-                  ).length;
-                  if (refsWithCommits > 0) {
-                    refs = fetchedRefs;
-                    console.log(
-                      `✅ [Push Repo] Got ${refs.length} refs (${refsWithCommits} with commit SHAs) from bridge API fallback`
-                    );
-                    onProgress?.(
-                      `✅ Got ${refsWithCommits} refs with commit SHAs - proceeding with second signature!`
-                    );
-                  } else {
-                    console.log(
-                      `⚠️ [Push Repo] Bridge API returned refs but no commit SHAs`
-                    );
-                    onProgress?.(
-                      "⚠️ Bridge push completed but no commit SHAs - state event will have empty commits"
-                    );
+              if (refsWithCommits > 0) {
+                onProgress?.(
+                  `✅ Got ${refsWithCommits} refs with commit SHAs from all chunks - ready to publish state event!`
+                );
+              } else {
+                console.warn(
+                  `⚠️ [Push Repo] Bridge push completed but no commit SHAs in refs`
+                );
+                onProgress?.(
+                  "⚠️ Bridge push completed but no commit SHAs - state event will have empty commits"
+                );
+              }
+            } else {
+              onProgress?.(
+                "⚠️ Bridge push still running; continuing with second signature using latest available refs"
+              );
+              try {
+                const refsResponse = await fetchBridgeRead(
+                  `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
+                    pubkey
+                  )}&repo=${encodeURIComponent(actualRepositoryName)}`
+                );
+                if (refsResponse.ok) {
+                  const refsData = await refsResponse.json();
+                  if (refsData.refs && Array.isArray(refsData.refs)) {
+                    const fetchedRefs = refsData.refs;
+                    const refsWithCommits = fetchedRefs.filter(
+                      (r: any) => r.commit && r.commit.length > 0
+                    ).length;
+                    if (refsWithCommits > 0) {
+                      refs = fetchedRefs;
+                      console.log(
+                        `✅ [Push Repo] Got ${refs.length} refs (${refsWithCommits} with commit SHAs) from bridge API fallback`
+                      );
+                      onProgress?.(
+                        `✅ Got ${refsWithCommits} refs with commit SHAs - proceeding with second signature!`
+                      );
+                    } else {
+                      console.log(
+                        `⚠️ [Push Repo] Bridge API returned refs but no commit SHAs`
+                      );
+                      onProgress?.(
+                        "⚠️ Bridge push completed but no commit SHAs - state event will have empty commits"
+                      );
+                    }
                   }
                 }
+              } catch (fallbackError) {
+                console.warn(
+                  `⚠️ [Push Repo] Bridge API fetch failed:`,
+                  fallbackError
+                );
+                onProgress?.(
+                  "⚠️ Cannot fetch refs - state event will have empty commits"
+                );
               }
-            } catch (fallbackError) {
-              console.warn(
-                `⚠️ [Push Repo] Bridge API fetch failed:`,
-                fallbackError
-              );
-              onProgress?.(
-                "⚠️ Cannot fetch refs - state event will have empty commits"
-              );
             }
+          } catch (bridgeError: any) {
+            console.error("❌ [Push Repo] Bridge push error:", bridgeError);
+            onProgress?.(
+              "⚠️ Bridge push error - proceeding with second signature anyway"
+            );
+            // Continue anyway - we'll try to get refs, but may fail
           }
-        } catch (bridgeError: any) {
-          console.error("❌ [Push Repo] Bridge push error:", bridgeError);
-          onProgress?.(
-            "⚠️ Bridge push error - proceeding with second signature anyway"
-          );
-          // Continue anyway - we'll try to get refs, but may fail
-        }
         }
       } else {
         // No files to push - but we still need to create a new commit with --allow-empty
@@ -2597,7 +2666,8 @@ export async function pushRepoToNostr(
           } else {
             // Fallback: try to get existing refs
             try {
-              const refsResponse = await fetchBridgeRead(`/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
+              const refsResponse = await fetchBridgeRead(
+                `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
                   pubkey
                 )}&repo=${encodeURIComponent(actualRepositoryName)}`
               );
@@ -2693,7 +2763,8 @@ export async function pushRepoToNostr(
         try {
           // Wait a moment for bridge to process the push
           await new Promise((resolve) => setTimeout(resolve, 3000));
-          const retryRefsResponse = await fetchBridgeRead(`/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
+          const retryRefsResponse = await fetchBridgeRead(
+            `/api/nostr/repo/refs?ownerPubkey=${encodeURIComponent(
               pubkey
             )}&repo=${encodeURIComponent(actualRepositoryName)}`
           );
@@ -2744,9 +2815,13 @@ export async function pushRepoToNostr(
       const { KIND_REPOSITORY_STATE } = await import("./events");
       let stateEvent: any;
 
-      if (hasNip07 && window.nostr) {
+      if ((hasNip07 && window.nostr) || canSignWithResolved) {
         const { getEventHash } = await import("nostr-tools");
-        const signerPubkey = await window.nostr.getPublicKey();
+        const signWithResolved = getBridgeSigner();
+        if (!signWithResolved) {
+          throw new Error(NO_SIGNING_METHOD_MESSAGE);
+        }
+        const signerPubkey = await getSignerPublicKey();
 
         // Create unsigned state event
         // Per NIP-34: ref path is the tag name, commit-id is the tag value
@@ -2811,8 +2886,8 @@ export async function pushRepoToNostr(
           "   Note: Content is empty per NIP-34 spec - data is in tags (refs, branches, commits)"
         );
         try {
-          // NIP-07 signEvent returns the full signed event object (same as announcement event)
-          const signedStateEvent = await window.nostr.signEvent(stateEvent);
+          // NIP-07 / remote signEvent returns the full signed event object
+          const signedStateEvent = await signWithResolved(stateEvent);
           // Replace stateEvent with signed version (signEvent returns complete signed event)
           stateEvent = signedStateEvent;
           console.log(`✅ [Push Repo] State event signed successfully:`, {
@@ -2855,7 +2930,7 @@ export async function pushRepoToNostr(
         );
       } else {
         throw new Error(
-          "Cannot sign state event - no NIP-07 or private key available"
+          "Cannot sign state event - no NIP-07, remote signer, or private key available"
         );
       }
 

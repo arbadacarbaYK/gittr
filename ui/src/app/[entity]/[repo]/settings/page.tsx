@@ -14,26 +14,26 @@ import type { RepoLink } from "@/components/ui/repo-links";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
-  NO_SIGNING_METHOD_MESSAGE,
-  resolveSigningCredentials,
-} from "@/lib/nostr/signer";
-import {
   KIND_REPOSITORY_NIP34,
   createRepositoryEvent,
   createRepositoryEventNip07,
 } from "@/lib/nostr/events";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import { getAccumulatedZaps } from "@/lib/payments/zap-repo";
 import { canManageSettings, isOwner } from "@/lib/repo-permissions";
-import { fetchGithubRepoDescription } from "@/lib/repos/repo-github-hub";
 import { isPlaceholderRepositoryDescription } from "@/lib/repos/repo-about-text";
-import { resolveRepoUpstreamSource } from "@/lib/repos/upstream-precedence";
+import { fetchGithubRepoDescription } from "@/lib/repos/repo-github-hub";
 import {
   type StoredContributor,
   type StoredRepo,
   loadStoredRepos,
   saveStoredRepos,
 } from "@/lib/repos/storage";
+import { resolveRepoUpstreamSource } from "@/lib/repos/upstream-precedence";
 import {
   getNostrPrivateKey,
   getSecureItem,
@@ -1255,8 +1255,8 @@ export default function RepoSettingsPage() {
           <Label>Repository Visibility</Label>
           <p className="text-sm text-gray-400 mt-1 mb-3">
             Private repositories hide their code, files and clone access from
-            everyone except owners and contributors — in the web UI, the API
-            and SSH. Note: the repository <em>name and description</em> stay
+            everyone except owners and contributors — in the web UI, the API and
+            SSH. Note: the repository <em>name and description</em> stay
             publicly visible, because the Nostr announcement (kind 30617) is a
             public relay event that cannot be retracted.
           </p>

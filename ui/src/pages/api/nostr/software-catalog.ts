@@ -1,5 +1,3 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-
 import { isPublisherBlocklisted } from "@/lib/moderation/publisher-blocklist";
 import {
   KIND_SOFTWARE_APPLICATION,
@@ -12,6 +10,8 @@ import {
   parseSoftwareRelease,
 } from "@/lib/nostr/nip82-software";
 import { RELAY_ZAPSTORE } from "@/lib/nostr/software-catalog-relays";
+
+import type { NextApiRequest, NextApiResponse } from "next";
 
 const CATALOG_RELAYS = [
   RELAY_ZAPSTORE,

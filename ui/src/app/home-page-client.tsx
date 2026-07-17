@@ -10,7 +10,6 @@ import {
 } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { BoltSnow } from "@/components/ui/bolt-snow";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ZapButton } from "@/components/ui/zap-button";
 import { type Activity, backfillActivities } from "@/lib/activity-tracking";
@@ -21,7 +20,6 @@ import {
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
-import { getGraspServers } from "@/lib/utils/grasp-servers";
 import {
   type Metadata,
   useContributorMetadata,
@@ -51,6 +49,7 @@ import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
 } from "@/lib/utils/entity-resolver";
+import { getGraspServers } from "@/lib/utils/grasp-servers";
 import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import {
   checkBridgeExists,
@@ -195,10 +194,7 @@ type Repo = {
 };
 
 /** Clean labels from bulk GitHub→Nostr mirrors (kind 0 name often includes this suffix). */
-function formatLeaderboardUserLabel(
-  raw: string,
-  meta?: Metadata
-): string {
+function formatLeaderboardUserLabel(raw: string, meta?: Metadata): string {
   const githubHandle = meta?.identities?.find(
     (i) => i.platform === "github" && i.identity
   )?.identity;
@@ -410,7 +406,9 @@ export default function HomePage({
     try {
       const cachedRepos = sessionStorage.getItem("gittr_cached_topRepos");
       const cachedUsers = sessionStorage.getItem("gittr_cached_topUsers");
-      const cachedRecentRepos = sessionStorage.getItem("gittr_cached_recentRepos");
+      const cachedRecentRepos = sessionStorage.getItem(
+        "gittr_cached_recentRepos"
+      );
       const cachedRecentActivities = sessionStorage.getItem(
         "gittr_cached_recentActivities"
       );
@@ -472,8 +470,7 @@ export default function HomePage({
           (data.topRepos?.length ?? 0) > 0 &&
           (data.topUsers?.length ?? 0) === 0;
         const hasBoth =
-          (data.topRepos?.length ?? 0) > 0 &&
-          (data.topUsers?.length ?? 0) > 0;
+          (data.topRepos?.length ?? 0) > 0 && (data.topUsers?.length ?? 0) > 0;
         if ((data.refreshing || missingTopUsers) && !hasBoth) {
           pollTimer = setTimeout(poll, 2500);
         } else if (data.refreshing && hasBoth) {
@@ -589,7 +586,7 @@ export default function HomePage({
         checkBridgeExists(ownerPubkey, repoName, entity)
           .then((bridgeProcessed) => {
             // After bridge check completes, reload repos to get updated bridgeProcessed flag
-            // This ensures status badge updates from "awaiting bridge" to "live on nostr"
+            // This ensures status badge updates from "Published, live soon" to "Live on Nostr"
             loadRepos();
           })
           .catch((err) => {
@@ -1256,16 +1253,48 @@ export default function HomePage({
   );
 
   const mapPlatformRecentToRepo = useCallback(
-    (p: PlatformRecentRepo): Repo => ({
-      slug: `${p.entity}/${p.repo}`,
-      entity: p.entity,
-      repo: p.repo,
-      name: p.repoName,
-      createdAt: p.lastActivity,
-      ownerPubkey: p.ownerPubkey,
-      description: p.description,
-      syncedFromNostr: true,
-    }),
+    (p: PlatformRecentRepo): Repo => {
+      const base: Repo = {
+        slug: `${p.entity}/${p.repo}`,
+        entity: p.entity,
+        repo: p.repo,
+        name: p.repoName,
+        createdAt: p.lastActivity,
+        ownerPubkey: p.ownerPubkey,
+        description: p.description,
+        syncedFromNostr: true,
+      };
+      // Merge local owner flags so HP badge matches My Repositories when possible
+      try {
+        if (typeof window === "undefined") return base;
+        const stored = loadStoredRepos();
+        const match = stored.find((r: any) => {
+          const name = r.repositoryName || r.repo || r.slug || r.name;
+          return (
+            name === p.repo &&
+            ((r.ownerPubkey &&
+              p.ownerPubkey &&
+              r.ownerPubkey.toLowerCase() === p.ownerPubkey.toLowerCase()) ||
+              r.entity === p.entity)
+          );
+        });
+        if (!match) return base;
+        return {
+          ...base,
+          ...match,
+          // Keep discovery identity / description from the live feed
+          entity: p.entity,
+          repo: p.repo,
+          name: p.repoName || match.name || p.repo,
+          description: p.description || match.description,
+          ownerPubkey: p.ownerPubkey || match.ownerPubkey,
+          syncedFromNostr: true,
+          createdAt: p.lastActivity,
+        };
+      } catch {
+        return base;
+      }
+    },
     []
   );
 
@@ -1306,12 +1335,7 @@ export default function HomePage({
   }, [displayRecentRepos]);
 
   const allPubkeysWithRecent = useMemo(() => {
-    return Array.from(
-      new Set([
-        ...allPubkeys,
-        ...recentRepoOwnerPubkeys,
-      ])
-    );
+    return Array.from(new Set([...allPubkeys, ...recentRepoOwnerPubkeys]));
   }, [allPubkeys, recentRepoOwnerPubkeys]);
 
   const userMetadata = useContributorMetadata(allPubkeysWithRecent);
@@ -1343,11 +1367,19 @@ export default function HomePage({
   const getRepoUrl = useCallback((entity: string, repoPath: string): string => {
     if (!entity || !repoPath) return "#";
 
-    // Extract repo name from path (might include /issues/123 or /pulls/456)
-    const repoName = repoPath.split("/")[0];
-    const subPath = repoPath.includes("/")
-      ? "/" + repoPath.split("/").slice(1).join("/")
-      : "";
+    // Extract repo name from path (might include /issues/123 or /pulls/456).
+    // Also strip mistaken "hexPubkey/repo" prefixes from broken NIP-34 d tags.
+    const segments = repoPath.split("/").filter(Boolean);
+    let start = 0;
+    if (segments.length >= 2 && /^[0-9a-f]{64}$/i.test(segments[0] || "")) {
+      start = 1;
+    }
+    const repoName = segments[start] || segments[0] || "";
+    const subPath =
+      segments.length > start + 1
+        ? "/" + segments.slice(start + 1).join("/")
+        : "";
+    if (!repoName) return "#";
 
     // CRITICAL: Check if entity is a hex pubkey (64 chars) and convert to npub
     if (/^[0-9a-f]{64}$/i.test(entity)) {
@@ -1533,13 +1565,10 @@ export default function HomePage({
             : null;
           const repoName = repo.repo || repo.slug || repo.name;
           if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) && repoName) {
-            const branch = repo.defaultBranch || "main";
-            // Construct API URL - this will work for native Nostr repos
-            return `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+            // Raw image bytes for <img>/Avatar (not JSON file-content)
+            return `/api/og/repo-image?ownerPubkey=${encodeURIComponent(
               ownerPubkey
-            )}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(
-              logoPath
-            )}&branch=${encodeURIComponent(branch || "main")}`;
+            )}&repo=${encodeURIComponent(repoName)}`;
           }
         }
       }
@@ -1571,23 +1600,20 @@ export default function HomePage({
 
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6 relative">
-      <BoltSnow />
       <header className="mb-6">
         <h1 className="text-2xl font-bold" suppressHydrationWarning>
-          {mounted && isLoggedIn && name
-            ? `Welcome, ${name}`
-            : "Welcome"}
+          {mounted && isLoggedIn && name ? `Welcome, ${name}` : "Welcome"}
         </h1>
         <div
           className="text-gray-400 mt-3 space-y-3 text-sm leading-relaxed max-w-3xl"
           suppressHydrationWarning
         >
           <p>
-            On gittr you can import your codebases from various external
-            sources and push an announcement on its whereabouts to Nostr. Now
-            your code can be discovered in all Nostr git clients! From there you
-            can either switch to full Nostr git mode and handle PRs and issues
-            only on Nostr git clients or just make your work more visible.
+            On gittr you can import your codebases from various external sources
+            and push an announcement on its whereabouts to Nostr. Now your code
+            can be discovered in all Nostr git clients! From there you can
+            either switch to full Nostr git mode and handle PRs and issues only
+            on Nostr git clients or just make your work more visible.
           </p>
           <p>
             Alternatively you can also create repos directly on our bridge. To
@@ -1633,34 +1659,33 @@ export default function HomePage({
           </h3>
           <div className="space-y-2 flex-1">
             {topRepos.length > 0 ? (
-              topRepos.slice(0, 5)
-                .map((repo, idx) => {
-                  // repoId is in format "entity/repo"
-                  const [entity, repoName] =
-                    repo.repoId &&
-                    typeof repo.repoId === "string" &&
-                    repo.repoId.includes("/")
-                      ? repo.repoId.split("/")
-                      : [repo.entity || "", repo.repoId || ""];
-                  const href = getRepoUrl(entity || "", repoName || "");
+              topRepos.slice(0, 5).map((repo, idx) => {
+                // repoId is in format "entity/repo"
+                const [entity, repoName] =
+                  repo.repoId &&
+                  typeof repo.repoId === "string" &&
+                  repo.repoId.includes("/")
+                    ? repo.repoId.split("/")
+                    : [repo.entity || "", repo.repoId || ""];
+                const href = getRepoUrl(entity || "", repoName || "");
 
-                  return (
-                    <Link
-                      key={repo.repoId}
-                      href={href}
-                      className="block hover:bg-gray-800/50 rounded p-2 -m-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-purple-300 truncate flex-1">
-                          {idx + 1}. {repo.repoName}
-                        </span>
-                        <span className="text-xs text-gray-500 ml-2">
-                          {repo.activityCount}
-                        </span>
-                      </div>
-                    </Link>
-                  );
-                })
+                return (
+                  <Link
+                    key={repo.repoId}
+                    href={href}
+                    className="block hover:bg-gray-800/50 rounded p-2 -m-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-purple-300 truncate flex-1">
+                        {idx + 1}. {repo.repoName}
+                      </span>
+                      <span className="text-xs text-gray-500 ml-2">
+                        {repo.activityCount}
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })
             ) : (
               <div className="text-sm text-gray-500 py-2">
                 {leaderboardReady || lbTopReposReady
@@ -2362,185 +2387,165 @@ export default function HomePage({
           ) : (
             <ul className="divide-y divide-[#383B42]">
               {displayRecentRepos.map((r, index) => {
-                  const entity = r.entity;
-                  const repo = r.repo || r.slug;
-                  if (!entity || entity === "user") return null;
+                const entity = r.entity;
+                // Bare repo id only — never embed hex/path from broken d tags
+                const rawRepo = String(r.repo || "");
+                const repo = rawRepo.includes("/")
+                  ? rawRepo.split("/").filter(Boolean).pop() || rawRepo
+                  : rawRepo;
+                if (!entity || entity === "user") return null;
 
-                  // CRITICAL: Resolve full owner pubkey and convert to npub format
-                  const ownerPubkey = getRepoOwnerPubkey(r as any, entity);
-                  let href: string;
+                // CRITICAL: Resolve full owner pubkey and convert to npub format
+                const ownerPubkey = getRepoOwnerPubkey(r as any, entity);
+                let href: string;
 
-                  // Always ensure we have a valid href - never use "#"
-                  if (!entity || !repo) {
-                    console.error("⚠️ [Home] Missing entity or repo:", {
-                      entity,
-                      repo,
-                      r,
+                // Always ensure we have a valid href - never use "#"
+                if (!entity || !repo) {
+                  console.error("⚠️ [Home] Missing entity or repo:", {
+                    entity,
+                    repo,
+                    r,
+                  });
+                  href = `/explore`; // Fallback to explore page
+                } else if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
+                  try {
+                    const npub = nip19.npubEncode(ownerPubkey);
+                    href = `/${npub}/${repo}`;
+                  } catch (error) {
+                    console.error("⚠️ [Home] Failed to encode npub:", {
+                      ownerPubkey,
+                      error,
                     });
-                    href = `/explore`; // Fallback to explore page
-                  } else if (
-                    ownerPubkey &&
-                    /^[0-9a-f]{64}$/i.test(ownerPubkey)
-                  ) {
-                    try {
-                      const npub = nip19.npubEncode(ownerPubkey);
-                      href = `/${npub}/${repo}`;
-                    } catch (error) {
-                      console.error("⚠️ [Home] Failed to encode npub:", {
-                        ownerPubkey,
-                        error,
-                      });
-                      href = `/${entity}/${repo}`;
-                    }
-                  } else {
-                    // Use entity format as fallback (route handler accepts both)
                     href = `/${entity}/${repo}`;
                   }
+                } else {
+                  // Use entity format as fallback (route handler accepts both)
+                  href = `/${entity}/${repo}`;
+                }
 
-                  // Get display name from metadata
-                  // CRITICAL: Normalize pubkey to lowercase for metadata lookup
-                  const normalizedOwnerPubkey =
-                    ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
-                      ? ownerPubkey.toLowerCase()
-                      : null;
-                  // CRITICAL: Use userMetadata (which includes cache) for lookup
-                  const metadata = normalizedOwnerPubkey
-                    ? userMetadata[normalizedOwnerPubkey] ||
+                // Get display name from metadata
+                // CRITICAL: Normalize pubkey to lowercase for metadata lookup
+                const normalizedOwnerPubkey =
+                  ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
+                    ? ownerPubkey.toLowerCase()
+                    : null;
+                // CRITICAL: Use userMetadata (which includes cache) for lookup
+                const metadata = normalizedOwnerPubkey
+                  ? userMetadata[normalizedOwnerPubkey] ||
+                    (ownerPubkey
+                      ? userMetadata[ownerPubkey.toLowerCase()]
+                      : undefined)
+                  : undefined;
+                const displayName =
+                  metadata?.name || metadata?.display_name
+                    ? metadata.name || metadata.display_name
+                    : normalizedOwnerPubkey
+                    ? getEntityDisplayName(
+                        normalizedOwnerPubkey,
+                        userMetadata,
+                        entity
+                      )
+                    : r.entityDisplayName || entity;
+
+                // Resolve icons - always show fallback if icon fails
+                let iconUrl: string | null = null;
+                let ownerPicture: string | undefined = undefined;
+                try {
+                  iconUrl = resolveRepoIcon(r);
+                  // CRITICAL: Use userMetadata for picture lookup (normalized to lowercase)
+                  if (metadata?.picture) {
+                    ownerPicture = metadata.picture;
+                  } else if (normalizedOwnerPubkey) {
+                    ownerPicture =
+                      userMetadata[normalizedOwnerPubkey]?.picture ||
                       (ownerPubkey
-                        ? userMetadata[ownerPubkey.toLowerCase()]
-                        : undefined)
-                    : undefined;
-                  const displayName =
-                    metadata?.name || metadata?.display_name
-                      ? metadata.name || metadata.display_name
-                      : normalizedOwnerPubkey
-                      ? getEntityDisplayName(
-                          normalizedOwnerPubkey,
-                          userMetadata,
-                          entity
-                        )
-                      : r.entityDisplayName || entity;
-
-                  // Resolve icons - always show fallback if icon fails
-                  let iconUrl: string | null = null;
-                  let ownerPicture: string | undefined = undefined;
-                  try {
-                    iconUrl = resolveRepoIcon(r);
-                    // CRITICAL: Use userMetadata for picture lookup (normalized to lowercase)
-                    if (metadata?.picture) {
-                      ownerPicture = metadata.picture;
-                    } else if (normalizedOwnerPubkey) {
-                      ownerPicture =
-                        userMetadata[normalizedOwnerPubkey]?.picture ||
-                        (ownerPubkey
-                          ? userMetadata[ownerPubkey.toLowerCase()]?.picture
-                          : undefined);
-                    }
-                  } catch (error) {
-                    console.error("⚠️ [Home] Error resolving icons:", error);
+                        ? userMetadata[ownerPubkey.toLowerCase()]?.picture
+                        : undefined);
                   }
+                } catch (error) {
+                  console.error("⚠️ [Home] Error resolving icons:", error);
+                }
 
-                  return (
-                    <li key={`${entity}-${repo}`} className="py-3">
-                      <Link
-                        href={href}
-                        className="flex items-center gap-3 sm:gap-4 hover:bg-gray-800/50 rounded p-2 -m-2 cursor-pointer"
-                      >
-                        {/* Icon priority: repo icon -> user icon -> platform default (all circular) */}
-                        {iconUrl ? (
-                          // Priority 1: Repo icon (circular like Avatar)
-                          <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-gray-700">
-                            <AvatarImage
-                              src={iconUrl}
-                              alt="repo"
-                              loading="lazy"
-                              onError={(e) => {
-                                e.currentTarget.style.display = "none";
-                              }}
+                return (
+                  <li key={`${entity}-${repo}`} className="py-3">
+                    <Link
+                      href={href}
+                      className="flex items-center gap-3 sm:gap-4 hover:bg-gray-800/50 rounded p-2 -m-2 cursor-pointer"
+                    >
+                      {/* Icon priority: repo icon -> user icon -> platform default (all circular) */}
+                      {iconUrl ? (
+                        // Priority 1: Repo icon (circular like Avatar)
+                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-gray-700">
+                          <AvatarImage src={iconUrl} alt="" loading="lazy" />
+                          {/* Never nest a remote <img> here — dead Blossom URLs show as broken icon + alt text */}
+                          <AvatarFallback className="bg-[#22262C]">
+                            <img
+                              src="/logo.svg"
+                              alt=""
+                              className="h-full w-full object-contain p-1"
                             />
-                            <AvatarFallback className="bg-[#22262C]">
-                              <img
-                                src="/logo.svg"
-                                alt="platform default"
-                                className="h-full w-full object-contain p-1"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = "none";
-                                }}
-                              />
-                            </AvatarFallback>
-                          </Avatar>
-                        ) : ownerPicture ? (
-                          // Priority 2: Owner profile picture (circular)
-                          <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-gray-700">
-                            <AvatarImage
-                              src={ownerPicture}
-                              alt={displayName}
-                              onError={(e) => {
-                                e.currentTarget.style.display = "none";
-                              }}
+                          </AvatarFallback>
+                        </Avatar>
+                      ) : ownerPicture ? (
+                        // Priority 2: Owner profile picture (circular)
+                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-gray-700">
+                          <AvatarImage src={ownerPicture} alt="" />
+                          <AvatarFallback className="bg-[#22262C]">
+                            <img
+                              src="/logo.svg"
+                              alt=""
+                              className="h-full w-full object-contain p-1"
                             />
-                            <AvatarFallback className="bg-[#22262C]">
-                              <img
-                                src="/logo.svg"
-                                alt="platform default"
-                                className="h-full w-full object-contain p-1"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = "none";
-                                }}
-                              />
-                            </AvatarFallback>
-                          </Avatar>
-                        ) : (
-                          // Priority 3: Platform default icon (circular)
-                          <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-gray-700">
-                            <AvatarFallback className="bg-[#22262C]">
-                              <img
-                                src="/logo.svg"
-                                alt="platform default"
-                                className="h-full w-full object-contain p-1"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = "none";
-                                }}
-                              />
-                            </AvatarFallback>
-                          </Avatar>
-                        )}
-                        <div className="flex-1 min-w-0 min-w-[0]">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <div className="text-purple-500 hover:underline font-semibold truncate min-w-0">
-                              {displayName}/{r.name || repo}
-                            </div>
-                            {/* Status badge */}
-                            {pubkey &&
-                              (r as any).ownerPubkey === pubkey &&
-                              (() => {
-                                const status = getRepoStatus(r);
-                                const style = getStatusBadgeStyle(status);
-                                return (
-                                  <span
-                                    className={`text-xs px-2 py-0.5 rounded ${style.bg} ${style.text} flex-shrink-0`}
-                                  >
-                                    {style.label}
-                                  </span>
-                                );
-                              })()}
+                          </AvatarFallback>
+                        </Avatar>
+                      ) : (
+                        // Priority 3: Platform default icon (circular)
+                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-gray-700">
+                          <AvatarFallback className="bg-[#22262C]">
+                            <img
+                              src="/logo.svg"
+                              alt=""
+                              className="h-full w-full object-contain p-1"
+                            />
+                          </AvatarFallback>
+                        </Avatar>
+                      )}
+                      <div className="flex-1 min-w-0 min-w-[0]">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <div className="text-purple-500 hover:underline font-semibold truncate min-w-0">
+                            {displayName}/{r.name || repo}
                           </div>
-                          {(() => {
-                            const cardDesc = repoCardDescriptionText(
-                              r.description,
-                              r.name || repo
-                            );
-                            return cardDesc ? (
-                              <div className="text-sm opacity-60 mt-1 truncate">
-                                {cardDesc}
-                              </div>
-                            ) : null;
-                          })()}
+                          {/* Status badge */}
+                          {pubkey &&
+                            (r as any).ownerPubkey === pubkey &&
+                            (() => {
+                              const status = getRepoStatus(r);
+                              const style = getStatusBadgeStyle(status);
+                              return (
+                                <span
+                                  className={`text-xs px-2 py-0.5 rounded ${style.bg} ${style.text} flex-shrink-0`}
+                                >
+                                  {style.label}
+                                </span>
+                              );
+                            })()}
                         </div>
-                      </Link>
-                    </li>
-                  );
-                })}
+                        {(() => {
+                          const cardDesc = repoCardDescriptionText(
+                            r.description,
+                            r.name || repo
+                          );
+                          return cardDesc ? (
+                            <div className="text-sm opacity-60 mt-1 truncate">
+                              {cardDesc}
+                            </div>
+                          ) : null;
+                        })()}
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

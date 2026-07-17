@@ -9,6 +9,7 @@ import { KIND_LABEL_OVERLAY, KIND_PULL_REQUEST } from "@/lib/nostr/events";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { loadStoredRepos } from "@/lib/repos/storage";
+import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
 import { repoAllowsUserToManagePRsAndIssues } from "@/lib/stats";
 import {
   formatDate24h,
@@ -31,7 +32,6 @@ import {
   prStatusForNostrKind1618Merge,
 } from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
-import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
 import { syncGithubPullsForRepo } from "@/lib/utils/sync-github-repo-issues-prs";
 
 import { clsx } from "clsx";
@@ -84,9 +84,7 @@ function collectPullRequestRowsForAggregatedPage(
 
   userRepos.forEach((repo: any) => {
     const entity =
-      repo.entity ||
-      repo.slug?.split("/")[0] ||
-      repo.ownerPubkey?.slice(0, 8);
+      repo.entity || repo.slug?.split("/")[0] || repo.ownerPubkey?.slice(0, 8);
     const repoName =
       repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug;
     if (!entity || !repoName) {
@@ -106,11 +104,7 @@ function collectPullRequestRowsForAggregatedPage(
       const status = pr.status === "merged" ? "closed" : pr.status || "open";
 
       let linkedIssueBountyAmount: number | undefined;
-      let linkedIssueBountyStatus:
-        | "pending"
-        | "paid"
-        | "released"
-        | undefined;
+      let linkedIssueBountyStatus: "pending" | "paid" | "released" | undefined;
 
       if (pr.linkedIssueId || pr.issueId || pr.linkedIssue) {
         try {

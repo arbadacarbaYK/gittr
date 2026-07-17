@@ -122,8 +122,12 @@ export async function pushFilesToBridge({
   // CRITICAL: Chunk files to avoid 413 Request Entity Too Large errors
   const chunks = chunkFiles(pushableFiles);
   console.log(
-    `📦 [Bridge Push] Chunking ${pushableFiles.length} files into ${chunks.length} chunk(s)${
-      oversizedPaths.length > 0 ? ` (${oversizedPaths.length} oversized skipped)` : ""
+    `📦 [Bridge Push] Chunking ${pushableFiles.length} files into ${
+      chunks.length
+    } chunk(s)${
+      oversizedPaths.length > 0
+        ? ` (${oversizedPaths.length} oversized skipped)`
+        : ""
     }`
   );
 

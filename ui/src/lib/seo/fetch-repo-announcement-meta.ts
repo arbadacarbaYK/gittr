@@ -78,10 +78,7 @@ export async function fetchRepoAnnouncementMeta(
                 },
               ],
               DEFAULT_RELAYS,
-              (event: {
-                content?: string;
-                tags?: string[][];
-              }) => {
+              (event: { content?: string; tags?: string[][] }) => {
                 if (resolved) return;
                 resolved = true;
                 clearTimeout(timeout);
@@ -97,13 +94,17 @@ export async function fetchRepoAnnouncementMeta(
                     (typeof content.description === "string"
                       ? content.description
                       : null) || null;
-                  const descTag = event.tags?.find((t) => t[0] === "description");
+                  const descTag = event.tags?.find(
+                    (t) => t[0] === "description"
+                  );
                   const tagDescription =
                     typeof descTag?.[1] === "string" ? descTag[1] : null;
 
                   resolve({
                     description: description || tagDescription,
-                    nostrPublicRead: isPublicReadFromEvent(event as import("nostr-tools").Event),
+                    nostrPublicRead: isPublicReadFromEvent(
+                      event as import("nostr-tools").Event
+                    ),
                   });
                 } catch {
                   resolve(EMPTY);

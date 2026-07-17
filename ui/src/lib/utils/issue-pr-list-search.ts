@@ -130,7 +130,9 @@ export function filterListBySearchQuery<T extends ListSearchableItem>(
   const parsed = parseListSearchQuery(q);
   let out = items.filter((item) => {
     if (parsed.author) {
-      const meta = authorMetadata[item.author?.toLowerCase()] || authorMetadata[item.author];
+      const meta =
+        authorMetadata[item.author?.toLowerCase()] ||
+        authorMetadata[item.author];
       if (!personMatches(item.author, parsed.author, meta)) return false;
     }
     if (parsed.assignee) {
@@ -150,7 +152,9 @@ export function filterListBySearchQuery<T extends ListSearchableItem>(
       if (!tags.some((t) => t === want || t.includes(want))) return false;
     }
     if (parsed.freeText.length > 0) {
-      const hay = `${item.title} ${item.number} ${item.repo || ""}`.toLowerCase();
+      const hay = `${item.title} ${item.number} ${
+        item.repo || ""
+      }`.toLowerCase();
       for (const ft of parsed.freeText) {
         if (!hay.includes(ft.toLowerCase())) return false;
       }
@@ -233,8 +237,7 @@ export function authorLabelForFilter(
   pubkey: string,
   authorMetadata: Record<string, AuthorMeta>
 ): string {
-  const meta =
-    authorMetadata[pubkey?.toLowerCase()] || authorMetadata[pubkey];
+  const meta = authorMetadata[pubkey?.toLowerCase()] || authorMetadata[pubkey];
   const name = meta?.display_name || meta?.name;
   if (name?.trim()) return name.trim();
   if (/^[0-9a-f]{64}$/i.test(pubkey)) {

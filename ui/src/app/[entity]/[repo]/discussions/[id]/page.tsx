@@ -5,7 +5,6 @@ import { use, useCallback, useEffect, useRef, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MarkdownCode } from "@/lib/utils/markdown-code";
 import { Reactions } from "@/components/ui/reactions";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -16,10 +15,14 @@ import {
 } from "@/lib/discussions/storage";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { buildUnsignedCommentEvent } from "@/lib/nostr/events";
-import { NO_SIGNING_METHOD_MESSAGE, resolveNostrSigner } from "@/lib/nostr/signer";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveNostrSigner,
+} from "@/lib/nostr/signer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { formatDateTime24h } from "@/lib/utils/date-format";
+import { MarkdownCode } from "@/lib/utils/markdown-code";
 
 import { ArrowLeft, MessageCircle, Reply } from "lucide-react";
 import Link from "next/link";

@@ -1,28 +1,29 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import fs from "fs/promises";
-import path from "path";
-
 import {
-  withRelayPoolSubscribe,
   PLATFORM_STATS_RELAYS,
+  withRelayPoolSubscribe,
 } from "@/lib/nostr/server-relay-subscribe";
 import {
+  type LeaderboardSnapshot,
+  PLATFORM_LEADERBOARD_SNAPSHOT_PATH,
   hasAnyLeaderboardData,
   loadPlatformLeaderboardSnapshot,
-  PLATFORM_LEADERBOARD_SNAPSHOT_PATH,
   snapshotMissingTopUsers,
-  type LeaderboardSnapshot,
 } from "@/lib/platform-leaderboard-snapshot";
 import {
-  getLiveRecentReposFromNostr,
-  getRecentPlatformActivitiesFromNostr,
-  getTopReposFromNostr,
-  getTopUsersFromNostr,
   type PlatformRecentActivity,
   type PlatformRecentRepo,
   type RepoStats,
   type UserStats,
+  getLiveRecentReposFromNostr,
+  getRecentPlatformActivitiesFromNostr,
+  getTopReposFromNostr,
+  getTopUsersFromNostr,
 } from "@/lib/stats";
+
+import type { NextApiRequest, NextApiResponse } from "next";
+import path from "path";
+
+import fs from "fs/promises";
 
 /** In-memory cache after a successful relay refresh (short TTL). */
 const MEMORY_CACHE_MS = 2 * 60 * 1000;
@@ -170,8 +171,7 @@ export default async function handler(
 
   const forceRefresh = req.query.refresh === "1";
   const now = Date.now();
-  const memoryFresh =
-    cache && cache.at > 0 && now - cache.at < MEMORY_CACHE_MS;
+  const memoryFresh = cache && cache.at > 0 && now - cache.at < MEMORY_CACHE_MS;
   const diskNeedsRefresh =
     !cache || cache.at === 0 || now - cache.at >= DISK_REFRESH_AFTER_MS;
 

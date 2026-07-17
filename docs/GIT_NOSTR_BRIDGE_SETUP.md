@@ -76,6 +76,25 @@ Bridge serves an optional HTTP listener (default **:8080**) for **`POST /api/eve
 
 **HTTPS smart git** (`git clone https://git.yourdomain/...`) uses `git-http-backend` via fcgiwrap. Private repos are gated by nginx `auth_request` to the Next.js endpoint `/api/git/http-auth`, which mirrors SSH ACL (owner + `RepositoryPermission`). Authorized users can pass `X-Nostr-Auth-Event` (same header as bridge API pushes) via `git -c http.extraHeader=...`.
 
+### Browser clients (gitworkshop)
+
+Newest gitworkshop lives on Nostr (`ngit clone nostr://danconwaydev.com/relay.ngit.dev/gitworkshop`). It uses vendored **git-natural-api** (not npm isomorphic-git) over smart HTTP, with optional fallback through `https://cors.isomorphic-git.org`.
+
+CLI `git ls-remote` working is **not** enough. Browser clients also need:
+
+1. **CORS** on `GET …/info/refs` and `POST …/git-upload-pack`. Reflect the request `Origin` (not only `*`). Current gitworkshop does **not** send `credentials: "include"` for fetch, but reflecting Origin remains correct.
+2. **`uploadpack.allowFilter=true`** on every bare repo (and preferably `git config --system`). gitworkshop’s tree explorer **requires** the advertised `filter` capability; without it, info/refs succeeds but the UI shows **“upload-pack failed”** / “Couldn't fetch the code”. Also set `uploadpack.allowAnySHA1InWant` + `allowReachableSHA1InWant`. Bridge `ensureUploadPackBrowserCaps` applies this on new repos.
+3. **Quiet `git-http-backend`** — progress on stderr through fcgiwrap corrupts the HTTP response; use a wrapper that redirects stderr (prod: `/usr/local/bin/git-http-backend-quiet`).
+4. **Prefer HTTP/1.1 on the git vhost** (`listen 443 ssl;` without `http2`) — large packs have failed mid-stream over HTTP/2 for some clients.
+5. **NIP-34 `clone` tags must be full repo URLs** (`https://git…/<npub>/<repo>.git`). A host-only value like `https://git.gittr.space` makes gitworkshop show “proxy error” even when the bare repo exists and `uploadpack.allowFilter` is on. Reasons host-only cannot be fixed server-side alone:
+   - Browsers’ default `Referrer-Policy: strict-origin-when-cross-origin` strips the `/npub/repo` path from cross-origin `Referer`, so nginx’s host-only rewrite rarely sees the repo name.
+   - CORS proxies omit `Referer` entirely.
+   - Kind 30617 is replaceable and must be signed by the owner — on **My Repositories**, owners see a **Please republish** badge (and a batch **Republish broken clones** banner) when clone tags are only unusable (host-only, localhost, private LAN). That runs **Push to Nostr once per affected repo** (nsec / NIP-07 / remote signer; multiple approvals; can take a while).
+   gittr’s **New / Import** paths used to publish the host only; `buildUnsignedRepositoryEvent` now expands host-only values.
+6. **fcgiwrap workers** — Ubuntu’s default `DAEMON_OPTS=-f` is single-process and serializes every `git-upload-pack`. Use `DAEMON_OPTS=-c 8` in `/etc/default/fcgiwrap` (and a systemd drop-in) so browser clients don’t time out while another clone runs.
+
+See [nginx.gittr.conf.example](../nginx.gittr.conf.example) (reference only — do not wholesale-replace production nginx).
+
 ## Docker
 
 `ui/gitnostr/Dockerfile` + compose — Go included in image. Bridge runs as root inside the container; read Dockerfile comments before production use.

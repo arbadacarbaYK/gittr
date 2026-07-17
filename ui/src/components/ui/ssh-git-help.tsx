@@ -1,7 +1,7 @@
 "use client";
 
-import { GITTR_DOC_SSH_GIT } from "@/lib/gittr-repo-links";
 import { Button } from "@/components/ui/button";
+import { GITTR_DOC_SSH_GIT } from "@/lib/gittr-repo-links";
 
 import { AlertCircle, GitBranch, Key, Terminal, X } from "lucide-react";
 

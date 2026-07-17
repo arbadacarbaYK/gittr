@@ -9,12 +9,12 @@
  * CRITICAL: We use npub format (GRASP protocol standard) everywhere.
  * No 8-char prefixes - they cause confusion and mapping issues.
  */
-import { nip19 } from "nostr-tools";
-
 import {
   dedupeIssueRowsByNumber,
   migrateIssueCommentBuckets,
 } from "@/lib/utils/issue-pr-status";
+
+import { nip19 } from "nostr-tools";
 
 /**
  * Normalizes an entity identifier to npub format for localStorage

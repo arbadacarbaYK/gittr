@@ -14,6 +14,10 @@ import {
   isRepoFromBlocklistedOwner,
 } from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  shouldHideAnnounceForUnusableClones,
+  usableCloneUrls,
+} from "@/lib/nostr/clone-url-quality";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import {
@@ -218,7 +222,13 @@ type Repo = {
   clone?: string[];
   relays?: string[];
   // Status tracking
-  status?: "local" | "pushing" | "live" | "live_with_edits" | "push_failed";
+  status?:
+    | "local"
+    | "pushing"
+    | "live"
+    | "live_soon"
+    | "live_with_edits"
+    | "push_failed";
   hasUnpushedEdits?: boolean;
   lastModifiedAt?: number;
   nostrEventId?: string;
@@ -260,7 +270,7 @@ function ExplorePageContent() {
   // This matches homepage pattern: only fetch for `recent` repos (12 repos)
   // INCREASED: Fetch metadata for first 100 repos to ensure more icons show up when logged out
   // The cache will be checked first, so this only fetches missing metadata from Nostr
-  const [metadataBatchSize] = useState(100); // Fetch metadata for first 100 rendered repos
+  const [metadataBatchSize] = useState(400); // Fetch metadata for visible explore owners (HTTP batch API)
 
   const ownerPubkeys = useMemo(() => {
     console.log(
@@ -712,13 +722,10 @@ function ExplorePageContent() {
           }
 
           if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey) && repoName) {
-            const branch = repo.defaultBranch || "main";
-            // Construct API URL - this will work for native Nostr repos
-            return `/api/nostr/repo/file-content?ownerPubkey=${encodeURIComponent(
+            // Raw image bytes (not JSON file-content) so <img> can render
+            return `/api/og/repo-image?ownerPubkey=${encodeURIComponent(
               ownerPubkey
-            )}&repo=${encodeURIComponent(repoName)}&path=${encodeURIComponent(
-              logoPath
-            )}&branch=${encodeURIComponent(branch)}`;
+            )}&repo=${encodeURIComponent(repoName)}`;
           }
         }
       }
@@ -1781,6 +1788,21 @@ function ExplorePageContent() {
               return; // Don't store corrupted repos
             }
 
+            // Discovery: skip announces that only advertise localhost/private clones.
+            // (Zero clone tags still allowed — legacy / GRASP-only.)
+            const rawCloneUrls =
+              cloneTags.length > 0
+                ? cloneTags
+                : Array.isArray(repoData.clone)
+                ? repoData.clone
+                : [];
+            if (shouldHideAnnounceForUnusableClones(rawCloneUrls)) {
+              if (existingIndex >= 0) {
+                existingRepos.splice(existingIndex, 1);
+              }
+              return;
+            }
+
             const repo: Repo = {
               slug: repoData.repositoryName,
               entity: entity, // CRITICAL: Use npub format (GRASP protocol standard)
@@ -1840,22 +1862,11 @@ function ExplorePageContent() {
               archived: repoData.archived || false,
               links: repoData.links || existingRepo?.links,
               // GRASP-01: Store clone and relays tags from event.tags (for future GRASP-02 sync)
-              // Note: These are stored in repo object but not currently used for sync (server-side feature)
-              // CRITICAL: Filter out localhost URLs - they're not real git servers
-              clone:
+              clone: usableCloneUrls(
                 cloneTags.length > 0
-                  ? cloneTags.filter(
-                      (url: string) =>
-                        url &&
-                        !url.includes("localhost") &&
-                        !url.includes("127.0.0.1")
-                    )
-                  : (repoData.clone || existingRepo?.clone || []).filter(
-                      (url: string) =>
-                        url &&
-                        !url.includes("localhost") &&
-                        !url.includes("127.0.0.1")
-                    ),
+                  ? cloneTags
+                  : repoData.clone || existingRepo?.clone || []
+              ),
               relays:
                 relaysTags.length > 0
                   ? relaysTags
@@ -2714,23 +2725,16 @@ function ExplorePageContent() {
                   className="border p-4 hover:bg-white/5 transition-colors block cursor-pointer rounded"
                 >
                   <div className="flex items-center gap-3">
-                    {/* Unified repo icon (circle): repo pic -> owner profile pic -> nostr default -> logo.svg */}
+                    {/* Stacked icons: broken top layers hide; /logo.svg always underneath */}
                     <div className="flex-shrink-0">
-                      <div className="relative h-6 w-6 rounded-full overflow-hidden">
-                        {/* Priority 1: Repo icon */}
-                        {iconUrl && (
-                          <img
-                            src={iconUrl}
-                            alt="repo"
-                            className="h-6 w-6 rounded-full object-cover absolute inset-0"
-                            loading="lazy"
-                            onError={(e) => {
-                              e.currentTarget.style.display = "none";
-                            }}
-                          />
-                        )}
-                        {/* Priority 2: Owner profile picture */}
-                        {!iconUrl && ownerPicture && (
+                      <div className="relative h-6 w-6 rounded-full overflow-hidden bg-[#22262C]">
+                        <img
+                          src="/logo.svg"
+                          alt=""
+                          className="h-6 w-6 rounded-full object-contain absolute inset-0"
+                          loading="lazy"
+                        />
+                        {ownerPicture ? (
                           <img
                             src={ownerPicture}
                             alt={entityDisplayName}
@@ -2740,21 +2744,18 @@ function ExplorePageContent() {
                               e.currentTarget.style.display = "none";
                             }}
                           />
-                        )}
-                        {/* Priority 3: Nostr default / logo.svg fallback */}
-                        {!iconUrl && !ownerPicture && (
+                        ) : null}
+                        {iconUrl ? (
                           <img
-                            src="/logo.svg"
+                            src={iconUrl}
                             alt="repo"
-                            className="h-6 w-6 rounded-full object-contain absolute inset-0"
+                            className="h-6 w-6 rounded-full object-cover absolute inset-0"
                             loading="lazy"
                             onError={(e) => {
                               e.currentTarget.style.display = "none";
                             }}
                           />
-                        )}
-                        {/* Final fallback: gray circle */}
-                        <span className="inline-block h-6 w-6 rounded-full bg-[#22262C]" />
+                        ) : null}
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">

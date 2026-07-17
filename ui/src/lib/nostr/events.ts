@@ -1,4 +1,6 @@
 // Nostr event types and utilities for repositories, issues, PRs
+import { normalizeCloneUrlsForNip34Announcement } from "@/lib/nostr/clone-url-quality";
+
 import { getEventHash, getPublicKey, nip19, signEvent } from "nostr-tools";
 
 // Event kinds (from gitnostr protocol + custom for issues/PRs)
@@ -282,24 +284,37 @@ export function buildUnsignedRepositoryEvent(
 
   // NIP-34: description tag (omit auto-generated "Repository: …" placeholders)
   const description = (repo.description || "").trim();
-  const placeholder = `repository: ${(repoName || repo.repositoryName || "").toLowerCase()}`;
+  const placeholder = `repository: ${(
+    repoName ||
+    repo.repositoryName ||
+    ""
+  ).toLowerCase()}`;
   if (description && description.toLowerCase() !== placeholder) {
     tags.push(["description", description]);
   }
 
-  // NIP-34: one "clone" tag with multiple git URLs (values at indices 1..n)
-  if (repo.clone && repo.clone.length > 0) {
-    const cleaned = repo.clone
-      .filter((url) => url && typeof url === "string" && url.trim().length > 0)
-      .map((url) => url.trim())
-      .slice(0, 12);
-    if (cleaned.length > 0) {
-      tags.push(["clone", ...cleaned]);
-    }
+  // NIP-34: one "clone" tag with multiple git URLs (values at indices 1..n).
+  // Never publish host-only values like https://git.gittr.space — expand to
+  // https://git.gittr.space/<npub>/<repo>.git (gitworkshop fails otherwise).
+  let ownerNpub = pubkey;
+  try {
+    ownerNpub = nip19.npubEncode(pubkey);
+  } catch {
+    ownerNpub = pubkey;
   }
-
-  // If no clone URLs provided, this is a warning but we'll still create the event
-  // (Some clients might handle repos without clone URLs differently)
+  const fallbackGitServerUrl =
+    typeof process !== "undefined"
+      ? process.env.NEXT_PUBLIC_GIT_SERVER_URL || null
+      : null;
+  const cleanedClone = normalizeCloneUrlsForNip34Announcement({
+    cloneUrls: repo.clone,
+    ownerNpub,
+    repoName: repo.repositoryName,
+    fallbackGitServerUrl,
+  }).slice(0, 12);
+  if (cleanedClone.length > 0) {
+    tags.push(["clone", ...cleanedClone]);
+  }
 
   // NIP-34: one "relays" tag with multiple relay URLs
   if (repo.relays && repo.relays.length > 0) {

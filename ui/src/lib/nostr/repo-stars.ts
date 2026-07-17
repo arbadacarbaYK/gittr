@@ -1,5 +1,5 @@
 // NIP-25: Repository star reactions and NIP-51: Following lists
-import { type Event as NostrEvent, type Filter } from "nostr-tools";
+import { type Filter, type Event as NostrEvent } from "nostr-tools";
 
 import { KIND_REACTION, KIND_REPOSITORY_NIP34 } from "./events";
 
@@ -154,9 +154,7 @@ export function broadcastRepoAnnouncementEventId(
   if (typeof window === "undefined") return;
   if (!/^[0-9a-f]{64}$/i.test(detail.eventId)) return;
   cacheRepoAnnouncementEventId(detail.entity, detail.repo, detail.eventId);
-  window.dispatchEvent(
-    new CustomEvent(REPO_ANNOUNCEMENT_ID_EVENT, { detail })
-  );
+  window.dispatchEvent(new CustomEvent(REPO_ANNOUNCEMENT_ID_EVENT, { detail }));
 }
 
 /** Latest kind 30617 id for this repo (relays). Works even when you are the first star. */
@@ -165,10 +163,16 @@ export async function queryRepoAnnouncementEventId(
   relays: string[],
   ownerPubkey: string,
   repositoryName: string,
-  opts?: { timeoutMs?: number; repo?: Parameters<typeof repoAnnouncementDTagCandidates>[1] }
+  opts?: {
+    timeoutMs?: number;
+    repo?: Parameters<typeof repoAnnouncementDTagCandidates>[1];
+  }
 ): Promise<string | null> {
   const author = ownerPubkey.trim().toLowerCase();
-  const dCandidates = repoAnnouncementDTagCandidates(repositoryName, opts?.repo);
+  const dCandidates = repoAnnouncementDTagCandidates(
+    repositoryName,
+    opts?.repo
+  );
   if (!/^[0-9a-f]{64}$/.test(author) || dCandidates.length === 0) return null;
 
   let latest: NostrEvent | null = null;
@@ -191,9 +195,7 @@ export async function queryRepoAnnouncementEventId(
         /* ignore */
       }
       const id = latest?.id;
-      resolve(
-        typeof id === "string" && /^[0-9a-f]{64}$/i.test(id) ? id : null
-      );
+      resolve(typeof id === "string" && /^[0-9a-f]{64}$/i.test(id) ? id : null);
     };
 
     const unsub = subscribe(

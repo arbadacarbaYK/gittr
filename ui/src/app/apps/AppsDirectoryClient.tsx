@@ -837,12 +837,23 @@ export function AppsDirectoryClient() {
                             height={64}
                             src={app.icon}
                             width={64}
+                            onError={(e) => {
+                              const el = e.currentTarget;
+                              el.style.display = "none";
+                              const sib =
+                                el.nextElementSibling as HTMLElement | null;
+                              if (sib) sib.style.display = "flex";
+                            }}
                           />
-                        ) : (
-                          <div className="flex h-16 w-16 items-center justify-center rounded-xl border border-[#383B42]/80 bg-[#171B21]">
-                            <Package className="h-8 w-8 text-gray-600" />
-                          </div>
-                        )}
+                        ) : null}
+                        <div
+                          className="h-16 w-16 items-center justify-center rounded-xl border border-[#383B42]/80 bg-[#171B21]"
+                          style={{
+                            display: app.icon ? "none" : "flex",
+                          }}
+                        >
+                          <Package className="h-8 w-8 text-gray-600" />
+                        </div>
                       </div>
                       <div className="relative z-10 flex min-w-0 flex-1 flex-col">
                         <h2 className="line-clamp-2 text-lg font-semibold leading-snug text-white">
@@ -852,17 +863,26 @@ export function AppsDirectoryClient() {
                           {app.appId}
                         </p>
                         <div className="mt-1 flex min-w-0 items-start gap-2">
-                          {authorMeta?.picture &&
-                          authorMeta.picture.startsWith("http") ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              alt=""
-                              className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-[#383B42]/80 object-cover"
-                              height={28}
-                              src={authorMeta.picture}
-                              width={28}
-                            />
-                          ) : null}
+                          {/* Always show a pic — profile when ready, else default logo */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            alt=""
+                            className="mt-0.5 h-7 w-7 shrink-0 rounded-full border border-[#383B42]/80 object-cover bg-[#22262C]"
+                            height={28}
+                            src={
+                              authorMeta?.picture &&
+                              authorMeta.picture.startsWith("http")
+                                ? authorMeta.picture
+                                : "/logo.svg"
+                            }
+                            width={28}
+                            onError={(e) => {
+                              const el = e.currentTarget;
+                              if (!el.src.endsWith("/logo.svg")) {
+                                el.src = "/logo.svg";
+                              }
+                            }}
+                          />
                           <div className="min-w-0 flex-1">
                             <Link
                               className="block truncate text-sm font-medium text-[var(--color-accent-primary)] hover:underline"

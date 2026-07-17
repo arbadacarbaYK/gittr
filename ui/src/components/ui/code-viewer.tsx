@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { KIND_CODE_SNIPPET, createCodeSnippetEvent } from "@/lib/nostr/events";
+import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
-import { KIND_CODE_SNIPPET, createCodeSnippetEvent } from "@/lib/nostr/events";
-import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 
 import { Share2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -724,17 +724,18 @@ export function CodeViewer({
                   ? "bg-yellow-600/60 text-yellow-50 font-semibold"
                   : "bg-yellow-600/60"
                 : isSelectionStart
-                  ? part === "gutter"
-                    ? "bg-blue-600/40 text-blue-100 border-l-2 border-blue-400"
-                    : "bg-blue-600/40 border-l-2 border-blue-400"
-                  : part === "gutter"
-                    ? "hover:bg-gray-800/50"
-                    : "hover:bg-gray-800/30"
+                ? part === "gutter"
+                  ? "bg-blue-600/40 text-blue-100 border-l-2 border-blue-400"
+                  : "bg-blue-600/40 border-l-2 border-blue-400"
+                : part === "gutter"
+                ? "hover:bg-gray-800/50"
+                : "hover:bg-gray-800/30"
             } ${isStart && multiLine ? "rounded-t-sm" : ""} ${
               isEnd && multiLine ? "rounded-b-sm" : ""
             }`;
           const handlers = {
-            onMouseDown: (e: React.MouseEvent) => handleLineMouseDown(lineNum, e),
+            onMouseDown: (e: React.MouseEvent) =>
+              handleLineMouseDown(lineNum, e),
             onMouseEnter: () => handleLineMouseEnter(lineNum),
             onMouseUp: (e: React.MouseEvent) => handleLineMouseUp(lineNum, e),
             onClick: (e: React.MouseEvent) => handleLineClick(lineNum, e),
@@ -755,7 +756,9 @@ export function CodeViewer({
             >
               <div
                 id={`line-${lineNum}`}
-                className={`hidden sm:block text-right tabular-nums text-gray-500 border-r border-gray-700 ${rowClass("gutter")}`}
+                className={`hidden sm:block text-right tabular-nums text-gray-500 border-r border-gray-700 ${rowClass(
+                  "gutter"
+                )}`}
                 style={{ minWidth: `${gutterCh}ch` }}
                 title={`Line ${lineNum}. Click to select. Use "Select Range" for multi-line selection. Right-click to copy permalink.`}
               >

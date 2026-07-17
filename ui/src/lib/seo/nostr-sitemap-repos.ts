@@ -1,7 +1,11 @@
 import { isPublisherBlocklisted } from "@/lib/moderation/publisher-blocklist";
+import {
+  normalizeNip34RepoIdentifier,
+  shouldHideNip34EventForUnusableClones,
+} from "@/lib/nostr/clone-url-quality";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
-import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
 import { getDefaultRelayUrls } from "@/lib/nostr/relay-env";
+import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
 
 import { type Event, SimplePool, nip19 } from "nostr-tools";
 
@@ -129,7 +133,10 @@ export async function fetchSitemapRepoPathsFromNostr(): Promise<
       if (deletedIds.has(ev.id)) continue;
       if (isDeletedNip34(ev, deletedAddresses)) continue;
       if (!isPublicReadFromEvent(ev)) continue;
-      const d = getTag(ev, "d");
+      if (shouldHideNip34EventForUnusableClones(ev)) continue;
+      const dRaw = getTag(ev, "d");
+      const name = getTag(ev, "name");
+      const d = normalizeNip34RepoIdentifier(dRaw, name);
       if (!d) continue;
       try {
         const npub = nip19.npubEncode(ev.pubkey);

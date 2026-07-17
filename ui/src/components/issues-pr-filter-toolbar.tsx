@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  authorLabelForFilter,
   type ListSearchKind,
   type ListSearchableItem,
+  authorLabelForFilter,
   upsertListSearchQualifier,
   upsertListSearchSort,
 } from "@/lib/utils/issue-pr-list-search";
@@ -139,157 +139,157 @@ export default function IssuesPrFilterMenuRow({
       ref={rootRef}
       className="mt-2 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-400"
     >
-        <div className="relative">
-          {menuBtn("author", "Author")}
-          <FilterMenu open={openMenu === "author"}>
-            <MenuItem
-              onClick={() =>
-                apply(() =>
-                  onSearchChange(
-                    upsertListSearchQualifier(search, "author", null, kind)
-                  )
+      <div className="relative">
+        {menuBtn("author", "Author")}
+        <FilterMenu open={openMenu === "author"}>
+          <MenuItem
+            onClick={() =>
+              apply(() =>
+                onSearchChange(
+                  upsertListSearchQualifier(search, "author", null, kind)
                 )
-              }
-            >
-              Any author
-            </MenuItem>
-            {authors.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-zinc-500">No authors</p>
-            ) : (
-              authors.map(([pubkey, label]) => (
-                <MenuItem
-                  key={pubkey}
-                  onClick={() =>
-                    apply(() =>
-                      onSearchChange(
-                        upsertListSearchQualifier(search, "author", pubkey, kind)
+              )
+            }
+          >
+            Any author
+          </MenuItem>
+          {authors.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-zinc-500">No authors</p>
+          ) : (
+            authors.map(([pubkey, label]) => (
+              <MenuItem
+                key={pubkey}
+                onClick={() =>
+                  apply(() =>
+                    onSearchChange(
+                      upsertListSearchQualifier(search, "author", pubkey, kind)
+                    )
+                  )
+                }
+              >
+                {label}
+              </MenuItem>
+            ))
+          )}
+        </FilterMenu>
+      </div>
+
+      <div className="relative hidden md:block">
+        {menuBtn("label", "Label")}
+        <FilterMenu open={openMenu === "label"}>
+          <MenuItem
+            onClick={() =>
+              apply(() =>
+                onSearchChange(
+                  upsertListSearchQualifier(search, "label", null, kind)
+                )
+              )
+            }
+          >
+            Any label
+          </MenuItem>
+          {labels.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-zinc-500">No labels</p>
+          ) : (
+            labels.map((label) => (
+              <MenuItem
+                key={label}
+                onClick={() =>
+                  apply(() =>
+                    onSearchChange(
+                      upsertListSearchQualifier(search, "label", label, kind)
+                    )
+                  )
+                }
+              >
+                {label}
+              </MenuItem>
+            ))
+          )}
+        </FilterMenu>
+      </div>
+
+      <div className="relative">
+        {menuBtn("assignee", "Assignee")}
+        <FilterMenu open={openMenu === "assignee"}>
+          <MenuItem
+            onClick={() =>
+              apply(() =>
+                onSearchChange(
+                  upsertListSearchQualifier(search, "assignee", null, kind)
+                )
+              )
+            }
+          >
+            Any assignee
+          </MenuItem>
+          {assignees.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-zinc-500">No assignees</p>
+          ) : (
+            assignees.map(([pubkey, label]) => (
+              <MenuItem
+                key={pubkey}
+                onClick={() =>
+                  apply(() =>
+                    onSearchChange(
+                      upsertListSearchQualifier(
+                        search,
+                        "assignee",
+                        pubkey,
+                        kind
                       )
                     )
-                  }
-                >
-                  {label}
-                </MenuItem>
-              ))
-            )}
-          </FilterMenu>
-        </div>
-
-        <div className="relative hidden md:block">
-          {menuBtn("label", "Label")}
-          <FilterMenu open={openMenu === "label"}>
-            <MenuItem
-              onClick={() =>
-                apply(() =>
-                  onSearchChange(
-                    upsertListSearchQualifier(search, "label", null, kind)
                   )
-                )
-              }
-            >
-              Any label
-            </MenuItem>
-            {labels.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-zinc-500">No labels</p>
-            ) : (
-              labels.map((label) => (
-                <MenuItem
-                  key={label}
-                  onClick={() =>
-                    apply(() =>
-                      onSearchChange(
-                        upsertListSearchQualifier(search, "label", label, kind)
-                      )
-                    )
-                  }
-                >
-                  {label}
-                </MenuItem>
-              ))
-            )}
-          </FilterMenu>
-        </div>
+                }
+              >
+                {label}
+              </MenuItem>
+            ))
+          )}
+        </FilterMenu>
+      </div>
 
-        <div className="relative">
-          {menuBtn("assignee", "Assignee")}
-          <FilterMenu open={openMenu === "assignee"}>
-            <MenuItem
-              onClick={() =>
-                apply(() =>
-                  onSearchChange(
-                    upsertListSearchQualifier(search, "assignee", null, kind)
-                  )
-                )
-              }
-            >
-              Any assignee
-            </MenuItem>
-            {assignees.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-zinc-500">No assignees</p>
-            ) : (
-              assignees.map(([pubkey, label]) => (
-                <MenuItem
-                  key={pubkey}
-                  onClick={() =>
-                    apply(() =>
-                      onSearchChange(
-                        upsertListSearchQualifier(
-                          search,
-                          "assignee",
-                          pubkey,
-                          kind
-                        )
-                      )
-                    )
-                  }
-                >
-                  {label}
-                </MenuItem>
-              ))
-            )}
-          </FilterMenu>
-        </div>
-
-        <div className="relative">
-          {menuBtn("sort", "Sort")}
-          <FilterMenu open={openMenu === "sort"}>
-            <MenuItem
-              onClick={() =>
-                apply(() =>
-                  onSearchChange(upsertListSearchSort(search, "newest", kind))
-                )
-              }
-            >
-              Newest
-            </MenuItem>
-            <MenuItem
-              onClick={() =>
-                apply(() =>
-                  onSearchChange(upsertListSearchSort(search, "oldest", kind))
-                )
-              }
-            >
-              Oldest
-            </MenuItem>
-            <MenuItem
-              onClick={() =>
-                apply(() =>
-                  onSearchChange(upsertListSearchSort(search, "updated", kind))
-                )
-              }
-            >
-              Recently updated
-            </MenuItem>
-            <MenuItem
-              onClick={() =>
-                apply(() =>
-                  onSearchChange(upsertListSearchSort(search, null, kind))
-                )
-              }
-            >
-              Default sort
-            </MenuItem>
-          </FilterMenu>
-        </div>
+      <div className="relative">
+        {menuBtn("sort", "Sort")}
+        <FilterMenu open={openMenu === "sort"}>
+          <MenuItem
+            onClick={() =>
+              apply(() =>
+                onSearchChange(upsertListSearchSort(search, "newest", kind))
+              )
+            }
+          >
+            Newest
+          </MenuItem>
+          <MenuItem
+            onClick={() =>
+              apply(() =>
+                onSearchChange(upsertListSearchSort(search, "oldest", kind))
+              )
+            }
+          >
+            Oldest
+          </MenuItem>
+          <MenuItem
+            onClick={() =>
+              apply(() =>
+                onSearchChange(upsertListSearchSort(search, "updated", kind))
+              )
+            }
+          >
+            Recently updated
+          </MenuItem>
+          <MenuItem
+            onClick={() =>
+              apply(() =>
+                onSearchChange(upsertListSearchSort(search, null, kind))
+              )
+            }
+          >
+            Default sort
+          </MenuItem>
+        </FilterMenu>
+      </div>
     </div>
   );
 }

@@ -2,11 +2,12 @@
  * Server-side helpers for crawler-safe repository preview images (Telegram, X, etc.).
  * Social crawlers need a URL that returns raw image bytes — not the JSON file-content API.
  */
+import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
+
 import { exec } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { promisify } from "util";
-import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 
 const execAsync = promisify(exec);
 
@@ -110,7 +111,11 @@ export async function readRepoLogoFromBridge(
         const escapedPath = logoPath.replace(/"/g, '\\"');
         const { stdout } = await execAsync(
           `git --git-dir="${repoPath}" show "${escapedBranch}:${escapedPath}"`,
-          { timeout: 8000, maxBuffer: 5 * 1024 * 1024, encoding: "buffer" as any }
+          {
+            timeout: 8000,
+            maxBuffer: 5 * 1024 * 1024,
+            encoding: "buffer" as any,
+          }
         );
         const buffer = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
         if (buffer.length > 0) {

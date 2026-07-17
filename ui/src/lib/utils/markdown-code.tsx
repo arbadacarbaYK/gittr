@@ -52,11 +52,7 @@ const inlineCodeClassName =
 /**
  * Renders markdown `code`: inline backticks stay in the sentence; fenced blocks use CopyableCodeBlock.
  */
-export function MarkdownCode({
-  node,
-  className,
-  children,
-}: MarkdownCodeProps) {
+export function MarkdownCode({ node, className, children }: MarkdownCodeProps) {
   const content = String(children ?? "").replace(/\n$/, "");
   const language = /language-([\w-]+)/
     .exec(className || "")?.[1]
@@ -78,9 +74,7 @@ export function MarkdownCode({
   return (
     <CopyableCodeBlock
       inline={false}
-      className={
-        className || "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"
-      }
+      className={className || "bg-gray-900 rounded p-2 overflow-x-auto my-0.5"}
     >
       {children}
     </CopyableCodeBlock>

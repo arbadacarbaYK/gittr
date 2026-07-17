@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { RepoQRShare } from "@/components/ui/repo-qr-share";
+import { showToast } from "@/components/ui/toast";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   KIND_GIT_REPOSITORIES_LIST,
@@ -19,18 +20,17 @@ import {
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import {
+  REPO_ANNOUNCEMENT_ID_EVENT,
+  type RelaySubscribeFn,
+  type RepoAnnouncementIdDetail,
   aggregateRepoStarReactions,
+  cacheRepoAnnouncementEventId,
   isRepoStarReaction,
   publishStarReaction,
   queryRepoAnnouncementEventId,
   readCachedRepoAnnouncementEventId,
-  REPO_ANNOUNCEMENT_ID_EVENT,
-  cacheRepoAnnouncementEventId,
   removeStarReaction,
-  type RepoAnnouncementIdDetail,
-  type RelaySubscribeFn,
 } from "@/lib/nostr/repo-stars";
-import { showToast } from "@/components/ui/toast";
 import { useRepoNip57ZapBadgeTotal } from "@/lib/nostr/useRepoNip57ZapBadgeTotal";
 import {
   canManageSettings,
@@ -38,10 +38,19 @@ import {
   isOwner,
 } from "@/lib/repo-permissions";
 import {
+  repoNavHref,
+  resolveSharedRepoBranch,
+} from "@/lib/repos/repo-file-tree-branch";
+import {
+  findStoredRepoForRoute,
+  hydrateRepoFromGithub,
+} from "@/lib/repos/repo-github-hub";
+import {
   type StoredContributor,
   type StoredRepo,
   loadStoredRepos,
 } from "@/lib/repos/storage";
+import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
 import {
   getRepoStorageKey,
   readRepoIssuesFromLocalStorage,
@@ -52,15 +61,6 @@ import {
   normalizeIssueListStatus,
   normalizePrListStatus,
 } from "@/lib/utils/issue-pr-status";
-import {
-  findStoredRepoForRoute,
-  hydrateRepoFromGithub,
-} from "@/lib/repos/repo-github-hub";
-import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
-import {
-  repoNavHref,
-  resolveSharedRepoBranch,
-} from "@/lib/repos/repo-file-tree-branch";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { useEntityOwner } from "@/lib/utils/use-entity-owner";
 
@@ -232,7 +232,8 @@ export default function RepoLayoutClient({
     if (!isPrivateRepo) return true;
     if (!pubkey || !repo) return false;
     const repoOwnerPubkey = getRepoOwnerPubkey(repo, resolvedParams.entity);
-    const maintainers: string[] = (repo as { maintainers?: string[] }).maintainers || [];
+    const maintainers: string[] =
+      (repo as { maintainers?: string[] }).maintainers || [];
     return hasPrivateRepoAccess(
       pubkey,
       repo.contributors,
@@ -255,13 +256,15 @@ export default function RepoLayoutClient({
     enabled: mounted && !!ownerHexForZaps,
   });
 
-  const [relayRepoEventId, setRelayRepoEventId] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return readCachedRepoAnnouncementEventId(
-      resolvedParams.entity,
-      resolvedParams.repo
-    );
-  });
+  const [relayRepoEventId, setRelayRepoEventId] = useState<string | null>(
+    () => {
+      if (typeof window === "undefined") return null;
+      return readCachedRepoAnnouncementEventId(
+        resolvedParams.entity,
+        resolvedParams.repo
+      );
+    }
+  );
   const [resolvingRepoEventId, setResolvingRepoEventId] = useState(false);
 
   const repoNostrEventId = useMemo(() => {
@@ -348,12 +351,7 @@ export default function RepoLayoutClient({
       } as const;
     }
     return null;
-  }, [
-    githubSpec,
-    githubStarCount,
-    importStarSnapshot,
-    hasUpstreamSourceUrl,
-  ]);
+  }, [githubSpec, githubStarCount, importStarSnapshot, hasUpstreamSourceUrl]);
 
   const nostrStarButtonTitle = useMemo(() => {
     if (resolvingRepoEventId) {
@@ -1148,11 +1146,7 @@ export default function RepoLayoutClient({
       window.removeEventListener("gittr:pr-updated", handlePRUpdate);
       window.removeEventListener("gittr:issue-updated", handleIssueUpdate);
     };
-  }, [
-    resolvedParams.entity,
-    resolvedParams.repo,
-    refreshOpenIssuePrCounts,
-  ]);
+  }, [resolvedParams.entity, resolvedParams.repo, refreshOpenIssuePrCounts]);
 
   const handleWatch = useCallback(() => {
     if (!pubkey) return;
@@ -1378,7 +1372,10 @@ export default function RepoLayoutClient({
         syncLocalStarsIndex(false);
         showToast("Unstarred on Nostr.", "success");
       } else {
-        showToast(r.error || "Could not unstar — check extension approval.", "error");
+        showToast(
+          r.error || "Could not unstar — check extension approval.",
+          "error"
+        );
       }
     } else {
       const r = await publishStarReaction(
@@ -1580,182 +1577,191 @@ export default function RepoLayoutClient({
           </div>
 
           {canViewPrivateContent ? (
-          <>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              className={clsx(
-                buttonVariants({ variant: "outline", size: "sm" }),
-                "h-8 !border-[#383B42] bg-[#22262C] text-xs md:hidden"
-              )}
-              type="button"
-            >
-              Actions <ChevronDown className="ml-2 h-4 w-4 text-white" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="ml-8 mt-2">
-              <DropdownMenuItem
-                key="watch"
-                title={WATCH_BUTTON_TITLE}
-                onClick={handleWatch}
-              >
-                <Eye className="mr-2 h-4 w-4" />{" "}
-                {isWatching ? "Unwatch" : "Watch"}
-                <Badge className="ml-2">{isWatching ? 1 : 0}</Badge>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                key="zaps"
-                title={zapBadgeTitle}
-                onClick={() => {
-                  window.location.href = getRepoLink("", false) + "?zap=true";
-                }}
-              >
-                <Zap className="mr-2 h-4 w-4" /> Zaps
-                <Badge className="ml-2">{zapBadge.totalSats}</Badge>
-              </DropdownMenuItem>
-              {/* Relays status not yet implemented */}
-              <DropdownMenuItem key="fork" onClick={handleFork}>
-                <GitFork className="mr-2 h-4 w-4" /> Fork
-                <Badge className="ml-2">{forkCount}</Badge>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                key="nostr-star"
-                title={nostrStarButtonTitle}
-                disabled={!pubkey || !repoNostrEventId}
-                onClick={() => {
-                  void handleNostrStar();
-                }}
-              >
-                <Star
-                  className={`mr-2 h-4 w-4 ${
-                    isNostrStarred ? "text-yellow-500 fill-yellow-500" : ""
-                  }`}
-                />{" "}
-                Star
-                <Badge className="ml-2">{nostrStarCount}</Badge>
-              </DropdownMenuItem>
-              {sourceStarsDisplay ? (
-                <DropdownMenuItem
-                  key="source-stars"
-                  className="opacity-100"
-                  disabled={!sourceStarsDisplay.href}
-                  onClick={() => {
-                    if (sourceStarsDisplay.href)
-                      window.open(sourceStarsDisplay.href, "_blank");
-                  }}
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className={clsx(
+                    buttonVariants({ variant: "outline", size: "sm" }),
+                    "h-8 !border-[#383B42] bg-[#22262C] text-xs md:hidden"
+                  )}
+                  type="button"
                 >
-                  <Star className="mr-2 h-4 w-4" />
-                  {sourceStarsDisplay.label}
-                  <Badge className="ml-2">{sourceStarsDisplay.value}</Badge>
-                </DropdownMenuItem>
-              ) : null}
-              <DropdownMenuItem key="share" onClick={() => setShowRepoQR(true)}>
-                <Share2 className="mr-2 h-4 w-4" /> Share
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <div className="flex justify-end">
-            <div className="hidden md:flex md:flex-row md:gap-2">
-              <Button
-                className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
-                variant="outline"
-                title={WATCH_BUTTON_TITLE}
-                onClick={handleWatch}
-                disabled={!mounted || !pubkey}
-                suppressHydrationWarning
-              >
-                <Eye className="mr-2 h-4 w-4" />{" "}
-                {isWatching ? "Unwatch" : "Watch"}
-                <Badge className="ml-2">{isWatching ? 1 : 0}</Badge>
-              </Button>
-              <a
-                href={getRepoLink("", false) + "?zap=true"}
-                title={zapBadgeTitle}
-                onClick={(e) => {
-                  e.preventDefault();
-                  window.location.href = getRepoLink("", false) + "?zap=true";
-                }}
-              >
-                <Button
-                  className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
-                  variant="outline"
-                >
-                  <Zap className="mr-2 h-4 w-4" /> Zaps
-                  <Badge className="ml-2">{zapBadge.totalSats}</Badge>
-                </Button>
-              </a>
-              {/* Relays status not yet implemented */}
-              <Button
-                className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
-                variant="outline"
-                onClick={handleFork}
-                disabled={!mounted || !pubkey}
-                suppressHydrationWarning
-              >
-                <GitFork className="mr-2 h-4 w-4" /> Fork
-                <Badge className="ml-2">{forkCount}</Badge>
-              </Button>
-              <Button
-                className={`h-8 !border-[#383B42] bg-[#22262C] text-xs ${
-                  isNostrStarred ? "hover:bg-[#22262C]" : ""
-                }`}
-                variant="outline"
-                title={nostrStarButtonTitle}
-                onClick={() => {
-                  void handleNostrStar();
-                }}
-                disabled={!canStarOnNostr}
-                suppressHydrationWarning
-              >
-                <Star
-                  className={`mr-2 h-4 w-4 ${
-                    isNostrStarred ? "text-yellow-500 fill-yellow-500" : ""
-                  }`}
-                />{" "}
-                Star
-                <Badge className="ml-2">{nostrStarCount}</Badge>
-              </Button>
-              {sourceStarsDisplay ? (
-                sourceStarsDisplay.href ? (
-                  <a
-                    href={sourceStarsDisplay.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    title={sourceStarsDisplay.title}
+                  Actions <ChevronDown className="ml-2 h-4 w-4 text-white" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="ml-8 mt-2">
+                  <DropdownMenuItem
+                    key="watch"
+                    title={WATCH_BUTTON_TITLE}
+                    onClick={handleWatch}
                   >
-                    <Button
-                      className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
-                      variant="outline"
-                      type="button"
+                    <Eye className="mr-2 h-4 w-4" />{" "}
+                    {isWatching ? "Unwatch" : "Watch"}
+                    <Badge className="ml-2">{isWatching ? 1 : 0}</Badge>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    key="zaps"
+                    title={zapBadgeTitle}
+                    onClick={() => {
+                      window.location.href =
+                        getRepoLink("", false) + "?zap=true";
+                    }}
+                  >
+                    <Zap className="mr-2 h-4 w-4" /> Zaps
+                    <Badge className="ml-2">{zapBadge.totalSats}</Badge>
+                  </DropdownMenuItem>
+                  {/* Relays status not yet implemented */}
+                  <DropdownMenuItem key="fork" onClick={handleFork}>
+                    <GitFork className="mr-2 h-4 w-4" /> Fork
+                    <Badge className="ml-2">{forkCount}</Badge>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    key="nostr-star"
+                    title={nostrStarButtonTitle}
+                    disabled={!pubkey || !repoNostrEventId}
+                    onClick={() => {
+                      void handleNostrStar();
+                    }}
+                  >
+                    <Star
+                      className={`mr-2 h-4 w-4 ${
+                        isNostrStarred ? "text-yellow-500 fill-yellow-500" : ""
+                      }`}
+                    />{" "}
+                    Star
+                    <Badge className="ml-2">{nostrStarCount}</Badge>
+                  </DropdownMenuItem>
+                  {sourceStarsDisplay ? (
+                    <DropdownMenuItem
+                      key="source-stars"
+                      className="opacity-100"
+                      disabled={!sourceStarsDisplay.href}
+                      onClick={() => {
+                        if (sourceStarsDisplay.href)
+                          window.open(sourceStarsDisplay.href, "_blank");
+                      }}
                     >
                       <Star className="mr-2 h-4 w-4" />
                       {sourceStarsDisplay.label}
                       <Badge className="ml-2">{sourceStarsDisplay.value}</Badge>
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem
+                    key="share"
+                    onClick={() => setShowRepoQR(true)}
+                  >
+                    <Share2 className="mr-2 h-4 w-4" /> Share
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <div className="flex justify-end">
+                <div className="hidden md:flex md:flex-row md:gap-2">
+                  <Button
+                    className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
+                    variant="outline"
+                    title={WATCH_BUTTON_TITLE}
+                    onClick={handleWatch}
+                    disabled={!mounted || !pubkey}
+                    suppressHydrationWarning
+                  >
+                    <Eye className="mr-2 h-4 w-4" />{" "}
+                    {isWatching ? "Unwatch" : "Watch"}
+                    <Badge className="ml-2">{isWatching ? 1 : 0}</Badge>
+                  </Button>
+                  <a
+                    href={getRepoLink("", false) + "?zap=true"}
+                    title={zapBadgeTitle}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.location.href =
+                        getRepoLink("", false) + "?zap=true";
+                    }}
+                  >
+                    <Button
+                      className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
+                      variant="outline"
+                    >
+                      <Zap className="mr-2 h-4 w-4" /> Zaps
+                      <Badge className="ml-2">{zapBadge.totalSats}</Badge>
                     </Button>
                   </a>
-                ) : (
+                  {/* Relays status not yet implemented */}
                   <Button
-                    className="h-8 !border-[#383B42] bg-[#22262C] text-xs cursor-default"
+                    className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
                     variant="outline"
-                    type="button"
-                    title={sourceStarsDisplay.title}
-                    disabled
+                    onClick={handleFork}
+                    disabled={!mounted || !pubkey}
+                    suppressHydrationWarning
                   >
-                    <Star className="mr-2 h-4 w-4" />
-                    {sourceStarsDisplay.label}
-                    <Badge className="ml-2">{sourceStarsDisplay.value}</Badge>
+                    <GitFork className="mr-2 h-4 w-4" /> Fork
+                    <Badge className="ml-2">{forkCount}</Badge>
                   </Button>
-                )
-              ) : null}
-              <Button
-                className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
-                variant="outline"
-                onClick={() => setShowRepoQR(true)}
-              >
-                <Share2 className="mr-2 h-4 w-4" /> Share
-              </Button>
-            </div>
-          </div>
-          </>
+                  <Button
+                    className={`h-8 !border-[#383B42] bg-[#22262C] text-xs ${
+                      isNostrStarred ? "hover:bg-[#22262C]" : ""
+                    }`}
+                    variant="outline"
+                    title={nostrStarButtonTitle}
+                    onClick={() => {
+                      void handleNostrStar();
+                    }}
+                    disabled={!canStarOnNostr}
+                    suppressHydrationWarning
+                  >
+                    <Star
+                      className={`mr-2 h-4 w-4 ${
+                        isNostrStarred ? "text-yellow-500 fill-yellow-500" : ""
+                      }`}
+                    />{" "}
+                    Star
+                    <Badge className="ml-2">{nostrStarCount}</Badge>
+                  </Button>
+                  {sourceStarsDisplay ? (
+                    sourceStarsDisplay.href ? (
+                      <a
+                        href={sourceStarsDisplay.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={sourceStarsDisplay.title}
+                      >
+                        <Button
+                          className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
+                          variant="outline"
+                          type="button"
+                        >
+                          <Star className="mr-2 h-4 w-4" />
+                          {sourceStarsDisplay.label}
+                          <Badge className="ml-2">
+                            {sourceStarsDisplay.value}
+                          </Badge>
+                        </Button>
+                      </a>
+                    ) : (
+                      <Button
+                        className="h-8 !border-[#383B42] bg-[#22262C] text-xs cursor-default"
+                        variant="outline"
+                        type="button"
+                        title={sourceStarsDisplay.title}
+                        disabled
+                      >
+                        <Star className="mr-2 h-4 w-4" />
+                        {sourceStarsDisplay.label}
+                        <Badge className="ml-2">
+                          {sourceStarsDisplay.value}
+                        </Badge>
+                      </Button>
+                    )
+                  ) : null}
+                  <Button
+                    className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
+                    variant="outline"
+                    onClick={() => setShowRepoQR(true)}
+                  >
+                    <Share2 className="mr-2 h-4 w-4" /> Share
+                  </Button>
+                </div>
+              </div>
+            </>
           ) : null}
         </div>
 
@@ -1768,10 +1774,7 @@ export default function RepoLayoutClient({
                   className="flex-shrink-0"
                 >
                   <a
-                    href={getRepoLink(
-                      item.link || "",
-                      item.name === "Code"
-                    )}
+                    href={getRepoLink(item.link || "", item.name === "Code")}
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -1835,10 +1838,7 @@ export default function RepoLayoutClient({
                   }}
                 >
                   <a
-                    href={getRepoLink(
-                      item.link || "",
-                      item.name === "Code"
-                    )}
+                    href={getRepoLink(item.link || "", item.name === "Code")}
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();

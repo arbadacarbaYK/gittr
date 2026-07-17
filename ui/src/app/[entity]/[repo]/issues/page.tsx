@@ -5,21 +5,17 @@ import { use, useCallback, useEffect, useMemo, useState } from "react";
 
 import FilterBar from "@/components/filter-bar";
 import IssuesPrFilterMenuRow from "@/components/issues-pr-filter-toolbar";
-import {
-  filterListBySearchQuery,
-  parseListSearchQuery,
-  setListSearchOpenClosed,
-} from "@/lib/utils/issue-pr-list-search";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { loadStoredRepos } from "@/lib/repos/storage";
 import {
   KIND_ISSUE,
   KIND_STATUS_CLOSED,
   KIND_STATUS_OPEN,
 } from "@/lib/nostr/events";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
+import { loadStoredRepos } from "@/lib/repos/storage";
 import {
   formatDate24h,
   formatDateTime24h,
@@ -34,8 +30,15 @@ import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
-import { normalizeIssueListStatus, countMergedIssueComments } from "@/lib/utils/issue-pr-status";
-import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
+import {
+  filterListBySearchQuery,
+  parseListSearchQuery,
+  setListSearchOpenClosed,
+} from "@/lib/utils/issue-pr-list-search";
+import {
+  countMergedIssueComments,
+  normalizeIssueListStatus,
+} from "@/lib/utils/issue-pr-status";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { clsx } from "clsx";
@@ -150,10 +153,14 @@ export default function RepoIssuesPage({
           taskCompleted: null,
           linkedPR: 0,
           assignees: it.assignees || [],
-          comments: countMergedIssueComments(resolvedParams.entity, resolvedParams.repo, {
-            id: idStr,
-            linkedIds: it.linkedIds,
-          }),
+          comments: countMergedIssueComments(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            {
+              id: idStr,
+              linkedIds: it.linkedIds,
+            }
+          ),
           createdAt,
           updatedAt,
           needsNostrRepublish: Boolean(repoUnpushed && isNostrHex),
@@ -199,7 +206,9 @@ export default function RepoIssuesPage({
           resolvedParams.repo
         );
         if (!r) {
-          const pk = resolveEntityToPubkey(resolvedParams.entity)?.toLowerCase();
+          const pk = resolveEntityToPubkey(
+            resolvedParams.entity
+          )?.toLowerCase();
           r = repos.find((x) => {
             const nameMatch = [x.repo, x.slug, x.name].some(
               (n) =>
@@ -742,10 +751,10 @@ export default function RepoIssuesPage({
                   {githubSyncState === "loading"
                     ? "Loading issues…"
                     : githubSyncState === "no-mirror"
-                      ? "No GitHub mirror found for this repo. Open the Code tab first, or add a github.com clone URL on Nostr."
-                      : issueStatus === "open"
-                        ? "No open issues."
-                        : "No closed issues."}
+                    ? "No GitHub mirror found for this repo. Open the Code tab first, or add a github.com clone URL on Nostr."
+                    : issueStatus === "open"
+                    ? "No open issues."
+                    : "No closed issues."}
                 </li>
               ) : null}
               {displayIssues.map((item) => (

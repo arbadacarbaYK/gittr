@@ -2,6 +2,25 @@
 
 import { useEffect, useRef } from "react";
 
+import {
+  GITTR_DOC_FILE_FETCHING,
+  GITTR_DOC_GITNOSTR_ARCHITECTURE,
+  GITTR_DOC_GITNOSTR_SSH,
+  GITTR_DOC_SSH_GIT,
+  GITTR_REPO_GITNOSTR,
+  GITTR_REPO_GITTR,
+  GITTR_REPO_HELPER_TOOLS,
+} from "@/lib/gittr-repo-links";
+import {
+  SCHEMATA_NIP25,
+  SCHEMATA_NIP34,
+  SCHEMATA_NIP46,
+  SCHEMATA_NIP51,
+  SCHEMATA_NIP57,
+  SCHEMATA_NIP_C0,
+  SCHEMATA_REPO,
+} from "@/lib/nostr/schemata-links";
+
 // @ts-ignore - lucide-react types are built-in, this is a TypeScript language server cache issue
 import {
   Bell,
@@ -16,25 +35,6 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
-
-import {
-  GITTR_DOC_FILE_FETCHING,
-  GITTR_DOC_GITNOSTR_ARCHITECTURE,
-  GITTR_DOC_GITNOSTR_SSH,
-  GITTR_DOC_SSH_GIT,
-  GITTR_REPO_GITNOSTR,
-  GITTR_REPO_GITTR,
-  GITTR_REPO_HELPER_TOOLS,
-} from "@/lib/gittr-repo-links";
-import {
-  SCHEMATA_NIP34,
-  SCHEMATA_NIP46,
-  SCHEMATA_NIP25,
-  SCHEMATA_NIP51,
-  SCHEMATA_NIP57,
-  SCHEMATA_NIP_C0,
-  SCHEMATA_REPO,
-} from "@/lib/nostr/schemata-links";
 
 export default function HelpPage() {
   const mermaidRef = useRef<HTMLDivElement>(null);
@@ -192,7 +192,10 @@ export default function HelpPage() {
           <li>
             <strong className="text-white">gittr Pages</strong> — Publish static
             sites; browse the directory at{" "}
-            <Link href="/pages" className="text-purple-400 hover:text-purple-300">
+            <Link
+              href="/pages"
+              className="text-purple-400 hover:text-purple-300"
+            >
               /pages
             </Link>
             .
@@ -200,7 +203,10 @@ export default function HelpPage() {
           <li>
             <strong className="text-white">Nostr apps</strong> — Discover and
             install apps from{" "}
-            <Link href="/apps" className="text-purple-400 hover:text-purple-300">
+            <Link
+              href="/apps"
+              className="text-purple-400 hover:text-purple-300"
+            >
               /apps
             </Link>
             .
@@ -437,8 +443,8 @@ export default function HelpPage() {
                   >
                     NIP-46
                   </a>
-                  /NIP-07, or use a remote signer (NIP-46)
-                  with a hardware device.
+                  /NIP-07, or use a remote signer (NIP-46) with a hardware
+                  device.
                 </p>
                 <p className="text-sm text-gray-400 mt-2">
                   Once installed, the extension will automatically detect when
@@ -788,8 +794,8 @@ export default function HelpPage() {
                     NIP-51
                   </a>{" "}
                   kind <strong>10018</strong> followed-repos list (one
-                  replaceable event with the full <code className="text-gray-400">a</code>{" "}
-                  tag set each time).
+                  replaceable event with the full{" "}
+                  <code className="text-gray-400">a</code> tag set each time).
                 </li>
                 <li>
                   <strong>Star</strong> —{" "}
@@ -921,8 +927,7 @@ export default function HelpPage() {
                     >
                       schemata NIP-34
                     </a>
-                    ). The NIP-34 spec
-                    does not include{" "}
+                    ). The NIP-34 spec does not include{" "}
                     <code className="bg-blue-900/50 px-1 rounded">
                       public-read
                     </code>{" "}
@@ -1221,10 +1226,11 @@ export default function HelpPage() {
                 Browsing files on the Code tab
               </h3>
               <p className="text-sm text-gray-300 mb-2">
-                NIP-34 events carry <strong>metadata</strong> (name, description,
-                <code className="bg-gray-800 px-1 rounded">clone[]</code> URLs) —
-                not the full file tree. gittr loads the tree from git servers and
-                our bridge mirror.
+                NIP-34 events carry <strong>metadata</strong> (name,
+                description,
+                <code className="bg-gray-800 px-1 rounded">clone[]</code> URLs)
+                — not the full file tree. gittr loads the tree from git servers
+                and our bridge mirror.
               </p>
               <ol className="text-sm text-gray-300 list-decimal list-inside space-y-1 ml-1">
                 <li>Cache / small embedded files in the event (legacy)</li>
@@ -1641,11 +1647,11 @@ export default function HelpPage() {
                 >
                   NIP-57
                 </a>
-                , gittr requests a real zap
-                invoice. <strong>Split</strong> mode mints the invoice from{" "}
-                <strong>your</strong> LNbits wallet (repo payment config first,
-                then Settings → Account) plus the SplitPayments extension — it
-                does not rely on Nostr zap receipts for routing.
+                , gittr requests a real zap invoice. <strong>Split</strong> mode
+                mints the invoice from <strong>your</strong> LNbits wallet (repo
+                payment config first, then Settings → Account) plus the
+                SplitPayments extension — it does not rely on Nostr zap receipts
+                for routing.
               </p>
 
               <div className="mt-4 overflow-x-auto rounded border border-slate-600">

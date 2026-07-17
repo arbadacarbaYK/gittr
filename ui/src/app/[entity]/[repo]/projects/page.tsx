@@ -14,8 +14,8 @@ import { hasWriteAccess } from "@/lib/repo-permissions";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { formatDate24h, formatDateTime24h } from "@/lib/utils/date-format";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
-import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { MarkdownAnchor } from "@/lib/utils/markdown-anchor";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import {
   Calendar,

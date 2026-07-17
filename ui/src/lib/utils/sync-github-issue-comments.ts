@@ -100,7 +100,9 @@ export async function fetchGithubIssueComments(opts: {
     return [];
   }
 
-  const endpoint = `/repos/${parsed.owner}/${parsed.repo}/issues/${encodeURIComponent(
+  const endpoint = `/repos/${parsed.owner}/${
+    parsed.repo
+  }/issues/${encodeURIComponent(
     issueNumber
   )}/comments?per_page=100&sort=created&direction=asc`;
   const proxyUrl = `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`;
@@ -143,4 +145,3 @@ export async function fetchGithubIssueComments(opts: {
 
   return out;
 }
-

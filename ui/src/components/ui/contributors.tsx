@@ -97,7 +97,8 @@ export function Contributors({ contributors = [] }: ContributorsProps) {
 
         // Get Nostr metadata if pubkey exists
         const nostrData = contributor.pubkey
-          ? nostrMetadata[contributor.pubkey]
+          ? nostrMetadata[contributor.pubkey.toLowerCase()] ||
+            nostrMetadata[contributor.pubkey]
           : null;
 
         // Prefer Nostr profile picture if it exists, then GitHub/GitLab/Codeberg picture, then none
@@ -236,34 +237,26 @@ export function Contributors({ contributors = [] }: ContributorsProps) {
                     : "ring-1 ring-gray-500"
                 }`}
               >
-                {picture && (
+                {picture ? (
                   <AvatarImage
                     src={picture}
-                    alt={displayNameForTooltip}
+                    alt=""
                     className="max-w-8 max-h-8 object-cover"
                     style={{ maxWidth: "2rem", maxHeight: "2rem" }}
-                    onError={(e) => {
-                      e.currentTarget.style.display = "none";
-                    }}
                   />
-                )}
-                {/* CRITICAL: Show platform default logo when no picture and no valid initials */}
-                {!picture && initials ? (
-                  <AvatarFallback className="bg-gray-700 text-white text-[10px] font-semibold">
-                    {initials}
-                  </AvatarFallback>
-                ) : !picture ? (
-                  <AvatarFallback className="bg-transparent">
+                ) : null}
+                {/* Always provide Fallback — dead picture hosts must not leave an empty ring */}
+                <AvatarFallback className="bg-[#22262C] text-white text-[10px] font-semibold">
+                  {initials ? (
+                    initials
+                  ) : (
                     <img
                       src="/logo.svg"
-                      alt="platform default"
+                      alt=""
                       className="h-full w-full object-contain p-1"
-                      onError={(e) => {
-                        e.currentTarget.style.display = "none";
-                      }}
                     />
-                  </AvatarFallback>
-                ) : null}
+                  )}
+                </AvatarFallback>
               </Avatar>
             </Link>
           </Tooltip>

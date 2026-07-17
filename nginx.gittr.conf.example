@@ -123,6 +123,31 @@ server {
         proxy_set_header X-Nostr-Signature $http_x_nostr_signature;
     }
 
+    # Prefer `listen 443 ssl;` (no http2) on the git host — large upload-pack
+    # responses have been observed to tear down HTTP/2 streams (GnuTLS/curl 56)
+    # while HTTP/1.1 and same-machine clones succeed.
+
+    # Host-only NIP-34 clone workaround (best-effort only).
+    # Modern browsers send Referrer-Policy strict-origin-when-cross-origin, so the
+    # cross-origin Referer is usually just https://gitworkshop.dev (no /npub/repo).
+    # CORS proxies omit Referer. Full clone tags are still required for gitworkshop.
+    # OPTIONS must not 302 — CORS preflight cannot follow redirects.
+    location = /info/refs {
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin $git_cors_origin always;
+            add_header Access-Control-Allow-Credentials $git_cors_creds always;
+            add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Content-Type, Authorization, Git-Protocol, Accept, Range, X-Nostr-Auth-Event" always;
+            add_header Access-Control-Max-Age 1728000;
+            add_header Content-Type "text/plain; charset=UTF-8";
+            return 204;
+        }
+        if ($http_referer ~* "gitworkshop\.dev/(npub1[a-z0-9]+)/([A-Za-z0-9._-]+)") {
+            return 302 https://git.gittr.space/$1/$2.git/info/refs$is_args$args;
+        }
+        return 404;
+    }
+
     location ~ ^/([^/]+)/(.+\.git)(.*)$ {
         auth_request /_git_auth;
         auth_request_set $git_auth_status $upstream_status;
@@ -131,32 +156,30 @@ server {
         root /home/git-nostr/git-nostr-repositories;
         fastcgi_pass unix:/var/run/fcgiwrap.socket;
         include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME /usr/lib/git-core/git-http-backend;
+        # Production uses /usr/local/bin/git-http-backend-quiet (stderr redirected);
+        # raw git-http-backend progress on stderr via fcgiwrap breaks browser packs.
+        fastcgi_param SCRIPT_FILENAME /usr/local/bin/git-http-backend-quiet;
         fastcgi_param GIT_HTTP_EXPORT_ALL "";
         fastcgi_param GIT_PROJECT_ROOT /home/git-nostr/git-nostr-repositories;
         fastcgi_param PATH_INFO $uri;
         fastcgi_param REMOTE_USER $remote_user;
+        # Pass through client Git-Protocol (v1/v2). Do NOT clear HTTP_GIT_PROTOCOL —
+        # stripping it forces v1 ads while isomorphic-git still POSTs v2 ls-refs.
+        fastcgi_read_timeout 600s;
+        fastcgi_send_timeout 600s;
+        fastcgi_buffers 64 64k;
+        fastcgi_buffer_size 64k;
+        fastcgi_buffering off;
         
         # CORS for browser NIP-34 clients (gitworkshop.dev / isomorphic-git).
-        # Must allow Git-Protocol — otherwise preflight fails and clients fall
-        # back to a CORS proxy with "unreachable via CORS proxy" errors even
-        # when CLI `git clone` works fine.
-        add_header Access-Control-Allow-Origin * always;
+        # Reflect Origin (see map $git_cors_origin in nginx.conf) — a bare
+        # Access-Control-Allow-Origin: * breaks fetch(..., {credentials:"include"}).
+        # Must allow Git-Protocol. OPTIONS should return before auth_request.
+        add_header Access-Control-Allow-Origin $git_cors_origin always;
+        add_header Access-Control-Allow-Credentials $git_cors_creds always;
         add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
         add_header Access-Control-Allow-Headers "Content-Type, Authorization, Git-Protocol, Accept, Range, X-Nostr-Auth-Event" always;
         add_header Access-Control-Expose-Headers "Content-Type, Location" always;
-        
-        # Handle preflight OPTIONS requests
-        if ($request_method = OPTIONS) {
-            add_header Access-Control-Allow-Origin * always;
-            add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
-            add_header Access-Control-Allow-Headers "Content-Type, Authorization, Git-Protocol, Accept, Range, X-Nostr-Auth-Event" always;
-            add_header Access-Control-Expose-Headers "Content-Type, Location" always;
-            add_header Access-Control-Max-Age 1728000;
-            add_header Content-Type 'text/plain charset=UTF-8';
-            add_header Content-Length 0;
-            return 204;
-        }
     }
 
     location @git_auth_denied {

@@ -16,11 +16,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { type Discussion, appendDiscussion } from "@/lib/discussions/storage";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { KIND_LONG_FORM, createDiscussionEvent } from "@/lib/nostr/events";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
-import { KIND_LONG_FORM, createDiscussionEvent } from "@/lib/nostr/events";
 import useSession from "@/lib/nostr/useSession";
 
 import { X } from "lucide-react";
@@ -104,57 +104,57 @@ export default function NewDiscussionPage() {
             if (!signingCreds) {
               console.warn("Cannot publish discussion: no signing method");
             } else {
-            const { hasNip07, privateKey } = signingCreds;
-            const { getPublicKey } = await import("nostr-tools");
-            const authorPubkey = privateKey
-              ? getPublicKey(privateKey)
-              : (await (hasNip07 ? window.nostr!.getPublicKey() : null)) ??
-                currentUserPubkey;
+              const { hasNip07, privateKey } = signingCreds;
+              const { getPublicKey } = await import("nostr-tools");
+              const authorPubkey = privateKey
+                ? getPublicKey(privateKey)
+                : (await (hasNip07 ? window.nostr!.getPublicKey() : null)) ??
+                  currentUserPubkey;
 
-            if (hasNip07 && window.nostr) {
-              const unsignedEvent = {
-                kind: KIND_LONG_FORM,
-                created_at: now,
-                tags: [
-                  ["d", identifier],
-                  ["title", title],
-                  ["summary", description.slice(0, 200)],
-                  ["published_at", String(now)],
-                  ["repo", `${entity}/${repo}`],
-                  ["status", "open"],
-                  ...(selectedCategory
-                    ? [
-                        ["t", selectedCategory],
-                        ["category", selectedCategory],
-                      ]
-                    : []),
-                ],
-                content: description,
-                pubkey: authorPubkey,
-              } as unknown as UnsignedEvent;
-              discussionEvent = await window.nostr.signEvent(unsignedEvent);
-            } else if (privateKey) {
-              discussionEvent = createDiscussionEvent(
-                {
-                  repoEntity: entity,
-                  repoName: repo,
-                  title,
-                  description,
-                  category: selectedCategory || undefined,
-                  status: "open",
-                  identifier,
-                },
-                privateKey
-              );
-            }
+              if (hasNip07 && window.nostr) {
+                const unsignedEvent = {
+                  kind: KIND_LONG_FORM,
+                  created_at: now,
+                  tags: [
+                    ["d", identifier],
+                    ["title", title],
+                    ["summary", description.slice(0, 200)],
+                    ["published_at", String(now)],
+                    ["repo", `${entity}/${repo}`],
+                    ["status", "open"],
+                    ...(selectedCategory
+                      ? [
+                          ["t", selectedCategory],
+                          ["category", selectedCategory],
+                        ]
+                      : []),
+                  ],
+                  content: description,
+                  pubkey: authorPubkey,
+                } as unknown as UnsignedEvent;
+                discussionEvent = await window.nostr.signEvent(unsignedEvent);
+              } else if (privateKey) {
+                discussionEvent = createDiscussionEvent(
+                  {
+                    repoEntity: entity,
+                    repoName: repo,
+                    title,
+                    description,
+                    category: selectedCategory || undefined,
+                    status: "open",
+                    identifier,
+                  },
+                  privateKey
+                );
+              }
 
-            if (discussionEvent && publish) {
-              publish(discussionEvent, defaultRelays);
-              console.log(
-                "✅ Published discussion (NIP-23 30023) to Nostr:",
-                discussionEvent.id
-              );
-            }
+              if (discussionEvent && publish) {
+                publish(discussionEvent, defaultRelays);
+                console.log(
+                  "✅ Published discussion (NIP-23 30023) to Nostr:",
+                  discussionEvent.id
+                );
+              }
             }
           } catch (err) {
             console.error("Failed to publish discussion to Nostr:", err);

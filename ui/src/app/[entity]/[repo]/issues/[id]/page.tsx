@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { BountyButton } from "@/components/ui/bounty-button";
 import { Button } from "@/components/ui/button";
 import { CodeSnippetRenderer } from "@/components/ui/code-snippet-renderer";
-import { MarkdownCode } from "@/lib/utils/markdown-code";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,13 +18,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { NostrUserSearch } from "@/components/ui/nostr-user-search";
 import { Reactions } from "@/components/ui/reactions";
-import { TrustBadge } from "@/components/ui/trust-badge";
 import { Textarea } from "@/components/ui/textarea";
+import { TrustBadge } from "@/components/ui/trust-badge";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import {
-  NO_SIGNING_METHOD_MESSAGE,
-  resolveSigningCredentials,
-} from "@/lib/nostr/signer";
 import {
   KIND_BOUNTY,
   KIND_CODE_SNIPPET,
@@ -39,12 +34,17 @@ import {
   createLabelOverlayEvent,
   createStatusEvent,
 } from "@/lib/nostr/events";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveSigningCredentials,
+} from "@/lib/nostr/signer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useSession from "@/lib/nostr/useSession";
 import {
   formatNotificationMessage,
   sendNotification,
 } from "@/lib/notifications";
+import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import {
   type StoredContributor,
   type StoredRepo,
@@ -65,12 +65,12 @@ import {
   getRepoOwnerPubkey,
   resolveEntityToPubkey,
 } from "@/lib/utils/entity-resolver";
-import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import {
   findIssueRowIndexByRouteParam,
   loadMergedIssueComments,
   normalizeAssigneePubkeys,
 } from "@/lib/utils/issue-pr-status";
+import { MarkdownCode } from "@/lib/utils/markdown-code";
 import { extractMentionedPubkeys } from "@/lib/utils/mention-detection";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { fetchGithubIssueComments } from "@/lib/utils/sync-github-issue-comments";
@@ -234,9 +234,7 @@ export default function IssueDetailPage({
         number: (issueData as { number?: string }).number,
         title: issueData.title || "",
         description:
-          issueData.description ||
-          (issueData as { body?: string }).body ||
-          "",
+          issueData.description || (issueData as { body?: string }).body || "",
         author: issueData.author || "unknown",
         createdAt: issueData.createdAt || Date.now(),
         status: issueData.status || "open",
@@ -254,7 +252,9 @@ export default function IssueDetailPage({
       const repoData = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
       const ownerPk = getRepoOwnerPubkey(repoData, entity);
       const userPk = currentUserPubkey?.toLowerCase();
-      setIsOwner(Boolean(userPk && ownerPk && ownerPk.toLowerCase() === userPk));
+      setIsOwner(
+        Boolean(userPk && ownerPk && ownerPk.toLowerCase() === userPk)
+      );
 
       if (
         repoData?.ownerPubkey &&
@@ -527,9 +527,7 @@ export default function IssueDetailPage({
         });
         if (!ghComments || ghComments.length === 0) return;
 
-        const linkedIds = (
-          issue as Issue & { linkedIds?: string[] }
-        ).linkedIds;
+        const linkedIds = (issue as Issue & { linkedIds?: string[] }).linkedIds;
         const commentIds = [
           issue.id,
           ...(Array.isArray(linkedIds) ? linkedIds : []),
@@ -843,7 +841,9 @@ export default function IssueDetailPage({
       if (!issue || !isOwner) return;
 
       try {
-        const normalized = String(pubkey || "").trim().toLowerCase();
+        const normalized = String(pubkey || "")
+          .trim()
+          .toLowerCase();
         const key = getRepoStorageKey("gittr_issues", entity, repo);
         const issues = readRepoIssuesFromLocalStorage(entity, repo) as Issue[];
         const rowIdx = findIssueRowIndexByRouteParam(issues, id);
@@ -926,8 +926,14 @@ export default function IssueDetailPage({
             repo;
 
           let overlayEvent: any | null = null;
-          const signingCreds = await resolveSigningCredentials({ remoteSigner });
-          if (signingCreds?.hasNip07 && typeof window !== "undefined" && window.nostr) {
+          const signingCreds = await resolveSigningCredentials({
+            remoteSigner,
+          });
+          if (
+            signingCreds?.hasNip07 &&
+            typeof window !== "undefined" &&
+            window.nostr
+          ) {
             const createdAt = Math.floor(Date.now() / 1000);
             const tags: string[][] = [["L", "gittr.issue"]];
             if (issueEventId) {
@@ -953,19 +959,19 @@ export default function IssueDetailPage({
             );
           } else if (signingCreds?.privateKey) {
             const privateKey = signingCreds.privateKey;
-              overlayEvent = createLabelOverlayEvent(
-                {
-                  targetEventId: issueEventId || undefined,
-                  targetAddress:
-                    ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
-                      ? `30617:${ownerPubkey}:${repoIdentifier}`
-                      : undefined,
-                  labels: nextIssue.labels,
-                  subject: nextIssue.title,
-                  labelNamespace: "gittr.issue",
-                },
-                privateKey
-              );
+            overlayEvent = createLabelOverlayEvent(
+              {
+                targetEventId: issueEventId || undefined,
+                targetAddress:
+                  ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
+                    ? `30617:${ownerPubkey}:${repoIdentifier}`
+                    : undefined,
+                labels: nextIssue.labels,
+                subject: nextIssue.title,
+                labelNamespace: "gittr.issue",
+              },
+              privateKey
+            );
           }
           if (overlayEvent) {
             publish(overlayEvent, defaultRelays);
@@ -1105,7 +1111,9 @@ export default function IssueDetailPage({
 
         // Publish bounty event to Nostr
         try {
-          const signingCreds = await resolveSigningCredentials({ remoteSigner });
+          const signingCreds = await resolveSigningCredentials({
+            remoteSigner,
+          });
           if (!signingCreds) {
             console.warn("Cannot publish bounty: no signing method");
             return;
@@ -2041,9 +2049,9 @@ export default function IssueDetailPage({
                           size="sm"
                           className="w-full"
                           onClick={() => handleAddAssignee(currentUserPubkey)}
-                          disabled={normalizeAssignees(issue.assignees).includes(
-                            currentUserPubkey.toLowerCase()
-                          )}
+                          disabled={normalizeAssignees(
+                            issue.assignees
+                          ).includes(currentUserPubkey.toLowerCase())}
                         >
                           <User className="mr-2 h-4 w-4" />
                           Assign yourself
@@ -2060,9 +2068,9 @@ export default function IssueDetailPage({
                               {repoContributors
                                 .filter(
                                   (c) =>
-                                    !normalizeAssignees(issue.assignees).includes(
-                                      c.pubkey.toLowerCase()
-                                    )
+                                    !normalizeAssignees(
+                                      issue.assignees
+                                    ).includes(c.pubkey.toLowerCase())
                                 )
                                 .map((contributor) => {
                                   const meta =

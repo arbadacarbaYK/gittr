@@ -1,6 +1,5 @@
 "use client";
 
-import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -8,8 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
+import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
+import {
+  repoDefaultBranch,
+  resolveSharedRepoBranch,
+} from "@/lib/repos/repo-file-tree-branch";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
+import { inferGithubUpstreamFromRoute } from "@/lib/repos/upstream-precedence";
 import {
   formatDate24h,
   formatDateTime24h,
@@ -21,12 +27,6 @@ import {
   getRepoOwnerPubkey,
   resolveEntityToPubkeyAsync,
 } from "@/lib/utils/entity-resolver";
-import {
-  repoDefaultBranch,
-  resolveSharedRepoBranch,
-} from "@/lib/repos/repo-file-tree-branch";
-import { inferGithubUpstreamFromRoute } from "@/lib/repos/upstream-precedence";
-import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { GitBranch, GitCommit, History, Search } from "lucide-react";
@@ -46,7 +46,9 @@ async function fetchGithubCommitsForBranch(
     (b, i, arr) => b && arr.indexOf(b) === i
   );
   for (const tryBranch of branchesToTry) {
-    const endpoint = `/repos/${spec.owner}/${spec.repo}/commits?sha=${encodeURIComponent(tryBranch)}&per_page=100`;
+    const endpoint = `/repos/${spec.owner}/${
+      spec.repo
+    }/commits?sha=${encodeURIComponent(tryBranch)}&per_page=100`;
     const ghRes = await fetch(
       `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`
     );
@@ -162,7 +164,8 @@ export default function CommitsPage({
           rec?.name ||
           repo;
         if (ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk) && repoName) {
-          const res = await fetchBridgeRead(`/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
+          const res = await fetchBridgeRead(
+            `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
               ownerPk
             )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
               branch
