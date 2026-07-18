@@ -3,12 +3,6 @@
 import { Suspense, useEffect, useState } from "react";
 
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { buildUnsignedRepositoryEvent } from "@/lib/nostr/events";
-import {
-  publishWithConfirmation,
-  storeRepoEventId,
-} from "@/lib/nostr/publish-with-confirmation";
-import { resolveNostrSigner } from "@/lib/nostr/signer";
 import useSession from "@/lib/nostr/useSession";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
@@ -16,7 +10,6 @@ import { validateRepoForForkOrSign } from "@/lib/utils/repo-corruption-check";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { getEventHash } from "nostr-tools";
 import { nip19 } from "nostr-tools";
 
 function slugify(text: string): string {
@@ -43,8 +36,7 @@ function NewRepoPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { name: userName, isLoggedIn } = useSession();
-  const { publish, subscribe, defaultRelays, pubkey, remoteSigner } =
-    useNostrContext();
+  const { pubkey } = useNostrContext();
 
   useEffect(() => {
     setMounted(true);
@@ -324,6 +316,7 @@ function NewRepoPageContent() {
             tags: d.tags || [],
             releases: d.releases || [],
             createdAt: Date.now(),
+            status: "local" as const,
           };
           // CRITICAL: Log entity to verify it's correct
           console.log("🔄 Importing via new page with entity:", {
@@ -365,56 +358,7 @@ function NewRepoPageContent() {
           // Dispatch event to update repositories page
           window.dispatchEvent(new CustomEvent("gittr:repo-created"));
 
-          // Publish to Nostr with ALL metadata so it persists across ports
-          if (publish && pubkey) {
-            try {
-              const signer = await resolveNostrSigner({ remoteSigner });
-              if (signer) {
-                const signerPubkey = await signer.getPublicKey();
-                const repoEvent = buildUnsignedRepositoryEvent(
-                  {
-                    repositoryName: repo,
-                    publicRead: true,
-                    publicWrite: false,
-                    description:
-                      d.description || `Imported from ${normalizedUrl}`,
-                    sourceUrl: normalizedUrl,
-                    forkedFrom: normalizedUrl,
-                    readme: d.readme,
-                    files: d.files,
-                    stars: d.stars,
-                    forks: d.forks,
-                    languages: d.languages,
-                    topics: d.topics || [],
-                    // CRITICAL: Use rec.contributors which has owner properly set, not d.contributors
-                    contributors:
-                      rec.contributors ||
-                      (pubkey
-                        ? [
-                            {
-                              pubkey,
-                              name: entityInfo.displayName,
-                              weight: 100,
-                            },
-                          ]
-                        : []),
-                    defaultBranch: d.defaultBranch,
-                    branches: d.branches || [],
-                    releases: d.releases || [],
-                  },
-                  signerPubkey
-                );
-                repoEvent.id = getEventHash(repoEvent);
-                const signedRepoEvent = await signer.signEvent(repoEvent);
-                publish(signedRepoEvent, defaultRelays);
-                console.log(
-                  "Published imported repo to Nostr with full metadata"
-                );
-              }
-            } catch (error: any) {
-              console.error("Failed to publish imported repo to Nostr:", error);
-            }
-          }
+          // Local only — publish via Push to Nostr on the repo page.
         } catch {}
         // Only redirect if repo was successfully created
         if (importedRepoSlug && entityInfo) {
@@ -600,6 +544,7 @@ function NewRepoPageContent() {
           branches: isFork ? forkSource.branches : undefined,
           releases: isFork ? forkSource.releases : undefined,
           createdAt: Date.now(),
+          status: "local" as const,
         } as any;
         // CRITICAL: Ensure contributors array is saved with owner
         if (!rec.contributors || rec.contributors.length === 0) {
@@ -649,96 +594,7 @@ function NewRepoPageContent() {
         // Dispatch event to update repositories page
         window.dispatchEvent(new CustomEvent("gittr:repo-created"));
 
-        // Publish to Nostr with ALL metadata so it persists across ports
-        if (publish && pubkey) {
-          try {
-            const signer = await resolveNostrSigner({ remoteSigner });
-            if (signer) {
-              // Get git server URL from env or use domain from env
-              const domain =
-                process.env.NEXT_PUBLIC_DOMAIN ||
-                (typeof window !== "undefined" ? window.location.host : "");
-              const gitServerUrl =
-                process.env.NEXT_PUBLIC_GIT_SERVER_URL ||
-                (domain
-                  ? `https://${domain}`
-                  : typeof window !== "undefined"
-                  ? `${window.location.protocol}//${window.location.host}`
-                  : "");
-
-              // Get relays from context (already includes user-configured relays)
-              const signerPubkey = await signer.getPublicKey();
-              const repoEvent = buildUnsignedRepositoryEvent(
-                {
-                  repositoryName: repoSlug,
-                  publicRead: true,
-                  publicWrite: false,
-                  description:
-                    rec.description || `Repository: ${name || repoSlug}`,
-                  forkedFrom: rec.forkedFrom,
-                  sourceUrl: rec.sourceUrl,
-                  readme: rec.readme,
-                  files: rec.fileCount && rec.fileCount > 0 ? [] : undefined, // Files stored separately, not in event
-                  topics: rec.topics,
-                  languages: rec.languages,
-                  // CRITICAL: Use rec.contributors which has owner properly set, not the contributors variable
-                  contributors:
-                    rec.contributors ||
-                    (pubkey
-                      ? [{ pubkey, name: entityInfo.displayName, weight: 100 }]
-                      : []),
-                  defaultBranch: rec.defaultBranch,
-                  branches: rec.branches,
-                  releases: rec.releases,
-                  // Host-only gitServerUrl is expanded to /npub/repo.git in
-                  // buildUnsignedRepositoryEvent (required by gitworkshop / NIP-34).
-                  clone: [gitServerUrl],
-                  relays: defaultRelays,
-                },
-                signerPubkey
-              );
-              repoEvent.id = getEventHash(repoEvent);
-              const signedRepoEvent = await signer.signEvent(repoEvent);
-
-              // Publish with confirmation and store event ID
-              if (!subscribe) {
-                setStatus(
-                  "Error: Cannot publish - subscribe function not available"
-                );
-                return;
-              }
-
-              setStatus("Publishing to Nostr...");
-              const result = await publishWithConfirmation(
-                publish,
-                subscribe,
-                signedRepoEvent,
-                defaultRelays,
-                10000 // 10 second timeout
-              );
-
-              if (result.confirmed) {
-                // Store event ID in repo data
-                storeRepoEventId(repoSlug, rec.entity, result.eventId, true);
-                console.log(
-                  `✅ Published repo to Nostr - Event ID: ${
-                    result.eventId
-                  }, Confirmed by: ${result.confirmedRelays.join(", ")}`
-                );
-                setStatus("Repository published to Nostr!");
-              } else {
-                console.warn(
-                  `⚠️ Published repo to Nostr but no confirmation received - Event ID: ${result.eventId}`
-                );
-                // Still store event ID even if not confirmed (might be delayed)
-                storeRepoEventId(repoSlug, rec.entity, result.eventId, false);
-                setStatus("Repository published (awaiting confirmation)");
-              }
-            }
-          } catch (error: any) {
-            console.error("Failed to publish repo to Nostr:", error);
-          }
-        }
+        // Local only — publish via Push to Nostr on the repo page.
 
         // Only redirect if repo was successfully created
         if (repoSlug && entity) {
