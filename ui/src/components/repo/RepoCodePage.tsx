@@ -17381,7 +17381,7 @@ export function RepoCodePage() {
                   // Nesting border-b on both this details and the inner status div left an empty gap.
                   return (
                     <details
-                      className="mb-3"
+                      className="mt-4 mb-3"
                       open={repositoryStatusOpen}
                       onToggle={(e) => {
                         setRepositoryStatusOpen(
