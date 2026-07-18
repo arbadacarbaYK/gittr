@@ -1484,6 +1484,9 @@ export function RepoCodePage() {
   const [isRefetching, setIsRefetching] = useState<boolean>(false);
   const [showPostSourceRefetchHint, setShowPostSourceRefetchHint] =
     useState<boolean>(false);
+  /** Next UI wraps owner controls in <details>; open after source refetch so Push stays visible. */
+  const [repositoryStatusOpen, setRepositoryStatusOpen] =
+    useState<boolean>(false);
   const [fetchStatusExpanded, setFetchStatusExpanded] =
     useState<boolean>(false);
   const [cloneUrlsExpanded, setCloneUrlsExpanded] = useState<boolean>(false);
@@ -1541,6 +1544,8 @@ export function RepoCodePage() {
     try {
       if (sessionStorage.getItem(postSourceRefetchHintKey) === "1") {
         setShowPostSourceRefetchHint(true);
+        // Page reloads after refetch; keep Repository status expanded so Push is obvious.
+        setRepositoryStatusOpen(true);
       }
     } catch {
       // ignore
@@ -17375,7 +17380,15 @@ export function RepoCodePage() {
                   // No bottom border here — Zap (and sections below) own the divider.
                   // Nesting border-b on both this details and the inner status div left an empty gap.
                   return (
-                    <details className="mb-3">
+                    <details
+                      className="mb-3"
+                      open={repositoryStatusOpen}
+                      onToggle={(e) => {
+                        setRepositoryStatusOpen(
+                          (e.currentTarget as HTMLDetailsElement).open
+                        );
+                      }}
+                    >
                       <summary className="cursor-pointer text-sm font-semibold mb-2 text-gray-300">
                         Repository status
                       </summary>
@@ -18850,6 +18863,16 @@ export function RepoCodePage() {
                                       repos.push(newRepo);
                                       saveStoredRepos(repos);
 
+                                      try {
+                                        if (postSourceRefetchHintKey) {
+                                          sessionStorage.setItem(
+                                            postSourceRefetchHintKey,
+                                            "1"
+                                          );
+                                        }
+                                      } catch {
+                                        // ignore
+                                      }
                                       alert(
                                         `✅ Refetched from GitHub!\n\nFound ${
                                           newFiles.filter(
