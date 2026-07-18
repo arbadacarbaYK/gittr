@@ -1484,8 +1484,8 @@ export function RepoCodePage() {
   const [isRefetching, setIsRefetching] = useState<boolean>(false);
   const [showPostSourceRefetchHint, setShowPostSourceRefetchHint] =
     useState<boolean>(false);
-  /** Next UI wraps owner controls in <details>; open after source refetch so Push stays visible. */
-  const [repositoryStatusOpen, setRepositoryStatusOpen] =
+  /** Same chevron collapse as Git Server / Clone URL; open after source refetch so Push stays visible. */
+  const [repositoryStatusExpanded, setRepositoryStatusExpanded] =
     useState<boolean>(false);
   const [fetchStatusExpanded, setFetchStatusExpanded] =
     useState<boolean>(false);
@@ -1545,7 +1545,7 @@ export function RepoCodePage() {
       if (sessionStorage.getItem(postSourceRefetchHintKey) === "1") {
         setShowPostSourceRefetchHint(true);
         // Page reloads after refetch; keep Repository status expanded so Push is obvious.
-        setRepositoryStatusOpen(true);
+        setRepositoryStatusExpanded(true);
       }
     } catch {
       // ignore
@@ -17377,23 +17377,25 @@ export function RepoCodePage() {
                 const wrapOwnerStatus = (node: ReactNode | null) => {
                   if (!node) return null;
                   if (!isNextUi) return node;
-                  // No bottom border here — Zap (and sections below) own the divider.
-                  // Nesting border-b on both this details and the inner status div left an empty gap.
+                  // Match Git Server / Clone URL: border-t + label + right chevron.
                   return (
-                    <details
-                      className="mt-4 mb-3"
-                      open={repositoryStatusOpen}
-                      onToggle={(e) => {
-                        setRepositoryStatusOpen(
-                          (e.currentTarget as HTMLDetailsElement).open
-                        );
-                      }}
-                    >
-                      <summary className="cursor-pointer text-sm font-semibold mb-2 text-gray-300">
-                        Repository status
-                      </summary>
-                      {node}
-                    </details>
+                    <div className="pt-2 border-t border-gray-700 mb-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRepositoryStatusExpanded(!repositoryStatusExpanded)
+                        }
+                        className="flex w-full items-center justify-between text-xs text-gray-400 hover:text-gray-300 mb-1"
+                      >
+                        <span>Repository status</span>
+                        {repositoryStatusExpanded ? (
+                          <ChevronUp className="h-3 w-3" />
+                        ) : (
+                          <ChevronDown className="h-3 w-3" />
+                        )}
+                      </button>
+                      {repositoryStatusExpanded ? node : null}
+                    </div>
                   );
                 };
                 try {
@@ -17430,9 +17432,11 @@ export function RepoCodePage() {
                             : "mb-4 pb-4 border-b border-lightgray"
                         }
                       >
-                        <h3 className="text-sm font-semibold mb-2">
-                          Repository Status
-                        </h3>
+                        {!isNextUi ? (
+                          <h3 className="text-sm font-semibold mb-2">
+                            Repository Status
+                          </h3>
+                        ) : null}
                         <p className="text-sm text-gray-400 mb-3">
                           Repository data not found. You can re-import it from
                           the original source.
