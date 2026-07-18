@@ -11,9 +11,8 @@ import {
   loadStoredRepos,
 } from "@/lib/repos/storage";
 import {
-  analyzeArchitecture,
-  generateLayeredArchitecture,
-  generateMermaidDiagram,
+  type ArchitectureViewMode,
+  generateArchitectureDiagram,
 } from "@/lib/utils/architecture-generator";
 import {
   getRepoOwnerPubkey,
@@ -38,12 +37,11 @@ export default function ArchitecturePage({
   const [error, setError] = useState<string | null>(null);
   const [mermaidDiagram, setMermaidDiagram] = useState<string>("");
   const [status, setStatus] = useState<string>("");
-  const [diagramType, setDiagramType] = useState<"structure" | "layered">(
-    "layered"
-  );
+  const [diagramType, setDiagramType] =
+    useState<ArchitectureViewMode>("overview");
   const [filesFetched, setFilesFetched] = useState(false);
   const fetchedRef = useRef(false);
-  const mermaidRef = useRef<any>(null);
+  const mermaidRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (fetchedRef.current) return;
@@ -66,43 +64,45 @@ export default function ArchitecturePage({
         const mermaid = mermaidModule.default;
 
         // Initialize Mermaid with theme settings (only once)
-        if (!(window as any).__mermaidInitialized) {
-          mermaid.initialize({
-            startOnLoad: true,
-            theme: "dark",
-            themeVariables: {
-              primaryColor: "#8b5cf6",
-              primaryTextColor: "#fff",
-              primaryBorderColor: "#7c3aed",
-              primaryBorderWidth: "2px",
-              lineColor: "#64748b",
-              secondaryColor: "#1e293b",
-              tertiaryColor: "#0f172a",
-              background: "#0f172a",
-              mainBkg: "#1e293b",
-              secondBkg: "#22262C",
-              tertiaryBkg: "#0f172a",
-              textColor: "#fff",
-              clusterBkg: "#1e293b",
-              clusterBorder: "#7c3aed",
-              defaultLinkColor: "#64748b",
-              titleColor: "#fff",
-              edgeLabelBackground: "#1e293b",
-              nodeBkg: "#1e293b",
-              nodeBorder: "#7c3aed",
-              nodeTextColor: "#fff",
-            },
-            securityLevel: "loose",
-            flowchart: {
-              useMaxWidth: false, // Don't constrain width - let it fill
-              htmlLabels: true,
-              curve: "basis",
-              padding: 20,
-            },
-          });
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (window as any).__mermaidInitialized = true;
-        }
+        // Re-init each render so overview/structure/detailed themes stay consistent
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: "dark",
+          themeVariables: {
+            // LikeC4-inspired calm dark map (teal / sky / soft fills)
+            primaryColor: "#134e4a",
+            primaryTextColor: "#ecfeff",
+            primaryBorderColor: "#2dd4bf",
+            primaryBorderWidth: "2px",
+            lineColor: "#94a3b8",
+            secondaryColor: "#1e293b",
+            tertiaryColor: "#0b1220",
+            background: "#0b1220",
+            mainBkg: "#134e4a",
+            secondBkg: "#1e293b",
+            tertiaryBkg: "#0b1220",
+            textColor: "#e2e8f0",
+            clusterBkg: "#111827",
+            clusterBorder: "#475569",
+            defaultLinkColor: "#94a3b8",
+            titleColor: "#f8fafc",
+            edgeLabelBackground: "#0f172a",
+            nodeBkg: "#1e293b",
+            nodeBorder: "#2dd4bf",
+            nodeTextColor: "#f8fafc",
+            fontFamily:
+              "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
+          },
+          securityLevel: "loose",
+          flowchart: {
+            useMaxWidth: false,
+            htmlLabels: true,
+            curve: "basis",
+            padding: 28,
+            nodeSpacing: 50,
+            rankSpacing: 60,
+          },
+        });
 
         if (!mermaidRef.current) return;
 
@@ -302,7 +302,8 @@ export default function ArchitecturePage({
     };
   }, [mermaidDiagram, diagramType]);
 
-  async function loadArchitecture() {
+  async function loadArchitecture(modeOverride?: ArchitectureViewMode) {
+    const mode = modeOverride ?? diagramType;
     setLoading(true);
     setError(null);
     setStatus("Loading repository data...");
@@ -382,16 +383,12 @@ export default function ArchitecturePage({
 
       setStatus(`Analyzing ${files.length} files for architecture...`);
 
-      // Generate architecture diagram
-      let diagram = "";
-      if (diagramType === "layered") {
-        diagram = generateLayeredArchitecture(files);
-        console.log("📊 [Architecture] Generated layered diagram:", diagram);
-      } else {
-        const architecture = analyzeArchitecture(files);
-        diagram = generateMermaidDiagram(architecture);
-        console.log("📊 [Architecture] Generated structure diagram:", diagram);
-      }
+      const diagram = generateArchitectureDiagram(
+        files,
+        mode,
+        actualRepoName
+      );
+      console.log("📊 [Architecture] Generated diagram:", mode, diagram);
 
       setMermaidDiagram(diagram);
       setFilesFetched(true);
@@ -561,28 +558,36 @@ export default function ArchitecturePage({
 
   return (
     <div className="mt-4 w-screen max-w-none relative left-1/2 right-1/2 -translate-x-1/2 px-3 sm:px-6">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Layers className="h-5 w-5 text-purple-500" />
-          <h2 className="text-xl font-semibold">Architecture Diagram</h2>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+        <div className="flex items-center gap-2 min-w-0">
+          <Layers className="h-5 w-5 shrink-0 theme-accent-primary" />
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold truncate">Architecture</h2>
+            <p className="text-xs text-gray-500">
+              C4-style overview from the file tree — fewer boxes, clearer flow
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <select
             value={diagramType}
             onChange={(e) => {
-              setDiagramType(e.target.value as "structure" | "layered");
+              const next = e.target.value as ArchitectureViewMode;
+              setDiagramType(next);
               fetchedRef.current = false;
-              loadArchitecture();
+              // Pass mode explicitly — setState is async
+              void loadArchitecture(next);
             }}
             className="px-3 py-1.5 bg-[#22262C] border border-[#383B42] rounded-md text-sm text-gray-300"
           >
-            <option value="layered">Layered View</option>
-            <option value="structure">Structure View</option>
+            <option value="overview">Overview (C4)</option>
+            <option value="structure">Structure</option>
+            <option value="detailed">Detailed layers</option>
           </select>
           <Button
             onClick={() => {
               fetchedRef.current = false;
-              loadArchitecture();
+              void loadArchitecture();
             }}
             disabled={loading}
             variant="outline"
@@ -596,6 +601,29 @@ export default function ArchitecturePage({
             Refresh
           </Button>
         </div>
+      </div>
+
+      <div className="mb-3 flex flex-wrap gap-3 text-[11px] text-gray-500">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-teal-700 border border-teal-400" />
+          Frontend
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-blue-900 border border-blue-400" />
+          API
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-purple-950 border border-purple-400" />
+          Backend
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-amber-950 border border-amber-400" />
+          Data
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-zinc-800 border border-zinc-400" />
+          Platform
+        </span>
       </div>
 
       {status && (
@@ -613,7 +641,7 @@ export default function ArchitecturePage({
 
       {loading && !mermaidDiagram && (
         <div className="flex items-center justify-center h-96">
-          <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+          <Loader2 className="h-8 w-8 animate-spin theme-accent-primary" />
         </div>
       )}
 
@@ -672,7 +700,18 @@ export default function ArchitecturePage({
               overflow-y: auto;
             }
           `}</style>
-          <div className="mermaid-architecture-wrapper border border-[#383B42] rounded-md bg-[#0f172a] relative h-[70vh] min-h-[520px] md:h-[800px]">
+          <div className="mermaid-architecture-wrapper border border-[#383B42] rounded-xl bg-[#0b1220] relative h-[70vh] min-h-[520px] md:h-[800px] shadow-[inset_0_1px_0_rgba(148,163,184,0.08)]">
+            <div
+              className="absolute top-0 left-0 right-0 h-8 flex items-center gap-1.5 px-3 border-b border-[#1f2937] bg-[#111827]/60 rounded-t-xl z-10 pointer-events-none"
+              aria-hidden
+            >
+              <span className="h-2.5 w-2.5 rounded-full bg-[#f87171]/80" />
+              <span className="h-2.5 w-2.5 rounded-full bg-[#fbbf24]/80" />
+              <span className="h-2.5 w-2.5 rounded-full bg-[#34d399]/80" />
+              <span className="ml-2 text-[10px] text-gray-500 tracking-wide">
+                architecture overview
+              </span>
+            </div>
             <div
               ref={mermaidRef}
               className="mermaid-architecture-container w-full h-full overflow-auto cursor-grab active:cursor-grabbing"
@@ -682,7 +721,7 @@ export default function ArchitecturePage({
                 boxSizing: "border-box",
                 position: "relative",
                 zIndex: 1,
-                padding: "20px",
+                padding: "40px 24px 24px",
                 width: "100%",
                 height: "100%",
               }}
