@@ -1956,6 +1956,13 @@ export async function pushRepoToNostr(
         ]);
       }
 
+      // gittr extension (not core NIP-34): privacy tags — must be on every Push so a
+      // later Amber/NIP-07 push does not wipe Settings → Private off the replaceable 30617.
+      const publicRead = repo.publicRead !== false;
+      const publicWrite = repo.publicWrite === true;
+      nip34Tags.push(["public-read", publicRead ? "true" : "false"]);
+      nip34Tags.push(["public-write", publicWrite ? "true" : "false"]);
+
       // NIP-34: Add maintainers tags (from contributors + owner)
       // CRITICAL: Always include event publisher (owner) as maintainer for discoverability
       const maintainerPubkeys = new Set<string>();

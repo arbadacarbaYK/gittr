@@ -738,6 +738,7 @@ export class RemoteSignerManager {
     // because it recognizes the app by our client pubkey.
     const connectParams = buildConnectParams(session);
 
+    let connectTimedOut = false;
     try {
       await this.sendRequest(
         session,
@@ -750,21 +751,48 @@ export class RemoteSignerManager {
       if (/already connected/i.test(msg)) {
         // OK — signer still considers this client paired
       } else if (/timed out|connect timed out/i.test(msg)) {
+        connectTimedOut = true;
         console.warn(
-          "[RemoteSigner] connect on reestablish timed out; probing get_public_key"
+          "[RemoteSigner] connect on reestablish timed out; will probe only if pubkey unknown"
         );
       } else {
         throw err;
       }
     }
 
+    // Session already stores the logged-in identity from pairing. Amber treats
+    // get_public_key as its own permission and often prompts "read public key"
+    // on every reconnect — even though gittr already knows the owner pubkey.
+    // Only probe when we truly lack a cached identity (or connect failed).
+    const cachedUserPubkey =
+      typeof session.userPubkey === "string" &&
+      HEX_64_RE.test(session.userPubkey)
+        ? session.userPubkey.toLowerCase()
+        : "";
+    if (cachedUserPubkey && !connectTimedOut) {
+      return;
+    }
+
     try {
-      await this.sendRequest(session, "get_public_key", [], CONNECT_TIMEOUT_MS);
+      const remotePubkeyHex = await this.sendRequest(
+        session,
+        "get_public_key",
+        [],
+        CONNECT_TIMEOUT_MS
+      );
+      if (
+        typeof remotePubkeyHex === "string" &&
+        HEX_64_RE.test(remotePubkeyHex)
+      ) {
+        session.userPubkey = remotePubkeyHex.toLowerCase();
+        this.session = session;
+        persistRemoteSignerSession(session);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (/no permission/i.test(msg) && session.userPubkey) {
+      if (/no permission|timed out/i.test(msg) && cachedUserPubkey) {
         console.warn(
-          "[RemoteSigner] get_public_key denied but cached userPubkey exists — sign may still work after user approves on device"
+          "[RemoteSigner] get_public_key denied/timed out but cached userPubkey exists — continuing with cached identity"
         );
         return;
       }

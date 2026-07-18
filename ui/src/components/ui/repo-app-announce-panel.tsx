@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 
 import {
   CheckCircle2,
+  ChevronDown,
   Circle,
   Package,
   RefreshCw,
@@ -223,20 +224,23 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
   if (!isOwnerSession) return null;
 
   return (
-    <div className="mt-4 rounded-lg border border-zinc-800/90 bg-zinc-950/40 p-3">
-      <div className="mb-2 flex items-center gap-2">
-        <Smartphone className="h-4 w-4 text-zinc-300" aria-hidden />
-        <h3 className="text-sm font-semibold tracking-tight text-zinc-50">
-          Announce app
-        </h3>
-      </div>
-      <p className="mb-3 text-[11px] leading-relaxed text-zinc-400">
+    <details className="group mt-3 overflow-hidden rounded-xl border border-emerald-900/30 bg-gradient-to-b from-emerald-950/15 to-zinc-950/40 open:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
+      <summary className="flex cursor-pointer list-none items-center gap-2.5 px-3 py-3 text-sm font-semibold tracking-tight text-white [&::-webkit-details-marker]:hidden">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 ring-1 ring-emerald-400/20">
+          <Smartphone className="h-4 w-4 text-emerald-300" aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1 leading-tight">Announce app</span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition duration-200 group-open:rotate-180" />
+      </summary>
+
+      <div className="space-y-3 border-t border-emerald-900/25 px-3 pb-3.5 pt-3">
+      <p className="text-[11px] leading-relaxed text-zinc-400">
         Publish Zapstore-compatible Nostr events for the latest forge Release.
         APKs stay on GitHub/Codeberg/GitLab — gittr does not host binaries.
         Listing on Zapstore is free.
       </p>
 
-      <div className="mb-3 space-y-0.5 border-b border-zinc-800/80 pb-3">
+      <div className="space-y-0.5 border-b border-zinc-800/80 pb-3">
         <ChecklistRow
           ok={hasSource}
           title={
@@ -400,13 +404,14 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         </div>
       ) : null}
 
-      <p className="mt-3 text-[10px] leading-relaxed text-zinc-500">
+      <p className="text-[10px] leading-relaxed text-zinc-500">
         Releases ≠ git branch: code lives on a branch; announce reads forge{" "}
         <strong className="font-medium text-zinc-400">Releases</strong> + APK
         assets. Optional{" "}
         <code className="rounded bg-zinc-900 px-1">zapstore.yaml</code> in the
         forge repo enables free auto-whitelist on relay.zapstore.dev.
       </p>
-    </div>
+      </div>
+    </details>
   );
 }

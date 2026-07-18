@@ -1486,12 +1486,12 @@ export function RepoCodePage() {
   const [showPostSourceRefetchHint, setShowPostSourceRefetchHint] =
     useState<boolean>(false);
   /**
-   * Same chevron collapse as Git Server / Clone URL.
-   * Default open for owners so Push / Pages / Announce are not mistaken as “gone”.
+   * Same chevron collapse as Git Server / Clone URL — closed when the repo opens.
    * Opens again after source refetch so Push stays visible.
+   * Inside: Push stays visible; Pages + Announce are their own collapsed details.
    */
   const [repositoryStatusExpanded, setRepositoryStatusExpanded] =
-    useState<boolean>(true);
+    useState<boolean>(false);
   const [fetchStatusExpanded, setFetchStatusExpanded] =
     useState<boolean>(false);
   const [cloneUrlsExpanded, setCloneUrlsExpanded] = useState<boolean>(false);
@@ -2664,7 +2664,23 @@ export function RepoCodePage() {
 
           if (addedCount > 0) {
             contributors = normalizeContributors(contributors);
-            setRepoData((prev) => (prev ? { ...prev, contributors } : prev));
+            setRepoData((prev) =>
+              prev
+                ? { ...prev, contributors }
+                : ({
+                    entity: resolvedParams.entity,
+                    repo: resolvedParams.repo,
+                    name: repo.name || resolvedParams.repo,
+                    readme: repo.readme || "",
+                    files: Array.isArray(repo.files) ? repo.files : [],
+                    description: repo.description || "",
+                    contributors,
+                    defaultBranch: repo.defaultBranch || "main",
+                    ownerPubkey: repo.ownerPubkey,
+                    sourceUrl: repo.sourceUrl,
+                    forkedFrom: repo.forkedFrom,
+                  } as StoredRepo)
+            );
           }
         } catch (contribError) {
           console.warn("⚠️ [Repo] Failed to fetch contributors:", contribError);
@@ -6740,46 +6756,57 @@ export function RepoCodePage() {
                       : "pubkey",
                     usingLocalFiles: useLocalFiles,
                   });
-                  setRepoDataFn((prev: StoredRepo | null) =>
-                    prev
-                      ? {
-                          ...prev,
-                          files: useLocalFiles
-                            ? localFiles
-                            : eventRepoData.files, // CRITICAL: Use local files if they exist
-                          name: eventRepoData.repositoryName || prev.name, // CRITICAL: Store actual repo name from event
-                          repo: eventRepoData.repositoryName || prev.repo, // Also store in repo field for compatibility
-                          clone:
-                            eventRepoData.clone &&
-                            Array.isArray(eventRepoData.clone)
-                              ? eventRepoData.clone.filter(
-                                  (url: string) =>
-                                    url &&
-                                    !url.includes("localhost") &&
-                                    !url.includes("127.0.0.1")
-                                )
-                              : prev.clone,
-                          relays: eventRepoData.relays || prev.relays,
-                          sourceUrl: eventRepoData.sourceUrl || prev.sourceUrl,
-                          forkedFrom:
-                            eventRepoData.forkedFrom || prev.forkedFrom,
-                          contributors:
-                            contributors.length > 0
-                              ? contributors
-                              : prev.contributors, // Update contributors from event
-                          // Store maintainers and privacy from NIP-34 tags
-                          ...(eventRepoData.maintainers
-                            ? { maintainers: eventRepoData.maintainers }
-                            : {}),
-                          ...(eventRepoData.publicRead !== undefined
-                            ? { publicRead: eventRepoData.publicRead }
-                            : {}),
-                          ...(eventRepoData.publicWrite !== undefined
-                            ? { publicWrite: eventRepoData.publicWrite }
-                            : {}),
-                        }
-                      : prev
-                  );
+                  setRepoDataFn((prev: StoredRepo | null) => {
+                    const base =
+                      prev ||
+                      ({
+                        entity: resolvedParams.entity,
+                        repo: resolvedParams.repo,
+                        name:
+                          eventRepoData.repositoryName || resolvedParams.repo,
+                        readme: "",
+                        files: [],
+                        description: eventRepoData.description || "",
+                        contributors: [],
+                        defaultBranch: eventRepoData.defaultBranch || "main",
+                        ownerPubkey: event.pubkey,
+                      } as StoredRepo);
+                    return {
+                      ...base,
+                      files: useLocalFiles
+                        ? localFiles
+                        : eventRepoData.files, // CRITICAL: Use local files if they exist
+                      name: eventRepoData.repositoryName || base.name,
+                      repo: eventRepoData.repositoryName || base.repo,
+                      clone:
+                        eventRepoData.clone &&
+                        Array.isArray(eventRepoData.clone)
+                          ? eventRepoData.clone.filter(
+                              (url: string) =>
+                                url &&
+                                !url.includes("localhost") &&
+                                !url.includes("127.0.0.1")
+                            )
+                          : base.clone,
+                      relays: eventRepoData.relays || base.relays,
+                      sourceUrl: eventRepoData.sourceUrl || base.sourceUrl,
+                      forkedFrom:
+                        eventRepoData.forkedFrom || base.forkedFrom,
+                      contributors:
+                        contributors.length > 0
+                          ? contributors
+                          : base.contributors,
+                      ...(eventRepoData.maintainers
+                        ? { maintainers: eventRepoData.maintainers }
+                        : {}),
+                      ...(eventRepoData.publicRead !== undefined
+                        ? { publicRead: eventRepoData.publicRead }
+                        : {}),
+                      ...(eventRepoData.publicWrite !== undefined
+                        ? { publicWrite: eventRepoData.publicWrite }
+                        : {}),
+                    };
+                  });
 
                   // Update localStorage - use case-insensitive matching and also match by entity
                   // CRITICAL: Only update if we're using Nostr files (not local files)
@@ -7081,19 +7108,42 @@ export function RepoCodePage() {
 
                   if (mergedContributors.length > 0) {
                     setRepoData((prev: any) => {
-                      if (!prev) return prev;
+                      // Logged-out / cold visitors often have no localStorage row yet.
+                      // Do not drop contributor hydration when prev is null.
+                      const base =
+                        prev ||
+                        ({
+                          entity: resolvedParams.entity,
+                          repo: resolvedParams.repo,
+                          name:
+                            eventRepoData.repositoryName ||
+                            resolvedParams.repo,
+                          readme: "",
+                          files: [],
+                          description: eventRepoData.description || "",
+                          contributors: [],
+                          defaultBranch:
+                            eventRepoData.defaultBranch || "main",
+                          ownerPubkey: event.pubkey,
+                          sourceUrl: eventRepoData.sourceUrl,
+                          forkedFrom: eventRepoData.forkedFrom,
+                          clone: Array.isArray(eventRepoData.clone)
+                            ? eventRepoData.clone
+                            : [],
+                        } as StoredRepo);
                       const sameLength =
-                        Array.isArray(prev.contributors) &&
-                        prev.contributors.length === mergedContributors.length;
+                        Array.isArray(base.contributors) &&
+                        base.contributors.length === mergedContributors.length;
                       if (
+                        prev &&
                         sameLength &&
-                        JSON.stringify(prev.contributors) ===
+                        JSON.stringify(base.contributors) ===
                           JSON.stringify(mergedContributors)
                       ) {
                         return prev;
                       }
                       return {
-                        ...prev,
+                        ...base,
                         contributors: mergedContributors,
                         ...(eventRepoData.maintainers
                           ? { maintainers: eventRepoData.maintainers }
@@ -17390,7 +17440,7 @@ export function RepoCodePage() {
                         onClick={() =>
                           setRepositoryStatusExpanded(!repositoryStatusExpanded)
                         }
-                        className="flex w-full items-center justify-between text-xs text-gray-400 hover:text-gray-300 mb-1"
+                        className="flex w-full items-center justify-between text-xs text-gray-400 hover:text-gray-300 mb-3"
                       >
                         <span>Repository status</span>
                         {repositoryStatusExpanded ? (
@@ -17399,7 +17449,9 @@ export function RepoCodePage() {
                           <ChevronDown className="h-3 w-3" />
                         )}
                       </button>
-                      {repositoryStatusExpanded ? node : null}
+                      {repositoryStatusExpanded ? (
+                        <div className="space-y-2">{node}</div>
+                      ) : null}
                     </div>
                   );
                 };
@@ -17649,7 +17701,7 @@ export function RepoCodePage() {
                       <div
                         className={
                           isNextUi
-                            ? "pb-1"
+                            ? "pt-1 pb-1"
                             : "mb-4 pb-4 border-b border-lightgray"
                         }
                       >
@@ -19102,23 +19154,32 @@ export function RepoCodePage() {
                                               }
                                             }
                                           }
-                                          // NOTE: public-read/public-write tags are NOT in NIP-34 spec
-                                          // Privacy is determined by maintainers list and bridge access control
-                                          // We don't parse these tags to remain spec-compliant
+                                          else if (
+                                            tagName === "public-read" &&
+                                            tagValue
+                                          ) {
+                                            eventRepoData.publicRead =
+                                              tagValue.toLowerCase() !==
+                                              "false";
+                                          } else if (
+                                            tagName === "public-write" &&
+                                            tagValue
+                                          ) {
+                                            eventRepoData.publicWrite =
+                                              tagValue.toLowerCase() === "true";
+                                          }
                                         }
                                       }
-                                      // Privacy is NOT in NIP-34 spec - determined by maintainers list and bridge
-                                      // Default to public (undefined = public) for repos fetched from Nostr
-                                      // Privacy status comes from local state (import) or bridge maintainers list
+                                      // Missing privacy tags => public read (legacy)
                                       if (
                                         eventRepoData.publicRead === undefined
                                       ) {
-                                        eventRepoData.publicRead = true; // Default to public for Nostr-fetched repos
+                                        eventRepoData.publicRead = true;
                                       }
                                       if (
                                         eventRepoData.publicWrite === undefined
                                       ) {
-                                        eventRepoData.publicWrite = false; // Default to no public write
+                                        eventRepoData.publicWrite = false;
                                       }
                                       // Parse files from content if present
                                       if (latestEvent.content) {

@@ -1080,19 +1080,20 @@ export default function RepositoriesPage() {
                     // Extract earliest unique commit from "r" tag with "euc" marker
                     repoData.earliestUniqueCommit = tagValue;
                   }
-                  // NOTE: public-read/public-write tags are NOT in NIP-34 spec
-                  // Privacy is determined by maintainers list and bridge access control
-                  // We don't parse these tags to remain spec-compliant
+                  else if (tagName === "public-read" && tagValue) {
+                    // gittr extension on 30617 — required so Private survives localStorage clear
+                    repoData.publicRead = tagValue.toLowerCase() !== "false";
+                  } else if (tagName === "public-write" && tagValue) {
+                    repoData.publicWrite = tagValue.toLowerCase() === "true";
+                  }
                 }
               }
-              // Privacy is NOT in NIP-34 spec - determined by maintainers list and bridge
-              // Default to public (undefined = public) for repos fetched from Nostr
-              // Privacy status comes from local state (import) or bridge maintainers list
+              // Missing privacy tags => public read (legacy announcements)
               if (repoData.publicRead === undefined) {
-                repoData.publicRead = true; // Default to public for Nostr-fetched repos
+                repoData.publicRead = true;
               }
               if (repoData.publicWrite === undefined) {
-                repoData.publicWrite = false; // Default to no public write
+                repoData.publicWrite = false;
               }
             } else {
               try {

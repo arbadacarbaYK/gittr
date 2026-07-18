@@ -146,9 +146,17 @@ function parseNIP34Repository(event: any): any {
           repoData.earliestUniqueCommit = tagValue;
         }
         break;
-      // NOTE: public-read/public-write tags are NOT in NIP-34 spec
-      // Privacy is determined by maintainers list and bridge access control
-      // We don't parse these tags to remain spec-compliant
+      case "public-read":
+        // gittr extension on 30617 (not core NIP-34)
+        if (tagValue) {
+          repoData.publicRead = tagValue.toLowerCase() !== "false";
+        }
+        break;
+      case "public-write":
+        if (tagValue) {
+          repoData.publicWrite = tagValue.toLowerCase() === "true";
+        }
+        break;
     }
   }
 
@@ -157,14 +165,12 @@ function parseNIP34Repository(event: any): any {
     repoData.repositoryName = repoData.name;
   }
 
-  // Privacy is NOT in NIP-34 spec - determined by maintainers list and bridge
-  // Default to public (undefined = public) for repos fetched from Nostr
-  // Privacy status comes from local state (import) or bridge maintainers list
+  // Missing privacy tags => public read (legacy announcements)
   if (repoData.publicRead === undefined) {
-    repoData.publicRead = true; // Default to public for Nostr-fetched repos
+    repoData.publicRead = true;
   }
   if (repoData.publicWrite === undefined) {
-    repoData.publicWrite = false; // Default to no public write
+    repoData.publicWrite = false;
   }
 
   return repoData;

@@ -3,6 +3,7 @@ import {
   KIND_REPOSITORY_NIP34,
   KIND_REPOSITORY_STATE,
 } from "@/lib/nostr/events";
+import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
 import {
   PLATFORM_STATS_RELAYS,
   withRelayPoolSubscribe,
@@ -10,6 +11,7 @@ import {
 import { hexPubkeyToNpub } from "@/lib/stats";
 
 import type { NextApiRequest, NextApiResponse } from "next";
+import type { Event } from "nostr-tools";
 import { nip19 } from "nostr-tools";
 
 export type ProfileRepoRow = {
@@ -21,6 +23,8 @@ export type ProfileRepoRow = {
   syncedFromNostr: boolean;
   lastNostrEventId?: string;
   lastNostrEventCreatedAt?: number;
+  /** false = private (gittr public-read:false on 30617). undefined/true = public. */
+  publicRead?: boolean;
 };
 
 async function resolveOwnerHex(
@@ -108,6 +112,12 @@ export default async function handler(
               /* tags only */
             }
           }
+          // Prefer announcement (30617) privacy over state (30618) when merging.
+          const publicRead =
+            event.kind === KIND_REPOSITORY_NIP34
+              ? isPublicReadFromEvent(event as Event)
+              : existing?.publicRead;
+
           if (!existing || ts >= existing.lastActivity) {
             byKey.set(key, {
               entity: hexPubkeyToNpub(event.pubkey),
@@ -118,7 +128,19 @@ export default async function handler(
               syncedFromNostr: true,
               lastNostrEventId: event.id || undefined,
               lastNostrEventCreatedAt: event.created_at,
+              publicRead:
+                event.kind === KIND_REPOSITORY_NIP34
+                  ? publicRead
+                  : existing?.publicRead !== undefined
+                    ? existing.publicRead
+                    : true,
             });
+          } else if (
+            event.kind === KIND_REPOSITORY_NIP34 &&
+            existing &&
+            existing.publicRead === undefined
+          ) {
+            existing.publicRead = publicRead;
           }
         };
 

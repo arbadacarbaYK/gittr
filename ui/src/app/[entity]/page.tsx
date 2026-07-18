@@ -121,7 +121,20 @@ function mergeProfileRepoList(prev: any[], next: any[]): any[] {
     const k = profileRepoRowKey(r);
     const existing = map.get(k);
     if (!existing || latestMs(r) > latestMs(existing)) {
-      map.set(k, r);
+      // Keep explicit private from either side when the newer row omitted it
+      const merged =
+        !existing
+          ? r
+          : {
+              ...r,
+              publicRead:
+                r.publicRead === false || existing.publicRead === false
+                  ? false
+                  : r.publicRead ?? existing.publicRead,
+            };
+      map.set(k, merged);
+    } else if (existing && r.publicRead === false) {
+      map.set(k, { ...existing, publicRead: false });
     }
   }
   return Array.from(map.values()).sort((a, b) => latestMs(b) - latestMs(a));
@@ -185,6 +198,16 @@ function parseNIP34Repository(event: any): any {
       case "t":
         if (tagValue) repoData.topics.push(tagValue);
         break;
+      case "public-read":
+        if (tagValue) {
+          repoData.publicRead = tagValue.toLowerCase() !== "false";
+        }
+        break;
+      case "public-write":
+        if (tagValue) {
+          repoData.publicWrite = tagValue.toLowerCase() === "true";
+        }
+        break;
       default:
         break;
     }
@@ -192,6 +215,12 @@ function parseNIP34Repository(event: any): any {
 
   if (!repoData.repositoryName && repoData.name) {
     repoData.repositoryName = repoData.name;
+  }
+  if (repoData.publicRead === undefined) {
+    repoData.publicRead = true;
+  }
+  if (repoData.publicWrite === undefined) {
+    repoData.publicWrite = false;
   }
 
   return repoData;
@@ -2248,6 +2277,7 @@ export default function EntityPage({
             syncedFromNostr?: boolean;
             lastNostrEventId?: string;
             lastNostrEventCreatedAt?: number;
+            publicRead?: boolean;
           }>;
         };
         if (
@@ -2272,6 +2302,8 @@ export default function EntityPage({
               lastNostrEventId: row.lastNostrEventId,
               syncedFromNostr: true,
               fromNostr: true,
+              // Preserve private status from relays after localStorage clear
+              publicRead: row.publicRead !== false,
             }))
           )
         );

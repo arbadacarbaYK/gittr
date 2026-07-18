@@ -595,9 +595,12 @@ export default function HelpPage() {
                       action for those rows only
                     </li>
                     <li>
-                      Import stores repos locally in Gittr only. Each repo still
-                      needs <strong>Push to Nostr</strong> from its page when
-                      you want it published to relays.
+                      Import stores repos locally by default. Optionally tick{" "}
+                      <strong>Also Push selected to Nostr</strong> on the bulk
+                      page to publish each newly imported repo in one go
+                      (multiple signature approvals). Otherwise open each repo
+                      and use <strong>Push to Nostr</strong> when you want it
+                      on relays.
                     </li>
                   </ul>
                 </div>
@@ -964,40 +967,38 @@ export default function HelpPage() {
                   🔒 Private Repository Support
                 </p>
                 <p className="text-sm text-blue-100 mb-2">
-                  <strong>GitHub Private Repos:</strong> When you import a
-                  private GitHub repository, the privacy status is preserved
-                  locally. The repository will be marked as "Private" in
-                  gittr.space. Privacy is enforced via the{" "}
+                  <strong>Private on gittr:</strong> Settings → Private saves
+                  locally and publishes a gittr extension tag on your kind{" "}
+                  <code className="bg-blue-900/50 px-1 rounded">30617</code>{" "}
+                  announcement:{" "}
+                  <code className="bg-blue-900/50 px-1 rounded">
+                    ["public-read","false"]
+                  </code>
+                  . That is what listings use after a localStorage clear — not a
+                  browser-only flag. Core{" "}
+                  <a
+                    href={SCHEMATA_NIP34}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-purple-400 hover:text-purple-300 underline"
+                  >
+                    NIP-34
+                  </a>{" "}
+                  does not define those tags; gittr and the bridge do. File/git
+                  access is still enforced via{" "}
                   <code className="bg-blue-900/50 px-1 rounded">
                     maintainers
                   </code>{" "}
-                  tag (NIP-34 spec) and bridge access control.
+                  + bridge ACL.
                 </p>
                 <ul className="text-sm text-blue-100 space-y-1 list-disc list-inside ml-2 mb-3">
                   <li>
-                    <strong>NIP-34 spec:</strong> Privacy is NOT encoded in
-                    NIP-34 event tags (see{" "}
-                    <a
-                      href={SCHEMATA_NIP34}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-purple-400 hover:text-purple-300 underline"
-                    >
-                      schemata NIP-34
-                    </a>
-                    ). The NIP-34 spec does not include{" "}
+                    <strong>After Push:</strong> Save Private in Settings (or
+                    Push to Nostr) so relays get{" "}
                     <code className="bg-blue-900/50 px-1 rounded">
-                      public-read
-                    </code>{" "}
-                    or{" "}
-                    <code className="bg-blue-900/50 px-1 rounded">
-                      public-write
-                    </code>{" "}
-                    tags. Privacy is determined by the{" "}
-                    <code className="bg-blue-900/50 px-1 rounded">
-                      maintainers
-                    </code>{" "}
-                    tag (which IS in the spec) and bridge-level access control.
+                      public-read:false
+                    </code>
+                    . Clearing local data then reloads that status from Nostr.
                   </li>
                   <li>
                     <strong>Files Access:</strong> Files from private GitHub
@@ -1006,24 +1007,19 @@ export default function HelpPage() {
                     repo files.
                   </li>
                   <li>
-                    <strong>Other Clients:</strong> Other NIP-34 clients can see
-                    repository events on relays (for discoverability), but file
-                    access is restricted to maintainers via the bridge. Clients
-                    that support the{" "}
-                    <code className="bg-blue-900/50 px-1 rounded">
-                      maintainers
-                    </code>{" "}
-                    tag can identify private repos and enforce access control
-                    accordingly.
+                    <strong>Other Clients:</strong> Other NIP-34 clients may still
+                    list the announcement (name/description on relays). gittr
+                    hides private repos from Explore/profile for strangers;
+                    clone/file access stays blocked at the bridge for
+                    non-maintainers.
                   </li>
                   <li>
-                    <strong>Access Control:</strong> Only users listed in the{" "}
+                    <strong>Access Control:</strong> Only the owner and users in{" "}
                     <code className="bg-blue-900/50 px-1 rounded">
                       maintainers
                     </code>{" "}
-                    tag (or the repository owner) can access private repos. This
-                    is enforced at the bridge level for Git operations
-                    (SSH/HTTPS) and at the API level for file fetching.
+                    / Contributors can open private repos. Enforced for SSH/HTTPS
+                    git and file APIs.
                   </li>
                 </ul>
 

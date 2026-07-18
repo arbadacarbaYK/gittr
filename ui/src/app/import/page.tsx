@@ -5,7 +5,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { recordActivity } from "@/lib/activity-tracking";
 import { mapGithubContributors } from "@/lib/github-mapping";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  formatPushRepoSuccessAlert,
+  pushRepoToNostr,
+} from "@/lib/nostr/push-repo-to-nostr";
+import {
+  NO_SIGNING_METHOD_MESSAGE,
+  resolveNostrSigner,
+} from "@/lib/nostr/signer";
 import useSession from "@/lib/nostr/useSession";
+import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import {
   LOCAL_STORAGE_REPOS_MANAGE_HINT,
   dedupeStoredReposByOwnerAndRepoLabel,
@@ -108,8 +117,11 @@ export default function ImportPage() {
   const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState("");
   const [showImportAllConfirm, setShowImportAllConfirm] = useState(false);
+  /** Optional: after a manual selection import, also Push each new repo to Nostr. */
+  const [pushSelectedAfterImport, setPushSelectedAfterImport] = useState(false);
   const router = useRouter();
-  const { pubkey, subscribe, defaultRelays } = useNostrContext();
+  const { pubkey, subscribe, defaultRelays, publish, remoteSigner } =
+    useNostrContext();
   const { name: userName, isLoggedIn } = useSession();
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -680,6 +692,7 @@ export default function ImportPage() {
                     void importSelected({
                       selection: new Set([matchedRepo.full_name]),
                       repoList: [matchedRepo],
+                      pushAfter: false,
                     });
                   }
                   return;
@@ -730,6 +743,7 @@ export default function ImportPage() {
               void importSelected({
                 selection: new Set([repoData.full_name]),
                 repoList: [repoData],
+                pushAfter: false,
               });
             }
             return;
@@ -870,9 +884,15 @@ export default function ImportPage() {
   async function importSelected(override?: {
     selection?: Set<string>;
     repoList?: GithubRepo[];
+    /** Explicit false for URL auto-import; otherwise uses checkbox state. */
+    pushAfter?: boolean;
   }) {
     const selection = override?.selection ?? selectedRepos;
     const repoList = override?.repoList ?? repos;
+    const pushAfter =
+      override?.pushAfter !== undefined
+        ? override.pushAfter
+        : pushSelectedAfterImport;
 
     if (selection.size === 0) {
       setStatus("Please select at least one repository to import");
@@ -884,8 +904,28 @@ export default function ImportPage() {
       return;
     }
 
+    if (pushAfter && (!publish || !subscribe || !defaultRelays?.length)) {
+      setStatus(
+        "Cannot push after import: Nostr publish/subscribe/relays not ready. Uncheck Push, or wait for relays and try again."
+      );
+      return;
+    }
+
+    if (pushAfter) {
+      const ok = window.confirm(
+        `Import ${selection.size} selected repo(s), then Push each new one to Nostr?\n\n` +
+          `You may need to approve several signatures (nsec, browser extension, or remote signer) and pay push authorization if your wallet requires it. This can take a while.\n\n` +
+          `Continue?`
+      );
+      if (!ok) return;
+    }
+
     setImporting(true);
-    setStatus(`Importing ${selection.size} repositories...`);
+    setStatus(
+      pushAfter
+        ? `Importing ${selection.size} repositories (then Push to Nostr)…`
+        : `Importing ${selection.size} repositories...`
+    );
 
     try {
       // Use pubkey for entity (not username slug) - ensures URLs use Nostr ID
@@ -929,6 +969,7 @@ export default function ImportPage() {
       let skippedCount = 0;
       let skippedAlready = 0;
       let skippedMissing = 0;
+      const newlyImported: Array<{ entity: string; repoSlug: string }> = [];
 
       for (const fullName of selection) {
         const repo = repoList.find((r) => r.full_name === fullName);
@@ -1295,6 +1336,10 @@ export default function ImportPage() {
           });
           existingRepos.push(rec);
           importedCount++;
+          newlyImported.push({
+            entity: entityInfo.entitySlug,
+            repoSlug,
+          });
 
           // Clear local "deleted" tombstones so Repositories doesn't hide/purge this re-import
           try {
@@ -1635,17 +1680,108 @@ export default function ImportPage() {
       if (otherSkips > 0) {
         skipParts.push(`${otherSkips} failed`);
       }
-      setStatus(
-        `Imported ${importedCount} repositories${
-          skipParts.length > 0 ? `, ${skipParts.join(", ")} skipped` : ""
-        }`
-      );
+      let statusLine = `Imported ${importedCount} repositories${
+        skipParts.length > 0 ? `, ${skipParts.join(", ")} skipped` : ""
+      }`;
+      setStatus(statusLine);
 
-      // Navigate to repositories page after import completes
+      // Optional batch Push — only newly imported rows (not skips / URL auto-import).
+      if (pushAfter && newlyImported.length > 0) {
+        setStatus(
+          `${statusLine}. Pushing ${newlyImported.length} to Nostr…`
+        );
+        let pushedOk = 0;
+        let pushedFail = 0;
+        const pushErrors: string[] = [];
+
+        const signer = await resolveNostrSigner({ remoteSigner });
+        if (!signer) {
+          setStatus(
+            `${statusLine}. Push skipped: ${NO_SIGNING_METHOD_MESSAGE}`
+          );
+        } else {
+          for (let i = 0; i < newlyImported.length; i++) {
+            const item = newlyImported[i]!;
+            setStatus(
+              `${statusLine}. Pushing ${i + 1}/${newlyImported.length}: ${
+                item.repoSlug
+              }…`
+            );
+            try {
+              const paymentAuth = await ensurePushPaymentAuthorization({
+                entity: item.entity,
+                repo: item.repoSlug,
+                ownerPubkey: pubkeyStr.toLowerCase(),
+                payerPubkey: pubkeyStr,
+                privateKey: signer.privateKey || undefined,
+                signer: signer.signEvent,
+              });
+              if (!paymentAuth.ok) {
+                pushedFail++;
+                pushErrors.push(
+                  `${item.repoSlug}: ${
+                    paymentAuth.error || "payment authorization failed"
+                  }`
+                );
+                continue;
+              }
+
+              const result = await pushRepoToNostr({
+                repoSlug: item.repoSlug,
+                entity: item.entity,
+                publish: publish!,
+                subscribe: subscribe!,
+                defaultRelays: defaultRelays!,
+                privateKey: signer.privateKey,
+                pubkey: pubkeyStr,
+                remoteSigner,
+                onProgress: (message) => {
+                  console.log(`[Import Push ${item.repoSlug}] ${message}`);
+                },
+              });
+
+              if (result.success) {
+                pushedOk++;
+                console.log(
+                  formatPushRepoSuccessAlert(result).slice(0, 200)
+                );
+              } else {
+                pushedFail++;
+                pushErrors.push(
+                  `${item.repoSlug}: ${result.error || "push failed"}`
+                );
+              }
+            } catch (e: any) {
+              pushedFail++;
+              pushErrors.push(
+                `${item.repoSlug}: ${e?.message || String(e)}`
+              );
+            }
+          }
+
+          statusLine = `${statusLine}. Pushed ${pushedOk}/${newlyImported.length} to Nostr${
+            pushedFail > 0 ? ` (${pushedFail} failed)` : ""
+          }`;
+          setStatus(statusLine);
+          if (pushErrors.length > 0) {
+            console.error("[Import] Push failures:", pushErrors);
+            alert(
+              `Import done. Push results: ${pushedOk} ok, ${pushedFail} failed.\n\n` +
+                pushErrors.slice(0, 8).join("\n") +
+                (pushErrors.length > 8
+                  ? `\n…and ${pushErrors.length - 8} more`
+                  : "")
+            );
+          }
+          window.dispatchEvent(new Event("storage"));
+        }
+      }
+
+      // Navigate to repositories page after import (and optional push) completes
       if (importedCount > 0) {
         setTimeout(() => {
           router.push("/repositories");
-        }, 500);
+        }, pushAfter ? 1200 : 500);
       }
     } catch (error: any) {
       setStatus(`Import error: ${error.message}`);
@@ -1674,11 +1810,15 @@ export default function ImportPage() {
           <li>
             After you click <strong>Fetch Repos</strong>, you{" "}
             <strong>choose</strong> which repositories to import (checkboxes).
-            <strong>Import … Selected Repositories</strong> (or confirming{" "}
-            <strong>Import All</strong>) only saves those repos in Gittr locally
-            — it does <strong>not</strong> publish anything to Nostr. For each
-            repo you must open it and use <strong>Push to Nostr</strong> when
-            you want it announced on the network.
+            By default <strong>Import … Selected</strong> (or{" "}
+            <strong>Import All</strong>) only saves those repos locally — nothing
+            goes to Nostr until you push.
+          </li>
+          <li>
+            Optional: tick <strong>Also Push selected to Nostr</strong> before
+            importing. That runs real Push (NIP-34) for each newly imported repo
+            — expect multiple signature approvals. Single-repo URL auto-import
+            never pushes automatically.
           </li>
           <li>
             You can select <strong>several</strong> repos and import them in{" "}
@@ -1800,6 +1940,25 @@ export default function ImportPage() {
             </div>
           </div>
 
+          <label className="flex items-start gap-2 rounded-lg border border-[#383B42] bg-[#0E1116] p-3 text-sm text-gray-200 cursor-pointer">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={pushSelectedAfterImport}
+              onChange={(e) => setPushSelectedAfterImport(e.target.checked)}
+              disabled={importing}
+            />
+            <span>
+              <span className="font-semibold text-white">
+                Also Push selected to Nostr
+              </span>
+              <span className="block text-xs text-gray-400 mt-0.5">
+                After local import, publish each newly imported repo (NIP-34).
+                Off by default. You may need to approve several signatures.
+              </span>
+            </span>
+          </label>
+
           <div className="flex gap-2">
             <button
               className="flex-1 border border-[#383B42] bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded disabled:opacity-50"
@@ -1807,15 +1966,23 @@ export default function ImportPage() {
               disabled={importing || selectedRepos.size === 0}
             >
               {importing
-                ? `Importing ${selectedRepos.size} repositories...`
-                : `Import ${selectedRepos.size} Selected Repositories`}
+                ? pushSelectedAfterImport
+                  ? `Importing + pushing ${selectedRepos.size}…`
+                  : `Importing ${selectedRepos.size} repositories...`
+                : pushSelectedAfterImport
+                  ? `Import + Push ${selectedRepos.size} Selected`
+                  : `Import ${selectedRepos.size} Selected Repositories`}
             </button>
             <button
               className="border border-[#383B42] bg-[#22262C] hover:bg-[#2a2e34] text-white px-4 py-2 rounded disabled:opacity-50"
               onClick={() => setShowImportAllConfirm(true)}
               disabled={importing || repos.length === 0}
             >
-              {importing ? "Importing All..." : "Import All"}
+              {importing
+                ? "Importing All..."
+                : pushSelectedAfterImport
+                  ? "Import All + Push"
+                  : "Import All"}
             </button>
 
             {/* Import All Confirmation Modal */}
@@ -1866,6 +2033,13 @@ export default function ImportPage() {
                           localStorage data
                         </li>
                         <li>You should be logged in with your Nostr key</li>
+                        {pushSelectedAfterImport ? (
+                          <li>
+                            <strong>Also Push selected to Nostr</strong> is on —
+                            each newly imported repo will be published (multiple
+                            signatures / possible payment).
+                          </li>
+                        ) : null}
                       </ul>
                     </div>
 
