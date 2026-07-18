@@ -217,7 +217,7 @@ export default function HomePage({
 }: {
   initialLeaderboard?: HomeInitialLeaderboard;
 }) {
-  const { isLoggedIn, name } = useSession();
+  const { isLoggedIn, name, picture, banner } = useSession();
   const { pubkey, defaultRelays, subscribe, addRelay } = useNostrContext();
   const [repos, setRepos] = useState<Repo[]>([]);
   const [mounted, setMounted] = useState(false);
@@ -226,6 +226,18 @@ export default function HomePage({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const profileHref =
+    mounted && pubkey && /^[0-9a-f]{64}$/i.test(pubkey)
+      ? `/${nip19.npubEncode(pubkey)}`
+      : null;
+  const welcomeName = mounted && isLoggedIn && name ? name : null;
+  const avatarSrc =
+    mounted && picture && picture.trim() ? picture : "/logo.svg";
+  const showBanner =
+    mounted && isLoggedIn && typeof banner === "string" && banner.trim().length > 0
+      ? banner.trim()
+      : null;
   const [topRepos, setTopRepos] = useState<RepoStats[]>(
     () => initialLeaderboard?.topRepos ?? []
   );
@@ -1599,53 +1611,91 @@ export default function HomePage({
   };
 
   return (
-    <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6 relative">
+    <>
+      {/* Kind-0 banner strip — same identity chrome as repo pages */}
+      <div
+        className="w-full h-[132px] bg-[var(--color-bg-secondary)] bg-cover bg-center relative"
+        style={
+          showBanner
+            ? {
+                backgroundImage: `linear-gradient(180deg, transparent 35%, var(--color-bg-primary)), url(${showBanner})`,
+              }
+            : {
+                backgroundImage:
+                  "linear-gradient(180deg, var(--color-bg-secondary), var(--color-bg-primary))",
+              }
+        }
+        role="img"
+        aria-label={
+          showBanner
+            ? "Your Nostr profile banner"
+            : "Default gittr banner"
+        }
+      />
+
+      <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] px-6 pb-6 relative">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold" suppressHydrationWarning>
-          {mounted && isLoggedIn && name ? `Welcome, ${name}` : "Welcome"}
-        </h1>
-        <div
-          className="text-gray-400 mt-3 space-y-3 text-sm leading-relaxed max-w-3xl"
-          suppressHydrationWarning
-        >
-          <p>
-            On gittr you can import your codebases from various external sources
-            and push an announcement on its whereabouts to Nostr. Now your code
-            can be discovered in all Nostr git clients! From there you can
-            either switch to full Nostr git mode and handle PRs and issues only
-            on Nostr git clients or just make your work more visible.
-          </p>
-          <p>
-            Alternatively you can also create repos directly on our bridge. To
-            start importing or creating a repo go to{" "}
-            <Link
-              href="/new"
-              className="text-purple-400 hover:text-purple-300 font-semibold"
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="relative z-[2] -mt-10 h-[76px] w-[76px] flex-shrink-0 rounded-full overflow-hidden border-[3px] border-[var(--color-bg-primary)] bg-[var(--color-bg-secondary)] shadow-md">
+            {profileHref ? (
+              <Link href={profileHref} className="block h-full w-full">
+                <img
+                  src={avatarSrc}
+                  alt={welcomeName || "You"}
+                  className="h-full w-full object-cover"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    if (target.src !== "/logo.svg") target.src = "/logo.svg";
+                  }}
+                  referrerPolicy="no-referrer"
+                  suppressHydrationWarning
+                />
+              </Link>
+            ) : (
+              <img
+                src={avatarSrc}
+                alt="gittr"
+                className="h-full w-full object-cover"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (target.src !== "/logo.svg") target.src = "/logo.svg";
+                }}
+                referrerPolicy="no-referrer"
+                suppressHydrationWarning
+              />
+            )}
+          </div>
+          <div className="min-w-0 pt-1 flex-1">
+            <h1
+              className="text-2xl font-bold text-[var(--color-text-primary)]"
+              suppressHydrationWarning
             >
-              NEW
-            </Link>
-            .
-          </p>
-          <p>
-            <Link href="/explore" className="text-purple-400 hover:underline">
-              Browse repos
-            </Link>{" "}
-            or{" "}
-            <a
-              href="/pages"
-              className="text-purple-400 hover:underline"
-              target="_blank"
-              rel="noopener noreferrer"
+              {welcomeName ? (
+                <>
+                  Welcome,{" "}
+                  {profileHref ? (
+                    <Link
+                      href={profileHref}
+                      className="text-[var(--color-accent-primary)] hover:underline"
+                    >
+                      {welcomeName}
+                    </Link>
+                  ) : (
+                    welcomeName
+                  )}
+                </>
+              ) : (
+                "Welcome to gittr"
+              )}
+            </h1>
+            <p
+              className="mt-1 text-sm text-[var(--color-text-secondary)] max-w-2xl"
+              suppressHydrationWarning
             >
-              Pages
-            </a>{" "}
-            spun up from a repo and also check the{" "}
-            <Link href="/apps" className="text-purple-400 hover:underline">
-              Nostr Apps
-            </Link>{" "}
-            page. The space is getting bigger every day!
-          </p>
-          <p>Found a great repo? Zap it and make a dev happy.</p>
+              Import or create repos, announce them on Nostr, and discover code
+              across the network.
+            </p>
+          </div>
         </div>
       </header>
 
@@ -2628,5 +2678,6 @@ export default function HomePage({
         </div>
       </div>
     </div>
+    </>
   );
 }

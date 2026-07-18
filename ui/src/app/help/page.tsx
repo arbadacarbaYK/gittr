@@ -39,6 +39,27 @@ import Link from "next/link";
 export default function HelpPage() {
   const mermaidRef = useRef<HTMLDivElement>(null);
 
+  // Deep links from repo sidebar / TOC (e.g. /help#gittr-pages)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const scrollToHash = () => {
+      const id = window.location.hash?.replace(/^#/, "");
+      if (!id) return;
+      // Wait a tick so sections are painted after client nav
+      window.setTimeout(() => {
+        document.getElementById(id)?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 80);
+    };
+
+    scrollToHash();
+    window.addEventListener("hashchange", scrollToHash);
+    return () => window.removeEventListener("hashchange", scrollToHash);
+  }, []);
+
   // Render Mermaid diagram
   useEffect(() => {
     if (!mermaidRef.current || typeof window === "undefined") return;
@@ -173,7 +194,7 @@ export default function HelpPage() {
 
       <section
         id="what-is-gittr"
-        className="border border-[#383B42] rounded-lg p-6 bg-[#171B21] mb-8"
+        className="border border-[#383B42] rounded-lg p-6 bg-[#171B21] mb-8 scroll-mt-24"
       >
         <h2 className="text-xl font-semibold mb-3 text-white">
           What you can do on gittr
@@ -189,16 +210,18 @@ export default function HelpPage() {
             Reviews, merge, and push updated repo state so other clients see the
             same tree.
           </li>
-          <li>
+          <li id="gittr-pages" className="scroll-mt-24">
             <strong className="text-white">gittr Pages</strong> — Publish static
-            sites; browse the directory at{" "}
+            sites from a repo (site file + README block + Push to Nostr / Blossom);
+            browse the directory at{" "}
             <Link
               href="/pages"
               className="text-purple-400 hover:text-purple-300"
             >
               /pages
             </Link>
-            .
+            . Owner tools live in the Code sidebar under{" "}
+            <strong className="text-white">gittr Pages</strong>.
           </li>
           <li>
             <strong className="text-white">Nostr apps</strong> — Discover and
@@ -302,6 +325,33 @@ export default function HelpPage() {
                 className="text-green-400 hover:text-green-300"
               >
                 Git Operations
+              </Link>
+            </li>
+            <li>
+              •{" "}
+              <Link
+                href="#push-to-nostr"
+                className="text-green-400 hover:text-green-300"
+              >
+                Push to Nostr
+              </Link>
+            </li>
+            <li>
+              •{" "}
+              <Link
+                href="#grasp"
+                className="text-green-400 hover:text-green-300"
+              >
+                GRASP / HTTPS clone
+              </Link>
+            </li>
+            <li>
+              •{" "}
+              <Link
+                href="#gittr-pages"
+                className="text-green-400 hover:text-green-300"
+              >
+                gittr Pages
               </Link>
             </li>
             <li>
@@ -1097,7 +1147,7 @@ export default function HelpPage() {
         {/* Git Operations */}
         <section
           id="git-operations"
-          className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]"
+          className="border border-[#383B42] rounded-lg p-6 bg-[#171B21] scroll-mt-24"
         >
           <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
             <Code className="h-6 w-6 text-green-400" />
@@ -1127,7 +1177,7 @@ export default function HelpPage() {
                   </p>
                 </div>
 
-                <div>
+                <div id="grasp" className="scroll-mt-24">
                   <p className="text-sm font-semibold text-blue-300 mb-1">
                     Option B: HTTPS (GRASP git servers)
                   </p>
@@ -1332,7 +1382,7 @@ export default function HelpPage() {
               </div>
             </div>
 
-            <div>
+            <div id="push-to-nostr" className="scroll-mt-24">
               <h3 className="text-lg font-semibold text-white mb-2">
                 Push to Nostr
               </h3>
@@ -1426,7 +1476,7 @@ export default function HelpPage() {
               </div>
             </div>
 
-            <div>
+            <div id="ssh-keys" className="scroll-mt-24">
               <h3 className="text-lg font-semibold text-white mb-2">
                 SSH Keys
               </h3>

@@ -18,6 +18,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { nip19 } from "nostr-tools";
 
+const fieldClassName =
+  "w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-dark)] px-3 py-2 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-secondary)]/55 focus:outline-none focus:border-[var(--color-accent-primary)]";
+
 export default function NewFilePage({
   params,
 }: {
@@ -133,11 +136,11 @@ export default function NewFilePage({
   };
 
   return (
-    <div className="container mx-auto max-w-4xl p-6">
+    <div className="container mx-auto max-w-4xl p-6 text-[var(--color-text-primary)]">
       <div className="mb-4">
         <Link
           href={`/${resolvedParams.entity}/${resolvedParams.repo}`}
-          className="text-purple-500 hover:underline"
+          className="text-[var(--color-accent-primary)] hover:underline"
         >
           ← Back to repository
         </Link>
@@ -147,25 +150,27 @@ export default function NewFilePage({
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block mb-2">File path</label>
+          <label className="mb-2 block text-[var(--color-text-primary)]">
+            File path
+          </label>
           <input
             type="text"
             value={path}
             onChange={(e) => setPath(e.target.value)}
             placeholder="path/to/file.txt"
-            className="w-full border p-2 text-black rounded"
+            className={fieldClassName}
             required
           />
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             Use forward slashes (/) to create directories. Example:
             src/components/Button.tsx
             {isOwnerUser && (
-              <span className="block mt-1 text-green-400">
+              <span className="mt-1 block text-green-400">
                 ✓ You are the owner - file will be added directly (no PR needed)
               </span>
             )}
             {isOwnerUser === false && (
-              <span className="block mt-1 text-yellow-400">
+              <span className="mt-1 block text-yellow-400">
                 ⚠ You are not the owner - file will require a Pull Request
               </span>
             )}
@@ -173,12 +178,14 @@ export default function NewFilePage({
         </div>
 
         <div>
-          <label className="block mb-2">File content</label>
+          <label className="mb-2 block text-[var(--color-text-primary)]">
+            File content
+          </label>
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Enter file content here..."
-            className="w-full bg-[#0E1116] border border-[#383B42] text-white p-2 rounded font-mono"
+            className={`${fieldClassName} font-mono`}
             rows={20}
           />
         </div>
@@ -186,13 +193,13 @@ export default function NewFilePage({
         <div className="flex gap-2">
           <button
             type="submit"
-            className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+            className="theme-bg-accent-primary rounded-md px-4 py-2 font-medium text-white"
           >
             Create file
           </button>
           <Link
             href={`/${resolvedParams.entity}/${resolvedParams.repo}`}
-            className="px-4 py-2 border rounded hover:bg-gray-800"
+            className="rounded-md border border-[var(--color-border)] px-4 py-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text-primary)]"
           >
             Cancel
           </Link>
@@ -200,8 +207,8 @@ export default function NewFilePage({
 
         {status && (
           <div
-            className={`p-3 rounded ${
-              status.includes("Error") ? "bg-red-900" : "bg-green-900"
+            className={`rounded-md p-3 ${
+              status.includes("Error") ? "bg-red-900/80" : "bg-green-900/80"
             }`}
           >
             {status}

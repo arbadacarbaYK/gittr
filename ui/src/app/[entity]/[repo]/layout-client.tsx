@@ -51,6 +51,7 @@ import {
   loadStoredRepos,
 } from "@/lib/repos/storage";
 import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
+import { isRepoUiNextPath } from "@/lib/ui/repo-ui-mode";
 import {
   getRepoStorageKey,
   readRepoIssuesFromLocalStorage,
@@ -67,7 +68,6 @@ import { useEntityOwner } from "@/lib/utils/use-entity-owner";
 import { clsx } from "clsx";
 import {
   BarChart4,
-  Book,
   ChevronDown,
   CircleDot,
   Code,
@@ -86,7 +86,13 @@ import {
   Star,
   Zap,
 } from "lucide-react";
-import { useParams, usePathname, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 import {
   type Event as NostrEvent,
   type UnsignedEvent,
@@ -179,6 +185,7 @@ export default function RepoLayoutClient({
   );
   const pathname = usePathname() || "";
   const searchParams = useSearchParams();
+  const router = useRouter();
   // Use consistent default width on server and initial client render to prevent hydration mismatch
   const [windowWidth, setWindowWidth] = useState(1920);
   const { pubkey, publish, subscribe, defaultRelays, remoteSigner } =
@@ -211,6 +218,7 @@ export default function RepoLayoutClient({
     ownerPubkey: rawOwnerPubkey,
     ownerDisplayName: rawOwnerDisplayName,
     ownerPicture: rawOwnerPicture,
+    ownerMetadata: rawOwnerMetadata,
   } = useEntityOwner({
     entity: resolvedParams.entity,
     repo: repo,
@@ -224,6 +232,14 @@ export default function RepoLayoutClient({
     ? rawOwnerDisplayName
     : safeInitialDisplayName;
   const ownerPicture = mounted ? rawOwnerPicture : null;
+  const ownerBanner = useMemo(() => {
+    if (!mounted || !ownerPubkey) return null;
+    const meta = rawOwnerMetadata?.[ownerPubkey] as
+      | { banner?: string }
+      | undefined;
+    const banner = meta?.banner?.trim();
+    return banner || null;
+  }, [mounted, ownerPubkey, rawOwnerMetadata]);
   const publicReadRaw = repo?.publicRead;
   const isPrivateRepo =
     publicReadRaw === false || publicReadRaw === "false" || publicReadRaw === 0;
@@ -376,7 +392,22 @@ export default function RepoLayoutClient({
   // Use consistent href on initial render to prevent hydration mismatches
   const isRepoCodePath = useCallback(() => {
     const base = `/${resolvedParams.entity}/${resolvedParams.repo}`;
-    return pathname === base || pathname === `${base}/`;
+    return (
+      pathname === base ||
+      pathname === `${base}/` ||
+      pathname === `${base}/next` ||
+      pathname === `${base}/next/`
+    );
+  }, [pathname, resolvedParams.entity, resolvedParams.repo]);
+
+  const isCodeTabActive = useMemo(() => {
+    const base = `/${resolvedParams.entity}/${resolvedParams.repo}`;
+    return (
+      pathname === base ||
+      pathname === `${base}/` ||
+      pathname === `${base}/next` ||
+      pathname === `${base}/next/`
+    );
   }, [pathname, resolvedParams.entity, resolvedParams.repo]);
 
   const getRepoLink = useCallback(
@@ -409,6 +440,12 @@ export default function RepoLayoutClient({
       isRepoCodePath,
     ]
   );
+
+  /** Code URL with zap modal flag (append correctly when ?branch= is already present). */
+  const getZapLink = useCallback(() => {
+    const base = getRepoLink("", false);
+    return `${base}${base.includes("?") ? "&" : "?"}zap=true`;
+  }, [getRepoLink]);
 
   // Track mount state to prevent hydration mismatch
   useEffect(() => {
@@ -937,7 +974,6 @@ export default function RepoLayoutClient({
     ownerPubkey,
     repo,
     resolvedParams.repo,
-    relayRepoEventId,
   ]);
 
   // Sync watch state from canonical NIP-51 list (kind 10018)
@@ -1486,94 +1522,80 @@ export default function RepoLayoutClient({
 
   // Removed onClick handler that was interfering with navigation
 
+  const ownerProfileHref =
+    ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
+      ? `/${nip19.npubEncode(ownerPubkey)}`
+      : `/${resolvedParams.entity}`;
+
+  const headerAvatarSrc =
+    mounted && repoLogo
+      ? repoLogo
+      : mounted && !repoLogo && ownerPicture
+      ? ownerPicture
+      : "/logo.svg";
+
   return (
     <>
+      {/* Identity hero — all repo tabs (Code, Issues, Settings, …) */}
+      <div
+        className="w-full h-[132px] bg-[var(--color-bg-secondary)] bg-cover bg-center relative"
+        style={
+          ownerBanner
+            ? {
+                backgroundImage: `linear-gradient(180deg, transparent 35%, var(--color-bg-primary)), url(${ownerBanner})`,
+              }
+            : {
+                backgroundImage:
+                  "linear-gradient(180deg, var(--color-bg-secondary), var(--color-bg-primary))",
+              }
+        }
+        role="img"
+        aria-label={
+          ownerBanner
+            ? "Owner Nostr profile banner"
+            : "Default banner (no kind-0 banner)"
+        }
+      />
+
       <section className="max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] mx-auto px-4 md:px-6 py-6">
-        <div className="justify-between overflow-hidden flex flex-col lg:flex-row">
-          <div className="mb-4 flex items-center text-lg">
-            <Book className="mr-2 inline h-4 w-4 text-gray-400" />
-            {/* Unified repo icon (circle): repo pic -> owner profile pic -> logo.svg */}
-            <div className="mr-2 flex-shrink-0">
-              <div
-                className="relative h-5 w-5 rounded-full overflow-hidden ring-2 ring-purple-500"
-                style={{ maxWidth: "20px", maxHeight: "20px" }}
-              >
-                {/* Always render a single img tag to avoid hydration mismatch */}
-                {/* On server and initial client render, always use /logo.svg to match */}
-                <img
-                  src={
-                    mounted && repoLogo
-                      ? repoLogo
-                      : mounted && !repoLogo && ownerPicture
-                      ? ownerPicture
-                      : "/logo.svg"
+        <div className="justify-between flex flex-col lg:flex-row overflow-visible gap-3">
+          <div className="mb-2 flex items-start gap-3 min-w-0">
+            <div className="relative z-[2] -mt-10 h-[76px] w-[76px] flex-shrink-0 rounded-full overflow-hidden border-[3px] border-[var(--color-bg-primary)] bg-[var(--color-bg-secondary)] shadow-md">
+              <img
+                src={headerAvatarSrc}
+                alt={ownerDisplayName}
+                className="h-full w-full object-cover"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (target.src !== "/logo.svg") {
+                    target.src = "/logo.svg";
                   }
-                  alt={
-                    mounted && repoLogo
-                      ? "repo logo"
-                      : mounted && !repoLogo && ownerPicture
-                      ? ownerDisplayName
-                      : "repo"
-                  }
-                  className="h-5 w-5 rounded-full object-cover absolute inset-0"
-                  style={{ maxWidth: "20px", maxHeight: "20px" }}
-                  onError={(e) => {
-                    const target = e.currentTarget;
-                    if (target.src !== "/logo.svg") {
-                      // If the current src is not the fallback, try the next fallback
-                      if (mounted && repoLogo) {
-                        setRepoLogo(null);
-                        if (ownerPicture) {
-                          target.src = ownerPicture;
-                        } else {
-                          target.src = "/logo.svg";
-                        }
-                      } else if (mounted && !repoLogo && ownerPicture) {
-                        target.src = "/logo.svg";
-                      } else {
-                        target.style.display = "none";
-                      }
-                    } else {
-                      target.style.display = "none";
-                    }
-                  }}
-                  referrerPolicy="no-referrer"
+                }}
+                referrerPolicy="no-referrer"
+                suppressHydrationWarning
+              />
+            </div>
+            <div className="min-w-0 pt-1">
+              <div className="flex flex-wrap items-baseline gap-x-1 text-lg">
+                <Link
+                  className="text-[var(--color-link)] hover:underline font-semibold"
+                  href={ownerProfileHref}
                   suppressHydrationWarning
-                />
+                >
+                  {ownerDisplayName}
+                </Link>
+                <span className="text-[var(--color-text-secondary)]">/</span>
+                <Link
+                  className="text-[var(--color-text-primary)] hover:underline font-semibold"
+                  href={getRepoLink()}
+                >
+                  {decodeURIComponent(resolvedParams.repo)}
+                </Link>
+                <span className="border-[var(--color-border)] text-[var(--color-text-secondary)] ml-1 rounded-full border px-1.5 text-xs">
+                  {isPrivateRepo ? "Private" : "Public"}
+                </span>
               </div>
             </div>
-            <a
-              className="text-purple-500 hover:underline cursor-pointer"
-              href={
-                ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
-                  ? `/${nip19.npubEncode(ownerPubkey)}`
-                  : `/${resolvedParams.entity}`
-              }
-              onClick={(e) => {
-                e.preventDefault();
-                window.location.href =
-                  ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
-                    ? `/${nip19.npubEncode(ownerPubkey)}`
-                    : `/${resolvedParams.entity}`;
-              }}
-              suppressHydrationWarning
-            >
-              {ownerDisplayName}
-            </a>
-            <span className="text-gray-400 px-2">/</span>
-            <a
-              className="text-purple-500 hover:underline cursor-pointer"
-              href={getRepoLink()}
-              onClick={(e) => {
-                e.preventDefault();
-                window.location.href = getRepoLink();
-              }}
-            >
-              {decodeURIComponent(resolvedParams.repo)}
-            </a>
-            <span className="border-lightgray text-gray-400 ml-1.5 mt-px rounded-full border px-1.5 text-xs">
-              {isPrivateRepo ? "Private" : "Public"}
-            </span>
           </div>
 
           {canViewPrivateContent ? (
@@ -1602,8 +1624,7 @@ export default function RepoLayoutClient({
                     key="zaps"
                     title={zapBadgeTitle}
                     onClick={() => {
-                      window.location.href =
-                        getRepoLink("", false) + "?zap=true";
+                      router.push(getZapLink());
                     }}
                   >
                     <Zap className="mr-2 h-4 w-4" /> Zaps
@@ -1668,15 +1689,7 @@ export default function RepoLayoutClient({
                     {isWatching ? "Unwatch" : "Watch"}
                     <Badge className="ml-2">{isWatching ? 1 : 0}</Badge>
                   </Button>
-                  <a
-                    href={getRepoLink("", false) + "?zap=true"}
-                    title={zapBadgeTitle}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      window.location.href =
-                        getRepoLink("", false) + "?zap=true";
-                    }}
-                  >
+                  <Link href={getZapLink()} title={zapBadgeTitle}>
                     <Button
                       className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
                       variant="outline"
@@ -1684,7 +1697,7 @@ export default function RepoLayoutClient({
                       <Zap className="mr-2 h-4 w-4" /> Zaps
                       <Badge className="ml-2">{zapBadge.totalSats}</Badge>
                     </Button>
-                  </a>
+                  </Link>
                   {/* Relays status not yet implemented */}
                   <Button
                     className="h-8 !border-[#383B42] bg-[#22262C] text-xs"
@@ -1777,19 +1790,25 @@ export default function RepoLayoutClient({
                     href={getRepoLink(item.link || "", item.name === "Code")}
                     onClick={(e) => {
                       e.preventDefault();
-                      e.stopPropagation();
-                      window.location.href = getRepoLink(
+                      const href = getRepoLink(
                         item.link || "",
                         item.name === "Code"
                       );
+                      const targetPath = href.split("?")[0] || href;
+                      router.push(href);
+                      // Soft nav can stall while the Code page is busy; fall back.
+                      window.setTimeout(() => {
+                        if (window.location.pathname !== targetPath) {
+                          window.location.assign(href);
+                        }
+                      }, 2500);
                     }}
                     className={clsx(
                       "flex items-center whitespace-nowrap border-b-2 border-transparent transition-all ease-in-out px-3 py-4 text-sm cursor-pointer",
                       {
-                        "border-b-purple-600":
+                        "border-b-[var(--color-accent-primary)]":
                           item.name === "Code"
-                            ? pathname ===
-                              `/${resolvedParams.entity}/${resolvedParams.repo}`
+                            ? isCodeTabActive
                             : pathname.includes(
                                 `/${resolvedParams.entity}/${resolvedParams.repo}/${item.link}`
                               ),
@@ -1832,37 +1851,25 @@ export default function RepoLayoutClient({
               {overflowMenuItems.map((item, index) => (
                 <DropdownMenuItem
                   key={`${item.name}-${item.link}-${index}`}
-                  className="p-0"
-                  onSelect={(e) => {
-                    e.preventDefault();
+                  className={clsx(
+                    "flex h-9 cursor-pointer items-center whitespace-nowrap p-4 text-sm text-white hover:bg-[var(--color-accent-primary)]",
+                    {
+                      "border-b-2 border-b-[var(--color-accent-primary)]":
+                        item.name === "Code"
+                          ? isCodeTabActive
+                          : pathname.includes(
+                              `/${resolvedParams.entity}/${resolvedParams.repo}/${item.link}`
+                            ),
+                    }
+                  )}
+                  onSelect={() => {
+                    router.push(
+                      getRepoLink(item.link || "", item.name === "Code")
+                    );
                   }}
                 >
-                  <a
-                    href={getRepoLink(item.link || "", item.name === "Code")}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      window.location.href = getRepoLink(
-                        item.link || "",
-                        item.name === "Code"
-                      );
-                    }}
-                    className={clsx(
-                      "w-full flex h-9 items-center whitespace-nowrap border-transparent transition-all ease-in-out p-4 text-sm text-white hover:bg-purple-600",
-                      {
-                        "border-b-purple-600":
-                          item.name === "Code"
-                            ? pathname ===
-                              `/${resolvedParams.entity}/${resolvedParams.repo}`
-                            : pathname.includes(
-                                `/${resolvedParams.entity}/${resolvedParams.repo}/${item.link}`
-                              ),
-                      }
-                    )}
-                  >
-                    {item.icon}
-                    {item.name}
-                  </a>
+                  {item.icon}
+                  {item.name}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

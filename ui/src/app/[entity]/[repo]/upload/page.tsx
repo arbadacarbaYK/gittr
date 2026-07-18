@@ -343,12 +343,14 @@ export default function UploadPage({
     });
   };
 
+  const canUpload = !uploading && files.length > 0;
+
   return (
-    <div className="container mx-auto max-w-4xl p-6">
+    <div className="container mx-auto max-w-4xl p-6 text-[var(--color-text-primary)]">
       <div className="mb-4">
         <Link
           href={`/${resolvedParams.entity}/${resolvedParams.repo}`}
-          className="text-purple-500 hover:underline"
+          className="text-[var(--color-accent-primary)] hover:underline"
         >
           ← Back to repository
         </Link>
@@ -358,24 +360,43 @@ export default function UploadPage({
 
       <div className="space-y-4">
         <div>
-          <label className="block mb-2">Select files</label>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            onChange={handleFileSelect}
-            className="w-full border p-2 text-black rounded"
-          />
-          <p className="text-sm text-gray-400 mt-1">
+          <label className="mb-2 block text-[var(--color-text-primary)]">
+            Select files
+          </label>
+          <div className="relative flex flex-wrap items-center gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-dark)] px-3 py-3">
+            {/* Native file control ignores theme; keep it off-screen and drive a themed button. */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={handleFileSelect}
+              tabIndex={-1}
+              aria-hidden="true"
+              className="pointer-events-none absolute h-px w-px -m-px overflow-hidden whitespace-nowrap border-0 p-0 opacity-0"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-1.5 text-sm font-medium text-[var(--color-text-primary)] hover:border-[var(--color-accent-primary)] hover:text-[var(--color-accent-primary)]"
+            >
+              Choose files
+            </button>
+            <span className="text-sm text-[var(--color-text-secondary)]">
+              {files.length === 0
+                ? "No files selected"
+                : `${files.length} file${files.length === 1 ? "" : "s"} selected`}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
             You can select multiple files.
             {isOwnerUser && (
-              <span className="block mt-1 text-green-400">
+              <span className="mt-1 block text-green-400">
                 ✓ You are the owner - files will be added directly (no PR
                 needed)
               </span>
             )}
             {isOwnerUser === false && (
-              <span className="block mt-1 text-yellow-400">
+              <span className="mt-1 block text-yellow-400">
                 ⚠ You are not the owner - files will require a Pull Request
               </span>
             )}
@@ -384,12 +405,15 @@ export default function UploadPage({
 
         {files.length > 0 && (
           <div>
-            <h3 className="font-semibold mb-2">
+            <h3 className="mb-2 font-semibold">
               Selected files ({files.length}):
             </h3>
-            <ul className="list-disc list-inside space-y-1">
+            <ul className="list-inside list-disc space-y-1">
               {files.map((file, idx) => (
-                <li key={idx} className="text-gray-300">
+                <li
+                  key={`${file.name}-${idx}`}
+                  className="text-[var(--color-text-secondary)]"
+                >
                   {file.name} ({(file.size / 1024).toFixed(2)} KB)
                 </li>
               ))}
@@ -399,15 +423,20 @@ export default function UploadPage({
 
         <div className="flex gap-2">
           <button
+            type="button"
             onClick={handleUpload}
-            disabled={uploading || files.length === 0}
-            className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!canUpload}
+            className={
+              canUpload
+                ? "theme-bg-accent-primary rounded-md px-4 py-2 font-medium text-white"
+                : "cursor-not-allowed rounded-md border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-4 py-2 font-medium text-[var(--color-text-secondary)]"
+            }
           >
             {uploading ? "Uploading..." : "Upload files"}
           </button>
           <Link
             href={`/${resolvedParams.entity}/${resolvedParams.repo}`}
-            className="px-4 py-2 border rounded hover:bg-gray-800"
+            className="rounded-md border border-[var(--color-border)] px-4 py-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] hover:text-[var(--color-text-primary)]"
           >
             Cancel
           </Link>
@@ -415,8 +444,8 @@ export default function UploadPage({
 
         {status && (
           <div
-            className={`p-3 rounded ${
-              status.includes("Error") ? "bg-red-900" : "bg-green-900"
+            className={`rounded-md p-3 ${
+              status.includes("Error") ? "bg-red-900/80" : "bg-green-900/80"
             }`}
           >
             {status}

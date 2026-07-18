@@ -63,6 +63,7 @@ const useSession = () => {
     name,
     initials,
     picture: metadata.picture,
+    banner: metadata.banner,
   };
 };
 

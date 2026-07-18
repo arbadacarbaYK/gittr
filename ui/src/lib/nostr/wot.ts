@@ -223,11 +223,13 @@ export async function resolveWoTDistance(opts: {
   if (!viewer || !target) return null;
   if (viewer === target) return { hops: 0, source: "self" };
 
-  const fromExtension = await fetchWoTDistanceFromExtension(viewer, target);
-  if (fromExtension && fromExtension.hops > 0) return fromExtension;
-
+  // Direct follow is authoritative for "In your network" — check before
+  // extension/oracle graphs that can miss people you actually follow.
   const fromFollows = distanceFromFollowSet(viewer, target, opts.follows);
   if (fromFollows) return fromFollows;
+
+  const fromExtension = await fetchWoTDistanceFromExtension(viewer, target);
+  if (fromExtension && fromExtension.hops > 0) return fromExtension;
 
   const fromOracle = await fetchWoTDistanceFromOracle(
     viewer,

@@ -12,6 +12,7 @@ import {
 } from "@/lib/utils/social-image";
 
 import { type Metadata } from "next";
+import { Suspense } from "react";
 import { nip19 } from "nostr-tools";
 
 import RepoLayoutClient from "./layout-client";
@@ -339,5 +340,17 @@ export default function RepoLayout({
   children: React.ReactNode;
   params: Promise<{ entity: string; repo: string; subpage?: string }>;
 }) {
-  return <RepoLayoutClient>{children}</RepoLayoutClient>;
+  // useSearchParams() in RepoLayoutClient needs a Suspense boundary or soft
+  // client navigations (tab clicks) can hang with no URL change.
+  return (
+    <Suspense
+      fallback={
+        <div className="p-6 text-sm text-[var(--color-text-secondary)]">
+          Loading repository…
+        </div>
+      }
+    >
+      <RepoLayoutClient>{children}</RepoLayoutClient>
+    </Suspense>
+  );
 }

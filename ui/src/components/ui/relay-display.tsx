@@ -29,6 +29,8 @@ interface RelayDisplayProps {
   gitSourceStatuses?: GitSourceStatus[]; // Status of git source fetches (GitHub, GitLab, Codeberg, etc.)
   cloneUrls?: string[]; // Clone URLs from NIP-34 event
   className?: string;
+  /** When false, Git Sources section starts collapsed (next UI). Default true. */
+  defaultGitSourcesExpanded?: boolean;
 }
 
 /**
@@ -44,11 +46,14 @@ export function RelayDisplay({
   gitSourceStatuses = [],
   cloneUrls = [],
   className = "",
+  defaultGitSourcesExpanded = true,
 }: RelayDisplayProps) {
   const [mounted, setMounted] = useState(false);
   const [graspExpanded, setGraspExpanded] = useState(false);
   const [relaysExpanded, setRelaysExpanded] = useState(false);
-  const [gitSourcesExpanded, setGitSourcesExpanded] = useState(true); // Expanded by default to show fetch progress
+  const [gitSourcesExpanded, setGitSourcesExpanded] = useState(
+    defaultGitSourcesExpanded
+  );
 
   useEffect(() => {
     setMounted(true);

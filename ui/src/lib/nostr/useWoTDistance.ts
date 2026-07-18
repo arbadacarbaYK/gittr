@@ -6,7 +6,6 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import {
   KIND_CONTACT_LIST,
-  type WoTDistanceResult,
   normalizeHexPubkey,
   parseContactListPubkeys,
   resolveWoTDistance,
@@ -17,11 +16,16 @@ export type WoTDistanceState =
   | { status: "loading" }
   | { status: "logged_out" }
   | { status: "self" }
-  | { status: "ready"; result: WoTDistanceResult | null };
+  | {
+      status: "ready";
+      result: Awaited<ReturnType<typeof resolveWoTDistance>>;
+    };
+
+const FOLLOWS_WAIT_MS = 8500;
 
 /**
  * Viewer-relative hop distance to `targetPubkey` (hex or npub).
- * Priority: WoT extension → direct follow (kind 3) → oracle API.
+ * Priority: direct follow (kind 3) → WoT extension → oracle API.
  */
 export function useWoTDistance(
   targetPubkey: string | null | undefined
@@ -52,8 +56,16 @@ export function useWoTDistance(
       8000
     );
 
+    // If kind-3 never arrives, stop waiting so oracle/Outside can resolve.
+    const timeout = window.setTimeout(() => {
+      if (!cancelled) {
+        setFollows((prev) => prev ?? new Set());
+      }
+    }, FOLLOWS_WAIT_MS);
+
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
       try {
         unsub?.();
       } catch {
@@ -73,6 +85,13 @@ export function useWoTDistance(
     }
     if (viewerHex === targetHex) {
       setState({ status: "self" });
+      return;
+    }
+
+    // Wait for follow list before declaring Outside — otherwise a slow kind-3
+    // looks like "not following" and the badge flips wrongly on repo pages.
+    if (follows === null) {
+      setState({ status: "loading" });
       return;
     }
 

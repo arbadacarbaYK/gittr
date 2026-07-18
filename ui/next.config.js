@@ -12,6 +12,17 @@ const nextConfig = {
     ignoreBuildErrors: false,
   },
   
+  // Legacy parallel preview → real Code URL (query string preserved)
+  async redirects() {
+    return [
+      {
+        source: "/:entity/:repo/next",
+        destination: "/:entity/:repo",
+        permanent: false,
+      },
+    ];
+  },
+
   // Security headers
   async headers() {
     return [

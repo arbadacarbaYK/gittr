@@ -309,6 +309,20 @@ a:hover {
   border-color: var(--color-accent-primary) !important;
 }
 
+/* Tab underlines and other bottom borders that still use classic purple utilities */
+:root[data-theme="bitcoin"] .border-b-purple-600,
+:root[data-theme="cypherpunk"] .border-b-purple-600,
+:root[data-theme="girly"] .border-b-purple-600,
+:root[data-theme="arcade80s"] .border-b-purple-600,
+:root[data-theme="midnight"] .border-b-purple-600,
+:root[data-theme="bitcoin"] .border-purple-600,
+:root[data-theme="cypherpunk"] .border-purple-600,
+:root[data-theme="girly"] .border-purple-600,
+:root[data-theme="arcade80s"] .border-purple-600,
+:root[data-theme="midnight"] .border-purple-600 {
+  border-color: var(--color-accent-primary) !important;
+}
+
 :root[data-theme="bitcoin"] .border-gray-700,
 :root[data-theme="cypherpunk"] .border-gray-700,
 :root[data-theme="girly"] .border-gray-700,

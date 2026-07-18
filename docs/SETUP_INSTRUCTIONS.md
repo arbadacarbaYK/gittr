@@ -230,6 +230,8 @@ NEXT_PUBLIC_GIT_SERVER_URL=https://git.your.domain
 NEXT_PUBLIC_GITTR_PAGES_URL=https://pages.your.domain
 ```
 
+**Repo page UI:** Default is the next look (kind-0 banner + identity hero on every `[entity]/[repo]/*` tab, including Settings). Same Code/APIs/forms for all entities. Rollback: `NEXT_PUBLIC_REPO_UI=classic` and rebuild. Legacy `…/next` URLs redirect to the Code page. Repo tabs (Code, Issues, Settings, …) use client-side Next.js navigation so the shared layout chrome stays mounted and does not re-fetch header Nostr/GitHub data on every tab click.
+
 `NEXT_PUBLIC_GIT_SERVER_URL` may be the **host only** (e.g. `https://git.gittr.space`). Announcements must still publish **full** clone URLs (`https://git…/<npub>/<repo>.git`). The UI expands host-only values in `buildUnsignedRepositoryEvent`; do not hand-publish bare hosts into kind 30617. On **My Repositories**, owners with only unusable clones (host-only / localhost) see a **Please republish** badge and can batch-republish (one Push + signatures per repo; nsec / NIP-07 / remote signer).
 
 **Push clone mirrors:** hosts from `GRASP_SERVERS_FOR_PUSHING` (env relays) plus the owner’s kind **10317** preferred GRASP list, merged host-deduped via `mergeGraspHostsForPush`. Exclusions in `GRASP_DOMAINS_EXCLUDED_FROM_PUSHING` (e.g. `git-01.uid.ovh`, `git.jb55.com`, `ngit-relay.nostrver.se` while unreachable) never get auto `clone` tags or sync waits — they stay in `KNOWN_GRASP_DOMAINS` for reading other people’s events.
