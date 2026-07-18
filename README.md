@@ -11,7 +11,7 @@ Import from GitHub, GitLab, Codeberg, or your own git remote when you want a Nos
 - **Mirror / backup** — Push or import a repo. Files live on the **gitnostr** bridge (`git-nostr-bridge`, and/or upstream); metadata on relays.
 - **Issues & PRs on Nostr** — Same workflow as a normal forge. Events are NIP-34 and related kinds
 - **Pages** — Publish static sites from a repo
-- **Apps** — List/install NIP-82 apps
+- **Apps** — Browse NIP-82 / Zapstore apps; owners can **Announce app** from a repo (forge Release APK URLs, no gittr binary hosting)
 - **Bounties** — Fund or solve issues; zaps via LNbits / NWC / LNURL.
 
 Sitemap/SEO: dynamic from relays — [docs/SEO.md](docs/SEO.md).

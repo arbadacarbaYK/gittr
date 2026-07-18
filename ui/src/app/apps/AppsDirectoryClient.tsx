@@ -213,6 +213,8 @@ export function AppsDirectoryClient() {
   >(() => new Map());
 
   const rawAppEventsRef = useRef<NostrEventLike[]>([]);
+  /** NIP-09 kind 5 — hide app/release/asset events by id (repo NIP-34 unchanged). */
+  const deletedEventIdsRef = useRef<Set<string>>(new Set());
   const releasesRef = useRef<Map<string, ParsedSoftwareRelease[]>>(new Map());
   const releasesByAppIdRef = useRef<Map<string, ParsedSoftwareRelease[]>>(
     new Map()
@@ -227,7 +229,11 @@ export function AppsDirectoryClient() {
   const relaysKey = useMemo(() => relays.join("|"), [relays]);
 
   const refreshAppsFromRef = useCallback(() => {
-    const map = dedupeSoftwareApps(rawAppEventsRef.current);
+    const deleted = deletedEventIdsRef.current;
+    const kept = rawAppEventsRef.current.filter(
+      (ev) => !ev.id || !deleted.has(ev.id)
+    );
+    const map = dedupeSoftwareApps(kept);
     setApps(
       Array.from(map.values()).sort((a, b) =>
         a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
@@ -235,8 +241,32 @@ export function AppsDirectoryClient() {
     );
   }, []);
 
+  const pruneDeletedReleases = useCallback(() => {
+    const deleted = deletedEventIdsRef.current;
+    const pruneMap = (src: Map<string, ParsedSoftwareRelease[]>) => {
+      const next = new Map<string, ParsedSoftwareRelease[]>();
+      for (const [k, list] of src) {
+        const filtered = list.filter(
+          (r) => !r.raw?.id || !deleted.has(r.raw.id)
+        );
+        if (filtered.length > 0) next.set(k, filtered);
+      }
+      return next;
+    };
+    releasesRef.current = pruneMap(releasesRef.current);
+    releasesByAppIdRef.current = pruneMap(releasesByAppIdRef.current);
+    setReleasesByApp(new Map(releasesRef.current));
+    setReleasesByAppId(new Map(releasesByAppIdRef.current));
+    setAssetsById((prev) => {
+      const next = new Map(prev);
+      for (const id of deleted) next.delete(id);
+      return next;
+    });
+  }, []);
+
   const mergeReleaseEvent = useCallback((event: NostrEventLike) => {
     if (isPublisherBlocklisted(event.pubkey)) return;
+    if (event.id && deletedEventIdsRef.current.has(event.id)) return;
     const r = parseSoftwareRelease(event);
     if (!r) return;
     const key = appDedupKey(r.pubkey, r.appId);
@@ -405,6 +435,7 @@ export function AppsDirectoryClient() {
 
   useEffect(() => {
     rawAppEventsRef.current = [];
+    deletedEventIdsRef.current = new Set();
     releasesRef.current = new Map();
     releasesByAppIdRef.current = new Map();
     assetsRef.current = new Set();
@@ -436,11 +467,37 @@ export function AppsDirectoryClient() {
           [
             { kinds: [KIND_SOFTWARE_APPLICATION], limit: 4000 },
             { kinds: [KIND_SOFTWARE_RELEASE], limit: 12000 },
+            { kinds: [5], limit: 2000 },
           ],
           relays,
           (event: NostrEventLike) => {
             if (cancelled) return;
+            if (event.kind === 5) {
+              let changed = false;
+              for (const t of event.tags || []) {
+                if (
+                  t[0] === "e" &&
+                  typeof t[1] === "string" &&
+                  /^[0-9a-f]{64}$/i.test(t[1])
+                ) {
+                  const id = t[1].toLowerCase();
+                  if (!deletedEventIdsRef.current.has(id)) {
+                    deletedEventIdsRef.current.add(id);
+                    changed = true;
+                  }
+                }
+              }
+              if (changed) {
+                refreshAppsFromRef();
+                pruneDeletedReleases();
+              }
+              return;
+            }
             if (event.kind === KIND_SOFTWARE_APPLICATION) {
+              if (event.id && deletedEventIdsRef.current.has(event.id)) {
+                finishLoading();
+                return;
+              }
               if (!isPublisherBlocklisted(event.pubkey)) {
                 rawAppEventsRef.current.push(event);
                 refreshAppsFromRef();
@@ -475,6 +532,7 @@ export function AppsDirectoryClient() {
     reloadNonce,
     fetchCatalogFromServer,
     refreshAppsFromRef,
+    pruneDeletedReleases,
     mergeReleaseEvent,
   ]);
 

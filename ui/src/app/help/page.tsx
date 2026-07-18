@@ -212,8 +212,8 @@ export default function HelpPage() {
           </li>
           <li id="gittr-pages" className="scroll-mt-24">
             <strong className="text-white">gittr Pages</strong> — Publish static
-            sites from a repo (site file + README block + Push to Nostr / Blossom);
-            browse the directory at{" "}
+            sites from a repo (site file + README block + Push to Nostr /
+            Blossom); browse the directory at{" "}
             <Link
               href="/pages"
               className="text-purple-400 hover:text-purple-300"
@@ -232,7 +232,15 @@ export default function HelpPage() {
             >
               /apps
             </Link>
-            .
+            . Repo owners can{" "}
+            <strong className="text-white">Announce app</strong> from the Code
+            sidebar: gittr reads a forge{" "}
+            <strong className="text-white">Release</strong> (not a git branch)
+            with an <code className="text-purple-200">.apk</code>, publishes
+            Zapstore-compatible events pointing at the forge download URL, and
+            does <em>not</em> host the binary. Zapstore listing is free;
+            optional <code className="text-purple-200">zapstore.yaml</code>{" "}
+            helps whitelist on their relay.
           </li>
           <li>
             <strong className="text-white">Bounties &amp; zaps</strong> — Fund

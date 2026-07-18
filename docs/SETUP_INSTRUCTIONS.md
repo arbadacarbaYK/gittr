@@ -57,6 +57,7 @@ yarn build
 - If Next runs as a different user than the bridge, set **`GIT_NOSTR_BRIDGE_DB`** and **`GIT_NOSTR_BRIDGE_REPOS_DIR`** to the bridge’s absolute paths (see `.env.example`).
 - Optional: `PUBLISHER_BLOCKLIST` / `NEXT_PUBLIC_PUBLISHER_BLOCKLIST` — hides listed pubkeys from explore/repos/sitemap (server `ui/.env.local` only). Pages directory: gateway **`CURATION_USER`** + deploy sync — see [GITTR_PAGES_CURATION.md](GITTR_PAGES_CURATION.md).
 - Push paywall, NIP-34 tag shape, Pages/Blossom behavior: [NIPS_AND_EVENT_KINDS.md](NIPS_AND_EVENT_KINDS.md) and in-app Help — not repeated here.
+- **App announce (NIP-82 / Zapstore)**: owners publish from the repo Code sidebar (**Announce app**). Requires a linked GitHub/Codeberg/GitLab `sourceUrl` with a forge **Release** that includes an `.apk`. gittr does **not** store APKs; events point at forge download URLs. Optional `GITHUB_PLATFORM_TOKEN` improves GitHub Releases rate limits for `GET /api/repo/forge-releases`. See NIP-82 section in [NIPS_AND_EVENT_KINDS.md](NIPS_AND_EVENT_KINDS.md).
 
 PWA: optional; needs HTTPS in production (`ui/public/site.webmanifest`, `sw.js`).
 
