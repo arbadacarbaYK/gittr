@@ -35,7 +35,6 @@ import {
   type UserStats,
   getLatestBounties,
   getOpenBounties,
-  getOpenPRsAndIssues,
   getOwnBountyStats,
   getPlatformBountyStats,
   getRecentActivity,
@@ -286,12 +285,6 @@ export default function HomePage({
   const [platformRecentActivities, setPlatformRecentActivities] = useState<
     PlatformRecentActivity[]
   >(() => initialLeaderboard?.recentActivities ?? []);
-  const [openPRsAndIssues, setOpenPRsAndIssues] = useState<{
-    openPRs: number;
-    openIssues: number;
-    recentPRs: any[];
-    recentIssues: any[];
-  } | null>(null);
   const [statsLoaded, setStatsLoaded] = useState(false);
   const hasInitialLeaderboard =
     (initialLeaderboard?.topRepos.length ?? 0) > 0 ||
@@ -999,16 +992,11 @@ export default function HomePage({
           setOwnBountyStats(getOwnBountyStats(pubkey)); // Show user's own bounty stats
           setRecentBountyActivities(getRecentBountyActivities(pubkey, 5)); // Recent bounty activities
           setUserBountyActivityStats(getUserBountyActivityStats(pubkey)); // Bounty activity stats
-          // Show PRs and issues from repos where user has write access (only when logged in)
-          setOpenPRsAndIssues(getOpenPRsAndIssues(pubkey));
-          // Recent Activity: Only show repos where user is owner or has write access
+          // Local fallback only — homepage prefers shared platformRecentActivities
           setRecentActivity(getRecentActivity(10, pubkey));
         } else {
           setRecentBountyActivities([]);
           setUserBountyActivityStats(null);
-          // Don't show PRs & Issues when not logged in
-          setOpenPRsAndIssues(null);
-          // Recent Activity: Show all when not logged in
           setRecentActivity(getRecentActivity(10));
         }
         // Always load platform-wide bounty stats
@@ -1206,18 +1194,22 @@ export default function HomePage({
     return filtered.slice(0, 12);
   }, [repos]);
 
+  // Prefer the shared platform feed so Firefox/Brave/etc. show the same homepage activity
+  // (local gittr_activities differs per browser and used to make Recent Activity look "random").
   const displayRecentActivity = useMemo((): Activity[] => {
-    if (recentActivity.length > 0) return recentActivity;
-    return platformRecentActivities.map((a) => ({
-      id: a.id,
-      type: a.type,
-      timestamp: a.timestamp,
-      user: a.user,
-      entity: a.entity,
-      repo: a.repo,
-      repoName: a.repoName,
-      metadata: a.metadata,
-    }));
+    if (platformRecentActivities.length > 0) {
+      return platformRecentActivities.map((a) => ({
+        id: a.id,
+        type: a.type,
+        timestamp: a.timestamp,
+        user: a.user,
+        entity: a.entity,
+        repo: a.repo,
+        repoName: a.repoName,
+        metadata: a.metadata,
+      }));
+    }
+    return recentActivity;
   }, [recentActivity, platformRecentActivities]);
 
   // Get metadata for user avatars (stats)
@@ -2201,97 +2193,6 @@ export default function HomePage({
             </div>
           )}
 
-        {/* Open PRs & Issues - Full width to match Recent Activity section - Only show when logged in and there are PRs or Issues */}
-        {isLoggedIn &&
-          openPRsAndIssues &&
-          (openPRsAndIssues.openPRs > 0 || openPRsAndIssues.openIssues > 0) && (
-            <div className="border border-[#383B42] rounded p-4 col-span-full">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-purple-400">
-                  📋 Open PRs & Issues
-                </h3>
-                <div className="flex gap-3 text-xs">
-                  <Link
-                    href="/pulls"
-                    className="text-purple-400 hover:text-purple-300"
-                  >
-                    {openPRsAndIssues.openPRs} PRs
-                  </Link>
-                  <span className="text-gray-600">|</span>
-                  <Link
-                    href="/issues"
-                    className="text-purple-400 hover:text-purple-300"
-                  >
-                    {openPRsAndIssues.openIssues} Issues
-                  </Link>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                {/* Recent PRs */}
-                <div>
-                  <div className="text-xs text-gray-400 mb-2">Recent PRs</div>
-                  <div className="space-y-1.5">
-                    {openPRsAndIssues.recentPRs.slice(0, 3).map((pr) => {
-                      const href = getRepoUrl(
-                        pr.entity,
-                        `${pr.repoName}/pulls/${pr.id}`
-                      );
-                      return (
-                        <Link
-                          key={`${pr.entity}-${pr.repoName}-${pr.id}`}
-                          href={href}
-                          className="block hover:bg-gray-800/50 rounded p-1.5 -m-1.5"
-                        >
-                          <div className="text-xs text-purple-300 truncate">
-                            {pr.title}
-                          </div>
-                          <div className="text-[10px] text-gray-500 truncate">
-                            {pr.repoName}
-                          </div>
-                        </Link>
-                      );
-                    })}
-                    {openPRsAndIssues.recentPRs.length === 0 && (
-                      <div className="text-xs text-gray-500">No open PRs</div>
-                    )}
-                  </div>
-                </div>
-                {/* Recent Issues */}
-                <div>
-                  <div className="text-xs text-gray-400 mb-2">
-                    Recent Issues
-                  </div>
-                  <div className="space-y-1.5">
-                    {openPRsAndIssues.recentIssues.slice(0, 3).map((issue) => {
-                      const href = getRepoUrl(
-                        issue.entity,
-                        `${issue.repoName}/issues/${issue.id}`
-                      );
-                      return (
-                        <Link
-                          key={`${issue.entity}-${issue.repoName}-${issue.id}`}
-                          href={href}
-                          className="block hover:bg-gray-800/50 rounded p-1.5 -m-1.5"
-                        >
-                          <div className="text-xs text-purple-300 truncate">
-                            {issue.title}
-                          </div>
-                          <div className="text-[10px] text-gray-500 truncate">
-                            {issue.repoName}
-                          </div>
-                        </Link>
-                      );
-                    })}
-                    {openPRsAndIssues.recentIssues.length === 0 && (
-                      <div className="text-xs text-gray-500">
-                        No open issues
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
       </div>
 
       {/* Recent Activity - Full Width - Hidden on mobile */}
