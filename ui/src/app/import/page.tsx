@@ -770,11 +770,13 @@ export default function ImportPage() {
                   setStatus(`Found repository: ${matchedRepo.name}`);
                   setLoading(false);
 
-                  // Auto-import if user is logged in
+                  // Auto-import if user is logged in — pass selection/list explicitly
+                  // (setState + setTimeout used a stale empty selection and never wrote gittr_repos)
                   if (isLoggedIn && pubkey) {
-                    setTimeout(() => {
-                      importSelected();
-                    }, 500);
+                    void importSelected({
+                      selection: new Set([matchedRepo.full_name]),
+                      repoList: [matchedRepo],
+                    });
                   }
                   return;
                 } else {
@@ -818,11 +820,13 @@ export default function ImportPage() {
             setStatus(`Found repository: ${repoData.name}`);
             setLoading(false);
 
-            // Auto-import if user is logged in
+            // Auto-import if user is logged in — pass selection/list explicitly
+            // (setState + setTimeout used a stale empty selection and never wrote gittr_repos)
             if (isLoggedIn && pubkey) {
-              setTimeout(() => {
-                importSelected();
-              }, 500);
+              void importSelected({
+                selection: new Set([repoData.full_name]),
+                repoList: [repoData],
+              });
             }
             return;
           }
@@ -959,8 +963,14 @@ export default function ImportPage() {
     }
   }
 
-  async function importSelected() {
-    if (selectedRepos.size === 0) {
+  async function importSelected(override?: {
+    selection?: Set<string>;
+    repoList?: GithubRepo[];
+  }) {
+    const selection = override?.selection ?? selectedRepos;
+    const repoList = override?.repoList ?? repos;
+
+    if (selection.size === 0) {
       setStatus("Please select at least one repository to import");
       return;
     }
@@ -971,7 +981,7 @@ export default function ImportPage() {
     }
 
     setImporting(true);
-    setStatus(`Importing ${selectedRepos.size} repositories...`);
+    setStatus(`Importing ${selection.size} repositories...`);
 
     try {
       // Use pubkey for entity (not username slug) - ensures URLs use Nostr ID
@@ -1013,10 +1023,19 @@ export default function ImportPage() {
       );
       let importedCount = 0;
       let skippedCount = 0;
+      let skippedAlready = 0;
+      let skippedMissing = 0;
 
-      for (const fullName of selectedRepos) {
-        const repo = repos.find((r) => r.full_name === fullName);
-        if (!repo) continue;
+      for (const fullName of selection) {
+        const repo = repoList.find((r) => r.full_name === fullName);
+        if (!repo) {
+          console.warn(
+            `[Import] Skipping ${fullName} — not found in current repo list`
+          );
+          skippedCount++;
+          skippedMissing++;
+          continue;
+        }
 
         const repoSlug = slugify(repo.name);
         // Check if repo already exists - match by entity AND repo slug
@@ -1070,6 +1089,7 @@ export default function ImportPage() {
                 : "same entity and sourceUrl",
           });
           skippedCount++;
+          skippedAlready++;
           continue;
         }
         console.debug("✅ [Import] Preparing to import repo", {
@@ -1369,6 +1389,40 @@ export default function ImportPage() {
           });
           existingRepos.push(rec);
           importedCount++;
+
+          // Clear local "deleted" tombstones so Repositories doesn't hide/purge this re-import
+          try {
+            const deletedRepos = JSON.parse(
+              localStorage.getItem("gittr_deleted_repos") || "[]"
+            ) as Array<{
+              entity?: string;
+              repo?: string;
+              ownerPubkey?: string;
+            }>;
+            const nextDeleted = deletedRepos.filter((d) => {
+              const dRepo = (d.repo || "").trim().toLowerCase();
+              const targetRepo = repoSlug.trim().toLowerCase();
+              if (dRepo !== targetRepo) return true;
+              const dEntity = (d.entity || "").trim().toLowerCase();
+              if (dEntity && dEntity === entityNpub.toLowerCase()) return false;
+              if (
+                d.ownerPubkey &&
+                pubkey &&
+                d.ownerPubkey.toLowerCase() === pubkey.toLowerCase()
+              ) {
+                return false;
+              }
+              return true;
+            });
+            if (nextDeleted.length !== deletedRepos.length) {
+              localStorage.setItem(
+                "gittr_deleted_repos",
+                JSON.stringify(nextDeleted)
+              );
+            }
+          } catch {
+            // ignore tombstone cleanup failures
+          }
 
           // Save issues, pulls, and commits to separate localStorage keys for the issues/pulls/commits pages
           if (
@@ -1804,9 +1858,20 @@ export default function ImportPage() {
         })
       );
 
+      const skipParts: string[] = [];
+      if (skippedAlready > 0) {
+        skipParts.push(`${skippedAlready} already exist`);
+      }
+      if (skippedMissing > 0) {
+        skipParts.push(`${skippedMissing} missing from list`);
+      }
+      const otherSkips = skippedCount - skippedAlready - skippedMissing;
+      if (otherSkips > 0) {
+        skipParts.push(`${otherSkips} failed`);
+      }
       setStatus(
         `Imported ${importedCount} repositories${
-          skippedCount > 0 ? `, ${skippedCount} skipped (already exist)` : ""
+          skipParts.length > 0 ? `, ${skipParts.join(", ")} skipped` : ""
         }`
       );
 
@@ -1972,7 +2037,7 @@ export default function ImportPage() {
           <div className="flex gap-2">
             <button
               className="flex-1 border border-[#383B42] bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded disabled:opacity-50"
-              onClick={importSelected}
+              onClick={() => void importSelected()}
               disabled={importing || selectedRepos.size === 0}
             >
               {importing
@@ -2061,14 +2126,13 @@ export default function ImportPage() {
                     <button
                       onClick={() => {
                         setShowImportAllConfirm(false);
-                        // Select all repos and import
-                        setSelectedRepos(
-                          new Set(repos.map((r) => r.full_name))
-                        );
-                        // Use setTimeout to ensure state is updated before calling importSelected
-                        setTimeout(() => {
-                          importSelected();
-                        }, 100);
+                        const allNames = new Set(repos.map((r) => r.full_name));
+                        setSelectedRepos(allNames);
+                        // Pass selection + list explicitly (avoid stale setState closure)
+                        void importSelected({
+                          selection: allNames,
+                          repoList: repos,
+                        });
                       }}
                       className="border border-yellow-500/50 bg-yellow-900/20 hover:bg-yellow-900/30 text-yellow-300 px-4 py-2 rounded transition-colors font-semibold"
                     >
