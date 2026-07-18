@@ -5,12 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { recordActivity } from "@/lib/activity-tracking";
 import { mapGithubContributors } from "@/lib/github-mapping";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { buildUnsignedRepositoryEvent } from "@/lib/nostr/events";
-import {
-  publishWithConfirmation,
-  storeRepoEventId,
-} from "@/lib/nostr/publish-with-confirmation";
-import { resolveNostrSigner } from "@/lib/nostr/signer";
 import useSession from "@/lib/nostr/useSession";
 import {
   LOCAL_STORAGE_REPOS_MANAGE_HINT,
@@ -20,7 +14,6 @@ import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { useRouter } from "next/navigation";
-import { getEventHash } from "nostr-tools";
 import { nip19 } from "nostr-tools";
 
 function slugify(text: string): string {
@@ -116,8 +109,7 @@ export default function ImportPage() {
   const [status, setStatus] = useState("");
   const [showImportAllConfirm, setShowImportAllConfirm] = useState(false);
   const router = useRouter();
-  const { publish, subscribe, defaultRelays, pubkey, remoteSigner } =
-    useNostrContext();
+  const { pubkey, subscribe, defaultRelays } = useNostrContext();
   const { name: userName, isLoggedIn } = useSession();
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -382,6 +374,8 @@ export default function ImportPage() {
                     // Don't store issues/pulls/commits in main repo object - they're stored separately
                     createdAt: Date.now(),
                     ownerPubkey: pubkey || undefined,
+                    // Local only until the user explicitly Push to Nostr
+                    status: "local" as const,
                   };
 
                   if (
@@ -556,95 +550,7 @@ export default function ImportPage() {
                     }
                   }
 
-                  if (publish && pubkey) {
-                    try {
-                      const signer = await resolveNostrSigner({ remoteSigner });
-                      if (signer) {
-                        // Get git server URL from env or use default
-                        const gitServerUrl =
-                          process.env.NEXT_PUBLIC_GIT_SERVER_URL ||
-                          (typeof window !== "undefined"
-                            ? `${window.location.protocol}//${window.location.host}`
-                            : "https://gittr.space");
-
-                        const signerPubkey = await signer.getPublicKey();
-                        const repoEvent = buildUnsignedRepositoryEvent(
-                          {
-                            repositoryName: repoSlug,
-                            publicRead: rec.publicRead !== false, // Preserve privacy status from import
-                            publicWrite: false,
-                            description:
-                              rec.description ||
-                              `Imported from ${repo.html_url}`,
-                            sourceUrl: repo.html_url,
-                            forkedFrom: repo.html_url,
-                            readme: rec.readme,
-                            // Files are stored separately - not included in event
-                            stars: rec.stars,
-                            forks: rec.forks,
-                            languages: rec.languages,
-                            topics: rec.topics,
-                            contributors: rec.contributors,
-                            defaultBranch: rec.defaultBranch,
-                            branches: rec.branches,
-                            releases: rec.releases,
-                            // Host-only gitServerUrl is expanded to /npub/repo.git in
-                            // buildUnsignedRepositoryEvent (required by gitworkshop / NIP-34).
-                            clone: [gitServerUrl],
-                            relays: defaultRelays,
-                          },
-                          signerPubkey
-                        );
-                        repoEvent.id = getEventHash(repoEvent);
-                        const signedRepoEvent = await signer.signEvent(
-                          repoEvent
-                        );
-
-                        // Publish with confirmation and store event ID
-                        try {
-                          if (!publish || !subscribe) {
-                            console.error(
-                              `❌ [Import] Cannot publish ${fullName}: publish or subscribe is undefined`
-                            );
-                            continue;
-                          }
-                          const result = await publishWithConfirmation(
-                            publish,
-                            subscribe,
-                            signedRepoEvent,
-                            defaultRelays,
-                            10000 // 10 second timeout
-                          );
-
-                          if (result.confirmed) {
-                            storeRepoEventId(
-                              repoSlug,
-                              rec.entity,
-                              result.eventId,
-                              true
-                            );
-                          } else {
-                            storeRepoEventId(
-                              repoSlug,
-                              rec.entity,
-                              result.eventId,
-                              false
-                            );
-                          }
-                        } catch (pubError: any) {
-                          console.error(
-                            `Failed to publish ${fullName} with confirmation:`,
-                            pubError
-                          );
-                        }
-                      }
-                    } catch (error: any) {
-                      console.error(
-                        `Failed to publish ${fullName} to Nostr:`,
-                        error
-                      );
-                    }
-                  }
+                  // Import is local-only. Publish happens via Push to Nostr on the repo page.
                 } catch (error: any) {
                   console.error(`Error importing ${fullName}:`, error);
                   skippedCount++;
@@ -685,8 +591,6 @@ export default function ImportPage() {
     selectedRepos.size,
     pubkey,
     userName,
-    publish,
-    defaultRelays,
     router,
   ]);
 
@@ -1373,6 +1277,8 @@ export default function ImportPage() {
             links: links.length > 0 ? links : undefined, // Add links if homepage exists
             createdAt: Date.now(),
             ownerPubkey: pubkey || undefined, // Set importing user as owner (full pubkey)
+            // Local only until the user explicitly Push to Nostr
+            status: "local" as const,
           };
           // Log entity to verify it's correct
           console.log("🔄 [Import] Adding repo to existingRepos:", {
@@ -1588,147 +1494,7 @@ export default function ImportPage() {
             }
           }
 
-          // Publish to Nostr
-          if (publish && pubkey) {
-            try {
-              const signer = await resolveNostrSigner({ remoteSigner });
-              if (signer) {
-                // Get git server URL from env or use domain from env
-                const domain =
-                  process.env.NEXT_PUBLIC_DOMAIN ||
-                  (typeof window !== "undefined" ? window.location.host : "");
-                const gitServerUrl =
-                  process.env.NEXT_PUBLIC_GIT_SERVER_URL ||
-                  (domain
-                    ? `https://${domain}`
-                    : typeof window !== "undefined"
-                    ? `${window.location.protocol}//${window.location.host}`
-                    : "");
-
-                const signerPubkey = await signer.getPublicKey();
-                const repoEvent = buildUnsignedRepositoryEvent(
-                  {
-                    repositoryName: repoSlug,
-                    publicRead: (rec as any).publicRead !== false, // Preserve privacy status from import
-                    publicWrite: false,
-                    description:
-                      rec.description || `Imported from ${repo.html_url}`,
-                    sourceUrl: repo.html_url,
-                    forkedFrom: repo.html_url,
-                    readme: rec.readme,
-                    // Files are stored separately - not included in event
-                    stars: rec.stars,
-                    forks: rec.forks,
-                    languages: rec.languages,
-                    topics: rec.topics,
-                    contributors: rec.contributors,
-                    defaultBranch: rec.defaultBranch,
-                    branches: rec.branches,
-                    releases: rec.releases,
-                    // Host-only gitServerUrl is expanded to /npub/repo.git in
-                    // buildUnsignedRepositoryEvent (required by gitworkshop / NIP-34).
-                    clone: [gitServerUrl],
-                    relays: defaultRelays,
-                  },
-                  signerPubkey
-                );
-                repoEvent.id = getEventHash(repoEvent);
-                const signedRepoEvent = await signer.signEvent(repoEvent);
-
-                // Publish with confirmation and store event ID (for batch imports)
-                try {
-                  if (!publish || !subscribe) {
-                    console.error(
-                      `❌ [Import] Cannot publish ${fullName}: publish or subscribe is undefined`
-                    );
-                  } else {
-                    const result = await publishWithConfirmation(
-                      publish,
-                      subscribe,
-                      signedRepoEvent,
-                      defaultRelays,
-                      10000 // 10 second timeout
-                    );
-
-                    if (result.confirmed) {
-                      storeRepoEventId(
-                        repoSlug,
-                        rec.entity,
-                        result.eventId,
-                        true
-                      );
-                    } else {
-                      storeRepoEventId(
-                        repoSlug,
-                        rec.entity,
-                        result.eventId,
-                        false
-                      );
-                    }
-                  }
-                } catch (pubError: any) {
-                  console.error(
-                    `❌ [Import] Failed to publish ${fullName} with confirmation:`,
-                    pubError
-                  );
-                  // Mark repo as push_failed but keep it in localStorage
-                  try {
-                    const repos = JSON.parse(
-                      localStorage.getItem("gittr_repos") || "[]"
-                    );
-                    const repoIndex = repos.findIndex(
-                      (r: any) =>
-                        (r.slug === repoSlug || r.repo === repoSlug) &&
-                        r.entity === rec.entity
-                    );
-                    if (repoIndex >= 0) {
-                      repos[repoIndex] = {
-                        ...repos[repoIndex],
-                        status: "push_failed",
-                        pushError: pubError.message,
-                      };
-                      localStorage.setItem(
-                        "gittr_repos",
-                        JSON.stringify(repos)
-                      );
-                    }
-                  } catch (e) {
-                    console.error(
-                      `Failed to mark ${fullName} as push_failed:`,
-                      e
-                    );
-                  }
-                }
-              }
-            } catch (error: any) {
-              console.error(
-                `❌ [Import] Failed to publish ${fullName} to Nostr:`,
-                error
-              );
-              // Mark repo as push_failed but keep it in localStorage
-              try {
-                const repos = JSON.parse(
-                  localStorage.getItem("gittr_repos") || "[]"
-                );
-                const repoIndex = repos.findIndex(
-                  (r: any) =>
-                    (r.slug === repoSlug || r.repo === repoSlug) &&
-                    r.entity === rec.entity
-                );
-                if (repoIndex >= 0) {
-                  repos[repoIndex] = {
-                    ...repos[repoIndex],
-                    status: "push_failed",
-                    pushError: error.message,
-                  };
-                  localStorage.setItem("gittr_repos", JSON.stringify(repos));
-                }
-              } catch (e) {
-                console.error(`Failed to mark ${fullName} as push_failed:`, e);
-              }
-            }
-          } else {
-          }
+          // Import is local-only. Publish happens via Push to Nostr on the repo page.
         } catch (error: any) {
           console.error(`Error importing ${fullName}:`, error);
           skippedCount++;
