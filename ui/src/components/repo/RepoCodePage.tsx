@@ -1485,9 +1485,13 @@ export function RepoCodePage() {
   const [isRefetching, setIsRefetching] = useState<boolean>(false);
   const [showPostSourceRefetchHint, setShowPostSourceRefetchHint] =
     useState<boolean>(false);
-  /** Same chevron collapse as Git Server / Clone URL; open after source refetch so Push stays visible. */
+  /**
+   * Same chevron collapse as Git Server / Clone URL.
+   * Default open for owners so Push / Pages / Announce are not mistaken as “gone”.
+   * Opens again after source refetch so Push stays visible.
+   */
   const [repositoryStatusExpanded, setRepositoryStatusExpanded] =
-    useState<boolean>(false);
+    useState<boolean>(true);
   const [fetchStatusExpanded, setFetchStatusExpanded] =
     useState<boolean>(false);
   const [cloneUrlsExpanded, setCloneUrlsExpanded] = useState<boolean>(false);
@@ -20295,6 +20299,47 @@ export function RepoCodePage() {
                               }}
                             />
                           )}
+
+                        {/* Inside Repository status so it collapses with Push / Pages */}
+                        {repoIsOwnerFlag ? (
+                          <RepoAppAnnouncePanel
+                            isOwnerSession
+                            sourceUrl={
+                              repo?.sourceUrl ||
+                              repoData?.sourceUrl ||
+                              effectiveSourceUrl ||
+                              repo?.forkedFrom ||
+                              repoData?.forkedFrom ||
+                              null
+                            }
+                            repoName={decodedRepo}
+                            repoSummary={
+                              sidebarAboutText(
+                                repoData?.description ?? repo?.description,
+                                decodedRepo
+                              ) ||
+                              String(
+                                repoData?.description || repo?.description || ""
+                              )
+                            }
+                            ownerPubkeyHex={(
+                              repo?.ownerPubkey ||
+                              repoOwnerPubkey ||
+                              entityPubkey ||
+                              ""
+                            ).toLowerCase()}
+                            nip34Address={(() => {
+                              const owner = (
+                                repo?.ownerPubkey ||
+                                repoOwnerPubkey ||
+                                entityPubkey ||
+                                ""
+                              ).toLowerCase();
+                              if (!/^[0-9a-f]{64}$/.test(owner)) return null;
+                              return `30617:${owner}:${decodedRepo}`;
+                            })()}
+                          />
+                        ) : null}
                       </div>
                     );
                   }
@@ -20302,38 +20347,6 @@ export function RepoCodePage() {
                 return null;
               })()
             : null}
-
-          {mounted && repoIsOwner ? (
-            <RepoAppAnnouncePanel
-              isOwnerSession
-              sourceUrl={
-                repoData?.sourceUrl ||
-                effectiveSourceUrl ||
-                repoData?.forkedFrom ||
-                null
-              }
-              repoName={decodedRepo}
-              repoSummary={
-                sidebarAboutText(repoData?.description, decodedRepo) ||
-                String(repoData?.description || "")
-              }
-              ownerPubkeyHex={(
-                repoOwnerPubkey ||
-                entityPubkey ||
-                zapRecipientPubkey ||
-                ""
-              ).toLowerCase()}
-              nip34Address={(() => {
-                const owner = (
-                  repoOwnerPubkey ||
-                  entityPubkey ||
-                  ""
-                ).toLowerCase();
-                if (!/^[0-9a-f]{64}$/.test(owner)) return null;
-                return `30617:${owner}:${decodedRepo}`;
-              })()}
-            />
-          ) : null}
 
           {mounted && showZap && currentUserPubkey && zapRecipientPubkey && (
             <div className="mb-4 mt-1 pt-3 pb-4 border-t border-b border-lightgray">
