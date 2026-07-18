@@ -1714,6 +1714,13 @@ export function getLiveRecentReposFromNostr(
       );
     };
 
+    const maybeEarlyFinish = () => {
+      // Don't wait for every dead relay once we have a full card.
+      if (byKey.size >= count && eoseCount >= 1) {
+        setTimeout(finish, 150);
+      }
+    };
+
     const unsub = subscribe(
       filters,
       activeRelays,
@@ -1757,6 +1764,7 @@ export function getLiveRecentReposFromNostr(
             /* NIP-34 tags only */
           }
           noteRepo(ownerHex, repoName, ts, description);
+          maybeEarlyFinish();
         } else if (event.kind === KIND_REPOSITORY_STATE) {
           const dTag = event.tags?.find(
             (t: any) => Array.isArray(t) && t[0] === "d"
@@ -1775,6 +1783,7 @@ export function getLiveRecentReposFromNostr(
             // State alone must not invent a discovery card (no clone check).
             if (!byKey.has(repoKey)) return;
             noteRepo(ownerHex, repoName, ts);
+            maybeEarlyFinish();
           }
         }
       },
@@ -1783,12 +1792,15 @@ export function getLiveRecentReposFromNostr(
         eoseCount++;
         if (eoseCount >= expectedEose) {
           setTimeout(finish, 200);
+        } else {
+          maybeEarlyFinish();
         }
       },
       {}
     );
 
-    setTimeout(finish, 8000);
+    // Soft deadline — homepage should not wait 8s on hung EOSes.
+    setTimeout(finish, 4000);
   });
 }
 

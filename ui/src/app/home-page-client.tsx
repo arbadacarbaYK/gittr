@@ -13,13 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ZapButton } from "@/components/ui/zap-button";
 import { type Activity, backfillActivities } from "@/lib/activity-tracking";
-import {
-  isPublisherBlocklisted,
-  isRepoFromBlocklistedOwner,
-} from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
-import { KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
-import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import {
   type Metadata,
   useContributorMetadata,
@@ -48,8 +42,6 @@ import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
 } from "@/lib/utils/entity-resolver";
-import { getGraspServers } from "@/lib/utils/grasp-servers";
-import { nip34TagValuesFromRow } from "@/lib/utils/nip34-tag-values";
 import {
   checkBridgeExists,
   getRepoStatus,
@@ -58,119 +50,6 @@ import {
 
 import Link from "next/link";
 import { nip19 } from "nostr-tools";
-
-// Parse NIP-34 repository announcement format
-function parseNIP34Repository(event: any): any {
-  const repoData: any = {
-    repositoryName: "",
-    description: "",
-    clone: [],
-    relays: [],
-    topics: [],
-    maintainers: [],
-    web: [],
-  };
-
-  if (!event.tags || !Array.isArray(event.tags)) {
-    return repoData;
-  }
-
-  for (const tag of event.tags) {
-    if (!Array.isArray(tag) || tag.length < 2) continue;
-
-    const tagName = tag[0];
-    const tagValue = tag[1];
-
-    switch (tagName) {
-      case "d":
-        repoData.repositoryName = tagValue;
-        break;
-      case "name":
-        repoData.name = tagValue;
-        break;
-      case "description":
-        repoData.description = tagValue;
-        break;
-      case "clone":
-        for (const v of nip34TagValuesFromRow(tag)) {
-          if (v && !repoData.clone.includes(v)) repoData.clone.push(v);
-        }
-        break;
-      case "relays":
-        for (const raw of nip34TagValuesFromRow(tag)) {
-          const parts = raw.includes(",")
-            ? raw
-                .split(",")
-                .map((r: string) => r.trim())
-                .filter((r: string) => r.length > 0)
-            : [raw];
-          for (const tagValue of parts) {
-            const normalized =
-              tagValue.startsWith("wss://") || tagValue.startsWith("ws://")
-                ? tagValue
-                : `wss://${tagValue}`;
-            if (!repoData.relays.includes(normalized)) {
-              repoData.relays.push(normalized);
-            }
-          }
-        }
-        break;
-      case "web":
-        for (const v of nip34TagValuesFromRow(tag)) {
-          if (v && !repoData.web.includes(v)) repoData.web.push(v);
-        }
-        break;
-      case "t":
-        if (tagValue) repoData.topics.push(tagValue);
-        break;
-      case "maintainers":
-        // NIP-34: Accept both hex and npub formats, normalize to hex for internal storage
-        for (const tagValue of nip34TagValuesFromRow(tag)) {
-          if (!tagValue) continue;
-          let normalizedPubkey = tagValue;
-          try {
-            // If it's npub format, decode to hex
-            if (tagValue.startsWith("npub")) {
-              const decoded = nip19.decode(tagValue);
-              if (
-                decoded.type === "npub" &&
-                /^[0-9a-f]{64}$/i.test(decoded.data as string)
-              ) {
-                normalizedPubkey = decoded.data as string;
-              }
-            } else if (/^[0-9a-f]{64}$/i.test(tagValue)) {
-              // Already hex format, use as-is
-              normalizedPubkey = tagValue.toLowerCase();
-            }
-            // Only add if valid hex pubkey
-            if (/^[0-9a-f]{64}$/i.test(normalizedPubkey)) {
-              repoData.maintainers.push(normalizedPubkey);
-            }
-          } catch (e) {
-            // If decoding fails, try to use as hex if valid
-            if (/^[0-9a-f]{64}$/i.test(tagValue)) {
-              repoData.maintainers.push(tagValue.toLowerCase());
-            }
-          }
-        }
-        break;
-      case "r":
-        if (tagValue && tag[2] === "euc") {
-          repoData.earliestUniqueCommit = tagValue;
-        }
-        break;
-    }
-  }
-
-  if (!repoData.repositoryName && repoData.name) {
-    repoData.repositoryName = repoData.name;
-  }
-
-  repoData.publicRead = true;
-  repoData.publicWrite = false;
-
-  return repoData;
-}
 
 type Repo = {
   slug: string;
@@ -217,8 +96,7 @@ export default function HomePage({
   initialLeaderboard?: HomeInitialLeaderboard;
 }) {
   const { isLoggedIn, name, picture, banner } = useSession();
-  const { pubkey, defaultRelays, subscribe, addRelay } = useNostrContext();
-  const [repos, setRepos] = useState<Repo[]>([]);
+  const { pubkey } = useNostrContext();
   const [mounted, setMounted] = useState(false);
 
   // Prevent hydration mismatch by only showing personalized message after mount
@@ -278,7 +156,10 @@ export default function HomePage({
   const [liveRecentRepos, setLiveRecentRepos] = useState<PlatformRecentRepo[]>(
     []
   );
-  const [liveRecentReposLoading, setLiveRecentReposLoading] = useState(true);
+  // If SSR already gave us a snapshot, don't show a long "Loading…" while live API catches up.
+  const [liveRecentReposLoading, setLiveRecentReposLoading] = useState(
+    () => !(initialLeaderboard?.recentRepos?.length)
+  );
   const [platformRecentRepos, setPlatformRecentRepos] = useState<
     PlatformRecentRepo[]
   >(() => initialLeaderboard?.recentRepos ?? []);
@@ -304,7 +185,6 @@ export default function HomePage({
   const [lbRecentActivitiesReady, setLbRecentActivitiesReady] = useState(
     () => (initialLeaderboard?.recentActivities.length ?? 0) > 0
   );
-  const [syncing, setSyncing] = useState(false);
   const leaderboardFetchGen = useRef(0);
 
   const applyLeaderboardPayload = useCallback(
@@ -508,15 +388,20 @@ export default function HomePage({
 
     const load = async () => {
       try {
-        const res = await fetch("/api/stats/recent-repos");
-        if (!res.ok || cancelled) return;
+        const res = await fetch("/api/stats/recent-repos", {
+          signal: AbortSignal.timeout(6_000),
+        });
+        if (!res.ok || cancelled) {
+          if (!cancelled) setLiveRecentReposLoading(false);
+          return;
+        }
         const data = (await res.json()) as { repos?: PlatformRecentRepo[] };
         if (Array.isArray(data.repos)) {
           setLiveRecentRepos(data.repos);
-          setLiveRecentReposLoading(false);
         }
       } catch (e) {
         console.warn("[Home] recent-repos fetch failed:", e);
+      } finally {
         if (!cancelled) setLiveRecentReposLoading(false);
       }
     };
@@ -530,29 +415,9 @@ export default function HomePage({
     };
   }, []);
 
-  // Load repos and listen for updates from Nostr sync
-  const loadRepos = useCallback(() => {
-    try {
-      const list = loadStoredRepos();
-      console.log("📦 [Home] loadRepos called:", {
-        loadedCount: list.length,
-        sample: list.slice(0, 3).map((r) => ({
-          repo: r.repo || r.slug,
-          entity: r.entity,
-          ownerPubkey: (r as any).ownerPubkey
-            ? (r as any).ownerPubkey.slice(0, 16) + "..."
-            : "MISSING",
-        })),
-      });
-      setRepos(list as Repo[]);
-    } catch (err) {
-      console.error("❌ [Home] loadRepos error:", err);
-      setRepos([]);
-    }
-  }, []);
-
-  const storageUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const bridgeCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const bridgeCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
 
   // Check bridge status for repos that have event IDs but bridgeProcessed is not set
   // CRITICAL: Must respond to localStorage changes and repo creation/import events
@@ -592,7 +457,6 @@ export default function HomePage({
           .then((bridgeProcessed) => {
             // After bridge check completes, reload repos to get updated bridgeProcessed flag
             // This ensures status badge updates from "Published, live soon" to "Live on Nostr"
-            loadRepos();
           })
           .catch((err) => {
             console.warn(`[Home] Failed to check bridge for ${repoName}:`, err);
@@ -629,325 +493,6 @@ export default function HomePage({
       window.removeEventListener("ngit:repo-imported", handleRepoUpdate);
     };
   }, [checkBridgeStatuses]);
-
-  useEffect(() => {
-    loadRepos();
-
-    // Listen for repo updates from Nostr sync
-    // Debounce to prevent excessive updates during sync
-    const handleRepoUpdate = () => {
-      if (storageUpdateTimeoutRef.current) {
-        clearTimeout(storageUpdateTimeoutRef.current);
-      }
-      storageUpdateTimeoutRef.current = setTimeout(() => {
-        loadRepos();
-      }, 500); // Debounce by 500ms
-    };
-
-    window.addEventListener("storage", handleRepoUpdate);
-    window.addEventListener("ngit:repo-created", handleRepoUpdate);
-    window.addEventListener("ngit:repo-imported", handleRepoUpdate);
-
-    return () => {
-      if (storageUpdateTimeoutRef.current) {
-        clearTimeout(storageUpdateTimeoutRef.current);
-      }
-      window.removeEventListener("storage", handleRepoUpdate);
-      window.removeEventListener("ngit:repo-created", handleRepoUpdate);
-      window.removeEventListener("ngit:repo-imported", handleRepoUpdate);
-    };
-  }, [loadRepos, syncing]);
-
-  // Sync from Nostr relays - ensures homepage shows repos even when not signed in
-  // This makes the homepage consistent across browsers (unlike localStorage which is browser-specific)
-  const syncInProgressRef = useRef(false);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (
-      !subscribe ||
-      !defaultRelays ||
-      !Array.isArray(defaultRelays) ||
-      defaultRelays.length === 0
-    ) {
-      return;
-    }
-
-    // Prevent multiple simultaneous syncs
-    if (syncInProgressRef.current) {
-      console.log("📡 [Home] Sync already in progress, skipping...");
-      return;
-    }
-
-    try {
-      syncInProgressRef.current = true;
-      console.log("📡 [Home] Starting Nostr sync for homepage...");
-      setSyncing(true);
-
-      const syncRelays = defaultRelays.filter(Boolean).slice(0, 8);
-
-      // Map: repoKey (pubkey + d tag) -> array of events (for NIP-34 replaceable events)
-      const nip34EventsByRepo = new Map<
-        string,
-        Array<{ event: any; relayURL?: string }>
-      >();
-
-      let eoseCount = 0;
-      const eoseReceived = new Set<string>();
-
-      const unsub = subscribe(
-        [{ kinds: [KIND_REPOSITORY_NIP34], limit: 600 }],
-        syncRelays,
-        (event: any, isAfterEose: boolean, relayURL?: string) => {
-          try {
-            if (event.kind !== KIND_REPOSITORY_NIP34) return;
-
-            // Collect NIP-34 events for later processing (to pick latest)
-            if (event.kind === KIND_REPOSITORY_NIP34) {
-              if (isPublisherBlocklisted(event.pubkey)) return;
-              const dTag = event.tags?.find(
-                (t: any) => Array.isArray(t) && t[0] === "d"
-              );
-              const repoName = dTag?.[1];
-              if (repoName && event.pubkey) {
-                const repoKey = `${event.pubkey}/${repoName}`;
-                if (!nip34EventsByRepo.has(repoKey)) {
-                  nip34EventsByRepo.set(repoKey, []);
-                }
-                nip34EventsByRepo.get(repoKey)!.push({ event, relayURL });
-              }
-            }
-
-            // Process NIP-34 announcements immediately (kind 51 content is often encrypted)
-            if (event.kind === KIND_REPOSITORY_NIP34) {
-              if (isPublisherBlocklisted(event.pubkey)) return;
-              try {
-                const repoData = parseNIP34Repository(event);
-
-                // Ensure repoData is defined before proceeding
-                if (!repoData) {
-                  console.warn(`[Home] repoData is undefined after parsing`);
-                  return;
-                }
-
-                const existingRepos = JSON.parse(
-                  localStorage.getItem("gittr_repos") || "[]"
-                ) as any[];
-                const repoName = repoData.repositoryName || repoData.name || "";
-                const ownerPubkey = event.pubkey;
-
-                if (!repoName || !ownerPubkey) return;
-
-                const existingIndex = existingRepos.findIndex((r: any) => {
-                  const rOwner =
-                    r.ownerPubkey ||
-                    (r.entity
-                      ? (() => {
-                          try {
-                            const decoded = nip19.decode(r.entity);
-                            return decoded.type === "npub"
-                              ? decoded.data
-                              : null;
-                          } catch {
-                            return null;
-                          }
-                        })()
-                      : null);
-                  return (
-                    rOwner &&
-                    rOwner.toLowerCase() === ownerPubkey.toLowerCase() &&
-                    (r.repo === repoName ||
-                      r.slug === repoName ||
-                      r.slug === `${r.entity}/${repoName}`)
-                  );
-                });
-
-                const repoEntry: any = {
-                  slug: repoName,
-                  entity: ownerPubkey
-                    ? (() => {
-                        try {
-                          return nip19.npubEncode(ownerPubkey);
-                        } catch {
-                          return ownerPubkey.slice(0, 8);
-                        }
-                      })()
-                    : undefined,
-                  repo: repoName,
-                  name: repoData.name || repoName,
-                  description: repoData.description || "",
-                  createdAt: event.created_at * 1000,
-                  updatedAt: Date.now(),
-                  ownerPubkey: ownerPubkey,
-                  lastNostrEventId: event.id,
-                  lastNostrEventCreatedAt: event.created_at,
-                  syncedFromNostr: true,
-                  clone: repoData.clone || [],
-                  relays: repoData.relays || [],
-                  topics: repoData.topics || [],
-                };
-
-                if (existingIndex >= 0) {
-                  const existing = existingRepos[existingIndex];
-                  const existingLatest = existing.lastNostrEventCreatedAt || 0;
-                  if (event.created_at > existingLatest) {
-                    existingRepos[existingIndex] = {
-                      ...existing,
-                      ...repoEntry,
-                    };
-                    localStorage.setItem(
-                      "gittr_repos",
-                      JSON.stringify(existingRepos)
-                    );
-                    window.dispatchEvent(new CustomEvent("storage"));
-                  }
-                } else {
-                  existingRepos.push(repoEntry);
-                  localStorage.setItem(
-                    "gittr_repos",
-                    JSON.stringify(existingRepos)
-                  );
-                  window.dispatchEvent(new CustomEvent("storage"));
-                }
-              } catch (err) {
-                console.error("❌ [Home] Failed to process repo event:", err);
-              }
-            }
-
-            // Handle EOSE
-            if (isAfterEose && typeof relayURL === "string") {
-              if (!eoseReceived.has(relayURL)) {
-                eoseReceived.add(relayURL);
-                eoseCount++;
-
-                // Process latest NIP-34 events after EOSE
-                if (nip34EventsByRepo.size > 0) {
-                  nip34EventsByRepo.forEach((eventList, repoKey) => {
-                    if (eventList.length > 1) {
-                      // Sort by created_at descending (latest first)
-                      eventList.sort(
-                        (a, b) =>
-                          (b.event.created_at || 0) - (a.event.created_at || 0)
-                      );
-                      const latestEvent = eventList[0]?.event;
-                      if (!latestEvent) return;
-                      if (isPublisherBlocklisted(latestEvent.pubkey)) return;
-
-                      // Update with latest event
-                      try {
-                        const repoData = parseNIP34Repository(latestEvent);
-                        const existingRepos = JSON.parse(
-                          localStorage.getItem("gittr_repos") || "[]"
-                        ) as any[];
-                        const repoName =
-                          repoData.repositoryName || repoData.name || "";
-                        const ownerPubkey = latestEvent.pubkey;
-
-                        if (repoName && ownerPubkey) {
-                          const existingIndex = existingRepos.findIndex(
-                            (r: any) => {
-                              const rOwner =
-                                r.ownerPubkey ||
-                                (r.entity
-                                  ? (() => {
-                                      try {
-                                        const decoded = nip19.decode(r.entity);
-                                        return decoded.type === "npub"
-                                          ? decoded.data
-                                          : null;
-                                      } catch {
-                                        return null;
-                                      }
-                                    })()
-                                  : null);
-                              return (
-                                rOwner &&
-                                rOwner.toLowerCase() ===
-                                  ownerPubkey.toLowerCase() &&
-                                (r.repo === repoName ||
-                                  r.slug === repoName ||
-                                  r.slug === `${r.entity}/${repoName}`)
-                              );
-                            }
-                          );
-
-                          if (existingIndex >= 0) {
-                            const existing = existingRepos[existingIndex];
-                            const existingLatest =
-                              existing.lastNostrEventCreatedAt || 0;
-                            if (latestEvent.created_at > existingLatest) {
-                              const repoEntry: any = {
-                                slug: repoName,
-                                entity: ownerPubkey
-                                  ? (() => {
-                                      try {
-                                        return nip19.npubEncode(ownerPubkey);
-                                      } catch {
-                                        return ownerPubkey.slice(0, 8);
-                                      }
-                                    })()
-                                  : undefined,
-                                repo: repoName,
-                                name: repoData.name || repoName,
-                                description: repoData.description || "",
-                                createdAt: latestEvent.created_at * 1000,
-                                updatedAt: Date.now(),
-                                ownerPubkey: ownerPubkey,
-                                lastNostrEventId: latestEvent.id,
-                                lastNostrEventCreatedAt: latestEvent.created_at,
-                                syncedFromNostr: true,
-                                clone: repoData.clone || [],
-                                relays: repoData.relays || [],
-                                topics: repoData.topics || [],
-                              };
-                              existingRepos[existingIndex] = {
-                                ...existing,
-                                ...repoEntry,
-                              };
-                              localStorage.setItem(
-                                "gittr_repos",
-                                JSON.stringify(existingRepos)
-                              );
-                              window.dispatchEvent(new CustomEvent("storage"));
-                            }
-                          }
-                        }
-                      } catch (err) {
-                        console.error(
-                          "❌ [Home] Failed to process latest NIP-34 event:",
-                          err
-                        );
-                      }
-                    }
-                  });
-                  nip34EventsByRepo.clear();
-                }
-
-                if (eoseCount >= Math.min(3, syncRelays.length)) {
-                  setSyncing(false);
-                }
-              }
-            }
-          } catch (err) {
-            console.error("❌ [Home] Error in subscribe callback:", err);
-          }
-        }
-      );
-
-      setTimeout(() => {
-        setSyncing(false);
-        syncInProgressRef.current = false;
-      }, 10000);
-
-      return () => {
-        syncInProgressRef.current = false;
-        if (unsub) unsub();
-      };
-    } catch (err) {
-      console.error("❌ [Home] Failed to start Nostr sync:", err);
-      setSyncing(false);
-      syncInProgressRef.current = false;
-    }
-  }, [subscribe, defaultRelays]);
 
   // Backfill activities on first load (if not already done)
   useEffect(() => {
@@ -1028,171 +573,6 @@ export default function HomePage({
       window.removeEventListener("ngit:issue-updated", handleActivity);
     };
   }, [pubkey]); // Personal stats only; leaderboard is loadPlatformLeaderboard()
-
-  const recent = useMemo(() => {
-    console.log("📋 [Home] Computing recent repos:", {
-      reposCount: repos.length,
-      sample: repos.slice(0, 3).map((r) => ({
-        repo: r.repo || r.slug,
-        entity: r.entity,
-        ownerPubkey: (r as any).ownerPubkey
-          ? (r as any).ownerPubkey.slice(0, 16) + "..."
-          : "MISSING",
-      })),
-    });
-    // CRITICAL: Sort by latest event date (lastNostrEventCreatedAt) if available, otherwise by createdAt
-    // This ensures repos with recent updates appear first
-    // Note: lastNostrEventCreatedAt is in SECONDS (NIP-34 format), createdAt/updatedAt are in MILLISECONDS
-    const sorted = repos.slice().sort((a, b) => {
-      // Get latest event date in milliseconds for comparison
-      const aLatest = (a as any).lastNostrEventCreatedAt
-        ? (a as any).lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
-        : (a as any).updatedAt || a.createdAt || 0;
-      const bLatest = (b as any).lastNostrEventCreatedAt
-        ? (b as any).lastNostrEventCreatedAt * 1000 // Convert seconds to milliseconds
-        : (b as any).updatedAt || b.createdAt || 0;
-      return bLatest - aLatest; // Newest first
-    });
-
-    // Deduplicate repos by entity/repo combination (keep the most recent one)
-    const dedupeMap = new Map<string, Repo>();
-    sorted.forEach((r) => {
-      const entity = (r.entity || "").trim();
-      const repo = (r.repo || r.slug || "").trim();
-      const key = `${entity}/${repo}`.toLowerCase(); // Case-insensitive comparison
-      const existing = dedupeMap.get(key);
-      if (!existing) {
-        dedupeMap.set(key, r);
-      } else {
-        // Keep the one with the most recent createdAt OR the one with an event ID (if one has it and the other doesn't)
-        const rHasEventId = !!(
-          r.nostrEventId ||
-          (r as any).lastNostrEventId ||
-          (r as any).syncedFromNostr
-        );
-        const existingHasEventId = !!(
-          existing.nostrEventId ||
-          (existing as any).lastNostrEventId ||
-          (existing as any).syncedFromNostr
-        );
-
-        // Prefer repo with event ID (it's more up-to-date)
-        if (rHasEventId && !existingHasEventId) {
-          dedupeMap.set(key, r);
-        } else if (!rHasEventId && existingHasEventId) {
-          // Keep existing (has event ID)
-        } else {
-          // Both have or both don't have event ID - compare by latest event date
-          const rLatest = (r as any).lastNostrEventCreatedAt
-            ? (r as any).lastNostrEventCreatedAt * 1000
-            : (r as any).updatedAt || r.createdAt || 0;
-          const existingLatest = (existing as any).lastNostrEventCreatedAt
-            ? (existing as any).lastNostrEventCreatedAt * 1000
-            : (existing as any).updatedAt || existing.createdAt || 0;
-          if (rLatest > existingLatest) {
-            dedupeMap.set(key, r);
-          }
-        }
-      }
-    });
-
-    // Load list of locally-deleted repos (user deleted them, don't show)
-    // CRITICAL: Use same key as explore page for consistency
-    // Check for window to avoid SSR errors
-    const deletedRepos =
-      typeof window !== "undefined"
-        ? (JSON.parse(
-            localStorage.getItem("gittr_deleted_repos") || "[]"
-          ) as Array<{ entity: string; repo: string; deletedAt: number }>)
-        : ([] as Array<{ entity: string; repo: string; deletedAt: number }>);
-
-    // Filter out deleted/archived repos AND locally-deleted repos
-    const filtered = Array.from(dedupeMap.values()).filter((r: any) => {
-      // Check if repo is marked as deleted/archived on Nostr
-      if (r.deleted === true || r.archived === true) return false;
-
-      // Check if repo is in locally-deleted list (robust matching)
-      const entity = (r.entity || "").trim();
-      const repo = (r.repo || r.slug || "").trim();
-      const ownerPubkey = (r.ownerPubkey || "").trim();
-
-      // Check if this repo matches any deleted repo entry
-      const isDeleted = deletedRepos.some((d: any) => {
-        const deletedEntity = (d.entity || "").trim();
-        const deletedRepo = (d.repo || "").trim();
-
-        // Match by repo name first
-        if (deletedRepo.toLowerCase() !== repo.toLowerCase()) return false;
-
-        // Match by entity (exact match)
-        if (deletedEntity.toLowerCase() === entity.toLowerCase()) return true;
-
-        // Match by ownerPubkey if available (most reliable)
-        if (ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)) {
-          // Try to decode deleted entity if it's npub
-          if (deletedEntity && deletedEntity.startsWith("npub")) {
-            try {
-              const decoded = nip19.decode(deletedEntity);
-              if (
-                decoded.type === "npub" &&
-                (decoded.data as string).toLowerCase() ===
-                  ownerPubkey.toLowerCase()
-              ) {
-                return true;
-              }
-            } catch {}
-          }
-          // Match by full pubkey
-          if (
-            deletedEntity &&
-            deletedEntity.toLowerCase() === ownerPubkey.toLowerCase()
-          )
-            return true;
-        }
-
-        // Match by entity prefix (8-char)
-        if (
-          deletedEntity &&
-          deletedEntity.length === 8 &&
-          entity &&
-          entity.toLowerCase().startsWith(deletedEntity.toLowerCase())
-        )
-          return true;
-        if (
-          entity &&
-          entity.length === 8 &&
-          deletedEntity &&
-          deletedEntity.toLowerCase().startsWith(entity.toLowerCase())
-        )
-          return true;
-
-        return false;
-      });
-
-      if (isDeleted) return false;
-
-      // Filter out test/profile repos (common noise) - same as explore page
-      const repoName = (repo || "").toLowerCase();
-      const isTestRepo =
-        repoName.startsWith("test") ||
-        repoName.includes("test-") ||
-        repoName === "test";
-      const isProfileRepo =
-        repoName === "profile" ||
-        repoName === "profile-page" ||
-        repoName.includes("profile-");
-      if (isTestRepo || isProfileRepo) {
-        return false; // Filter out test/profile repos
-      }
-
-      if (isRepoFromBlocklistedOwner(r)) return false;
-
-      return true;
-    });
-
-    // Return top 12 unique repos
-    return filtered.slice(0, 12);
-  }, [repos]);
 
   // Prefer the shared platform feed so Firefox/Brave/etc. show the same homepage activity
   // (local gittr_activities differs per browser and used to make Recent Activity look "random").
@@ -1302,15 +682,16 @@ export default function HomePage({
     []
   );
 
-  // Same list for everyone: live relay query (/api/stats/recent-repos).
-  // Do not prefer localStorage when logged in — that hid platform-wide recents.
+  // Same list for everyone: live API first, then SSR/leaderboard snapshot.
+  // Never wait on liveRecentReposLoading to show the snapshot — that made
+  // logged-out users stare at "Loading repositories..." for ~8s.
   const displayRecentRepos = useMemo(() => {
     const fromLive = liveRecentRepos
       .map(mapPlatformRecentToRepo)
       .filter(isValidRecentRepoCard);
     if (fromLive.length > 0) return fromLive.slice(0, 12);
 
-    if (!liveRecentReposLoading && platformRecentRepos.length > 0) {
+    if (platformRecentRepos.length > 0) {
       return platformRecentRepos
         .map(mapPlatformRecentToRepo)
         .filter(isValidRecentRepoCard)
@@ -1320,7 +701,6 @@ export default function HomePage({
     return [];
   }, [
     liveRecentRepos,
-    liveRecentReposLoading,
     platformRecentRepos,
     mapPlatformRecentToRepo,
     isValidRecentRepoCard,
