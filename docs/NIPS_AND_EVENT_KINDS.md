@@ -303,9 +303,11 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 
 ### Kind 9806: Bounties
 
-- **Purpose**: Lightning bounties for issues
-- **Usage**: Issue bounties with LNURL-withdraw
-- **Tags**: `repo`, `e` (issue ID), `amount`, `status`, `withdraw_id`, `lnurl`, `invoice`, `p[]` (creator, claimer)
+- **Purpose**: Lightning bounties for issues (NIP-34 companion profile; see [nips#2414](https://github.com/nostr-protocol/nips/issues/2414))
+- **Usage**: Issue bounties with host LNURL-withdraw (LNbits today)
+- **Tags**: `e` (issue event id + marker `issue`), `repo` (entity, name), `status`, `p` (`creator`, optional `claimed_by`)
+- **Content (JSON)**: `amount`, `withdrawId`, `lnurl`, `withdrawUrl`, optional legacy `invoice` / `paymentHash`, timestamps — **not** tag values
+- **Production happy path**: offer publishes `paid` → merge publishes `released` (+ `claimed_by`); claimer redeems withdraw URL. `pending` used mainly on cancel. `claimed` optional / not required. Bounty-hunt UI is still localStorage-only.
 
 ### Kind 1111: Comments (NIP-22)
 
