@@ -2209,7 +2209,8 @@ export default function HomePage({
                     case "pr_merged":
                       return "🔀";
                     case "commit_created":
-                      return "📝";
+                      // Platform feed uses repo state events as commit_created; package reads clearer than the note.
+                      return "📦";
                     case "repo_zapped":
                       return "⚡";
                     case "issue_created":

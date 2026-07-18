@@ -1838,6 +1838,7 @@ export function getRecentPlatformActivitiesFromNostr(
     };
 
     const filters = [
+      { kinds: [KIND_REPOSITORY_NIP34], limit: 800 },
       { kinds: [KIND_REPOSITORY_STATE], limit: 1500 },
       { kinds: [KIND_PULL_REQUEST], limit: 800 },
       { kinds: [KIND_ISSUE], limit: 800 },
@@ -1852,6 +1853,33 @@ export function getRecentPlatformActivitiesFromNostr(
         if (isPublisherBlocklisted(event.pubkey)) return;
         const ts = (event.created_at || 0) * 1000;
         const user = event.pubkey?.toLowerCase?.() || "";
+
+        if (event.kind === KIND_REPOSITORY_NIP34) {
+          const dTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "d"
+          );
+          const nameTag = event.tags?.find(
+            (t: any) => Array.isArray(t) && t[0] === "name"
+          );
+          const repoName = normalizeNip34RepoIdentifier(
+            typeof dTag?.[1] === "string" ? dTag[1] : "",
+            typeof nameTag?.[1] === "string" ? nameTag[1] : ""
+          );
+          if (!repoName || !user) return;
+          if (!isPublicReadFromEvent(event)) return;
+          if (shouldHideNip34EventForUnusableClones(event)) return;
+          const entity = hexPubkeyToNpub(user);
+          push({
+            id: event.id,
+            type: "repo_created",
+            timestamp: ts,
+            user,
+            entity,
+            repo: repoName,
+            repoName,
+          });
+          return;
+        }
 
         if (event.kind === KIND_REPOSITORY_STATE) {
           const dTag = event.tags?.find(
