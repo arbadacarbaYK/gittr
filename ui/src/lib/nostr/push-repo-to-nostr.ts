@@ -15,8 +15,8 @@ import {
   saveStoredRepos,
 } from "../repos/storage";
 import {
-  GRASP_SERVERS_FOR_PUSHING,
   getGraspServers,
+  isGraspDomainForPushing,
 } from "../utils/grasp-servers";
 import { normalizeGithubSourceUrl } from "../utils/normalize-github-source-url";
 import { setRepoStatus } from "../utils/repo-status";
@@ -569,17 +569,15 @@ export async function pushRepoToNostr(
       } catch {
         npubForGrasp = pubkey;
       }
+      // Only add clone mirrors for GRASP hosts that accept public publishes.
+      // Dead / private GRASP (e.g. git-01.uid.ovh) waste time and confuse clients.
       const graspRelayUrls = getGraspServers(defaultRelays);
       for (const relayWss of graspRelayUrls) {
         const host = relayWss
           .replace(/^wss?:\/\//, "")
           .split("/")[0]
           ?.toLowerCase();
-        if (!host) continue;
-        const isPushableGrasp = GRASP_SERVERS_FOR_PUSHING.some(
-          (d) => host === d || host.endsWith(`.${d}`)
-        );
-        if (!isPushableGrasp) continue;
+        if (!host || !isGraspDomainForPushing(host)) continue;
         const httpsCloneUrl = `https://${host}/${npubForGrasp}/${actualRepositoryName}.git`;
         if (!cloneUrls.includes(httpsCloneUrl)) {
           addCloneUrl(httpsCloneUrl);
@@ -2300,12 +2298,20 @@ export async function pushRepoToNostr(
       confirmedRelays: result.confirmedRelays,
     });
 
-    // ngit and other Nostr git clients query GRASP relays (especially ngit-relay) — retry any that did not echo the event
+    // Retry only GRASP hosts that accept public pushes. Skip dead/private mirrors
+    // (uid.ovh, etc.) — waiting on them used to add ~25s to every Push.
     const NGIT_RELAY = "wss://ngit-relay.nostrver.se";
     if (result.eventId) {
-      const graspPublishRelays = getGraspServers(publishRelays);
+      const graspPublishRelays = getGraspServers(publishRelays).filter((r) =>
+        isGraspDomainForPushing(r)
+      );
+      const normalizeRelay = (u: string) =>
+        u.replace(/\/$/, "").toLowerCase();
+      const confirmedNorm = new Set(
+        result.confirmedRelays.map((r) => normalizeRelay(r))
+      );
       const graspPending = graspPublishRelays.filter(
-        (r) => !result.confirmedRelays.includes(r)
+        (r) => !confirmedNorm.has(normalizeRelay(r))
       );
       if (graspPending.length > 0) {
         onProgress?.(
@@ -2316,7 +2322,7 @@ export async function pushRepoToNostr(
           subscribe,
           repoEvent,
           graspPending,
-          25000
+          8000 // short: discovery already confirmed elsewhere
         );
         if (graspSync.confirmed) {
           result.confirmed = true;

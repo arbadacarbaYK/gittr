@@ -36,24 +36,39 @@ export const KNOWN_GRASP_DOMAINS = [
 ] as const;
 
 /**
- * GRASP_SERVERS_FOR_PUSHING: List of GRASP servers that accept repos from ANY user
+ * GRASP_SERVERS_FOR_PUSHING: GRASP hosts we add to NIP-34 `clone` and wait on
+ * during Push. Must accept announcements from arbitrary users.
  *
- * These servers will have clone URLs automatically added when pushing new repos.
- * Excludes servers that only host their own repos (like git.jb55.com).
+ * Excluded (still in KNOWN_GRASP_DOMAINS for *reading* other people's repos):
+ * - git.jb55.com — owner-only hosting
+ * - git-01.uid.ovh / git-02.uid.ovh — not a public push target; WSS often dead,
+ *   so including them made every Push hang on GRASP sync timeouts
  */
 export const GRASP_SERVERS_FOR_PUSHING = [
-  // GRASP servers that accept repos from any user
   "relay.ngit.dev",
   "ngit-relay.nostrver.se",
   "gitnostr.com",
   "ngit.danconwaydev.com",
   "git.shakespeare.diy",
-  "git-01.uid.ovh",
-  "git-02.uid.ovh",
-  // 'git.jb55.com', // EXCLUDED: jb55 only hosts their own repos, not a public GRASP server
-  // gittr.space GRASP server (our own server)
+  // gittr.space GRASP server (our own)
   "git.gittr.space",
 ] as const;
+
+/** Domain match helper for GRASP push allowlist. */
+export function isGraspDomainForPushing(hostOrUrl: string): boolean {
+  if (!hostOrUrl) return false;
+  const domain =
+    hostOrUrl
+      .replace(/^wss?:\/\//, "")
+      .replace(/^https?:\/\//, "")
+      .replace(/^git:\/\//, "")
+      .split("/")[0]
+      ?.toLowerCase() || "";
+  if (!domain) return false;
+  return GRASP_SERVERS_FOR_PUSHING.some(
+    (grasp) => domain === grasp || domain.endsWith(`.${grasp}`)
+  );
+}
 
 /**
  * Check if a URL is a GRASP server
