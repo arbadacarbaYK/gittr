@@ -17,6 +17,8 @@ import {
 import {
   getGraspServers,
   isGraspDomainForPushing,
+  mergeGraspHostsForPush,
+  normalizeGraspHost,
 } from "../utils/grasp-servers";
 import { normalizeGithubSourceUrl } from "../utils/normalize-github-source-url";
 import { setRepoStatus } from "../utils/repo-status";
@@ -559,8 +561,10 @@ export async function pushRepoToNostr(
       );
     }
 
-    // GRASP relays (e.g. ngit-relay.nostrver.se) reject kind 30617 unless their HTTPS git URL is
-    // in clone[] (not only relays[]). HTTPS only — no git@ SSH (browser clients break on SSH).
+    // GRASP relays reject kind 30617 unless their HTTPS git URL is in clone[]
+    // (not only relays[]). HTTPS only — no git@ SSH (browser clients break on SSH).
+    // Merge: kind-10317 user prefs (first) + env GRASP defaults — host-deduped,
+    // skip excluded/dead mirrors (uid.ovh, ngit-relay.nostrver.se, …).
     if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
       const { nip19 } = await import("nostr-tools");
       let npubForGrasp: string;
@@ -569,22 +573,54 @@ export async function pushRepoToNostr(
       } catch {
         npubForGrasp = pubkey;
       }
-      // Only add clone mirrors for GRASP hosts that accept public publishes.
-      // Dead / private GRASP (e.g. git-01.uid.ovh) waste time and confuse clients.
-      const graspRelayUrls = getGraspServers(defaultRelays);
-      for (const relayWss of graspRelayUrls) {
-        const host = relayWss
-          .replace(/^wss?:\/\//, "")
-          .split("/")[0]
-          ?.toLowerCase();
-        if (!host || !isGraspDomainForPushing(host)) continue;
-        const httpsCloneUrl = `https://${host}/${npubForGrasp}/${actualRepositoryName}.git`;
-        if (!cloneUrls.includes(httpsCloneUrl)) {
-          addCloneUrl(httpsCloneUrl);
+
+      const defaultGraspRelays = getGraspServers(defaultRelays);
+      let userGraspRelays: string[] = [];
+      try {
+        const { getUserGraspServers } = await import("../utils/grasp-list");
+        // Empty fallback so we merge defaults ourselves (avoids double-adding).
+        userGraspRelays = await getUserGraspServers(
+          subscribe,
+          defaultRelays,
+          pubkey,
+          [],
+          { timeoutMs: 2500 }
+        );
+      } catch (e) {
+        console.warn(
+          "⚠️ [Push Repo] Could not load user GRASP list (kind 10317):",
+          e
+        );
+      }
+
+      const pushHosts = mergeGraspHostsForPush(
+        userGraspRelays,
+        defaultGraspRelays
+      );
+      console.log(`🔗 [Push Repo] GRASP clone hosts (deduped):`, {
+        fromUserList: userGraspRelays.map(normalizeGraspHost).filter(Boolean),
+        fromEnvDefaults: defaultGraspRelays
+          .map(normalizeGraspHost)
+          .filter(Boolean),
+        mergedForPush: pushHosts,
+      });
+
+      for (const host of pushHosts) {
+        // Primary git.gittr.space clone may already be added above — skip dup host.
+        const alreadyHasHost = cloneUrls.some(
+          (u) => normalizeGraspHost(u) === host
+        );
+        if (alreadyHasHost) {
           console.log(
-            `🔗 [Push Repo] Added GRASP HTTPS clone (required by ${host} relay): ${httpsCloneUrl}`
+            `⏭️ [Push Repo] Skipping duplicate GRASP host already in clone[]: ${host}`
           );
+          continue;
         }
+        const httpsCloneUrl = `https://${host}/${npubForGrasp}/${actualRepositoryName}.git`;
+        addCloneUrl(httpsCloneUrl);
+        console.log(
+          `🔗 [Push Repo] Added GRASP HTTPS clone (required by ${host} relay): ${httpsCloneUrl}`
+        );
       }
     }
 
@@ -2298,15 +2334,19 @@ export async function pushRepoToNostr(
       confirmedRelays: result.confirmedRelays,
     });
 
-    // Retry only GRASP hosts that accept public pushes. Skip dead/private mirrors
-    // (uid.ovh, etc.) — waiting on them used to add ~25s to every Push.
-    const NGIT_RELAY = "wss://ngit-relay.nostrver.se";
+    // Retry only pushable GRASP hosts (allowlist ∩ publish relays), host-deduped.
+    // Skip excluded/dead mirrors — waiting on them used to stall every Push.
     if (result.eventId) {
-      const graspPublishRelays = getGraspServers(publishRelays).filter((r) =>
-        isGraspDomainForPushing(r)
-      );
-      const normalizeRelay = (u: string) =>
-        u.replace(/\/$/, "").toLowerCase();
+      const seenSyncHosts = new Set<string>();
+      const graspPublishRelays: string[] = [];
+      for (const r of getGraspServers(publishRelays)) {
+        if (!isGraspDomainForPushing(r)) continue;
+        const host = normalizeGraspHost(r);
+        if (!host || seenSyncHosts.has(host)) continue;
+        seenSyncHosts.add(host);
+        graspPublishRelays.push(r.replace(/\/$/, ""));
+      }
+      const normalizeRelay = (u: string) => u.replace(/\/$/, "").toLowerCase();
       const confirmedNorm = new Set(
         result.confirmedRelays.map((r) => normalizeRelay(r))
       );
@@ -2336,17 +2376,12 @@ export async function pushRepoToNostr(
           confirmed: graspSync.confirmed,
           confirmedRelays: graspSync.confirmedRelays,
           stillPending: graspPending.filter(
-            (r) => !graspSync.confirmedRelays.includes(r)
+            (r) =>
+              !graspSync.confirmedRelays.some(
+                (c) => normalizeRelay(c) === normalizeRelay(r)
+              )
           ),
         });
-        if (
-          graspPending.includes(NGIT_RELAY) &&
-          !result.confirmedRelays.includes(NGIT_RELAY)
-        ) {
-          onProgress?.(
-            "⚠️ ngit-relay has not confirmed yet — other clients may still see the old announcement until relays sync (wait a few minutes or push again)"
-          );
-        }
       }
     }
 

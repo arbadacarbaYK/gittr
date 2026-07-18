@@ -786,13 +786,14 @@ export default function RelaysPage() {
           <div className="ml-6 space-y-4">
             <p className="text-xs text-gray-500 mb-3">
               Your preferred GRASP servers for NIP-34 activities (file fetching,
-              PR creation, repository cloning). These servers will be
-              prioritized when available. Similar to NIP-65 relay lists.
+              PR creation, Push clone mirrors, repository cloning). These
+              servers are prioritized when available. Similar to NIP-65 relay
+              lists.
               <span className="block mt-1 text-blue-400/80">
-                ℹ️ This is different from adding relays above: this list is
-                saved to Nostr (kind 10317) and used to prioritize clone URLs in
-                NIP-34 operations. The servers above are for connecting to
-                Nostr.
+                ℹ️ Saved to Nostr (kind 10317). On Push, hosts here are merged
+                with the app defaults (no duplicate hosts). Dead/private mirrors
+                (e.g. uid.ovh, ngit-relay.nostrver.se) are skipped. Relays above
+                are for connecting to Nostr.
               </span>
             </p>
 

@@ -8,7 +8,7 @@ Bridge setup: [GIT_NOSTR_BRIDGE_SETUP.md](GIT_NOSTR_BRIDGE_SETUP.md).
 
 ## Public relays
 
-Default list is in `ui/.env.example` → `NEXT_PUBLIC_NOSTR_RELAYS`. Include GRASP-capable `wss://` URLs your deployment relies on (e.g. `wss://relay.ngit.dev`, `wss://ngit-relay.nostrver.se`, `wss://gitnostr.com`) plus general relays (`damus.io`, `nos.lol`, …).
+Default list is in `ui/.env.example` → `NEXT_PUBLIC_NOSTR_RELAYS`. Include GRASP-capable `wss://` URLs your deployment relies on (e.g. `wss://relay.ngit.dev`, `wss://gitnostr.com`, `wss://git.shakespeare.diy`) plus general relays (`damus.io`, `nos.lol`, …). Skip unreachable mirrors from the *default* connect list (e.g. `ngit-relay.nostrver.se` when 502) — they can still appear in other people’s `clone` tags for read. Push auto-mirrors use `GRASP_SERVERS_FOR_PUSHING` ∪ user kind 10317 (`mergeGraspHostsForPush`).
 
 Match the same URLs in `git-nostr-bridge.json` → `relays`.
 

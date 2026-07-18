@@ -7,6 +7,7 @@
  * Per NIP-34: https://github.com/nostrability/schemata/tree/master/nips/nip-34
  */
 import { KIND_GRASP_LIST } from "@/lib/nostr/events";
+import { normalizeGraspHost } from "@/lib/utils/grasp-servers";
 
 export interface GraspListData {
   graspServers: string[]; // GRASP server URLs (wss://) in order of preference
@@ -59,6 +60,7 @@ export function parseGraspListEvent(event: any): GraspListData | null {
  * @param relays - Array of relay URLs to query
  * @param userPubkey - User pubkey to fetch GRASP list for
  * @param defaultGraspServers - Default GRASP servers to use as fallback
+ * @param options.timeoutMs - Max wait (default 10000; Push uses a short value)
  * @returns Promise resolving to preferred GRASP servers in order
  */
 export async function getUserGraspServers(
@@ -72,13 +74,38 @@ export async function getUserGraspServers(
   ) => () => void,
   relays: string[],
   userPubkey: string,
-  defaultGraspServers: string[] = []
+  defaultGraspServers: string[] = [],
+  options?: { timeoutMs?: number }
 ): Promise<string[]> {
+  const timeoutMs = options?.timeoutMs ?? 10000;
   return new Promise((resolve) => {
+    let settled = false;
     let latestEvent: any = null;
     let latestCreatedAt = 0;
     let eoseCount = 0;
-    const expectedEose = relays.length;
+    const expectedEose = Math.max(relays.length, 1);
+
+    const finish = (servers: string[], reason: string) => {
+      if (settled) return;
+      settled = true;
+      try {
+        unsub();
+      } catch {
+        /* ignore */
+      }
+      console.log(`ℹ️ [GRASP List] ${reason} (${servers.length} server(s))`);
+      resolve(servers);
+    };
+
+    const fromLatestOrDefault = () => {
+      if (latestEvent) {
+        const parsed = parseGraspListEvent(latestEvent);
+        if (parsed && parsed.graspServers.length > 0) {
+          return parsed.graspServers;
+        }
+      }
+      return defaultGraspServers;
+    };
 
     const unsub = subscribe(
       [
@@ -88,51 +115,40 @@ export async function getUserGraspServers(
         },
       ],
       relays,
-      (event, isAfterEose, relayURL) => {
+      (event, _isAfterEose, _relayURL) => {
         // For replaceable events, keep track of the latest one
         if (event.created_at > latestCreatedAt) {
           latestEvent = event;
           latestCreatedAt = event.created_at;
         }
       },
-      5000, // 5 second max delay
-      (relayUrl: string, minCreatedAt: number) => {
+      Math.min(5000, timeoutMs),
+      (_relayUrl: string, _minCreatedAt: number) => {
         eoseCount++;
-        if (eoseCount >= expectedEose) {
-          unsub();
-
-          if (latestEvent) {
-            const parsed = parseGraspListEvent(latestEvent);
-            if (parsed && parsed.graspServers.length > 0) {
-              console.log(
-                `✅ [GRASP List] Found user GRASP list with ${parsed.graspServers.length} servers`
-              );
-              resolve(parsed.graspServers);
-              return;
-            }
-          }
-
-          // Fallback to default GRASP servers
-          console.log(
-            `ℹ️ [GRASP List] No user GRASP list found, using default GRASP servers`
+        // Don't wait for every dead relay — enough EOSE or we already have a list
+        if (
+          eoseCount >= expectedEose ||
+          (latestEvent && eoseCount >= Math.min(3, expectedEose))
+        ) {
+          const servers = fromLatestOrDefault();
+          finish(
+            servers,
+            latestEvent
+              ? "Found user GRASP list"
+              : "No user GRASP list found, using defaults"
           );
-          resolve(defaultGraspServers);
         }
       }
     );
 
-    // Timeout after 10 seconds
     setTimeout(() => {
-      unsub();
-      if (latestEvent) {
-        const parsed = parseGraspListEvent(latestEvent);
-        if (parsed && parsed.graspServers.length > 0) {
-          resolve(parsed.graspServers);
-          return;
-        }
-      }
-      resolve(defaultGraspServers);
-    }, 10000);
+      finish(
+        fromLatestOrDefault(),
+        latestEvent
+          ? "Timeout with user GRASP list"
+          : "Timeout, using default GRASP servers"
+      );
+    }, timeoutMs);
   });
 }
 
@@ -148,14 +164,15 @@ export function prioritizeGraspServers(
   userGraspServers: string[],
   defaultGraspServers: string[]
 ): string[] {
-  // Start with user preferences
-  const prioritized: string[] = [...userGraspServers];
+  const seenHosts = new Set<string>();
+  const prioritized: string[] = [];
 
-  // Add defaults that aren't already in user preferences
-  for (const server of defaultGraspServers) {
-    if (!prioritized.includes(server)) {
-      prioritized.push(server);
-    }
+  for (const server of [...userGraspServers, ...defaultGraspServers]) {
+    if (!server) continue;
+    const host = normalizeGraspHost(server);
+    if (!host || seenHosts.has(host)) continue;
+    seenHosts.add(host);
+    prioritized.push(server);
   }
 
   return prioritized;

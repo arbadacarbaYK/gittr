@@ -36,17 +36,27 @@ export const KNOWN_GRASP_DOMAINS = [
 ] as const;
 
 /**
- * GRASP_SERVERS_FOR_PUSHING: GRASP hosts we add to NIP-34 `clone` and wait on
- * during Push. Must accept announcements from arbitrary users.
+ * Never auto-add these to Push `clone[]` / GRASP sync waits — even if the user
+ * lists them in kind 10317. Still OK for *reading* other people's clone tags.
+ */
+export const GRASP_DOMAINS_EXCLUDED_FROM_PUSHING = [
+  "git-01.uid.ovh",
+  "git-02.uid.ovh",
+  "git.jb55.com",
+  // Public ngit mirror; often 502 / WSS refused (2026-07) — stalls Push sync
+  "ngit-relay.nostrver.se",
+] as const;
+
+/**
+ * GRASP_SERVERS_FOR_PUSHING: default GRASP hosts we add to NIP-34 `clone` and
+ * wait on during Push (when present in env relays). Must accept announcements
+ * from arbitrary users and be reasonably reachable.
  *
- * Excluded (still in KNOWN_GRASP_DOMAINS for *reading* other people's repos):
- * - git.jb55.com — owner-only hosting
- * - git-01.uid.ovh / git-02.uid.ovh — not a public push target; WSS often dead,
- *   so including them made every Push hang on GRASP sync timeouts
+ * Exclusions live in GRASP_DOMAINS_EXCLUDED_FROM_PUSHING (still in
+ * KNOWN_GRASP_DOMAINS for fetching).
  */
 export const GRASP_SERVERS_FOR_PUSHING = [
   "relay.ngit.dev",
-  "ngit-relay.nostrver.se",
   "gitnostr.com",
   "ngit.danconwaydev.com",
   "git.shakespeare.diy",
@@ -54,20 +64,68 @@ export const GRASP_SERVERS_FOR_PUSHING = [
   "git.gittr.space",
 ] as const;
 
-/** Domain match helper for GRASP push allowlist. */
-export function isGraspDomainForPushing(hostOrUrl: string): boolean {
-  if (!hostOrUrl) return false;
-  const domain =
+/** Normalize a relay/git URL or bare host to lowercase hostname. */
+export function normalizeGraspHost(hostOrUrl: string): string {
+  if (!hostOrUrl) return "";
+  return (
     hostOrUrl
-      .replace(/^wss?:\/\//, "")
-      .replace(/^https?:\/\//, "")
-      .replace(/^git:\/\//, "")
+      .trim()
+      .replace(/^wss?:\/\//i, "")
+      .replace(/^https?:\/\//i, "")
+      .replace(/^git:\/\//i, "")
+      .replace(/^git@/i, "")
       .split("/")[0]
-      ?.toLowerCase() || "";
+      ?.split(":")[0]
+      ?.toLowerCase() || ""
+  );
+}
+
+export function isGraspDomainExcludedFromPushing(hostOrUrl: string): boolean {
+  const domain = normalizeGraspHost(hostOrUrl);
   if (!domain) return false;
+  return GRASP_DOMAINS_EXCLUDED_FROM_PUSHING.some(
+    (ex) => domain === ex || domain.endsWith(`.${ex}`)
+  );
+}
+
+/** Domain match helper for GRASP push allowlist (defaults). */
+export function isGraspDomainForPushing(hostOrUrl: string): boolean {
+  const domain = normalizeGraspHost(hostOrUrl);
+  if (!domain || isGraspDomainExcludedFromPushing(domain)) return false;
   return GRASP_SERVERS_FOR_PUSHING.some(
     (grasp) => domain === grasp || domain.endsWith(`.${grasp}`)
   );
+}
+
+/**
+ * Merge user kind-10317 GRASP prefs + env/default GRASP into unique hostnames
+ * for Push clone tags. User order wins; duplicates (same host) are skipped once.
+ *
+ * - Defaults: must be on GRASP_SERVERS_FOR_PUSHING
+ * - User list: allowlist OR any isGraspServer host, unless excluded
+ */
+export function mergeGraspHostsForPush(
+  userGraspWssOrHosts: string[],
+  defaultGraspWssOrHosts: string[]
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  const consider = (entry: string, fromUser: boolean) => {
+    const host = normalizeGraspHost(entry);
+    if (!host || seen.has(host)) return;
+    if (isGraspDomainExcludedFromPushing(host)) return;
+    const allowed =
+      isGraspDomainForPushing(host) ||
+      (fromUser && isGraspServer(`wss://${host}`));
+    if (!allowed) return;
+    seen.add(host);
+    out.push(host);
+  };
+
+  for (const u of userGraspWssOrHosts) consider(u, true);
+  for (const u of defaultGraspWssOrHosts) consider(u, false);
+  return out;
 }
 
 /**
@@ -79,17 +137,11 @@ export function isGraspServer(url: string): boolean {
   if (!url) return false;
 
   // Extract domain from URL (remove protocol and path)
-  const domain =
-    url
-      .replace(/^wss?:\/\//, "")
-      .replace(/^https?:\/\//, "")
-      .replace(/^git:\/\//, "")
-      .split("/")[0]
-      ?.toLowerCase() || "";
+  const domain = normalizeGraspHost(url);
+  if (!domain) return false;
 
   // Check against known GRASP domains
   if (
-    domain &&
     KNOWN_GRASP_DOMAINS.some((grasp) => {
       const graspDomain = grasp.toLowerCase();
       return (
