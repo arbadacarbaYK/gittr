@@ -17271,7 +17271,7 @@ export function RepoCodePage() {
                 onClick={() => setCloneUrlsExpanded(!cloneUrlsExpanded)}
                 className="flex items-center justify-between w-full text-xs text-gray-400 hover:text-gray-300 mb-1"
               >
-                <span>Clone URLs (from repo event)</span>
+                <span>Clone URL (event)</span>
                 {cloneUrlsExpanded ? (
                   <ChevronUp className="h-3 w-3" />
                 ) : (
@@ -19400,10 +19400,8 @@ export function RepoCodePage() {
                                 className="text-xs text-gray-500 mt-1 mb-2 px-1 group"
                                 aria-label="More details about Nostr PRs and issues after refetch from source"
                               >
-                                <summary className="cursor-pointer text-gray-400 hover:text-gray-300 list-none [&::-webkit-details-marker]:hidden flex items-center gap-1">
-                                  <span className="text-purple-400/90">
-                                    More
-                                  </span>
+                                <summary className="cursor-pointer theme-accent-primary hover:opacity-90 list-none [&::-webkit-details-marker]:hidden flex items-center gap-1">
+                                  <span>More</span>
                                   <ChevronDown
                                     className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180"
                                     aria-hidden
