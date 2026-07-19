@@ -31,6 +31,7 @@ import { getAccumulatedZaps } from "@/lib/payments/zap-repo";
 import { canManageSettings, isOwner } from "@/lib/repo-permissions";
 import { isPlaceholderRepositoryDescription } from "@/lib/repos/repo-about-text";
 import { fetchGithubRepoDescription } from "@/lib/repos/repo-github-hub";
+import { stripInventedGithubPagesLinks } from "@/lib/repos/enrich-repo-links";
 import {
   type StoredContributor,
   type StoredRepo,
@@ -314,8 +315,29 @@ export default function RepoSettingsPage() {
             role: "maintainer" as const,
           }))
         );
-        // Load repo links
-        setRepoLinks(repoData.links || []);
+        // Load repo links (strip invented github.io 404s from older clients)
+        const cleanedLinks = stripInventedGithubPagesLinks(
+          repoData.links || [],
+          repoData.sourceUrl
+        ) as RepoLink[];
+        setRepoLinks(cleanedLinks);
+        if (
+          JSON.stringify(repoData.links || []) !== JSON.stringify(cleanedLinks)
+        ) {
+          const all = loadStoredRepos();
+          const idx = all.findIndex(
+            (r) =>
+              (r.repo === repo || r.slug === repo) && r.entity === entity
+          );
+          if (idx >= 0 && all[idx]) {
+            if (cleanedLinks.length > 0) {
+              all[idx]!.links = cleanedLinks;
+            } else {
+              delete all[idx]!.links;
+            }
+            saveStoredRepos(all);
+          }
+        }
       }
 
       // Load accumulated zaps

@@ -1242,7 +1242,7 @@ export default function ImportPage() {
             });
           }
 
-          // Settings-ready links: forge homepage / GitHub Pages guess
+          // Docs link only when GitHub returned a real homepage (never invent github.io)
           const { enrichRepoLinks } = await import(
             "@/lib/repos/enrich-repo-links"
           );
@@ -1255,7 +1255,6 @@ export default function ImportPage() {
             sourceUrl: repo.html_url || null,
             siteOrigin:
               typeof window !== "undefined" ? window.location.origin : null,
-            guessGithubPages: true,
           });
 
           // Store files separately to avoid localStorage quota issues

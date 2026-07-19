@@ -71,7 +71,7 @@ type Data = {
     committer?: { name?: string; email?: string; date?: string };
     html_url?: string;
   }>;
-  homepage?: string; // GitHub Pages or website URL
+  homepage?: string; // GitHub API homepage/website only (never invented)
   fileCount?: number;
   approximateSizeBytes?: number;
   isPrivate?: boolean; // GitHub repo privacy status
@@ -468,7 +468,7 @@ export default async function handler(
     let forks = 0;
     let topics: string[] = [];
     let defaultBranch = "main";
-    let homepage: string | undefined = undefined; // GitHub Pages or website URL
+    let homepage: string | undefined = undefined; // Only GitHub's homepage field
     let isPrivate = false; // Track if GitHub repo is private
     if (repoResponse.ok) {
       const repoData: any = await repoResponse.json();
@@ -478,7 +478,7 @@ export default async function handler(
       topics = repoData.topics || [];
       defaultBranch = repoData.default_branch || defaultBranch;
       isPrivate = repoData.private === true; // Preserve GitHub privacy status
-      // Get homepage/website URL (GitHub Pages link)
+      // Real website/Pages URL from GitHub only — do not invent owner.github.io/repo
       if (
         repoData.homepage &&
         typeof repoData.homepage === "string" &&
@@ -857,7 +857,7 @@ export default async function handler(
       issues,
       pulls,
       commits,
-      homepage, // Include GitHub Pages/website URL
+      homepage, // GitHub API homepage only (omit when empty — never invent)
       isPrivate, // Preserve GitHub privacy status
     };
 

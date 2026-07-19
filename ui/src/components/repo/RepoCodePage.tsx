@@ -55,7 +55,10 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
-import { enrichRepoLinks } from "@/lib/repos/enrich-repo-links";
+import {
+  enrichRepoLinks,
+  stripInventedGithubPagesLinks,
+} from "@/lib/repos/enrich-repo-links";
 import {
   formatPushRepoSuccessAlert,
   pushRepoToNostr,
@@ -1504,9 +1507,7 @@ export function RepoCodePage() {
         (repoData as StoredRepo | null | undefined)?.announcedAppId || null,
       siteOrigin:
         typeof window !== "undefined" ? window.location.origin : null,
-      // If announcement/settings never stored links, still surface a GitHub Pages
-      // guess from sourceUrl so the sidebar isn't empty after a stale local sync.
-      guessGithubPages: existing.length === 0,
+      // Never invent github.io — only real homepage / Settings / live Pages.
     }) as RepoLink[];
   }, [
     repoData?.links,
@@ -3220,7 +3221,10 @@ export function RepoCodePage() {
         pulls: repo.pulls || [],
         commits: repo.commits || [],
         contributors,
-        links: repo.links || [],
+        links: stripInventedGithubPagesLinks(
+          repo.links || [],
+          repo.sourceUrl
+        ) as RepoLink[],
         defaultBranch: repo.defaultBranch || "main",
         clone: (repo as any).clone || [], // CRITICAL: Include clone URLs from NIP-34 event
         relays: (repo as any).relays || [],
@@ -3230,6 +3234,27 @@ export function RepoCodePage() {
         publicRead: publicRead, // CRITICAL: Default to true for old repos
         publicWrite: publicWrite,
       } as any);
+      // Drop invented github.io links from localStorage (sidebar was showing 404s)
+      {
+        const cleanedLinks = stripInventedGithubPagesLinks(
+          repo.links || [],
+          repo.sourceUrl
+        );
+        const before = JSON.stringify(repo.links || []);
+        const after = JSON.stringify(cleanedLinks);
+        if (before !== after) {
+          const idx = repos.findIndex((r) => r === repo);
+          if (idx >= 0) {
+            const updated = [...repos];
+            if (cleanedLinks.length > 0) {
+              (updated[idx] as StoredRepo).links = cleanedLinks as any;
+            } else {
+              delete (updated[idx] as StoredRepo).links;
+            }
+            saveStoredRepos(updated);
+          }
+        }
+      }
       // Ensure branches present
       const branches =
         repo.branches && repo.branches.length > 0
@@ -7035,11 +7060,17 @@ export function RepoCodePage() {
                           )
                         : base.clone;
                     const newRelays = eventRepoData.relays || base.relays;
-                    const newLinks =
+                    const rawNewLinks =
                       Array.isArray(eventRepoData.links) &&
                       eventRepoData.links.length > 0
                         ? eventRepoData.links
                         : base.links;
+                    const newLinks = stripInventedGithubPagesLinks(
+                      rawNewLinks,
+                      eventRepoData.sourceUrl ||
+                        base.sourceUrl ||
+                        effectiveSourceUrl
+                    );
 
                     // Skip update if nothing changed
                     if (
@@ -18285,7 +18316,7 @@ export function RepoCodePage() {
                                       const existingRepo = repos[repoIndex];
                                       if (!existingRepo) return;
 
-                                      // Settings docs + forge homepage / GitHub Pages
+                                      // Settings docs + forge homepage only (never invent github.io)
                                       const links = enrichRepoLinks({
                                         existing: existingRepo.links || [],
                                         homepage:
@@ -18306,7 +18337,6 @@ export function RepoCodePage() {
                                           typeof window !== "undefined"
                                             ? window.location.origin
                                             : null,
-                                        guessGithubPages: true,
                                       });
 
                                       // CRITICAL: Refetch is a FULL REPLACEMENT from GitHub (source of truth)

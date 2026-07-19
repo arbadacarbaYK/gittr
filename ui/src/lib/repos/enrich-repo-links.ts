@@ -1,6 +1,9 @@
 /**
- * Merge Settings docs links with auto-discovered website / Nostr Pages / Apps
- * URLs so Push, import, and refetch keep the sidebar Links section useful.
+ * Merge Settings docs links with forge homepage / Nostr Pages / Apps URLs
+ * so Push, import, and refetch keep the sidebar Links section useful.
+ *
+ * Never invent owner.github.io/repo — only use GitHub's homepage field (or
+ * explicit Settings / Nostr Pages / app links). Guessing caused mass 404s.
  */
 
 export type EnrichableRepoLink = {
@@ -15,6 +18,9 @@ export type EnrichableRepoLink = {
   url: string;
   label?: string;
 };
+
+/** Label used by the old invent path — used to strip dead guessed links. */
+export const INVENTED_GITHUB_PAGES_LABEL = "GitHub Pages";
 
 function normalizeUrl(raw: string): string {
   return raw.trim().replace(/\/+$/, "");
@@ -52,8 +58,8 @@ export function mergeRepoLinks(
 }
 
 /**
- * Guess GitHub Pages from a github.com source URL when the forge homepage
- * field is empty: https://github.com/owner/repo → https://owner.github.io/repo/
+ * Derive the conventional GitHub Pages URL from a github.com source URL.
+ * Used only to strip previously invented dead links — never to add new ones.
  */
 export function guessGithubPagesUrl(sourceUrl?: string | null): string | null {
   if (!sourceUrl || typeof sourceUrl !== "string") return null;
@@ -72,6 +78,30 @@ export function guessGithubPagesUrl(sourceUrl?: string | null): string | null {
   }
 }
 
+/**
+ * Drop auto-invented github.io docs links matching the conventional guess.
+ * Removes: label "GitHub Pages", or unlabeled docs (from `web` tag fallback).
+ * Keeps Settings links with a custom label (e.g. "Page") and real homepage
+ * URLs re-added via `homepage` (labeled "Website").
+ */
+export function stripInventedGithubPagesLinks(
+  links: EnrichableRepoLink[] | undefined | null,
+  sourceUrl?: string | null
+): EnrichableRepoLink[] {
+  const list = Array.isArray(links) ? links : [];
+  const guessed = guessGithubPagesUrl(sourceUrl);
+  if (!guessed) return list.filter(Boolean) as EnrichableRepoLink[];
+  const guessedKey = urlKey(guessed);
+  return list.filter((link) => {
+    if (!link?.url) return false;
+    if (urlKey(link.url) !== guessedKey) return true;
+    const label = (link.label || "").trim();
+    if (label === INVENTED_GITHUB_PAGES_LABEL) return false;
+    if (!label && (link.type === "docs" || !link.type)) return false;
+    return true;
+  });
+}
+
 export function siteOriginFallback(origin?: string | null): string {
   const fromEnv =
     typeof process !== "undefined"
@@ -84,8 +114,8 @@ export function siteOriginFallback(origin?: string | null): string {
 }
 
 export type EnrichRepoLinksInput = {
-  existing?: EnrichableRepoLink[] | null;
-  /** Forge homepage / website field (GitHub API `homepage`, etc.) */
+  existing?: EnrichableRepoLink[] | undefined | null;
+  /** Forge homepage / website field (GitHub API `homepage` only — never guessed) */
   homepage?: string | null;
   sourceUrl?: string | null;
   /** Live or known Nostr Pages URL for this repo */
@@ -94,37 +124,39 @@ export type EnrichRepoLinksInput = {
   announcedAppId?: string | null;
   /** Browser origin or https://gittr.space */
   siteOrigin?: string | null;
-  /** When true, also guess owner.github.io/repo from sourceUrl if no homepage */
+  /**
+   * @deprecated Always ignored. Inventing owner.github.io caused mass 404s.
+   * Kept so call sites compile until cleaned up.
+   */
   guessGithubPages?: boolean;
 };
 
 /**
  * Build the full links list for sidebar + NIP-34 `link`/`web` tags.
- * Settings links in `existing` are kept; auto links are added when missing.
+ * Settings links in `existing` are kept; forge homepage is added only when
+ * GitHub (or another forge) actually returned a homepage URL.
  */
 export function enrichRepoLinks(
   input: EnrichRepoLinksInput
 ): EnrichableRepoLink[] {
+  const existing = stripInventedGithubPagesLinks(
+    input.existing,
+    input.sourceUrl
+  );
   const additions: EnrichableRepoLink[] = [];
 
   const homepage = input.homepage?.trim();
-  if (homepage && (homepage.startsWith("http://") || homepage.startsWith("https://"))) {
-    const isGhPages = /\.github\.io\//i.test(homepage);
+  if (
+    homepage &&
+    (homepage.startsWith("http://") || homepage.startsWith("https://"))
+  ) {
     additions.push({
       type: "docs",
       url: homepage,
-      label: isGhPages ? "GitHub Pages" : "Website",
+      label: "Website",
     });
-  } else if (input.guessGithubPages !== false) {
-    const guessed = guessGithubPagesUrl(input.sourceUrl);
-    if (guessed) {
-      additions.push({
-        type: "docs",
-        url: guessed,
-        label: "GitHub Pages",
-      });
-    }
   }
+  // Intentionally never invent github.io from sourceUrl (guessGithubPages ignored).
 
   const pagesUrl = input.nostrPagesUrl?.trim();
   if (
@@ -148,5 +180,5 @@ export function enrichRepoLinks(
     });
   }
 
-  return mergeRepoLinks(input.existing, additions);
+  return mergeRepoLinks(existing, additions);
 }

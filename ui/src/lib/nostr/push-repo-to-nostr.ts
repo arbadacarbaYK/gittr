@@ -378,23 +378,24 @@ export async function pushRepoToNostr(
         announcedAppId: (repo as { announcedAppId?: string }).announcedAppId,
         siteOrigin:
           typeof window !== "undefined" ? window.location.origin : null,
-        // Don't invent github.io URLs on push — only Settings / import homepage /
-        // Nostr Pages / announced app. Guessing causes dead links on Nostr.
-        guessGithubPages: false,
       });
-      if (enriched.length > 0) {
-        (repo as { links?: typeof enriched }).links = enriched;
-        const idx = repos.findIndex(
-          (r: any) =>
-            (r.slug === repoSlug || r.repo === repoSlug) && r.entity === entity
-        );
-        if (idx >= 0) {
+      // Always persist (including empty) so invented github.io links are cleared.
+      (repo as { links?: typeof enriched }).links =
+        enriched.length > 0 ? enriched : undefined;
+      const idx = repos.findIndex(
+        (r: any) =>
+          (r.slug === repoSlug || r.repo === repoSlug) && r.entity === entity
+      );
+      if (idx >= 0) {
+        if (enriched.length > 0) {
           (repos[idx] as any).links = enriched;
-          try {
-            localStorage.setItem("gittr_repos", JSON.stringify(repos));
-          } catch {
-            /* quota */
-          }
+        } else {
+          delete (repos[idx] as any).links;
+        }
+        try {
+          localStorage.setItem("gittr_repos", JSON.stringify(repos));
+        } catch {
+          /* quota */
         }
       }
     } catch (e) {

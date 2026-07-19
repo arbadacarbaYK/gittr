@@ -370,7 +370,6 @@ export function buildUnsignedRepositoryEvent(
         typeof process !== "undefined"
           ? process.env.NEXT_PUBLIC_SITE_URL || null
           : null,
-      guessGithubPages: false,
     });
   } catch {
     /* keep repo.links as-is */
