@@ -2,6 +2,19 @@
 
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { filterGraspMirrorPollutionFromFileTree } from "@/lib/utils/filter-grasp-mirror-pollution";
+import {
+  hasOnlyHashtreeCloneUrls,
+  irisGitBrowseUrlFromHashtreeClone,
+  isHashtreeCloneUrl,
+  parseHashtreeCloneUrl,
+} from "@/lib/utils/hashtree-clone";
+
+export {
+  hasOnlyHashtreeCloneUrls,
+  irisGitBrowseUrlFromHashtreeClone,
+  isHashtreeCloneUrl,
+  parseHashtreeCloneUrl,
+} from "@/lib/utils/hashtree-clone";
 
 /**
  * Git Source Fetcher
@@ -22,6 +35,7 @@ export type GitSourceType =
   | "codeberg" // Codeberg: https://codeberg.org/user/repo.git
   | "gitlab" // GitLab: https://gitlab.com/user/repo.git
   | "self-hosted-git" // Gitea/Forgejo/self-hosted: https://git.example.com/owner/repo.git
+  | "hashtree" // Iris Hashtree: htree://npub.../repo (needs git-remote-htree)
   | "unknown"; // Unknown git server
 
 /**
@@ -153,6 +167,12 @@ export function parseGitSource(cloneUrl: string): GitSource {
       url: String(cloneUrl || ""),
       displayName: "Invalid URL",
     };
+  }
+
+  // Iris Hashtree (htree://npub…/repo) — not fetchable via HTTPS git / bridge
+  const hashtree = parseHashtreeCloneUrl(cloneUrl);
+  if (hashtree) {
+    return hashtree;
   }
 
   // CRITICAL: Convert SSH URLs (git@host:owner/repo) to https:// for processing
@@ -1691,6 +1711,12 @@ export async function fetchFilesFromSource(
       }
       break;
 
+    case "hashtree":
+      console.info(
+        `ℹ️ [Git Source] Hashtree clone (Iris) — not fetchable in-browser: ${source.url}`
+      );
+      break;
+
     case "unknown":
       console.warn(`⚠️ [Git Source] Unknown source type for: ${source.url}`);
       break;
@@ -1726,6 +1752,25 @@ export async function fetchFilesFromMultipleSources(
   files: Array<{ type: string; path: string; size?: number }> | null;
   statuses: FetchStatus[];
 }> {
+  // Hashtree-only: skip GRASP/bridge/HTTPS attempts (needs git-remote-htree / Iris UI)
+  if (hasOnlyHashtreeCloneUrls(cloneUrls)) {
+    const statuses: FetchStatus[] = cloneUrls.map((url) => {
+      const source = parseGitSource(url);
+      return {
+        source,
+        status: "failed" as const,
+        error:
+          "Hashtree (Iris) — open Iris Git or clone with git-remote-htree",
+        fetchedAt: Date.now(),
+      };
+    });
+    console.info(
+      `ℹ️ [Git Source] Hashtree-only clones (${cloneUrls.length}) — skipping multi-source fetch`
+    );
+    statuses.forEach((s) => onStatusUpdate?.(s));
+    return { files: null, statuses };
+  }
+
   let prioritizedCloneUrls = cloneUrls;
 
   // If user has GRASP list preferences, prioritize those servers

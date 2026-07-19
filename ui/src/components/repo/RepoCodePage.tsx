@@ -151,6 +151,11 @@ import {
   isRefetchableUpstreamSourceUrl,
   parseGitSource,
 } from "@/lib/utils/git-source-fetcher";
+import {
+  hasOnlyHashtreeCloneUrls,
+  irisGitBrowseUrlFromHashtreeClone,
+  isHashtreeCloneUrl,
+} from "@/lib/utils/hashtree-clone";
 import { buildGraspHttpsCloneCandidates } from "@/lib/utils/grasp-list";
 import { KNOWN_GRASP_DOMAINS } from "@/lib/utils/grasp-servers";
 import {
@@ -1569,6 +1574,22 @@ export function RepoCodePage() {
     pagesSiteListedByGateway,
     candidateGittrPagesUrls?.namedUrl,
   ]);
+  /** Iris Hashtree-only repos: no HTTPS git tree for the Code browser. */
+  const hashtreeOnlyEmpty = useMemo(() => {
+    const clones = Array.isArray((repoData as any)?.clone)
+      ? ((repoData as any).clone as string[])
+      : [];
+    if (!hasOnlyHashtreeCloneUrls(clones)) return null;
+    const htree = clones.find((u) => isHashtreeCloneUrl(u)) || clones[0] || "";
+    const fromWeb =
+      repoLinksList?.find((l) =>
+        String(l.url || "").includes("git.iris.to")
+      )?.url || null;
+    const browseUrl =
+      fromWeb || irisGitBrowseUrlFromHashtreeClone(htree) || null;
+    return { htree, browseUrl };
+  }, [repoData, repoLinksList]);
+
   const linksPublished = useMemo(() => {
     if (!repoLinksList || repoLinksList.length === 0) return false;
     return Boolean(
@@ -5178,6 +5199,25 @@ export function RepoCodePage() {
             return;
           }
         }
+        // Hashtree-only (Iris): do not hammer bridge / multi-source — UI shows Iris CTA
+        if (hasOnlyHashtreeCloneUrls(initialCloneUrls)) {
+          console.info(
+            `ℹ️ [File Fetch] Hashtree-only clones — skipping multi-source and bridge for ${repoKeyWithBranch}`
+          );
+          markFileFetchAttempt(repoKeyWithBranch);
+          fileFetchInProgressRef.current = false;
+          setFetchStatuses(
+            initialCloneUrls.map((url) => ({
+              source: parseGitSource(url).displayName,
+              status: "failed" as const,
+              error:
+                "Hashtree (Iris) — open Iris Git or clone with git-remote-htree",
+            }))
+          );
+          setFetchingFilesFromGit({ source: null, message: "" });
+          return;
+        }
+
         console.log(
           `🔍 [File Fetch] NIP-34: Found ${initialCloneUrls.length} clone URLs, attempting multi-source fetch immediately`
         );
@@ -7801,6 +7841,25 @@ export function RepoCodePage() {
                 );
                 const repoKeyWithBranch = `${repoKey}:${currentBranch}`;
 
+                if (hasOnlyHashtreeCloneUrls(cloneUrls)) {
+                  console.info(
+                    `ℹ️ [File Fetch] EOSE: Hashtree-only — skipping multi-source and bridge for ${repoKeyWithBranch}`
+                  );
+                  markFileFetchAttempt(repoKeyWithBranch);
+                  fileFetchInProgressRef.current = false;
+                  setFetchStatuses(
+                    cloneUrls.map((url) => ({
+                      source: parseGitSource(url).displayName,
+                      status: "failed" as const,
+                      error:
+                        "Hashtree (Iris) — open Iris Git or clone with git-remote-htree",
+                    }))
+                  );
+                  setFetchingFilesFromGit({ source: null, message: "" });
+                  if (unsub) unsub();
+                  return;
+                }
+
                 // Check if already attempted AND we have files, OR if truly in progress
                 // CRITICAL: Don't skip if we've attempted but don't have files yet (need to retry)
                 // Also handle undefined files explicitly (undefined means not loaded yet, should retry)
@@ -8809,6 +8868,16 @@ export function RepoCodePage() {
           }
           try {
             const currentData = repoDataRef.current;
+            const bridgeClone =
+              (Array.isArray(currentData?.clone) && currentData.clone) ||
+              (Array.isArray(eventRepoData?.clone) && eventRepoData.clone) ||
+              [];
+            if (hasOnlyHashtreeCloneUrls(bridgeClone)) {
+              console.info(
+                "ℹ️ [File Fetch] Skipping git-nostr-bridge for Hashtree-only repo"
+              );
+              return;
+            }
             // CRITICAL: Use defaultBranch from repo data if available, otherwise try to get it from sourceUrl
             let branch = currentData?.defaultBranch;
 
@@ -16542,7 +16611,64 @@ export function RepoCodePage() {
                 </ul>
               </div>
             )}
-            {mounted && items.length === 0 && repoData && (
+            {mounted && items.length === 0 && repoData && hashtreeOnlyEmpty && (
+              <div className="border dark:border-[#383B42] rounded-md p-5 space-y-3 text-left">
+                <p className="text-sm text-gray-300">
+                  This repo is hosted on{" "}
+                  <span className="text-white font-medium">Iris Hashtree</span>,
+                  not a classic HTTPS git server. gittr cannot list those files
+                  in the Code browser yet.
+                </p>
+                {hashtreeOnlyEmpty.browseUrl && (
+                  <a
+                    href={hashtreeOnlyEmpty.browseUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-md bg-[var(--color-accent-primary)] px-3 py-2 text-sm font-medium text-white hover:opacity-90"
+                  >
+                    Open in Iris Git
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                )}
+                {hashtreeOnlyEmpty.htree && (
+                  <div className="rounded border dark:border-[#383B42] bg-black/20 p-3 space-y-2">
+                    <p className="text-xs text-gray-400">
+                      Clone with Iris{" "}
+                      <code className="text-gray-300">git-remote-htree</code>:
+                    </p>
+                    <div className="flex items-start gap-2">
+                      <code className="flex-1 text-xs text-green-400 break-all">
+                        git clone {hashtreeOnlyEmpty.htree}
+                      </code>
+                      <button
+                        type="button"
+                        className="shrink-0 p-1.5 text-gray-400 hover:text-white"
+                        title="Copy clone command"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard?.writeText(
+                              `git clone ${hashtreeOnlyEmpty.htree}`
+                            );
+                            const { showToast } = await import(
+                              "@/components/ui/toast"
+                            );
+                            showToast("Copied clone command", "success");
+                          } catch {
+                            /* ignore */
+                          }
+                        }}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {mounted &&
+              items.length === 0 &&
+              repoData &&
+              !hashtreeOnlyEmpty && (
               <div className="border p-4 text-center text-gray-400">
                 No files found
               </div>

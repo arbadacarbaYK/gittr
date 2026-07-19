@@ -32,6 +32,15 @@ Same branch as the loaded tree: use `repoData.filesBranch` (from multifetch `res
 
 `git@host:path` is normalized to HTTPS for HTTP APIs where needed. Generic `user@host:path` (no `://`) is treated as self-hosted git for `/api/git/*`.
 
+## Iris Hashtree (`htree://`)
+
+Some NIP-34 announces (e.g. from [Iris Git](https://git.iris.to/)) use:
+
+- `clone` → `htree://npub1…/repo` (requires `git-remote-htree` on the machine; not HTTPS `git-upload-pack`)
+- `web` → `https://git.iris.to/#/npub1…/repo` (browser SPA only)
+
+gittr **recognizes** Hashtree clones (`parseGitSource` type `hashtree`) and labels Iris `web` links as **Iris Git**. When every clone URL is Hashtree-only, the Code page shows an Iris CTA + copyable `git clone htree://…` and **skips** bridge / multi-source retries (the bridge cannot clone `htree://`). In-browser Hashtree tree listing is not implemented yet.
+
 ## GRASP (foreign / nostr-git)
 
 Many GRASP hosts have no file-browse REST API — only `git clone` over HTTPS. Per **clone URL** (in parallel with others), `fetchFromNostrGit` tries:

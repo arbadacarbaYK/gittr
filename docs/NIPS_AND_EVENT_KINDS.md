@@ -165,14 +165,14 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
   - `d`: Repository identifier (required)
   - `name`: Human-readable project name
   - `description`: Repository description
-  - `clone[]`: Git server URLs
+  - `clone[]`: Git server URLs (HTTPS GRASP/forges, `nostr://…`, or Iris **`htree://npub…/repo`** — Hashtree needs `git-remote-htree`; gittr does not list those trees in the Code browser yet)
   - `relay[]`: Nostr relay URLs
   - `t[]`: Topics/tags
   - `p[]`: Contributors (with weights)
   - `maintainers[]`: Maintainer pubkeys (used for access control)
   - `r`: Source URL (e.g., GitHub)
   - `image`: Logo URL
-  - `web[]`: Web links
+  - `web[]`: Web browse links (e.g. `https://git.iris.to/#/npub…/repo` — shown as **Iris Git** in the sidebar; not a clone URL)
   - `default_branch`: Default branch name
   - `branch[]`: Branch names and commits
   - `release[]`: Release tags and metadata

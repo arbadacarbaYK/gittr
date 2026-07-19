@@ -37,6 +37,26 @@ function normalizeType(raw: string): Nip34RepoLinkType {
   return (KNOWN_TYPES.has(t) ? t : "other") as Nip34RepoLinkType;
 }
 
+/** Iris Hashtree browser UI (hash-routed SPA on git.iris.to). */
+export function isIrisGitBrowseUrl(url: string): boolean {
+  if (!url || typeof url !== "string") return false;
+  try {
+    const u = new URL(url.trim());
+    return u.hostname === "git.iris.to";
+  } catch {
+    return false;
+  }
+}
+
+function irisLabelIfNeeded(
+  url: string,
+  existingLabel?: string
+): string | undefined {
+  if (existingLabel?.trim()) return existingLabel.trim();
+  if (isIrisGitBrowseUrl(url)) return "Iris Git";
+  return existingLabel;
+}
+
 export function parseRepoLinksFromNip34Tags(
   tags: string[][] | undefined | null
 ): Nip34RepoLink[] {
@@ -62,10 +82,11 @@ export function parseRepoLinksFromNip34Tags(
     const key = url.toLowerCase();
     if (seenUrls.has(key)) continue;
     seenUrls.add(key);
+    const resolvedLabel = irisLabelIfNeeded(url, label);
     out.push({
       type: normalizeType(typeRaw),
       url,
-      ...(label ? { label } : {}),
+      ...(resolvedLabel ? { label: resolvedLabel } : {}),
     });
   }
 
@@ -79,7 +100,12 @@ export function parseRepoLinksFromNip34Tags(
       const key = url.toLowerCase();
       if (seenUrls.has(key)) continue;
       seenUrls.add(key);
-      out.push({ type: "docs", url });
+      const resolvedLabel = irisLabelIfNeeded(url);
+      out.push({
+        type: "docs",
+        url,
+        ...(resolvedLabel ? { label: resolvedLabel } : {}),
+      });
     }
   }
 
