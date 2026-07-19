@@ -86,7 +86,7 @@ function ChecklistRow(props: {
   const interactive = Boolean(onClick) && !disabled;
   const Icon = ok ? CheckCircle2 : Circle;
   const iconClass = ok
-    ? "text-emerald-400/95"
+    ? "text-[var(--color-accent-secondary)]"
     : warning
     ? "text-amber-500/85"
     : "text-zinc-500";
@@ -103,7 +103,7 @@ function ChecklistRow(props: {
   const rowClass = cn(
     "flex w-full gap-2 rounded-lg px-2 py-1.5 text-left transition-colors",
     interactive &&
-      "cursor-pointer text-zinc-200 hover:bg-white/[0.04] focus-visible:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-violet-500/50",
+      "cursor-pointer text-zinc-200 hover:bg-white/[0.04] focus-visible:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent-primary)]/50",
     !interactive && "cursor-default"
   );
 
@@ -258,16 +258,19 @@ export function RepoGittrPagesPanel({
   };
 
   return (
-    <details className="group mt-3 overflow-hidden rounded-xl border border-purple-800/40 bg-gradient-to-b from-purple-950/25 to-zinc-950/40 open:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
+    <details className="group mt-3 overflow-hidden rounded-xl border border-[var(--color-border)] bg-gradient-to-b from-[var(--color-bg-secondary)] to-zinc-950/40 open:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
       <summary className="flex cursor-pointer list-none items-center gap-2.5 px-3 py-3 text-sm font-semibold tracking-tight text-white [&::-webkit-details-marker]:hidden">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-purple-500/20 ring-1 ring-purple-400/35">
-          <Globe className="h-4 w-4 text-purple-400" aria-hidden />
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent-primary)]/20 ring-1 ring-[var(--color-accent-primary)]/35">
+          <Globe
+            className="h-4 w-4 text-[var(--color-accent-primary)]"
+            aria-hidden
+          />
         </span>
         <span className="min-w-0 flex-1 leading-tight">Nostr Pages</span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition duration-200 group-open:rotate-180 group-open:text-purple-400" />
+        <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition duration-200 group-open:rotate-180 group-open:text-[var(--color-accent-primary)]" />
       </summary>
 
-      <div className="space-y-4 border-t border-violet-900/25 px-3 pb-3.5 pt-3">
+      <div className="space-y-4 border-t border-[var(--color-border)] px-3 pb-3.5 pt-3">
         {blossomStaticSiteWarning ? (
           <p className="rounded-lg border border-amber-800/40 bg-amber-950/30 px-3 py-2.5 text-[10px] leading-relaxed text-amber-100/95">
             <strong className="text-amber-200">Blossom URL:</strong>{" "}
@@ -300,8 +303,8 @@ export function RepoGittrPagesPanel({
             className={cn(
               "overflow-hidden rounded-xl border",
               gittrStepsReady
-                ? "border-emerald-800/35 bg-emerald-950/[0.12]"
-                : "border-violet-800/30 bg-black/20"
+                ? "border-[var(--color-accent-secondary)]/35 bg-[var(--color-accent-secondary)]/10"
+                : "border-[var(--color-border)] bg-black/20"
             )}
           >
             <div className="divide-y divide-zinc-800/80 px-1 py-0.5">
@@ -375,7 +378,7 @@ export function RepoGittrPagesPanel({
         ) : null}
 
         {isOwnerSession && pagesReadiness && onCommitPagesSiteSlug ? (
-          <div className="space-y-2 rounded-xl border border-violet-800/25 bg-violet-950/[0.08] p-3">
+          <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)]/80 p-3">
             <SectionLabel>Site name</SectionLabel>
             <p className="text-[10px] leading-relaxed text-zinc-500">
               Optional short display name for your page listing; it does not
@@ -387,7 +390,7 @@ export function RepoGittrPagesPanel({
                   href={pagesReadiness.namedUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="min-w-0 flex-1 truncate text-violet-300 underline-offset-2 hover:underline"
+                  className="min-w-0 flex-1 truncate text-[var(--color-link)] underline-offset-2 hover:underline"
                   title={pagesReadiness.namedUrl}
                 >
                   {pagesReadiness.namedUrl}
@@ -426,7 +429,7 @@ export function RepoGittrPagesPanel({
               }}
               placeholder="(repo slug)"
               disabled={slugBusy || chainActionsDisabled}
-              className="h-9 border-violet-800/40 bg-black/30 text-xs text-zinc-100"
+              className="h-9 border-[var(--color-border)] bg-black/30 text-xs text-zinc-100"
               maxLength={32}
               spellCheck={false}
               autoCapitalize="off"
@@ -441,7 +444,7 @@ export function RepoGittrPagesPanel({
                   <button
                     key={s}
                     type="button"
-                    className="rounded border border-violet-800/40 bg-violet-950/40 px-2 py-0.5 text-[10px] text-violet-200 hover:bg-violet-900/50"
+                    className="rounded border border-[var(--color-border)] bg-[var(--color-accent-primary)]/10 px-2 py-0.5 text-[10px] text-[var(--color-text-primary)] hover:bg-[var(--color-accent-primary)]/20"
                     onClick={() => {
                       setSlugDraft(s);
                       setSlugError(null);
@@ -458,7 +461,7 @@ export function RepoGittrPagesPanel({
                 size="sm"
                 variant="outline"
                 disabled={slugBusy || chainActionsDisabled}
-                className="border-violet-600/40 text-xs text-violet-50"
+                className="border-[var(--color-accent-primary)]/40 text-xs text-[var(--color-text-primary)]"
                 onClick={() => {
                   void (async () => {
                     setSlugBusy(true);
@@ -526,7 +529,7 @@ export function RepoGittrPagesPanel({
                   disabled={chainActionsDisabled}
                   className={cn(
                     btnMultiline,
-                    "border-violet-800/40 bg-violet-950/25 text-violet-100 hover:bg-violet-900/35"
+                    "border-[var(--color-accent-primary)]/40 bg-[var(--color-accent-primary)]/10 text-[var(--color-text-primary)] hover:bg-[var(--color-accent-primary)]/20"
                   )}
                   onClick={openManifestIssue}
                 >
@@ -583,13 +586,13 @@ export function RepoGittrPagesPanel({
         ) : null}
 
         {canManageReadme ? (
-          <div className="space-y-2 rounded-xl border border-violet-800/25 bg-violet-950/[0.08] p-3">
+          <div className="space-y-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-secondary)]/80 p-3">
             <SectionLabel>README &amp; page</SectionLabel>
             {isOwnerSession && onAutoReadmeOnPushChange ? (
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-violet-800/30 bg-black/20 px-2.5 py-2 text-[11px] text-zinc-300 transition hover:border-violet-700/40">
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--color-border)] bg-black/20 px-2.5 py-2 text-[11px] text-zinc-300 transition hover:border-[var(--color-accent-primary)]/40">
                 <input
                   type="checkbox"
-                  className="h-3.5 w-3.5 shrink-0 rounded border-violet-600 bg-zinc-900 text-violet-500 focus:ring-violet-500/40"
+                  className="h-3.5 w-3.5 shrink-0 rounded border-[var(--color-accent-primary)] bg-zinc-900 text-[var(--color-accent-primary)] focus:ring-[var(--color-accent-primary)]/40"
                   checked={autoReadmeOnPush}
                   onChange={(e) => onAutoReadmeOnPushChange(e.target.checked)}
                   title="Refresh the Pages README block automatically before each push."
@@ -608,7 +611,7 @@ export function RepoGittrPagesPanel({
                   disabled={busy || chainActionsDisabled}
                   className={cn(
                     btnMultiline,
-                    "border-violet-600/40 text-violet-50 hover:bg-violet-950/35"
+                    "border-[var(--color-accent-primary)]/40 text-[var(--color-text-primary)] hover:bg-[var(--color-accent-primary)]/15"
                   )}
                   onClick={async () => {
                     setBusy(true);
@@ -631,7 +634,7 @@ export function RepoGittrPagesPanel({
                   disabled={busy || chainActionsDisabled}
                   className={cn(
                     btnMultiline,
-                    "border-emerald-800/45 text-emerald-50 hover:bg-emerald-950/30"
+                    "border-[var(--color-accent-secondary)]/45 text-[var(--color-text-primary)] hover:bg-[var(--color-accent-secondary)]/15"
                   )}
                   onClick={() => {
                     void onReadmeThenPush();
@@ -669,7 +672,7 @@ export function RepoGittrPagesPanel({
                 disabled={busy || chainActionsDisabled}
                 className={cn(
                   btnMultiline,
-                  "border-violet-600/40 text-violet-50 hover:bg-violet-950/35"
+                  "border-[var(--color-accent-primary)]/40 text-[var(--color-text-primary)] hover:bg-[var(--color-accent-primary)]/15"
                 )}
                 onClick={async () => {
                   setBusy(true);

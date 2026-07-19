@@ -46,7 +46,7 @@ function ChecklistRow(props: {
   const { ok, warning, title } = props;
   const Icon = ok ? CheckCircle2 : Circle;
   const iconClass = ok
-    ? "text-emerald-400/95"
+    ? "text-[var(--color-accent-secondary)]"
     : warning
     ? "text-amber-500/85"
     : "text-zinc-500";
@@ -226,22 +226,25 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
   if (!isOwnerSession) return null;
 
   return (
-    <details className="group mt-3 overflow-hidden rounded-xl border border-emerald-900/30 bg-gradient-to-b from-emerald-950/15 to-zinc-950/40 open:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
+    <details className="group mt-3 overflow-hidden rounded-xl border border-[var(--color-border)] bg-gradient-to-b from-[var(--color-bg-secondary)] to-zinc-950/40 open:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
       <summary className="flex cursor-pointer list-none items-center gap-2.5 px-3 py-3 text-sm font-semibold tracking-tight text-white [&::-webkit-details-marker]:hidden">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20 ring-1 ring-emerald-400/35">
-          <Smartphone className="h-4 w-4 text-emerald-400" aria-hidden />
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--color-accent-primary)]/20 ring-1 ring-[var(--color-accent-primary)]/35">
+          <Smartphone
+            className="h-4 w-4 text-[var(--color-accent-primary)]"
+            aria-hidden
+          />
         </span>
         <span className="min-w-0 flex-1 leading-tight">Nostr Apps</span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition duration-200 group-open:rotate-180 group-open:text-emerald-400" />
+        <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition duration-200 group-open:rotate-180 group-open:text-[var(--color-accent-primary)]" />
       </summary>
 
-      <div className="space-y-3 border-t border-emerald-900/25 px-3 pb-3.5 pt-3">
+      <div className="space-y-3 border-t border-[var(--color-border)] px-3 pb-3.5 pt-3">
         <p className="text-[11px] leading-snug text-zinc-400">
           List an Android APK from your forge{" "}
           <strong className="font-medium text-zinc-300">Release</strong> on{" "}
           <Link
             href="/apps"
-            className="text-emerald-300/90 underline-offset-2 hover:underline"
+            className="text-[var(--color-link)] underline-offset-2 hover:underline"
           >
             Apps
           </Link>
@@ -378,7 +381,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         </div>
 
         {publishResult ? (
-          <div className="rounded-md border border-emerald-500/35 bg-emerald-950/25 px-2.5 py-2 text-[11px] leading-snug text-emerald-100">
+          <div className="rounded-md border border-[var(--color-accent-primary)]/35 bg-[var(--color-accent-primary)]/10 px-2.5 py-2 text-[11px] leading-snug text-[var(--color-text-primary)]">
             Live as {publishResult.appId}@{publishResult.version}. See{" "}
             <Link href="/apps" className="underline underline-offset-2">
               Apps
@@ -411,7 +414,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
               href={ZAPSTORE_PUBLISH_DOCS}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-emerald-400/90 underline-offset-2 hover:underline"
+              className="text-[var(--color-link)] underline-offset-2 hover:underline"
             >
               zapstore.dev/docs/publish
             </a>
