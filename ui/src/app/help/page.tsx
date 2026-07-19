@@ -227,7 +227,7 @@ export default function HelpPage() {
               /apps
             </Link>
             . Repo owners can{" "}
-            <strong className="text-white">Announce app</strong> from the Code
+            <strong className="text-white">Nostr Apps</strong> from the Code
             sidebar: list an Android app on Nostr from a forge{" "}
             <strong className="text-white">Release</strong> that has an{" "}
             <code className="text-purple-200">.apk</code> (file stays on

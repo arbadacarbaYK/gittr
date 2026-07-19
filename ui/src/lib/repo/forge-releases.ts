@@ -445,7 +445,7 @@ export async function fetchForgeReleasesForAnnounce(options: {
       return {
         ok: false,
         code: "no_apk",
-        message: `Latest release ${release.tag} has no .apk assets. Attach an Android APK to the forge Release (source zips alone are not enough for Zapstore-compatible announce).`,
+        message: `Your repo or latest release has no .apk assets.`,
       };
     }
 

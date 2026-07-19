@@ -126,7 +126,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         );
         if (!data.release.apkAssets.length) {
           setError(
-            `Release ${data.release.tag} has no .apk — attach an APK asset (source zips alone are not enough).`
+            "Your repo or latest release has no .apk assets."
           );
         } else if (withHash) {
           const missing = data.release.apkAssets.filter((a) => !a.sha256);
@@ -231,7 +231,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 ring-1 ring-emerald-400/20">
           <Smartphone className="h-4 w-4 text-emerald-300" aria-hidden />
         </span>
-        <span className="min-w-0 flex-1 leading-tight">Announce app</span>
+        <span className="min-w-0 flex-1 leading-tight">Nostr Apps</span>
         <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition duration-200 group-open:rotate-180" />
       </summary>
 
