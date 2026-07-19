@@ -20324,16 +20324,9 @@ export function RepoCodePage() {
                                 }}
                               />
                             );
-                            if (isNextUi && pagesSiteListedByGateway === true) {
-                              return (
-                                <details className="mb-3 rounded-md border border-zinc-700/60 px-2.5 py-2">
-                                  <summary className="cursor-pointer text-[11px] font-medium text-zinc-300">
-                                    Update / recreate page
-                                  </summary>
-                                  <div className="mt-2">{pagesPanel}</div>
-                                </details>
-                              );
-                            }
+                            // Always use RepoGittrPagesPanel's own "Nostr Pages"
+                            // collapsible header — do not nest a second details
+                            // ("Update / recreate page") that hid the real summary.
                             return pagesPanel;
                           })()}
 
