@@ -15,9 +15,11 @@ import { showToast } from "@/components/ui/toast";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   KIND_GIT_REPOSITORIES_LIST,
+  KIND_REPOSITORY_NIP34,
   parseGitRepositoriesListEvent,
 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import {
   REPO_ANNOUNCEMENT_ID_EVENT,
@@ -491,6 +493,86 @@ export default function RepoLayoutClient({
     githubHydrateKeyRef.current = "";
   }, [resolvedParams.entity, resolvedParams.repo, githubUpstreamUrl]);
 
+  // After localStorage clear (or cold anonymous visit), Public/Private badge still
+  // needs public-read from the latest kind 30617 — local row alone is not enough.
+  useEffect(() => {
+    if (!mounted || !subscribe || !defaultRelays?.length) return;
+
+    let ownerHex =
+      ownerPubkey && /^[0-9a-f]{64}$/i.test(ownerPubkey)
+        ? ownerPubkey.toLowerCase()
+        : "";
+    if (!ownerHex && resolvedParams.entity?.startsWith("npub")) {
+      try {
+        const decoded = nip19.decode(resolvedParams.entity);
+        if (decoded.type === "npub" && typeof decoded.data === "string") {
+          ownerHex = decoded.data.toLowerCase();
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!ownerHex) return;
+
+    const repoName = decodeURIComponent(resolvedParams.repo || "");
+    if (!repoName) return;
+
+    let latest: { created_at?: number; tags?: string[][] } | null = null;
+    let cancelled = false;
+    const unsub = subscribe(
+      [
+        {
+          kinds: [KIND_REPOSITORY_NIP34],
+          authors: [ownerHex],
+          "#d": [repoName],
+          limit: 5,
+        },
+      ],
+      getAllRelays(defaultRelays),
+      (event) => {
+        if (
+          !latest ||
+          (event.created_at || 0) >= (latest.created_at || 0)
+        ) {
+          latest = event;
+        }
+      },
+      5000,
+      () => {
+        if (cancelled || !latest) return;
+        const publicRead = isPublicReadFromEvent(latest as any);
+        setRepo((prev: any) => {
+          if (prev) {
+            if (prev.publicRead === publicRead) return prev;
+            return { ...prev, publicRead };
+          }
+          return {
+            entity: resolvedParams.entity,
+            repo: repoName,
+            ownerPubkey: ownerHex,
+            publicRead,
+          };
+        });
+      }
+    );
+
+    return () => {
+      cancelled = true;
+      try {
+        unsub?.();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [
+    mounted,
+    subscribe,
+    defaultRelays,
+    ownerPubkey,
+    resolvedParams.entity,
+    resolvedParams.repo,
+  ]);
+
   // Load repo data first (used by useEntityOwner hook)
   const loadRepoAndLogo = useCallback(() => {
     if (!mounted) return; // Don't access localStorage until mounted
@@ -502,7 +584,22 @@ export default function RepoLayoutClient({
         resolvedParams.entity,
         resolvedParams.repo
       );
-      setRepo(foundRepo || null);
+      setRepo((prev: any) => {
+        if (foundRepo) {
+          // Prefer explicit private from Nostr hydrate over a stale local public default
+          if (
+            prev &&
+            prev.publicRead === false &&
+            (foundRepo as { publicRead?: boolean }).publicRead !== false
+          ) {
+            return { ...foundRepo, publicRead: false };
+          }
+          return foundRepo;
+        }
+        // Keep Nostr-hydrated stub (badge/ACL) when there is no localStorage row
+        if (prev && prev.publicRead !== undefined) return prev;
+        return null;
+      });
       setForkCount(
         foundRepo &&
           typeof (foundRepo as { forks?: unknown }).forks === "number"

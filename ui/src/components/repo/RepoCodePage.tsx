@@ -7130,6 +7130,14 @@ export function RepoCodePage() {
                           clone: Array.isArray(eventRepoData.clone)
                             ? eventRepoData.clone
                             : [],
+                          publicRead:
+                            eventRepoData.publicRead !== undefined
+                              ? eventRepoData.publicRead
+                              : true,
+                          publicWrite:
+                            eventRepoData.publicWrite !== undefined
+                              ? eventRepoData.publicWrite
+                              : false,
                         } as StoredRepo);
                       const sameLength =
                         Array.isArray(base.contributors) &&
@@ -7138,15 +7146,65 @@ export function RepoCodePage() {
                         prev &&
                         sameLength &&
                         JSON.stringify(base.contributors) ===
-                          JSON.stringify(mergedContributors)
+                          JSON.stringify(mergedContributors) &&
+                        prev.publicRead ===
+                          (eventRepoData.publicRead !== undefined
+                            ? eventRepoData.publicRead
+                            : prev.publicRead)
                       ) {
                         return prev;
                       }
                       return {
                         ...base,
                         contributors: mergedContributors,
+                        ...(eventRepoData.publicRead !== undefined
+                          ? { publicRead: eventRepoData.publicRead }
+                          : {}),
+                        ...(eventRepoData.publicWrite !== undefined
+                          ? { publicWrite: eventRepoData.publicWrite }
+                          : {}),
                         ...(eventRepoData.maintainers
                           ? { maintainers: eventRepoData.maintainers }
+                          : {}),
+                      };
+                    });
+                  } else if (
+                    eventRepoData.publicRead !== undefined ||
+                    eventRepoData.publicWrite !== undefined
+                  ) {
+                    // Privacy-only update when announcement has no contributor list
+                    setRepoData((prev: any) => {
+                      if (!prev) {
+                        return {
+                          entity: resolvedParams.entity,
+                          repo: resolvedParams.repo,
+                          name:
+                            eventRepoData.repositoryName ||
+                            resolvedParams.repo,
+                          readme: "",
+                          files: [],
+                          description: eventRepoData.description || "",
+                          contributors: [],
+                          defaultBranch:
+                            eventRepoData.defaultBranch || "main",
+                          ownerPubkey: event.pubkey,
+                          publicRead:
+                            eventRepoData.publicRead !== undefined
+                              ? eventRepoData.publicRead
+                              : true,
+                          publicWrite:
+                            eventRepoData.publicWrite !== undefined
+                              ? eventRepoData.publicWrite
+                              : false,
+                        } as StoredRepo;
+                      }
+                      return {
+                        ...prev,
+                        ...(eventRepoData.publicRead !== undefined
+                          ? { publicRead: eventRepoData.publicRead }
+                          : {}),
+                        ...(eventRepoData.publicWrite !== undefined
+                          ? { publicWrite: eventRepoData.publicWrite }
                           : {}),
                       };
                     });
