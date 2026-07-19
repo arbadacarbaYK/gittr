@@ -21,10 +21,15 @@ import {
 } from "@/lib/activity-tracking";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
+  enqueueFollowPublish,
   loadContactListBackup,
+  mergeContactLists,
   parseContactListPubkeys,
+  resolveContactListBase,
   saveContactListBackup,
+  uniqContactPubkeys,
 } from "@/lib/nostr/contact-list";
+import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import {
   KIND_ISSUE,
   KIND_PULL_REQUEST,
@@ -2723,9 +2728,13 @@ export default function EntityPage({
         if (created < bestCreatedAt) return;
         bestCreatedAt = created;
         const pubkeys = parseContactListPubkeys(event);
-        setContactList(pubkeys);
-        setIsFollowing(pubkeys.includes(fullPubkeyForMeta.toLowerCase()));
+        setContactList((prev) => {
+          const merged = mergeContactLists(prev, pubkeys);
+          setIsFollowing(merged.includes(fullPubkeyForMeta.toLowerCase()));
+          return merged;
+        });
         if (pubkeys.length > 0) {
+          // Never shrink backup from a partial relay event
           saveContactListBackup(currentUserPubkey, pubkeys);
         }
       },
@@ -2779,10 +2788,10 @@ export default function EntityPage({
 
     setFollowingLoading(true);
     try {
+      await enqueueFollowPublish(async () => {
       const signingCreds = await resolveSigningCredentials({ remoteSigner });
       if (!signingCreds) {
         alert(NO_SIGNING_METHOD_MESSAGE);
-        setFollowingLoading(false);
         return;
       }
       const { hasNip07, privateKey } = signingCreds;
@@ -2842,59 +2851,45 @@ export default function EntityPage({
           alert(
             "No signing method available.\n\nPlease use a NIP-07 extension (like Alby or nos2x), pair with a remote signer (nowser/bunker), or configure a private key in Settings."
           );
-          setFollowingLoading(false);
           return;
         }
         signerPubkey = getPublicKey(pk);
       }
 
       // CRITICAL: Fetch current contact list from Nostr BEFORE modifying it.
-      // `uncertainEmpty`: timeout/error and no usable list — NEVER publish in that case
-      // (replaceable kind 3 would wipe follows). Enter on the risk dialog = Cancel.
+      // Always union with backup + in-memory so a partial/stale kind 3 cannot wipe follows.
       let currentContacts: string[] = [];
       let uncertainEmpty = false;
+      let relayLooksPartial = false;
       try {
         const contactListPromise = new Promise<{
-          contacts: string[];
-          uncertainEmpty: boolean;
+          relayContacts: string[] | null;
+          relayCreatedAt: number;
+          sawAnyEvent: boolean;
         }>((resolve) => {
           let resolved = false;
           let bestCreatedAt = -1;
           let bestContacts: string[] | null = null;
+          let sawAnyEvent = false;
+          let eoseCount = 0;
+          const relayCount = Math.max(1, defaultRelays?.length || 1);
+          const eoseQuorum = Math.min(3, relayCount);
 
-          const finish = (contacts: string[], uncertain: boolean) => {
+          const finish = () => {
             if (resolved) return;
             resolved = true;
-            resolve({ contacts, uncertainEmpty: uncertain });
+            resolve({
+              relayContacts: bestContacts,
+              relayCreatedAt: bestCreatedAt,
+              sawAnyEvent,
+            });
           };
 
           const timeout = setTimeout(() => {
-            if (resolved) return;
-            if (bestContacts) {
-              console.warn(
-                "⚠️ [Follow] Timeout; using best kind 3 received so far"
-              );
-              finish(bestContacts, false);
-              return;
-            }
-            const fromState = contactList.map((p) => p.toLowerCase());
-            const fromBackup = loadContactListBackup(signerPubkey);
-            if (fromState.length > 0) {
-              console.warn(
-                "⚠️ [Follow] Timeout fetching contact list, using in-memory state"
-              );
-              finish(fromState, false);
-            } else if (fromBackup.length > 0) {
-              console.warn(
-                `⚠️ [Follow] Timeout; restored ${fromBackup.length} contacts from local backup`
-              );
-              finish(fromBackup, false);
-            } else {
-              console.warn(
-                "⚠️ [Follow] Timeout fetching contact list, using state as fallback"
-              );
-              finish([], true);
-            }
+            console.warn(
+              "⚠️ [Follow] Timeout; finishing with best kind 3 so far"
+            );
+            finish();
           }, 12000);
 
           const unsub = subscribe(
@@ -2908,94 +2903,108 @@ export default function EntityPage({
             defaultRelays,
             (event) => {
               if (event.kind !== 3 || resolved) return;
+              sawAnyEvent = true;
               const created = event.created_at || 0;
-              if (created < bestCreatedAt) return;
-              bestCreatedAt = created;
+              // Prefer newest, but if same age keep the larger list
               const pubkeys = parseContactListPubkeys(event);
-              bestContacts = pubkeys;
-              console.log(
-                `✅ [Follow] Fetched ${pubkeys.length} contacts from Nostr (created_at=${created})`
-              );
+              if (
+                created > bestCreatedAt ||
+                (created === bestCreatedAt &&
+                  pubkeys.length > (bestContacts?.length || 0))
+              ) {
+                bestCreatedAt = created;
+                bestContacts = pubkeys;
+                console.log(
+                  `✅ [Follow] Fetched ${pubkeys.length} contacts from Nostr (created_at=${created})`
+                );
+              } else if (
+                created === bestCreatedAt &&
+                bestContacts &&
+                pubkeys.length > 0
+              ) {
+                bestContacts = mergeContactLists(bestContacts, pubkeys);
+              }
             },
             undefined,
             () => {
-              if (resolved) {
-                if (unsub) unsub();
-                return;
-              }
-              clearTimeout(timeout);
-              if (bestContacts) {
-                finish(bestContacts, false);
-              } else {
-                const fromState = contactList.map((p) => p.toLowerCase());
-                const fromBackup = loadContactListBackup(signerPubkey);
-                if (fromState.length > 0) {
-                  finish(fromState, false);
-                } else if (fromBackup.length > 0) {
-                  finish(fromBackup, false);
-                } else {
-                  // No kind 3 on relays after EOSE: treat as genuinely empty
-                  // (first-time follow). Timeouts use uncertainEmpty instead.
-                  console.warn(
-                    "⚠️ [Follow] Subscription ended without event, using state as fallback"
-                  );
-                  finish(fromState, false);
+              // Per-relay EOSE — wait for a small quorum so one empty relay
+              // cannot finish before a fuller list arrives elsewhere.
+              eoseCount += 1;
+              if (resolved) return;
+              if (eoseCount >= eoseQuorum || (bestContacts && eoseCount >= 1 && bestContacts.length > 0 && eoseCount >= Math.min(2, relayCount))) {
+                // If we already have a solid list, finish after 2 EOSEs; else wait for quorum.
+                if (bestContacts && bestContacts.length > 0 && eoseCount >= Math.min(2, relayCount)) {
+                  clearTimeout(timeout);
+                  finish();
+                  if (unsub) unsub();
+                  return;
+                }
+                if (eoseCount >= eoseQuorum) {
+                  clearTimeout(timeout);
+                  finish();
+                  if (unsub) unsub();
                 }
               }
-              if (unsub) unsub();
             }
           );
         });
 
         const fetched = await contactListPromise;
-        currentContacts = fetched.contacts;
-        uncertainEmpty = fetched.uncertainEmpty;
+        const memory = uniqContactPubkeys(
+          contactList.map((p) => p.toLowerCase())
+        );
+        const backup = loadContactListBackup(signerPubkey);
+        const resolvedBase = resolveContactListBase({
+          relayContacts: fetched.relayContacts,
+          relayCreatedAt: fetched.relayCreatedAt,
+          inMemory: memory,
+          backup,
+        });
+        currentContacts = resolvedBase.contacts;
+        uncertainEmpty = resolvedBase.uncertainEmpty && !fetched.sawAnyEvent;
+        relayLooksPartial = resolvedBase.relayLooksPartial;
         if (currentContacts.length > 0) {
           saveContactListBackup(signerPubkey, currentContacts);
         }
         console.log(
-          `✅ [Follow] Using ${currentContacts.length} contacts from Nostr (state had ${contactList.length}, uncertainEmpty=${uncertainEmpty})`
+          `✅ [Follow] Using ${currentContacts.length} contacts (relay=${fetched.relayContacts?.length ?? 0}, memory=${memory.length}, backup=${backup.length}, partial=${relayLooksPartial}, uncertainEmpty=${uncertainEmpty})`
         );
       } catch (error) {
         console.error("❌ [Follow] Error fetching contact list:", error);
         const fromBackup = loadContactListBackup(signerPubkey);
-        currentContacts =
-          contactList.length > 0
-            ? contactList.map((p) => p.toLowerCase())
-            : fromBackup;
+        currentContacts = mergeContactLists(
+          contactList.map((p) => p.toLowerCase()),
+          fromBackup
+        );
         uncertainEmpty = currentContacts.length === 0;
         console.warn(
           `⚠️ [Follow] Falling back to state/backup: ${currentContacts.length} contacts`
         );
       }
 
-      // Start with the fetched contact list (or state as fallback)
-      // Normalize all existing contacts to lowercase for consistent comparison
-      let newContacts = currentContacts.map((p) => p.toLowerCase());
+      // Start with the merged full contact list
+      let newContacts = uniqContactPubkeys(currentContacts);
       const targetPubkey = fullPubkeyForMeta.toLowerCase();
+      const wasFollowing = newContacts.includes(targetPubkey);
 
-      if (isFollowing) {
+      if (wasFollowing) {
         // Unfollow: remove from list
         newContacts = newContacts.filter((p) => p !== targetPubkey);
       } else {
         // Follow: add to list
-        if (!newContacts.includes(targetPubkey)) {
-          newContacts.push(targetPubkey);
-        }
+        newContacts.push(targetPubkey);
       }
 
-      if (isFollowing && currentContacts.length === 0) {
+      if (wasFollowing && currentContacts.length === 0) {
         alert(
           "Could not load your follow list from relays, so unfollowing safely isn’t possible. Wait a moment and try again."
         );
-        setFollowingLoading(false);
         return;
       }
 
       // Hard-stop: never publish a near-empty kind 3 when the fetch was uncertain.
-      // Custom dialog: Enter / Escape / Cancel all abort (no OK-to-wipe path).
       if (
-        !isFollowing &&
+        !wasFollowing &&
         uncertainEmpty &&
         currentContacts.length === 0 &&
         newContacts.length === 1
@@ -3004,7 +3013,22 @@ export default function EntityPage({
           "🛑 [Follow] Aborted — contact list fetch uncertain; refusing to publish"
         );
         setFollowListRiskOpen(true);
-        setFollowingLoading(false);
+        return;
+      }
+
+      // Hard-stop: refuse to shrink a large list down to a tiny one (classic wipe).
+      const backupSize = loadContactListBackup(signerPubkey).length;
+      if (
+        !wasFollowing &&
+        (relayLooksPartial || backupSize >= 10) &&
+        newContacts.length < Math.max(5, Math.floor(backupSize * 0.5))
+      ) {
+        console.warn(
+          `🛑 [Follow] Aborted — refusing shrink ${backupSize} → ${newContacts.length}`
+        );
+        alert(
+          `Follow blocked: your known follow list has ~${backupSize} people, but this publish would only keep ${newContacts.length}. Wait a few seconds and try again so relays can return your full list.`
+        );
         return;
       }
 
@@ -3082,19 +3106,28 @@ export default function EntityPage({
         event.sig = signEvent(event, pk);
       }
 
-      // Publish to relays
-      publish(event, defaultRelays);
+      // Publish and wait so the next Follow cannot race a stale kind 3
+      await publishWithConfirmation(
+        publish,
+        subscribe,
+        event,
+        defaultRelays,
+        12_000
+      );
 
-      // Update local state + backup so a later slow fetch cannot wipe follows
-      setIsFollowing(!isFollowing);
+      // Update local state + backup (allowShrink only after intentional unfollow)
+      setIsFollowing(!wasFollowing);
       setContactList(newContacts);
-      saveContactListBackup(signerPubkey, newContacts);
+      saveContactListBackup(signerPubkey, newContacts, {
+        allowShrink: wasFollowing && newContacts.length < currentContacts.length,
+      });
 
       console.log(
         `✅ ${
-          isFollowing ? "Unfollowed" : "Followed"
-        } user ${fullPubkeyForMeta.slice(0, 8)}`
+          wasFollowing ? "Unfollowed" : "Followed"
+        } user ${fullPubkeyForMeta.slice(0, 8)} (${newContacts.length} follows)`
       );
+      });
     } catch (error: any) {
       console.error("Failed to follow/unfollow:", error);
       const errorMessage =
