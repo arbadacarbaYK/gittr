@@ -228,11 +228,11 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
   return (
     <details className="group mt-3 overflow-hidden rounded-xl border border-emerald-900/30 bg-gradient-to-b from-emerald-950/15 to-zinc-950/40 open:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
       <summary className="flex cursor-pointer list-none items-center gap-2.5 px-3 py-3 text-sm font-semibold tracking-tight text-white [&::-webkit-details-marker]:hidden">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 ring-1 ring-emerald-400/20">
-          <Smartphone className="h-4 w-4 text-emerald-300" aria-hidden />
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20 ring-1 ring-emerald-400/35">
+          <Smartphone className="h-4 w-4 text-emerald-400" aria-hidden />
         </span>
         <span className="min-w-0 flex-1 leading-tight">Nostr Apps</span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition duration-200 group-open:rotate-180" />
+        <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition duration-200 group-open:rotate-180 group-open:text-emerald-400" />
       </summary>
 
       <div className="space-y-3 border-t border-emerald-900/25 px-3 pb-3.5 pt-3">
