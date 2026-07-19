@@ -886,14 +886,12 @@ export function RepoCodePage() {
           sites?: Array<{ siteUrl?: string }>;
         };
         const sites = Array.isArray(data.sites) ? data.sites : [];
-        const hit = sites.some((s) => {
-          const u = (s.siteUrl || "").replace(/\/$/, "").toLowerCase();
-          return (
-            u === want ||
-            (dTag &&
-              (u.includes(dTag) || u.endsWith(`${dTag}.pages.gittr.space`)))
-          );
-        });
+        const { gatewaySiteMatchesRepo } = await import(
+          "@/lib/gittr-pages/gateway-site-match"
+        );
+        const hit = sites.some((s) =>
+          gatewaySiteMatchesRepo(s.siteUrl, want, dTag)
+        );
         if (!cancelled) setPagesSiteListedByGateway(hit);
       } catch {
         if (!cancelled) setPagesSiteListedByGateway(null);
@@ -1547,7 +1545,13 @@ export function RepoCodePage() {
       pagesSiteListedByGateway === true
         ? candidateGittrPagesUrls?.namedUrl || null
         : null;
-    const existing = (repoData?.links || []) as RepoLink[];
+    // Drop auto Nostr Pages rows unless gateway confirmed (old false-positives /
+    // stale 30617 tags must not keep showing).
+    const existing = (
+      pagesSiteListedByGateway === true
+        ? repoData?.links || []
+        : removeAutoNostrPagesLinks(repoData?.links || [])
+    ) as RepoLink[];
     return enrichRepoLinks({
       existing,
       sourceUrl: repoData?.sourceUrl || effectiveSourceUrl || null,
@@ -1556,7 +1560,6 @@ export function RepoCodePage() {
         (repoData as StoredRepo | null | undefined)?.announcedAppId || null,
       siteOrigin:
         typeof window !== "undefined" ? window.location.origin : null,
-      // Never invent github.io — only real homepage / Settings / live Pages.
     }) as RepoLink[];
   }, [
     repoData?.links,

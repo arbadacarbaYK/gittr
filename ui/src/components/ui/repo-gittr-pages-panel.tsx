@@ -211,14 +211,12 @@ export function RepoGittrPagesPanel({
           sites?: Array<{ siteUrl?: string }>;
         };
         const sites = Array.isArray(data.sites) ? data.sites : [];
-        const hit = sites.some((s) => {
-          const u = (s.siteUrl || "").replace(/\/$/, "").toLowerCase();
-          return (
-            u === want ||
-            (dTag &&
-              (u.includes(dTag) || u.endsWith(`${dTag}.pages.gittr.space`)))
-          );
-        });
+        const { gatewaySiteMatchesRepo } = await import(
+          "@/lib/gittr-pages/gateway-site-match"
+        );
+        const hit = sites.some((s) =>
+          gatewaySiteMatchesRepo(s.siteUrl, want, dTag)
+        );
         if (!cancelled) setGatewayListsSite(hit);
       } catch {
         if (!cancelled) setGatewayListsSite(null);
