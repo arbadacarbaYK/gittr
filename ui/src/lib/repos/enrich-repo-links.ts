@@ -1,9 +1,9 @@
 /**
- * Merge Settings docs links with forge homepage / Nostr Pages / Apps URLs
- * so Push, import, and refetch keep the sidebar Links section useful.
+ * Merge Settings docs links with forge homepage / confirmed Nostr Pages / Apps
+ * URLs so Push, import, and refetch keep the sidebar Links section useful.
  *
- * Never invent owner.github.io/repo — only use GitHub's homepage field (or
- * explicit Settings / Nostr Pages / app links). Guessing caused mass 404s.
+ * Never invent owner.github.io/repo or *.pages.gittr.space — only real GitHub
+ * homepage, Settings links, or a Nostr Pages URL the caller confirmed is live.
  */
 
 export type EnrichableRepoLink = {
@@ -22,12 +22,27 @@ export type EnrichableRepoLink = {
 /** Label used by the old invent path — used to strip dead guessed links. */
 export const INVENTED_GITHUB_PAGES_LABEL = "GitHub Pages";
 
+/** Label used when auto-adding a live Nostr Pages URL (and by the invent path). */
+export const INVENTED_NOSTR_PAGES_LABEL = "Nostr Pages";
+
 function normalizeUrl(raw: string): string {
   return raw.trim().replace(/\/+$/, "");
 }
 
 function urlKey(url: string): string {
   return normalizeUrl(url).toLowerCase();
+}
+
+function isGittrPagesHost(url: string): boolean {
+  try {
+    const host = new URL(url.trim()).hostname.toLowerCase();
+    return (
+      host === "pages.gittr.space" ||
+      host.endsWith(".pages.gittr.space")
+    );
+  } catch {
+    return /pages\.gittr\.space/i.test(url);
+  }
 }
 
 /** Merge without dupes (by URL). Later entries win on label/type when same URL. */
@@ -102,6 +117,48 @@ export function stripInventedGithubPagesLinks(
   });
 }
 
+/**
+ * Drop auto-invented Nostr Pages docs links (label "Nostr Pages" or unlabeled
+ * docs on *.pages.gittr.space). Keeps a confirmed live URL when provided, and
+ * Settings links with a custom label on a pages host.
+ */
+export function stripInventedNostrPagesLinks(
+  links: EnrichableRepoLink[] | undefined | null,
+  confirmedPagesUrl?: string | null
+): EnrichableRepoLink[] {
+  const list = Array.isArray(links) ? links : [];
+  const confirmedKey = confirmedPagesUrl?.trim()
+    ? urlKey(confirmedPagesUrl)
+    : null;
+  return list.filter((link) => {
+    if (!link?.url) return false;
+    const label = (link.label || "").trim();
+    const onPagesHost = isGittrPagesHost(link.url);
+    const inventedLabel = label === INVENTED_NOSTR_PAGES_LABEL;
+    if (!inventedLabel && !(onPagesHost && !label && (link.type === "docs" || !link.type))) {
+      return true;
+    }
+    if (confirmedKey && urlKey(link.url) === confirmedKey) return true;
+    if (inventedLabel) return false;
+    if (onPagesHost && !label) return false;
+    return true;
+  });
+}
+
+/** Strip both classes of invented docs links (GitHub Pages + Nostr Pages). */
+export function stripInventedAnnouncementLinks(
+  links: EnrichableRepoLink[] | undefined | null,
+  opts?: {
+    sourceUrl?: string | null;
+    confirmedNostrPagesUrl?: string | null;
+  }
+): EnrichableRepoLink[] {
+  return stripInventedNostrPagesLinks(
+    stripInventedGithubPagesLinks(links, opts?.sourceUrl),
+    opts?.confirmedNostrPagesUrl
+  );
+}
+
 export function siteOriginFallback(origin?: string | null): string {
   const fromEnv =
     typeof process !== "undefined"
@@ -118,7 +175,10 @@ export type EnrichRepoLinksInput = {
   /** Forge homepage / website field (GitHub API `homepage` only — never guessed) */
   homepage?: string | null;
   sourceUrl?: string | null;
-  /** Live or known Nostr Pages URL for this repo */
+  /**
+   * Only pass when the site is confirmed live (e.g. gateway-listed).
+   * Never pass a URL merely constructed from owner+d-tag.
+   */
   nostrPagesUrl?: string | null;
   /** App id from a prior NIP-82 announce (optional) */
   announcedAppId?: string | null;
@@ -135,14 +195,22 @@ export type EnrichRepoLinksInput = {
  * Build the full links list for sidebar + NIP-34 `link`/`web` tags.
  * Settings links in `existing` are kept; forge homepage is added only when
  * GitHub (or another forge) actually returned a homepage URL.
+ * Nostr Pages is added only when the caller passes a confirmed live URL.
  */
 export function enrichRepoLinks(
   input: EnrichRepoLinksInput
 ): EnrichableRepoLink[] {
-  const existing = stripInventedGithubPagesLinks(
-    input.existing,
-    input.sourceUrl
-  );
+  const pagesUrl = input.nostrPagesUrl?.trim() || null;
+  const confirmedPages =
+    pagesUrl &&
+    (pagesUrl.startsWith("http://") || pagesUrl.startsWith("https://"))
+      ? pagesUrl
+      : null;
+
+  const existing = stripInventedAnnouncementLinks(input.existing, {
+    sourceUrl: input.sourceUrl,
+    confirmedNostrPagesUrl: confirmedPages,
+  });
   const additions: EnrichableRepoLink[] = [];
 
   const homepage = input.homepage?.trim();
@@ -156,17 +224,14 @@ export function enrichRepoLinks(
       label: "Website",
     });
   }
-  // Intentionally never invent github.io from sourceUrl (guessGithubPages ignored).
 
-  const pagesUrl = input.nostrPagesUrl?.trim();
-  if (
-    pagesUrl &&
-    (pagesUrl.startsWith("http://") || pagesUrl.startsWith("https://"))
-  ) {
+  if (confirmedPages) {
     additions.push({
       type: "docs",
-      url: pagesUrl.endsWith("/") ? pagesUrl : `${pagesUrl}/`,
-      label: "Nostr Pages",
+      url: confirmedPages.endsWith("/")
+        ? confirmedPages
+        : `${confirmedPages}/`,
+      label: INVENTED_NOSTR_PAGES_LABEL,
     });
   }
 

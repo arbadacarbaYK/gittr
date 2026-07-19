@@ -346,35 +346,13 @@ export async function pushRepoToNostr(
       throw new Error("Repository not found");
     }
 
-    // Keep Settings docs links + auto Website / Nostr Pages / Apps links on 30617
+    // Settings docs + real forge homepage + announced Apps only.
+    // Never invent Nostr Pages URLs from owner+d-tag (dead links for most repos).
     try {
       const { enrichRepoLinks } = await import("@/lib/repos/enrich-repo-links");
-      const { resolveRepoPagesDTag } = await import(
-        "@/lib/gittr-pages/pages-public-slug"
-      );
-      const { buildNsiteSiteUrl } = await import("@/lib/nsite/nsite-url");
-      const pagesBase =
-        process.env.NEXT_PUBLIC_GITTR_PAGES_URL || "https://pages.gittr.space";
-      const ownerHex = (
-        repo.ownerPubkey ||
-        pubkey ||
-        ""
-      ).toLowerCase();
-      let nostrPagesUrl: string | null = null;
-      if (/^[0-9a-f]{64}$/.test(ownerHex)) {
-        const routeSlug = String(repo.repo || repo.slug || repoSlug || "").trim();
-        const dTag = resolveRepoPagesDTag(routeSlug, repo);
-        if (dTag) {
-          nostrPagesUrl = buildNsiteSiteUrl(pagesBase, ownerHex, {
-            kind: "named",
-            dTag,
-          });
-        }
-      }
       const enriched = enrichRepoLinks({
         existing: repo.links as any,
         sourceUrl: repo.sourceUrl,
-        nostrPagesUrl,
         announcedAppId: (repo as { announcedAppId?: string }).announcedAppId,
         siteOrigin:
           typeof window !== "undefined" ? window.location.origin : null,

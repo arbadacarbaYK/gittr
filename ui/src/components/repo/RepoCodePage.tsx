@@ -57,7 +57,7 @@ import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
 import {
   enrichRepoLinks,
-  stripInventedGithubPagesLinks,
+  stripInventedAnnouncementLinks,
 } from "@/lib/repos/enrich-repo-links";
 import {
   formatPushRepoSuccessAlert,
@@ -3221,10 +3221,9 @@ export function RepoCodePage() {
         pulls: repo.pulls || [],
         commits: repo.commits || [],
         contributors,
-        links: stripInventedGithubPagesLinks(
-          repo.links || [],
-          repo.sourceUrl
-        ) as RepoLink[],
+        links: stripInventedAnnouncementLinks(repo.links || [], {
+          sourceUrl: repo.sourceUrl,
+        }) as RepoLink[],
         defaultBranch: repo.defaultBranch || "main",
         clone: (repo as any).clone || [], // CRITICAL: Include clone URLs from NIP-34 event
         relays: (repo as any).relays || [],
@@ -3234,12 +3233,11 @@ export function RepoCodePage() {
         publicRead: publicRead, // CRITICAL: Default to true for old repos
         publicWrite: publicWrite,
       } as any);
-      // Drop invented github.io links from localStorage (sidebar was showing 404s)
+      // Drop invented github.io / Nostr Pages links from localStorage
       {
-        const cleanedLinks = stripInventedGithubPagesLinks(
-          repo.links || [],
-          repo.sourceUrl
-        );
+        const cleanedLinks = stripInventedAnnouncementLinks(repo.links || [], {
+          sourceUrl: repo.sourceUrl,
+        });
         const before = JSON.stringify(repo.links || []);
         const after = JSON.stringify(cleanedLinks);
         if (before !== after) {
@@ -7065,11 +7063,14 @@ export function RepoCodePage() {
                       eventRepoData.links.length > 0
                         ? eventRepoData.links
                         : base.links;
-                    const newLinks = stripInventedGithubPagesLinks(
+                    const newLinks = stripInventedAnnouncementLinks(
                       rawNewLinks,
-                      eventRepoData.sourceUrl ||
-                        base.sourceUrl ||
-                        effectiveSourceUrl
+                      {
+                        sourceUrl:
+                          eventRepoData.sourceUrl ||
+                          base.sourceUrl ||
+                          effectiveSourceUrl,
+                      }
                     );
 
                     // Skip update if nothing changed

@@ -1,7 +1,5 @@
 // Nostr event types and utilities for repositories, issues, PRs
-import { resolveRepoPagesDTag } from "@/lib/gittr-pages/pages-public-slug";
 import { normalizeCloneUrlsForNip34Announcement } from "@/lib/nostr/clone-url-quality";
-import { buildNsiteSiteUrl } from "@/lib/nsite/nsite-url";
 import { enrichRepoLinks } from "@/lib/repos/enrich-repo-links";
 
 import { getEventHash, getPublicKey, nip19, signEvent } from "nostr-tools";
@@ -341,30 +339,12 @@ export function buildUnsignedRepositoryEvent(
     });
   }
 
-  // Same link merge as Push (Settings docs + Nostr Pages + Apps announce)
+  // Same link merge as Push (Settings docs + homepage + Apps — never invent Pages)
   let announcementLinks = Array.isArray(repo.links) ? [...repo.links] : [];
   try {
-    const pagesBase =
-      (typeof process !== "undefined" &&
-        process.env.NEXT_PUBLIC_GITTR_PAGES_URL) ||
-      "https://pages.gittr.space";
-    let nostrPagesUrl: string | null = null;
-    if (/^[0-9a-f]{64}$/i.test(pubkey)) {
-      const routeSlug = String(
-        repo.repositoryName || (repo as any).repo || (repo as any).slug || ""
-      ).trim();
-      const dTag = resolveRepoPagesDTag(routeSlug, repo as any);
-      if (dTag) {
-        nostrPagesUrl = buildNsiteSiteUrl(pagesBase, pubkey, {
-          kind: "named",
-          dTag,
-        });
-      }
-    }
     announcementLinks = enrichRepoLinks({
       existing: announcementLinks,
       sourceUrl: repo.sourceUrl,
-      nostrPagesUrl,
       announcedAppId: (repo as any).announcedAppId || null,
       siteOrigin:
         typeof process !== "undefined"
