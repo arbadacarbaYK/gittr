@@ -22,11 +22,12 @@ import {
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   enqueueFollowPublish,
-  loadContactListBackup,
+  loadKnownContactList,
   mergeContactLists,
   parseContactListPubkeys,
+  rememberContactList,
   resolveContactListBase,
-  saveContactListBackup,
+  wouldWipeFollowList,
   uniqContactPubkeys,
 } from "@/lib/nostr/contact-list";
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
@@ -2700,7 +2701,8 @@ export default function EntityPage({
       ? resolvedParams.entity
       : null;
 
-  // Load current user's contact list (kind 3) to check if following
+  // Load current user's contact list (kind 3) to check if following.
+  // Seed from local/session backup first so a remount never starts from [].
   useEffect(() => {
     if (
       !isLoggedIn ||
@@ -2711,31 +2713,40 @@ export default function EntityPage({
     )
       return;
 
-    // Prefer newest kind 3 across relays (limit>1; keep max created_at)
-    let bestCreatedAt = -1;
+    const known = loadKnownContactList(currentUserPubkey);
+    if (known.length > 0) {
+      setContactList((prev) => {
+        const merged = mergeContactLists(prev, known);
+        setIsFollowing(merged.includes(fullPubkeyForMeta.toLowerCase()));
+        return merged;
+      });
+    }
+
+    // Union every kind-3 event (not newest-only). A tiny newer wipe must not
+    // discard a larger older list still present on some relays.
+    let largestSeen = known.length;
     const unsub = subscribe(
       [
         {
           kinds: [3],
           authors: [currentUserPubkey],
-          limit: 5,
+          limit: 20,
         },
       ],
       defaultRelays,
       (event) => {
         if (event.kind !== 3) return;
-        const created = event.created_at || 0;
-        if (created < bestCreatedAt) return;
-        bestCreatedAt = created;
         const pubkeys = parseContactListPubkeys(event);
+        if (pubkeys.length > largestSeen) largestSeen = pubkeys.length;
         setContactList((prev) => {
-          const merged = mergeContactLists(prev, pubkeys);
+          const backup = loadKnownContactList(currentUserPubkey);
+          const merged = mergeContactLists(prev, pubkeys, backup);
           setIsFollowing(merged.includes(fullPubkeyForMeta.toLowerCase()));
           return merged;
         });
         if (pubkeys.length > 0) {
           // Never shrink backup from a partial relay event
-          saveContactListBackup(currentUserPubkey, pubkeys);
+          rememberContactList(currentUserPubkey, pubkeys);
         }
       },
       undefined,
@@ -2857,19 +2868,24 @@ export default function EntityPage({
       }
 
       // CRITICAL: Fetch current contact list from Nostr BEFORE modifying it.
-      // Always union with backup + in-memory so a partial/stale kind 3 cannot wipe follows.
+      // Always union ALL kind-3 events + backup + session + in-memory so a
+      // tiny newer wipe cannot become the sole base for the next publish.
       let currentContacts: string[] = [];
       let uncertainEmpty = false;
       let relayLooksPartial = false;
+      let largestRelayListSize = 0;
       try {
         const contactListPromise = new Promise<{
           relayContacts: string[] | null;
           relayCreatedAt: number;
+          largestRelayListSize: number;
           sawAnyEvent: boolean;
         }>((resolve) => {
           let resolved = false;
           let bestCreatedAt = -1;
-          let bestContacts: string[] | null = null;
+          let newestContacts: string[] | null = null;
+          let unionContacts: string[] = [];
+          let largestSeen = 0;
           let sawAnyEvent = false;
           let eoseCount = 0;
           const relayCount = Math.max(1, defaultRelays?.length || 1);
@@ -2878,16 +2894,22 @@ export default function EntityPage({
           const finish = () => {
             if (resolved) return;
             resolved = true;
+            // Prefer the union of everything we saw; fall back to newest alone.
+            const relayContacts =
+              unionContacts.length > 0
+                ? unionContacts
+                : newestContacts;
             resolve({
-              relayContacts: bestContacts,
+              relayContacts,
               relayCreatedAt: bestCreatedAt,
+              largestRelayListSize: largestSeen,
               sawAnyEvent,
             });
           };
 
           const timeout = setTimeout(() => {
             console.warn(
-              "⚠️ [Follow] Timeout; finishing with best kind 3 so far"
+              "⚠️ [Follow] Timeout; finishing with union of kind 3 so far"
             );
             finish();
           }, 12000);
@@ -2897,7 +2919,7 @@ export default function EntityPage({
               {
                 kinds: [3],
                 authors: [signerPubkey],
-                limit: 5,
+                limit: 20,
               },
             ],
             defaultRelays,
@@ -2905,24 +2927,22 @@ export default function EntityPage({
               if (event.kind !== 3 || resolved) return;
               sawAnyEvent = true;
               const created = event.created_at || 0;
-              // Prefer newest, but if same age keep the larger list
               const pubkeys = parseContactListPubkeys(event);
+              if (pubkeys.length > largestSeen) largestSeen = pubkeys.length;
+              if (pubkeys.length > 0) {
+                unionContacts = mergeContactLists(unionContacts, pubkeys);
+              }
+              // Track newest for logging / created_at only
               if (
                 created > bestCreatedAt ||
                 (created === bestCreatedAt &&
-                  pubkeys.length > (bestContacts?.length || 0))
+                  pubkeys.length > (newestContacts?.length || 0))
               ) {
                 bestCreatedAt = created;
-                bestContacts = pubkeys;
+                newestContacts = pubkeys;
                 console.log(
-                  `✅ [Follow] Fetched ${pubkeys.length} contacts from Nostr (created_at=${created})`
+                  `✅ [Follow] Saw kind 3 with ${pubkeys.length} contacts (created_at=${created}, union=${unionContacts.length}, largest=${largestSeen})`
                 );
-              } else if (
-                created === bestCreatedAt &&
-                bestContacts &&
-                pubkeys.length > 0
-              ) {
-                bestContacts = mergeContactLists(bestContacts, pubkeys);
               }
             },
             undefined,
@@ -2931,9 +2951,14 @@ export default function EntityPage({
               // cannot finish before a fuller list arrives elsewhere.
               eoseCount += 1;
               if (resolved) return;
-              if (eoseCount >= eoseQuorum || (bestContacts && eoseCount >= 1 && bestContacts.length > 0 && eoseCount >= Math.min(2, relayCount))) {
-                // If we already have a solid list, finish after 2 EOSEs; else wait for quorum.
-                if (bestContacts && bestContacts.length > 0 && eoseCount >= Math.min(2, relayCount)) {
+              const solid =
+                unionContacts.length >= 10 || largestSeen >= 10;
+              if (
+                eoseCount >= eoseQuorum ||
+                (solid &&
+                  eoseCount >= Math.min(2, relayCount))
+              ) {
+                if (solid && eoseCount >= Math.min(2, relayCount)) {
                   clearTimeout(timeout);
                   finish();
                   if (unsub) unsub();
@@ -2953,25 +2978,27 @@ export default function EntityPage({
         const memory = uniqContactPubkeys(
           contactList.map((p) => p.toLowerCase())
         );
-        const backup = loadContactListBackup(signerPubkey);
+        const backup = loadKnownContactList(signerPubkey);
+        largestRelayListSize = fetched.largestRelayListSize;
         const resolvedBase = resolveContactListBase({
           relayContacts: fetched.relayContacts,
           relayCreatedAt: fetched.relayCreatedAt,
           inMemory: memory,
           backup,
+          largestRelayListSize: fetched.largestRelayListSize,
         });
         currentContacts = resolvedBase.contacts;
         uncertainEmpty = resolvedBase.uncertainEmpty && !fetched.sawAnyEvent;
         relayLooksPartial = resolvedBase.relayLooksPartial;
         if (currentContacts.length > 0) {
-          saveContactListBackup(signerPubkey, currentContacts);
+          rememberContactList(signerPubkey, currentContacts);
         }
         console.log(
-          `✅ [Follow] Using ${currentContacts.length} contacts (relay=${fetched.relayContacts?.length ?? 0}, memory=${memory.length}, backup=${backup.length}, partial=${relayLooksPartial}, uncertainEmpty=${uncertainEmpty})`
+          `✅ [Follow] Using ${currentContacts.length} contacts (relayUnion=${fetched.relayContacts?.length ?? 0}, newestLargest=${fetched.largestRelayListSize}, memory=${memory.length}, backup=${backup.length}, partial=${relayLooksPartial}, uncertainEmpty=${uncertainEmpty})`
         );
       } catch (error) {
         console.error("❌ [Follow] Error fetching contact list:", error);
-        const fromBackup = loadContactListBackup(signerPubkey);
+        const fromBackup = loadKnownContactList(signerPubkey);
         currentContacts = mergeContactLists(
           contactList.map((p) => p.toLowerCase()),
           fromBackup
@@ -3016,18 +3043,27 @@ export default function EntityPage({
         return;
       }
 
-      // Hard-stop: refuse to shrink a large list down to a tiny one (classic wipe).
-      const backupSize = loadContactListBackup(signerPubkey).length;
+      // Hard-stop: refuse to shrink a large known list (backup, session, or relay).
+      const knownSize = Math.max(
+        loadKnownContactList(signerPubkey).length,
+        largestRelayListSize,
+        currentContacts.length
+      );
       if (
         !wasFollowing &&
-        (relayLooksPartial || backupSize >= 10) &&
-        newContacts.length < Math.max(5, Math.floor(backupSize * 0.5))
+        wouldWipeFollowList({
+          nextCount: newContacts.length,
+          backupSize: knownSize,
+          largestRelayListSize,
+          inMemorySize: contactList.length,
+          relayLooksPartial,
+        })
       ) {
         console.warn(
-          `🛑 [Follow] Aborted — refusing shrink ${backupSize} → ${newContacts.length}`
+          `🛑 [Follow] Aborted — refusing shrink ${knownSize} → ${newContacts.length}`
         );
         alert(
-          `Follow blocked: your known follow list has ~${backupSize} people, but this publish would only keep ${newContacts.length}. Wait a few seconds and try again so relays can return your full list.`
+          `Follow blocked: your known follow list has ~${knownSize} people, but this publish would only keep ${newContacts.length}. Wait a few seconds and try again so relays can return your full list.`
         );
         return;
       }
@@ -3118,7 +3154,7 @@ export default function EntityPage({
       // Update local state + backup (allowShrink only after intentional unfollow)
       setIsFollowing(!wasFollowing);
       setContactList(newContacts);
-      saveContactListBackup(signerPubkey, newContacts, {
+      rememberContactList(signerPubkey, newContacts, {
         allowShrink: wasFollowing && newContacts.length < currentContacts.length,
       });
 

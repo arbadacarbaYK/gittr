@@ -186,7 +186,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 ### Kind 3: Contact list / follows (NIP-02)
 
 - **Replaceable**: publishing a new kind **3** replaces the previous list for that pubkey.
-- **gittr Follow safety**: never publish when the current list could not be loaded (`uncertainEmpty`). Always **union** newest kind 3 + local backup + in-memory before signing (partial relay results must not wipe). Follows are **serialized** (one publish at a time) and wait for relay confirmation. Refuse publishes that would shrink a large known list. Backup `gittr_contact_list_backup_<pubkey>` never shrinks from a smaller fetch. Helpers: `ui/src/lib/nostr/contact-list.ts`.
+- **gittr Follow safety**: never publish when the current list could not be loaded (`uncertainEmpty`). Always **union all kind-3 events** seen during the fetch (not newest-only) + localStorage backup + sessionStorage + in-memory before signing — a tiny newer wipe on one relay must not discard a larger older list. Follows are **serialized** (one publish at a time) and wait for relay confirmation. Refuse publishes that would shrink a large known list (`wouldWipeFollowList`). Backup/`rememberContactList` never shrinks from a smaller fetch. Helpers: `ui/src/lib/nostr/contact-list.ts`. Standalone restore (outside gittr UI): `/home/…/restore-nostr-follows/`.
 
 ### Kind 30618: Repository State (NIP-34)
 

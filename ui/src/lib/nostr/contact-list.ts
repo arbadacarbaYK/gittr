@@ -7,6 +7,7 @@
  */
 
 const BACKUP_PREFIX = "gittr_contact_list_backup_";
+const SESSION_PREFIX = "gittr_contact_list_session_";
 
 /** Global queue so rapid Follow clicks cannot race two kind-3 publishes. */
 let followPublishChain: Promise<void> = Promise.resolve();
@@ -155,16 +156,88 @@ export function loadContactListBackup(ownerPubkey: string): string[] {
 }
 
 /**
+ * Same-tab session copy so remounting an entity page cannot lose the list
+ * when localStorage is empty/blocked but we already loaded a full kind 3.
+ */
+export function saveContactListSession(
+  ownerPubkey: string,
+  pubkeys: string[],
+  opts?: { allowShrink?: boolean }
+): void {
+  if (typeof window === "undefined") return;
+  const hex = normalizeContactPubkey(ownerPubkey);
+  if (!hex) return;
+  const unique = uniqContactPubkeys(pubkeys);
+  if (unique.length === 0 && !opts?.allowShrink) return;
+  try {
+    if (!opts?.allowShrink) {
+      const prev = loadContactListSession(hex);
+      if (prev.length > unique.length) {
+        const merged = mergeContactLists(prev, unique);
+        sessionStorage.setItem(
+          `${SESSION_PREFIX}${hex}`,
+          JSON.stringify({ pubkeys: merged, savedAt: Date.now() })
+        );
+        return;
+      }
+    }
+    sessionStorage.setItem(
+      `${SESSION_PREFIX}${hex}`,
+      JSON.stringify({ pubkeys: unique, savedAt: Date.now() })
+    );
+  } catch {
+    /* private mode */
+  }
+}
+
+export function loadContactListSession(ownerPubkey: string): string[] {
+  if (typeof window === "undefined") return [];
+  const hex = normalizeContactPubkey(ownerPubkey);
+  if (!hex) return [];
+  try {
+    const raw = sessionStorage.getItem(`${SESSION_PREFIX}${hex}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { pubkeys?: unknown };
+    if (!Array.isArray(parsed.pubkeys)) return [];
+    return uniqContactPubkeys(parsed.pubkeys.map((p) => String(p || "")));
+  } catch {
+    return [];
+  }
+}
+
+/** Union of durable backup + session cache (never shrinks either alone). */
+export function loadKnownContactList(ownerPubkey: string): string[] {
+  return mergeContactLists(
+    loadContactListBackup(ownerPubkey),
+    loadContactListSession(ownerPubkey)
+  );
+}
+
+/**
+ * Persist both stores after a successful follow edit or a solid relay fetch.
+ */
+export function rememberContactList(
+  ownerPubkey: string,
+  pubkeys: string[],
+  opts?: { allowShrink?: boolean }
+): void {
+  saveContactListBackup(ownerPubkey, pubkeys, opts);
+  saveContactListSession(ownerPubkey, pubkeys, opts);
+}
+
+/**
  * Build the safest base list for a Follow edit:
- * union of newest relay event, local backup, and in-memory state.
- * Prefer newest created_at for "isFollowing" semantics, but never drop
- * pubkeys that only exist on a larger older list / backup.
+ * union of relay contacts (prefer the union of ALL kind-3 events seen,
+ * not only the newest — a tiny newer wipe must not discard a larger older list),
+ * local backup, and in-memory state.
  */
 export function resolveContactListBase(args: {
   relayContacts: string[] | null;
   relayCreatedAt: number;
   inMemory: string[];
   backup: string[];
+  /** Largest single kind-3 list observed on any relay this fetch (even if not newest). */
+  largestRelayListSize?: number;
 }): {
   contacts: string[];
   uncertainEmpty: boolean;
@@ -175,11 +248,16 @@ export function resolveContactListBase(args: {
   const memory = uniqContactPubkeys(args.inMemory || []);
   const backup = uniqContactPubkeys(args.backup || []);
   const largestLocal = Math.max(memory.length, backup.length);
+  const largestRelay = Math.max(
+    args.largestRelayListSize || 0,
+    relay.length
+  );
+  const largestKnown = Math.max(largestLocal, largestRelay);
 
   const relayLooksPartial =
     relay.length > 0 &&
-    largestLocal >= 5 &&
-    relay.length < Math.max(2, Math.floor(largestLocal * 0.5));
+    largestKnown >= 5 &&
+    relay.length < Math.max(2, Math.floor(largestKnown * 0.5));
 
   const contacts = mergeContactLists(relay, memory, backup);
   const uncertainEmpty =
@@ -193,4 +271,24 @@ export function resolveContactListBase(args: {
     uncertainEmpty: Boolean(uncertainEmpty),
     relayLooksPartial,
   };
+}
+
+/**
+ * Whether publishing `nextCount` follows would dangerously shrink a known list.
+ */
+export function wouldWipeFollowList(args: {
+  nextCount: number;
+  backupSize: number;
+  largestRelayListSize: number;
+  inMemorySize: number;
+  relayLooksPartial: boolean;
+}): boolean {
+  const known = Math.max(
+    args.backupSize,
+    args.largestRelayListSize,
+    args.inMemorySize
+  );
+  if (known < 10) return false;
+  if (args.nextCount >= Math.max(5, Math.floor(known * 0.5))) return false;
+  return true;
 }
