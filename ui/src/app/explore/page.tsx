@@ -20,6 +20,7 @@ import {
 } from "@/lib/nostr/clone-url-quality";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
 import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
 import {
   type Metadata,
@@ -160,6 +161,10 @@ function parseNIP34Repository(event: any): any {
         break;
     }
   }
+
+  // gittr sidebar links: ["link", type, url, label?] (+ web fallback)
+  const links = parseRepoLinksFromNip34Tags(event.tags);
+  if (links.length > 0) repoData.links = links;
 
   // Use name as repositoryName if d tag wasn't found
   if (!repoData.repositoryName && repoData.name) {
@@ -1621,10 +1626,7 @@ function ExplorePageContent() {
               });
               if (purged.length !== existingRepos.length) {
                 if (typeof window !== "undefined") {
-                  localStorage.setItem(
-                    "gittr_repos",
-                    JSON.stringify(purged)
-                  );
+                  localStorage.setItem("gittr_repos", JSON.stringify(purged));
                 }
                 setRepos(
                   purged.filter(

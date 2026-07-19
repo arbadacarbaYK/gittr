@@ -3,6 +3,12 @@
 import { useEffect, useRef } from "react";
 
 import {
+  HelpSection,
+  HelpSubTopic,
+  HelpTopic,
+  openHelpHashTargets,
+} from "@/components/ui/help-collapse";
+import {
   GITTR_DOC_FILE_FETCHING,
   GITTR_DOC_GITNOSTR_ARCHITECTURE,
   GITTR_DOC_GITNOSTR_SSH,
@@ -46,13 +52,7 @@ export default function HelpPage() {
     const scrollToHash = () => {
       const id = window.location.hash?.replace(/^#/, "");
       if (!id) return;
-      // Wait a tick so sections are painted after client nav
-      window.setTimeout(() => {
-        document.getElementById(id)?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }, 80);
+      openHelpHashTargets(id);
     };
 
     scrollToHash();
@@ -192,13 +192,7 @@ export default function HelpPage() {
         </p>
       </header>
 
-      <section
-        id="what-is-gittr"
-        className="border border-[#383B42] rounded-lg p-6 bg-[#171B21] mb-8 scroll-mt-24"
-      >
-        <h2 className="text-xl font-semibold mb-3 text-white">
-          What you can do on gittr
-        </h2>
+      <HelpSection id="what-is-gittr" title={<>What you can do on gittr</>}>
         <ul className="grid gap-3 sm:grid-cols-2 text-sm text-gray-300">
           <li>
             <strong className="text-white">Mirror &amp; backup</strong> — Copy
@@ -248,7 +242,7 @@ export default function HelpPage() {
             from GitHub/GitLab when you already host code elsewhere.
           </li>
         </ul>
-      </section>
+      </HelpSection>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         {/* Quick Links */}
@@ -426,19 +420,11 @@ export default function HelpPage() {
         </div>
       </div>
 
-      <div className="space-y-8">
+      <div className="space-y-3">
         {/* Getting Started */}
-        <section
-          id="getting-started"
-          className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]"
-        >
-          <h2 className="text-2xl font-semibold mb-4">Getting Started</h2>
-
-          <div className="space-y-4 text-gray-300">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                1. Login with NIP-07
-              </h3>
+        <HelpSection id="getting-started" title={<>Getting Started</>}>
+          <div className="space-y-2">
+            <HelpTopic title={<>1. Login with NIP-07</>}>
               <div className="space-y-2">
                 <p>
                   For better security, download a NIP-07 browser extension like:
@@ -506,155 +492,105 @@ export default function HelpPage() {
                   you visit the login page and allow you to sign in securely.
                 </p>
               </div>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                2. Create or Import a Repository
-              </h3>
+            <HelpTopic title={<>2. Create or Import a Repository</>}>
               <p className="mb-3">
                 You can create a new repository or import from
                 GitHub/GitLab/Codeberg. There are three ways to get started:
               </p>
 
-              <div className="space-y-3 mt-3">
-                <div className="p-3 bg-blue-900/20 border border-blue-600/30 rounded">
-                  <p className="text-sm font-semibold text-blue-200 mb-2">
-                    📦 Option 1: Import Single Repository
-                  </p>
-                  <p className="text-sm text-gray-300 mb-2">
+              <div className="space-y-1 mt-2">
+                <HelpSubTopic title={<>Option 1: Import single repository</>}>
+                  <p>
                     Import an existing repository from GitHub, GitLab, or
                     Codeberg:
                   </p>
-                  <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside ml-2">
+                  <ul className="list-disc list-inside space-y-1 ml-2">
                     <li>
                       Enter{" "}
                       <code className="bg-gray-800 px-1 rounded">
                         owner/repo
                       </code>{" "}
-                      (e.g.,{" "}
+                      (e.g.{" "}
                       <code className="bg-gray-800 px-1 rounded">
                         arbadacarbaYK/gittr
                       </code>
                       )
                     </li>
                     <li>
-                      Or provide a full URL:{" "}
+                      Or a full URL:{" "}
                       <code className="bg-gray-800 px-1 rounded">
                         https://github.com/owner/repo
                       </code>
                     </li>
-                    <li>
-                      Files are automatically fetched and stored in your browser
-                    </li>
+                    <li>Files are fetched and stored in your browser</li>
                   </ul>
-                </div>
+                </HelpSubTopic>
 
-                <div className="p-3 bg-purple-900/20 border border-purple-600/30 rounded">
-                  <p className="text-sm font-semibold text-purple-200 mb-2">
-                    ➕ Option 2: Create Empty Repository
-                  </p>
-                  <p className="text-sm text-gray-300 mb-2">
-                    Create a new empty repository from scratch:
-                  </p>
-                  <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside ml-2">
+                <HelpSubTopic title={<>Option 2: Create empty repository</>}>
+                  <ul className="list-disc list-inside space-y-1 ml-2">
                     <li>Enter a repository name</li>
-                    <li>Click "Create Empty Repository"</li>
-                    <li>
-                      <strong className="text-yellow-400">Important:</strong>{" "}
-                      The repository will be empty until you push files via Git
-                      (see below)
-                    </li>
+                    <li>Click &quot;Create Empty Repository&quot;</li>
+                    <li>Empty until you push files via Git (see below)</li>
                   </ul>
-                </div>
+                </HelpSubTopic>
 
-                <div className="p-3 bg-green-900/20 border border-green-600/30 rounded">
-                  <p className="text-sm font-semibold text-green-200 mb-2">
-                    📚 Option 3: Bulk Import from GitHub
-                  </p>
-                  <p className="text-sm text-gray-300 mb-2">
+                <HelpSubTopic title={<>Option 3: Bulk import from GitHub</>}>
+                  <p>
                     Load a GitHub user/org list, then choose what to import.
                     Opening the bulk page does <strong>not</strong> import
-                    anything or touch your local Git until you fetch the list,
-                    select repos, and confirm import.
+                    anything until you fetch, select, and confirm.
                   </p>
-                  <ul className="text-sm text-gray-300 space-y-1 list-disc list-inside ml-2">
+                  <ul className="list-disc list-inside space-y-1 ml-2">
+                    <li>Open bulk import from New repository</li>
                     <li>
-                      Click &quot;Open bulk import (choose repos next)&quot; on
-                      New repository
+                      <strong>Fetch Repos</strong>, tick what you want
                     </li>
                     <li>
-                      Use <strong>Fetch Repos</strong>, tick the repos you want
+                      Import only runs when you confirm selected (or Import All)
                     </li>
                     <li>
-                      Import runs only when you click import selected (or
-                      confirm Import All); multiple selections = one import
-                      action for those rows only
-                    </li>
-                    <li>
-                      Import stores repos locally by default. Optionally tick{" "}
-                      <strong>Also Push selected to Nostr</strong> on the bulk
-                      page to publish each newly imported repo in one go
-                      (multiple signature approvals). Otherwise open each repo
-                      and use <strong>Push to Nostr</strong> when you want it
-                      on relays.
+                      Optional: <strong>Also Push selected to Nostr</strong> on
+                      the bulk page; otherwise use{" "}
+                      <strong>Push to Nostr</strong> per repo later
                     </li>
                   </ul>
-                </div>
-              </div>
+                </HelpSubTopic>
 
-              <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-600/30 rounded">
-                <p className="text-sm font-semibold text-yellow-200 mb-2">
-                  ⚠️ Important: Getting Files Into Your Repository
-                </p>
-                <p className="text-sm text-gray-300 mb-2">
-                  <strong>For empty repositories created via web UI:</strong>{" "}
-                  After creating an empty repository, you need to push files to
-                  it before they appear in the web UI. The workflow is:
-                </p>
-                <ol className="text-sm text-gray-300 space-y-1 list-decimal list-inside ml-2">
-                  <li>
-                    <strong>Clone the repository:</strong>{" "}
-                    <code className="bg-gray-800 px-1 rounded">
-                      git clone
-                      git@gittr.space:&lt;your-pubkey&gt;/&lt;repo-name&gt;.git
-                    </code>
-                  </li>
-                  <li>
-                    <strong>Add your files:</strong> Copy files into the cloned
-                    directory, or create new files
-                  </li>
-                  <li>
-                    <strong>Commit your changes:</strong>{" "}
-                    <code className="bg-gray-800 px-1 rounded">
-                      git add . && git commit -m "Initial commit"
-                    </code>
-                  </li>
-                  <li>
-                    <strong>Push to the repository:</strong>{" "}
-                    <code className="bg-gray-800 px-1 rounded">
-                      git push origin main
-                    </code>
-                  </li>
-                </ol>
-                <p className="text-sm text-gray-300 mt-2">
-                  <strong>Why this is necessary:</strong> The git-nostr-bridge
-                  stores repositories as bare Git repositories. Files only
-                  appear in the web UI after they've been committed and pushed
-                  via Git.
-                </p>
-                <p className="text-sm text-gray-300 mt-2">
-                  <strong>For imported repositories:</strong> Files are
-                  automatically fetched during import, so they appear
-                  immediately in the web UI.
-                </p>
+                <HelpSubTopic title={<>Getting files into an empty repo</>}>
+                  <p>
+                    After creating an empty repo in the web UI, push via Git
+                    before files show up:
+                  </p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2">
+                    <li>
+                      <code className="bg-gray-800 px-1 rounded">
+                        git clone
+                        git@gittr.space:&lt;pubkey&gt;/&lt;repo&gt;.git
+                      </code>
+                    </li>
+                    <li>Add files in the clone</li>
+                    <li>
+                      <code className="bg-gray-800 px-1 rounded">
+                        git add . && git commit -m &quot;Initial commit&quot;
+                      </code>
+                    </li>
+                    <li>
+                      <code className="bg-gray-800 px-1 rounded">
+                        git push origin main
+                      </code>
+                    </li>
+                  </ol>
+                  <p className="text-gray-400 text-xs mt-2">
+                    Imported repos already include files in the UI. The bridge
+                    only shows committed/pushed trees for empty creates.
+                  </p>
+                </HelpSubTopic>
               </div>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                3. Set Up Payments (Optional)
-              </h3>
+            <HelpTopic title={<>3. Set Up Payments (Optional)</>}>
               <p>
                 Go to Settings → Account to configure LNbits (send/receive
                 keys), Lightning address (
@@ -663,28 +599,22 @@ export default function HelpPage() {
                 Repository-specific overrides live under each repo&apos;s
                 Settings → Payment configuration.
               </p>
-            </div>
+            </HelpTopic>
           </div>
-        </section>
+        </HelpSection>
 
         {/* PWA Install */}
-        <section
+        <HelpSection
           id="pwa-install"
-          className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]"
+          title={<>Install gittr as an App (PWA)</>}
         >
-          <h2 className="text-2xl font-semibold mb-4">
-            Install gittr as an App (PWA)
-          </h2>
-          <div className="space-y-4 text-gray-300">
+          <div className="space-y-2">
             <p>
               gittr is installable as a Progressive Web App (PWA) on modern
               browsers. This gives you an app icon, standalone window, and
               offline fallback page.
             </p>
-            <div className="space-y-2">
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Desktop (Chrome/Edge/Brave)
-              </h3>
+            <HelpTopic title={<>Desktop (Chrome/Edge/Brave)</>}>
               <ul className="list-disc list-inside space-y-1 ml-4">
                 <li>Open gittr in your browser (HTTPS required).</li>
                 <li>
@@ -693,20 +623,14 @@ export default function HelpPage() {
                 </li>
                 <li>Confirm to add gittr to your desktop/app launcher.</li>
               </ul>
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-lg font-semibold text-white mb-2">
-                iOS (Safari)
-              </h3>
+            </HelpTopic>
+            <HelpTopic title={<>iOS (Safari)</>}>
               <ul className="list-disc list-inside space-y-1 ml-4">
                 <li>Open gittr in Safari.</li>
                 <li>Tap Share → Add to Home Screen.</li>
               </ul>
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Android (Chrome/Brave)
-              </h3>
+            </HelpTopic>
+            <HelpTopic title={<>Android (Chrome/Brave)</>}>
               <ul className="list-disc list-inside space-y-1 ml-4">
                 <li>Open gittr in Chrome or Brave.</li>
                 <li>
@@ -714,30 +638,27 @@ export default function HelpPage() {
                   <strong className="text-white">Install app</strong>.
                 </li>
               </ul>
-            </div>
+            </HelpTopic>
             <p className="text-sm text-gray-400">
               Note: In-app browsers (Telegram/Twitter, etc.) often block PWA
               install. Open in the system browser. Offline mode only shows a
               fallback screen and does not replace full online functionality.
             </p>
           </div>
-        </section>
+        </HelpSection>
 
         {/* Repositories */}
-        <section
+        <HelpSection
           id="repositories"
-          className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]"
+          title={
+            <>
+              <GitBranch className="h-6 w-6 text-purple-400" />
+              Managing Repositories
+            </>
+          }
         >
-          <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <GitBranch className="h-6 w-6 text-purple-400" />
-            Managing Repositories
-          </h2>
-
-          <div className="space-y-4 text-gray-300">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Creating Repositories
-              </h3>
+          <div className="space-y-2">
+            <HelpTopic title={<>Creating Repositories</>}>
               <p className="mb-3">You can create repositories in three ways:</p>
               <ul className="list-disc list-inside space-y-1 ml-4 mb-3">
                 <li>
@@ -806,12 +727,9 @@ export default function HelpPage() {
                   section for detailed instructions.
                 </p>
               </div>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Repository Status
-              </h3>
+            <HelpTopic title={<>Repository Status</>}>
               <ul className="list-disc list-inside space-y-1 ml-4">
                 <li>
                   <span className="text-yellow-400">Local</span> - Only exists
@@ -834,12 +752,9 @@ export default function HelpPage() {
                   Publication attempt failed
                 </li>
               </ul>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Repo toolbar: Watch, Star, Zaps
-              </h3>
+            <HelpTopic title={<>Repo toolbar: Watch, Star, Zaps</>}>
               <ul className="list-disc list-inside space-y-1 ml-4 text-sm text-gray-300">
                 <li>
                   <strong>Watch</strong> — publishes your{" "}
@@ -875,23 +790,17 @@ export default function HelpPage() {
                   zap receipts and this device&apos;s ledger where relevant.
                 </li>
               </ul>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                File Management
-              </h3>
+            <HelpTopic title={<>File Management</>}>
               <p>
                 View, edit, and delete files directly in the browser. Use the
                 fuzzy file finder (Cmd/Ctrl+P) to quickly navigate large
                 repositories.
               </p>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                File Sources & NIP-34 Architecture
-              </h3>
+            <HelpTopic title={<>File Sources & NIP-34 Architecture</>}>
               <p>
                 gittr.space follows the{" "}
                 <a
@@ -937,12 +846,9 @@ export default function HelpPage() {
                 This architecture ensures files are stored efficiently and can
                 be fetched from multiple sources for redundancy.
               </p>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Importing Repositories
-              </h3>
+            <HelpTopic title={<>Importing Repositories</>}>
               <p>You can import repositories from:</p>
               <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
                 <li>
@@ -959,11 +865,8 @@ export default function HelpPage() {
                 fetch files from the original git server.
               </p>
 
-              <div className="mt-3 p-3 bg-blue-900/20 border border-blue-600/30 rounded">
-                <p className="text-sm text-blue-200 font-semibold mb-2">
-                  🔒 Private Repository Support
-                </p>
-                <p className="text-sm text-blue-100 mb-2">
+              <HelpSubTopic title={<>Private repository support</>}>
+                <p className="text-sm text-gray-300 mb-2">
                   <strong>Private on gittr:</strong> Settings → Private saves
                   locally and publishes a gittr extension tag on your kind{" "}
                   <code className="bg-blue-900/50 px-1 rounded">30617</code>{" "}
@@ -1004,10 +907,10 @@ export default function HelpPage() {
                     repo files.
                   </li>
                   <li>
-                    <strong>Other Clients:</strong> Other NIP-34 clients may still
-                    list the announcement (name/description on relays). gittr
-                    hides private repos from Explore/profile for strangers;
-                    clone/file access stays blocked at the bridge for
+                    <strong>Other Clients:</strong> Other NIP-34 clients may
+                    still list the announcement (name/description on relays).
+                    gittr hides private repos from Explore/profile for
+                    strangers; clone/file access stays blocked at the bridge for
                     non-maintainers.
                   </li>
                   <li>
@@ -1015,8 +918,8 @@ export default function HelpPage() {
                     <code className="bg-blue-900/50 px-1 rounded">
                       maintainers
                     </code>{" "}
-                    / Contributors can open private repos. Enforced for SSH/HTTPS
-                    git and file APIs.
+                    / Contributors can open private repos. Enforced for
+                    SSH/HTTPS git and file APIs.
                   </li>
                 </ul>
 
@@ -1127,39 +1030,31 @@ export default function HelpPage() {
                     regardless of whether you access via web UI, CLI, or API.
                   </p>
                 </div>
-              </div>
+              </HelpSubTopic>
 
-              <div className="mt-3 p-3 bg-red-900/20 border border-red-600/30 rounded">
-                <p className="text-sm text-red-200 font-semibold mb-1">
-                  ⚠️ 4 MB Import Limit
+              <HelpSubTopic title={<>4 MB import limit</>}>
+                <p>
+                  Next.js API routes hard-cap responses at ~4 MB. Large repos
+                  (releases/binaries) may fail with “Repository is too large”.
+                  Trim heavy artifacts or import a slimmer subset.
                 </p>
-                <p className="text-sm text-red-100">
-                  Next.js API routes hard-cap responses at ~4 MB. When importing
-                  we fetch every file (including releases/binaries), so very
-                  large repos will fail with “Repository is too large”. Remove
-                  heavy artifacts (release archives, media, build outputs) or
-                  import a slimmer subset before retrying.
-                </p>
-              </div>
-            </div>
+              </HelpSubTopic>
+            </HelpTopic>
           </div>
-        </section>
+        </HelpSection>
 
         {/* Git Operations */}
-        <section
+        <HelpSection
           id="git-operations"
-          className="border border-[#383B42] rounded-lg p-6 bg-[#171B21] scroll-mt-24"
+          title={
+            <>
+              <Code className="h-6 w-6 text-green-400" />
+              Git Operations
+            </>
+          }
         >
-          <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <Code className="h-6 w-6 text-green-400" />
-            Git Operations
-          </h2>
-
-          <div className="space-y-4 text-gray-300">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Clone a Repository
-              </h3>
+          <div className="space-y-2">
+            <HelpTopic title={<>Clone a Repository</>}>
               <p>
                 gittr.space repositories support multiple clone URL formats:
               </p>
@@ -1270,12 +1165,9 @@ export default function HelpPage() {
                 SSH, HTTPS, and nostr:// clone URLs all ship inside every NIP-34
                 repository event. Pick whichever matches your workflow.
               </p>
-            </div>
+            </HelpTopic>
 
-            <div className="mt-6 p-4 bg-[#11161f] border border-gray-700 rounded-lg">
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Browsing files on the Code tab
-              </h3>
+            <HelpTopic title={<>Browsing files on the Code tab</>}>
               <p className="text-sm text-gray-300 mb-2">
                 NIP-34 events carry <strong>metadata</strong> (name,
                 description,
@@ -1318,7 +1210,7 @@ export default function HelpPage() {
                 </a>
                 .
               </p>
-            </div>
+            </HelpTopic>
 
             <div className="mt-6 space-y-3">
               <h4 className="text-sm font-semibold text-white uppercase tracking-wide">
@@ -1383,10 +1275,7 @@ export default function HelpPage() {
               </div>
             </div>
 
-            <div id="push-to-nostr" className="scroll-mt-24">
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Push to Nostr
-              </h3>
+            <HelpTopic id="push-to-nostr" title={<>Push to Nostr</>}>
               <p>
                 After making local changes, click "Push to Nostr" in your
                 repository settings to publish updates.
@@ -1454,38 +1343,32 @@ export default function HelpPage() {
                 </ul>
               </div>
 
-              <div className="mt-3 p-3 bg-red-900/20 border border-red-600/30 rounded">
-                <p className="text-sm text-red-200 font-semibold mb-1">
-                  🛠️ Common Push Errors
-                </p>
-                <ul className="text-sm text-red-100 list-disc list-inside space-y-1 ml-2">
+              <HelpSubTopic title={<>Common push errors</>}>
+                <ul className="list-disc list-inside space-y-1 ml-2">
                   <li>
-                    <code className="bg-red-950/40 px-1 rounded">
+                    <code className="bg-gray-800 px-1 rounded">
                       Push payment required
                     </code>{" "}
-                    in browser/API: pay the shown invoice first, then retry.
+                    — pay the invoice, then retry.
                   </li>
                   <li>
-                    <code className="bg-red-950/40 px-1 rounded">
+                    <code className="bg-gray-800 px-1 rounded">
                       push payment authorization expired
                     </code>{" "}
-                    in SSH: create/pay a fresh invoice in the web UI, then run{" "}
-                    <code className="bg-red-950/40 px-1 rounded">git push</code>{" "}
+                    — create/pay a fresh invoice in the web UI, then{" "}
+                    <code className="bg-gray-800 px-1 rounded">git push</code>{" "}
                     again.
                   </li>
                 </ul>
-              </div>
-            </div>
+              </HelpSubTopic>
+            </HelpTopic>
 
-            <div id="ssh-keys" className="scroll-mt-24">
-              <h3 className="text-lg font-semibold text-white mb-2">
-                SSH Keys
-              </h3>
+            <HelpTopic id="ssh-keys" title={<>SSH Keys</>}>
               <p>
                 Manage your SSH keys in Settings → SSH Keys. You'll need these
                 for Git operations over SSH.
               </p>
-            </div>
+            </HelpTopic>
 
             <div className="mt-4 pt-4 border-t border-gray-700 space-y-2">
               <p className="text-sm text-gray-400 mb-2">
@@ -1517,19 +1400,19 @@ export default function HelpPage() {
               </a>
             </div>
           </div>
-        </section>
+        </HelpSection>
 
         {/* Code Snippets */}
-        <section
+        <HelpSection
           id="code-snippets"
-          className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]"
+          title={
+            <>
+              <Code className="h-6 w-6 text-green-400" />
+              Code Snippets (NIP-C0)
+            </>
+          }
         >
-          <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <Code className="h-6 w-6 text-green-400" />
-            Code Snippets (NIP-C0)
-          </h2>
-
-          <div className="space-y-4 text-gray-300">
+          <div className="space-y-2">
             <p className="text-sm">
               Select code in any file viewer to share it as a standalone snippet
               on Nostr. The action bar appears near your selection with options
@@ -1545,10 +1428,7 @@ export default function HelpPage() {
               mobile devices to avoid alignment issues, but all functionality is
               preserved. Code lines remain fully clickable for selection.
             </p>
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Share Code Snippets
-              </h3>
+            <HelpTopic title={<>Share Code Snippets</>}>
               <p>
                 Share code snippets from your repositories as standalone,
                 discoverable events on Nostr.
@@ -1594,12 +1474,9 @@ export default function HelpPage() {
                   </ul>
                 </div>
               </div>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Using Snippets in Comments
-              </h3>
+            <HelpTopic title={<>Using Snippets in Comments</>}>
               <p>
                 Reference code snippets in issue and PR comments. Snippets will
                 appear inline with syntax highlighting.
@@ -1625,12 +1502,9 @@ export default function HelpPage() {
                   </li>
                 </ol>
               </div>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Snippet Features
-              </h3>
+            <HelpTopic title={<>Snippet Features</>}>
               <ul className="list-disc list-inside space-y-1 text-sm text-gray-300 ml-2">
                 <li>
                   <strong>Syntax Highlighting:</strong> Code is displayed with
@@ -1651,7 +1525,7 @@ export default function HelpPage() {
                   the Nostr network
                 </li>
               </ul>
-            </div>
+            </HelpTopic>
 
             <div className="mt-4 pt-4 border-t border-gray-700">
               <p className="text-sm text-gray-400 mb-2">
@@ -1667,24 +1541,27 @@ export default function HelpPage() {
               </a>
             </div>
           </div>
-        </section>
+        </HelpSection>
 
         {/* Payments & Bounties */}
-        <section
+        <HelpSection
           id="payments"
-          className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]"
+          title={
+            <>
+              <Coins className="h-6 w-6 text-yellow-400" />
+              Payments & Bounties
+            </>
+          }
         >
-          <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <Coins className="h-6 w-6 text-yellow-400" />
-            Payments & Bounties
-          </h2>
-
-          <div className="space-y-4 text-gray-300">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
-                <Zap className="h-5 w-5 text-yellow-400" />
-                Zaps
-              </h3>
+          <div className="space-y-2">
+            <HelpTopic
+              title={
+                <>
+                  <Zap className="h-5 w-5 text-yellow-400" />
+                  Zaps
+                </>
+              }
+            >
               <p>
                 Zap a repository to tip the owner (and optionally split among
                 contributors). <strong>Owner only</strong> resolves where the
@@ -1848,12 +1725,9 @@ export default function HelpPage() {
                   </li>
                 </ul>
               </div>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Bounties
-              </h3>
+            <HelpTopic title={<>Bounties</>}>
               <p>
                 Anyone can fund issues with bounties to incentivize
                 contributions. Bounties use LNURL-withdraw links created from
@@ -1862,182 +1736,89 @@ export default function HelpPage() {
                 claims the withdraw link.
               </p>
 
-              <div className="mt-4 p-4 bg-yellow-900/20 border border-yellow-600/50 rounded">
-                <p className="text-yellow-200 font-semibold mb-2">
-                  ⚠️ Important Requirements:
-                </p>
-                <ul className="list-disc list-inside space-y-1 text-sm text-yellow-200/90 ml-4">
+              <HelpSubTopic title={<>Requirements</>}>
+                <ul className="list-disc list-inside space-y-1 ml-2">
                   <li>
-                    <strong>Bounty Creator:</strong> Must have LNbits sending
-                    wallet configured in Settings → Account
+                    <strong>Creator:</strong> LNbits sending wallet in Settings
+                    → Account, with balance until claim
                   </li>
                   <li>
-                    <strong>Bounty Creator:</strong> Must ensure sufficient
-                    balance remains in wallet until PR author claims the
-                    withdraw link
-                  </li>
-                  <li>
-                    <strong>PR Author:</strong> Must have a valid Nostr pubkey
-                    (not a GitHub username)
-                  </li>
-                  <li>
-                    <strong>PR Author:</strong> Must have a Lightning address (
-                    <code className="text-yellow-300">lud16</code> or{" "}
-                    <code className="text-yellow-300">lnurl</code>) in their
-                    Nostr profile (Kind 0 metadata)
+                    <strong>PR author:</strong> Nostr pubkey + Lightning address
+                    (<code className="bg-gray-800 px-1 rounded">lud16</code> /{" "}
+                    <code className="bg-gray-800 px-1 rounded">lnurl</code>) in
+                    Kind 0
                   </li>
                 </ul>
-              </div>
+              </HelpSubTopic>
 
-              <p className="mt-4">
-                <strong>Bounty Flow:</strong>
-              </p>
-              <ol className="list-decimal list-inside space-y-1 ml-4 mt-2 text-sm">
-                <li>
-                  <strong>Bounty Creation:</strong> Anyone can create a bounty
-                  on any issue. The system checks if the creator has LNbits
-                  configured. If not, they're prompted to set it up in Settings
-                  → Account.
-                </li>
-                <li>
-                  <strong>Withdraw Link Creation:</strong> When a bounty is
-                  created, an LNURL-withdraw link is generated from the bounty
-                  creator's LNbits wallet. The funds are{" "}
-                  <strong>reserved</strong> (not immediately deducted) and
-                  remain in the creator's wallet.
-                </li>
-                <li>
-                  <strong>PR Creation:</strong> A developer creates a PR fixing
-                  the issue and links it to the issue number.
-                </li>
-                <li>
-                  <strong>PR Merge:</strong> Only the repo owner can merge PRs.
-                  When they merge a PR linked to an issue with a bounty, the
-                  withdraw link is <strong>released</strong> to the PR author.
-                </li>
-                <li>
-                  <strong>Bounty Claim:</strong> The PR author receives the
-                  withdraw link and can claim the bounty. When they claim it,
-                  the funds are deducted from the bounty creator's LNbits wallet
-                  and sent to the PR author's Lightning address (from their
-                  Nostr profile).
-                </li>
-                <li>
-                  <strong>Issue Closed Without PR:</strong> If an issue with a
-                  bounty is closed without a linked PR (e.g., the feature
-                  already exists, duplicate issue, etc.), the bounty withdraw
-                  link is automatically <strong>deleted</strong> and the bounty
-                  is cancelled. The bounty creator will be notified of the
-                  cancellation.
-                </li>
-              </ol>
+              <HelpSubTopic title={<>Bounty flow (steps)</>}>
+                <ol className="list-decimal list-inside space-y-1 ml-2">
+                  <li>
+                    Create bounty on an issue (prompts for LNbits if missing)
+                  </li>
+                  <li>
+                    LNURL-withdraw link reserves funds in the creator wallet
+                  </li>
+                  <li>Developer opens a PR linked to the issue</li>
+                  <li>
+                    Repo owner merges → withdraw link released to PR author
+                  </li>
+                  <li>
+                    PR author claims → sats leave creator wallet to their
+                    Lightning address
+                  </li>
+                  <li>
+                    Issue closed without PR → withdraw link deleted, bounty
+                    cancelled
+                  </li>
+                </ol>
+              </HelpSubTopic>
 
-              <div className="mt-4 p-4 bg-blue-900/20 border border-blue-600/50 rounded">
-                <p className="text-blue-200 font-semibold mb-2">
-                  🔒 Bounty Protection & Trust Model:
-                </p>
-                <ul className="list-disc list-inside space-y-1 text-sm text-blue-200/90 ml-4">
+              <HelpSubTopic title={<>Protection & trust model</>}>
+                <ul className="list-disc list-inside space-y-1 ml-2">
                   <li>
-                    <strong>Bounty Deletion Prevention:</strong> If a PR is
-                    linked to an issue with a bounty, the bounty{" "}
-                    <strong>cannot be deleted</strong> even if the issue is
-                    closed. This protects developers who are working on the fix.
+                    Linked PR blocks bounty deletion even if the issue closes
                   </li>
                   <li>
-                    <strong>Trust Model:</strong> We trust the repo
-                    owner/maintainer to verify that a merged PR actually fixes
-                    the issue. When a repo owner merges a PR linked to a bounty,
-                    they are attesting that the PR resolves the issue. This is a
-                    reasonable trust model - the repo owner has the most context
-                    about whether a fix is valid.
+                    Merging attests the fix — only create bounties on repos you
+                    trust
                   </li>
                   <li>
-                    <strong>Fraud Prevention:</strong> If you don't trust a repo
-                    owner, don't create bounties on their repos. The system
-                    relies on the repo owner's judgment when merging PRs.
-                  </li>
-                  <li>
-                    <strong>Bounty Cancellation:</strong> Bounties are
-                    automatically cancelled (withdraw link deleted) when an
-                    issue is closed without a PR. The bounty creator is notified
-                    via Nostr DM and/or Telegram (if enabled).
+                    Closed without PR cancels the bounty; creator is notified
                   </li>
                 </ul>
-              </div>
+              </HelpSubTopic>
 
-              <div className="mt-4 p-4 bg-gray-800/50 border border-gray-700 rounded">
-                <p className="text-sm font-semibold text-white mb-2">
-                  Bounty Flow Diagram:
-                </p>
+              <HelpSubTopic title={<>Flow diagram</>}>
                 <div className="overflow-x-auto">
                   <div
                     ref={mermaidRef}
-                    className="min-h-[500px] flex items-center justify-center w-full"
+                    className="min-h-[320px] flex items-center justify-center w-full"
                   ></div>
                 </div>
-              </div>
+              </HelpSubTopic>
 
-              <p className="mt-4">
-                <strong>Bounty statuses:</strong>
-              </p>
-              <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
-                <li>
-                  <span className="text-yellow-400">Pending</span> - Bounty
-                  amount set but withdraw link not yet created
-                </li>
-                <li>
-                  <span className="text-green-400">Paid</span> - Withdraw link
-                  created and ready (funds reserved in bounty creator's wallet)
-                </li>
-                <li>
-                  <span className="text-purple-400">Released</span> - Withdraw
-                  link released to PR author (they can claim it)
-                </li>
-                <li>
-                  <span className="text-red-400">Cancelled</span> - Bounty was
-                  cancelled (issue closed without PR, withdraw link deleted)
-                </li>
-                <li>
-                  <span className="text-gray-400">Offline</span> - Payment state
-                  cannot be tracked
-                </li>
-              </ul>
+              <HelpSubTopic title={<>Statuses & key points</>}>
+                <ul className="list-disc list-inside space-y-1 ml-2">
+                  <li>
+                    <span className="text-yellow-400">Pending</span> /
+                    <span className="text-green-400"> Paid</span> /
+                    <span className="text-purple-400"> Released</span> /
+                    <span className="text-red-400"> Cancelled</span> /
+                    <span className="text-gray-400"> Offline</span>
+                  </li>
+                  <li>
+                    Funds stay in the creator wallet until claim (withdraw
+                    links, not instant send)
+                  </li>
+                  <li>
+                    Claim needs the PR author&apos;s Lightning address on Nostr
+                  </li>
+                </ul>
+              </HelpSubTopic>
+            </HelpTopic>
 
-              <p className="mt-4 text-sm text-gray-400">
-                <strong>Key Points:</strong>
-              </p>
-              <ul className="list-disc list-inside space-y-1 ml-4 mt-2 text-sm text-gray-400">
-                <li>
-                  Bounties use <strong>withdraw links</strong>, not direct
-                  payments. The funds stay in the creator's wallet until
-                  claimed.
-                </li>
-                <li>
-                  The bounty creator must ensure their LNbits wallet has
-                  sufficient balance until the PR author claims the withdraw
-                  link.
-                </li>
-                <li>
-                  No account credentials are stored on the platform - everything
-                  uses the creator's local LNbits configuration.
-                </li>
-                <li>
-                  The PR author's Lightning address is fetched from their Nostr
-                  profile (Kind 0 metadata), looking for{" "}
-                  <code className="text-purple-400">lud16</code> or{" "}
-                  <code className="text-purple-400">lnurl</code> fields.
-                </li>
-                <li>
-                  If the PR author doesn't have a Lightning address in their
-                  Nostr profile, the bounty cannot be claimed.
-                </li>
-              </ul>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Bounty Hunt
-              </h3>
+            <HelpTopic title={<>Bounty Hunt</>}>
               <p>
                 Visit the{" "}
                 <Link
@@ -2048,25 +1829,22 @@ export default function HelpPage() {
                 </Link>{" "}
                 page to discover funded issues across all repositories.
               </p>
-            </div>
+            </HelpTopic>
           </div>
-        </section>
+        </HelpSection>
 
         {/* Notifications */}
-        <section
+        <HelpSection
           id="notifications"
-          className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]"
+          title={
+            <>
+              <Bell className="h-6 w-6 text-cyan-400" />
+              Notifications
+            </>
+          }
         >
-          <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <Bell className="h-6 w-6 text-cyan-400" />
-            Notifications
-          </h2>
-
-          <div className="space-y-4 text-gray-300">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Configure Notifications
-              </h3>
+          <div className="space-y-2">
+            <HelpTopic title={<>Configure Notifications</>}>
               <p>Go to Settings → Notifications to set up:</p>
               <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
                 <li>
@@ -2091,12 +1869,9 @@ export default function HelpPage() {
                 </a>{" "}
                 channel.
               </p>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Notification Events
-              </h3>
+            <HelpTopic title={<>Notification Events</>}>
               <p>You can enable/disable notifications for:</p>
               <ul className="list-disc list-inside space-y-1 ml-4 mt-2">
                 <li>
@@ -2146,12 +1921,9 @@ export default function HelpPage() {
                 are not active until you click "SAVE NOW". Make sure to save
                 your preferences after making changes.
               </p>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Bounty Notifications
-              </h3>
+            <HelpTopic title={<>Bounty Notifications</>}>
               <p>Bounty notifications are sent to:</p>
               <ul className="list-disc list-inside space-y-1 ml-4 mt-2 text-sm">
                 <li>
@@ -2187,22 +1959,14 @@ export default function HelpPage() {
                 </a>{" "}
                 Telegram channel, regardless of your notification preferences.
               </p>
-            </div>
+            </HelpTopic>
           </div>
-        </section>
+        </HelpSection>
 
         {/* Collaboration */}
-        <section
-          id="collaboration"
-          className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]"
-        >
-          <h2 className="text-2xl font-semibold mb-4">Collaboration</h2>
-
-          <div className="space-y-4 text-gray-300">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Pull Requests
-              </h3>
+        <HelpSection id="collaboration" title={<>Collaboration</>}>
+          <div className="space-y-2">
+            <HelpTopic title={<>Pull Requests</>}>
               <p>
                 Create PRs to propose changes. Reviewers can approve, request
                 changes, or merge PRs.
@@ -2232,10 +1996,9 @@ export default function HelpPage() {
                   </li>
                 </ul>
               </div>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">Issues</h3>
+            <HelpTopic title={<>Issues</>}>
               <p>
                 Track bugs, feature requests, and discussions. Add bounties to
                 incentivize solutions.
@@ -2266,35 +2029,29 @@ export default function HelpPage() {
                   </li>
                 </ul>
               </div>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Contributors
-              </h3>
+            <HelpTopic title={<>Contributors</>}>
               <p>
                 Link your GitHub profile in Settings to show your profile
                 picture as a contributor icon.
               </p>
-            </div>
+            </HelpTopic>
           </div>
-        </section>
+        </HelpSection>
 
         {/* Security */}
-        <section
+        <HelpSection
           id="security"
-          className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]"
+          title={
+            <>
+              <Shield className="h-6 w-6 text-red-400" />
+              Security & Privacy
+            </>
+          }
         >
-          <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-            <Shield className="h-6 w-6 text-red-400" />
-            Security & Privacy
-          </h2>
-
-          <div className="space-y-4 text-gray-300">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Local Storage
-              </h3>
+          <div className="space-y-2">
+            <HelpTopic title={<>Local Storage</>}>
               <p>
                 All your data (repos, keys, settings) is stored locally in your
                 browser. It never leaves your device unless you explicitly push
@@ -2336,40 +2093,29 @@ export default function HelpPage() {
                   browsers).
                 </p>
               </div>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Encrypted Keys
-              </h3>
+            <HelpTopic title={<>Encrypted Keys</>}>
               <p>
                 Your Nostr private key and payment credentials are encrypted
                 with a password you set. Enable encryption in Settings →
                 Security.
               </p>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Public vs Private
-              </h3>
+            <HelpTopic title={<>Public vs Private</>}>
               <p>
                 Repositories default to public when pushed to Nostr. You can set
                 them to private in repository settings.
               </p>
-            </div>
+            </HelpTopic>
           </div>
-        </section>
+        </HelpSection>
 
         {/* Additional Resources */}
-        <section className="border border-[#383B42] rounded-lg p-6 bg-[#171B21]">
-          <h2 className="text-2xl font-semibold mb-4">Additional Resources</h2>
-
-          <div className="space-y-4 text-gray-300">
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Documentation
-              </h3>
+        <HelpSection title={<>Additional Resources</>}>
+          <div className="space-y-2">
+            <HelpTopic title={<>Documentation</>}>
               <ul className="space-y-2">
                 <li>
                   <a
@@ -2410,12 +2156,9 @@ export default function HelpPage() {
                   </Link>
                 </li>
               </ul>
-            </div>
+            </HelpTopic>
 
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-2">
-                Need More Help?
-              </h3>
+            <HelpTopic title={<>Need More Help?</>}>
               <p>
                 If you have questions or hit issues, see the{" "}
                 <a
@@ -2455,9 +2198,9 @@ export default function HelpPage() {
                 </a>{" "}
                 reference for NIPs and kinds.
               </p>
-            </div>
+            </HelpTopic>
           </div>
-        </section>
+        </HelpSection>
       </div>
     </div>
   );

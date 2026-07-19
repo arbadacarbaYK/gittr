@@ -19,12 +19,12 @@ import {
   syncIssuesAndPRsFromNostr,
   syncUserCommitsFromBridge,
 } from "@/lib/activity-tracking";
+import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   loadContactListBackup,
   parseContactListPubkeys,
   saveContactListBackup,
 } from "@/lib/nostr/contact-list";
-import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   KIND_ISSUE,
   KIND_PULL_REQUEST,
@@ -33,6 +33,7 @@ import {
   KIND_STATUS_APPLIED,
   KIND_STATUS_CLOSED,
 } from "@/lib/nostr/events";
+import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
 import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
 import {
   NO_SIGNING_METHOD_MESSAGE,
@@ -217,6 +218,9 @@ function parseNIP34Repository(event: any): any {
         break;
     }
   }
+
+  const links = parseRepoLinksFromNip34Tags(event.tags);
+  if (links.length > 0) repoData.links = links;
 
   if (!repoData.repositoryName && repoData.name) {
     repoData.repositoryName = repoData.name;
@@ -3334,9 +3338,9 @@ export default function EntityPage({
                     id="follow-list-risk-desc"
                     className="text-sm text-gray-300 mb-4 whitespace-pre-line"
                   >
-                    Your follow list could not be loaded from relays in time, and
-                    this session has no cached copy. Publishing now could replace
-                    your entire follow list with only this profile.
+                    Your follow list could not be loaded from relays in time,
+                    and this session has no cached copy. Publishing now could
+                    replace your entire follow list with only this profile.
                     {"\n\n"}
                     We stopped to protect your follows. Wait a moment (or open a
                     client that already has your list), then try Follow again.

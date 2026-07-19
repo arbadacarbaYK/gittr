@@ -54,6 +54,7 @@ import { syncReadmeTextIntoRepoFiles } from "@/lib/gittr-pages/sync-readme-to-fi
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
+import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
 import {
   formatPushRepoSuccessAlert,
   pushRepoToNostr,
@@ -5946,6 +5947,8 @@ export function RepoCodePage() {
                       }
                     }
                   }
+                  // Sidebar Links: ["link", type, url, label?] (+ web fallback)
+                  eventRepoData.links = parseRepoLinksFromNip34Tags(event.tags);
                 }
                 if (event.content) {
                   const contentTrim = event.content.trim();
@@ -5959,11 +5962,15 @@ export function RepoCodePage() {
                       // CRITICAL: Preserve clone URLs collected from tags before merging contentData
                       // contentData might not have clone property, which would overwrite eventRepoData.clone
                       const existingCloneUrls = eventRepoData.clone || [];
+                      const existingLinks = eventRepoData.links || [];
                       // CRITICAL: Extract ALL fields from content, not just files
                       // This includes sourceUrl, forkedFrom, clone, relays, etc.
                       eventRepoData = { ...eventRepoData, ...contentData };
                       // CRITICAL: Restore clone URLs from tags and merge with content clone URLs
                       eventRepoData.clone = existingCloneUrls;
+                      if (existingLinks.length > 0) {
+                        eventRepoData.links = existingLinks;
+                      }
                       // Also merge clone URLs from content if present
                       if (
                         contentData.clone &&
@@ -6180,15 +6187,20 @@ export function RepoCodePage() {
                       }
                     }
                   }
+                  eventRepoData.links = parseRepoLinksFromNip34Tags(event.tags);
                 }
                 try {
                   const contentData = JSON.parse(event.content);
                   // CRITICAL: Preserve clone URLs collected from tags before merging contentData
                   // contentData might not have clone property, which would overwrite eventRepoData.clone
                   const existingCloneUrls = eventRepoData.clone || [];
+                  const existingLinks = eventRepoData.links || [];
                   eventRepoData = { ...eventRepoData, ...contentData };
                   // CRITICAL: Restore clone URLs from tags and merge with content clone URLs
                   eventRepoData.clone = existingCloneUrls;
+                  if (existingLinks.length > 0) {
+                    eventRepoData.links = existingLinks;
+                  }
                   // Merge clone URLs from content if present
                   if (contentData.clone && Array.isArray(contentData.clone)) {
                     contentData.clone.forEach((url: string) => {
@@ -6773,9 +6785,7 @@ export function RepoCodePage() {
                       } as StoredRepo);
                     return {
                       ...base,
-                      files: useLocalFiles
-                        ? localFiles
-                        : eventRepoData.files, // CRITICAL: Use local files if they exist
+                      files: useLocalFiles ? localFiles : eventRepoData.files, // CRITICAL: Use local files if they exist
                       name: eventRepoData.repositoryName || base.name,
                       repo: eventRepoData.repositoryName || base.repo,
                       clone:
@@ -6790,12 +6800,15 @@ export function RepoCodePage() {
                           : base.clone,
                       relays: eventRepoData.relays || base.relays,
                       sourceUrl: eventRepoData.sourceUrl || base.sourceUrl,
-                      forkedFrom:
-                        eventRepoData.forkedFrom || base.forkedFrom,
+                      forkedFrom: eventRepoData.forkedFrom || base.forkedFrom,
                       contributors:
                         contributors.length > 0
                           ? contributors
                           : base.contributors,
+                      ...(Array.isArray(eventRepoData.links) &&
+                      eventRepoData.links.length > 0
+                        ? { links: eventRepoData.links }
+                        : {}),
                       ...(eventRepoData.maintainers
                         ? { maintainers: eventRepoData.maintainers }
                         : {}),
@@ -6964,13 +6977,28 @@ export function RepoCodePage() {
                   }
                   // CRITICAL: Only update state if values actually changed (prevents unnecessary re-renders)
                   setRepoData((prev: any) => {
-                    if (!prev) return prev;
+                    // Cold visitors often have no localStorage row yet — still hydrate
+                    // sourceUrl / links from the announcement into sidebar state.
+                    const base =
+                      prev ||
+                      ({
+                        entity: resolvedParams.entity,
+                        repo: resolvedParams.repo,
+                        name:
+                          eventRepoData.repositoryName || resolvedParams.repo,
+                        readme: "",
+                        files: [],
+                        description: eventRepoData.description || "",
+                        contributors: [],
+                        defaultBranch: eventRepoData.defaultBranch || "main",
+                        ownerPubkey: event.pubkey,
+                      } as StoredRepo);
                     const newSourceUrl =
-                      eventRepoData.sourceUrl || prev.sourceUrl;
+                      eventRepoData.sourceUrl || base.sourceUrl;
                     const newForkedFrom =
-                      eventRepoData.forkedFrom || prev.forkedFrom;
-                    const newName = eventRepoData.repositoryName || prev.name;
-                    const newRepo = eventRepoData.repositoryName || prev.repo;
+                      eventRepoData.forkedFrom || base.forkedFrom;
+                    const newName = eventRepoData.repositoryName || base.name;
+                    const newRepo = eventRepoData.repositoryName || base.repo;
                     const newClone =
                       eventRepoData.clone && Array.isArray(eventRepoData.clone)
                         ? eventRepoData.clone.filter(
@@ -6979,17 +7007,26 @@ export function RepoCodePage() {
                               !url.includes("localhost") &&
                               !url.includes("127.0.0.1")
                           )
-                        : prev.clone;
-                    const newRelays = eventRepoData.relays || prev.relays;
+                        : base.clone;
+                    const newRelays = eventRepoData.relays || base.relays;
+                    const newLinks =
+                      Array.isArray(eventRepoData.links) &&
+                      eventRepoData.links.length > 0
+                        ? eventRepoData.links
+                        : base.links;
 
                     // Skip update if nothing changed
                     if (
+                      prev &&
                       prev.sourceUrl === newSourceUrl &&
                       prev.forkedFrom === newForkedFrom &&
                       prev.name === newName &&
                       prev.repo === newRepo &&
                       JSON.stringify(prev.clone) === JSON.stringify(newClone) &&
-                      JSON.stringify(prev.relays) === JSON.stringify(newRelays)
+                      JSON.stringify(prev.relays) ===
+                        JSON.stringify(newRelays) &&
+                      JSON.stringify(prev.links || []) ===
+                        JSON.stringify(newLinks || [])
                     ) {
                       return prev;
                     }
@@ -7002,13 +7039,17 @@ export function RepoCodePage() {
                       }, storedForFallback=${sourceUrlFromEvent || "none"}`
                     );
                     return {
-                      ...prev,
+                      ...base,
                       name: newName,
                       repo: newRepo,
                       sourceUrl: newSourceUrl,
                       forkedFrom: newForkedFrom,
                       clone: newClone,
                       relays: newRelays,
+                      ...(newLinks ? { links: newLinks } : {}),
+                      lastNostrEventId:
+                        eventRepoData.lastEventId || base.lastNostrEventId,
+                      syncedFromNostr: true,
                     };
                   });
                 } else {
@@ -7116,14 +7157,12 @@ export function RepoCodePage() {
                           entity: resolvedParams.entity,
                           repo: resolvedParams.repo,
                           name:
-                            eventRepoData.repositoryName ||
-                            resolvedParams.repo,
+                            eventRepoData.repositoryName || resolvedParams.repo,
                           readme: "",
                           files: [],
                           description: eventRepoData.description || "",
                           contributors: [],
-                          defaultBranch:
-                            eventRepoData.defaultBranch || "main",
+                          defaultBranch: eventRepoData.defaultBranch || "main",
                           ownerPubkey: event.pubkey,
                           sourceUrl: eventRepoData.sourceUrl,
                           forkedFrom: eventRepoData.forkedFrom,
@@ -7157,6 +7196,10 @@ export function RepoCodePage() {
                       return {
                         ...base,
                         contributors: mergedContributors,
+                        ...(Array.isArray(eventRepoData.links) &&
+                        eventRepoData.links.length > 0
+                          ? { links: eventRepoData.links }
+                          : {}),
                         ...(eventRepoData.publicRead !== undefined
                           ? { publicRead: eventRepoData.publicRead }
                           : {}),
@@ -7166,27 +7209,33 @@ export function RepoCodePage() {
                         ...(eventRepoData.maintainers
                           ? { maintainers: eventRepoData.maintainers }
                           : {}),
+                        ...(eventRepoData.lastEventId
+                          ? {
+                              lastNostrEventId: eventRepoData.lastEventId,
+                              syncedFromNostr: true,
+                            }
+                          : {}),
                       };
                     });
                   } else if (
                     eventRepoData.publicRead !== undefined ||
-                    eventRepoData.publicWrite !== undefined
+                    eventRepoData.publicWrite !== undefined ||
+                    (Array.isArray(eventRepoData.links) &&
+                      eventRepoData.links.length > 0)
                   ) {
-                    // Privacy-only update when announcement has no contributor list
+                    // Privacy / links update when announcement has no contributor list
                     setRepoData((prev: any) => {
                       if (!prev) {
                         return {
                           entity: resolvedParams.entity,
                           repo: resolvedParams.repo,
                           name:
-                            eventRepoData.repositoryName ||
-                            resolvedParams.repo,
+                            eventRepoData.repositoryName || resolvedParams.repo,
                           readme: "",
                           files: [],
                           description: eventRepoData.description || "",
                           contributors: [],
-                          defaultBranch:
-                            eventRepoData.defaultBranch || "main",
+                          defaultBranch: eventRepoData.defaultBranch || "main",
                           ownerPubkey: event.pubkey,
                           publicRead:
                             eventRepoData.publicRead !== undefined
@@ -7196,6 +7245,16 @@ export function RepoCodePage() {
                             eventRepoData.publicWrite !== undefined
                               ? eventRepoData.publicWrite
                               : false,
+                          ...(Array.isArray(eventRepoData.links) &&
+                          eventRepoData.links.length > 0
+                            ? { links: eventRepoData.links }
+                            : {}),
+                          ...(eventRepoData.lastEventId
+                            ? {
+                                lastNostrEventId: eventRepoData.lastEventId,
+                                syncedFromNostr: true,
+                              }
+                            : {}),
                         } as StoredRepo;
                       }
                       return {
@@ -7205,6 +7264,16 @@ export function RepoCodePage() {
                           : {}),
                         ...(eventRepoData.publicWrite !== undefined
                           ? { publicWrite: eventRepoData.publicWrite }
+                          : {}),
+                        ...(Array.isArray(eventRepoData.links) &&
+                        eventRepoData.links.length > 0
+                          ? { links: eventRepoData.links }
+                          : {}),
+                        ...(eventRepoData.lastEventId
+                          ? {
+                              lastNostrEventId: eventRepoData.lastEventId,
+                              syncedFromNostr: true,
+                            }
                           : {}),
                       };
                     });
@@ -7333,6 +7402,9 @@ export function RepoCodePage() {
                   eventRepoData.lastEventCreatedAt =
                     latestEvent.event.created_at;
                   eventRepoData.lastEventId = latestEvent.event.id;
+                  eventRepoData.links = parseRepoLinksFromNip34Tags(
+                    latestEvent.event.tags
+                  );
                   broadcastRepoAnnouncementEventId({
                     eventId: latestEvent.event.id,
                     entity: resolvedParams.entity,
@@ -7340,8 +7412,60 @@ export function RepoCodePage() {
                     ownerPubkey: ownerPubkey || undefined,
                   });
                   console.log(
-                    `📋 [File Fetch] NIP-34 EOSE: latest event has ${eventRepoData.clone.length} clone URL(s)`
+                    `📋 [File Fetch] NIP-34 EOSE: latest event has ${
+                      eventRepoData.clone.length
+                    } clone URL(s), ${
+                      Array.isArray(eventRepoData.links)
+                        ? eventRepoData.links.length
+                        : 0
+                    } link(s)`
                   );
+                  // Apply announcement links (and related metadata) after latest-event
+                  // reparse — covers cold loads where earlier setRepoData was skipped.
+                  if (
+                    Array.isArray(eventRepoData.links) &&
+                    eventRepoData.links.length > 0
+                  ) {
+                    setRepoData((prev: any) => {
+                      const base =
+                        prev ||
+                        ({
+                          entity: resolvedParams.entity,
+                          repo: resolvedParams.repo,
+                          name:
+                            eventRepoData.repositoryName ||
+                            resolvedParams.repo,
+                          readme: "",
+                          files: [],
+                          description: eventRepoData.description || "",
+                          contributors: [],
+                          defaultBranch:
+                            eventRepoData.defaultBranch || "main",
+                          ownerPubkey:
+                            latestEvent.event.pubkey || ownerPubkey || "",
+                        } as StoredRepo);
+                      if (
+                        prev &&
+                        JSON.stringify(prev.links || []) ===
+                          JSON.stringify(eventRepoData.links)
+                      ) {
+                        return prev;
+                      }
+                      return {
+                        ...base,
+                        links: eventRepoData.links,
+                        ...(eventRepoData.sourceUrl
+                          ? { sourceUrl: eventRepoData.sourceUrl }
+                          : {}),
+                        ...(eventRepoData.forkedFrom
+                          ? { forkedFrom: eventRepoData.forkedFrom }
+                          : {}),
+                        lastNostrEventId:
+                          eventRepoData.lastEventId || base.lastNostrEventId,
+                        syncedFromNostr: true,
+                      };
+                    });
+                  }
                 }
               }
             }
@@ -19211,8 +19335,7 @@ export function RepoCodePage() {
                                                 }
                                               }
                                             }
-                                          }
-                                          else if (
+                                          } else if (
                                             tagName === "public-read" &&
                                             tagValue
                                           ) {
@@ -19227,6 +19350,10 @@ export function RepoCodePage() {
                                               tagValue.toLowerCase() === "true";
                                           }
                                         }
+                                        eventRepoData.links =
+                                          parseRepoLinksFromNip34Tags(
+                                            latestEvent.tags
+                                          );
                                       }
                                       // Missing privacy tags => public read (legacy)
                                       if (
@@ -19312,6 +19439,11 @@ export function RepoCodePage() {
                                           )
                                             ? eventRepoData.relays
                                             : [],
+                                          links: Array.isArray(
+                                            eventRepoData.links
+                                          )
+                                            ? eventRepoData.links
+                                            : [],
                                           // CRITICAL: Preserve privacy status from NIP-34 tags
                                           publicRead:
                                             eventRepoData.publicRead !==
@@ -19373,6 +19505,11 @@ export function RepoCodePage() {
                                         )
                                           ? eventRepoData.relays
                                           : existingRepoAny.relays ?? [],
+                                        links:
+                                          Array.isArray(eventRepoData.links) &&
+                                          eventRepoData.links.length > 0
+                                            ? eventRepoData.links
+                                            : existingRepoAny.links ?? [],
                                         // CRITICAL: Preserve privacy status from NIP-34 tags
                                         publicRead:
                                           eventRepoData.publicRead !== undefined
@@ -19471,6 +19608,11 @@ export function RepoCodePage() {
                                         )
                                           ? eventRepoData.relays
                                           : [],
+                                        links: Array.isArray(
+                                          eventRepoData.links
+                                        )
+                                          ? eventRepoData.links
+                                          : [],
                                         // CRITICAL: Preserve privacy status from NIP-34 tags
                                         publicRead:
                                           eventRepoData.publicRead !== undefined
@@ -19535,7 +19677,9 @@ export function RepoCodePage() {
                             </Button>
                             <p className="text-xs text-gray-500 mt-1 mb-2 px-1">
                               Replaces local files
-                              {hasSourceUrl ? " from the linked source" : " from Nostr"}
+                              {hasSourceUrl
+                                ? " from the linked source"
+                                : " from Nostr"}
                               . Unpushed edits can be lost.
                             </p>
                           </>
