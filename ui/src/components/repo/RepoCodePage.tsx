@@ -1495,15 +1495,18 @@ export function RepoCodePage() {
       pagesSiteListedByGateway === true
         ? candidateGittrPagesUrls?.namedUrl || null
         : null;
+    const existing = (repoData?.links || []) as RepoLink[];
     return enrichRepoLinks({
-      existing: (repoData?.links || []) as RepoLink[],
+      existing,
       sourceUrl: repoData?.sourceUrl || effectiveSourceUrl || null,
       nostrPagesUrl: pagesUrl,
       announcedAppId:
         (repoData as StoredRepo | null | undefined)?.announcedAppId || null,
       siteOrigin:
         typeof window !== "undefined" ? window.location.origin : null,
-      guessGithubPages: false,
+      // If announcement/settings never stored links, still surface a GitHub Pages
+      // guess from sourceUrl so the sidebar isn't empty after a stale local sync.
+      guessGithubPages: existing.length === 0,
     }) as RepoLink[];
   }, [
     repoData?.links,
@@ -7061,7 +7064,7 @@ export function RepoCodePage() {
                         eventRepoData.forkedFrom || "none"
                       }, storedForFallback=${sourceUrlFromEvent || "none"}`
                     );
-                    return {
+                    const nextState = {
                       ...base,
                       name: newName,
                       repo: newRepo,
@@ -7074,6 +7077,26 @@ export function RepoCodePage() {
                         eventRepoData.lastEventId || base.lastNostrEventId,
                       syncedFromNostr: true,
                     };
+                    if (newLinks && newLinks.length > 0) {
+                      try {
+                        const stored = loadStoredRepos();
+                        let changed = false;
+                        const next = stored.map((r) => {
+                          const matchesRepo =
+                            r.repo === resolvedParams.repo ||
+                            r.slug === resolvedParams.repo;
+                          const matchesEntity =
+                            r.entity === resolvedParams.entity;
+                          if (!(matchesRepo && matchesEntity)) return r;
+                          changed = true;
+                          return { ...r, links: newLinks, syncedFromNostr: true };
+                        });
+                        if (changed) saveStoredRepos(next);
+                      } catch {
+                        /* ignore */
+                      }
+                    }
+                    return nextState;
                   });
                 } else {
                   // CRITICAL: If no sourceUrl but we have clone URLs, use the first clone URL as sourceUrl
@@ -7488,6 +7511,41 @@ export function RepoCodePage() {
                         syncedFromNostr: true,
                       };
                     });
+                    // Persist so the next visit doesn't drop Links (stale local rows)
+                    try {
+                      const stored = loadStoredRepos();
+                      let changed = false;
+                      const next = stored.map((r) => {
+                        const matchesRepo =
+                          r.repo === resolvedParams.repo ||
+                          r.slug === resolvedParams.repo ||
+                          r.name === resolvedParams.repo;
+                        const matchesEntity =
+                          r.entity === resolvedParams.entity ||
+                          (ownerPubkey &&
+                            r.ownerPubkey &&
+                            r.ownerPubkey.toLowerCase() ===
+                              ownerPubkey.toLowerCase());
+                        if (!(matchesRepo && matchesEntity)) return r;
+                        if (
+                          JSON.stringify(r.links || []) ===
+                          JSON.stringify(eventRepoData.links)
+                        ) {
+                          return r;
+                        }
+                        changed = true;
+                        return {
+                          ...r,
+                          links: eventRepoData.links,
+                          syncedFromNostr: true,
+                          lastNostrEventId:
+                            eventRepoData.lastEventId || r.lastNostrEventId,
+                        };
+                      });
+                      if (changed) saveStoredRepos(next);
+                    } catch {
+                      /* ignore */
+                    }
                   }
                 }
               }
