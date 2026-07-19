@@ -1727,7 +1727,7 @@ export default function HelpPage() {
               </div>
             </HelpTopic>
 
-            <HelpTopic title={<>Bounties</>}>
+            <HelpTopic id="bounties" title={<>Bounties</>}>
               <p>
                 Anyone can fund issues with bounties to incentivize
                 contributions. Bounties use LNURL-withdraw links created from

@@ -1,5 +1,8 @@
 // Nostr event types and utilities for repositories, issues, PRs
+import { resolveRepoPagesDTag } from "@/lib/gittr-pages/pages-public-slug";
 import { normalizeCloneUrlsForNip34Announcement } from "@/lib/nostr/clone-url-quality";
+import { buildNsiteSiteUrl } from "@/lib/nsite/nsite-url";
+import { enrichRepoLinks } from "@/lib/repos/enrich-repo-links";
 
 import { getEventHash, getPublicKey, nip19, signEvent } from "nostr-tools";
 
@@ -338,6 +341,41 @@ export function buildUnsignedRepositoryEvent(
     });
   }
 
+  // Same link merge as Push (Settings docs + Nostr Pages + Apps announce)
+  let announcementLinks = Array.isArray(repo.links) ? [...repo.links] : [];
+  try {
+    const pagesBase =
+      (typeof process !== "undefined" &&
+        process.env.NEXT_PUBLIC_GITTR_PAGES_URL) ||
+      "https://pages.gittr.space";
+    let nostrPagesUrl: string | null = null;
+    if (/^[0-9a-f]{64}$/i.test(pubkey)) {
+      const routeSlug = String(
+        repo.repositoryName || (repo as any).repo || (repo as any).slug || ""
+      ).trim();
+      const dTag = resolveRepoPagesDTag(routeSlug, repo as any);
+      if (dTag) {
+        nostrPagesUrl = buildNsiteSiteUrl(pagesBase, pubkey, {
+          kind: "named",
+          dTag,
+        });
+      }
+    }
+    announcementLinks = enrichRepoLinks({
+      existing: announcementLinks,
+      sourceUrl: repo.sourceUrl,
+      nostrPagesUrl,
+      announcedAppId: (repo as any).announcedAppId || null,
+      siteOrigin:
+        typeof process !== "undefined"
+          ? process.env.NEXT_PUBLIC_SITE_URL || null
+          : null,
+      guessGithubPages: false,
+    });
+  } catch {
+    /* keep repo.links as-is */
+  }
+
   // NIP-34: Add web tag(s) — prefer one multi-value "web" row per spec
   const webVals: string[] = [];
   if (
@@ -346,16 +384,14 @@ export function buildUnsignedRepositoryEvent(
   ) {
     webVals.push(repo.logoUrl);
   }
-  if (repo.links && Array.isArray(repo.links)) {
-    repo.links.forEach((link) => {
-      if (
-        link.url &&
-        (link.url.startsWith("http://") || link.url.startsWith("https://"))
-      ) {
-        webVals.push(link.url);
-      }
-    });
-  }
+  announcementLinks.forEach((link) => {
+    if (
+      link.url &&
+      (link.url.startsWith("http://") || link.url.startsWith("https://"))
+    ) {
+      webVals.push(link.url);
+    }
+  });
   if (webVals.length > 0) {
     tags.push(["web", ...webVals]);
   }
@@ -410,26 +446,24 @@ export function buildUnsignedRepositoryEvent(
   }
 
   // NIP-34: Add link tags if present
-  if (repo.links && Array.isArray(repo.links)) {
-    repo.links.forEach((link) => {
+  announcementLinks.forEach((link) => {
+    if (
+      link.url &&
+      typeof link.url === "string" &&
+      link.url.trim().length > 0
+    ) {
+      const linkType = (link.type || "other").toString();
+      const linkTag: string[] = ["link", linkType, link.url.trim()];
       if (
-        link.url &&
-        typeof link.url === "string" &&
-        link.url.trim().length > 0
+        link.label &&
+        typeof link.label === "string" &&
+        link.label.trim().length > 0
       ) {
-        const linkType = (link.type || "other").toString();
-        const linkTag: string[] = ["link", linkType, link.url.trim()];
-        if (
-          link.label &&
-          typeof link.label === "string" &&
-          link.label.trim().length > 0
-        ) {
-          linkTag.push(link.label.trim());
-        }
-        tags.push(linkTag);
+        linkTag.push(link.label.trim());
       }
-    });
-  }
+      tags.push(linkTag);
+    }
+  });
 
   // Privacy tags are included so clients can render visibility consistently.
   // We keep bridge-side access control as the source of truth for enforcement.
