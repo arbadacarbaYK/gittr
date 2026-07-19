@@ -57,7 +57,8 @@ import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
 import {
   enrichRepoLinks,
-  stripInventedAnnouncementLinks,
+  removeAutoNostrPagesLinks,
+  removeStaleAutoLinks,
 } from "@/lib/repos/enrich-repo-links";
 import {
   formatPushRepoSuccessAlert,
@@ -902,6 +903,54 @@ export function RepoCodePage() {
       cancelled = true;
     };
   }, [candidateGittrPagesUrls?.namedUrl, candidateGittrPagesUrls?.dTag]);
+
+  // Persist a real Nostr Pages URL into repo.links when gateway lists it;
+  // remove auto Pages rows when gateway says it is not listed.
+  useEffect(() => {
+    if (pagesSiteListedByGateway === null) return;
+    if (!resolvedParams.entity || !decodedRepo) return;
+    try {
+      const repos = loadStoredRepos();
+      const idx = repos.findIndex(
+        (r) =>
+          (r.repo === decodedRepo || r.slug === decodedRepo) &&
+          r.entity === resolvedParams.entity
+      );
+      if (idx < 0 || !repos[idx]) return;
+      const current = (repos[idx].links || []) as RepoLink[];
+      let next: RepoLink[];
+      if (
+        pagesSiteListedByGateway === true &&
+        candidateGittrPagesUrls?.namedUrl
+      ) {
+        next = enrichRepoLinks({
+          existing: current,
+          sourceUrl: repos[idx].sourceUrl,
+          nostrPagesUrl: candidateGittrPagesUrls.namedUrl,
+          cleanStaleAutoLinks: true,
+        }) as RepoLink[];
+      } else {
+        next = removeAutoNostrPagesLinks(current) as RepoLink[];
+      }
+      if (JSON.stringify(current) === JSON.stringify(next)) return;
+      if (next.length > 0) {
+        repos[idx]!.links = next as any;
+      } else {
+        delete repos[idx]!.links;
+      }
+      saveStoredRepos(repos);
+      setRepoData((prev) =>
+        prev ? ({ ...prev, links: next.length > 0 ? next : undefined } as any) : prev
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [
+    pagesSiteListedByGateway,
+    candidateGittrPagesUrls?.namedUrl,
+    resolvedParams.entity,
+    decodedRepo,
+  ]);
 
   const repoIsOwner = useMemo(() => {
     if (!currentUserPubkey) return false;
@@ -3221,9 +3270,10 @@ export function RepoCodePage() {
         pulls: repo.pulls || [],
         commits: repo.commits || [],
         contributors,
-        links: stripInventedAnnouncementLinks(repo.links || [], {
-          sourceUrl: repo.sourceUrl,
-        }) as RepoLink[],
+        links: removeStaleAutoLinks(
+          repo.links || [],
+          repo.sourceUrl
+        ) as RepoLink[],
         defaultBranch: repo.defaultBranch || "main",
         clone: (repo as any).clone || [], // CRITICAL: Include clone URLs from NIP-34 event
         relays: (repo as any).relays || [],
@@ -3233,11 +3283,12 @@ export function RepoCodePage() {
         publicRead: publicRead, // CRITICAL: Default to true for old repos
         publicWrite: publicWrite,
       } as any);
-      // Drop invented github.io / Nostr Pages links from localStorage
+      // Drop stale invented github.io rows from older builds
       {
-        const cleanedLinks = stripInventedAnnouncementLinks(repo.links || [], {
-          sourceUrl: repo.sourceUrl,
-        });
+        const cleanedLinks = removeStaleAutoLinks(
+          repo.links || [],
+          repo.sourceUrl
+        );
         const before = JSON.stringify(repo.links || []);
         const after = JSON.stringify(cleanedLinks);
         if (before !== after) {
@@ -7063,14 +7114,11 @@ export function RepoCodePage() {
                       eventRepoData.links.length > 0
                         ? eventRepoData.links
                         : base.links;
-                    const newLinks = stripInventedAnnouncementLinks(
+                    const newLinks = removeStaleAutoLinks(
                       rawNewLinks,
-                      {
-                        sourceUrl:
-                          eventRepoData.sourceUrl ||
-                          base.sourceUrl ||
-                          effectiveSourceUrl,
-                      }
+                      eventRepoData.sourceUrl ||
+                        base.sourceUrl ||
+                        effectiveSourceUrl
                     );
 
                     // Skip update if nothing changed
@@ -18539,10 +18587,10 @@ export function RepoCodePage() {
                                           importData.commits ||
                                           existingRepo.commits ||
                                           [],
+                                        // Always use enrich result (Settings + homepage).
+                                        // Do not fall back to old links — that revived invented rows.
                                         links:
-                                          links.length > 0
-                                            ? links
-                                            : existingRepo.links,
+                                          links.length > 0 ? links : undefined,
                                         // Note: releases and lastModifiedAt are not part of StoredRepo interface but may exist at runtime
                                         ...(importData.releases ||
                                         (
@@ -18618,9 +18666,7 @@ export function RepoCodePage() {
                                           prev?.commits ||
                                           [],
                                         links:
-                                          links.length > 0
-                                            ? links
-                                            : prev?.links,
+                                          links.length > 0 ? links : undefined,
                                         releases: coalesceMetadataList(
                                           importData.releases,
                                           (prev as { releases?: unknown[] })
