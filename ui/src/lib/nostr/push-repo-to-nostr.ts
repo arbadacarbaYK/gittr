@@ -346,6 +346,61 @@ export async function pushRepoToNostr(
       throw new Error("Repository not found");
     }
 
+    // Keep Settings docs links + auto Website / Nostr Pages / Apps links on 30617
+    try {
+      const { enrichRepoLinks } = await import("@/lib/repos/enrich-repo-links");
+      const { resolveRepoPagesDTag } = await import(
+        "@/lib/gittr-pages/pages-public-slug"
+      );
+      const { buildNsiteSiteUrl } = await import("@/lib/nsite/nsite-url");
+      const pagesBase =
+        process.env.NEXT_PUBLIC_GITTR_PAGES_URL || "https://pages.gittr.space";
+      const ownerHex = (
+        repo.ownerPubkey ||
+        pubkey ||
+        ""
+      ).toLowerCase();
+      let nostrPagesUrl: string | null = null;
+      if (/^[0-9a-f]{64}$/.test(ownerHex)) {
+        const routeSlug = String(repo.repo || repo.slug || repoSlug || "").trim();
+        const dTag = resolveRepoPagesDTag(routeSlug, repo);
+        if (dTag) {
+          nostrPagesUrl = buildNsiteSiteUrl(pagesBase, ownerHex, {
+            kind: "named",
+            dTag,
+          });
+        }
+      }
+      const enriched = enrichRepoLinks({
+        existing: repo.links as any,
+        sourceUrl: repo.sourceUrl,
+        nostrPagesUrl,
+        announcedAppId: (repo as { announcedAppId?: string }).announcedAppId,
+        siteOrigin:
+          typeof window !== "undefined" ? window.location.origin : null,
+        // Don't invent github.io URLs on push — only Settings / import homepage /
+        // Nostr Pages / announced app. Guessing causes dead links on Nostr.
+        guessGithubPages: false,
+      });
+      if (enriched.length > 0) {
+        (repo as { links?: typeof enriched }).links = enriched;
+        const idx = repos.findIndex(
+          (r: any) =>
+            (r.slug === repoSlug || r.repo === repoSlug) && r.entity === entity
+        );
+        if (idx >= 0) {
+          (repos[idx] as any).links = enriched;
+          try {
+            localStorage.setItem("gittr_repos", JSON.stringify(repos));
+          } catch {
+            /* quota */
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("⚠️ [Push Repo] Could not enrich repo links:", e);
+    }
+
     // Repair bare "owner/repo" or malformed https://OWNER/repo stored as sourceUrl (breaks file-content + UI)
     if (repo.sourceUrl && typeof repo.sourceUrl === "string") {
       const fixed = normalizeGithubSourceUrl(repo.sourceUrl.trim());

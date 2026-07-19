@@ -258,13 +258,13 @@ export function RepoGittrPagesPanel({
   };
 
   return (
-    <details className="group mt-3 overflow-hidden rounded-xl border border-violet-900/30 bg-gradient-to-b from-violet-950/20 to-zinc-950/40 open:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
+    <details className="group mt-3 overflow-hidden rounded-xl border border-purple-800/40 bg-gradient-to-b from-purple-950/25 to-zinc-950/40 open:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
       <summary className="flex cursor-pointer list-none items-center gap-2.5 px-3 py-3 text-sm font-semibold tracking-tight text-white [&::-webkit-details-marker]:hidden">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/15 ring-1 ring-violet-400/20">
-          <Globe className="h-4 w-4 text-violet-300" aria-hidden />
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-purple-500/20 ring-1 ring-purple-400/35">
+          <Globe className="h-4 w-4 text-purple-400" aria-hidden />
         </span>
         <span className="min-w-0 flex-1 leading-tight">Nostr Pages</span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition duration-200 group-open:rotate-180" />
+        <ChevronDown className="h-4 w-4 shrink-0 text-gray-400 transition duration-200 group-open:rotate-180 group-open:text-purple-400" />
       </summary>
 
       <div className="space-y-4 border-t border-violet-900/25 px-3 pb-3.5 pt-3">

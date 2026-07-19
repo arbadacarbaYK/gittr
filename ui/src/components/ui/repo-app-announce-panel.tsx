@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+const ZAPSTORE_PUBLISH_DOCS = "https://zapstore.dev/docs/publish";
+
 type RepoAppAnnouncePanelProps = {
   isOwnerSession: boolean;
   sourceUrl?: string | null;
@@ -32,6 +34,8 @@ type RepoAppAnnouncePanelProps = {
   ownerPubkeyHex: string;
   /** Optional NIP-34 a-tag: 30617:pubkey:repo */
   nip34Address?: string | null;
+  /** Persist app id onto the stored repo after a successful announce */
+  onAnnounced?: (appId: string) => void;
 };
 
 function ChecklistRow(props: {
@@ -71,6 +75,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
     repoSummary,
     ownerPubkeyHex,
     nip34Address,
+    onAnnounced,
   } = props;
   const { publish, subscribe, defaultRelays, remoteSigner } = useNostrContext();
 
@@ -94,19 +99,14 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
     async (withHash: boolean) => {
       if (!sourceUrl?.trim()) {
         setForge(null);
-        setError(
-          "Link a GitHub, Codeberg, or GitLab URL on this repo first (Settings → source)."
-        );
+        setError("Link a forge URL first (Settings → source).");
         return;
       }
       setLoading(true);
       if (withHash) setHashing(true);
       setError(null);
-      setPublishResult(null);
       try {
-        const qs = new URLSearchParams({
-          sourceUrl: sourceUrl.trim(),
-        });
+        const qs = new URLSearchParams({ sourceUrl: sourceUrl.trim() });
         if (withHash) qs.set("hash", "1");
         const res = await fetch(`/api/repo/forge-releases?${qs.toString()}`);
         const data = (await res.json()) as ForgeReleasesResult;
@@ -124,17 +124,21 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
             ? prev
             : first
         );
-        if (withHash) {
+        if (!data.release.apkAssets.length) {
+          setError(
+            `Release ${data.release.tag} has no .apk — attach an APK asset (source zips alone are not enough).`
+          );
+        } else if (withHash) {
           const missing = data.release.apkAssets.filter((a) => !a.sha256);
           if (missing.length > 0) {
             setError(
-              "Couldn’t verify the APK (download blocked or file too large). Try again or pick a smaller APK."
+              "Couldn’t verify the APK (download blocked or file too large)."
             );
           }
         }
       } catch (e) {
         setForge(null);
-        setError(e instanceof Error ? e.message : "Couldn’t load the release");
+        setError(e instanceof Error ? e.message : "Could not load release");
       } finally {
         setLoading(false);
         setHashing(false);
@@ -175,7 +179,6 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
     setError(null);
     setPublishResult(null);
     try {
-      // Ensure hashes if preview was without hash
       let forgeForPublish = forge;
       if (!selectedApk?.sha256) {
         setHashing(true);
@@ -211,6 +214,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
         version: result.version,
         whitelistHint: result.whitelistHint,
       });
+      onAnnounced?.(result.appId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Publish failed");
     } finally {
@@ -232,65 +236,57 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
       </summary>
 
       <div className="space-y-3 border-t border-emerald-900/25 px-3 pb-3.5 pt-3">
-        <p className="text-[11px] leading-relaxed text-zinc-400">
-          List this repo’s Android app on Nostr (shown in{" "}
+        <p className="text-[11px] leading-snug text-zinc-400">
+          List an Android APK from your forge{" "}
+          <strong className="font-medium text-zinc-300">Release</strong> on{" "}
           <Link
             href="/apps"
             className="text-emerald-300/90 underline-offset-2 hover:underline"
           >
             Apps
           </Link>
-          ). The install file stays on your GitHub / Codeberg / GitLab release —
-          we don’t host the APK. Showing up in Zapstore is optional and free.
+          . APK stays on the forge — gittr only publishes the Nostr announce.
         </p>
 
         <div className="space-y-0.5 border-b border-zinc-800/80 pb-3">
           <ChecklistRow
             ok={hasSource}
-            title={
-              hasSource
-                ? "GitHub / Codeberg / GitLab linked"
-                : "Link your GitHub, Codeberg, or GitLab repo"
-            }
+            title={hasSource ? "Forge linked" : "Link GitHub / Codeberg / GitLab"}
           />
           <ChecklistRow
-            ok={Boolean(forge)}
-            warning={Boolean(error && hasSource && !forge)}
+            ok={Boolean(forge?.release.apkAssets.length)}
+            warning={Boolean(error && hasSource && !forge?.release.apkAssets.length)}
             title={
-              forge
-                ? `Release ${forge.release.tag} · ${forge.release.apkAssets.length} APK ready`
-                : "Need a Release that includes an .apk file"
+              forge?.release.apkAssets.length
+                ? `${forge.release.tag} · ${forge.release.apkAssets.length} APK`
+                : "Release needs an .apk asset"
             }
           />
           <ChecklistRow
             ok={Boolean(selectedApk?.sha256)}
             title={
-              selectedApk?.sha256
-                ? "APK checked — ready to announce"
-                : "Check the APK (one-time download to verify the file)"
+              selectedApk?.sha256 ? "APK verified" : "Verify APK (one download)"
             }
           />
-          <ChecklistRow ok={isOwnerSession} title="You’re the repo owner" />
         </div>
 
         {error ? (
           <div
-            className="mb-3 rounded-md border border-amber-500/40 bg-amber-950/30 px-2.5 py-2 text-[11px] leading-snug text-amber-100"
+            className="rounded-md border border-amber-500/40 bg-amber-950/30 px-2.5 py-2 text-[11px] leading-snug text-amber-100"
             role="alert"
           >
             {error}
           </div>
         ) : null}
 
-        {forge ? (
-          <div className="mb-3 space-y-2">
+        {forge && forge.release.apkAssets.length > 0 ? (
+          <div className="space-y-2">
             <div className="rounded-md border border-zinc-800 bg-zinc-900/50 px-2.5 py-2">
               <p className="text-[11px] font-medium text-zinc-200">
                 {forge.release.name || forge.release.tag}
               </p>
               <p className="mt-0.5 text-[10px] text-zinc-500">
-                {forge.forge} · {forge.owner}/{forge.repo} · {forge.release.tag}
-                {forge.release.prerelease ? " (pre-release)" : ""}
+                {forge.forge} · {forge.owner}/{forge.repo}
               </p>
               <ul className="mt-2 space-y-1">
                 {forge.release.apkAssets.map((a) => (
@@ -309,11 +305,6 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
                           <span className="text-zinc-500">
                             {" "}
                             · {formatBytes(a.size)}
-                          </span>
-                        ) : null}
-                        {a.sha256 ? (
-                          <span className="block truncate font-mono text-[9px] text-zinc-500">
-                            {a.sha256.slice(0, 16)}…
                           </span>
                         ) : null}
                       </span>
@@ -336,7 +327,7 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
             </label>
             <label className="block space-y-1">
               <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-                Name people see
+                Display name
               </span>
               <Input
                 value={appName}
@@ -382,36 +373,51 @@ export function RepoAppAnnouncePanel(props: RepoAppAnnouncePanelProps) {
             disabled={!readyToPublish || publishing || hashing}
             onClick={() => void onPublish()}
           >
-            {publishing ? "Publishing on Nostr…" : "Publish on Nostr"}
+            {publishing ? "Publishing…" : "Publish on Nostr"}
           </Button>
         </div>
 
         {publishResult ? (
-          <div className="mt-3 rounded-md border border-emerald-500/35 bg-emerald-950/25 px-2.5 py-2 text-[11px] leading-snug text-emerald-100">
-            <p>
-              Live on Nostr as {publishResult.appId}@{publishResult.version}.
-              See{" "}
-              <Link href="/apps" className="underline underline-offset-2">
-                Apps
-              </Link>{" "}
-              (can take a moment).
-            </p>
+          <div className="rounded-md border border-emerald-500/35 bg-emerald-950/25 px-2.5 py-2 text-[11px] leading-snug text-emerald-100">
+            Live as {publishResult.appId}@{publishResult.version}. See{" "}
+            <Link href="/apps" className="underline underline-offset-2">
+              Apps
+            </Link>
+            .
             {publishResult.whitelistHint ? (
-              <p className="mt-2 text-amber-100/95">
-                Optional for Zapstore: add a small{" "}
+              <p className="mt-1.5 text-amber-100/95">
+                For Zapstore catalog indexing, add{" "}
                 <code className="rounded bg-zinc-900 px-1">zapstore.yaml</code>{" "}
-                in your forge repo (with your npub), then publish again. Your
-                listing on Nostr / gittr Apps already works without that.
+                at the forge repo root (pubkey + repository), then publish
+                again.{" "}
+                <a
+                  href={ZAPSTORE_PUBLISH_DOCS}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2"
+                >
+                  Zapstore publish docs
+                </a>
+                .
               </p>
             ) : null}
           </div>
-        ) : null}
-
-        <p className="text-[10px] leading-relaxed text-zinc-500">
-          Uses a <strong className="font-medium text-zinc-400">Release</strong>{" "}
-          with an APK (not just a git branch). Zapstore is optional extras — the
-          announce itself is on Nostr.
-        </p>
+        ) : (
+          <p className="text-[10px] leading-snug text-zinc-500">
+            Optional Zapstore: commit{" "}
+            <code className="rounded bg-zinc-900 px-1">zapstore.yaml</code> in
+            the forge repo — see{" "}
+            <a
+              href={ZAPSTORE_PUBLISH_DOCS}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-emerald-400/90 underline-offset-2 hover:underline"
+            >
+              zapstore.dev/docs/publish
+            </a>
+            .
+          </p>
+        )}
       </div>
     </details>
   );

@@ -111,6 +111,11 @@ export interface StoredRepo {
    * When set (after normalization), live URLs use this instead of the repo slug.
    */
   pagesSiteSlug?: string;
+  /**
+   * Android app id from the latest NIP-82 software announce published via gittr
+   * (used to keep an Apps directory link in repo.links on Push).
+   */
+  announcedAppId?: string;
 }
 
 const hasLocalChanges = (repo: StoredRepo): boolean =>

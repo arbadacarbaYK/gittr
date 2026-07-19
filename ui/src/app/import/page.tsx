@@ -1242,31 +1242,21 @@ export default function ImportPage() {
             });
           }
 
-          // Build links array - add GitHub Pages/homepage if available
-          const links: Array<{
-            type:
-              | "docs"
-              | "discord"
-              | "slack"
-              | "youtube"
-              | "twitter"
-              | "github"
-              | "other";
-            url: string;
-            label?: string;
-          }> = [];
-          if (
-            importData.homepage &&
-            typeof importData.homepage === "string" &&
-            importData.homepage.trim().length > 0
-          ) {
-            // Add GitHub Pages/website link with "OPEN HERE" label
-            links.push({
-              type: "docs",
-              url: importData.homepage.trim(),
-              label: "OPEN HERE",
-            });
-          }
+          // Settings-ready links: forge homepage / GitHub Pages guess
+          const { enrichRepoLinks } = await import(
+            "@/lib/repos/enrich-repo-links"
+          );
+          const links = enrichRepoLinks({
+            existing: [],
+            homepage:
+              typeof importData.homepage === "string"
+                ? importData.homepage
+                : null,
+            sourceUrl: repo.html_url || null,
+            siteOrigin:
+              typeof window !== "undefined" ? window.location.origin : null,
+            guessGithubPages: true,
+          });
 
           // Store files separately to avoid localStorage quota issues
           // Store files in a separate key, only keep file count in main repo object

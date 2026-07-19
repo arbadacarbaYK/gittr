@@ -238,6 +238,8 @@ NEXT_PUBLIC_GITTR_PAGES_URL=https://pages.your.domain
 
 **Push clone mirrors:** hosts from `GRASP_SERVERS_FOR_PUSHING` (env relays) plus the owner’s kind **10317** preferred GRASP list, merged host-deduped via `mergeGraspHostsForPush`. Exclusions in `GRASP_DOMAINS_EXCLUDED_FROM_PUSHING` (e.g. `git-01.uid.ovh`, `git.jb55.com`, `ngit-relay.nostrver.se` while unreachable) never get auto `clone` tags or sync waits — they stay in `KNOWN_GRASP_DOMAINS` for reading other people’s events.
 
+**Repo Links on 30617:** Settings docs links, forge homepage / GitHub Pages (import & refetch), live Nostr Pages URL, and an Apps link after Announce app are merged via `enrichRepoLinks` and written as NIP-34 `link` + `web` tags on Push. Sidebar parses those tags back on load.
+
 **gittr-mcp:** filter/CORS/`uploadpack` fixes on the git vhost apply to MCP users automatically when they clone that host. MCP **code** updates need `git pull` or a new `.mcpb` — see [gittr-mcp README](https://github.com/arbadacarbaYK/gittr-mcp#do-mcp-users-get-gittrs-filter--cors-server-fixes).
 
 ---

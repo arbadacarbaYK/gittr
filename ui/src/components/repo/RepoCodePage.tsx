@@ -55,6 +55,7 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
+import { enrichRepoLinks } from "@/lib/repos/enrich-repo-links";
 import {
   formatPushRepoSuccessAlert,
   pushRepoToNostr,
@@ -1233,18 +1234,6 @@ export function RepoCodePage() {
     maybeAutoClearForeignRepos();
   }, [maybeAutoClearForeignRepos]);
 
-  const repoLinksList = repoData?.links || [];
-  const linksPublished = useMemo(() => {
-    if (!repoLinksList || repoLinksList.length === 0) return false;
-    return Boolean(
-      (repoData as any)?.syncedFromNostr ||
-        (repoData as any)?.lastNostrEventId ||
-        (repoData as any)?.nostrEventId ||
-        (repoData as any)?.fromNostr ||
-        (repoData as any)?.lastNostrEventCreatedAt
-    );
-  }, [repoLinksList, repoData]);
-
   const copyCloneCommand = useCallback(async (command: string) => {
     try {
       if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -1500,6 +1489,40 @@ export function RepoCodePage() {
   const [effectiveSourceUrl, setEffectiveSourceUrl] = useState<string | null>(
     null
   ); // sourceUrl from local repo or Nostr event
+
+  const repoLinksList = useMemo(() => {
+    const pagesUrl =
+      pagesSiteListedByGateway === true
+        ? candidateGittrPagesUrls?.namedUrl || null
+        : null;
+    return enrichRepoLinks({
+      existing: (repoData?.links || []) as RepoLink[],
+      sourceUrl: repoData?.sourceUrl || effectiveSourceUrl || null,
+      nostrPagesUrl: pagesUrl,
+      announcedAppId:
+        (repoData as StoredRepo | null | undefined)?.announcedAppId || null,
+      siteOrigin:
+        typeof window !== "undefined" ? window.location.origin : null,
+      guessGithubPages: false,
+    }) as RepoLink[];
+  }, [
+    repoData?.links,
+    repoData?.sourceUrl,
+    repoData,
+    effectiveSourceUrl,
+    pagesSiteListedByGateway,
+    candidateGittrPagesUrls?.namedUrl,
+  ]);
+  const linksPublished = useMemo(() => {
+    if (!repoLinksList || repoLinksList.length === 0) return false;
+    return Boolean(
+      (repoData as any)?.syncedFromNostr ||
+        (repoData as any)?.lastNostrEventId ||
+        (repoData as any)?.nostrEventId ||
+        (repoData as any)?.fromNostr ||
+        (repoData as any)?.lastNostrEventCreatedAt
+    );
+  }, [repoLinksList, repoData]);
 
   // Bump this when a push finishes (or is cancelled) so a pending watchdog
   // cannot fire while a blocking alert() is open — React state alone is not
@@ -18204,27 +18227,29 @@ export function RepoCodePage() {
                                       const existingRepo = repos[repoIndex];
                                       if (!existingRepo) return;
 
-                                      // Build links array - add GitHub Pages if available
-                                      const links = existingRepo.links || [];
-                                      if (
-                                        importData.homepage &&
-                                        typeof importData.homepage ===
-                                          "string" &&
-                                        importData.homepage.trim().length > 0
-                                      ) {
-                                        // Check if homepage link already exists
-                                        const homepageExists = links.some(
-                                          (l: any) =>
-                                            l.url === importData.homepage.trim()
-                                        );
-                                        if (!homepageExists) {
-                                          links.push({
-                                            type: "docs",
-                                            url: importData.homepage.trim(),
-                                            label: "OPEN HERE",
-                                          });
-                                        }
-                                      }
+                                      // Settings docs + forge homepage / GitHub Pages
+                                      const links = enrichRepoLinks({
+                                        existing: existingRepo.links || [],
+                                        homepage:
+                                          typeof importData.homepage ===
+                                            "string"
+                                            ? importData.homepage
+                                            : null,
+                                        sourceUrl:
+                                          existingRepo.sourceUrl ||
+                                          (typeof importData.sourceUrl ===
+                                          "string"
+                                            ? importData.sourceUrl
+                                            : null) ||
+                                          null,
+                                        announcedAppId:
+                                          existingRepo.announcedAppId || null,
+                                        siteOrigin:
+                                          typeof window !== "undefined"
+                                            ? window.location.origin
+                                            : null,
+                                        guessGithubPages: true,
+                                      });
 
                                       // CRITICAL: Refetch is a FULL REPLACEMENT from GitHub (source of truth)
                                       // This means:
@@ -20539,6 +20564,27 @@ export function RepoCodePage() {
                               if (!/^[0-9a-f]{64}$/.test(owner)) return null;
                               return `30617:${owner}:${decodedRepo}`;
                             })()}
+                            onAnnounced={(announcedAppId) => {
+                              try {
+                                const repos = loadStoredRepos();
+                                const updated = repos.map((r) => {
+                                  const matches =
+                                    (r.repo === resolvedParams.repo ||
+                                      r.slug === resolvedParams.repo) &&
+                                    r.entity === resolvedParams.entity;
+                                  if (!matches) return r;
+                                  return { ...r, announcedAppId };
+                                });
+                                saveStoredRepos(updated);
+                              } catch {
+                                /* ignore */
+                              }
+                              setRepoData((prev: any) =>
+                                prev
+                                  ? { ...prev, announcedAppId }
+                                  : prev
+                              );
+                            }}
                           />
                         ) : null}
                       </div>
