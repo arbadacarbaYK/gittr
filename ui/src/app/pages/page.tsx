@@ -5,7 +5,7 @@ import { GittrPagesClient } from "./GittrPagesClient";
 export const metadata: Metadata = {
   title: "Published pages",
   description:
-    "Sites published on Nostr and cached by the gittr Pages gateway — open each site in a new tab.",
+    "Sites published on Nostr and cached by the Nostr Pages gateway — open each site in a new tab.",
 };
 
 const pagesBase = (

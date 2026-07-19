@@ -14,6 +14,7 @@ import type { RepoLink } from "@/components/ui/repo-links";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
+  KIND_DELETION,
   KIND_REPOSITORY_NIP34,
   createRepositoryEvent,
   createRepositoryEventNip07,
@@ -706,40 +707,23 @@ export default function RepoSettingsPage() {
               };
 
               let deletionEvent: any;
-              if (hasNip07 && window.nostr) {
-                // Use NIP-07 (supports remote signer)
-                // CRITICAL: Add timeout for mobile NIP-07 signing (can hang)
-                const { getEventHash } = await import("nostr-tools");
-                const authorPubkey = await window.nostr.getPublicKey();
-                deletionEvent = {
-                  kind: KIND_REPOSITORY_NIP34,
-                  created_at: Math.floor(Date.now() / 1000),
-                  tags: [
-                    ["d", repo],
-                    ["name", repo],
-                    ...(repoWithExtras.description
-                      ? [["description", repoWithExtras.description]]
-                      : []),
-                    ...(repoWithExtras.sourceUrl
-                      ? [["source", repoWithExtras.sourceUrl]]
-                      : []),
-                    ...(repoWithExtras.forkedFrom
-                      ? [["forkedFrom", repoWithExtras.forkedFrom]]
-                      : []),
-                  ],
-                  content: JSON.stringify({
-                    deleted: true,
-                    publicRead: repoWithExtras.publicRead !== false,
-                    publicWrite: false,
-                  }),
-                  pubkey: authorPubkey,
-                  id: "",
-                  sig: "",
-                };
-                deletionEvent.id = getEventHash(deletionEvent);
+              const deletionPayload = {
+                repositoryName: repo,
+                name: repo,
+                publicRead: repoWithExtras.publicRead !== false,
+                publicWrite: false,
+                description: repoToDelete.description,
+                deleted: true as const,
+                sourceUrl: repoWithExtras.sourceUrl,
+                forkedFrom: repoWithExtras.forkedFrom,
+              };
 
-                // CRITICAL: Add timeout for NIP-07 signing on mobile (can hang)
-                const signPromise = window.nostr.signEvent(deletionEvent);
+              if (hasNip07 && window.nostr) {
+                // Prefer shared builder so tags + content markers stay consistent
+                const signPromise = createRepositoryEventNip07(
+                  deletionPayload,
+                  window.nostr
+                );
                 const timeoutPromise = new Promise((_, reject) =>
                   setTimeout(
                     () =>
@@ -752,18 +736,8 @@ export default function RepoSettingsPage() {
                   timeoutPromise,
                 ]);
               } else if (privateKey) {
-                // Use private key (fallback)
                 deletionEvent = createRepositoryEvent(
-                  {
-                    repositoryName: repo,
-                    publicRead: repoWithExtras.publicRead !== false,
-                    publicWrite: false,
-                    description: repoToDelete.description,
-                    deleted: true, // Mark as deleted on Nostr - other clients will respect this
-                    // Preserve other metadata for context
-                    sourceUrl: repoWithExtras.sourceUrl,
-                    forkedFrom: repoWithExtras.forkedFrom,
-                  },
+                  deletionPayload,
                   privateKey
                 );
               } else {
@@ -783,6 +757,67 @@ export default function RepoSettingsPage() {
                   error
                 );
                 // Local deletion is already done, so this is just a warning
+              }
+
+              // Also publish NIP-09 kind 5 pointing at the addressable 30617
+              // so clients that only honor deletions still drop the repo.
+              try {
+                const { getEventHash } = await import("nostr-tools");
+                const authorPubkey =
+                  (deletionEvent?.pubkey as string) ||
+                  (hasNip07 && window.nostr
+                    ? await window.nostr.getPublicKey()
+                    : "");
+                if (authorPubkey) {
+                  const aTag = `30617:${authorPubkey.toLowerCase()}:${repo}`;
+                  const priorEventId =
+                    (repoToDelete as StoredRepo & {
+                      lastNostrEventId?: string;
+                    })?.lastNostrEventId || "";
+                  let kind5: any = {
+                    kind: KIND_DELETION,
+                    created_at: Math.floor(Date.now() / 1000),
+                    tags: [
+                      ["a", aTag],
+                      // Prefer prior announcement id if known (not the new tombstone)
+                      ...(priorEventId ? [["e", priorEventId]] : []),
+                    ],
+                    content: `Deleted repository ${repo}`,
+                    pubkey: authorPubkey.toLowerCase(),
+                    id: "",
+                    sig: "",
+                  };
+                  kind5.id = getEventHash(kind5);
+                  if (hasNip07 && window.nostr) {
+                    kind5 = await Promise.race([
+                      window.nostr.signEvent(kind5),
+                      new Promise((_, reject) =>
+                        setTimeout(
+                          () =>
+                            reject(
+                              new Error("Signing timeout - please try again")
+                            ),
+                          30000
+                        )
+                      ),
+                    ]);
+                  } else if (privateKey) {
+                    const { signEvent } = await import("nostr-tools");
+                    kind5.sig = signEvent(kind5, privateKey);
+                  }
+                  if (kind5?.sig) {
+                    publish(kind5, defaultRelays);
+                    console.log(
+                      "✅ Published NIP-09 kind 5 for deleted repository address",
+                      aTag
+                    );
+                  }
+                }
+              } catch (error: any) {
+                console.warn(
+                  "NIP-09 kind 5 for repo delete failed (soft-delete 30617 still published):",
+                  error
+                );
               }
             }
           } catch (error: any) {

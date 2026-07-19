@@ -25,6 +25,7 @@ import {
   KIND_STATUS_APPLIED,
   KIND_STATUS_CLOSED,
 } from "./nostr/events";
+import { isRepoAnnouncementDeleted } from "./nostr/repo-deleted";
 import { isPublicReadFromEvent } from "./nostr/repo-public-read";
 import {
   getRepoOwnerPubkey,
@@ -1091,6 +1092,10 @@ export function countRepoActivitiesFromNostr(
           const repoName = dTag?.[1];
           if (repoName && event.pubkey && typeof repoName === "string") {
             const repoId = `${event.pubkey}/${repoName}`;
+            if (isRepoAnnouncementDeleted(event)) {
+              repoMap.delete(repoId);
+              return;
+            }
             if (!isPublicReadFromEvent(event)) {
               privateRepoIds.add(repoId);
               repoMap.delete(repoId);
@@ -1400,8 +1405,9 @@ export function countUserActivitiesFromNostr(
           lastActivity: event.created_at * 1000,
         };
 
-        // Count repo announcements (kind 30617)
+        // Count repo announcements (kind 30617) — skip soft-deleted tombstones
         if (event.kind === KIND_REPOSITORY_NIP34) {
+          if (isRepoAnnouncementDeleted(event)) return;
           const dTag = event.tags?.find(
             (t: any) => Array.isArray(t) && t[0] === "d"
           );
@@ -1743,6 +1749,11 @@ export function getLiveRecentReposFromNostr(
           );
           if (!repoName) return;
           const repoKey = `${ownerHex}/${repoName}`;
+          // Soft-delete tombstone (content/tags) — remove from recent list
+          if (isRepoAnnouncementDeleted(event)) {
+            byKey.delete(repoKey);
+            return;
+          }
           if (!isPublicReadFromEvent(event)) {
             privateRepoIds.add(repoKey);
             byKey.delete(repoKey);
@@ -1878,6 +1889,7 @@ export function getRecentPlatformActivitiesFromNostr(
             typeof nameTag?.[1] === "string" ? nameTag[1] : ""
           );
           if (!repoName || !user) return;
+          if (isRepoAnnouncementDeleted(event)) return;
           if (!isPublicReadFromEvent(event)) return;
           if (shouldHideNip34EventForUnusableClones(event)) return;
           const entity = hexPubkeyToNpub(user);

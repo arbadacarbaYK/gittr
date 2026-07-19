@@ -115,7 +115,7 @@ export function GittrPagesClient({ pagesBase }: GittrPagesClientProps) {
                 className="h-3.5 w-3.5 text-[var(--color-accent-primary)]"
                 aria-hidden
               />
-              gittr Pages
+              Nostr Pages
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-white md:text-4xl">
               Published sites

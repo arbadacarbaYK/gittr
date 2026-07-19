@@ -19,6 +19,7 @@ import {
 } from "@/lib/moderation/publisher-blocklist";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
+import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
 import {
   formatPushRepoSuccessAlert,
   pushRepoToNostr,
@@ -1095,6 +1096,8 @@ export default function RepositoriesPage() {
               if (repoData.publicWrite === undefined) {
                 repoData.publicWrite = false;
               }
+              // gittr soft-delete on 30617 (content JSON and/or tags)
+              applyDeletionMarkersToRepoData(repoData, event);
             } else {
               try {
                 repoData = JSON.parse(event.content);

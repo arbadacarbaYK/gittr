@@ -20,6 +20,7 @@ import {
 } from "@/lib/nostr/clone-url-quality";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
+import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
 import {
   type Metadata,
   useContributorMetadata,
@@ -172,6 +173,9 @@ function parseNIP34Repository(event: any): any {
   if (repoData.publicWrite === undefined) {
     repoData.publicWrite = false;
   }
+
+  // gittr soft-delete: content JSON and/or deleted/archived tags (not core NIP-34)
+  applyDeletionMarkersToRepoData(repoData, event);
 
   return repoData;
 }
@@ -1581,16 +1585,6 @@ function ExplorePageContent() {
               return false;
             });
 
-            // Skip if repo was locally deleted
-            if (isDeleted) {
-              return;
-            }
-
-            // CRITICAL: Check if repo owner marked it as deleted/archived on Nostr
-            if (repoData.deleted === true || repoData.archived === true) {
-              return;
-            }
-
             // Normalize repo name for comparison (handle underscores vs hyphens, case-insensitive)
             const normalizeRepoName = (name: string): string => {
               if (!name) return "";
@@ -1599,6 +1593,50 @@ function ExplorePageContent() {
             const normalizedRepoName = normalizeRepoName(
               repoData.repositoryName
             );
+
+            // Skip if repo was locally deleted OR owner soft-deleted on Nostr.
+            // Also purge any earlier copy that was already in the Explore list
+            // (tombstones are newer replaceable events and otherwise sort to the top).
+            if (
+              isDeleted ||
+              repoData.deleted === true ||
+              repoData.archived === true
+            ) {
+              const purged = existingRepos.filter((r: any) => {
+                const rRepoNormalized = normalizeRepoName(
+                  r.repo || r.slug || ""
+                );
+                const sameRepo = rRepoNormalized === normalizedRepoName;
+                if (!sameRepo) return true;
+                if (
+                  r.ownerPubkey &&
+                  r.ownerPubkey.toLowerCase() === event.pubkey.toLowerCase()
+                ) {
+                  return false;
+                }
+                if (r.entity === entity || r.entity === event.pubkey) {
+                  return false;
+                }
+                return true;
+              });
+              if (purged.length !== existingRepos.length) {
+                if (typeof window !== "undefined") {
+                  localStorage.setItem(
+                    "gittr_repos",
+                    JSON.stringify(purged)
+                  );
+                }
+                setRepos(
+                  purged.filter(
+                    (r: any) =>
+                      r.deleted !== true &&
+                      r.archived !== true &&
+                      !r.hiddenFromExplore
+                  )
+                );
+              }
+              return;
+            }
 
             // Check if this repo already exists (match by ownerPubkey first, then entity)
             // CRITICAL: Use ownerPubkey as primary key for matching to avoid duplicates

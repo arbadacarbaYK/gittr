@@ -5,6 +5,7 @@ import {
 } from "@/lib/nostr/clone-url-quality";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getDefaultRelayUrls } from "@/lib/nostr/relay-env";
+import { isRepoAnnouncementDeleted } from "@/lib/nostr/repo-deleted";
 import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
 
 import { type Event, SimplePool, nip19 } from "nostr-tools";
@@ -132,6 +133,8 @@ export async function fetchSitemapRepoPathsFromNostr(): Promise<
       if (isPublisherBlocklisted(ev.pubkey)) continue;
       if (deletedIds.has(ev.id)) continue;
       if (isDeletedNip34(ev, deletedAddresses)) continue;
+      // gittr soft-delete: replaceable 30617 with content/tags deleted:true
+      if (isRepoAnnouncementDeleted(ev)) continue;
       if (!isPublicReadFromEvent(ev)) continue;
       if (shouldHideNip34EventForUnusableClones(ev)) continue;
       const dRaw = getTag(ev, "d");
@@ -152,6 +155,7 @@ export async function fetchSitemapRepoPathsFromNostr(): Promise<
     for (const ev of kind51ByKey.values()) {
       if (isPublisherBlocklisted(ev.pubkey)) continue;
       if (deletedIds.has(ev.id)) continue;
+      if (isRepoAnnouncementDeleted(ev)) continue;
       if (!isPublicReadFromEvent(ev)) continue;
       const name = parseKind51RepoName(ev.content);
       if (!name) continue;

@@ -438,14 +438,34 @@ export function buildUnsignedRepositoryEvent(
   tags.push(["public-read", normalizedPublicRead ? "true" : "false"]);
   tags.push(["public-write", normalizedPublicWrite ? "true" : "false"]);
 
-  // NIP-34: Content field MUST be empty per spec
-  // All metadata goes in tags, not in content
-  // Bridge compatibility: Metadata is sent to bridge via /api/nostr/repo/event endpoint separately
+  // Soft-delete / archive markers (gittr extension; replaceable 30617 with same `d`)
+  const isDeleted = repo.deleted === true;
+  const isArchived = !isDeleted && repo.archived === true;
+  if (isDeleted) {
+    tags.push(["deleted", "true"]);
+    tags.push(["status", "deleted"]);
+  } else if (isArchived) {
+    tags.push(["archived", "true"]);
+    tags.push(["status", "archived"]);
+  }
+
+  // NIP-34: Content is normally empty. Soft-delete/archive also set JSON content
+  // so clients that only parse content (and older gittr builds) still hide the repo.
+  let content = "";
+  if (isDeleted || isArchived) {
+    content = JSON.stringify({
+      deleted: isDeleted,
+      archived: isArchived,
+      publicRead: normalizedPublicRead,
+      publicWrite: false,
+    });
+  }
+
   const event = {
     kind: KIND_REPOSITORY_NIP34, // NIP-34: Use kind 30617 instead of 51
     created_at: Math.floor(Date.now() / 1000),
     tags,
-    content: "", // NIP-34: Content MUST be empty - all metadata in tags
+    content,
     pubkey,
     id: "",
     sig: "",

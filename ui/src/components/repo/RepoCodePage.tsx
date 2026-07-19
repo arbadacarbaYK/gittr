@@ -19534,65 +19534,10 @@ export function RepoCodePage() {
                                 : "Refetch from Nostr"}
                             </Button>
                             <p className="text-xs text-gray-500 mt-1 mb-2 px-1">
-                              ⚠️ Refetch replaces files in local storage with
-                              those from{" "}
-                              {hasSourceUrl
-                                ? `the source (${
-                                    effectiveSourceUrl || repo.sourceUrl
-                                  })`
-                                : "Nostr"}
-                              . Unpushed local edits can be lost.
-                              {hasSourceUrl
-                                ? " Nostr-only PRs and Issues can be out of sync after refetch and need to be handled again."
-                                : null}
+                              Replaces local files
+                              {hasSourceUrl ? " from the linked source" : " from Nostr"}
+                              . Unpushed edits can be lost.
                             </p>
-                            {hasSourceUrl ? (
-                              <details
-                                className="text-xs text-gray-500 mt-1 mb-2 px-1 group"
-                                aria-label="More details about Nostr PRs and issues after refetch from source"
-                              >
-                                <summary className="cursor-pointer theme-accent-primary hover:opacity-90 list-none [&::-webkit-details-marker]:hidden flex items-center gap-1">
-                                  <span>More</span>
-                                  <ChevronDown
-                                    className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180"
-                                    aria-hidden
-                                  />
-                                </summary>
-                                <div className="mt-2 space-y-2 border-l border-zinc-600 pl-2 text-[11px] leading-snug text-gray-400">
-                                  <p>
-                                    GitHub rows only replace local entries with
-                                    ids like{" "}
-                                    <code className="text-gray-300">
-                                      issue-#
-                                    </code>{" "}
-                                    /{" "}
-                                    <code className="text-gray-300">pr-#</code>.
-                                    Nostr-only rows (relay ids) stay listed but
-                                    are <strong>not</strong> reconciled with
-                                    GitHub or with the new file tree.
-                                  </p>
-                                  <p>
-                                    Events on relays are unchanged—people may
-                                    still see old PRs. Your job after refetch is
-                                    to treat those PRs as{" "}
-                                    <strong>maybe invalid</strong> until you
-                                    open them, check the diff against current
-                                    files, merge again if appropriate, then{" "}
-                                    <strong>Push to Nostr</strong> so followers
-                                    get one matching repo state.
-                                  </p>
-                                  <p>
-                                    Numbered PR merged only in gittr while
-                                    GitHub still shows it open stays merged here
-                                    and is flagged (
-                                    <span className="text-amber-500/90">
-                                      upstream still open
-                                    </span>
-                                    ).
-                                  </p>
-                                </div>
-                              </details>
-                            ) : null}
                           </>
                         )}
 
@@ -20143,7 +20088,7 @@ export function RepoCodePage() {
                         {gittrPagesUrls && pagesSiteListedByGateway === true ? (
                           <div className="mb-3 rounded-md border border-violet-900/25 bg-violet-950/10 px-2.5 py-2 text-[11px] text-zinc-400">
                             <span className="font-medium text-zinc-300">
-                              gittr Pages
+                              Nostr Pages
                             </span>
                             <span className="mx-1.5 text-zinc-600">·</span>
                             <a
@@ -20748,7 +20693,7 @@ export function RepoCodePage() {
                     href="/help#gittr-pages"
                     className="text-purple-400 hover:underline"
                   >
-                    gittr Pages
+                    Nostr Pages
                   </Link>
                 </li>
                 <li>

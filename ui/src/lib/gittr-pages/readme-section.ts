@@ -19,7 +19,7 @@ export function buildGittrPagesReadmeAppend(
   return `
 
 ${GITTR_PAGES_README_BEGIN}
-## gittr Pages
+## Nostr Pages
 
 **Live site** (\`${dTag}\`): ${namedUrl}
 

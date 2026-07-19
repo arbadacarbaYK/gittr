@@ -263,7 +263,7 @@ export function RepoGittrPagesPanel({
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/15 ring-1 ring-violet-400/20">
           <Globe className="h-4 w-4 text-violet-300" aria-hidden />
         </span>
-        <span className="min-w-0 flex-1 leading-tight">gittr Pages</span>
+        <span className="min-w-0 flex-1 leading-tight">Nostr Pages</span>
         <ChevronDown className="h-4 w-4 shrink-0 text-zinc-500 transition duration-200 group-open:rotate-180" />
       </summary>
 

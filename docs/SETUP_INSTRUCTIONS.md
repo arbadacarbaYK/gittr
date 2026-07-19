@@ -92,6 +92,7 @@ Optional: tie refresh to your SEO/repo-discovery cron by hitting the same URL af
 The **Recent repositories** strip is **not** taken from the 3h leaderboard snapshot. It uses a separate endpoint so pushes show up without waiting for the heavy platform stats job:
 
 - **`GET /api/stats/recent-repos`** — queries Nostr relays for the latest kind **30617/30618** announcements, sorted by `created_at`, returns up to 12 repos.
+- Soft-deleted repos (`content`/`tags` with `deleted:true`, see `repo-deleted.ts`) are excluded — a delete republish must not appear as a “new” recent repo.
 - **Server cache ~45s** (`Cache-Control` + in-memory) so the homepage can poll without hammering relays.
 - The UI shows this list for **both logged-in and logged-out** users (do not substitute the visitor’s localStorage sync — that caused mismatched homepage lists).
 - Warm after deploy: `curl -sS https://YOUR_DOMAIN/api/stats/recent-repos | head` (first call can take several seconds while relays respond).

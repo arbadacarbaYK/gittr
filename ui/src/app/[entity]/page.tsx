@@ -19,6 +19,11 @@ import {
   syncIssuesAndPRsFromNostr,
   syncUserCommitsFromBridge,
 } from "@/lib/activity-tracking";
+import {
+  loadContactListBackup,
+  parseContactListPubkeys,
+  saveContactListBackup,
+} from "@/lib/nostr/contact-list";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
   KIND_ISSUE,
@@ -28,6 +33,7 @@ import {
   KIND_STATUS_APPLIED,
   KIND_STATUS_CLOSED,
 } from "@/lib/nostr/events";
+import { applyDeletionMarkersToRepoData } from "@/lib/nostr/repo-deleted";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
@@ -122,16 +128,15 @@ function mergeProfileRepoList(prev: any[], next: any[]): any[] {
     const existing = map.get(k);
     if (!existing || latestMs(r) > latestMs(existing)) {
       // Keep explicit private from either side when the newer row omitted it
-      const merged =
-        !existing
-          ? r
-          : {
-              ...r,
-              publicRead:
-                r.publicRead === false || existing.publicRead === false
-                  ? false
-                  : r.publicRead ?? existing.publicRead,
-            };
+      const merged = !existing
+        ? r
+        : {
+            ...r,
+            publicRead:
+              r.publicRead === false || existing.publicRead === false
+                ? false
+                : r.publicRead ?? existing.publicRead,
+          };
       map.set(k, merged);
     } else if (existing && r.publicRead === false) {
       map.set(k, { ...existing, publicRead: false });
@@ -222,6 +227,9 @@ function parseNIP34Repository(event: any): any {
   if (repoData.publicWrite === undefined) {
     repoData.publicWrite = false;
   }
+
+  // gittr soft-delete: content JSON and/or deleted/archived tags
+  applyDeletionMarkersToRepoData(repoData, event);
 
   return repoData;
 }
@@ -323,6 +331,9 @@ export default function EntityPage({
   const [followingLoading, setFollowingLoading] = useState(false);
   const [pictureLoadFailed, setPictureLoadFailed] = useState(false);
   const [contactList, setContactList] = useState<string[]>([]);
+  /** Shown when follow would risk wiping an unloaded contact list (Enter = dismiss / cancel). */
+  const [followListRiskOpen, setFollowListRiskOpen] = useState(false);
+  const followRiskCancelRef = useRef<HTMLButtonElement | null>(null);
 
   // CRITICAL: Only fetch metadata if we have a valid 64-char pubkey
   // Don't wait for isPubkey - if we have a full pubkey, fetch metadata immediately
@@ -2691,80 +2702,27 @@ export default function EntityPage({
     )
       return;
 
+    // Prefer newest kind 3 across relays (limit>1; keep max created_at)
+    let bestCreatedAt = -1;
     const unsub = subscribe(
       [
         {
-          kinds: [3], // Contact list
+          kinds: [3],
           authors: [currentUserPubkey],
-          limit: 1,
+          limit: 5,
         },
       ],
       defaultRelays,
       (event) => {
-        if (event.kind === 3) {
-          try {
-            const contacts = JSON.parse(event.content);
-            if (
-              contacts &&
-              typeof contacts === "object" &&
-              contacts.p &&
-              Array.isArray(contacts.p)
-            ) {
-              const pubkeys = contacts.p
-                .map((p: any) =>
-                  typeof p === "string" ? p : p[0] || p.pubkey || ""
-                )
-                .filter(
-                  (p: string) => p && typeof p === "string" && p.length > 0
-                )
-                .map((p: string) => p.toLowerCase());
-              setContactList(pubkeys);
-              setIsFollowing(pubkeys.includes(fullPubkeyForMeta.toLowerCase()));
-            } else {
-              // Also check tags as fallback (some clients use tags instead of content)
-              const pTags = event.tags
-                .filter((tag) => tag[0] === "p" && tag[1])
-                .map((tag) => tag[1] as string)
-                .filter((p: string) => p && p.length > 0)
-                .map((p: string) => p.toLowerCase());
-              if (pTags.length > 0) {
-                setContactList(pTags);
-                setIsFollowing(pTags.includes(fullPubkeyForMeta.toLowerCase()));
-              } else {
-                setContactList([]);
-                setIsFollowing(false);
-              }
-            }
-          } catch (e) {
-            console.error(
-              "Failed to parse contact list:",
-              e,
-              "Content:",
-              event.content?.slice(0, 100)
-            );
-            // Fallback: extract from tags
-            try {
-              const pTags = event.tags
-                .filter((tag) => tag[0] === "p" && tag[1])
-                .map((tag) => tag[1] as string)
-                .filter((p: string) => p && p.length > 0)
-                .map((p: string) => p.toLowerCase());
-              if (pTags.length > 0) {
-                setContactList(pTags);
-                setIsFollowing(pTags.includes(fullPubkeyForMeta.toLowerCase()));
-              } else {
-                setContactList([]);
-                setIsFollowing(false);
-              }
-            } catch (tagError) {
-              console.error(
-                "Failed to parse contact list from tags:",
-                tagError
-              );
-              setContactList([]);
-              setIsFollowing(false);
-            }
-          }
+        if (event.kind !== 3) return;
+        const created = event.created_at || 0;
+        if (created < bestCreatedAt) return;
+        bestCreatedAt = created;
+        const pubkeys = parseContactListPubkeys(event);
+        setContactList(pubkeys);
+        setIsFollowing(pubkeys.includes(fullPubkeyForMeta.toLowerCase()));
+        if (pubkeys.length > 0) {
+          saveContactListBackup(currentUserPubkey, pubkeys);
         }
       },
       undefined,
@@ -2783,6 +2741,23 @@ export default function EntityPage({
     defaultRelays,
     fullPubkeyForMeta,
   ]);
+
+  // Enter / Escape on the follow-list risk dialog always cancel (never confirm wipe).
+  useEffect(() => {
+    if (!followListRiskOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        setFollowListRiskOpen(false);
+        setFollowingLoading(false);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    // Autofocus Cancel so the safe action is the keyboard default
+    requestAnimationFrame(() => followRiskCancelRef.current?.focus());
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [followListRiskOpen]);
 
   // Handle follow/unfollow
   const handleFollow = async () => {
@@ -2869,10 +2844,9 @@ export default function EntityPage({
         signerPubkey = getPublicKey(pk);
       }
 
-      // CRITICAL: Fetch current contact list from Nostr BEFORE modifying it
-      // Don't rely on state which might be empty if subscription hasn't completed yet
-      // `uncertainEmpty`: true when we might be missing follows (timeout/error + no local list).
-      // Then we must not publish a one-contact kind 3 without explicit user consent.
+      // CRITICAL: Fetch current contact list from Nostr BEFORE modifying it.
+      // `uncertainEmpty`: timeout/error and no usable list — NEVER publish in that case
+      // (replaceable kind 3 would wipe follows). Enter on the risk dialog = Cancel.
       let currentContacts: string[] = [];
       let uncertainEmpty = false;
       try {
@@ -2881,6 +2855,9 @@ export default function EntityPage({
           uncertainEmpty: boolean;
         }>((resolve) => {
           let resolved = false;
+          let bestCreatedAt = -1;
+          let bestContacts: string[] | null = null;
+
           const finish = (contacts: string[], uncertain: boolean) => {
             if (resolved) return;
             resolved = true;
@@ -2888,100 +2865,78 @@ export default function EntityPage({
           };
 
           const timeout = setTimeout(() => {
-            if (!resolved) {
-              clearTimeout(timeout);
-              const fromState = contactList.map((p) => p.toLowerCase());
+            if (resolved) return;
+            if (bestContacts) {
+              console.warn(
+                "⚠️ [Follow] Timeout; using best kind 3 received so far"
+              );
+              finish(bestContacts, false);
+              return;
+            }
+            const fromState = contactList.map((p) => p.toLowerCase());
+            const fromBackup = loadContactListBackup(signerPubkey);
+            if (fromState.length > 0) {
+              console.warn(
+                "⚠️ [Follow] Timeout fetching contact list, using in-memory state"
+              );
+              finish(fromState, false);
+            } else if (fromBackup.length > 0) {
+              console.warn(
+                `⚠️ [Follow] Timeout; restored ${fromBackup.length} contacts from local backup`
+              );
+              finish(fromBackup, false);
+            } else {
               console.warn(
                 "⚠️ [Follow] Timeout fetching contact list, using state as fallback"
               );
-              finish(fromState, fromState.length === 0);
+              finish([], true);
             }
-          }, 8000);
+          }, 12000);
 
           const unsub = subscribe(
             [
               {
-                kinds: [3], // Contact list
+                kinds: [3],
                 authors: [signerPubkey],
-                limit: 1,
+                limit: 5,
               },
             ],
             defaultRelays,
             (event) => {
-              if (event.kind === 3 && !resolved) {
-                clearTimeout(timeout);
-                try {
-                  const contacts = JSON.parse(event.content);
-                  if (
-                    contacts &&
-                    typeof contacts === "object" &&
-                    contacts.p &&
-                    Array.isArray(contacts.p)
-                  ) {
-                    const pubkeys = contacts.p
-                      .map((p: any) =>
-                        typeof p === "string" ? p : p[0] || p.pubkey || ""
-                      )
-                      .filter(
-                        (p: string) =>
-                          p && typeof p === "string" && p.length > 0
-                      )
-                      .map((p: string) => p.toLowerCase());
-                    console.log(
-                      `✅ [Follow] Fetched ${pubkeys.length} contacts from Nostr`
-                    );
-                    finish(pubkeys, false);
-                  } else {
-                    // Also check tags as fallback (some clients use tags instead of content)
-                    const pTags = event.tags
-                      .filter((tag) => tag[0] === "p" && tag[1])
-                      .map((tag) => tag[1] as string)
-                      .filter((p: string) => p && p.length > 0)
-                      .map((p: string) => p.toLowerCase());
-                    if (pTags.length > 0) {
-                      console.log(
-                        `✅ [Follow] Fetched ${pTags.length} contacts from tags`
-                      );
-                      finish(pTags, false);
-                    } else {
-                      console.warn(
-                        "⚠️ [Follow] Contact list event has no contacts"
-                      );
-                      finish([], false);
-                    }
-                  }
-                } catch (e) {
-                  console.error("❌ [Follow] Failed to parse contact list:", e);
-                  // Fallback: extract from tags
-                  const pTags = event.tags
-                    .filter((tag) => tag[0] === "p" && tag[1])
-                    .map((tag) => tag[1] as string)
-                    .filter((p: string) => p && p.length > 0)
-                    .map((p: string) => p.toLowerCase());
-                  if (pTags.length > 0) {
-                    finish(pTags, false);
-                  } else if (contactList.length > 0) {
-                    finish(
-                      contactList.map((p) => p.toLowerCase()),
-                      false
-                    );
-                  } else {
-                    finish([], false);
-                  }
-                }
-                if (unsub) unsub();
-              }
+              if (event.kind !== 3 || resolved) return;
+              const created = event.created_at || 0;
+              if (created < bestCreatedAt) return;
+              bestCreatedAt = created;
+              const pubkeys = parseContactListPubkeys(event);
+              bestContacts = pubkeys;
+              console.log(
+                `✅ [Follow] Fetched ${pubkeys.length} contacts from Nostr (created_at=${created})`
+              );
             },
             undefined,
             () => {
-              if (!resolved) {
-                clearTimeout(timeout);
+              if (resolved) {
+                if (unsub) unsub();
+                return;
+              }
+              clearTimeout(timeout);
+              if (bestContacts) {
+                finish(bestContacts, false);
+              } else {
                 const fromState = contactList.map((p) => p.toLowerCase());
-                console.warn(
-                  "⚠️ [Follow] Subscription ended without event, using state as fallback"
-                );
-                // Relays finished with no kind 3: empty list here is expected for first-time follows.
-                finish(fromState, false);
+                const fromBackup = loadContactListBackup(signerPubkey);
+                if (fromState.length > 0) {
+                  finish(fromState, false);
+                } else if (fromBackup.length > 0) {
+                  finish(fromBackup, false);
+                } else {
+                  // No kind 3 on relays after EOSE: treat as genuinely empty
+                  // (first-time follow). Timeouts use uncertainEmpty instead.
+                  console.warn(
+                    "⚠️ [Follow] Subscription ended without event, using state as fallback"
+                  );
+                  finish(fromState, false);
+                }
               }
               if (unsub) unsub();
             }
@@ -2991,16 +2946,22 @@ export default function EntityPage({
         const fetched = await contactListPromise;
         currentContacts = fetched.contacts;
         uncertainEmpty = fetched.uncertainEmpty;
+        if (currentContacts.length > 0) {
+          saveContactListBackup(signerPubkey, currentContacts);
+        }
         console.log(
           `✅ [Follow] Using ${currentContacts.length} contacts from Nostr (state had ${contactList.length}, uncertainEmpty=${uncertainEmpty})`
         );
       } catch (error) {
         console.error("❌ [Follow] Error fetching contact list:", error);
+        const fromBackup = loadContactListBackup(signerPubkey);
         currentContacts =
-          contactList.length > 0 ? contactList.map((p) => p.toLowerCase()) : [];
+          contactList.length > 0
+            ? contactList.map((p) => p.toLowerCase())
+            : fromBackup;
         uncertainEmpty = currentContacts.length === 0;
         console.warn(
-          `⚠️ [Follow] Falling back to state: ${currentContacts.length} contacts`
+          `⚠️ [Follow] Falling back to state/backup: ${currentContacts.length} contacts`
         );
       }
 
@@ -3027,21 +2988,20 @@ export default function EntityPage({
         return;
       }
 
+      // Hard-stop: never publish a near-empty kind 3 when the fetch was uncertain.
+      // Custom dialog: Enter / Escape / Cancel all abort (no OK-to-wipe path).
       if (
         !isFollowing &&
         uncertainEmpty &&
         currentContacts.length === 0 &&
         newContacts.length === 1
       ) {
-        const ok = window.confirm(
-          "Your follow list could not be loaded from relays in time (or an error occurred), and this session has no cached copy.\n\n" +
-            "If you already follow other people elsewhere, signing this could replace your entire follow list with only this profile.\n\n" +
-            "Choose Cancel to try again later, or OK only if you have no other follows (or you accept that risk)."
+        console.warn(
+          "🛑 [Follow] Aborted — contact list fetch uncertain; refusing to publish"
         );
-        if (!ok) {
-          setFollowingLoading(false);
-          return;
-        }
+        setFollowListRiskOpen(true);
+        setFollowingLoading(false);
+        return;
       }
 
       // Create kind 3 contact list event
@@ -3121,9 +3081,10 @@ export default function EntityPage({
       // Publish to relays
       publish(event, defaultRelays);
 
-      // Update local state
+      // Update local state + backup so a later slow fetch cannot wipe follows
       setIsFollowing(!isFollowing);
       setContactList(newContacts);
+      saveContactListBackup(signerPubkey, newContacts);
 
       console.log(
         `✅ ${
@@ -3346,6 +3307,59 @@ export default function EntityPage({
                 )}
               </div>
             </div>
+
+            {followListRiskOpen && (
+              <div
+                className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="follow-list-risk-title"
+                aria-describedby="follow-list-risk-desc"
+                onClick={() => {
+                  setFollowListRiskOpen(false);
+                  setFollowingLoading(false);
+                }}
+              >
+                <div
+                  className="w-full max-w-md rounded-lg border border-amber-500/40 bg-gray-950 p-5 shadow-xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <h2
+                    id="follow-list-risk-title"
+                    className="text-lg font-semibold text-amber-200 mb-2"
+                  >
+                    Follow cancelled — list not loaded
+                  </h2>
+                  <p
+                    id="follow-list-risk-desc"
+                    className="text-sm text-gray-300 mb-4 whitespace-pre-line"
+                  >
+                    Your follow list could not be loaded from relays in time, and
+                    this session has no cached copy. Publishing now could replace
+                    your entire follow list with only this profile.
+                    {"\n\n"}
+                    We stopped to protect your follows. Wait a moment (or open a
+                    client that already has your list), then try Follow again.
+                    {"\n\n"}
+                    Press Enter or Escape to dismiss — that never publishes.
+                  </p>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      ref={followRiskCancelRef}
+                      autoFocus
+                      variant="default"
+                      className="bg-purple-600 hover:bg-purple-700"
+                      onClick={() => {
+                        setFollowListRiskOpen(false);
+                        setFollowingLoading(false);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Stats Row - Shows data from Nostr (repos) and local activities (commits, PRs, bounties) */}
             <div className="flex flex-wrap gap-3 sm:gap-4 md:gap-6 text-xs sm:text-sm mb-3 sm:mb-4">

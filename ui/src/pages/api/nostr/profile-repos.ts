@@ -3,6 +3,7 @@ import {
   KIND_REPOSITORY_NIP34,
   KIND_REPOSITORY_STATE,
 } from "@/lib/nostr/events";
+import { isRepoAnnouncementDeleted } from "@/lib/nostr/repo-deleted";
 import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
 import {
   PLATFORM_STATS_RELAYS,
@@ -103,6 +104,18 @@ export default async function handler(
           const key = `${event.pubkey.toLowerCase()}/${repoName}`;
           const ts = event.created_at * 1000;
           const existing = byKey.get(key);
+
+          // Soft-delete tombstone replaces the announcement — drop from profile list
+          if (
+            event.kind === KIND_REPOSITORY_NIP34 &&
+            isRepoAnnouncementDeleted(event)
+          ) {
+            if (!existing || ts >= existing.lastActivity) {
+              byKey.delete(key);
+            }
+            return;
+          }
+
           let name = repoName;
           if (event.kind === KIND_REPOSITORY_NIP34 && event.content) {
             try {

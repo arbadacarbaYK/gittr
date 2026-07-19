@@ -211,7 +211,7 @@ export default function HelpPage() {
             same tree.
           </li>
           <li id="gittr-pages" className="scroll-mt-24">
-            <strong className="text-white">gittr Pages</strong> — Publish static
+            <strong className="text-white">Nostr Pages</strong> — Publish static
             sites from a repo (site file + README block + Push to Nostr /
             Blossom); browse the directory at{" "}
             <Link
@@ -221,7 +221,7 @@ export default function HelpPage() {
               /pages
             </Link>
             . Owner tools live in the Code sidebar under{" "}
-            <strong className="text-white">gittr Pages</strong>.
+            <strong className="text-white">Nostr Pages</strong>.
           </li>
           <li>
             <strong className="text-white">Nostr apps</strong> — Discover and
@@ -234,13 +234,10 @@ export default function HelpPage() {
             </Link>
             . Repo owners can{" "}
             <strong className="text-white">Announce app</strong> from the Code
-            sidebar: gittr reads a forge{" "}
-            <strong className="text-white">Release</strong> (not a git branch)
-            with an <code className="text-purple-200">.apk</code>, publishes
-            Zapstore-compatible events pointing at the forge download URL, and
-            does <em>not</em> host the binary. Zapstore listing is free;
-            optional <code className="text-purple-200">zapstore.yaml</code>{" "}
-            helps whitelist on their relay.
+            sidebar: list an Android app on Nostr from a forge{" "}
+            <strong className="text-white">Release</strong> that has an{" "}
+            <code className="text-purple-200">.apk</code> (file stays on
+            GitHub/Codeberg/GitLab). Zapstore listing is optional and free.
           </li>
           <li>
             <strong className="text-white">Bounties &amp; zaps</strong> — Fund
@@ -359,7 +356,7 @@ export default function HelpPage() {
                 href="#gittr-pages"
                 className="text-green-400 hover:text-green-300"
               >
-                gittr Pages
+                Nostr Pages
               </Link>
             </li>
             <li>

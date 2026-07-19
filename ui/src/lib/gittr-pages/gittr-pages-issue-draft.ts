@@ -17,7 +17,7 @@ export function buildGittrPagesManifestIssueDraft(
   input: GittrPagesIssueDraftInput
 ): { title: string; body: string } {
   const { entity, repo, ownerPubkeyHex, namedUrl, dTag } = input;
-  const title = `gittr Pages: NIP-5A manifest draft (${dTag})`;
+  const title = `Nostr Pages: NIP-5A manifest draft (${dTag})`;
 
   const jsonSkeleton = {
     note: "Draft only — not a signed Nostr event. Your NIP-5A / nsite tool builds kind 35128 with id, created_at, sig.",
@@ -39,12 +39,12 @@ export function buildGittrPagesManifestIssueDraft(
 
 ## If you do not see “Publish Pages manifest” in the sidebar
 
-On the repo **Code** page, open **gittr Pages**. If there is **no** amber button **“Publish Pages manifest (Blossom + kind 35128)”**, the site you are using is still running an **older frontend build**. That button ships in current \`ngit\` \`ui\` source; **gittr.space must deploy that build** (sync \`ui/src\`, run \`yarn build\` / \`npm run build\`, restart the frontend service). Hard-refresh the browser after deploy. Until then, publish **35128 + Blossom blobs** with any other NIP-5A / nsite tool you use — this issue text does **not** go to relays.
+On the repo **Code** page, open **Nostr Pages**. If there is **no** amber button **“Publish Pages manifest (Blossom + kind 35128)”**, the site you are using is still running an **older frontend build**. That button ships in current \`ngit\` \`ui\` source; **gittr.space must deploy that build** (sync \`ui/src\`, run \`yarn build\` / \`npm run build\`, restart the frontend service). Hard-refresh the browser after deploy. Until then, publish **35128 + Blossom blobs** with any other NIP-5A / nsite tool you use — this issue text does **not** go to relays.
 
 ## Manual path (current)
 
 1. **Working tree** — Edit/add site files here (at least something that serves as \`/index.html\`). Use **Refetch from Nostr** only when this browser’s copy might not match relays (stale, edits on another device, sanity-check). After **you** push from this tab, gittr already stores event IDs locally — you do **not** need refetch before the next readme/site push for this session.
-2. **README + live URL** — Sidebar **gittr Pages**: **README + Push to Nostr** is the usual one-shot after local edits; or the separate README button / “update on push” then **Push to Nostr**. README is separate from the gateway manifest.
+2. **README + live URL** — Sidebar **Nostr Pages**: **README + Push to Nostr** is the usual one-shot after local edits; or the separate README button / “update on push” then **Push to Nostr**. README is separate from the gateway manifest.
 3. **Push to Nostr** — Publishes repo + readme metadata (same as the shortcut’s push step).
 4. **NIP-5A manifest (kind 35128)** — In gittr, owners use **Publish Pages manifest** in the repo sidebar (Blossom + 35128, NIP-07). Alternatively, upload blobs and publish with any **NIP-5A / nsite** tool. **nsite-gateway** status UI reads optional \`relay\` tags on the manifest (one \`wss://…\` per tag); gittr **Push Manifest** adds those from your configured relay list.
 
