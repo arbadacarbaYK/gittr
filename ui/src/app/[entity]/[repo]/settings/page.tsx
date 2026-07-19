@@ -12,7 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { RepoLink } from "@/components/ui/repo-links";
 import { Textarea } from "@/components/ui/textarea";
+import { resolveRepoPagesDTag } from "@/lib/gittr-pages/pages-public-slug";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import { deleteRepoRelatedAnnounces } from "@/lib/nostr/delete-repo-related-nostr";
 import {
   KIND_DELETION,
   KIND_REPOSITORY_NIP34,
@@ -21,6 +23,7 @@ import {
 } from "@/lib/nostr/events";
 import {
   NO_SIGNING_METHOD_MESSAGE,
+  resolveNostrSigner,
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
 import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
@@ -116,7 +119,8 @@ async function syncRepositoryPushPolicyToBridge(
 export default function RepoSettingsPage() {
   const params = useParams();
   const router = useRouter();
-  const { publish, defaultRelays, pubkey, remoteSigner } = useNostrContext();
+  const { publish, subscribe, defaultRelays, pubkey, remoteSigner } =
+    useNostrContext();
   const entity = params?.entity as string;
   const repo = params?.repo as string;
 
@@ -761,19 +765,21 @@ export default function RepoSettingsPage() {
 
               // Also publish NIP-09 kind 5 pointing at the addressable 30617
               // so clients that only honor deletions still drop the repo.
+              let authorPubkey =
+                (deletionEvent?.pubkey as string) || pubkey || "";
               try {
                 const { getEventHash } = await import("nostr-tools");
-                const authorPubkey =
-                  (deletionEvent?.pubkey as string) ||
-                  (hasNip07 && window.nostr
-                    ? await window.nostr.getPublicKey()
-                    : "");
+                if (!authorPubkey && hasNip07 && window.nostr) {
+                  authorPubkey = await window.nostr.getPublicKey();
+                }
                 if (authorPubkey) {
                   const aTag = `30617:${authorPubkey.toLowerCase()}:${repo}`;
                   const priorEventId =
-                    (repoToDelete as StoredRepo & {
-                      lastNostrEventId?: string;
-                    })?.lastNostrEventId || "";
+                    (
+                      repoToDelete as StoredRepo & {
+                        lastNostrEventId?: string;
+                      }
+                    )?.lastNostrEventId || "";
                   let kind5: any = {
                     kind: KIND_DELETION,
                     created_at: Math.floor(Date.now() / 1000),
@@ -818,6 +824,38 @@ export default function RepoSettingsPage() {
                   "NIP-09 kind 5 for repo delete failed (soft-delete 30617 still published):",
                   error
                 );
+              }
+
+              // Also drop related Nostr Pages (35128) and app announces (NIP-82)
+              // when present — same owner, same repo address / pages d-tag.
+              if (subscribe && publish && authorPubkey) {
+                try {
+                  const pagesDTag = resolveRepoPagesDTag(repo, repoToDelete);
+                  const related = await deleteRepoRelatedAnnounces({
+                    ownerPubkeyHex: authorPubkey.toLowerCase(),
+                    repoName: repo,
+                    pagesDTag,
+                    defaultRelays: defaultRelays || [],
+                    subscribe: subscribe as any,
+                    publish: publish as any,
+                    resolveSigner: () =>
+                      resolveNostrSigner({
+                        remoteSigner,
+                        waitForRemote: true,
+                      }),
+                  });
+                  if (related.errors.length) {
+                    console.warn(
+                      "[Repo delete] Related announce cleanup warnings:",
+                      related.errors
+                    );
+                  }
+                } catch (error: any) {
+                  console.warn(
+                    "Related Pages/app announce cleanup failed (repo delete still done):",
+                    error
+                  );
+                }
               }
             }
           } catch (error: any) {
