@@ -64,7 +64,7 @@
     "autoprefixer": "^10.4.7",
     "eslint": "^8.34.0",
     "eslint-config-next": "^13.2.1",
-    "postcss": "^8.4.14",
+    "postcss": "^8.5.10",
     "prettier": "^2.8.4",
     "prettier-plugin-tailwindcss": "^0.2.4",
     "rimraf": "^4.3.1",
