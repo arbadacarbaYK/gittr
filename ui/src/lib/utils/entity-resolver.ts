@@ -158,9 +158,11 @@ export function getEntityDisplayName(
   if (meta) {
     const raw = meta.display_name || meta.name;
     if (raw && raw.trim().length > 0 && raw !== "Anonymous Nostrich") {
-      const githubHandle = meta.identities?.find(
+      // identities must be an array — some kind-0 payloads store an object/string
+      const identities = Array.isArray(meta.identities) ? meta.identities : [];
+      const githubHandle = identities.find(
         (i: { platform?: string; identity?: string }) =>
-          i.platform === "github" && i.identity
+          i?.platform === "github" && i?.identity
       )?.identity;
       if (/mirrored user from github/i.test(raw) && githubHandle) {
         return githubHandle;

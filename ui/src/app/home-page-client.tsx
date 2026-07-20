@@ -73,8 +73,9 @@ type Repo = {
 
 /** Clean labels from bulk GitHub→Nostr mirrors (kind 0 name often includes this suffix). */
 function formatLeaderboardUserLabel(raw: string, meta?: Metadata): string {
-  const githubHandle = meta?.identities?.find(
-    (i) => i.platform === "github" && i.identity
+  const identities = Array.isArray(meta?.identities) ? meta.identities : [];
+  const githubHandle = identities.find(
+    (i) => i?.platform === "github" && i?.identity
   )?.identity;
   if (/mirrored user from github/i.test(raw) && githubHandle) {
     return githubHandle;

@@ -355,8 +355,8 @@ function ExplorePageContent() {
         const repo = r.repo || r.slug || "";
         const name = r.name || repo;
         const description = (r.description || "").toLowerCase();
-        const topics = (r.topics || [])
-          .map((t: string) => t.toLowerCase())
+        const topics = (Array.isArray(r.topics) ? r.topics : [])
+          .map((t: string) => String(t || "").toLowerCase())
           .join(" ");
         const entityDisplayName = (r.entityDisplayName || "").toLowerCase();
 
@@ -2385,8 +2385,8 @@ function ExplorePageContent() {
         const repo = r.repo || r.slug || "";
         const name = r.name || repo;
         const description = (r.description || "").toLowerCase();
-        const topics = (r.topics || [])
-          .map((t: string) => t.toLowerCase())
+        const topics = (Array.isArray(r.topics) ? r.topics : [])
+          .map((t: string) => String(t || "").toLowerCase())
           .join(" ");
 
         // Get owner name from metadata if available

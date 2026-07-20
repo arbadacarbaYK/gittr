@@ -61,7 +61,11 @@ function loadMetadataCache(): Record<string, Metadata> {
       // CRITICAL: Normalize all keys to lowercase for consistent lookup
       const normalized: Record<string, Metadata> = {};
       for (const [key, value] of Object.entries(parsed)) {
-        normalized[key.toLowerCase()] = value;
+        const entry = { ...value } as Metadata & { identities?: unknown };
+        if (entry.identities != null && !Array.isArray(entry.identities)) {
+          delete entry.identities;
+        }
+        normalized[key.toLowerCase()] = entry as Metadata;
       }
       // Only log on first load or when cache size changes significantly
       if (
@@ -410,6 +414,15 @@ export function useContributorMetadata(pubkeys: string[]) {
                 try {
                   const data = JSON.parse(event.content) as Metadata;
 
+                  // kind 0 content sometimes includes a non-array `identities` field —
+                  // that must not reach UI helpers that call .find on it.
+                  if (
+                    data.identities != null &&
+                    !Array.isArray(data.identities)
+                  ) {
+                    delete (data as { identities?: unknown }).identities;
+                  }
+
                   // Debug: Log banner field if present (only for first batch to reduce spam)
                   if (
                     contributorMetaVerbose() &&
@@ -459,7 +472,7 @@ export function useContributorMetadata(pubkeys: string[]) {
                     }
                   }
 
-                  // Add identities to metadata if any were found
+                  // Prefer NIP-39 i-tags; never leave a non-array identities value
                   if (identities.length > 0) {
                     data.identities = identities;
                     // Only log identities for first batch to reduce console spam
@@ -469,6 +482,8 @@ export function useContributorMetadata(pubkeys: string[]) {
                         identities.map((i) => `${i.platform}:${i.identity}`)
                       );
                     }
+                  } else if (!Array.isArray(data.identities)) {
+                    delete (data as { identities?: unknown }).identities;
                   }
 
                   // CRITICAL: Normalize pubkey to lowercase for consistent lookup (already defined above)
@@ -485,17 +500,20 @@ export function useContributorMetadata(pubkeys: string[]) {
                         const mergedData = { ...data, created_at: newTime };
                         // If new event has identities, use them. Otherwise, keep existing ones if they exist
                         if (
-                          !mergedData.identities ||
+                          !Array.isArray(mergedData.identities) ||
                           mergedData.identities.length === 0
                         ) {
                           if (
-                            existing.identities &&
+                            Array.isArray(existing.identities) &&
                             existing.identities.length > 0
                           ) {
                             mergedData.identities = existing.identities;
                             console.log(
                               `🔄 [useContributorMetadata] Merged ${existing.identities.length} identities from older event (newer event has no identities)`
                             );
+                          } else {
+                            delete (mergedData as { identities?: unknown })
+                              .identities;
                           }
                         } else {
                           // New event HAS identities - log this for debugging
@@ -512,8 +530,16 @@ export function useContributorMetadata(pubkeys: string[]) {
                       } else if (newTime === existingTime) {
                         // Same timestamp - merge identities from both
                         const mergedData = { ...data, created_at: newTime };
-                        const existingIdentities = existing.identities || [];
-                        const newIdentities = mergedData.identities || [];
+                        const existingIdentities = Array.isArray(
+                          existing.identities
+                        )
+                          ? existing.identities
+                          : [];
+                        const newIdentities = Array.isArray(
+                          mergedData.identities
+                        )
+                          ? mergedData.identities
+                          : [];
                         // Combine and deduplicate identities
                         const combinedIdentities = [...existingIdentities];
                         for (const newId of newIdentities) {
@@ -541,10 +567,13 @@ export function useContributorMetadata(pubkeys: string[]) {
                       }
                       // Older event - keep existing but merge identities if existing doesn't have them
                       if (
-                        !existing.identities ||
+                        !Array.isArray(existing.identities) ||
                         existing.identities.length === 0
                       ) {
-                        if (data.identities && data.identities.length > 0) {
+                        if (
+                          Array.isArray(data.identities) &&
+                          data.identities.length > 0
+                        ) {
                           const updatedExisting = {
                             ...existing,
                             identities: data.identities,
