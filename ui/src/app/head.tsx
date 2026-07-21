@@ -4,7 +4,7 @@ export default function Head() {
       <title>gittr</title>
       <meta
         name="description"
-        content="Nostr git hosting: mirror repos, collaborate with issues and PRs, publish Pages, discover apps, Lightning bounties."
+        content="Nostr git: mirror repos, collaborate with issues and PRs, publish Pages, discover apps, Lightning bounties."
       />
       <link rel="icon" href="/favicon.ico" />
       <link

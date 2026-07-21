@@ -4,7 +4,7 @@ import { type Metadata } from "next";
 
 /** Default site title (also used in Open Graph / Twitter). */
 export const SITE_TITLE_DEFAULT =
-  "gittr — Nostr git hosting, issues, PRs & Lightning bounties";
+  "gittr — Nostr git, issues, PRs & Lightning bounties";
 
 /** ~155 chars — good for Google snippets and social cards. */
 export const SITE_DESCRIPTION_DEFAULT =
@@ -29,7 +29,7 @@ export function buildRepoFallbackDescription(
   entity: string,
   repo: string
 ): string {
-  return `Repository ${entity}/${repo} on gittr — Nostr git hosting with issues, pull requests, and optional Lightning bounties.`;
+  return `Repository ${entity}/${repo} on gittr — Nostr git with issues, pull requests, and optional Lightning bounties.`;
 }
 
 export function buildRootSiteMetadata(): Metadata {
@@ -58,7 +58,7 @@ export function buildRootSiteMetadata(): Metadata {
           url: "/opengraph-image",
           width: 1200,
           height: 630,
-          alt: "gittr logo",
+          alt: "gittr - Decentralized Git on Nostr",
         },
       ],
     },

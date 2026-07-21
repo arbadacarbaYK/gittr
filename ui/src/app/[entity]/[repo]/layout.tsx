@@ -309,7 +309,7 @@ export async function generateMetadata({
       ),
       openGraph: {
         title,
-        description: `Repository ${title} on gittr - Decentralized Git Hosting on Nostr`,
+        description: `Repository ${title} on gittr - Decentralized Git on Nostr`,
         url: `${baseUrl}/${encodeURIComponent(
           resolvedParams.entity
         )}/${encodeURIComponent(decodedRepo)}`,
@@ -326,7 +326,7 @@ export async function generateMetadata({
       twitter: {
         card: "summary_large_image",
         title,
-        description: `Repository ${title} on gittr - Decentralized Git Hosting on Nostr`,
+        description: `Repository ${title} on gittr - Decentralized Git on Nostr`,
         images: [`${baseUrl}/opengraph-image`],
       },
     };

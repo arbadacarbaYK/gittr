@@ -116,7 +116,7 @@ export async function generateMetadata({
     ? userDescription.length > 160
       ? userDescription.substring(0, 157) + "..."
       : userDescription
-    : `Profile for ${actualName} on gittr - Decentralized Git Hosting on Nostr`;
+    : `Profile for ${actualName} on gittr - Decentralized Git on Nostr`;
 
   // Resolve user icon (profile picture or default)
   let iconUrl = `${baseUrl}/opengraph-image`; // Default fallback

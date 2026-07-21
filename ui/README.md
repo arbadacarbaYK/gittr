@@ -1,6 +1,6 @@
 # gittr UI
 
-Next.js frontend for [gittr.space](https://gittr.space) — Nostr git hosting (mirror, issues/PRs, Pages, apps, Lightning bounties). SEO metadata: `src/lib/seo/site-metadata.ts`; sitemap: `src/app/sitemap.ts` (see repo `docs/SEO.md`).
+Next.js frontend for [gittr.space](https://gittr.space) — Nostr git (mirror, issues/PRs, Pages, apps, Lightning bounties). SEO metadata: `src/lib/seo/site-metadata.ts`; sitemap: `src/app/sitemap.ts` (see repo `docs/SEO.md`).
 
 Read about the vision [here](https://github.com/NostrGit/NostrGit/tree/main/documentation/vision.md).
 

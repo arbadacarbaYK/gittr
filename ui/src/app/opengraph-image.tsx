@@ -5,7 +5,7 @@ import sharp from "sharp";
 
 export const runtime = "nodejs";
 
-export const alt = "gittr - Decentralized Git Hosting on Nostr";
+export const alt = "gittr - Decentralized Git on Nostr";
 export const size = {
   width: 1200,
   height: 630,
@@ -74,7 +74,7 @@ export default async function OpenGraphImage() {
             opacity: 0.9,
           }}
         >
-          Decentralized Git Hosting on Nostr
+          Decentralized Git on Nostr
         </div>
       </div>
     ),

@@ -35,7 +35,7 @@ export async function generateMetadata({
 
   return {
     title,
-    description: `Profile for ${displayName} on gittr - Decentralized Git Hosting on Nostr`,
+    description: `Profile for ${displayName} on gittr - Decentralized Git on Nostr`,
     openGraph: {
       title,
       description: `View ${displayName}'s repositories on gittr`,
