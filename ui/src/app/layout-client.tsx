@@ -7,6 +7,7 @@ import {
   KeyboardShortcuts,
   useKeyboardShortcuts,
 } from "@/components/ui/keyboard-shortcuts";
+import { SiteFooter } from "@/components/ui/site-footer";
 import { migrateEntityToPubkey } from "@/lib/migrations/migrate-entity-to-pubkey";
 import { migrateEntityUser } from "@/lib/migrations/migrate-entity-user";
 import { migrateRepoName } from "@/lib/migrations/migrate-repo-name";
@@ -293,6 +294,7 @@ export default function ClientLayout({
         <Header />
         <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%]">
           {children}
+          <SiteFooter />
         </div>
         {showShortcuts && (
           <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />

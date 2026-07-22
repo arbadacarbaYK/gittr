@@ -11,7 +11,6 @@ import {
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { ZapButton } from "@/components/ui/zap-button";
 import { type Activity, backfillActivities } from "@/lib/activity-tracking";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import {
@@ -1931,35 +1930,6 @@ export default function HomePage({
         </aside>
       </div>
 
-      {/* Footer */}
-      <div className="mt-12 mb-6 flex flex-col items-center justify-center gap-4">
-        <p className="text-center text-sm text-gray-400">
-          Made by Bitcoiners with{" "}
-          <span
-            className="inline-block"
-            style={{ color: "var(--color-accent-primary)" }}
-          >
-            💜
-          </span>
-        </p>
-        <div className="flex items-center justify-center">
-          <ZapButton
-            recipient="npub1nur7st367ys7cqtjyv74alu84y209zsw8wagpxvrl3g9q2veqzuqjqh65s"
-            amount={21}
-            comment="Donation to gittr.space"
-            recipientMetadata={{
-              lud16: "arbadacarba@btip.nl",
-              // LNURL provided as fallback for older wallets that don't support LUD-16
-              lnurl:
-                "LNURL1DP68GURN8GHJ7CN5D9CZUMNV9UH8WETVDSKKKMN0WAHZ7MRWW4EXCUP0X9UXGDEEXQ6XVVM9XUMXGDFCXY6NQS43TRV",
-            }}
-            variant="outline"
-            size="sm"
-            className="text-sm"
-            label="Donate to this project"
-          />
-        </div>
-      </div>
     </div>
     </>
   );

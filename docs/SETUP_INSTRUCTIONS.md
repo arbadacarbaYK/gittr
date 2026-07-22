@@ -265,6 +265,7 @@ curl -sI https://your.domain | head -1
 ```
 
 - Open the site, log in (NIP-07 or key), import or create a repo.
+- Footer → **Legal** (`/legal`) — non-commercial Nostr client disclaimer; blacklist contact `info@gittr.space`. No personal operator details.
 - Bulk `/import` is local-only by default; optional **Also Push selected to Nostr** publishes each newly imported repo (NIP-34). Single-repo URL auto-import never auto-pushes.
 - `git ls-remote git@your.domain:<npub-or-hex>/<repo>.git` (with your key).
 - Push from UI once; check bridge logs for repository events.
