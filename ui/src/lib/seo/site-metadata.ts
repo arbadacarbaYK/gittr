@@ -32,6 +32,71 @@ export function buildRepoFallbackDescription(
   return `Repository ${entity}/${repo} on gittr — Nostr git with issues, pull requests, and optional Lightning bounties.`;
 }
 
+const OG_IMAGE_ALT = "gittr - Decentralized Git on Nostr";
+
+function absolutePath(siteUrl: string, path: string): string {
+  const base = siteUrl.replace(/\/$/, "");
+  if (!path || path === "/") return base;
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+/**
+ * Per-route metadata so social crawlers (X, Telegram, …) get distinct
+ * og:title / og:url / images instead of inheriting the homepage card.
+ */
+export function buildPageSiteMetadata(opts: {
+  /** Absolute path, e.g. `/pages` or `/apps`. */
+  path: string;
+  /** Short title (layout template adds `| gittr` for the document title). */
+  title: string;
+  description: string;
+  /**
+   * Relative OG image path. Default root card; pass e.g. `/pages/opengraph-image`
+   * when the route has its own image file.
+   */
+  imagePath?: string;
+  imageAlt?: string;
+}): Metadata {
+  const siteUrl = getPublicSiteUrl();
+  const canonical = absolutePath(siteUrl, opts.path);
+  const imagePath = opts.imagePath ?? "/opengraph-image";
+  const imageAlt = opts.imageAlt ?? OG_IMAGE_ALT;
+  // Absolute title for OG/Twitter (crawlers ignore the Next title template).
+  const socialTitle = opts.title.includes("gittr")
+    ? opts.title
+    : `${opts.title} | gittr`;
+
+  return {
+    title: opts.title,
+    description: opts.description,
+    openGraph: {
+      type: "website",
+      locale: "en_US",
+      url: canonical,
+      siteName: "gittr",
+      title: socialTitle,
+      description: opts.description,
+      images: [
+        {
+          url: imagePath,
+          width: 1200,
+          height: 630,
+          alt: imageAlt,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: socialTitle,
+      description: opts.description,
+      images: [imagePath.replace("opengraph-image", "twitter-image")],
+    },
+    alternates: {
+      canonical,
+    },
+  };
+}
+
 export function buildRootSiteMetadata(): Metadata {
   const siteUrl = getPublicSiteUrl();
 
@@ -58,7 +123,7 @@ export function buildRootSiteMetadata(): Metadata {
           url: "/opengraph-image",
           width: 1200,
           height: 630,
-          alt: "gittr - Decentralized Git on Nostr",
+          alt: OG_IMAGE_ALT,
         },
       ],
     },
@@ -66,7 +131,7 @@ export function buildRootSiteMetadata(): Metadata {
       card: "summary_large_image",
       title: SITE_TITLE_DEFAULT,
       description: SITE_DESCRIPTION_DEFAULT,
-      images: ["/opengraph-image"],
+      images: ["/twitter-image"],
     },
     robots: {
       index: true,

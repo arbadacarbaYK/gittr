@@ -6,7 +6,9 @@ How search engines and social previews find gittr content. Marketing copy was up
 
 | Surface | Location | Notes |
 | --- | --- | --- |
-| Default title, description, keywords, Open Graph | `ui/src/lib/seo/site-metadata.ts` | Single source of truth; imported by `ui/src/app/layout.tsx` |
+| Default title, description, keywords, Open Graph | `ui/src/lib/seo/site-metadata.ts` | Root card via `buildRootSiteMetadata()`; per-route cards via `buildPageSiteMetadata({ path, title, description })` so X/Telegram do not reuse the homepage `og:url` |
+| Hub routes (`/pages`, `/apps`, `/explore`, `/legal`) | respective `page.tsx` / `layout.tsx` | Must set full `openGraph` + `twitter` + `canonical` (title alone is not enough for social crawlers) |
+| Route OG images | `ui/src/app/pages/opengraph-image.tsx`, `apps/opengraph-image.tsx`, root `opengraph-image.tsx` | Distinct taglines; shared renderer in `ui/src/lib/seo/create-og-image.tsx` |
 | Per-repo title / description / OG image | `ui/src/app/[entity]/[repo]/layout.tsx` | Uses repo description when present; otherwise `buildRepoFallbackDescription()` |
 | `robots.txt` | `ui/src/app/robots.ts` | Allows `/`; disallows `/api/`, `/login`, `/settings/`, etc. |
 | `sitemap.xml` | `ui/src/app/sitemap.ts` | **Dynamic** — built at request time on the server (not a static file in git) |

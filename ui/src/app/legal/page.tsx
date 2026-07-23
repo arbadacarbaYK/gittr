@@ -1,9 +1,10 @@
-import type { Metadata } from "next";
+import { buildPageSiteMetadata } from "@/lib/seo/site-metadata";
 
-export const metadata: Metadata = {
+export const metadata = buildPageSiteMetadata({
+  path: "/legal",
   title: "Legal",
   description: "Disclaimer and contact for gittr.space",
-};
+});
 
 const CONTACT_EMAIL = "info@gittr.space";
 
