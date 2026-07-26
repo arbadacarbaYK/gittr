@@ -2449,17 +2449,10 @@ export default function RepositoriesPage() {
     }
   }, [pubkey]); // CRITICAL: Only run when pubkey changes, NOT when repos.length changes (prevents infinite loop)
 
-  // CRITICAL: Show loading state during SSR or before mount, but don't return early (all hooks must be called)
-  if (typeof window === "undefined" || !mounted) {
-    return (
-      <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold">Your repositories</h1>
-        </div>
-        <p className="text-gray-400">Loading...</p>
-      </div>
-    );
-  }
+  // Soft client nav remounts this page with mounted=false briefly. Do not swap the
+  // whole page for a thin Loading shell (that reads as bare Header + Footer).
+  // Keep the real chrome; list area shows Loading until client mount / data load.
+  const showReposLoading = !mounted;
 
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
@@ -2742,7 +2735,9 @@ export default function RepositoriesPage() {
         </div>
       </div>
       <div className="space-y-2">
-        {repos.filter((r: Repo) => {
+        {showReposLoading && <p className="text-gray-400">Loading...</p>}
+        {!showReposLoading &&
+          repos.filter((r: Repo) => {
           // CRITICAL: Filter out corrupted repos FIRST (before any other checks)
           if (
             isRepoCorrupted(
@@ -2804,16 +2799,20 @@ export default function RepositoriesPage() {
 
           return false;
         }).length === 0 && <p>No repositories yet.</p>}
-        {(() => {
+        {!showReposLoading &&
+          (() => {
           // Load list of locally-deleted repos (user deleted them, don't show)
-          const deletedRepos = JSON.parse(
-            localStorage.getItem("gittr_deleted_repos") || "[]"
-          ) as Array<{
-            entity: string;
-            repo: string;
-            deletedAt: number;
-            ownerPubkey?: string;
-          }>;
+          const deletedRepos =
+            typeof window === "undefined"
+              ? []
+              : (JSON.parse(
+                  localStorage.getItem("gittr_deleted_repos") || "[]"
+                ) as Array<{
+                  entity: string;
+                  repo: string;
+                  deletedAt: number;
+                  ownerPubkey?: string;
+                }>);
 
           // Helper function to check if repo is deleted (robust matching)
           const isRepoDeleted = (r: any): boolean => {

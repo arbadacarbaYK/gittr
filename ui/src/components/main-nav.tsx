@@ -6,6 +6,7 @@ import { MobileNav } from "@/components/mobile-nav";
 import { cn } from "@/lib/utils";
 
 import { Menu, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import Logo from "./logo";
 import SearchBar from "./search-bar";
@@ -31,6 +32,7 @@ interface MainNavProps {
 
 export function MainNav({ items, children }: MainNavProps) {
   const [showMobileMenu, setShowMobileMenu] = React.useState<boolean>(false);
+  const router = useRouter();
 
   const handleToggleMobileMenu = () => {
     setShowMobileMenu(!showMobileMenu);
@@ -46,9 +48,14 @@ export function MainNav({ items, children }: MainNavProps) {
       return;
     }
     e.preventDefault();
-    // Full navigation (same as Logo): router.push can appear to "do nothing" when the main
-    // thread is saturated (e.g. Explore streaming thousands of relay events).
-    window.location.assign(href);
+    // Soft nav for normal site switching (avoids full-reload bare-shell flash).
+    // Explore can saturate the main thread with relay streams — hard assign there
+    // so the click still feels responsive when router.push appears stuck.
+    if (href === "/explore" || href.startsWith("/explore?")) {
+      window.location.assign(href);
+      return;
+    }
+    router.push(href);
   };
 
   return (

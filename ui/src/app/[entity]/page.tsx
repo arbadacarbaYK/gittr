@@ -215,7 +215,42 @@ export default function EntityPage({
   const router = useRouter();
   const redirectedRef = useRef(false);
   const anonRepoSyncRef = useRef(false);
-  const [isPubkey, setIsPubkey] = useState(false);
+  // Sync from the URL — never start false then flip in useEffect (that paints
+  // Header + empty main + Footer for a frame: the "bare themed flash").
+  const isPubkey = useMemo(() => {
+    const entityParam = resolvedParams.entity;
+    const reservedRoutes = new Set([
+      "stars",
+      "zaps",
+      "explore",
+      "pulls",
+      "issues",
+      "repositories",
+      "settings",
+      "profile",
+      "projects",
+      "organizations",
+      "sponsors",
+      "upgrade",
+      "help",
+      "legal",
+      "impressum",
+      "privacy",
+      "terms",
+      "apps",
+      "new",
+      "login",
+      "signup",
+      "bounty-hunt",
+      "pages",
+    ]);
+    if (reservedRoutes.has(entityParam)) return false;
+    return (
+      isHexPubkey(entityParam) ||
+      isNpubEntity(entityParam) ||
+      (entityParam.length === 8 && /^[0-9a-f]{8}$/i.test(entityParam))
+    );
+  }, [resolvedParams.entity]);
   const [userRepos, setUserRepos] = useState<any[]>([]);
   /** Bumped when gittr_repos changes so the profile repo list reloads without hard refresh. */
   const [reposReloadToken, setReposReloadToken] = useState(0);
@@ -880,7 +915,7 @@ export default function EntityPage({
 
       if (isHexEntity || isNpub || isEntityPrefix) {
         // It's a user profile (full pubkey or 8-char prefix)
-        setIsPubkey(true);
+        // isPubkey is derived sync from the URL — do not setState here
 
         // Find ALL repos where user is involved: owner, contributor, can merge, or forked
         // CRITICAL: Must find ALL repos where this user has any role, not just owner
@@ -3175,9 +3210,18 @@ export default function EntityPage({
     return Math.max(...allWeeks.map((w) => w.count), 1);
   }, [calendarYearRows]);
 
-  // Early return check - MUST be after all hooks
+  // Early return check - MUST be after all hooks.
+  // Keep a min-height placeholder (never null) so soft/hard nav doesn't flash
+  // only Header + SiteFooter on a bare themed page.
   if (!isPubkey) {
-    return null; // Redirecting
+    return (
+      <div
+        className="flex min-h-[50vh] items-center justify-center p-6 text-sm text-gray-400"
+        aria-busy="true"
+      >
+        Loading…
+      </div>
+    );
   }
 
   const maxCount = timelineMaxCount;

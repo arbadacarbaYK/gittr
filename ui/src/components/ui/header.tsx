@@ -167,7 +167,7 @@ export function Header() {
                   href={profileUrl}
                   onClick={(e) => {
                     e.preventDefault();
-                    window.location.href = profileUrl;
+                    router.push(profileUrl);
                   }}
                 >
                   <DropdownMenuLabel className="cursor-pointer">
@@ -187,7 +187,7 @@ export function Header() {
                         href={href}
                         onClick={(e) => {
                           e.preventDefault();
-                          window.location.href = href;
+                          router.push(href);
                         }}
                       >
                         {item.title}
@@ -203,7 +203,7 @@ export function Header() {
                       href={item.href}
                       onClick={(e) => {
                         e.preventDefault();
-                        window.location.href = item.href;
+                        router.push(item.href);
                       }}
                     >
                       {item.title}
