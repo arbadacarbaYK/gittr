@@ -1465,26 +1465,11 @@ export default function ProjectsPage() {
 
       {project ? (
         <div className="min-w-0">
-          <div className="mb-3">
-            <input
-              type="text"
-              value={project.name}
-              readOnly={isGithubBoard}
-              onChange={(e) => {
-                if (isGithubBoard) return;
-                const updated = projects.map((p) =>
-                  p.id === project.id ? { ...p, name: e.target.value } : p
-                );
-                saveProjects(updated);
-              }}
-              className="w-full truncate border-none bg-transparent text-lg font-bold outline-none focus:border-b focus:border-purple-500 sm:text-xl"
-            />
-            {project.description && (
-              <p className="mt-1 line-clamp-2 text-sm text-gray-400">
-                {project.description}
-              </p>
-            )}
-          </div>
+          {project.description && (
+            <p className="mb-3 line-clamp-2 text-sm text-gray-400">
+              {project.description}
+            </p>
+          )}
 
           {project.view === "kanban" ? renderKanban() : renderRoadmap()}
 
