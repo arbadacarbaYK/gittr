@@ -14,7 +14,9 @@ Pick **one** way to publish your public key (all publish kind **52** for the sam
 
 1. **`gn`** (no UI): `git-nostr-cli` → `./bin/gn ssh-key add ~/.ssh/id_ed25519.pub` — see [gitnostr SSH guide](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?file=SSH_GIT_GUIDE.md&branch=main)
 2. **Any Nostr client** that can sign kind 52
-3. **gittr.space (optional):** **Settings → SSH Keys** → generate or paste `~/.ssh/id_*.pub` (convenience only)
+3. **gittr.space (optional):** **Settings → SSH Keys** → generate or paste `~/.ssh/id_*.pub` (convenience only). The page loads kind **52** from your relays (not only this browser’s cache). If GitHub is connected, public keys from `api.github.com/users/<you>/keys` are offered as fill-in suggestions.
+
+**Note:** `git.gittr.space` is the **git host** (SSH/HTTPS). It is not a Nostr relay — `wss://git.gittr.space` returning 404 is expected.
 
 ## Repository URL Formats
 

@@ -15,7 +15,7 @@ import {
   resolveSharedRepoBranch,
 } from "@/lib/repos/repo-file-tree-branch";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
-import { inferGithubUpstreamFromRoute } from "@/lib/repos/upstream-precedence";
+import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
 import {
   formatDate24h,
   formatDateTime24h,
@@ -25,20 +25,40 @@ import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
 import {
   getEntityDisplayName,
   getRepoOwnerPubkey,
+  resolveEntityToPubkey,
   resolveEntityToPubkeyAsync,
 } from "@/lib/utils/entity-resolver";
+import { KNOWN_GRASP_DOMAINS } from "@/lib/utils/grasp-servers";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { GitBranch, GitCommit, History, Search } from "lucide-react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
+import { nip19 } from "nostr-tools";
+
+interface Commit {
+  id: string; // commit hash or ID
+  message: string;
+  author: string; // pubkey
+  authorName?: string;
+  authorPicture?: string;
+  timestamp: number;
+  branch?: string;
+  parentIds?: string[]; // For commit graph
+  filesChanged?: number;
+  insertions?: number;
+  deletions?: number;
+  changedFiles?: Array<{ path: string; status: string }>; // Files changed in this commit
+  prId?: string; // Related PR ID if commit is from a merged PR
+}
 
 async function fetchGithubCommitsForBranch(
   entity: string,
   repo: string,
-  branch: string
+  branch: string,
+  storedRepo?: StoredRepo | null
 ): Promise<Commit[]> {
-  const ghUrl = inferGithubUpstreamFromRoute(entity, repo);
+  const ghUrl = resolveGithubUpstreamForTabs(entity, repo, storedRepo);
   const spec = ghUrl ? parseGitHubRepoSpec(ghUrl) : null;
   if (!spec) return [];
 
@@ -77,20 +97,106 @@ async function fetchGithubCommitsForBranch(
   return [];
 }
 
-interface Commit {
-  id: string; // commit hash or ID
-  message: string;
-  author: string; // pubkey
-  authorName?: string;
-  authorPicture?: string;
-  timestamp: number;
-  branch?: string;
-  parentIds?: string[]; // For commit graph
-  filesChanged?: number;
-  insertions?: number;
-  deletions?: number;
-  changedFiles?: Array<{ path: string; status: string }>; // Files changed in this commit
-  prId?: string; // Related PR ID if commit is from a merged PR
+function npubForCloneUrls(entity: string, ownerHex: string | null): string | null {
+  if (entity.startsWith("npub")) return entity;
+  if (ownerHex && /^[0-9a-f]{64}$/i.test(ownerHex)) {
+    try {
+      return nip19.npubEncode(ownerHex.toLowerCase());
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function candidateCloneUrls(
+  entity: string,
+  repoName: string,
+  ownerHex: string | null,
+  stored?: StoredRepo | null
+): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  const add = (u?: string | null) => {
+    const t = (u || "").trim();
+    if (!t) return;
+    const key = t.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    urls.push(t);
+  };
+  for (const u of stored?.clone || []) add(u);
+  add(stored?.sourceUrl || null);
+  const npub = npubForCloneUrls(entity, ownerHex);
+  if (npub) {
+    for (const host of KNOWN_GRASP_DOMAINS) {
+      add(`https://${host}/${npub}/${repoName}.git`);
+    }
+  }
+  return urls;
+}
+
+async function fetchBridgeCommits(
+  ownerParam: string,
+  repoName: string,
+  branch: string
+): Promise<Commit[]> {
+  const res = await fetchBridgeRead(
+    `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
+      ownerParam
+    )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
+      branch
+    )}&limit=500`
+  );
+  if (!res.ok) return [];
+  const data = (await res.json()) as {
+    commits?: Array<{
+      id: string;
+      message: string;
+      author: string;
+      timestamp: number;
+      branch?: string;
+      parentIds?: string[];
+    }>;
+    branch?: string;
+  };
+  const effectiveBranch = data.branch || branch;
+  return (data.commits || []).map((c) => ({
+    id: c.id,
+    message: c.message,
+    author: c.author,
+    timestamp: c.timestamp,
+    branch: c.branch || effectiveBranch,
+    parentIds: c.parentIds,
+  }));
+}
+
+/** Mirror clone URLs onto the bridge, then re-read git log (Code-tab parity). */
+async function mirrorThenFetchCommits(
+  ownerParam: string,
+  repoName: string,
+  branch: string,
+  cloneUrls: string[]
+): Promise<Commit[]> {
+  for (const cloneUrl of cloneUrls.slice(0, 6)) {
+    try {
+      const cloneRes = await fetch("/api/nostr/repo/clone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cloneUrl,
+          ownerPubkey: ownerParam,
+          repo: repoName,
+        }),
+      });
+      if (!cloneRes.ok) continue;
+      const commits = await fetchBridgeCommits(ownerParam, repoName, branch);
+      if (commits.length > 0) return commits;
+    } catch (e) {
+      console.warn("[Commits] mirror clone failed:", cloneUrl, e);
+    }
+  }
+  return [];
 }
 
 export default function CommitsPage({
@@ -154,53 +260,55 @@ export default function CommitsPage({
         storedRepo ?? findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
 
       if (!Array.isArray(allCommits) || allCommits.length === 0) {
-        let ownerPk = rec ? getRepoOwnerPubkey(rec, entity) : null;
-        if (!ownerPk && entity?.includes("@")) {
-          ownerPk = await resolveEntityToPubkeyAsync(entity, rec ?? undefined);
+        let ownerPk =
+          (rec ? getRepoOwnerPubkey(rec, entity) : null) ||
+          resolveEntityToPubkey(entity, rec ?? undefined);
+        if (!ownerPk) {
+          ownerPk = await resolveEntityToPubkeyAsync(
+            entity,
+            rec ?? undefined
+          );
         }
+        // Bridge API also accepts npub directly
+        const ownerParam =
+          (ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk) && ownerPk) ||
+          (entity.startsWith("npub") ? entity : null) ||
+          ownerPk;
         const repoName =
           (rec as StoredRepo & { repositoryName?: string })?.repositoryName ||
           rec?.repo ||
           rec?.name ||
           repo;
-        if (ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk) && repoName) {
-          const res = await fetchBridgeRead(
-            `/api/nostr/repo/commits?ownerPubkey=${encodeURIComponent(
-              ownerPk
-            )}&repo=${encodeURIComponent(repoName)}&branch=${encodeURIComponent(
-              branch
-            )}&limit=500`
-          );
-          if (res.ok) {
-            const data = (await res.json()) as {
-              commits?: Array<{
-                id: string;
-                message: string;
-                author: string;
-                timestamp: number;
-                branch?: string;
-                parentIds?: string[];
-              }>;
-              branch?: string;
-              error?: string;
-            };
-            const effectiveBranch = data.branch || branch;
-            const raw = data.commits || [];
-            allCommits = raw.map((c) => ({
-              id: c.id,
-              message: c.message,
-              author: c.author,
-              timestamp: c.timestamp,
-              branch: c.branch || effectiveBranch,
-              parentIds: c.parentIds,
-            }));
-            if (allCommits.length > 0) {
-              localStorage.setItem(commitsKey, JSON.stringify(allCommits));
+
+        if (ownerParam && repoName) {
+          allCommits = await fetchBridgeCommits(ownerParam, repoName, branch);
+          if (!allCommits.length) {
+            const clones = candidateCloneUrls(
+              entity,
+              repoName,
+              ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk) ? ownerPk : null,
+              rec
+            );
+            if (clones.length > 0) {
+              allCommits = await mirrorThenFetchCommits(
+                ownerParam,
+                repoName,
+                branch,
+                clones
+              );
             }
+          }
+          if (allCommits.length > 0) {
+            localStorage.setItem(commitsKey, JSON.stringify(allCommits));
           }
         }
         if (!allCommits.length) {
-          allCommits = await fetchGithubCommitsForBranch(entity, repo, branch);
+          allCommits = await fetchGithubCommitsForBranch(
+            entity,
+            repo,
+            branch,
+            rec
+          );
           if (allCommits.length > 0) {
             localStorage.setItem(commitsKey, JSON.stringify(allCommits));
           }
@@ -224,7 +332,8 @@ export default function CommitsPage({
         const ghCommits = await fetchGithubCommitsForBranch(
           entity,
           repo,
-          branch
+          branch,
+          rec
         );
         if (ghCommits.length > 0) {
           allCommits = ghCommits;

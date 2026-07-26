@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { KIND_SSH_KEY, createSSHKeyEvent } from "@/lib/nostr/events";
+import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import {
   NO_SIGNING_METHOD_MESSAGE,
   resolveSigningCredentials,
@@ -34,7 +35,11 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { type Event as NostrEvent, getEventHash, signEvent } from "nostr-tools";
+import {
+  type Event as NostrEvent,
+  getEventHash,
+  signEvent,
+} from "nostr-tools";
 
 interface SSHKey {
   id: string;
@@ -46,8 +51,62 @@ interface SSHKey {
   lastUsed?: number;
 }
 
+/** Normalize OpenSSH pubkey line for dedupe (type + key body). */
+function sshKeyBody(publicKey: string): string {
+  const parts = publicKey.trim().split(/\s+/);
+  if (parts.length < 2) return publicKey.trim();
+  return `${parts[0]} ${parts[1]}`;
+}
+
+function sshKeyFromEvent(
+  event: {
+    id: string;
+    content?: string;
+    created_at?: number;
+    kind?: number;
+    pubkey?: string;
+  },
+  fingerprintFn: (k: string) => string
+): SSHKey | null {
+  const content = (event.content || "").trim();
+  const parts = content.split(/\s+/);
+  if (parts.length < 2) return null;
+  const keyType = parts[0] || "";
+  const validKeyTypes = [
+    "ssh-rsa",
+    "ssh-ed25519",
+    "ecdsa-sha2-nistp256",
+    "ecdsa-sha2-nistp384",
+    "ecdsa-sha2-nistp521",
+  ];
+  if (!keyType || !validKeyTypes.includes(keyType)) return null;
+  return {
+    id: event.id,
+    title: parts.slice(2).join(" ") || `key-${event.id.slice(0, 8)}`,
+    keyType,
+    publicKey: content,
+    fingerprint: fingerprintFn(content),
+    createdAt: (event.created_at || 0) * 1000,
+  };
+}
+
+function mergeSshKeys(local: SSHKey[], fromRelays: SSHKey[]): SSHKey[] {
+  const byBody = new Map<string, SSHKey>();
+  for (const k of [...fromRelays, ...local]) {
+    const body = sshKeyBody(k.publicKey);
+    const prev = byBody.get(body);
+    if (!prev || (k.createdAt || 0) >= (prev.createdAt || 0)) {
+      byBody.set(body, k);
+    }
+  }
+  return Array.from(byBody.values()).sort(
+    (a, b) => (b.createdAt || 0) - (a.createdAt || 0)
+  );
+}
+
 export default function SSHKeysPage() {
-  const { pubkey, publish, defaultRelays, remoteSigner } = useNostrContext();
+  const { pubkey, publish, subscribe, defaultRelays, remoteSigner } =
+    useNostrContext();
   const { isLoggedIn } = useSession();
   const [keys, setKeys] = useState<SSHKey[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,31 +127,90 @@ export default function SSHKeysPage() {
   const [githubConnected, setGithubConnected] = useState(false);
   const [githubUsername, setGithubUsername] = useState<string | null>(null);
   const [githubConnecting, setGithubConnecting] = useState(false);
+  const [githubKeySuggestions, setGithubKeySuggestions] = useState<
+    Array<{ key: string; title?: string }>
+  >([]);
   // Use ref to track connecting state for closure access
   const githubConnectingRef = useRef(false);
   // Store popup check interval ID to clear it when message is received
   const popupCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load SSH keys from Nostr events
+  const calculateFingerprint = useCallback((publicKey: string): string => {
+    // Simple fingerprint: first/last of key body (full ssh-keygen md5 needs crypto)
+    const parts = publicKey.trim().split(/\s+/);
+    const body = parts[1] || publicKey;
+    if (body.length < 16) return body;
+    return `${body.slice(0, 8)}…${body.slice(-8)}`;
+  }, []);
+
+  // Load SSH keys from relays (kind 52) + localStorage cache
   const loadKeys = useCallback(async () => {
-    if (!pubkey || !publish) return;
+    if (!pubkey) return;
 
     setLoading(true);
     try {
-      // Query Nostr relays for KIND_SSH_KEY events
-      // For now, we'll store keys in localStorage and sync with Nostr
-      // In production, query relays directly
       const stored = JSON.parse(
         localStorage.getItem(`gittr_ssh_keys_${pubkey}`) || "[]"
-      );
+      ) as SSHKey[];
+      // Optimistic: show local cache immediately
       setKeys(stored);
+
+      if (!subscribe) {
+        setLoading(false);
+        return;
+      }
+
+      const relays = getAllRelays(defaultRelays);
+      const collected = new Map<string, SSHKey>();
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+        const timeout = setTimeout(finish, 4500);
+        try {
+          subscribe(
+            [{ kinds: [KIND_SSH_KEY], authors: [pubkey], limit: 50 }],
+            relays,
+            (event) => {
+              if (event.kind !== KIND_SSH_KEY) return;
+              if (event.pubkey?.toLowerCase() !== pubkey.toLowerCase()) return;
+              const parsed = sshKeyFromEvent(event, calculateFingerprint);
+              if (parsed) collected.set(parsed.id, parsed);
+            },
+            undefined,
+            () => {
+              clearTimeout(timeout);
+              finish();
+            },
+            {}
+          );
+        } catch (e) {
+          console.warn("[SSH Keys] Relay subscribe failed:", e);
+          clearTimeout(timeout);
+          finish();
+        }
+      });
+
+      const merged = mergeSshKeys(stored, Array.from(collected.values()));
+      setKeys(merged);
+      try {
+        localStorage.setItem(
+          `gittr_ssh_keys_${pubkey}`,
+          JSON.stringify(merged)
+        );
+      } catch {
+        /* ignore quota */
+      }
     } catch (error: any) {
       console.error("Error loading SSH keys:", error);
       setError("Failed to load SSH keys");
     } finally {
       setLoading(false);
     }
-  }, [pubkey]);
+  }, [pubkey, subscribe, defaultRelays, calculateFingerprint]);
 
   useEffect(() => {
     setMounted(true);
@@ -356,25 +474,42 @@ export default function SSHKeysPage() {
     };
   }, []); // Empty deps - we check localStorage and listen for messages
 
-  // Calculate fingerprint from public key
-  const calculateFingerprint = (publicKey: string): string => {
-    try {
-      const parts = publicKey.trim().split(/\s+/);
-      if (parts.length < 2 || !parts[1]) return "Unknown";
-
-      // For Ed25519 and RSA, we'd need to decode base64 and hash
-      // Simplified version - in production, use proper SSH key fingerprint calculation
-      const keyData = parts[1];
-      if (keyData.length > 20) {
-        return `${keyData.substring(0, 8)}...${keyData.substring(
-          keyData.length - 8
-        )}`;
-      }
-      return keyData;
-    } catch {
-      return "Unknown";
+  // Suggest public SSH keys from connected GitHub account (api.github.com/users/…/keys)
+  useEffect(() => {
+    if (!githubUsername) {
+      setGithubKeySuggestions([]);
+      return;
     }
-  };
+    let cancelled = false;
+    (async () => {
+      try {
+        const endpoint = `/users/${encodeURIComponent(githubUsername)}/keys`;
+        const res = await fetch(
+          `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`
+        );
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as Array<{
+          key?: string;
+          title?: string;
+          id?: number;
+        }>;
+        if (!Array.isArray(data) || cancelled) return;
+        setGithubKeySuggestions(
+          data
+            .filter((k) => typeof k.key === "string" && k.key.trim())
+            .map((k) => ({
+              key: k.key!.trim(),
+              title: k.title || `github-${k.id ?? "key"}`,
+            }))
+        );
+      } catch (e) {
+        console.warn("[SSH Keys] Failed to load GitHub key suggestions:", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [githubUsername]);
 
   // Generate SSH key pair (client-side using Web Crypto API)
   const generateKeyPair = useCallback(async () => {
@@ -526,10 +661,11 @@ export default function SSHKeysPage() {
         throw new Error("No signing method available");
       }
 
-      // Publish to Nostr relays
+      // Publish to Nostr relays (user relays + defaults)
       if (publish) {
+        const publishRelays = getAllRelays(defaultRelays);
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
-        void publish(sshKeyEvent, defaultRelays);
+        void publish(sshKeyEvent, publishRelays);
 
         // CRITICAL: Also send SSH key event directly to bridge API for immediate processing
         // The bridge only watches for SSH keys from users with repository permissions via relay subscription,
@@ -1026,6 +1162,17 @@ export default function SSHKeysPage() {
                 are <strong>not</strong> related to GitHub OAuth below.
               </li>
               <li>
+                This page lists kind-52 events from your relays (plus a local
+                cache). Keys you published from another device should appear
+                after a short relay query.
+              </li>
+              <li>
+                <code className="text-xs">git.gittr.space</code> is the{" "}
+                <strong>git host</strong> (SSH/HTTPS), not a Nostr relay —{" "}
+                <code className="text-xs">wss://git.gittr.space</code> returning
+                404 is expected.
+              </li>
+              <li>
                 Paste a real OpenSSH public key from{" "}
                 <code className="text-xs">~/.ssh/id_ed25519.pub</code> (or use{" "}
                 <code className="text-xs">gn ssh-key add</code>). Browser
@@ -1106,6 +1253,44 @@ export default function SSHKeysPage() {
               </p>
             </div>
 
+            {githubKeySuggestions.length > 0 && (
+              <div className="rounded border border-[#383B42] bg-[#0E1116] p-3">
+                <p className="mb-2 text-xs font-medium text-gray-300">
+                  From GitHub ({githubUsername}) — click to fill
+                </p>
+                <ul className="space-y-2">
+                  {githubKeySuggestions.map((sug, i) => {
+                    const already = keys.some(
+                      (k) => sshKeyBody(k.publicKey) === sshKeyBody(sug.key)
+                    );
+                    return (
+                      <li key={`${sug.title}-${i}`}>
+                        <button
+                          type="button"
+                          disabled={already}
+                          onClick={() => {
+                            setPublicKeyInput(sug.key);
+                            if (sug.title) setKeyTitle(sug.title);
+                          }}
+                          className="w-full rounded border border-[#383B42] px-3 py-2 text-left text-xs hover:border-purple-500/60 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <span className="font-mono text-gray-300">
+                            {sug.key.slice(0, 48)}…
+                          </span>
+                          {sug.title ? (
+                            <span className="mt-1 block text-gray-500">
+                              {sug.title}
+                              {already ? " (already added)" : ""}
+                            </span>
+                          ) : null}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
             <div>
               <Label htmlFor="key-title">Key Title (optional)</Label>
               <Input
@@ -1145,10 +1330,10 @@ export default function SSHKeysPage() {
         ) : keys.length === 0 ? (
           <div className="border border-[#383B42] rounded p-8 text-center bg-[#171B21]">
             <Key className="h-12 w-12 mx-auto mb-4 text-gray-500" />
-            <p className="text-gray-400 mb-4">No SSH keys added yet.</p>
+            <p className="text-gray-400 mb-4">No SSH keys found yet.</p>
             <p className="text-sm text-gray-500">
-              Add an SSH key to enable Git operations (clone, push, create
-              repos) over SSH.
+              Add an OpenSSH public key (or wait for relays if you already
+              published kind 52 elsewhere). Keys enable git clone/push over SSH.
             </p>
           </div>
         ) : (
