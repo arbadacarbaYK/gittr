@@ -17,6 +17,8 @@ export type SyncedProjectItem = {
   status: KanbanStatus;
   issueId?: string;
   prId?: string;
+  /** GitHub login or display name when known */
+  author?: string;
   source?: "github" | "local";
   githubItemId?: string;
 };
@@ -54,6 +56,9 @@ query RepoProjects($owner: String!, $name: String!) {
                 state
                 body
                 url
+                author {
+                  login
+                }
               }
               ... on PullRequest {
                 number
@@ -61,10 +66,16 @@ query RepoProjects($owner: String!, $name: String!) {
                 state
                 body
                 url
+                author {
+                  login
+                }
               }
               ... on DraftIssue {
                 title
                 body
+                creator {
+                  login
+                }
               }
             }
             fieldValues(first: 20) {
@@ -179,6 +190,8 @@ export async function syncGithubProjectsForRepo(
                     state?: string;
                     body?: string;
                     url?: string;
+                    author?: { login?: string } | null;
+                    creator?: { login?: string } | null;
                   } | null;
                   fieldValues?: {
                     nodes?: Array<{
@@ -225,6 +238,8 @@ export async function syncGithubProjectsForRepo(
             // Keep a short body excerpt only — full issue/PR markdown blows up
             // kanban cards and localStorage (e.g. cargo-limit research dumps).
             const bodyExcerpt = truncateProjectBody(content?.body);
+            const author =
+              content?.author?.login || content?.creator?.login || undefined;
             if (typename === "Issue" && number != null) {
               return {
                 id: `gh-item-${it.id}`,
@@ -233,6 +248,7 @@ export async function syncGithubProjectsForRepo(
                 type: "issue" as const,
                 status,
                 issueId: `issue-${number}`,
+                author,
                 source: "github" as const,
                 githubItemId: it.id,
               };
@@ -245,6 +261,7 @@ export async function syncGithubProjectsForRepo(
                 type: "pr" as const,
                 status,
                 prId: `pr-${number}`,
+                author,
                 source: "github" as const,
                 githubItemId: it.id,
               };
@@ -255,6 +272,7 @@ export async function syncGithubProjectsForRepo(
               content: bodyExcerpt,
               type: "note" as const,
               status,
+              author,
               source: "github" as const,
               githubItemId: it.id,
             };

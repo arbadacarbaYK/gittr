@@ -59,6 +59,7 @@ interface ProjectItem {
   dueDate?: number;
   estimatedDays?: number; // For roadmap planning
   priority?: "low" | "medium" | "high";
+  author?: string;
   source?: "github" | "local";
   githubItemId?: string;
 }
@@ -322,6 +323,14 @@ export default function ProjectsPage() {
     prId?: string
   ) => {
     if (!project) return;
+    if (!canEditBoard) {
+      alert(
+        isGithubBoard
+          ? "GitHub Projects are read-only mirrors. Create a local project (as owner/maintainer) to add cards."
+          : "Only owners and maintainers can add items to this board."
+      );
+      return;
+    }
 
     const newItem: ProjectItem = {
       id: `item-${Date.now()}`,
@@ -335,6 +344,7 @@ export default function ProjectsPage() {
       status: "todo",
       issueId,
       prId,
+      source: "local",
     };
 
     const updated = projects.map((p) =>
@@ -350,6 +360,7 @@ export default function ProjectsPage() {
   };
 
   const handleDragStart = (item: ProjectItem) => {
+    if (!canEditBoard) return;
     setDraggedItem(item);
   };
 
@@ -357,6 +368,7 @@ export default function ProjectsPage() {
     e: React.DragEvent,
     status: "todo" | "in_progress" | "done"
   ) => {
+    if (!canEditBoard) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
   };
@@ -366,7 +378,7 @@ export default function ProjectsPage() {
     status: "todo" | "in_progress" | "done"
   ) => {
     e.preventDefault();
-    if (!draggedItem || !project) return;
+    if (!canEditBoard || !draggedItem || !project) return;
 
     const updated = projects.map((p) =>
       p.id === project.id
@@ -384,6 +396,10 @@ export default function ProjectsPage() {
 
   const handleDeleteItem = (itemId: string) => {
     if (!project) return;
+    if (!canEditBoard) {
+      alert("Only owners and maintainers can delete board items.");
+      return;
+    }
 
     const item = project.items.find((i) => i.id === itemId);
     if (!item) return;
@@ -647,10 +663,7 @@ export default function ProjectsPage() {
   };
 
   const renderItem = (item: ProjectItem) => {
-    const readOnlyItem =
-      isGithubBoard ||
-      item.source === "github" ||
-      item.id.startsWith("gh-item-");
+    const readOnlyItem = !canEditBoard;
     const preview = plainTextExcerpt(item.content, 140);
 
     if (editingItem === item.id && !readOnlyItem) {
@@ -784,6 +797,11 @@ export default function ProjectsPage() {
             <div className="text-sm font-medium leading-snug text-gray-100 line-clamp-2 break-words">
               {item.title}
             </div>
+            {item.author ? (
+              <p className="mt-0.5 text-[11px] text-gray-500 truncate">
+                @{item.author}
+              </p>
+            ) : null}
             {preview ? (
               <p className="mt-1 text-xs leading-relaxed text-gray-500 line-clamp-2 break-words">
                 {preview}
@@ -868,10 +886,30 @@ export default function ProjectsPage() {
       },
     ];
 
+    // Viewers: hide empty columns so the ones with work get the width.
+    // Editors keep all three for drag-and-drop targets.
+    const visibleColumns = canEditBoard
+      ? columns
+      : columns.filter(
+          (col) =>
+            project.items.some((item) => item.status === col.status)
+        );
+    const colCount = Math.max(1, visibleColumns.length);
+    const gridCols =
+      colCount === 1
+        ? "md:grid-cols-1"
+        : colCount === 2
+        ? "md:grid-cols-2"
+        : "md:grid-cols-3";
+
     return (
-      <div className="grid min-h-0 grid-cols-1 gap-3 md:grid-cols-3 md:gap-4 md:h-[min(640px,calc(100dvh-15rem))]">
-        {columns.map((col) => {
-          const items = project.items.filter((item) => item.status === col.status);
+      <div
+        className={`grid min-h-0 grid-cols-1 gap-3 md:gap-4 md:h-[min(640px,calc(100dvh-15rem))] ${gridCols}`}
+      >
+        {visibleColumns.map((col) => {
+          const items = project.items.filter(
+            (item) => item.status === col.status
+          );
           return (
             <div
               key={col.status}
@@ -887,7 +925,7 @@ export default function ProjectsPage() {
                     {items.length}
                   </span>
                 </h3>
-                {!isGithubBoard && (
+                {canEditBoard && (
                   <Button
                     size="sm"
                     variant="ghost"
@@ -905,7 +943,7 @@ export default function ProjectsPage() {
                     {renderItem(item)}
                   </div>
                 ))}
-                {items.length === 0 && (
+                {items.length === 0 && canEditBoard && (
                   <div className="rounded border border-dashed border-gray-700 px-3 py-8 text-center text-sm text-gray-500">
                     Drop items here
                   </div>
@@ -1041,7 +1079,7 @@ export default function ProjectsPage() {
                                 : ""}
                             </span>
                           )}
-                          {!item.dueDate && (
+                          {!item.dueDate && canEditBoard && (
                             <button
                               onClick={() => {
                                 // Auto-set due date: today + estimated days
@@ -1068,6 +1106,7 @@ export default function ProjectsPage() {
                           )}
                         </div>
                       </div>
+                      {canEditBoard && (
                       <button
                         onClick={() => {
                           setEditingItem(item.id);
@@ -1087,6 +1126,7 @@ export default function ProjectsPage() {
                       >
                         <Edit2 className="h-4 w-4" />
                       </button>
+                      )}
                     </div>
                     <div className="h-3 bg-gray-800 rounded-full overflow-hidden relative mb-2">
                       <div
@@ -1179,25 +1219,27 @@ export default function ProjectsPage() {
                     )}
                     {editingItem !== item.id && (
                       <div className="mt-2 flex gap-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingItem(item.id);
-                            setEditingTitle(item.title);
-                            setEditingContent(item.content || "");
-                            setEditingEstimatedDays(item.estimatedDays);
-                            setEditingDueDate(
-                              item.dueDate
-                                ? new Date(item.dueDate)
-                                    .toISOString()
-                                    .split("T")[0] || ""
-                                : ""
-                            );
-                          }}
-                          className="text-xs text-purple-400 hover:text-purple-300"
-                        >
-                          Edit duration/deadline
-                        </button>
+                        {canEditBoard && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingItem(item.id);
+                              setEditingTitle(item.title);
+                              setEditingContent(item.content || "");
+                              setEditingEstimatedDays(item.estimatedDays);
+                              setEditingDueDate(
+                                item.dueDate
+                                  ? new Date(item.dueDate)
+                                      .toISOString()
+                                      .split("T")[0] || ""
+                                  : ""
+                              );
+                            }}
+                            className="text-xs text-purple-400 hover:text-purple-300"
+                          >
+                            Edit duration/deadline
+                          </button>
+                        )}
                         {item.type === "issue" && item.issueId && (
                           <Link
                             href={`/${entity}/${repo}/issues/${item.issueId}`}
@@ -1227,22 +1269,24 @@ export default function ProjectsPage() {
                 <p className="text-xs mt-1">
                   Items auto-estimated based on type and content
                 </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-4"
-                  onClick={() => handleAddItem("note")}
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Add Item
-                </Button>
+                {canEditBoard && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-4"
+                    onClick={() => handleAddItem("note")}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Item
+                  </Button>
+                )}
               </div>
             )}
           </div>
         </div>
 
-        {/* Quick Add from Open Issues - Smart Suggestions */}
-        {openIssues.length > 0 && (
+        {/* Quick Add — owners/maintainers on local boards only */}
+        {canEditBoard && openIssues.length > 0 && (
           <div className="border border-[#383B42] rounded p-4 bg-[#171B21]">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold">Quick Add from Open Issues</h3>
@@ -1276,7 +1320,8 @@ export default function ProjectsPage() {
                       </div>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xs text-gray-400">
-                          #{issue.id?.slice(0, 8) || "issue"}
+                          #{issue.number || issue.id?.slice(0, 8) || "issue"}
+                          {issue.author ? ` · ${issue.author}` : ""}
                         </span>
                         {issue.bountyAmount && (
                           <span className="text-xs bg-yellow-900/50 text-yellow-300 px-1 rounded">
@@ -1308,28 +1353,29 @@ export default function ProjectsPage() {
               })}
             </div>
             <p className="text-xs text-gray-500 mt-3">
-              💡 Issues with bounties or high-priority keywords are highlighted
+              Issues with bounties or high-priority keywords are highlighted
             </p>
           </div>
         )}
 
-        {/* Auto-planning helper */}
-        <div className="border border-purple-500/30 rounded p-4 bg-purple-900/10">
-          <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
-            <TrendingUp className="h-4 w-4" />
-            Smart Planning Tips
-          </h4>
-          <ul className="text-xs text-gray-300 space-y-1 list-disc list-inside">
-            <li>
-              Items are auto-estimated: notes (1 day), bugs (2 days), features
-              (7-10 days)
-            </li>
-            <li>Click "Set deadline" to auto-schedule based on estimate</li>
-            <li>Mark high-priority items for urgent issues</li>
-            <li>Roadmap shows timeline - overdue items highlighted in red</li>
-            <li>Drag items in Kanban view to update status</li>
-          </ul>
-        </div>
+        {canEditBoard && (
+          <div className="border border-purple-500/30 rounded p-4 bg-purple-900/10">
+            <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Smart Planning Tips
+            </h4>
+            <ul className="text-xs text-gray-300 space-y-1 list-disc list-inside">
+              <li>
+                Items are auto-estimated: notes (1 day), bugs (2 days), features
+                (7-10 days)
+              </li>
+              <li>Click "Set deadline" to auto-schedule based on estimate</li>
+              <li>Mark high-priority items for urgent issues</li>
+              <li>Roadmap shows timeline - overdue items highlighted in red</li>
+              <li>Drag items in Kanban view to update status</li>
+            </ul>
+          </div>
+        )}
       </div>
     );
   };
@@ -1372,10 +1418,12 @@ export default function ProjectsPage() {
               )}
             </Button>
           )}
-          <Button onClick={handleCreateProject}>
-            <Plus className="mr-2 h-4 w-4" />
-            New Project
-          </Button>
+          {hasWrite && (
+            <Button onClick={handleCreateProject}>
+              <Plus className="mr-2 h-4 w-4" />
+              New Project
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1383,11 +1431,15 @@ export default function ProjectsPage() {
       <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
         {projects.length === 0 ? (
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#383B42] bg-[#171B21] px-3 py-2">
-            <span className="text-sm text-gray-400">No projects yet</span>
-            <Button size="sm" onClick={handleCreateProject}>
-              <Plus className="mr-1 h-4 w-4" />
-              Create
-            </Button>
+            <span className="text-sm text-gray-400">
+              {hasWrite ? "No projects yet" : "No projects on this repo yet"}
+            </span>
+            {hasWrite && (
+              <Button size="sm" onClick={handleCreateProject}>
+                <Plus className="mr-1 h-4 w-4" />
+                Create
+              </Button>
+            )}
           </div>
         ) : (
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
@@ -1405,7 +1457,7 @@ export default function ProjectsPage() {
                 </option>
               ))}
             </select>
-            {project && !isGithubBoard && (
+            {project && canEditBoard && (
               <div className="flex shrink-0 gap-1">
                 <button
                   type="button"
@@ -1473,7 +1525,7 @@ export default function ProjectsPage() {
 
           {project.view === "kanban" ? renderKanban() : renderRoadmap()}
 
-          {!isGithubBoard && (
+          {canEditBoard && (
             <div className="mt-3 space-y-0.5 text-xs text-gray-500">
               <p>Drag items between columns to update status</p>
               <p>Click items to edit title and notes</p>
@@ -1485,12 +1537,16 @@ export default function ProjectsPage() {
           <Folder className="mx-auto mb-4 h-12 w-12 text-gray-500" />
           <h3 className="mb-2 text-xl font-semibold">No project selected</h3>
           <p className="mb-4 text-gray-400">
-            Create a new project to start organizing your work
+            {hasWrite
+              ? "Create a new project to start organizing your work"
+              : "No board selected"}
           </p>
-          <Button onClick={handleCreateProject}>
-            <Plus className="mr-2 h-4 w-4" />
-            New Project
-          </Button>
+          {hasWrite && (
+            <Button onClick={handleCreateProject}>
+              <Plus className="mr-2 h-4 w-4" />
+              New Project
+            </Button>
+          )}
         </div>
       )}
     </div>
