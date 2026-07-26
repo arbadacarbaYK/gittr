@@ -220,8 +220,8 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 
 	// If repo doesn't exist, try to clone from source URL or clone URLs
 	if !repoExists {
-		// Priority 1: Try to clone from source URL (GitHub/GitLab/Codeberg)
-		if sourceUrl != "" && (strings.Contains(sourceUrl, "github.com") || strings.Contains(sourceUrl, "gitlab.com") || strings.Contains(sourceUrl, "codeberg.org")) {
+		// Priority 1: external forge / self-hosted HTTPS or git@ (not GRASP /npub1 paths)
+		if sourceUrl != "" && looksLikeExternalGitRemote(sourceUrl) {
 			// Convert source URL to clone URL
 			cloneUrl := sourceUrl
 			if !strings.HasSuffix(cloneUrl, ".git") {
@@ -332,6 +332,36 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 	}
 
 	return nil
+}
+
+// looksLikeExternalGitRemote is true for public HTTPS/HTTP/git@ remotes the bridge
+// can git-clone as NIP-34 source (GitHub, GitLab, Codeberg, Gitea, self-hosted).
+// False for empty URLs and Nostr GRASP paths that already use /npub1…/repo.
+func looksLikeExternalGitRemote(sourceUrl string) bool {
+	u := strings.TrimSpace(sourceUrl)
+	if u == "" {
+		return false
+	}
+	lower := strings.ToLower(u)
+	if strings.Contains(lower, "/npub1") {
+		return false
+	}
+	if strings.HasPrefix(lower, "git@") {
+		parts := strings.SplitN(u, ":", 2)
+		return len(parts) == 2 && strings.Contains(parts[1], "/")
+	}
+	if strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "http://") {
+		withoutScheme := lower
+		if strings.HasPrefix(withoutScheme, "https://") {
+			withoutScheme = withoutScheme[len("https://"):]
+		} else {
+			withoutScheme = withoutScheme[len("http://"):]
+		}
+		pathParts := strings.Split(withoutScheme, "/")
+		// host + at least owner + repo
+		return len(pathParts) >= 3 && pathParts[0] != "" && pathParts[1] != "" && pathParts[2] != ""
+	}
+	return false
 }
 
 // Clone repository from URL to path

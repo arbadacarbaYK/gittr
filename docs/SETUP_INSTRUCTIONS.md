@@ -272,7 +272,7 @@ curl -sI https://your.domain | head -1
 
 Import fails with “>4 MB”: Next API body limit — trim large binaries in the import. See README.
 
-**Non-GitHub import (`/new` Option 1):** GitLab / Codeberg / Gitea / self-hosted HTTPS or `git@` URLs go to **`POST /api/import-git`** (server `git clone --depth 1`). GitHub uses **`POST /api/import`**. The Import button shows an “Importing…” state and status under the control; web UI paths like `…/-/tree/main` are stripped before clone. Bulk **`/import`** remains GitHub-only.
+**Non-GitHub import (`/new` Option 1):** GitLab / Codeberg / Gitea / self-hosted HTTPS or `git@` URLs go to **`POST /api/import-git`** (server `git clone --depth 1`). GitHub uses **`POST /api/import`**. The Import button shows an “Importing…” state and status under the control; web UI paths like `…/-/tree/main` are stripped before clone. Bulk **`/import`** remains **GitHub-only** (list + multi-select); other forges must use Option 1 one repo at a time. After import, **Push** defers to the bridge cloning the `source` URL for any cloneable HTTPS/git@ remote (not only github.com / gitlab.com / codeberg.org), so metadata-only imports do not publish empty bare repos.
 
 ---
 

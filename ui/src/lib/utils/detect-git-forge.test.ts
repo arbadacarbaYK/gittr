@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   detectGitForge,
+  isCloneableUpstreamSourceUrl,
   normalizeGitCloneUrl,
   parseOwnerRepoFromGitUrl,
 } from "./detect-git-forge";
@@ -53,5 +54,37 @@ describe("parseOwnerRepoFromGitUrl", () => {
       repo: "repo",
       host: "gitlab.com",
     });
+  });
+});
+
+describe("isCloneableUpstreamSourceUrl", () => {
+  it("allows GitHub, GitLab, Codeberg", () => {
+    expect(
+      isCloneableUpstreamSourceUrl("https://github.com/a/b")
+    ).toBe(true);
+    expect(
+      isCloneableUpstreamSourceUrl("https://gitlab.com/group/repo")
+    ).toBe(true);
+    expect(
+      isCloneableUpstreamSourceUrl("https://codeberg.org/a/b")
+    ).toBe(true);
+  });
+
+  it("allows self-hosted HTTPS and git@", () => {
+    expect(
+      isCloneableUpstreamSourceUrl("https://git.example.com/org/repo.git")
+    ).toBe(true);
+    expect(
+      isCloneableUpstreamSourceUrl("git@git.btclock.dev:btclock/webui.git")
+    ).toBe(true);
+  });
+
+  it("rejects GRASP npub paths and empty", () => {
+    expect(isCloneableUpstreamSourceUrl("")).toBe(false);
+    expect(
+      isCloneableUpstreamSourceUrl(
+        "https://git.gittr.space/npub1abc/repo.git"
+      )
+    ).toBe(false);
   });
 });

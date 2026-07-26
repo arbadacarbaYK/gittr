@@ -20,6 +20,7 @@ import {
   mergeGraspHostsForPush,
   normalizeGraspHost,
 } from "../utils/grasp-servers";
+import { isCloneableUpstreamSourceUrl } from "../utils/detect-git-forge";
 import { normalizeGithubSourceUrl } from "../utils/normalize-github-source-url";
 import { setRepoStatus } from "../utils/repo-status";
 
@@ -45,7 +46,7 @@ function resolveWssRelayForGitHost(domain: string): string {
 const NGINX_SAFE_PUSH_BYTES = 9 * 1024 * 1024;
 
 function isUpstreamForgeSourceUrl(sourceUrl: string): boolean {
-  return /(?:github|gitlab|codeberg)\.(?:com|org)/i.test(sourceUrl);
+  return isCloneableUpstreamSourceUrl(sourceUrl);
 }
 
 function estimatePushPayloadBytes(content: string | undefined): number {

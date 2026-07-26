@@ -739,6 +739,11 @@ function NewRepoPageContent() {
           you run import there — your Git is not auto-synced from this button.
           You can import many selected repos in one go, or only a few.
         </p>
+        <p className="text-sm text-amber-200/90 mb-3">
+          <strong>GitHub only.</strong> GitLab, Codeberg, Gitea, and self-hosted
+          forges are not supported here — use Option 1 above with a full
+          repository URL (one repo at a time).
+        </p>
         <button
           className="border px-4 py-2 inline-block bg-purple-600 hover:bg-purple-700 text-white rounded"
           onClick={() => {

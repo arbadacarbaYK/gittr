@@ -167,3 +167,40 @@ export function parseOwnerRepoFromGitUrl(sourceUrl: string): {
     return null;
   }
 }
+
+/**
+ * True when Push can defer to the bridge cloning this URL as the NIP-34
+ * `source` tag (GitHub / GitLab / Codeberg / Gitea / self-hosted HTTPS).
+ * False for GRASP/npub paths and empty/invalid URLs.
+ */
+export function isCloneableUpstreamSourceUrl(sourceUrl: string): boolean {
+  const raw = (sourceUrl || "").trim();
+  if (!raw) return false;
+  // Nostr git mirrors use /npub1…/repo — bridge already hosts those; not "upstream forge"
+  if (/\/npub1[a-z0-9]+(\/|$)/i.test(raw)) return false;
+
+  if (/(?:github|gitlab|codeberg)\.(?:com|org)/i.test(raw)) {
+    return true;
+  }
+
+  try {
+    const normalized = normalizeGitCloneUrl(raw);
+    const parsed = parseOwnerRepoFromGitUrl(normalized);
+    if (!parsed?.repo || !parsed.host) return false;
+    const host = parsed.host.toLowerCase();
+    if (
+      host === "localhost" ||
+      host.startsWith("127.") ||
+      host === "git.gittr.space"
+    ) {
+      return false;
+    }
+    return Boolean(
+      normalized.startsWith("https://") ||
+        normalized.startsWith("http://") ||
+        normalized.startsWith("git@")
+    );
+  } catch {
+    return false;
+  }
+}

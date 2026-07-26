@@ -612,6 +612,22 @@ export default function ImportPage() {
       return;
     }
 
+    const trimmedInput = githubUrl.trim();
+    // Bulk import is GitHub API–only; do not silently rewrite forge hosts.
+    if (
+      /gitlab\.com|codeberg\.org|gitea\.|forgejo\.|bitbucket\.org/i.test(
+        trimmedInput
+      ) ||
+      (/^https?:\/\//i.test(trimmedInput) &&
+        !/github\.com/i.test(trimmedInput) &&
+        /\/[^/]+\/[^/]+/.test(trimmedInput))
+    ) {
+      setStatus(
+        "Bulk import only works with GitHub. For GitLab, Codeberg, Gitea, or other git remotes, use Create repository → Option 1 with the full URL (one repo at a time)."
+      );
+      return;
+    }
+
     setLoading(true);
     setStatus("Fetching repositories...");
 
@@ -1813,6 +1829,15 @@ export default function ImportPage() {
             You can select <strong>several</strong> repos and import them in{" "}
             <strong>one</strong> action — that still only imports the rows you
             selected, not the whole list unless you choose that.
+          </li>
+          <li>
+            <strong>GitHub only.</strong> Bulk list + multi-select does not
+            support GitLab, Codeberg, Gitea, or self-hosted forges. For those,
+            use{" "}
+            <a href="/new" className="text-blue-300 underline">
+              Create repository → Option 1
+            </a>{" "}
+            with a full URL (one repo at a time).
           </li>
         </ul>
       </div>

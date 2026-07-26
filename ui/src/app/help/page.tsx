@@ -540,7 +540,9 @@ export default function HelpPage() {
                   <p>
                     Load a GitHub user/org list, then choose what to import.
                     Opening the bulk page does <strong>not</strong> import
-                    anything until you fetch, select, and confirm.
+                    anything until you fetch, select, and confirm.{" "}
+                    <strong>GitHub only</strong> — GitLab / Codeberg / Gitea
+                    need Option 1 with a full URL (one repo at a time).
                   </p>
                   <ul className="list-disc list-inside space-y-1 ml-2">
                     <li>Open bulk import from New repository</li>
