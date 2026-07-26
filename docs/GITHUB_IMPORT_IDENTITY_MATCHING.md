@@ -25,16 +25,16 @@ if (subscribe && defaultRelays && githubLogins.length > 0) {
 
 ### Step 3: How NIP-39 Identity Claims Work
 
-**NIP-39** is a Nostr standard for external identity verification. Users publish a **Kind 0** (metadata) event with special `i` tags:
+**NIP-39** is a Nostr standard for external identity verification. Users publish a replaceable **kind 10011** event with `i` tags (gittr still reads legacy kind **0** `i` tags as fallback):
 
 ```json
 {
-  "kind": 0,
+  "kind": 10011,
   "pubkey": "abc123...",
   "tags": [
-    ["i", "github:username"]
+    ["i", "github:username", "gist-id-or-proof"]
   ],
-  "content": "{...profile data...}"
+  "content": ""
 }
 ```
 
@@ -42,27 +42,20 @@ This means: "The Nostr pubkey `abc123...` claims to own the GitHub account `user
 
 ### Step 4: Searching Nostr Relays
 
-The system searches through **all Kind 0 events** on your configured Nostr relays:
+The system searches kind **10011** and legacy kind **0** on your configured relays (kind 10011 wins when both claim the same GitHub user):
 
 ```typescript
-// From ui/src/lib/github-mapping.ts (lines 63-80)
+// From ui/src/lib/github-mapping.ts
 const unsub = subscribe(
-  [{ kinds: [0] }],  // Query all Kind 0 (metadata) events
+  [{ kinds: [0, 10011] }],
   defaultRelays,
   (event, isAfterEose) => {
-    // Look for "i" tags with "github:username" format
-    for (const tag of event.tags) {
-      if (tag[0] === "i" && tag[1].startsWith("github:")) {
-        const githubUsername = tag[1].substring(7); // Remove "github:" prefix
-        // Map: githubUsername -> event.pubkey
-        identityMap.set(githubUsername, event.pubkey);
-      }
-    }
+    // Look for "i" tags with "github:username" format; prefer kind 10011
   }
 );
 ```
 
-**Note**: This queries ALL Kind 0 events because not all relays support filtering by tags. The filtering happens in the callback.
+**Note**: Not all relays support filtering by tags. Filtering happens in the callback.
 
 ### Step 5: Building the Identity Cache
 
@@ -106,15 +99,15 @@ For each contributor, the system uses this priority:
 
 ## How Users Link Their GitHub Identity
 
-Users link their GitHub identity via **Settings → Profile → External Identities (NIP-39)**:
+Users link their GitHub identity via **Settings → Profile → Verified Identities (NIP-39)**:
 
 1. Go to Settings → Profile
-2. Scroll to "External Identities" section
+2. Scroll to "Verified Identities" section
 3. Click "Add Identity"
 4. Select "GitHub" as platform
-5. Enter GitHub username (e.g., `username`)
-6. Optionally add a proof (URL to a file/commit proving ownership)
-7. Save - this publishes a Kind 0 event with `["i", "github:username"]` tag
+5. Enter GitHub username (e.g., `username`) — or connect GitHub on Settings → SSH Keys so it prefills
+6. Optionally add a proof (Gist ID / URL proving ownership)
+7. Save — this publishes a **kind 10011** event with `["i", "github:username"]` (profile metadata stays kind 0)
 
 ## Important Notes
 
@@ -128,7 +121,7 @@ This ensures you see the full contributor list, not just those who have claimed 
 ### Query Performance
 - The Nostr query has a **10-second timeout**
 - Results are **cached for 5 minutes** to avoid repeated queries
-- The query searches through ALL Kind 0 events (can be slow on large relays)
+- The query searches kind **10011** and legacy kind **0** (10011 preferred)
 
 ### Backward Compatibility
 The system still checks `localStorage` for old OAuth mappings (from when users connected via the OAuth button). This ensures existing imports continue to work.
@@ -149,13 +142,13 @@ The system still checks `localStorage` for old OAuth mappings (from when users c
 ## Troubleshooting
 
 **Contributors not showing Nostr profiles:**
-- Check if they've published a NIP-39 identity claim (Settings → Profile → External Identities)
+- Check if they've published a NIP-39 identity claim (Settings → Profile → Verified Identities)
 - Verify the GitHub username matches exactly (case-insensitive)
 - Check browser console for identity query logs
-- Ensure your relays are accessible and returning Kind 0 events
+- Ensure your relays are accessible and returning kind 10011 / kind 0 events
 
 **Slow imports:**
 - The Nostr query can take up to 10 seconds
-- Large relays with many Kind 0 events may be slower
+- Large relays with many metadata events may be slower
 - Results are cached, so subsequent imports are faster
 

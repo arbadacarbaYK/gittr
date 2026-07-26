@@ -102,7 +102,7 @@ export function SSHGitHelp({
                   Option A: SSH (Standard Git - Recommended)
                 </p>
                 <code className="block text-green-400 font-mono text-sm break-all">
-                  {sshUrl || `git clone git@gittr.space:${entity}/${repo}.git`}
+                  {sshUrl || `git clone git@git.gittr.space:${entity}/${repo}.git`}
                 </code>
                 {sshUrl && (
                   <Button

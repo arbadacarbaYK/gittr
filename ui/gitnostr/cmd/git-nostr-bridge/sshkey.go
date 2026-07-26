@@ -73,11 +73,25 @@ func updateAuthorizedKeys(db *sql.DB) error {
 
 func handleSshKeyEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) error {
 
-	keyData := event.Content
-
-	//TODO: more stringent checks
-	if len(strings.Split(keyData, " ")) != 3 {
+	keyData := strings.TrimSpace(event.Content)
+	parts := strings.Fields(keyData)
+	// OpenSSH public keys: <type> <base64> [comment with optional spaces]
+	if len(parts) < 2 {
 		return fmt.Errorf("invalid key data: %v", keyData)
+	}
+	keyType := parts[0]
+	keyBody := parts[1]
+	if !strings.HasPrefix(keyType, "ssh-") && !strings.HasPrefix(keyType, "ecdsa-") {
+		return fmt.Errorf("invalid key type: %v", keyType)
+	}
+	if keyBody == "" {
+		return fmt.Errorf("invalid key data: missing key material")
+	}
+	// Normalize: type + base64 + optional comment (joined)
+	if len(parts) > 2 {
+		keyData = keyType + " " + keyBody + " " + strings.Join(parts[2:], " ")
+	} else {
+		keyData = keyType + " " + keyBody
 	}
 
 	updatedAt := event.CreatedAt.Unix()

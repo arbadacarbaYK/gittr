@@ -4,6 +4,10 @@ SSH for gittr.space uses **[gitnostr](https://gittr.space/npub1n2ph08n4pqz4d3jk6
 
 **SSH is bridge-native**, not “only via the website.” Keys are **Nostr kind 52** events; the bridge updates `authorized_keys`. **`nostr://`** remotes work too when the repo is mirrored here ([git-remote-nostr](https://github.com/DanConwayDev/ngit-cli)).
 
+**SSH host:** always use **`git.gittr.space`** (not `gittr.space`). Example: `git clone git@git.gittr.space:<npub>/<repo>.git`.
+
+The bridge subscribes to kind **52** for repository **owners** and permission targets, then writes `authorized_keys`. Publishing from Settings → SSH Keys also POSTs the event directly to the bridge so you do not wait on relays.
+
 ## Quick Start: Set Up SSH Keys
 
 Pick **one** way to publish your public key (all publish kind **52** for the same bridge):

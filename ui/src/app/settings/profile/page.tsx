@@ -8,6 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
+import {
+  buildNip39IdentitiesEventUnsigned,
+  parseNip39ITags,
+} from "@/lib/nostr/nip39-identities";
 import { publishWithConfirmation } from "@/lib/nostr/publish-with-confirmation";
 import {
   NO_SIGNING_METHOD_MESSAGE,
@@ -142,8 +146,7 @@ export default function ProfilePage() {
   // Watch form values to debug
   const formValues = watch();
 
-  // Load existing identities from metadata
-  // NIP-39 is just Kind 0 events with i tags - any relay supporting Kind 0 supports NIP-39
+  // Load existing identities from metadata (NIP-39 kind 10011, legacy kind-0 i tags)
   // localStorage fallback is ONLY for propagation delays (relays might not have the event yet)
   // CRITICAL: Use pubkey-specific localStorage keys to prevent cross-account identity leakage
   useEffect(() => {
@@ -223,34 +226,47 @@ export default function ProfilePage() {
     }
   }, [metadata.identities, pubkey]);
 
-  // Load GitHub connection from account settings and sync with NIP-39 identities
+  // Load GitHub connection from SSH Keys OAuth and sync into NIP-39 identities list
   useEffect(() => {
     if (!pubkey) return;
 
-    // Check if user has connected GitHub on account page
     const githubProfile = localStorage.getItem("gittr_github_profile");
     if (githubProfile) {
       try {
-        // Extract username from GitHub URL
-        const url = new URL(githubProfile);
-        const pathParts = url.pathname.split("/").filter((p) => p);
-        const githubUsername = pathParts[0];
+        let githubUsername: string | null = null;
+        try {
+          const profile = JSON.parse(githubProfile);
+          githubUsername =
+            typeof profile?.githubUsername === "string"
+              ? profile.githubUsername
+              : null;
+          if (
+            !githubUsername &&
+            typeof profile?.githubUrl === "string"
+          ) {
+            const url = new URL(profile.githubUrl);
+            githubUsername =
+              url.pathname.split("/").filter(Boolean)[0] || null;
+          }
+        } catch {
+          const url = new URL(githubProfile);
+          githubUsername =
+            url.pathname.split("/").filter(Boolean)[0] || null;
+        }
 
         if (githubUsername) {
-          // Check if this GitHub identity is already in the identities list
           setIdentities((prev) => {
             const hasGithubIdentity = prev.some(
-              (id) => id.platform === "github" && id.identity === githubUsername
+              (id) =>
+                id.platform === "github" && id.identity === githubUsername
             );
-
-            // If not in list, add it (but don't overwrite existing ones)
             if (!hasGithubIdentity) {
               return [
                 ...prev,
                 {
                   platform: "github",
-                  identity: githubUsername,
-                  proof: undefined, // User can add proof later
+                  identity: githubUsername!,
+                  proof: undefined,
                   verified: false,
                 },
               ];
@@ -259,12 +275,12 @@ export default function ProfilePage() {
           });
         }
       } catch (e) {
-        console.error("Failed to parse GitHub profile URL:", e);
+        console.error("Failed to parse GitHub profile:", e);
       }
     }
-  }, [pubkey]); // Run when pubkey changes or component mounts
+  }, [pubkey]);
 
-  // Listen for GitHub connection events from account page
+  // Listen for GitHub connection events from SSH Keys page
   useEffect(() => {
     const handleGithubConnected = (event: CustomEvent) => {
       const { username } = event.detail;
@@ -489,23 +505,11 @@ export default function ProfilePage() {
         newMetadata.lud16 = existingLud16.trim();
       }
 
-      // Build NIP-39 i tags for claimed identities
-      const iTags: string[][] = [];
-      identities.forEach((identity) => {
-        if (identity.platform && identity.identity) {
-          const identityString = `${identity.platform}:${identity.identity}`;
-          if (identity.proof) {
-            iTags.push(["i", identityString, identity.proof]);
-          } else {
-            iTags.push(["i", identityString]);
-          }
-        }
-      });
-
+      // Kind 0 = profile metadata only (NIP-39 identities publish as kind 10011 below)
       let event: any = {
         kind: 0,
         created_at: Math.floor(Date.now() / 1000),
-        tags: iTags, // Include NIP-39 identity tags
+        tags: [],
         content: JSON.stringify(newMetadata),
         pubkey: pubkey,
         id: "",
@@ -531,13 +535,26 @@ export default function ProfilePage() {
         throw new Error("No signing method available");
       }
 
+      // Sign NIP-39 identities event (kind 10011)
+      let identitiesEvent: any = buildNip39IdentitiesEventUnsigned(
+        pubkey,
+        identities
+      );
+      identitiesEvent.id = getEventHash(identitiesEvent);
+      if (hasNip07 && window.nostr) {
+        setUpdateStatus("Waiting for NIP-07 to sign verified identities...");
+        identitiesEvent = await window.nostr.signEvent(identitiesEvent);
+      } else if (privateKey) {
+        identitiesEvent.sig = signEvent(identitiesEvent, privateKey);
+      }
+
       // Publish to relays with confirmation
       if (publish && subscribe) {
         setUpdateStatus("Publishing profile update to relays...");
 
         try {
           // Store identities in localStorage as backup (persists until we get confirmation from Nostr)
-          // NIP-39 works on all Kind 0-supporting relays - this backup handles propagation delays and server restarts
+          // NIP-39 kind 10011 backup handles propagation delays and server restarts
           // CRITICAL: Use pubkey-specific keys to prevent cross-account identity leakage
           const normalizedPubkey = pubkey.toLowerCase();
           const backupKey = `gittr_profile_identities_backup_${normalizedPubkey}`;
@@ -549,15 +566,15 @@ export default function ProfilePage() {
 
           // Log the event being published for debugging
           console.log(
-            "📤 [Profile Settings] Publishing event with identities:",
+            "📤 [Profile Settings] Publishing kind 0 profile + kind 10011 identities:",
             {
               eventId: event.id.substring(0, 16) + "...",
               fullEventId: event.id,
-              iTags: event.tags.filter(
+              identitiesEventId: identitiesEvent.id?.substring(0, 16) + "...",
+              iTags: identitiesEvent.tags.filter(
                 (t: any) => Array.isArray(t) && t[0] === "i"
               ),
               identitiesCount: identities.length,
-              allTags: event.tags,
               pubkey: pubkey?.substring(0, 16) + "...",
               relaysCount: defaultRelays?.length || 0,
               relays: defaultRelays,
@@ -576,17 +593,31 @@ export default function ProfilePage() {
             10000 // 10 second timeout
           );
 
+          const identitiesResult = await publishWithConfirmation(
+            publish,
+            subscribe,
+            identitiesEvent,
+            defaultRelays || [],
+            10000
+          );
+
           console.log("📬 [Profile Settings] publishWithConfirmation result:", {
             eventId: result.eventId,
             confirmed: result.confirmed,
             confirmedRelays: result.confirmedRelays,
             confirmedRelaysCount: result.confirmedRelays.length,
+            identitiesConfirmed: identitiesResult.confirmed,
+            identitiesRelays: identitiesResult.confirmedRelays?.length,
           });
 
           // Store event locally as backup
           localStorage.setItem(
             `gittr_profile_update_${Date.now()}`,
             JSON.stringify(event)
+          );
+          localStorage.setItem(
+            `gittr_nip39_identities_${Date.now()}`,
+            JSON.stringify(identitiesEvent)
           );
 
           // CRITICAL: Immediately update the metadata cache with the new values
@@ -602,39 +633,13 @@ export default function ProfilePage() {
 
               // Parse the event content to get the metadata
               const eventMetadata = JSON.parse(event.content);
-
-              // Parse identities from i tags
-              const eventIdentities: ClaimedIdentity[] = [];
-              if (event.tags && Array.isArray(event.tags)) {
-                for (const tag of event.tags) {
-                  if (Array.isArray(tag) && tag.length >= 2 && tag[0] === "i") {
-                    const identityString = tag[1];
-                    const proof = tag[2] || undefined;
-
-                    if (identityString && typeof identityString === "string") {
-                      const parts = identityString.split(":");
-                      if (parts.length >= 2 && parts[0]) {
-                        const platform = parts[0];
-                        const identity = parts.slice(1).join(":");
-                        if (platform && identity) {
-                          eventIdentities.push({
-                            platform,
-                            identity,
-                            proof,
-                            verified: false,
-                          });
-                        }
-                      }
-                    }
-                  }
-                }
-              }
+              const eventIdentities = parseNip39ITags(identitiesEvent.tags);
 
               // Update cache with new metadata (merge with existing to preserve other fields)
               existingCache[normalizedPubkey] = {
                 ...existingCache[normalizedPubkey],
                 ...eventMetadata,
-                identities: eventIdentities, // CRITICAL: Include identities from i tags
+                identities: eventIdentities,
                 created_at: event.created_at, // Update timestamp
               };
 
@@ -652,7 +657,7 @@ export default function ProfilePage() {
                     pubkey: normalizedPubkey,
                     metadata: {
                       ...eventMetadata,
-                      identities: eventIdentities, // Include identities in the event
+                      identities: eventIdentities,
                     },
                   },
                 })
@@ -671,7 +676,7 @@ export default function ProfilePage() {
             }
           }
 
-          if (result.confirmed) {
+          if (result.confirmed || identitiesResult.confirmed) {
             // Mark backup as confirmed - keep it until Nostr metadata has it
             // CRITICAL: Use pubkey-specific keys
             if (pubkey && /^[0-9a-f]{64}$/i.test(pubkey)) {
@@ -841,17 +846,18 @@ export default function ProfilePage() {
               </Label>
               <p className="text-sm text-zinc-500">
                 Claim your external identities (GitHub, X, etc.) to verify
-                ownership.
+                ownership. These publish as NIP-39 kind 10011.
                 <br />
-                <span className="text-purple-400">💡 Tip:</span> If you
-                connected GitHub on the{" "}
+                <span className="text-purple-400">Tip:</span> If you connected
+                GitHub on the{" "}
                 <a
-                  href="/settings/account"
+                  href="/settings/ssh-keys"
                   className="text-purple-400 hover:text-purple-300 underline"
                 >
-                  Account page
+                  SSH Keys page
                 </a>
-                , it will appear here automatically.
+                , it can appear here automatically — then save Profile to publish
+                the claim.
               </p>
 
               {/* Existing Identities */}

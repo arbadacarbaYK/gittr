@@ -28,10 +28,18 @@ func min(a, b int) int {
 func getSshKeyPubKeys(db *sql.DB) ([]string, error) {
 
 	var sshKeyPubKeys []string
-	rows, err := db.Query("SELECT DISTINCT(TargetPubKey) FROM RepositoryPermission")
+	// Include permission targets AND repo owners. Owners are skipped when
+	// syncing maintainers into RepositoryPermission (implicit ADMIN), so
+	// without this UNION solo owners' kind-52 events never match Authors.
+	rows, err := db.Query(`
+		SELECT DISTINCT TargetPubKey FROM RepositoryPermission
+		UNION
+		SELECT DISTINCT OwnerPubKey FROM Repository
+	`)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		var targetPubKey string

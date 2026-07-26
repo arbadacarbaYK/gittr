@@ -15454,9 +15454,7 @@ export function RepoCodePage() {
                         (repo as StoredRepo & { gitSshBase?: string })
                           ?.gitSshBase ||
                         process.env.NEXT_PUBLIC_GIT_SSH_BASE ||
-                        (typeof window !== "undefined"
-                          ? window.location.hostname
-                          : "");
+                        "git.gittr.space";
                       if (!gitSshBase) {
                         console.error(
                           "NEXT_PUBLIC_GIT_SSH_BASE is not configured in environment variables"
@@ -21110,7 +21108,7 @@ export function RepoCodePage() {
                       const sshUrl =
                         sshCloneUrls[0] ||
                         `git@${
-                          process.env.NEXT_PUBLIC_GIT_SSH_BASE || "gittr.space"
+                          process.env.NEXT_PUBLIC_GIT_SSH_BASE || "git.gittr.space"
                         }:${resolvedParams.entity}/${resolvedParams.repo}.git`;
                       setSshGitHelpData({
                         entity: resolvedParams.entity,

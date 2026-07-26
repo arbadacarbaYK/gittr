@@ -42,9 +42,10 @@ When you view a repo page:
 
 ### External Identities (NIP-39)
 - **What**: User authentication/verification
-- **Where**: Your Nostr profile (Kind 0 event with `i` tags)
+- **Where**: Your Nostr profile — kind **10011** with `i` tags (legacy: kind 0 `i` tags)
 - **Purpose**: Proves "I own this GitHub account" to other Nostr users
 - **Does NOT**: Grant server-side API access to private repos
+- **UI**: Settings → Profile → Verified Identities (GitHub OAuth on Settings → SSH Keys can prefill)
 
 ### Server Token (GITHUB_PLATFORM_TOKEN)
 - **What**: Personal Access Token (PAT) for server-side API calls

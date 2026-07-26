@@ -30,7 +30,7 @@ let githubIdentityCacheTimestamp = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Query Nostr for GitHub identity mappings via NIP-39
-// This queries all Kind 0 events with "i" tags containing "github:username"
+// Prefers kind 10011; also reads legacy kind 0 i tags.
 export async function queryGithubIdentitiesFromNostr(
   subscribe: (
     filters: any[],
@@ -49,7 +49,10 @@ export async function queryGithubIdentitiesFromNostr(
   }
 
   const identityMap = new Map<string, string>();
+  const from10011 = new Set<string>(); // github usernames claimed via kind 10011
   const githubLoginsLower = new Set(githubLogins.map((l) => l.toLowerCase()));
+
+  const { KIND_NIP39_IDENTITIES } = await import("@/lib/nostr/nip39-identities");
 
   return new Promise((resolve) => {
     let resolved = false;
@@ -65,36 +68,46 @@ export async function queryGithubIdentitiesFromNostr(
       }
     }, 10000); // 10 second timeout
 
-    // Query all Kind 0 events (we'll filter by i tags in the callback)
-    // Note: We can't filter by i tags in the filter itself (not all relays support it)
+    const applyGithubITags = (
+      event: { kind?: number; pubkey?: string; tags?: unknown[] },
+      prefer10011: boolean
+    ) => {
+      if (!event.tags || !Array.isArray(event.tags) || !event.pubkey) return;
+      for (const tag of event.tags) {
+        if (!Array.isArray(tag) || tag.length < 2 || tag[0] !== "i") continue;
+        const identityString = tag[1];
+        if (
+          typeof identityString !== "string" ||
+          !identityString.toLowerCase().startsWith("github:")
+        ) {
+          continue;
+        }
+        const githubUsername = identityString.substring(7).toLowerCase();
+        if (!githubLoginsLower.has(githubUsername)) continue;
+
+        if (prefer10011) {
+          from10011.add(githubUsername);
+          identityMap.set(githubUsername, event.pubkey.toLowerCase());
+        } else if (!from10011.has(githubUsername)) {
+          // Legacy kind 0 — do not override a 10011 claim
+          identityMap.set(githubUsername, event.pubkey.toLowerCase());
+        }
+        console.log(
+          `🔗 [GitHub Identity] Found mapping (${
+            prefer10011 ? "10011" : "kind0"
+          }): ${githubUsername} -> ${event.pubkey.slice(0, 8)}...`
+        );
+      }
+    };
+
     const unsub = subscribe(
-      [{ kinds: [0] }],
+      [{ kinds: [0, KIND_NIP39_IDENTITIES] }],
       defaultRelays,
       (event, isAfterEose) => {
-        if (event.kind === 0 && event.tags && Array.isArray(event.tags)) {
-          // Look for "i" tags with "github:username" format
-          for (const tag of event.tags) {
-            if (Array.isArray(tag) && tag.length >= 2 && tag[0] === "i") {
-              const identityString = tag[1];
-              if (
-                typeof identityString === "string" &&
-                identityString.startsWith("github:")
-              ) {
-                const githubUsername = identityString
-                  .substring(7)
-                  .toLowerCase(); // Remove "github:" prefix
-                if (githubLoginsLower.has(githubUsername)) {
-                  identityMap.set(githubUsername, event.pubkey.toLowerCase());
-                  console.log(
-                    `🔗 [GitHub Identity] Found mapping: ${githubUsername} -> ${event.pubkey.slice(
-                      0,
-                      8
-                    )}...`
-                  );
-                }
-              }
-            }
-          }
+        if (event.kind === KIND_NIP39_IDENTITIES) {
+          applyGithubITags(event, true);
+        } else if (event.kind === 0) {
+          applyGithubITags(event, false);
         }
 
         if (isAfterEose && !resolved) {

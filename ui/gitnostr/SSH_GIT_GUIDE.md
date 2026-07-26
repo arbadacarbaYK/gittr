@@ -6,6 +6,8 @@
 
 Hosts: **gittr.space** uses `git.gittr.space`, or run your own bridge — [README.md](README.md) · [docs/STANDALONE_BRIDGE_SETUP.md](docs/STANDALONE_BRIDGE_SETUP.md).
 
+The bridge kind-52 Authors filter includes **repo owners** (`Repository.OwnerPubKey`) and permission targets. Paste real OpenSSH pubkeys (`ssh-ed25519 …`); comments with spaces are accepted.
+
 ## Quick Start: Set Up SSH Keys
 
 Keys are **Nostr events (kind 52)**. The bridge watches relays and rewrites `~git-nostr/.ssh/authorized_keys`. Publish a key by **any** of these—pick one:

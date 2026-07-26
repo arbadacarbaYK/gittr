@@ -567,7 +567,7 @@ export default function HelpPage() {
                     <li>
                       <code className="bg-gray-800 px-1 rounded">
                         git clone
-                        git@gittr.space:&lt;pubkey&gt;/&lt;repo&gt;.git
+                        git@git.gittr.space:&lt;pubkey&gt;/&lt;repo&gt;.git
                       </code>
                     </li>
                     <li>Add files in the clone</li>
@@ -699,7 +699,7 @@ export default function HelpPage() {
                     Clone:{" "}
                     <code className="bg-gray-800 px-1 rounded">
                       git clone
-                      git@gittr.space:&lt;your-pubkey&gt;/&lt;repo-name&gt;.git
+                      git@git.gittr.space:&lt;your-pubkey&gt;/&lt;repo-name&gt;.git
                     </code>
                   </li>
                   <li>
@@ -960,12 +960,13 @@ export default function HelpPage() {
                       in localStorage
                     </li>
                     <li>
-                      <strong>NIP-39 Claims:</strong> If you've published a Kind
-                      0 event with{" "}
+                      <strong>NIP-39 Claims:</strong> If you&apos;ve published a
+                      kind 10011 event with{" "}
                       <code className="bg-yellow-900/50 px-1 rounded">
                         ["i", "github:username"]
                       </code>{" "}
-                      tags, your identity is claimed on Nostr
+                      tags (Settings → Profile), your identity is claimed on
+                      Nostr (legacy kind 0 i-tags still work for reading)
                     </li>
                     <li>
                       <strong>Manual Addition:</strong> The repository owner can
@@ -1065,7 +1066,7 @@ export default function HelpPage() {
                     Option A: SSH (Standard Git - Recommended)
                   </p>
                   <code className="block bg-[#0a0d11] p-2 rounded text-sm">
-                    git clone git@gittr.space:npub1.../repo-name.git
+                    git clone git@git.gittr.space:npub1.../repo-name.git
                   </code>
                   <p className="mt-1 text-xs text-gray-400">
                     Requires SSH keys (Settings → SSH Keys). Works out of the

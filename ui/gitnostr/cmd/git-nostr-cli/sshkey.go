@@ -29,13 +29,14 @@ func sshKeyAdd(cfg Config, pool *nostr.RelayPool) {
 		log.Fatalf("read key file : %v", err)
 	}
 
-	split := strings.Split(string(keyData), " ")
-	if len(split) != 3 {
-		log.Fatal("key file parse error")
+	split := strings.Fields(string(keyData))
+	if len(split) < 2 {
+		log.Fatal("key file parse error: need at least <type> <base64>")
 	}
 
+	content := strings.Join(split, " ")
 	if *title != "" {
-		split[2] = *title
+		content = split[0] + " " + split[1] + " " + *title
 	}
 
 	var tags nostr.Tags
@@ -43,7 +44,7 @@ func sshKeyAdd(cfg Config, pool *nostr.RelayPool) {
 		CreatedAt: time.Now(),
 		Kind:      protocol.KindSshKey,
 		Tags:      tags,
-		Content:   strings.Join(split, " "),
+		Content:   content,
 	})
 	if err != nil {
 		log.Fatal(err)

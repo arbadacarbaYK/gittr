@@ -10,6 +10,8 @@ export const KIND_REPOSITORY_NIP34 = 30617; // NIP-34: Repository announcements
 export const KIND_REPOSITORY_STATE = 30618; // NIP-34: Repository state (refs, branches, commits) - required by ngit clients
 export const KIND_REPOSITORY_PERMISSION = 50; // gitnostr protocol
 export const KIND_SSH_KEY = 52; // gitnostr protocol
+/** NIP-39: External identity claims (i tags). Prefer over kind-0 i tags. */
+export const KIND_NIP39_IDENTITIES = 10011;
 export const KIND_PATCH = 1617; // NIP-34: Patches
 export const KIND_PULL_REQUEST = 1618; // NIP-34: Pull Requests
 export const KIND_PR_UPDATE = 1619; // NIP-34: Pull Request Updates

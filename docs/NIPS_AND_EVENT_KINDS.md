@@ -147,9 +147,18 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 
 ### Kind 52: SSH Keys
 
-- **Purpose**: Git authentication via SSH
-- **Usage**: Storing SSH public keys for Git operations
-- **Content**: SSH public key in format: `<key-type> <base64-key> <title>`
+- **Purpose**: Git authentication via SSH (gittr / git-nostr-bridge)
+- **Usage**: Storing SSH public keys for Git operations on `git.gittr.space`
+- **Content**: SSH public key in format: `<key-type> <base64-key> [comment…]`
+- **Not related to**: GitHub OAuth on the SSH Keys settings page (that is for GitHub API/import only)
+
+### Kind 10011: External Identities (NIP-39)
+
+- **Purpose**: Link a Nostr profile to GitHub, X/Twitter, Mastodon, Telegram, etc.
+- **Tags**: `i` — `["i", "platform:identity", "<proof>"]` (proof optional but recommended)
+- **Replaceable**: one latest kind **10011** per pubkey
+- **Legacy**: older clients put `i` tags on kind **0**; gittr still **reads** those as fallback but **publishes** new claims as kind **10011**
+- **UI**: Settings → Profile → Verified Identities; GitHub OAuth on Settings → SSH Keys can prefill a github claim before you save Profile
 
 ### Kind 1337: Code Snippets (NIP-C0)
 
@@ -385,7 +394,8 @@ relay:
 | 7     | NIP-25       | Reactions              | Stars, likes                                  |
 | 50    | Custom       | Repository Permissions | Git access control                            |
 | 51    | Custom       | Repository (Legacy)    | Repository announcements (read-only)          |
-| 52    | Custom       | SSH Keys               | Git authentication                            |
+| 52    | Custom       | SSH Keys               | Git authentication (gittr bridge)             |
+| 10011 | NIP-39       | External identities    | `i` tags (GitHub, etc.); prefer over kind 0   |
 | 1111  | NIP-22       | Comments               | Issue/PR/patch/discussion comments            |
 | 30023 | NIP-23       | Long-form              | Repo discussion topics (replies = 1111)       |
 | 1337  | NIP-C0       | Code Snippets          | Code snippet sharing                          |

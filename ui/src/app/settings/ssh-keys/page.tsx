@@ -332,6 +332,11 @@ export default function SSHKeysPage() {
         setGithubConnected(true);
         setGithubUsername(githubUsername);
         setStatus("GitHub connected successfully!");
+        window.dispatchEvent(
+          new CustomEvent("gittr:github-connected", {
+            detail: { username: githubUsername, githubUrl },
+          })
+        );
         setTimeout(() => setStatus(""), 3000);
       } else {
         setStatus("GitHub OAuth failed: Missing data");
@@ -823,20 +828,6 @@ export default function SSHKeysPage() {
         <div className="flex gap-2 shrink-0">
           <Button
             onClick={() => {
-              setShowGenerateForm(true);
-              setShowAddForm(false);
-              setError(null);
-              setStatus("");
-            }}
-            variant="outline"
-            className="flex-1 sm:flex-none"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            <span className="hidden sm:inline">Generate Key</span>
-            <span className="sm:hidden">Generate</span>
-          </Button>
-          <Button
-            onClick={() => {
               setShowAddForm(true);
               setShowGenerateForm(false);
               setError(null);
@@ -1029,17 +1020,22 @@ export default function SSHKeysPage() {
             <p className="font-semibold mb-1">How SSH Keys Work</p>
             <ul className="list-disc list-inside space-y-1 text-xs">
               <li>
-                SSH keys are published to Nostr (KIND_SSH_KEY = 52, from
-                gitnostr protocol)
-              </li>
-              <li className="text-yellow-400">
-                ⚠️ Note: KIND_52 conflicts with NIP-52 (Calendar Events). Most
-                relays accept it, but some may reject. If publishing fails, try
-                a different relay.
+                SSH keys are for <strong>git clone/push over SSH</strong> to{" "}
+                <code className="text-xs">git.gittr.space</code> (kind 52 →
+                bridge <code className="text-xs">authorized_keys</code>). They
+                are <strong>not</strong> related to GitHub OAuth below.
               </li>
               <li>
-                The git-nostr-bridge listens for your SSH key events and updates
-                authorized_keys
+                Paste a real OpenSSH public key from{" "}
+                <code className="text-xs">~/.ssh/id_ed25519.pub</code> (or use{" "}
+                <code className="text-xs">gn ssh-key add</code>). Browser
+                &quot;generate&quot; is disabled — WebCrypto SPKI is not OpenSSH
+                wire format.
+              </li>
+              <li className="text-yellow-400">
+                Note: KIND_52 conflicts with NIP-52 (Calendar Events). Most
+                relays accept it, but some may reject. If publishing fails, try
+                a different relay.
               </li>
               <li>
                 If <code className="text-xs">git clone git@…</code> asks for a
@@ -1050,125 +1046,42 @@ export default function SSHKeysPage() {
                   ~/.ssh/your_key&apos; git clone …
                 </code>{" "}
                 or use <code className="text-xs">git-nostr@</code> instead of{" "}
-                <code className="text-xs">git@</code> (see SSH guide in repo /
-                Help).
+                <code className="text-xs">git@</code> (see Help → SSH Keys).
               </li>
-              <li>Use one SSH key for all your repositories (like GitHub)</li>
-              <li>You can generate a key here or use an existing one</li>
               <li>
-                Private keys are only shown/downloaded once - keep them secure!
+                <strong>GitHub Authentication</strong> on this page is only for
+                importing private GitHub repos / API rate limits — it does not
+                unlock gittr SSH.
               </li>
             </ul>
           </div>
         </div>
       </div>
 
-      {/* Generate Key Form */}
+      {/* Browser generate removed: WebCrypto SPKI ≠ OpenSSH public key format */}
       {showGenerateForm && (
         <div className="mb-6 border border-[#383B42] rounded p-6 bg-[#171B21]">
-          <h2 className="text-lg font-semibold mb-4">Generate New SSH Key</h2>
-
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="key-title-generate">Key Title (optional)</Label>
-              <Input
-                id="key-title-generate"
-                value={generatedTitle}
-                onChange={(e) => setGeneratedTitle(e.target.value)}
-                placeholder="My Laptop Key"
-                className="bg-[#0E1116] border-[#383B42] text-white"
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <Button onClick={generateKeyPair}>Generate Ed25519 Key</Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowGenerateForm(false);
-                  setGeneratedPrivateKey(null);
-                  setGeneratedPublicKey(null);
-                  setGeneratedTitle("");
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-
-            {generatedPublicKey && generatedPrivateKey && (
-              <div className="mt-4 p-4 bg-yellow-900/20 border border-yellow-700 rounded">
-                <AlertCircle className="h-5 w-5 text-yellow-400 mb-2" />
-                <p className="text-yellow-400 text-sm font-semibold mb-2">
-                  ⚠️ Download your private key now - you won&apos;t see it
-                  again!
-                </p>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        downloadPrivateKey(
-                          generatedPrivateKey,
-                          generatedTitle || "key"
-                        )
-                      }
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Download Private Key
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setPublicKeyInput(generatedPublicKey);
-                        setKeyTitle(generatedTitle || "Generated Key");
-                        setShowGenerateForm(false);
-                        setShowAddForm(true);
-                        setGeneratedPrivateKey(null);
-                        setGeneratedPublicKey(null);
-                      }}
-                    >
-                      Add Public Key to gittr.space
-                    </Button>
-                  </div>
-                  <div className="mt-2">
-                    <Label>Public Key (copy this)</Label>
-                    <div className="flex gap-2">
-                      <Textarea
-                        value={generatedPublicKey}
-                        readOnly
-                        className="bg-[#0E1116] border-[#383B42] text-white font-mono text-xs"
-                        rows={2}
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => copyPublicKey(generatedPublicKey)}
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Alternative: Manual generation instructions */}
-            {error && error.includes("Browser key generation") && (
-              <div className="mt-4 p-4 bg-gray-900 border border-gray-700 rounded">
-                <p className="text-sm font-semibold mb-2">
-                  Generate Key Manually:
-                </p>
-                <code className="block p-2 bg-black rounded text-xs mb-2">
-                  ssh-keygen -t ed25519 -C "your-email@example.com"
-                </code>
-                <p className="text-xs text-gray-400">
-                  Then copy your public key from ~/.ssh/id_ed25519.pub and paste
-                  it below.
-                </p>
-              </div>
-            )}
-          </div>
+          <h2 className="text-lg font-semibold mb-2">Generate keys locally</h2>
+          <p className="text-sm text-gray-400 mb-4">
+            Run{" "}
+            <code className="bg-gray-800 px-1 rounded text-xs">
+              ssh-keygen -t ed25519 -C &quot;gittr&quot;
+            </code>{" "}
+            then paste{" "}
+            <code className="bg-gray-800 px-1 rounded text-xs">
+              ~/.ssh/id_ed25519.pub
+            </code>{" "}
+            via <strong>Add Key</strong>.
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setShowGenerateForm(false);
+              setShowAddForm(true);
+            }}
+          >
+            Add Key instead
+          </Button>
         </div>
       )}
 

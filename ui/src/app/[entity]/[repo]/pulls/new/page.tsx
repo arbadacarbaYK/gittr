@@ -37,11 +37,9 @@ import {
   type StoredRepo,
   loadStoredRepos,
 } from "@/lib/repos/storage";
+import { resolveRepoForPublish } from "@/lib/repos/resolve-repo-for-publish";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
-import {
-  getRepoOwnerPubkey,
-  resolveEntityToPubkey,
-} from "@/lib/utils/entity-resolver";
+import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { extractMentionedPubkeys } from "@/lib/utils/mention-detection";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
@@ -428,43 +426,42 @@ export default function NewPullRequestPage({
         return;
       }
 
-      // Get repo data for NIP-34 required fields
-      const repos = loadStoredRepos();
-      const repoData = findRepoByEntityAndName(repos, entity, repo);
-      if (!repoData) {
+      // Resolve repo for NIP-34 (local cache preferred; URL entity + 30617 if cold)
+      const publishCtx = await resolveRepoForPublish(entity, repo);
+      if (!publishCtx) {
         showToast(
-          "Repository not found. Please ensure the repository exists.",
+          "Cannot determine repository owner. Please ensure the repository exists and the URL uses an npub, hex pubkey, or NIP-05.",
           "error"
         );
         setCreating(false);
         return;
       }
 
-      // Get owner pubkey (required for NIP-34 "a" and "p" tags)
-      let finalOwnerPubkey = getRepoOwnerPubkey(repoData, entity);
-      if (!finalOwnerPubkey || !/^[0-9a-f]{64}$/i.test(finalOwnerPubkey)) {
-        const resolved = resolveEntityToPubkey(entity, repoData);
-        if (!resolved || !/^[0-9a-f]{64}$/i.test(resolved)) {
-          showToast(
-            "Cannot determine repository owner. Please ensure the repository is properly configured.",
-            "error"
-          );
-          setCreating(false);
-          return;
-        }
-        finalOwnerPubkey = resolved;
-      }
-
-      // Get repository name (use canonical repositoryName from NIP-34 when available)
-      const actualRepositoryName = (repoData as any)?.repositoryName || repo;
+      const finalOwnerPubkey = publishCtx.ownerPubkey;
+      const actualRepositoryName = publishCtx.repositoryName || repo;
+      const repoData = (publishCtx.storedRepo || {
+        entity,
+        repo,
+        repositoryName: actualRepositoryName,
+        ownerPubkey: finalOwnerPubkey,
+        earliestUniqueCommit: publishCtx.earliestUniqueCommit,
+        defaultBranch: publishCtx.defaultBranch,
+        clone: [],
+      }) as unknown as StoredRepo & {
+        earliestUniqueCommit?: string;
+        defaultBranch?: string;
+        clone?: string[];
+        commits?: Array<{ id?: string }>;
+      };
 
       // Get earliest unique commit (required for NIP-34 "r" tag)
       let earliestUniqueCommit =
-        (repoData as any).earliestUniqueCommit ||
+        publishCtx.earliestUniqueCommit ||
+        repoData.earliestUniqueCommit ||
         (repoData.commits &&
         Array.isArray(repoData.commits) &&
         repoData.commits.length > 0
-          ? (repoData.commits[0] as any)?.id
+          ? repoData.commits[0]?.id
           : undefined);
 
       // Fallback: derive earliest unique commit from bridge for repos whose
@@ -472,9 +469,12 @@ export default function NewPullRequestPage({
       if (!earliestUniqueCommit) {
         try {
           const defaultBranch =
-            typeof (repoData as any)?.defaultBranch === "string" &&
-            (repoData as any).defaultBranch.trim().length > 0
-              ? (repoData as any).defaultBranch.trim()
+            typeof publishCtx.defaultBranch === "string" &&
+            publishCtx.defaultBranch.trim().length > 0
+              ? publishCtx.defaultBranch.trim()
+              : typeof repoData.defaultBranch === "string" &&
+                repoData.defaultBranch.trim().length > 0
+              ? repoData.defaultBranch.trim()
               : "main";
 
           const commitsRes = await fetchBridgeRead(
@@ -495,19 +495,21 @@ export default function NewPullRequestPage({
 
             if (earliestUniqueCommit) {
               // Keep local cache warm to avoid future submit failures.
-              (repoData as any).earliestUniqueCommit = earliestUniqueCommit;
-              const reposForUpdate = loadStoredRepos();
-              const targetRepo = findRepoByEntityAndName(
-                reposForUpdate,
-                entity,
-                repo
-              );
-              if (targetRepo) {
-                (targetRepo as any).earliestUniqueCommit = earliestUniqueCommit;
-                localStorage.setItem(
-                  "gittr_repos",
-                  JSON.stringify(reposForUpdate)
+              repoData.earliestUniqueCommit = earliestUniqueCommit;
+              if (publishCtx.fromStorage) {
+                const reposForUpdate = loadStoredRepos();
+                const targetRepo = findRepoByEntityAndName(
+                  reposForUpdate,
+                  entity,
+                  repo
                 );
+                if (targetRepo) {
+                  (targetRepo as any).earliestUniqueCommit = earliestUniqueCommit;
+                  localStorage.setItem(
+                    "gittr_repos",
+                    JSON.stringify(reposForUpdate)
+                  );
+                }
               }
             }
           }

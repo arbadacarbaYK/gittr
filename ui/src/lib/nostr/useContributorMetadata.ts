@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useNostrContext } from "./NostrContext";
 import { getAllRelays } from "./getAllRelays";
+import {
+  KIND_NIP39_IDENTITIES,
+  parseNip39ITags,
+} from "./nip39-identities";
 
 export type ClaimedIdentity = {
   platform: string; // e.g., "github", "twitter"
@@ -209,6 +213,8 @@ export function useContributorMetadata(pubkeys: string[]) {
   const lastSubscriptionTimeRef = useRef<number>(0);
   const subscriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasFetchedOnMountRef = useRef<boolean>(false);
+  /** Pubkeys that already have NIP-39 kind 10011 identities (prefer over kind-0 i tags). */
+  const nip39PubkeysRef = useRef<Set<string>>(new Set());
   /** Bumped by debounce timer so a deferred subscribe actually runs. */
   const [subscribeTick, setSubscribeTick] = useState(0);
   const pubkeysKey = useMemo(() => {
@@ -377,18 +383,49 @@ export function useContributorMetadata(pubkeys: string[]) {
           const batchUnsub = subscribe(
             [
               {
-                kinds: [0],
+                kinds: [0, KIND_NIP39_IDENTITIES],
                 authors: batch, // Subscribe to this batch of pubkeys
               },
             ],
             allRelays.length > 0 ? allRelays : defaultRelays,
             (event, isAfterEose, relayURL) => {
+              const normalizedPubkey = event.pubkey.toLowerCase();
+              const isTargetPubkey = batch.some(
+                (p) => p.toLowerCase() === normalizedPubkey
+              );
+
+              // NIP-39 kind 10011 — preferred source for i-tags
+              if (event.kind === KIND_NIP39_IDENTITIES) {
+                const identities = parseNip39ITags(event.tags);
+                if (identities.length === 0) return;
+                nip39PubkeysRef.current.add(normalizedPubkey);
+                setMetadataMap((prev) => {
+                  const existing = prev[normalizedPubkey] || {};
+                  return {
+                    ...prev,
+                    [normalizedPubkey]: {
+                      ...existing,
+                      identities,
+                      // Keep a created_at so later kind-0 updates merge instead of wiping
+                      created_at:
+                        existing.created_at ?? event.created_at ?? undefined,
+                    },
+                  };
+                });
+                if (contributorMetaVerbose() && isTargetPubkey) {
+                  console.log(
+                    `✅ [useContributorMetadata] kind 10011 identities for ${normalizedPubkey.slice(
+                      0,
+                      8
+                    )}:`,
+                    identities.map((i) => `${i.platform}:${i.identity}`)
+                  );
+                }
+                return;
+              }
+
               // Process ALL metadata events (even after EOSE - some relays send delayed events)
               if (event.kind === 0) {
-                const normalizedPubkey = event.pubkey.toLowerCase();
-                const isTargetPubkey = batch.some(
-                  (p) => p.toLowerCase() === normalizedPubkey
-                );
                 // Reduced logging to prevent console spam when processing many events
                 if (
                   contributorMetaVerbose() &&
@@ -437,49 +474,19 @@ export function useContributorMetadata(pubkeys: string[]) {
                     );
                   }
 
-                  // Parse NIP-39 identity claims from i tags
-                  const identities: ClaimedIdentity[] = [];
-                  if (event.tags && Array.isArray(event.tags)) {
-                    for (const tag of event.tags) {
-                      if (
-                        Array.isArray(tag) &&
-                        tag.length >= 2 &&
-                        tag[0] === "i"
-                      ) {
-                        // NIP-39 format: ["i", "platform:identity", "proof"]
-                        const identityString = tag[1];
-                        const proof = tag[2] || undefined;
-
-                        if (
-                          identityString &&
-                          typeof identityString === "string"
-                        ) {
-                          const parts = identityString.split(":");
-                          if (parts.length >= 2 && parts[0]) {
-                            const platform = parts[0];
-                            const identity = parts.slice(1).join(":"); // Handle identities with colons
-                            if (platform && identity) {
-                              identities.push({
-                                platform,
-                                identity,
-                                proof,
-                                verified: false, // TODO: Verify proof (fetch Gist, check content, etc.)
-                              });
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-
-                  // Prefer NIP-39 i-tags; never leave a non-array identities value
-                  if (identities.length > 0) {
-                    data.identities = identities;
-                    // Only log identities for first batch to reduce console spam
+                  // Legacy NIP-39: i tags on kind 0 (prefer kind 10011 when present)
+                  const legacyIdentities = parseNip39ITags(event.tags);
+                  if (nip39PubkeysRef.current.has(normalizedPubkey)) {
+                    // Keep 10011 identities; do not apply kind-0 i tags
+                    delete (data as { identities?: unknown }).identities;
+                  } else if (legacyIdentities.length > 0) {
+                    data.identities = legacyIdentities;
                     if (contributorMetaVerbose() && batchIndex === 0) {
                       console.log(
-                        `✅ [useContributorMetadata] Found ${identities.length} identities in event:`,
-                        identities.map((i) => `${i.platform}:${i.identity}`)
+                        `✅ [useContributorMetadata] Found ${legacyIdentities.length} legacy kind-0 identities:`,
+                        legacyIdentities.map(
+                          (i) => `${i.platform}:${i.identity}`
+                        )
                       );
                     }
                   } else if (!Array.isArray(data.identities)) {
@@ -590,23 +597,36 @@ export function useContributorMetadata(pubkeys: string[]) {
                       return prev; // Keep existing
                     }
                     // No existing metadata or no timestamp - use new one
-                    // normalizedPubkey already defined above
+                    // Preserve 10011 identities if this kind-0 update intentionally omitted them
+                    const next: Metadata = {
+                      ...data,
+                      created_at: event.created_at,
+                    };
+                    if (
+                      nip39PubkeysRef.current.has(normalizedPubkey) &&
+                      (!Array.isArray(next.identities) ||
+                        next.identities.length === 0) &&
+                      Array.isArray(existing?.identities) &&
+                      existing.identities.length > 0
+                    ) {
+                      next.identities = existing.identities;
+                    }
                     return {
                       ...prev,
-                      [normalizedPubkey]: {
-                        ...data,
-                        created_at: event.created_at,
-                      },
+                      [normalizedPubkey]: next,
                     };
                   });
                   // Only log for first batch to reduce console spam
                   if (contributorMetaVerbose() && batchIndex === 0) {
+                    const idCount = Array.isArray(data.identities)
+                      ? data.identities.length
+                      : 0;
                     console.log(
                       `✅ [useContributorMetadata] Received metadata for ${event.pubkey
                         .toLowerCase()
                         .slice(0, 8)} (stored as lowercase)${
-                        identities.length > 0
-                          ? ` with ${identities.length} claimed identities`
+                        idCount > 0
+                          ? ` with ${idCount} claimed identities`
                           : ""
                       }`
                     );
