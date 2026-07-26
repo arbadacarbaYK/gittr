@@ -24,9 +24,28 @@ The sitemap **exists in code everywhere** (`ui/src/app/sitemap.ts`). It is **not
 When something requests `/sitemap.xml`, Next.js runs `sitemap()` which:
 
 1. Adds static URLs: `/`, `/explore`, `/help`, `/pages`
-2. **Queries Nostr relays** (`NEXT_PUBLIC_NOSTR_RELAYS`) for repository announcements (kinds **51** and **30617**), applies deletions, publisher blocklist, **skips private repos** (`public-read: false` on kind 30617), and **skips announces whose only `clone` tags are localhost/private** (same cheap filter as homepage recent + explore; no bridge/file probe) → `npub…/repo` URLs
-3. Fetches **gittr Pages** manifest from `NEXT_PUBLIC_GITTR_PAGES_URL` (default `https://pages.gittr.space`) → published site URLs
-4. Optionally merges lines from **`nostr-pushed-repos.txt`** (gitignored)
+2. Loads the **daily SEO snapshot** (`ui/data/nostr-seo-repos-snapshot.json`) when present — explore-class discovery (env relays + known GRASP `wss://` hosts), with deletions / private / blocklist applied
+3. **Queries Nostr relays** live (same discovery set) for repository announcements (kinds **51** and **30617**) → merges with the snapshot
+4. Fetches **gittr Pages** manifest from `NEXT_PUBLIC_GITTR_PAGES_URL` (default `https://pages.gittr.space`) → published site URLs
+5. Optionally merges lines from **`nostr-pushed-repos.txt`** (gitignored; gittr-HTTP-push / manual supplement only)
+
+### Daily SEO repo index (recommended on production)
+
+Explore discovers public Nostr repos (not only repos people Push’d from gittr). The sitemap already queries Nostr, but a **daily background refresh** writes a durable disk snapshot so crawlers still get a full list when a live relay query times out.
+
+```bash
+./scripts/install-gittr-seo-repo-index-timer.sh YOUR_SERVER_IP
+```
+
+- Timer: `gittr-seo-repo-index-refresh.timer` (**daily**)
+- Endpoint: `GET /api/seo/refresh-nostr-repo-index?refresh=1` (localhost via systemd)
+- Snapshot path: `/opt/ngit/ui/data/nostr-seo-repos-snapshot.json`
+- Status (no refresh): `curl -sS http://127.0.0.1:3000/api/seo/refresh-nostr-repo-index`
+- Logs: `journalctl -u gittr-seo-repo-index-refresh.service --since today`
+
+A refresh that returns **0** paths does **not** overwrite the previous snapshot. Soft-deletes and NIP-09 deletions are applied on each successful rewrite.
+
+This is **independent** of `nostr-pushed-repos.txt` / `scan-gittr-http-pushed-repos.sh` (those only supplement gittr bridge pushes).
 
 ### Why it can look “server-only”
 

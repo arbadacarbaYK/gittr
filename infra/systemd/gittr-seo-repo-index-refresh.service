@@ -1,0 +1,19 @@
+[Unit]
+Description=gittr SEO Nostr repo index snapshot refresh (daily)
+Documentation=file:///opt/ngit/docs/SEO.md
+After=network-online.target gittr-frontend.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Override in /etc/default/gittr-seo-repo-index-refresh if the app listens elsewhere.
+Environment=GITTR_SEO_REPO_INDEX_URL=http://127.0.0.1:3000/api/seo/refresh-nostr-repo-index?refresh=1
+EnvironmentFile=-/etc/default/gittr-seo-repo-index-refresh
+# Discovery can take a few minutes against many GRASP relays.
+ExecStart=/usr/bin/curl -fsS -o /tmp/gittr-seo-repo-index-refresh.json --connect-timeout 15 --max-time 300 "${GITTR_SEO_REPO_INDEX_URL}"
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=gittr-seo-repo-index-refresh
+
+[Install]
+WantedBy=multi-user.target

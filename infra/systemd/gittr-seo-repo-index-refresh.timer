@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily gittr SEO Nostr repo index snapshot refresh
+Documentation=file:///opt/ngit/docs/SEO.md
+
+[Timer]
+OnCalendar=daily
+AccuracySec=15min
+Persistent=true
+RandomizedDelaySec=1800
+
+[Install]
+WantedBy=timers.target

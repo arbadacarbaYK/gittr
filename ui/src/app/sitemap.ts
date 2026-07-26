@@ -1,5 +1,9 @@
 import { filterRepoPathLinesByPublisherBlocklist } from "@/lib/moderation/publisher-blocklist";
 import { fetchGittrPagesSitemapEntries } from "@/lib/seo/gittr-pages-sitemap";
+import {
+  loadNostrSeoReposSnapshot,
+  snapshotPathMap,
+} from "@/lib/seo/nostr-seo-repos-snapshot";
 import { fetchSitemapRepoPathsFromNostr } from "@/lib/seo/nostr-sitemap-repos";
 import { getPublicSiteUrl } from "@/lib/utils/public-site-url";
 
@@ -35,6 +39,19 @@ function loadNostrPushedRepoPaths(): string[] {
     }
   }
   return [];
+}
+
+function mergePathMaps(
+  ...maps: Array<Map<string, number>>
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const m of maps) {
+    for (const [line, ts] of m) {
+      const prev = out.get(line);
+      if (prev === undefined || ts > prev) out.set(line, ts);
+    }
+  }
+  return out;
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -73,16 +90,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
-  const fromNostr = await fetchSitemapRepoPathsFromNostr();
+  // Live Nostr + daily explore-class snapshot + optional gittr-push supplement
+  const [fromNostr, seoSnap] = await Promise.all([
+    fetchSitemapRepoPathsFromNostr(),
+    loadNostrSeoReposSnapshot(),
+  ]);
+  const fromSnapshot = snapshotPathMap(seoSnap);
   const fromFile = filterRepoPathLinesByPublisherBlocklist(
     loadNostrPushedRepoPaths()
   );
-
-  const pathToModified = new Map<string, number>(fromNostr);
   const now = Date.now();
+  const fromFileMap = new Map<string, number>();
   for (const line of fromFile) {
-    if (!pathToModified.has(line)) pathToModified.set(line, now);
+    fromFileMap.set(line, now);
   }
+
+  const pathToModified = mergePathMaps(fromSnapshot, fromNostr, fromFileMap);
 
   const repoLines = [...pathToModified.keys()].slice(0, MAX_SITEMAP_URLS);
   const repoPages: MetadataRoute.Sitemap = repoLines.map((line) => {

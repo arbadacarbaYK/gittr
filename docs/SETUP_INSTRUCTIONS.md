@@ -85,6 +85,19 @@ GITTR_LEADERBOARD_URL=http://127.0.0.1:3000/api/stats/platform-leaderboard?refre
 
 Check status: `systemctl list-timers gittr-leaderboard-refresh.timer` and `journalctl -u gittr-leaderboard-refresh.service --since today`.
 
+### SEO sitemap repo index (daily, explore-class)
+
+`/sitemap.xml` merges live Nostr discovery with a **disk snapshot** of public repos (same filters as explore/sitemap: deletions, private, blocklist, unusable clones). Install the daily timer so the snapshot stays warm even when crawlers do not hit the sitemap:
+
+```bash
+./scripts/install-gittr-seo-repo-index-timer.sh YOUR_SERVER_IP
+```
+
+- Calls `http://127.0.0.1:3000/api/seo/refresh-nostr-repo-index?refresh=1`
+- Writes `ui/data/nostr-seo-repos-snapshot.json` on the app host
+- Override URL in `/etc/default/gittr-seo-repo-index-refresh` if needed
+- See [SEO.md](SEO.md) for details
+
 Optional: tie refresh to your SEO/repo-discovery cron by hitting the same URL after indexing runs (timer replaces a manual cron line for this endpoint).
 
 ### Homepage “Recent repositories” (live relay query)

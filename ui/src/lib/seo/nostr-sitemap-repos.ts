@@ -7,12 +7,43 @@ import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { getDefaultRelayUrls } from "@/lib/nostr/relay-env";
 import { isRepoAnnouncementDeleted } from "@/lib/nostr/repo-deleted";
 import { isPublicReadFromEvent } from "@/lib/nostr/repo-public-read";
+import { KNOWN_GRASP_DOMAINS } from "@/lib/utils/grasp-servers";
 
 import { type Event, SimplePool, nip19 } from "nostr-tools";
 
 const SITEMAP_RELAY_TIMEOUT_MS = 45_000;
+/** Daily SEO index refresh — allow relays more time than on-demand sitemap. */
+const SEO_INDEX_RELAY_TIMEOUT_MS = 120_000;
 const REPO_QUERY_LIMIT = 12_000;
 const DELETION_QUERY_LIMIT = 8_000;
+const MAX_SEO_RELAYS = 28;
+
+export type FetchSitemapRepoPathsOptions = {
+  /** Override relay timeout (ms). Default 45s; daily job uses 120s. */
+  timeoutMs?: number;
+  /** When true, skip SITEMAP_SKIP_NOSTR check (force fetch for refresh API). */
+  force?: boolean;
+};
+
+/**
+ * Relays for SEO / explore-class discovery: env list plus known GRASP
+ * `wss://` hosts (same servers Explore often reaches via announce tags).
+ */
+export function getSeoDiscoveryRelayUrls(): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (url: string) => {
+    const u = url.trim();
+    if (!u.startsWith("wss://") || seen.has(u)) return;
+    seen.add(u);
+    out.push(u);
+  };
+  for (const r of getDefaultRelayUrls()) add(r);
+  for (const host of KNOWN_GRASP_DOMAINS) {
+    add(`wss://${host}`);
+  }
+  return out.slice(0, MAX_SEO_RELAYS);
+}
 
 function getTag(ev: Event, name: string): string | undefined {
   for (const t of ev.tags || []) {
@@ -65,22 +96,27 @@ function parseKind51RepoName(content: string): string | null {
 /**
  * Returns `npub1…/repo-slug` lines discovered from Nostr (kinds 51 + 30617),
  * suitable for sitemap URLs. Empty if relays are not configured or query fails.
+ *
+ * Uses default relays + known GRASP hosts (explore-class coverage). Applies
+ * deletions, private-read, blocklist, and unusable-clone filters.
  */
-export async function fetchSitemapRepoPathsFromNostr(): Promise<
-  Map<string, number>
-> {
-  const relays = getDefaultRelayUrls();
+export async function fetchSitemapRepoPathsFromNostr(
+  options: FetchSitemapRepoPathsOptions = {}
+): Promise<Map<string, number>> {
+  const relays = getSeoDiscoveryRelayUrls();
   if (
     relays.length === 0 ||
-    process.env.SITEMAP_SKIP_NOSTR === "1" ||
-    process.env.SITEMAP_SKIP_NOSTR === "true"
+    (!options.force &&
+      (process.env.SITEMAP_SKIP_NOSTR === "1" ||
+        process.env.SITEMAP_SKIP_NOSTR === "true"))
   ) {
     return new Map();
   }
 
+  const timeoutMs = options.timeoutMs ?? SITEMAP_RELAY_TIMEOUT_MS;
   const pool = new SimplePool({
-    eoseSubTimeout: SITEMAP_RELAY_TIMEOUT_MS,
-    getTimeout: SITEMAP_RELAY_TIMEOUT_MS,
+    eoseSubTimeout: timeoutMs,
+    getTimeout: timeoutMs,
   });
 
   try {
@@ -133,7 +169,6 @@ export async function fetchSitemapRepoPathsFromNostr(): Promise<
       if (isPublisherBlocklisted(ev.pubkey)) continue;
       if (deletedIds.has(ev.id)) continue;
       if (isDeletedNip34(ev, deletedAddresses)) continue;
-      // gittr soft-delete: replaceable 30617 with content/tags deleted:true
       if (isRepoAnnouncementDeleted(ev)) continue;
       if (!isPublicReadFromEvent(ev)) continue;
       if (shouldHideNip34EventForUnusableClones(ev)) continue;
@@ -181,4 +216,12 @@ export async function fetchSitemapRepoPathsFromNostr(): Promise<
       /* ignore */
     }
   }
+}
+
+/** Daily / manual SEO index: longer timeout + force past SITEMAP_SKIP_NOSTR. */
+export async function fetchAndBuildSeoRepoIndex(): Promise<Map<string, number>> {
+  return fetchSitemapRepoPathsFromNostr({
+    timeoutMs: SEO_INDEX_RELAY_TIMEOUT_MS,
+    force: true,
+  });
 }
