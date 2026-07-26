@@ -472,6 +472,9 @@ export default function RepoIssuesPage({
                 issueToUpdate.nostrEventId = event.id;
               }
               localStorage.setItem(key, JSON.stringify(existingIssues));
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(new Event("gittr:issue-updated"));
+              }
               loadIssues(); // Reload to update UI
             } catch (error: any) {
               console.error("Error processing issue event from Nostr:", error);
@@ -545,6 +548,9 @@ export default function RepoIssuesPage({
                   lastStatusEventId: event.id,
                 };
                 localStorage.setItem(issuesKey, JSON.stringify(issues));
+                if (typeof window !== "undefined") {
+                  window.dispatchEvent(new Event("gittr:issue-updated"));
+                }
                 loadIssues(); // Reload to update UI
               }
             }

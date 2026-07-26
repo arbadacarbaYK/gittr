@@ -30,6 +30,37 @@ function parseGithubOwnerRepo(
   }
 }
 
+/**
+ * Walk GitHub list pages via `/api/github/proxy` (maxPages * 100 items).
+ * First page only was why tab badges / lists stayed short on busy repos.
+ */
+async function fetchGithubListPages(
+  endpointPathAndQuery: string,
+  maxPages = 5
+): Promise<unknown[] | null> {
+  const all: unknown[] = [];
+  const hasQuery = endpointPathAndQuery.includes("?");
+  for (let page = 1; page <= maxPages; page++) {
+    const endpoint = `${endpointPathAndQuery}${hasQuery ? "&" : "?"}per_page=100&page=${page}`;
+    const res = await fetch(
+      `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`
+    );
+    if (!res.ok) {
+      if (page === 1) return null;
+      break;
+    }
+    const chunk = (await res.json()) as unknown;
+    if (!Array.isArray(chunk)) {
+      if (page === 1) return null;
+      break;
+    }
+    if (chunk.length === 0) break;
+    all.push(...chunk);
+    if (chunk.length < 100) break;
+  }
+  return all;
+}
+
 /** Pulls issues + PRs from GitHub (excludes PRs from issues list). */
 export async function syncGithubIssuesForRepo(
   entity: string,
@@ -40,13 +71,10 @@ export async function syncGithubIssuesForRepo(
   if (!parsed) return false;
   const { owner, repo: ghRepo } = parsed;
   try {
-    const proxyUrl = `/api/github/proxy?endpoint=${encodeURIComponent(
-      `/repos/${owner}/${ghRepo}/issues?state=all&per_page=100&sort=updated&direction=desc`
-    )}`;
-    const response = await fetch(proxyUrl);
-    if (!response.ok) return false;
-    const githubList: unknown[] = await response.json();
-    if (!Array.isArray(githubList)) return false;
+    const githubList = await fetchGithubListPages(
+      `/repos/${owner}/${ghRepo}/issues?state=all&sort=updated&direction=desc`
+    );
+    if (!githubList) return false;
 
     const githubIssues = githubList
       .filter(
@@ -111,13 +139,10 @@ export async function syncGithubPullsForRepo(
   if (!parsed) return false;
   const { owner, repo: ghRepo } = parsed;
   try {
-    const proxyUrl = `/api/github/proxy?endpoint=${encodeURIComponent(
-      `/repos/${owner}/${ghRepo}/pulls?state=all&per_page=100&sort=updated&direction=desc`
-    )}`;
-    const response = await fetch(proxyUrl);
-    if (!response.ok) return false;
-    const githubList: unknown[] = await response.json();
-    if (!Array.isArray(githubList)) return false;
+    const githubList = await fetchGithubListPages(
+      `/repos/${owner}/${ghRepo}/pulls?state=all&sort=updated&direction=desc`
+    );
+    if (!githubList) return false;
 
     const githubPRs = githubList.map((item: unknown) => {
       const it = item as Record<string, unknown>;

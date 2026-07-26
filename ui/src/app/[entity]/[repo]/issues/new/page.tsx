@@ -549,6 +549,7 @@ export default function RepoIssueNewPage() {
           window.dispatchEvent(
             new CustomEvent("gittr:issue-created", { detail: newIssue })
           );
+          window.dispatchEvent(new Event("gittr:issue-updated"));
 
           // Send notification to repo watchers about new issue
           try {

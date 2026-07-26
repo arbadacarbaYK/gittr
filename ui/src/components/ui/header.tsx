@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -14,6 +14,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
+import { loadStoredRepos } from "@/lib/repos/storage";
+import { repoAllowsUserToManagePRsAndIssues } from "@/lib/stats";
+import {
+  readRepoIssuesFromLocalStorage,
+  readRepoPullsFromLocalStorage,
+} from "@/lib/utils/entity-normalizer";
+import {
+  normalizeIssueListStatus,
+  normalizePrListStatus,
+} from "@/lib/utils/issue-pr-status";
 
 import { ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -103,11 +113,83 @@ export function Header() {
   const { signOut, pubkey } = useNostrContext();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [openIssueTotal, setOpenIssueTotal] = useState(0);
+  const [openPrTotal, setOpenPrTotal] = useState(0);
 
   // Only render client-side content after hydration
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const refreshGlobalIssuePrCounts = useCallback(() => {
+    if (!pubkey) {
+      setOpenIssueTotal(0);
+      setOpenPrTotal(0);
+      return;
+    }
+    try {
+      const repos = loadStoredRepos().filter((repo) =>
+        repoAllowsUserToManagePRsAndIssues(repo, pubkey)
+      );
+      let issues = 0;
+      let prs = 0;
+      for (const repo of repos) {
+        const entity =
+          repo.entity ||
+          repo.slug?.split("/")[0] ||
+          repo.ownerPubkey?.slice(0, 8) ||
+          "";
+        const name =
+          repo.repo || repo.slug?.split("/")[1] || repo.name || repo.slug || "";
+        if (!entity || !name) continue;
+        issues += readRepoIssuesFromLocalStorage(entity, name).filter(
+          (row) =>
+            normalizeIssueListStatus(
+              String((row as { status?: string }).status ?? "open")
+            ) === "open"
+        ).length;
+        prs += readRepoPullsFromLocalStorage(entity, name).filter(
+          (row) =>
+            normalizePrListStatus(
+              String((row as { status?: string }).status ?? "open")
+            ) === "open"
+        ).length;
+      }
+      setOpenIssueTotal(issues);
+      setOpenPrTotal(prs);
+    } catch {
+      setOpenIssueTotal(0);
+      setOpenPrTotal(0);
+    }
+  }, [pubkey]);
+
+  useEffect(() => {
+    if (!mounted || !isLoggedIn) return;
+    refreshGlobalIssuePrCounts();
+    const bump = () => refreshGlobalIssuePrCounts();
+    window.addEventListener("gittr:issue-updated", bump);
+    window.addEventListener("gittr:pr-updated", bump);
+    window.addEventListener("gittr:repos-updated", bump);
+    return () => {
+      window.removeEventListener("gittr:issue-updated", bump);
+      window.removeEventListener("gittr:pr-updated", bump);
+      window.removeEventListener("gittr:repos-updated", bump);
+    };
+  }, [mounted, isLoggedIn, refreshGlobalIssuePrCounts]);
+
+  const navItems = useMemo(
+    () =>
+      HeaderConfig.mainNav.map((item) => {
+        if (item.href === "/issues" && isLoggedIn && openIssueTotal > 0) {
+          return { ...item, badgeCount: openIssueTotal };
+        }
+        if (item.href === "/pulls" && isLoggedIn && openPrTotal > 0) {
+          return { ...item, badgeCount: openPrTotal };
+        }
+        return item;
+      }),
+    [isLoggedIn, openIssueTotal, openPrTotal]
+  );
 
   const handleSignOut = useCallback(() => {
     if (signOut) {
@@ -127,7 +209,7 @@ export function Header() {
   return (
     <header className="flex h-14 w-full items-center justify-between bg-[#171B21] px-8">
       <div className="flex items-center gap-4">
-        <MainNav items={HeaderConfig.mainNav} />
+        <MainNav items={navItems} />
         {mounted && isLoggedIn && (
           <a
             href="/new"

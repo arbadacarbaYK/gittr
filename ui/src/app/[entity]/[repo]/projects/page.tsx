@@ -1336,7 +1336,7 @@ export default function ProjectsPage() {
 
   return (
     <div className="mx-auto w-full max-w-none px-0 py-1 sm:py-2">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-xl font-bold sm:text-2xl">
             <Folder className="h-5 w-5 shrink-0 sm:h-6 sm:w-6" />
@@ -1379,163 +1379,135 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
-        {/* Projects List — compact so the board uses the page width */}
-        <div className="w-full shrink-0 lg:w-56 xl:w-64">
-          <h2 className="mb-2 text-sm font-semibold text-gray-300">Projects</h2>
-          {projects.length === 0 ? (
-            <div className="rounded-lg border border-[#383B42] bg-[#171B21] p-4 text-center">
-              <Folder className="mx-auto mb-2 h-8 w-8 text-gray-500" />
-              <p className="mb-3 text-sm text-gray-400">No projects yet</p>
-              <Button size="sm" onClick={handleCreateProject}>
-                <Plus className="mr-2 h-4 w-4" />
-                Create Project
-              </Button>
-            </div>
-          ) : (
-            <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:space-y-2 lg:pb-0 lg:gap-0">
+      {/* Project picker + title in one top row so columns get full width */}
+      <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+        {projects.length === 0 ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[#383B42] bg-[#171B21] px-3 py-2">
+            <span className="text-sm text-gray-400">No projects yet</span>
+            <Button size="sm" onClick={handleCreateProject}>
+              <Plus className="mr-1 h-4 w-4" />
+              Create
+            </Button>
+          </div>
+        ) : (
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <label className="shrink-0 text-xs font-medium text-gray-400">
+              Board
+            </label>
+            <select
+              value={selectedProject || ""}
+              onChange={(e) => setSelectedProject(e.target.value || null)}
+              className="min-w-0 max-w-full flex-1 rounded-md border border-[#383B42] bg-[#0E1116] px-2 py-1.5 text-sm text-gray-100 outline-none focus:border-purple-500 sm:max-w-md"
+            >
               {projects.map((p) => (
-                <div
-                  key={p.id}
-                  className={`group relative min-w-[200px] shrink-0 rounded-lg border lg:min-w-0 lg:w-full ${
-                    selectedProject === p.id
-                      ? "border-purple-500 bg-purple-900/20"
-                      : "border-[#383B42]"
-                  }`}
-                >
-                  {editingProjectName === p.id ? (
-                    <div className="space-y-2 p-3">
-                      <Input
-                        value={editingProjectNameValue}
-                        onChange={(e) =>
-                          setEditingProjectNameValue(e.target.value)
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            handleSaveProjectName(p.id);
-                          } else if (e.key === "Escape") {
-                            handleCancelEditProjectName();
-                          }
-                        }}
-                        className="text-sm font-semibold"
-                        autoFocus
-                      />
-                      <div className="flex gap-1">
-                        <Button
-                          size="sm"
-                          onClick={() => handleSaveProjectName(p.id)}
-                          className="flex-1"
-                        >
-                          <Save className="mr-1 h-3 w-3" />
-                          Save
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handleCancelEditProjectName}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => setSelectedProject(p.id)}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          handleStartEditProjectName(p.id);
-                        }}
-                        className="w-full p-3 text-left hover:bg-white/5"
-                        title="Double-click to edit name"
-                      >
-                        <div className="line-clamp-2 text-sm font-semibold leading-snug">
-                          {p.name}
-                        </div>
-                        <div className="mt-1 text-xs text-gray-400">
-                          {(p.items || []).length} items •{" "}
-                          {p.view === "kanban" ? "Kanban" : "Roadmap"}
-                        </div>
-                      </button>
-                      <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleStartEditProjectName(p.id);
-                          }}
-                          className="rounded p-1.5 text-purple-400 hover:bg-purple-900/50 hover:text-purple-300"
-                          title="Edit project name"
-                        >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteProject(p.id);
-                          }}
-                          className="rounded p-1.5 text-red-400 hover:bg-red-900/50 hover:text-red-300"
-                          title="Delete project"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
+                <option key={p.id} value={p.id}>
+                  {p.name} ({(p.items || []).length})
+                </option>
               ))}
-            </div>
-          )}
-        </div>
-
-        {/* Project Board — takes remaining width */}
-        <div className="min-w-0 flex-1">
-          {project ? (
-            <div className="min-w-0">
-              <div className="mb-3">
-                <input
-                  type="text"
-                  value={project.name}
-                  readOnly={isGithubBoard}
-                  onChange={(e) => {
-                    if (isGithubBoard) return;
-                    const updated = projects.map((p) =>
-                      p.id === project.id ? { ...p, name: e.target.value } : p
-                    );
-                    saveProjects(updated);
-                  }}
-                  className="w-full truncate border-none bg-transparent text-xl font-bold outline-none focus:border-b focus:border-purple-500 sm:text-2xl"
-                />
-                {project.description && (
-                  <p className="mt-1 line-clamp-2 text-sm text-gray-400">
-                    {project.description}
-                  </p>
-                )}
+            </select>
+            {project && !isGithubBoard && (
+              <div className="flex shrink-0 gap-1">
+                <button
+                  type="button"
+                  onClick={() => handleStartEditProjectName(project.id)}
+                  className="rounded p-1.5 text-purple-400 hover:bg-purple-900/50"
+                  title="Rename project"
+                >
+                  <Edit2 className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteProject(project.id)}
+                  className="rounded p-1.5 text-red-400 hover:bg-red-900/50"
+                  title="Delete project"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
               </div>
+            )}
+          </div>
+        )}
+      </div>
 
-              {project.view === "kanban" ? renderKanban() : renderRoadmap()}
+      {editingProjectName && (
+        <div className="mb-3 flex max-w-lg flex-wrap items-center gap-2 rounded-lg border border-purple-500/50 bg-[#171B21] p-2">
+          <Input
+            value={editingProjectNameValue}
+            onChange={(e) => setEditingProjectNameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && editingProjectName) {
+                handleSaveProjectName(editingProjectName);
+              } else if (e.key === "Escape") {
+                handleCancelEditProjectName();
+              }
+            }}
+            className="text-sm font-semibold"
+            autoFocus
+          />
+          <Button
+            size="sm"
+            onClick={() =>
+              editingProjectName && handleSaveProjectName(editingProjectName)
+            }
+          >
+            <Save className="mr-1 h-3 w-3" />
+            Save
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleCancelEditProjectName}
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
 
-              {!isGithubBoard && (
-                <div className="mt-3 space-y-0.5 text-xs text-gray-500">
-                  <p>Drag items between columns to update status</p>
-                  <p>Click items to edit title and notes</p>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-[#383B42] bg-[#171B21] p-12 text-center">
-              <Folder className="mx-auto mb-4 h-12 w-12 text-gray-500" />
-              <h3 className="mb-2 text-xl font-semibold">No project selected</h3>
-              <p className="mb-4 text-gray-400">
-                Create a new project to start organizing your work
+      {project ? (
+        <div className="min-w-0">
+          <div className="mb-3">
+            <input
+              type="text"
+              value={project.name}
+              readOnly={isGithubBoard}
+              onChange={(e) => {
+                if (isGithubBoard) return;
+                const updated = projects.map((p) =>
+                  p.id === project.id ? { ...p, name: e.target.value } : p
+                );
+                saveProjects(updated);
+              }}
+              className="w-full truncate border-none bg-transparent text-lg font-bold outline-none focus:border-b focus:border-purple-500 sm:text-xl"
+            />
+            {project.description && (
+              <p className="mt-1 line-clamp-2 text-sm text-gray-400">
+                {project.description}
               </p>
-              <Button onClick={handleCreateProject}>
-                <Plus className="mr-2 h-4 w-4" />
-                New Project
-              </Button>
+            )}
+          </div>
+
+          {project.view === "kanban" ? renderKanban() : renderRoadmap()}
+
+          {!isGithubBoard && (
+            <div className="mt-3 space-y-0.5 text-xs text-gray-500">
+              <p>Drag items between columns to update status</p>
+              <p>Click items to edit title and notes</p>
             </div>
           )}
         </div>
-      </div>
+      ) : (
+        <div className="rounded-lg border border-[#383B42] bg-[#171B21] p-12 text-center">
+          <Folder className="mx-auto mb-4 h-12 w-12 text-gray-500" />
+          <h3 className="mb-2 text-xl font-semibold">No project selected</h3>
+          <p className="mb-4 text-gray-400">
+            Create a new project to start organizing your work
+          </p>
+          <Button onClick={handleCreateProject}>
+            <Plus className="mr-2 h-4 w-4" />
+            New Project
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

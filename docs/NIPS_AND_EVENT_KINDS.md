@@ -165,6 +165,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 - **gittr ToDo tab** (`/{entity}/{repo}/projects`): local boards in `localStorage`, plus **read-only import of GitHub Projects V2** when a GitHub `sourceUrl` exists (GraphQL via `/api/github/graphql`).
 - **Policy**: mirror source like Issues — refresh on tab open; do **not** write column moves back to GitHub; keep local-only boards editable beside GH mirrors.
 - **Nostr**: drafts exist ([nips#1665](https://github.com/nostr-protocol/nips/pull/1665), [nips#1804](https://github.com/nostr-protocol/nips/pull/1804), Headway provisional 30619/30620) but nothing is merged. Do not invent a permanent gittr kind until one draft settles; cards remain NIP-34 issues/PRs (1621/1618).
+- **Future GitHub write-back**: optional **user GitHub OAuth** (not a new kind) when NIP-39 / upstream identity matches — see helper-tools `snippets/github-oauth-writeback/`. Keep Nostr as collaboration truth; OAuth is a forge bridge.
 
 ### Kind 1337: Code Snippets (NIP-C0)
 

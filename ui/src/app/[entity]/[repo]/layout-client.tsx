@@ -1163,28 +1163,34 @@ export default function RepoLayoutClient({
     const routeKey = `${resolvedParams.entity}/${resolvedParams.repo}`;
     refreshOpenIssuePrCounts();
 
-    if (githubHydrateKeyRef.current === routeKey) return;
+    // Allow retries when a previous visit only synced PRs (or only issues).
+    if (githubHydrateKeyRef.current === `${routeKey}:full`) return;
 
     let cancelled = false;
     let retryTimer: number | undefined;
 
     const runHydrate = (attempt: number) => {
-      if (cancelled || githubHydrateKeyRef.current === routeKey) return;
+      if (cancelled || githubHydrateKeyRef.current === `${routeKey}:full`) {
+        return;
+      }
       const record = findStoredRepoForRoute(
         resolvedParams.entity,
         resolvedParams.repo
       );
       void (async () => {
         try {
-          const { sourceUrl, meta, synced } = await hydrateRepoFromGithub(
-            resolvedParams.entity,
-            resolvedParams.repo,
-            {
-              repoRecord: record ?? null,
-              subscribe: subscribe ?? undefined,
-              defaultRelays: defaultRelays?.length ? defaultRelays : undefined,
-            }
-          );
+          const { sourceUrl, meta, synced, issuesOk, pullsOk } =
+            await hydrateRepoFromGithub(
+              resolvedParams.entity,
+              resolvedParams.repo,
+              {
+                repoRecord: record ?? null,
+                subscribe: subscribe ?? undefined,
+                defaultRelays: defaultRelays?.length
+                  ? defaultRelays
+                  : undefined,
+              }
+            );
           if (cancelled) return;
           if (meta) {
             setForkCount(meta.forks);
@@ -1192,24 +1198,40 @@ export default function RepoLayoutClient({
               setGithubStarCount(meta.stars);
             }
           }
+          // Always re-read LS after hydrate — badges must not wait for tab open.
           refreshOpenIssuePrCounts();
+          window.dispatchEvent(new Event("gittr:issue-updated"));
+          window.dispatchEvent(new Event("gittr:pr-updated"));
+
           if (synced) {
-            githubHydrateKeyRef.current = routeKey;
-            window.dispatchEvent(new Event("gittr:issue-updated"));
-            window.dispatchEvent(new Event("gittr:pr-updated"));
+            githubHydrateKeyRef.current = `${routeKey}:full`;
             loadRepoAndLogoRef.current();
             return;
           }
-          if (sourceUrl && attempt < 2 && !cancelled) {
-            retryTimer = window.setTimeout(() => runHydrate(attempt + 1), 2500);
+          // Partial success: keep trying the failing side a couple times.
+          if (
+            sourceUrl &&
+            attempt < 3 &&
+            !cancelled &&
+            (!issuesOk || !pullsOk)
+          ) {
+            retryTimer = window.setTimeout(
+              () => runHydrate(attempt + 1),
+              2000
+            );
             return;
           }
           if (sourceUrl) {
+            // Mark soft-done so we don't spin forever; tab open still re-hydrates.
+            githubHydrateKeyRef.current = `${routeKey}:partial`;
             loadRepoAndLogoRef.current();
           }
         } catch {
-          if (attempt < 2 && !cancelled) {
-            retryTimer = window.setTimeout(() => runHydrate(attempt + 1), 2500);
+          if (attempt < 3 && !cancelled) {
+            retryTimer = window.setTimeout(
+              () => runHydrate(attempt + 1),
+              2000
+            );
           }
         }
       })();
@@ -1218,7 +1240,7 @@ export default function RepoLayoutClient({
     const timer = window.setTimeout(() => runHydrate(0), 400);
 
     const onReposUpdated = () => {
-      if (githubHydrateKeyRef.current === routeKey) return;
+      if (githubHydrateKeyRef.current === `${routeKey}:full`) return;
       runHydrate(0);
     };
     window.addEventListener("gittr:repos-updated", onReposUpdated);

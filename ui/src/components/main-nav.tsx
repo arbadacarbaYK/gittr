@@ -17,6 +17,8 @@ export type NavItem = {
   disabled?: boolean;
   /** Open in a new tab (e.g. gittr Pages directory while keeping the current tab). */
   openInNewTab?: boolean;
+  /** Optional open-count badge (e.g. global Issues / PRs for the logged-in user). */
+  badgeCount?: number;
 };
 
 export type MainNavItem = NavItem;
@@ -85,12 +87,17 @@ export function MainNav({ items, children }: MainNavProps) {
                 handleNavClick(e, item.href, item.disabled);
               }}
               className={cn(
-                "flex items-center text-lg font-semibold text-white hover:text-white/80 sm:text-sm",
+                "flex items-center gap-1.5 text-lg font-semibold text-white hover:text-white/80 sm:text-sm",
 
                 item.disabled && "cursor-not-allowed opacity-80"
               )}
             >
               {item.title}
+              {typeof item.badgeCount === "number" && item.badgeCount > 0 ? (
+                <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-gray-300">
+                  {item.badgeCount}
+                </span>
+              ) : null}
             </a>
           ))}
         </nav>

@@ -261,6 +261,8 @@ export async function hydrateRepoFromGithub(
   sourceUrl: string;
   meta: GithubRepoMeta | null;
   synced: boolean;
+  issuesOk?: boolean;
+  pullsOk?: boolean;
 }> {
   const record =
     opts.repoRecord ?? findStoredRepoForRoute(entity, repoSlug) ?? null;
@@ -284,7 +286,13 @@ export async function hydrateRepoFromGithub(
   }
 
   if (!sourceUrl) {
-    return { sourceUrl: "", meta: null, synced: false };
+    return {
+      sourceUrl: "",
+      meta: null,
+      synced: false,
+      issuesOk: false,
+      pullsOk: false,
+    };
   }
 
   writeUpstreamSourceSession(entity, repoSlug, sourceUrl);
@@ -320,7 +328,15 @@ export async function hydrateRepoFromGithub(
     }
   }
 
-  return { sourceUrl, meta, synced: Boolean(issuesOk || pullsOk) };
+  // Only treat as fully synced when both sides succeeded — otherwise layout
+  // used to freeze after PRs-only and leave the Issues tab badge at 0.
+  return {
+    sourceUrl,
+    meta,
+    synced: Boolean(issuesOk && pullsOk),
+    issuesOk,
+    pullsOk,
+  };
 }
 
 /** GitHub `description` field for sidebar About (import / refetch). */
