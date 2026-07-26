@@ -2180,44 +2180,6 @@ export function RepoCodePage() {
     ? `${currentPath}/README.md`
     : "README.md";
 
-  const readmeMarkdownAnchor = useMemo(
-    () =>
-      createMarkdownAnchor({
-        getRepoLink,
-        basePath: markdownReadmeBasePath,
-        entity: resolvedParams.entity,
-        repoName: resolvedParams.repo,
-      }),
-    [
-      getRepoLink,
-      markdownReadmeBasePath,
-      resolvedParams.entity,
-      resolvedParams.repo,
-    ]
-  );
-
-  const fileMarkdownAnchor = useMemo(
-    () =>
-      createMarkdownAnchor({
-        getRepoLink,
-        basePath: selectedFile || "README.md",
-        entity: resolvedParams.entity,
-        repoName: resolvedParams.repo,
-      }),
-    [getRepoLink, selectedFile, resolvedParams.entity, resolvedParams.repo]
-  );
-
-  const repoDescriptionMarkdownAnchor = useMemo(
-    () =>
-      createMarkdownAnchor({
-        getRepoLink,
-        basePath: "README.md",
-        entity: resolvedParams.entity,
-        repoName: resolvedParams.repo,
-      }),
-    [getRepoLink, resolvedParams.entity, resolvedParams.repo]
-  );
-
   // Ref to prevent infinite loops when opening files from URL
   const openingFromURLRef = useRef(false);
   const failedFilesRef = useRef<Set<string>>(new Set());
@@ -2305,6 +2267,89 @@ export function RepoCodePage() {
       }, 100);
     },
     [resolvedParams.entity, resolvedParams.repo, router]
+  );
+
+  const navigateRepoQuery = useCallback(
+    (href: string) => {
+      try {
+        const u = new URL(href, window.location.origin);
+        const nextPath = u.searchParams.get("path") || "";
+        const nextFile = u.searchParams.get("file");
+        const nextBranch = u.searchParams.get("branch");
+        updatingFromURLRef.current = true;
+        isUpdatingURLRef.current = true;
+        if (nextBranch) setSelectedBranch(nextBranch);
+        setCurrentPath(nextPath);
+        if (nextFile) {
+          setSelectedFile(nextFile);
+        } else {
+          setSelectedFile(null);
+          setFileContent("");
+        }
+        setUrlParams({
+          branch: nextBranch,
+          file: nextFile,
+          path: nextPath || null,
+        });
+        window.history.pushState(null, "", `${u.pathname}${u.search}${u.hash}`);
+        window.setTimeout(() => {
+          updatingFromURLRef.current = false;
+          isUpdatingURLRef.current = false;
+        }, 100);
+      } catch (err) {
+        console.warn("[Repo] Failed to navigate markdown repo link:", err);
+        window.location.href = href;
+      }
+    },
+    []
+  );
+
+  const readmeMarkdownAnchor = useMemo(
+    () =>
+      createMarkdownAnchor({
+        getRepoLink,
+        basePath: markdownReadmeBasePath,
+        entity: resolvedParams.entity,
+        repoName: resolvedParams.repo,
+        onRepoQueryNavigate: navigateRepoQuery,
+      }),
+    [
+      getRepoLink,
+      markdownReadmeBasePath,
+      resolvedParams.entity,
+      resolvedParams.repo,
+      navigateRepoQuery,
+    ]
+  );
+
+  const fileMarkdownAnchor = useMemo(
+    () =>
+      createMarkdownAnchor({
+        getRepoLink,
+        basePath: selectedFile || "README.md",
+        entity: resolvedParams.entity,
+        repoName: resolvedParams.repo,
+        onRepoQueryNavigate: navigateRepoQuery,
+      }),
+    [
+      getRepoLink,
+      selectedFile,
+      resolvedParams.entity,
+      resolvedParams.repo,
+      navigateRepoQuery,
+    ]
+  );
+
+  const repoDescriptionMarkdownAnchor = useMemo(
+    () =>
+      createMarkdownAnchor({
+        getRepoLink,
+        basePath: "README.md",
+        entity: resolvedParams.entity,
+        repoName: resolvedParams.repo,
+        onRepoQueryNavigate: navigateRepoQuery,
+      }),
+    [getRepoLink, resolvedParams.entity, resolvedParams.repo, navigateRepoQuery]
   );
 
   /** When multifetch resolves e.g. master but URL still says main, align UI + README fetches. */
@@ -11138,10 +11183,13 @@ export function RepoCodePage() {
       });
     }
 
-    // Reset flag after state updates complete
-    setTimeout(() => {
-      updatingFromURLRef.current = false;
-    }, 0);
+    // Keep the "updating from URL" gate until after React applies path/file —
+    // a 0ms timeout raced markdown deep links and wiped ?path= back to root.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        updatingFromURLRef.current = false;
+      });
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlBranch, urlFile, urlPath, safeFiles.length, repoData?.defaultBranch]); // Use specific properties instead of full repoData
 
@@ -14353,11 +14401,17 @@ export function RepoCodePage() {
     }
   }, [selectedBranch, urlBranch, updateURL]);
 
+  // Sync path → URL only when state is ahead (UI folder clicks that forgot updateURL).
+  // Never clobber a deep-link / markdown ?path= with stale empty currentPath — that race
+  // flipped helper-tools snippet links back to the repo root.
   useEffect(() => {
     if (updatingFromURLRef.current || isUpdatingURLRef.current) return;
-    if (currentPath !== urlPath) {
-      updateURL({ path: currentPath });
+    const normalizedUrlPath = urlPath || "";
+    if (currentPath === normalizedUrlPath) return;
+    if (normalizedUrlPath && currentPath !== normalizedUrlPath) {
+      return;
     }
+    updateURL({ path: currentPath });
   }, [currentPath, urlPath, updateURL]);
 
   // Edit/Delete handlers

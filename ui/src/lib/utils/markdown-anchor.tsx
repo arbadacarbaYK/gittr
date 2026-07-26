@@ -1,6 +1,10 @@
 "use client";
 
-import type { AnchorHTMLAttributes, ReactNode } from "react";
+import type {
+  AnchorHTMLAttributes,
+  MouseEvent,
+  ReactNode,
+} from "react";
 
 export type MarkdownAnchorContext = {
   /** e.g. `() => \`/${entity}/${repo}\`` */
@@ -11,6 +15,11 @@ export type MarkdownAnchorContext = {
   repoName?: string;
   /** Current entity segment (`npub…`) */
   entity?: string;
+  /**
+   * Same-repo `?path=` / `?file=` navigations — avoid full reload races that
+   * wipe the query string before React adopts it.
+   */
+  onRepoQueryNavigate?: (href: string) => void;
 };
 
 type MarkdownAnchorProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
@@ -259,6 +268,39 @@ function MarkdownAnchorInner({
   const linkRel =
     rel ?? (linkTarget === "_blank" ? "noopener noreferrer" : undefined);
 
+  const handleClick = (e: MouseEvent<HTMLAnchorElement>) => {
+    rest.onClick?.(e);
+    if (e.defaultPrevented) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (linkTarget === "_blank") return;
+    if (!ctx?.onRepoQueryNavigate) return;
+    if (
+      !resolvedHref.startsWith("/") &&
+      !(
+        typeof window !== "undefined" &&
+        resolvedHref.startsWith(window.location.origin)
+      )
+    ) {
+      return;
+    }
+    try {
+      const u = new URL(
+        resolvedHref,
+        typeof window !== "undefined"
+          ? window.location.origin
+          : "https://gittr.space"
+      );
+      if (typeof window !== "undefined" && u.origin !== window.location.origin) {
+        return;
+      }
+      if (!u.searchParams.has("path") && !u.searchParams.has("file")) return;
+      e.preventDefault();
+      ctx.onRepoQueryNavigate(`${u.pathname}${u.search}${u.hash}`);
+    } catch {
+      /* fall through to default navigation */
+    }
+  };
+
   return (
     <a
       {...rest}
@@ -266,6 +308,7 @@ function MarkdownAnchorInner({
       target={linkTarget}
       rel={linkRel}
       className={className ?? "text-purple-400 hover:text-purple-300"}
+      onClick={handleClick}
     >
       {children}
     </a>
