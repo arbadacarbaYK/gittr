@@ -139,7 +139,6 @@ export default function SearchBar({ className }: { className?: string }) {
           )}
           type="text"
           placeholder="Search or jump to…"
-          disabled
         />
       }
     >

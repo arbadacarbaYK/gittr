@@ -16,13 +16,13 @@ import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
 
 import { ChevronDown } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { nip19 } from "nostr-tools";
 
 import { MainNav } from "../main-nav";
 
-import { Button } from "./button";
+import { Button, buttonVariants } from "./button";
+import { cn } from "@/lib/utils";
 
 const HeaderConfig = {
   mainNav: [
@@ -129,17 +129,16 @@ export function Header() {
       <div className="flex items-center gap-4">
         <MainNav items={HeaderConfig.mainNav} />
         {mounted && isLoggedIn && (
-          <Button variant="outline" className="max-h-8 min-w-max">
-            <a
-              href="/new"
-              onClick={(e) => {
-                e.preventDefault();
-                router.push("/new");
-              }}
-            >
-              New
-            </a>
-          </Button>
+          <a
+            href="/new"
+            className={cn(buttonVariants({ variant: "outline" }), "max-h-8 min-w-max")}
+            onClick={(e) => {
+              e.preventDefault();
+              router.push("/new");
+            }}
+          >
+            New
+          </a>
         )}
       </div>
       <div className="hidden items-center md:inline">
@@ -224,40 +223,35 @@ export function Header() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : mounted ? (
-          <div className="flex gap-1 items-center">
-            <Button variant="ghost" className="mr-2 max-h-8 min-w-max">
-              <a
-                href="/login"
-                onClick={(e) => {
-                  e.preventDefault();
-                  router.push("/login");
-                }}
-              >
-                Sign in
-              </a>
-            </Button>
-            <Button variant="outline" className="max-h-8 min-w-max">
-              <a
-                href="/signup"
-                onClick={(e) => {
-                  e.preventDefault();
-                  router.push("/signup");
-                }}
-              >
-                Sign up
-              </a>
-            </Button>
-          </div>
         ) : (
-          // Server-side: render placeholder to match structure
+          // Same DOM on server and client until auth mounts — never nest <a> in <button>
           <div className="flex gap-1 items-center">
-            <Button variant="ghost" className="mr-2 max-h-8 min-w-max">
-              <a href="/login">Sign in</a>
-            </Button>
-            <Button variant="outline" className="max-h-8 min-w-max">
-              <a href="/signup">Sign up</a>
-            </Button>
+            <a
+              href="/login"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "mr-2 max-h-8 min-w-max"
+              )}
+              onClick={(e) => {
+                e.preventDefault();
+                router.push("/login");
+              }}
+            >
+              Sign in
+            </a>
+            <a
+              href="/signup"
+              className={cn(
+                buttonVariants({ variant: "outline" }),
+                "max-h-8 min-w-max"
+              )}
+              onClick={(e) => {
+                e.preventDefault();
+                router.push("/signup");
+              }}
+            >
+              Sign up
+            </a>
           </div>
         )}
       </div>
