@@ -1071,13 +1071,12 @@ export default function HomePage({
         </div>
       </header>
 
-      {/* Stats Cards */}
-      {/* Top Row: Most Active Repos, Most Active Users, Open Bounties - Equal width row matching Recent repositories width */}
+      {/* Top Row: Most Active Repos, Most Active Users, Open Bounties */}
       <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Top Repos - Always show */}
-        <div className="border border-[#383B42] rounded p-4 flex flex-col">
-          <h3 className="font-semibold mb-3 text-purple-400">
-            🔥 Most Active Repos
+        <div className="border border-[var(--color-border)] rounded p-4 flex flex-col">
+          <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
+            Most Active Repos
           </h3>
           <div className="space-y-2 flex-1">
             {topRepos.length > 0 ? (
@@ -1095,13 +1094,13 @@ export default function HomePage({
                   <Link
                     key={repo.repoId}
                     href={href}
-                    className="block hover:bg-gray-800/50 rounded p-2 -m-2"
+                    className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-purple-300 truncate flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
                         {idx + 1}. {repo.repoName}
                       </span>
-                      <span className="text-xs text-gray-500 ml-2">
+                      <span className="text-xs text-[var(--color-text-secondary)] tabular-nums shrink-0">
                         {repo.activityCount}
                       </span>
                     </div>
@@ -1109,7 +1108,7 @@ export default function HomePage({
                 );
               })
             ) : (
-              <div className="text-sm text-gray-500 py-2">
+              <div className="text-sm text-[var(--color-text-secondary)] py-2">
                 {leaderboardReady || lbTopReposReady
                   ? "No active repos yet"
                   : "Loading..."}
@@ -1119,8 +1118,10 @@ export default function HomePage({
         </div>
 
         {/* Top Users - Always show */}
-        <div className="border border-[#383B42] rounded p-4 flex flex-col">
-          <h3 className="font-semibold mb-3 text-yellow-400">⭐ Most Active</h3>
+        <div className="border border-[var(--color-border)] rounded p-4 flex flex-col">
+          <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
+            Most Active
+          </h3>
           <div className="space-y-2 flex-1">
             {topUsers.length > 0 ? (
               topUsers.slice(0, 5).map((user, idx) => {
@@ -1143,13 +1144,13 @@ export default function HomePage({
                   <Link
                     key={user.pubkey}
                     href={href}
-                    className="block hover:bg-gray-800/50 rounded p-2 -m-2"
+                    className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-yellow-300 truncate flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
                         {idx + 1}. {getDisplayName(user.pubkey)}
                       </span>
-                      <span className="text-xs text-gray-500 ml-2">
+                      <span className="text-xs text-[var(--color-text-secondary)] tabular-nums shrink-0">
                         {user.activityCount}
                       </span>
                     </div>
@@ -1157,7 +1158,7 @@ export default function HomePage({
                 );
               })
             ) : (
-              <div className="text-sm text-gray-500 py-2">
+              <div className="text-sm text-[var(--color-text-secondary)] py-2">
                 {leaderboardReady || lbTopUsersReady
                   ? "No active users yet"
                   : "Loading..."}
@@ -1167,12 +1168,12 @@ export default function HomePage({
         </div>
 
         {/* Open Bounties - Always show */}
-        <div className="border border-[#383B42] rounded p-4 flex flex-col">
-          <h3 className="font-semibold mb-3 text-yellow-400 flex items-center justify-between">
-            <span>💰 Open Bounties</span>
+        <div className="border border-[var(--color-border)] rounded p-4 flex flex-col">
+          <h3 className="font-semibold mb-3 text-[var(--color-text-primary)] flex items-center justify-between gap-2">
+            <span>Open Bounties</span>
             <Link
               href="/bounty-hunt?status=paid"
-              className="text-xs text-purple-400 hover:text-purple-300"
+              className="text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
             >
               Hunt →
             </Link>
@@ -1188,26 +1189,26 @@ export default function HomePage({
                   <Link
                     key={bounty.issueId}
                     href={href}
-                    className="block hover:bg-gray-800/50 rounded p-2 -m-2"
+                    className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm text-yellow-300 truncate">
+                        <div className="text-sm text-[var(--color-text-primary)] truncate">
                           {idx + 1}. {bounty.title}
                         </div>
-                        <div className="text-xs text-gray-500 truncate mt-0.5">
+                        <div className="text-xs text-[var(--color-text-secondary)] truncate mt-0.5">
                           {bounty.repoName}
                         </div>
                       </div>
-                      <div className="text-xs text-yellow-400 font-semibold whitespace-nowrap">
-                        {bounty.bountyAmount.toLocaleString()}⚡
+                      <div className="text-xs text-[var(--color-accent-primary)] font-semibold whitespace-nowrap tabular-nums">
+                        {bounty.bountyAmount.toLocaleString()} sats
                       </div>
                     </div>
                   </Link>
                 );
               })
             ) : (
-              <div className="text-sm text-gray-500 py-2">
+              <div className="text-sm text-[var(--color-text-secondary)] py-2">
                 No open bounties available
               </div>
             )}
@@ -1219,9 +1220,9 @@ export default function HomePage({
       <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6 gap-4 auto-rows-fr">
         {/* Top Devs */}
         {topDevs.length > 0 && (
-          <div className="border border-[#383B42] rounded p-4">
-            <h3 className="font-semibold mb-3 text-green-400">
-              ⚡ Active Mergers
+          <div className="border border-[var(--color-border)] rounded p-4">
+            <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
+              Active Mergers
             </h3>
             <div className="space-y-2">
               {topDevs.slice(0, 5).map((dev, idx) => {
@@ -1230,13 +1231,13 @@ export default function HomePage({
                   <Link
                     key={dev.pubkey}
                     href={`/${dev.pubkey}`}
-                    className="block hover:bg-gray-800/50 rounded p-2 -m-2"
+                    className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-green-300 truncate flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
                         {idx + 1}. {getDisplayName(dev.pubkey)}
                       </span>
-                      <span className="text-xs text-gray-500 ml-2">
+                      <span className="text-xs text-[var(--color-text-secondary)] tabular-nums shrink-0">
                         {dev.prMergedCount} PRs
                       </span>
                     </div>
@@ -1249,9 +1250,9 @@ export default function HomePage({
 
         {/* Top Bounty Takers */}
         {topBountyTakers.length > 0 && (
-          <div className="border border-[#383B42] rounded p-4">
-            <h3 className="font-semibold mb-3 text-yellow-400">
-              💰 Bounty Hunters
+          <div className="border border-[var(--color-border)] rounded p-4">
+            <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
+              Bounty Hunters
             </h3>
             <div className="space-y-2">
               {topBountyTakers.slice(0, 5).map((hunter, idx) => {
@@ -1260,13 +1261,13 @@ export default function HomePage({
                   <Link
                     key={hunter.pubkey}
                     href={`/${hunter.pubkey}`}
-                    className="block hover:bg-gray-800/50 rounded p-2 -m-2"
+                    className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-yellow-300 truncate flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm text-[var(--color-text-primary)] truncate flex-1">
                         {idx + 1}. {getDisplayName(hunter.pubkey)}
                       </span>
-                      <span className="text-xs text-gray-500 ml-2">
+                      <span className="text-xs text-[var(--color-text-secondary)] tabular-nums shrink-0">
                         {hunter.bountyClaimedCount}
                       </span>
                     </div>
@@ -1279,12 +1280,12 @@ export default function HomePage({
 
         {/* Platform Bounty Statistics */}
         {platformBountyStats && platformBountyStats.totalBounties > 0 && (
-          <div className="border border-[#383B42] rounded p-4">
-            <h3 className="font-semibold mb-3 text-yellow-400 flex items-center justify-between">
-              <span>💰 Bounty Statistics</span>
+          <div className="border border-[var(--color-border)] rounded p-4">
+            <h3 className="font-semibold mb-3 text-[var(--color-text-primary)] flex items-center justify-between gap-2">
+              <span>Bounty Statistics</span>
               <Link
                 href="/bounty-hunt"
-                className="text-xs text-purple-400 hover:text-purple-300"
+                className="text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
               >
                 Hunt →
               </Link>
@@ -1292,11 +1293,13 @@ export default function HomePage({
             <div className="space-y-2 text-sm">
               <Link
                 href="/bounty-hunt?status=paid"
-                className="block hover:bg-gray-800/50 rounded p-2 -m-2"
+                className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
               >
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Available:</span>
-                  <span className="text-green-400 font-semibold">
+                <div className="flex justify-between gap-2">
+                  <span className="text-[var(--color-text-secondary)]">
+                    Available:
+                  </span>
+                  <span className="text-[var(--color-accent-primary)] font-semibold tabular-nums">
                     {platformBountyStats.availableBounties} (
                     {platformBountyStats.totalAvailable.toLocaleString()} sats)
                   </span>
@@ -1304,11 +1307,13 @@ export default function HomePage({
               </Link>
               <Link
                 href="/bounty-hunt?status=pending"
-                className="block hover:bg-gray-800/50 rounded p-2 -m-2"
+                className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
               >
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Pending:</span>
-                  <span className="text-yellow-400 font-semibold">
+                <div className="flex justify-between gap-2">
+                  <span className="text-[var(--color-text-secondary)]">
+                    Pending:
+                  </span>
+                  <span className="text-[var(--color-text-primary)] font-semibold tabular-nums">
                     {platformBountyStats.pendingCount} (
                     {platformBountyStats.pendingPayment.toLocaleString()} sats)
                   </span>
@@ -1316,26 +1321,32 @@ export default function HomePage({
               </Link>
               <Link
                 href="/bounty-hunt?status=released"
-                className="block hover:bg-gray-800/50 rounded p-2 -m-2"
+                className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
               >
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Released:</span>
-                  <span className="text-purple-400 font-semibold">
+                <div className="flex justify-between gap-2">
+                  <span className="text-[var(--color-text-secondary)]">
+                    Released:
+                  </span>
+                  <span className="text-[var(--color-text-primary)] font-semibold tabular-nums">
                     {platformBountyStats.releasedCount}
                   </span>
                 </div>
               </Link>
               {platformBountyStats.offlineCount > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Offline:</span>
-                  <span className="text-gray-500 font-semibold">
+                <div className="flex justify-between gap-2 px-2 -mx-2">
+                  <span className="text-[var(--color-text-secondary)]">
+                    Offline:
+                  </span>
+                  <span className="text-[var(--color-text-secondary)] font-semibold tabular-nums">
                     {platformBountyStats.offlineCount}
                   </span>
                 </div>
               )}
-              <div className="pt-2 border-t border-[#383B42] flex justify-between">
-                <span className="text-gray-300 font-semibold">Total:</span>
-                <span className="text-yellow-300 font-bold">
+              <div className="pt-2 border-t border-[var(--color-border)] flex justify-between gap-2">
+                <span className="text-[var(--color-text-primary)] font-semibold">
+                  Total:
+                </span>
+                <span className="text-[var(--color-accent-primary)] font-bold tabular-nums">
                   {platformBountyStats.totalBounties}
                 </span>
               </div>
@@ -1349,42 +1360,50 @@ export default function HomePage({
           (ownBountyStats.totalPending > 0 ||
             ownBountyStats.totalPaid > 0 ||
             ownBountyStats.totalReleased > 0) && (
-            <div className="border border-[#383B42] rounded p-4">
-              <h3 className="font-semibold mb-3 text-yellow-400">
-                💰 Your Bounties
+            <div className="border border-[var(--color-border)] rounded p-4">
+              <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
+                Your Bounties
               </h3>
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Pending Payment:</span>
-                  <span className="text-yellow-400 font-semibold">
+                <div className="flex justify-between gap-2">
+                  <span className="text-[var(--color-text-secondary)]">
+                    Pending Payment:
+                  </span>
+                  <span className="text-[var(--color-text-primary)] font-semibold tabular-nums">
                     {ownBountyStats.totalPending} (
                     {ownBountyStats.pendingAmount.toLocaleString()} sats)
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Available:</span>
-                  <span className="text-green-400 font-semibold">
+                <div className="flex justify-between gap-2">
+                  <span className="text-[var(--color-text-secondary)]">
+                    Available:
+                  </span>
+                  <span className="text-[var(--color-accent-primary)] font-semibold tabular-nums">
                     {ownBountyStats.totalPaid} (
                     {ownBountyStats.paidAmount.toLocaleString()} sats)
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Claimed:</span>
-                  <span className="text-purple-400 font-semibold">
+                <div className="flex justify-between gap-2">
+                  <span className="text-[var(--color-text-secondary)]">
+                    Claimed:
+                  </span>
+                  <span className="text-[var(--color-text-primary)] font-semibold tabular-nums">
                     {ownBountyStats.totalReleased} (
                     {ownBountyStats.releasedAmount.toLocaleString()} sats)
                   </span>
                 </div>
-                <div className="pt-2 border-t border-[#383B42] flex justify-between">
-                  <span className="text-gray-300 font-semibold">Total:</span>
-                  <span className="text-yellow-300 font-bold">
+                <div className="pt-2 border-t border-[var(--color-border)] flex justify-between gap-2">
+                  <span className="text-[var(--color-text-primary)] font-semibold">
+                    Total:
+                  </span>
+                  <span className="text-[var(--color-accent-primary)] font-bold tabular-nums">
                     {ownBountyStats.totalAmount.toLocaleString()} sats
                   </span>
                 </div>
               </div>
               <Link
                 href="/settings/bounties"
-                className="block mt-3 text-xs text-purple-400 hover:text-purple-300"
+                className="block mt-3 text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
               >
                 Manage bounties →
               </Link>
@@ -1393,9 +1412,9 @@ export default function HomePage({
 
         {/* Latest Bounties */}
         {latestBounties.length > 0 && (
-          <div className="border border-[#383B42] rounded p-4">
-            <h3 className="font-semibold mb-3 text-yellow-400">
-              💎 Latest Bounties
+          <div className="border border-[var(--color-border)] rounded p-4">
+            <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
+              Latest Bounties
             </h3>
             <div className="space-y-2">
               {latestBounties.slice(0, 5).map((bounty, idx) => {
@@ -1407,23 +1426,23 @@ export default function HomePage({
                   <Link
                     key={bounty.issueId}
                     href={href}
-                    className="block hover:bg-gray-800/50 rounded p-2 -m-2"
+                    className="block rounded p-2 -m-2 hover:bg-[var(--color-bg-secondary)] transition-colors"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm text-yellow-300 truncate">
+                        <div className="text-sm text-[var(--color-text-primary)] truncate">
                           {bounty.title}
                         </div>
-                        <div className="text-xs text-gray-500 truncate mt-0.5">
+                        <div className="text-xs text-[var(--color-text-secondary)] truncate mt-0.5">
                           {bounty.repoName}
                         </div>
                       </div>
-                      <div className="text-xs text-yellow-400 font-semibold whitespace-nowrap">
-                        {bounty.bountyAmount.toLocaleString()}⚡
+                      <div className="text-xs text-[var(--color-accent-primary)] font-semibold whitespace-nowrap tabular-nums">
+                        {bounty.bountyAmount.toLocaleString()} sats
                       </div>
                     </div>
                     {bounty.bountyStatus === "pending" && (
-                      <div className="text-[10px] text-gray-500 mt-1">
+                      <div className="text-[10px] text-[var(--color-text-secondary)] mt-1">
                         Pending payment
                       </div>
                     )}
@@ -1433,7 +1452,7 @@ export default function HomePage({
             </div>
             <Link
               href="/bounty-hunt"
-              className="block mt-3 text-xs text-purple-400 hover:text-purple-300"
+              className="block mt-3 text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
             >
               View all bounties →
             </Link>
@@ -1446,9 +1465,9 @@ export default function HomePage({
           (userBountyActivityStats.bountiesSetOut > 0 ||
             userBountyActivityStats.bountiesClaimed > 0 ||
             recentBountyActivities.length > 0) && (
-            <div className="border border-[#383B42] rounded p-4">
-              <h3 className="font-semibold mb-3 text-yellow-400">
-                ⚡ Your Bounty Activity
+            <div className="border border-[var(--color-border)] rounded p-4">
+              <h3 className="font-semibold mb-3 text-[var(--color-text-primary)]">
+                Your Bounty Activity
               </h3>
 
               {/* Quick Stats */}
@@ -1456,9 +1475,11 @@ export default function HomePage({
                 userBountyActivityStats.bountiesClaimed > 0) && (
                 <div className="mb-3 space-y-1.5 text-xs">
                   {userBountyActivityStats.bountiesSetOut > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Bounties Set Out:</span>
-                      <span className="text-yellow-300 font-semibold">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-[var(--color-text-secondary)]">
+                        Bounties Set Out:
+                      </span>
+                      <span className="text-[var(--color-text-primary)] font-semibold tabular-nums">
                         {userBountyActivityStats.bountiesSetOut} (
                         {userBountyActivityStats.totalSetOutAmount.toLocaleString()}{" "}
                         sats)
@@ -1466,9 +1487,11 @@ export default function HomePage({
                     </div>
                   )}
                   {userBountyActivityStats.bountiesClaimed > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">Bounties Claimed:</span>
-                      <span className="text-green-300 font-semibold">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-[var(--color-text-secondary)]">
+                        Bounties Claimed:
+                      </span>
+                      <span className="text-[var(--color-accent-primary)] font-semibold tabular-nums">
                         {userBountyActivityStats.bountiesClaimed} (
                         {userBountyActivityStats.totalClaimedAmount.toLocaleString()}{" "}
                         sats)
@@ -1481,7 +1504,7 @@ export default function HomePage({
               {/* Recent Activities */}
               {recentBountyActivities.length > 0 && (
                 <>
-                  <div className="text-xs text-gray-400 mb-2">
+                  <div className="text-xs text-[var(--color-text-secondary)] mb-2">
                     Recent Activity
                   </div>
                   <div className="space-y-1.5">
@@ -1525,23 +1548,23 @@ export default function HomePage({
                         <Link
                           key={activity.id}
                           href={href}
-                          className="block hover:bg-gray-800/50 rounded p-1.5 -m-1.5"
+                          className="block rounded p-1.5 -m-1.5 hover:bg-[var(--color-bg-secondary)] transition-colors"
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
-                              <div className="text-xs text-yellow-300 truncate">
+                              <div className="text-xs text-[var(--color-text-primary)] truncate">
                                 {activityText}
                               </div>
                               <div
-                                className="text-[10px] text-gray-500 mt-0.5"
+                                className="text-[10px] text-[var(--color-text-secondary)] mt-0.5"
                                 suppressHydrationWarning
                               >
                                 {timeStr}
                               </div>
                             </div>
                             {bountyAmount && (
-                              <div className="text-xs text-yellow-400 font-semibold whitespace-nowrap">
-                                {bountyAmount.toLocaleString()}⚡
+                              <div className="text-xs text-[var(--color-accent-primary)] font-semibold whitespace-nowrap tabular-nums">
+                                {bountyAmount.toLocaleString()} sats
                               </div>
                             )}
                           </div>
@@ -1555,7 +1578,7 @@ export default function HomePage({
               <div className="flex gap-2 mt-3">
                 <Link
                   href="/bounty-hunt"
-                  className="text-xs text-purple-400 hover:text-purple-300"
+                  className="text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
                 >
                   Hunt bounties →
                 </Link>
@@ -1564,7 +1587,7 @@ export default function HomePage({
                     ownBountyStats.totalPaid > 0) && (
                     <Link
                       href="/settings/bounties"
-                      className="text-xs text-purple-400 hover:text-purple-300"
+                      className="text-xs font-medium text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
                     >
                       Manage →
                     </Link>
@@ -1577,9 +1600,9 @@ export default function HomePage({
 
       {/* Recent Activity - Full Width - Hidden on mobile */}
       {(statsLoaded || displayRecentActivity.length > 0) && (
-        <div className="hidden md:block mb-6 border border-[#383B42] rounded p-4">
-          <h3 className="font-semibold mb-4 text-purple-400">
-            ⚡ Recent Activity
+        <div className="hidden md:block mb-6 border border-[var(--color-border)] rounded p-4">
+          <h3 className="font-semibold mb-4 text-[var(--color-text-primary)]">
+            Recent Activity
           </h3>
           {displayRecentActivity.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
@@ -1667,18 +1690,18 @@ export default function HomePage({
                   <Link
                     key={activity.id}
                     href={href}
-                    className="block hover:bg-gray-800/50 rounded p-3 border border-[#383B42] transition-colors"
+                    className="block rounded p-3 border border-[var(--color-border)] transition-colors hover:bg-[var(--color-bg-secondary)]"
                   >
                     <div className="flex items-start gap-2">
-                      <span className="text-base flex-shrink-0">
+                      <span className="text-base flex-shrink-0 text-[var(--color-text-secondary)]">
                         {getActivityIcon()}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm text-gray-300 truncate">
+                        <div className="text-sm text-[var(--color-text-primary)] truncate">
                           {getActivityText()}
                         </div>
                         <div
-                          className="text-xs text-gray-500 mt-1"
+                          className="text-xs text-[var(--color-text-secondary)] mt-1"
                           suppressHydrationWarning
                         >
                           {timeStr}
@@ -1690,7 +1713,7 @@ export default function HomePage({
               })}
             </div>
           ) : (
-            <div className="text-gray-400">
+            <div className="text-[var(--color-text-secondary)]">
               {!lbRecentActivitiesReady && platformRecentActivities.length === 0
                 ? "Loading recent activity..."
                 : "No recent activity yet."}
@@ -1700,24 +1723,26 @@ export default function HomePage({
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <section className="lg:col-span-2 border border-[#383B42] rounded p-4">
+        <section className="lg:col-span-2 border border-[var(--color-border)] rounded p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">Recent repositories</h2>
+            <h2 className="font-semibold text-[var(--color-text-primary)]">
+              Recent repositories
+            </h2>
             <Link
               href="/explore"
-              className="text-sm text-purple-500 hover:underline"
+              className="text-sm text-[var(--color-accent-primary)] hover:text-[var(--color-accent-hover)] hover:underline"
             >
               See all repos
             </Link>
           </div>
           {displayRecentRepos.length === 0 ? (
-            <div className="text-gray-400">
+            <div className="text-[var(--color-text-secondary)]">
               {liveRecentReposLoading
                 ? "Loading repositories..."
                 : "No repositories yet. Create or import one to get started."}
             </div>
           ) : (
-            <ul className="divide-y divide-[#383B42]">
+            <ul className="divide-y divide-[var(--color-border)]">
               {displayRecentRepos.map((r, index) => {
                 const entity = r.entity;
                 // Bare repo id only — never embed hex/path from broken d tags
@@ -1802,15 +1827,15 @@ export default function HomePage({
                   <li key={`${entity}-${repo}`} className="py-3">
                     <Link
                       href={href}
-                      className="flex items-center gap-3 sm:gap-4 hover:bg-gray-800/50 rounded p-2 -m-2 cursor-pointer"
+                      className="flex items-center gap-3 sm:gap-4 rounded p-2 -m-2 cursor-pointer hover:bg-[var(--color-bg-secondary)] transition-colors"
                     >
                       {/* Icon priority: repo icon -> user icon -> platform default (all circular) */}
                       {iconUrl ? (
                         // Priority 1: Repo icon (circular like Avatar)
-                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-gray-700">
+                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-[var(--color-border)]">
                           <AvatarImage src={iconUrl} alt="" loading="lazy" />
                           {/* Never nest a remote <img> here — dead Blossom URLs show as broken icon + alt text */}
-                          <AvatarFallback className="bg-[#22262C]">
+                          <AvatarFallback className="bg-[var(--color-bg-secondary)]">
                             <img
                               src="/logo.svg"
                               alt=""
@@ -1820,9 +1845,9 @@ export default function HomePage({
                         </Avatar>
                       ) : ownerPicture ? (
                         // Priority 2: Owner profile picture (circular)
-                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-gray-700">
+                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-[var(--color-border)]">
                           <AvatarImage src={ownerPicture} alt="" />
-                          <AvatarFallback className="bg-[#22262C]">
+                          <AvatarFallback className="bg-[var(--color-bg-secondary)]">
                             <img
                               src="/logo.svg"
                               alt=""
@@ -1832,8 +1857,8 @@ export default function HomePage({
                         </Avatar>
                       ) : (
                         // Priority 3: Platform default icon (circular)
-                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-gray-700">
-                          <AvatarFallback className="bg-[#22262C]">
+                        <Avatar className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 ring-1 ring-[var(--color-border)]">
+                          <AvatarFallback className="bg-[var(--color-bg-secondary)]">
                             <img
                               src="/logo.svg"
                               alt=""
@@ -1844,7 +1869,7 @@ export default function HomePage({
                       )}
                       <div className="flex-1 min-w-0 min-w-[0]">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <div className="text-purple-500 hover:underline font-semibold truncate min-w-0">
+                          <div className="text-[var(--color-accent-primary)] hover:underline font-semibold truncate min-w-0">
                             {displayName}/{r.name || repo}
                           </div>
                           {/* Status badge */}
@@ -1883,8 +1908,10 @@ export default function HomePage({
         </section>
 
         <aside className="space-y-4">
-          <div className="border border-[#383B42] rounded p-4">
-            <h3 className="font-semibold mb-2">Quick actions</h3>
+          <div className="border border-[var(--color-border)] rounded p-4">
+            <h3 className="font-semibold mb-2 text-[var(--color-text-primary)]">
+              Quick actions
+            </h3>
             <div className="flex flex-col gap-2">
               <Link href="/new">
                 <Button className="w-full" variant="default">
@@ -1919,9 +1946,11 @@ export default function HomePage({
             </div>
           </div>
 
-          <div className="border border-[#383B42] rounded p-4">
-            <h3 className="font-semibold mb-2">Tips</h3>
-            <ul className="list-disc list-inside text-gray-400 text-sm space-y-1">
+          <div className="border border-[var(--color-border)] rounded p-4">
+            <h3 className="font-semibold mb-2 text-[var(--color-text-primary)]">
+              Tips
+            </h3>
+            <ul className="list-disc list-inside text-[var(--color-text-secondary)] text-sm space-y-1">
               <li>Import from GitHub to populate code and README.</li>
               <li>Enable zaps in Settings → Account.</li>
               <li>Link your GitHub profile to show contributor icons.</li>
