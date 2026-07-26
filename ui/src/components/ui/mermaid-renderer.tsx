@@ -24,21 +24,21 @@ export function MermaidRenderer({ code, className }: MermaidRendererProps) {
           securityLevel: "loose",
           theme: "dark",
         });
+        // Keep <br/> in labels — Mermaid (and GitHub) use that for line breaks.
+        // Do NOT turn them into the two-char sequence "\n" (that renders literally).
         let normalizedCode = code
           .replace(/&lt;/g, "<")
           .replace(/&gt;/g, ">")
           .replace(/&amp;/g, "&")
           .replace(/&nbsp;/g, " ")
-          // Mermaid expects literal "\n" inside node labels, not real newlines
-          .replace(/<br\s*\/?>/gi, "\\n")
           .replace(/\r\n/g, "\n");
 
-        // Ensure labels containing line breaks stay within brackets by replacing remaining newlines with \n
+        // Real newlines inside node labels → <br/> so Mermaid wraps the text
         const wrapNewlines = (input: string, regex: RegExp) =>
           input.replace(
             regex,
             (_match, start: string, _newline: string, end: string) =>
-              `${start}\\n${end}`
+              `${start}<br/>${end}`
           );
 
         normalizedCode = wrapNewlines(
