@@ -7409,7 +7409,7 @@ export function RepoCodePage() {
                               ? eventRepoData.publicWrite
                               : false,
                           links: mergeAnnouncementLinksWithLocal(
-                            base.links,
+                            [],
                             eventRepoData.links
                           ),
                           ...(eventRepoData.lastEventId
@@ -7429,7 +7429,7 @@ export function RepoCodePage() {
                           ? { publicWrite: eventRepoData.publicWrite }
                           : {}),
                         links: mergeAnnouncementLinksWithLocal(
-                          base.links,
+                          prev.links,
                           eventRepoData.links
                         ),
                         ...(eventRepoData.lastEventId
