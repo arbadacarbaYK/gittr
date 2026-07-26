@@ -7,6 +7,99 @@ interface MermaidRendererProps {
   className?: string;
 }
 
+/** Applied once — repeated initialize() races and can wipe classDef fills mid-paint. */
+let mermaidReady: Promise<typeof import("mermaid").default> | null = null;
+
+function getMermaid() {
+  if (!mermaidReady) {
+    mermaidReady = import("mermaid").then((mod) => {
+      const mermaid = mod.default;
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "loose",
+        theme: "dark",
+        // Dark theme forces light labels; our host highlights need dark fills + light text
+        // that survive theme CSS. !important beats Mermaid’s default node fills.
+        themeCSS: `
+          g.node.youAreHere > rect,
+          g.node.youAreHere > polygon,
+          g.node.youAreHere > circle,
+          g.node.youAreHere > path {
+            fill: #0f766e !important;
+            stroke: #5eead4 !important;
+            stroke-width: 3px !important;
+          }
+          g.node.youAreHere span,
+          g.node.youAreHere .nodeLabel,
+          g.node.youAreHere foreignObject div,
+          g.node.youAreHere foreignObject span {
+            color: #ecfdf5 !important;
+            fill: #ecfdf5 !important;
+          }
+          g.node.hostUrl > rect,
+          g.node.hostUrl > polygon,
+          g.node.hostUrl > circle,
+          g.node.hostUrl > path {
+            fill: #164e63 !important;
+            stroke: #22d3ee !important;
+            stroke-width: 2.5px !important;
+          }
+          g.node.hostUrl span,
+          g.node.hostUrl .nodeLabel,
+          g.node.hostUrl foreignObject div,
+          g.node.hostUrl foreignObject span {
+            color: #ecfeff !important;
+            fill: #ecfeff !important;
+          }
+        `,
+      });
+      return mermaid;
+    });
+  }
+  return mermaidReady;
+}
+
+/** Belt-and-suspenders: dark theme sometimes strips class fills after paint. */
+function enforceHighlightContrast(svg: string): string {
+  if (typeof DOMParser === "undefined") return svg;
+  try {
+    const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+    const apply = (
+      sel: string,
+      fill: string,
+      stroke: string,
+      textFill: string,
+      strokeWidth: string
+    ) => {
+      doc.querySelectorAll(sel).forEach((node) => {
+        node.querySelectorAll("rect, polygon, circle, path, ellipse").forEach((shape) => {
+          shape.setAttribute("fill", fill);
+          shape.setAttribute("stroke", stroke);
+          shape.setAttribute("stroke-width", strokeWidth);
+          const s = (shape as SVGElement).style;
+          if (s) {
+            s.fill = fill;
+            s.stroke = stroke;
+          }
+        });
+        node.querySelectorAll("span, .nodeLabel, foreignObject div").forEach((el) => {
+          (el as HTMLElement).style.color = textFill;
+          el.setAttribute("fill", textFill);
+        });
+        node.querySelectorAll("text, tspan").forEach((el) => {
+          el.setAttribute("fill", textFill);
+        });
+      });
+    };
+    apply("g.node.youAreHere", "#0f766e", "#5eead4", "#ecfdf5", "3");
+    apply("g.node.hostUrl", "#164e63", "#22d3ee", "#ecfeff", "2.5");
+    const out = new XMLSerializer().serializeToString(doc.documentElement);
+    return out || svg;
+  } catch {
+    return svg;
+  }
+}
+
 export function MermaidRenderer({ code, className }: MermaidRendererProps) {
   const [diagram, setDiagram] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -17,13 +110,7 @@ export function MermaidRenderer({ code, className }: MermaidRendererProps) {
 
     async function renderDiagram() {
       try {
-        const mermaidModule = await import("mermaid");
-        const mermaid = mermaidModule.default;
-        mermaid.initialize({
-          startOnLoad: false,
-          securityLevel: "loose",
-          theme: "dark",
-        });
+        const mermaid = await getMermaid();
         // Keep <br/> in labels — Mermaid (and GitHub) use that for line breaks.
         // Do NOT turn them into the two-char sequence "\n" (that renders literally).
         let normalizedCode = code
@@ -58,7 +145,7 @@ export function MermaidRenderer({ code, className }: MermaidRendererProps) {
           normalizedCode
         );
         if (!cancelled) {
-          setDiagram(svg);
+          setDiagram(enforceHighlightContrast(svg));
           setError(null);
         }
       } catch (err) {

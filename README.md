@@ -6,7 +6,7 @@ Live: [gittr.space](https://gittr.space) · [Apps](https://gittr.space/apps) · 
 
 ## Where this sits (platform map)
 
-Super-high-level — who talks to whom. **You are here = gittr Client** (this repo, teal). Host URLs are the brown boxes with gold outline (readable in dark UI). Detailed bridge diagrams live in [gitnostr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?branch=main).
+Super-high-level — who talks to whom. **You are here = gittr Client** (this repo, teal). Host URLs are the cyan-outlined host boxes (teal = this repo; cyan outline = host URLs). Detailed bridge diagrams live in [gitnostr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?branch=main).
 
 ```mermaid
 flowchart TB
@@ -48,7 +48,7 @@ flowchart TB
   RemoteNostr -.->|same events| Bridge
 
   classDef youAreHere fill:#0f766e,stroke:#5eead4,stroke-width:3px,color:#ecfdf5
-  classDef hostUrl fill:#78350f,stroke:#fbbf24,stroke-width:2px,color:#fffbeb
+  classDef hostUrl fill:#164e63,stroke:#22d3ee,stroke-width:2px,color:#ecfeff
   class UI youAreHere
   class Bridge,Pages,RelayGittr hostUrl
 ```

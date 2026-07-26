@@ -6,7 +6,7 @@
 
 ## Where this sits (platform map)
 
-This repo is the **git server layer** — not the website and not the AI tools. **You are here = gitnostr Bridge** (`git.gittr.space`, teal). Brown boxes with gold outline = public hostnames (readable in dark UI).
+This repo is the **git server layer** — not the website and not the AI tools. **You are here = gitnostr Bridge** (`git.gittr.space`, teal). Cyan-outlined host boxes = public hostnames (teal = this repo; cyan outline = host URLs).
 
 ```mermaid
 flowchart LR
@@ -32,7 +32,7 @@ flowchart LR
   Remote -.->|same NIP-34 events| Relays
 
   classDef youAreHere fill:#0f766e,stroke:#5eead4,stroke-width:3px,color:#ecfdf5
-  classDef hostUrl fill:#78350f,stroke:#fbbf24,stroke-width:2px,color:#fffbeb
+  classDef hostUrl fill:#164e63,stroke:#22d3ee,stroke-width:2px,color:#ecfeff
   class Bridge youAreHere
   class Pages,RelayGittr hostUrl
 ```
