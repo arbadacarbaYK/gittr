@@ -58,8 +58,8 @@ flowchart TB
 | **★ gittr Client (this README)** | [arbadacarbaYK/gittr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?branch=main) · `gittr.space` | Web forge: Code, Issues/PRs, Push, import, ToDo, Apps |
 | **gitnostr Bridge** | [arbadacarbaYK/gitnostr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?branch=main) (`ui/gitnostr/`) · **`git.gittr.space`** | Real git over SSH/HTTPS; watches relays; kind 52 keys |
 | **Pages / nsite** | [arbadacarbaYK/nsite-gateway](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway) · **`pages.gittr.space`** | Static sites from Nostr (gittr Pages) |
-| **gittr Pyramid relay** | [arbadacarbaYK/pyramid](https://github.com/arbadacarbaYK/pyramid) · **`relay.gittr.space`** (`wss://`) | Open forge + discussion relay; GRASP-capable |
-| **gittr-mcp** | [GitHub arbada…/gittr-mcp](https://github.com/arbadacarbaYK/gittr-mcp) | Same forge for AI agents (HTTP + Nostr, not SSH) |
+| **gittr Pyramid relay** | [arbadacarbaYK/pyramid](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/pyramid) · **`relay.gittr.space`** (`wss://`) | Open forge + discussion relay; GRASP-capable |
+| **gittr-mcp** | [arbadacarbaYK/gittr-mcp](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-mcp) | Same forge for AI agents (HTTP + Nostr, not SSH) |
 | **git remote nostr** | [ngit / git-remote-nostr](https://github.com/DanConwayDev/ngit-cli) | `nostr://` remotes — other stack, same NIP-34 events |
 
 **Addressing:** repos are Nostr identities (`npub` / hex) + repo name on relays; git blobs live on **`git.gittr.space`** (or another `clone` host). Sites on **`pages.gittr.space`**. Prefer publishing to **`wss://relay.gittr.space`** plus other relays. Agents resolve via MCP; humans via the UI or `git clone` / `nostr://`.

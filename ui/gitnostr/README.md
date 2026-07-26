@@ -43,9 +43,9 @@ flowchart LR
 | --- | --- | --- |
 | **gittr Client** | [gittr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?branch=main) · `gittr.space` | Push/import → bridge API; clone URLs point at **`git.gittr.space`** |
 | **★ gitnostr (this README)** | [gitnostr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?branch=main) · **`git.gittr.space`** | **You are here** — bare repos, SSH keys (kind 52), permissions |
-| **gittr-mcp** | [gittr-mcp](https://github.com/arbadacarbaYK/gittr-mcp) | Agents push/list via HTTPS + signed Nostr headers |
+| **gittr-mcp** | [gittr-mcp](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr-mcp) | Agents push/list via HTTPS + signed Nostr headers |
 | **Pages / nsite** | [nsite-gateway](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway) · **`pages.gittr.space`** | Separate — static sites from Nostr, not the git object store |
-| **gittr Pyramid relay** | [pyramid](https://github.com/arbadacarbaYK/pyramid) · **`relay.gittr.space`** | Open `wss://` forge relay the bridge also watches |
+| **gittr Pyramid relay** | [pyramid](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/pyramid) · **`relay.gittr.space`** | Open `wss://` forge relay the bridge also watches |
 | **git remote nostr** | [ngit-cli](https://github.com/DanConwayDev/ngit-cli) | Optional; reads/writes same relay events; may also hit `clone` HTTPS |
 
 **Addressing:** on disk, owner dirs are **hex pubkey**; HTTPS clone tags use **npub** via `npub → hex` symlinks on **`git.gittr.space`** (NIP-34-friendly). SSH accepts hex or npub.
