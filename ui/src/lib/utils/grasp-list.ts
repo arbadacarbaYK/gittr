@@ -196,8 +196,11 @@ export function graspRelayUrlsToDomains(graspRelayUrls: string[]): string[] {
 }
 
 /**
- * When a NIP-34 repo event has no `clone` tags, try well-known GRASP git hosts
- * using the standard npub/{repo}.git path so the bridge can clone on first view.
+ * When a NIP-34 repo event has no `clone` tags **after Nostr EOSE**, try
+ * well-known GRASP git hosts using the standard npub/{repo}.git path.
+ * Do not call this before the announcement arrives — that races dead ngit
+ * mirrors while a real Freebox/NAS `clone` tag is still in flight
+ * (`RepoCodePage` + FILE_FETCHING_INSIGHTS.md).
  */
 export function buildGraspHttpsCloneCandidates(
   entityRoute: string,

@@ -298,6 +298,7 @@ Import fails with “>4 MB”: Next API body limit — trim large binaries in th
 | `git` asks for password | Key in Settings → SSH Keys; `authorized_keys` path for `git@`; [SSH_GIT_GUIDE.md](SSH_GIT_GUIDE.md) |
 | Paywall on `git push` | Pay invoice in UI; owner LNbits/Blink in Settings → Account; [NIPS_AND_EVENT_KINDS.md](NIPS_AND_EVENT_KINDS.md) |
 | Empty Code tab (GRASP) | [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md), `POST /api/nostr/repo/clone` |
+| Empty Code tab (home Freebox / NAS `clone[]`) | Same doc — `repo-files` runs on the **app host**; hostname must resolve/reach from Hetzner (LAN-only remotes stay empty until a public clone is published) |
 | Pages 502 on upload | nginx `proxy_read_timeout` on `/api/`; Blossom URL in env |
 
 ---

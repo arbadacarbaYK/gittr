@@ -31,12 +31,13 @@ When you view a repo page:
    - If bridge has files → ✅ Success!
    - If bridge is empty → Continue to step 2
 
-2. **Multi-source fallback** → Tries all clone URLs in parallel:
-   - GRASP servers (git.gittr.space, relay.ngit.dev, etc.)
-   - **GitHub** → Uses `/api/github/proxy` which needs `GITHUB_PLATFORM_TOKEN`
-   - GitLab, Codeberg, etc.
+2. **Multi-source fallback** → Tries clone URLs in parallel (see [FILE_FETCHING_INSIGHTS.md](FILE_FETCHING_INSIGHTS.md)):
+   - **Published non-GRASP remotes first** (GitHub, GitLab, Codeberg, self-hosted / home Freebox) when mixed with GRASP
+   - **`GET /api/git/repo-files?sourceUrl=…`** for HTTPS remotes (server-side shallow clone; preferred for public GitHub trees to avoid REST rate limits)
+   - GRASP servers (`git.gittr.space`, `relay.ngit.dev`, …) via bridge + `repo-files` + optional bare mirror
+   - GitHub REST **`/api/github/proxy`** only as fallback when `GITHUB_PLATFORM_TOKEN` is needed (private / rate limits)
 
-**Why it's failing now**: The `/api/github/proxy` endpoint needs `GITHUB_PLATFORM_TOKEN` to access private repos, but it's not set on the server.
+**Why private GitHub may fail**: The `/api/github/proxy` endpoint needs `GITHUB_PLATFORM_TOKEN` to access private repos, but it's not set on the server.
 
 ## External Identities vs Server Tokens
 

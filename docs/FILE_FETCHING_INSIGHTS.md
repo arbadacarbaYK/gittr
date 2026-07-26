@@ -2,10 +2,10 @@
 
 How the UI loads repo trees and file content. Implementation lives in:
 
-- `ui/src/lib/utils/git-source-fetcher.ts` — list + GRASP clone trigger
-- `ui/src/app/[entity]/[repo]/page.tsx` — open file, fallbacks
+- `ui/src/lib/utils/git-source-fetcher.ts` — classify clones, list trees, GRASP / self-hosted shallow clone
+- `ui/src/components/repo/RepoCodePage.tsx` — Code tab orchestration (route `page.tsx` is a thin wrapper)
 - `ui/src/pages/api/nostr/repo/files.ts`, `file-content.ts`, `clone.ts`
-- `ui/src/pages/api/git/file-content.ts` — GitHub/GitLab/Codeberg/self-hosted
+- `ui/src/pages/api/git/repo-files.ts`, `file-content.ts` — server-side `git clone` for any reachable HTTP(S) remote
 
 ## Order (simplified)
 
@@ -13,9 +13,14 @@ How the UI loads repo trees and file content. Implementation lives in:
 
 1. Browser `localStorage` (owned / edited repos)
 2. Embedded files in Nostr repo event (legacy/small)
-3. Parallel over `clone[]` / `source`: bridge `GET /api/nostr/repo/files`, or upstream git APIs
-4. GRASP: empty tree or 404 → shallow-clone each working `clone[]` URL via `GET /api/git/repo-files?sourceUrl=…` (shows files from the remote match immediately); then `POST /api/nostr/repo/clone` to mirror on disk and retry bridge; background poll if mirror is slow. **Non-GRASP** HTTP(S) remotes that reuse a `/npub1…/repo` path (home Freebox, NAS, etc.) are classified as **self-hosted** and use `repo-files` only — they are not skipped as “not GRASP”. Well-known GRASP mirrors are **not** inferred until after Nostr EOSE if the announcement still has no `clone` tags.
-5. Nostr subscription for kind 30617 if still missing
+3. Wait for latest kind **30617** (and related) on relays — **published `clone[]` / `source` tags are authoritative**
+4. Parallel over those URLs via `fetchFilesFromMultipleSources`:
+   - **Prefer non-GRASP remotes first** (GitHub, GitLab, Codeberg, Freebox/NAS, other self-hosted) when mixed with GRASP mirrors — avoids burning ~45s on dead ngit hosts
+   - GitHub / `source` may be pulled further ahead via `prioritizeUpstreamCloneUrls`
+   - Per URL: bridge `GET /api/nostr/repo/files`, or forge / **`GET /api/git/repo-files?sourceUrl=…`**
+5. **GRASP** (`nostr-git`, known GRASP host + `/npub1…/repo`): empty tree or 404 → shallow clone via `repo-files`, then optional `POST /api/nostr/repo/clone` + bridge retry
+6. **Self-hosted** (including **non-GRASP** hosts that reuse a `/npub1…/repo` path, e.g. home Freebox): **`repo-files` only** — do **not** skip as “not GRASP”
+7. Well-known GRASP mirrors are **inferred only after Nostr EOSE** if `clone[]` is still empty (`appendInferredGraspCloneUrls` / `buildGraspHttpsCloneCandidates`) — never guessed before the announcement arrives
 
 **Single file**
 
@@ -27,6 +32,15 @@ How the UI loads repo trees and file content. Implementation lives in:
 **Folder README** (browsing a directory without opening a file)
 
 Same branch as the loaded tree: use `repoData.filesBranch` (from multifetch `resolvedBranch`), not only `?branch=` in the URL. If the remote default is `master` but the URL says `main`, the UI syncs branch after the first successful tree fetch. Fallback order: local overrides → bridge `file-content` → `successfulSources` / `clone[]` via `GET /api/git/file-content?sourceUrl=…` (GRASP HTTPS) → cached `gittr_files` row content.
+
+## Classification (`parseGitSource`)
+
+| Pattern | Type | Fetch path |
+| --- | --- | --- |
+| Known GRASP host + `/npub1…/repo` | `nostr-git` | Bridge → `repo-files` → optional bare mirror |
+| Other host + `/npub1…/repo` (home Freebox, NAS, …) | `self-hosted-git` | **`repo-files` only** |
+| github.com / gitlab.com / codeberg.org | forge types | `repo-files` / forge APIs |
+| Other `https://host/owner/repo` | `self-hosted-git` | `repo-files` |
 
 ## SSH clone URLs
 
@@ -59,7 +73,7 @@ Empty bare dir with no branches: nostr files API may return `files: []` — step
 | Question | Behaviour |
 |----------|-----------|
 | Newest **Nostr repo announcement** (30617)? | **Yes** — subscriptions keep the latest `created_at` event; `clone[]` / `relays` tags come from that snapshot. |
-| Newest **tree across GRASP mirrors**? | **Not yet** — we do not compare `HEAD` / kind **30618** state across every clone URL and pick the newest commit. We use **first successful fetch** in the parallel race (after GitHub-first when applicable). |
+| Newest **tree across GRASP mirrors**? | **Not yet** — we do not compare `HEAD` / kind **30618** state across every clone URL and pick the newest commit. We use **first successful fetch** in the parallel race (after non-GRASP / GitHub-first when applicable). |
 | GitHub / `source` upstream? | **Yes** when present — `prioritizeUpstreamCloneUrls` tries GitHub first via **`/api/git/repo-files`** (server `git clone`, no REST quota). GitHub REST proxy is fallback only. A red GitHub row in “Git servers” after a **403** usually means **API rate limit**, not “repo is private”. |
 
 Improvement backlog: optional pass to compare commit SHAs from each successful shallow clone (or latest 30618) and show the newest branch tip.
@@ -72,5 +86,11 @@ Repos with a GitHub `source` / `clone` URL often treat GitHub as authoritative f
 
 - Set `GIT_NOSTR_BRIDGE_REPOS_DIR` if Next and bridge run as different users.
 - Import size: Next API ~4 MB response cap — huge monorepos may fail; trim assets.
+- **`GET /api/git/repo-files` runs on the gittr server** (e.g. Hetzner for gittr.space). Home Freebox / NAS / LAN URLs in `clone[]` must be **DNS-resolvable and reachable from that host**, not only from the visitor’s browser. Private LAN-only remotes will show empty Code until a public clone (gittr / ngit / forge) is also published.
 
 Troubleshooting pushes: [BRIDGE_PUSH_DEBUGGING.md](BRIDGE_PUSH_DEBUGGING.md).
+
+## Integrators (helper-tools / MCP)
+
+- Snippets: [gittr-helper-tools `snippets/file-fetching`](https://github.com/arbadacarbaYK/gittr-helper-tools) — keep `parseGitSource` in sync with this file.
+- MCP `getFile` / bridge reads are **not** full Code-tab parity (bridge + hardcoded GRASP raw URLs). Prefer `bridgeListFiles` after `importRemoteToBridge` / `mirrorRepo`, or resolve **30617 `clone[]`** and call the same HTTP APIs the UI uses. See gittr-mcp `docs/MCP-GITTR-PARITY.md`.

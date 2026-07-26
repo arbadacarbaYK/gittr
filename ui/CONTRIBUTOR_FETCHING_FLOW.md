@@ -112,9 +112,9 @@ Contributors can come from multiple sources depending on the repo type:
 ## Relay Usage
 
 ### For File Fetching
-- **All relays**: Files fetched from all available relays (GRASP servers + regular relays)
-- **First success**: Uses files from first successful relay
-- **No specific relay**: Doesn't target a specific relay for contributors
+- **Not from relays as file blobs** — trees come from the bridge, **`clone[]` / `source` via `/api/git/repo-files`**, or forge APIs (see [FILE_FETCHING_INSIGHTS.md](../docs/FILE_FETCHING_INSIGHTS.md))
+- Relays only deliver the **30617** announcement (clone URLs, metadata)
+- **First success** among parallel clone sources wins the tree
 
 ### For Contributor Fetching
 - **External repos**: Uses HTTP API (not relays)
