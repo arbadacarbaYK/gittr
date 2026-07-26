@@ -4515,7 +4515,11 @@ export function RepoCodePage() {
       selectedBranch,
       repoBranchRoute
     );
-    const contentKey = `${sourceUrl}:${branch}`;
+    const readmeMeta = (safeFiles || []).find(
+      (f: { path?: string; size?: number }) =>
+        /^(readme\.md|readme)$/i.test(String(f?.path || ""))
+    );
+    const contentKey = `${sourceUrl}:${branch}:sz=${readmeMeta?.size ?? "?"}`;
     if (upstreamContentLoadedKeyRef.current === contentKey) {
       return;
     }
@@ -4573,6 +4577,10 @@ export function RepoCodePage() {
     effectiveSourceUrl,
     selectedBranch,
     resolvedParams.entity,
+    // Re-pull README when GitHub listing size changes (content bodies omitted from listings).
+    (safeFiles || []).find((f: { path?: string }) =>
+      /^(readme\.md|readme)$/i.test(String(f?.path || ""))
+    )?.size,
   ]);
 
   // Separate useEffect for file fetching - only runs when repoData is first set and files are missing

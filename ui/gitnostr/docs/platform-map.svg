@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="420" viewBox="0 0 920 420" role="img" aria-label="gitnostr platform map">
+  <rect width="920" height="420" rx="12" fill="#0b1220"/>
+  <text x="24" y="36" fill="#94a3b8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14">Where this sits  gitnostr Bridge is you-are-here</text>
+
+  <!-- clients -->
+  <rect x="40" y="70" width="180" height="64" rx="8" fill="#111827" stroke="#475569" stroke-width="2"/>
+  <text x="130" y="96" text-anchor="middle" fill="#e2e8f0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">gittr Client</text>
+  <text x="130" y="116" text-anchor="middle" fill="#94a3b8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">gittr.space</text>
+
+  <rect x="40" y="160" width="180" height="64" rx="8" fill="#111827" stroke="#475569" stroke-width="2"/>
+  <text x="130" y="186" text-anchor="middle" fill="#e2e8f0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">gittr-mcp</text>
+  <text x="130" y="206" text-anchor="middle" fill="#94a3b8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">AI agents</text>
+
+  <rect x="40" y="250" width="180" height="64" rx="8" fill="#111827" stroke="#475569" stroke-width="2"/>
+  <text x="130" y="276" text-anchor="middle" fill="#e2e8f0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">git / gn / SSH</text>
+  <text x="130" y="296" text-anchor="middle" fill="#94a3b8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">CLI</text>
+
+  <!-- YOU ARE HERE bridge -->
+  <rect x="320" y="160" width="260" height="90" rx="10" fill="#0f766e" stroke="#5eead4" stroke-width="3"/>
+  <text x="450" y="192" text-anchor="middle" fill="#ecfdf5" font-family="ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700"> YOU ARE HERE · gitnostr</text>
+  <text x="450" y="214" text-anchor="middle" fill="#ecfdf5" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13">git.gittr.space</text>
+  <text x="450" y="234" text-anchor="middle" fill="#ccfbf1" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">SSH / HTTPS · bare repos</text>
+
+  <!-- hosts -->
+  <rect x="640" y="70" width="240" height="70" rx="8" fill="#164e63" stroke="#22d3ee" stroke-width="2.5"/>
+  <text x="760" y="98" text-anchor="middle" fill="#ecfeff" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">Pyramid relay</text>
+  <text x="760" y="118" text-anchor="middle" fill="#a5f3fc" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">relay.gittr.space · wss</text>
+
+  <rect x="640" y="170" width="240" height="70" rx="8" fill="#164e63" stroke="#22d3ee" stroke-width="2.5"/>
+  <text x="760" y="198" text-anchor="middle" fill="#ecfeff" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">Pages / nsite</text>
+  <text x="760" y="218" text-anchor="middle" fill="#a5f3fc" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">pages.gittr.space</text>
+
+  <rect x="640" y="270" width="240" height="70" rx="8" fill="#111827" stroke="#475569" stroke-width="2"/>
+  <text x="760" y="298" text-anchor="middle" fill="#e2e8f0" font-family="ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">Other Nostr relays</text>
+  <text x="760" y="318" text-anchor="middle" fill="#94a3b8" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">NIP-34 events</text>
+
+  <!-- arrows -->
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#64748b"/></marker>
+  </defs>
+  <line x1="220" y1="102" x2="320" y2="190" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="220" y1="192" x2="320" y2="205" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="220" y1="282" x2="320" y2="220" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="580" y1="190" x2="640" y2="105" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="580" y1="205" x2="640" y2="205" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="580" y1="220" x2="640" y2="300" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <text x="24" y="400" fill="#64748b" font-family="ui-sans-serif,system-ui,sans-serif" font-size="12">Teal = this repo · Cyan outline = public hostnames</text>
+</svg>

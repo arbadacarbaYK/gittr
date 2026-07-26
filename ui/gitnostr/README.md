@@ -8,6 +8,8 @@
 
 This repo is the **git server layer** — not the website and not the AI tools. **You are here = gitnostr Bridge** (`git.gittr.space`, teal). Cyan-outlined host boxes = public hostnames (teal = this repo; cyan outline = host URLs).
 
+![Platform map: gitnostr Bridge at git.gittr.space](docs/platform-map.svg)
+
 ```mermaid
 flowchart LR
   UI["gittr Client<br/>gittr.space"]
