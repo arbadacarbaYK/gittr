@@ -5087,12 +5087,9 @@ export function RepoCodePage() {
         }
       }
 
-      // Repos with no clone tags (e.g. metadata-only NIP-34): try well-known GRASP paths.
-      appendInferredGraspCloneUrls(
-        initialCloneUrls,
-        resolvedParams.entity,
-        resolvedParams.repo
-      );
+      // Do NOT infer GRASP mirrors before Nostr EOSE — that races 4 dead
+      // ngit hosts while the real clone tag (often a home Freebox / NAS) is
+      // still arriving. Inference runs after EOSE if still no clone URLs.
 
       // If we have clone URLs, try multi-source fetch immediately (before querying Nostr)
       // CRITICAL: Check if we've already attempted this fetch to prevent multiple runs
@@ -7937,6 +7934,16 @@ export function RepoCodePage() {
                   if (canAutoRetryFileFetch(repoKeyWithBranch)) {
                     fileFetchAttemptedRef.current = "";
                   }
+                }
+
+                // After Nostr EOSE: only now guess well-known GRASP paths if the
+                // announcement still has no clone tags (metadata-only repos).
+                if (cloneUrls.length === 0) {
+                  appendInferredGraspCloneUrls(
+                    cloneUrls,
+                    resolvedParams.entity,
+                    resolvedParams.repo
+                  );
                 }
 
                 if (cloneUrls.length > 0) {

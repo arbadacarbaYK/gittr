@@ -39,8 +39,10 @@ export type GitSourceType =
   | "unknown"; // Unknown git server
 
 /**
- * True for https(s) remotes that look like host/owner/repo where owner is not an npub path.
- * Used to include self-hosted forges in clone lists and refetch.
+ * True for https(s) remotes that look like host/owner/repo.
+ * Allows `/npub1…/repo` on non-GRASP hosts (home Freebox, self-hosted GRASP-shaped
+ * paths) so they can be listed via `/api/git/repo-files`. Known GRASP hosts are
+ * handled separately as nostr-git.
  */
 export function isGenericHttpsGitRemoteUrl(raw: string): boolean {
   if (!raw || typeof raw !== "string") return false;
@@ -72,7 +74,14 @@ export function isGenericHttpsGitRemoteUrl(raw: string): boolean {
     const parts = parsed.pathname.split("/").filter(Boolean);
     if (parts.length < 2) return false;
     const ownerSeg = parts[0];
-    if (!ownerSeg || /^npub1[a-z0-9]+$/i.test(ownerSeg)) return false;
+    if (!ownerSeg) return false;
+    // Known GRASP + /npub/ → not "generic forge"; use nostr-git path instead
+    if (/^npub1[a-z0-9]+$/i.test(ownerSeg)) {
+      const { isGraspServer } = require("@/lib/utils/grasp-servers") as {
+        isGraspServer: (u: string) => boolean;
+      };
+      if (isGraspServer(u) || isGraspServer(host)) return false;
+    }
     return true;
   } catch {
     return false;
@@ -276,14 +285,14 @@ export function parseGitSource(cloneUrl: string): GitSource {
   ];
 
   // Nostr git server (grasp) pattern: https://relay.ngit.dev/npub.../repo
-  // or: https://ngit.danconwaydev.com/npub.../repo
-  // or: https://git.vanderwarker.family/nostr/repo (without npub in path)
+  // Only treat as nostr-git when the host is a known GRASP. Home Freebox / NAS
+  // remotes often reuse the /npub/repo path shape but must use self-hosted clone.
   const nostrGitMatch = url.match(
     /^https?:\/\/([^\/]+)\/(npub[a-z0-9]+)\/([^\/]+)$/i
   );
   if (nostrGitMatch) {
     const [, domain, npub, repo] = nostrGitMatch;
-    if (domain && npub && repo) {
+    if (domain && npub && repo && isGraspServerFn(domain)) {
       return {
         type: "nostr-git",
         url: normalizedUrl, // Use normalized URL (https://) for API calls
@@ -393,7 +402,9 @@ export function parseGitSource(cloneUrl: string): GitSource {
     };
   }
 
-  // Self-hosted / Gitea / Forgejo: https://git.example.com/owner/repo
+  // Self-hosted / Gitea / Forgejo / home GRASP-shaped paths:
+  // https://git.example.com/owner/repo or http://freebox:port/npub1…/repo
+  // (Known GRASP + /npub/ already returned as nostr-git above.)
   const selfHostedMatch = url.match(
     /^https?:\/\/([^\/]+)\/([^\/]+)\/([^\/]+)$/i
   );
@@ -405,8 +416,7 @@ export function parseGitSource(cloneUrl: string): GitSource {
       repoSeg &&
       !/^github\.com$/i.test(host) &&
       !/^gitlab\.com$/i.test(host) &&
-      !/^codeberg\.org$/i.test(host) &&
-      !/^npub1[a-z0-9]+$/i.test(ownerSeg)
+      !/^codeberg\.org$/i.test(host)
     ) {
       return {
         type: "self-hosted-git",
@@ -1570,9 +1580,22 @@ async function fetchFromNostrGit(
               cloneError.message
             );
           }
-        } else if (!isGraspServerCheck) {
+        } else if (isHttpsGrasp && !isGraspServerCheck) {
+          // Home / self-hosted remotes that reuse /npub/repo path shape — try
+          // server-side shallow clone (do not wait for GRASP or bridge mirror).
           console.log(
-            `💡 [Git Source] Not a GRASP server - skipping (GitHub/Codeberg/GitLab use their own APIs)`
+            `🔍 [Git Source] Non-GRASP HTTP(S) clone — trying /api/git/repo-files:`,
+            normalizedCloneUrl.substring(0, 80)
+          );
+          const remoteFiles = await fetchGraspViaRepoFilesApi(
+            normalizedCloneUrl,
+            branch
+          );
+          if (remoteFiles?.files?.length) {
+            return remoteFiles;
+          }
+          console.warn(
+            `⚠️ [Git Source] Self-hosted clone unreachable from gittr server (DNS/firewall/offline). Host must be reachable from the public internet: ${normalizedCloneUrl.substring(0, 72)}…`
           );
         } else {
           console.log(
@@ -1639,7 +1662,10 @@ async function fetchFromSelfHostedGit(
     const res = await fetch(`/api/git/repo-files?${params.toString()}`);
     if (!res.ok) {
       console.warn(
-        `⚠️ [Git Source] repo-files API failed: ${res.status} for ${sourceUrl}`
+        `⚠️ [Git Source] repo-files API failed: ${res.status} for ${sourceUrl}` +
+          (res.status === 502 || res.status === 504
+            ? " — gittr’s servers could not reach this host (DNS/firewall/offline). The clone URL must be reachable from the public internet."
+            : "")
       );
       return null;
     }
@@ -1830,10 +1856,15 @@ export async function fetchFilesFromMultipleSources(
           }
         });
 
-        // Prioritize: user's preferred GRASP servers first, then other GRASP servers, then others
-        prioritizedCloneUrls = [...graspCloneUrls, ...otherCloneUrls];
+        // Prefer publisher's real remotes (GitHub / Freebox / self-hosted) before
+        // well-known GRASP mirrors — otherwise we burn 45s on 404/502 dead ends.
+        prioritizedCloneUrls = [...otherCloneUrls, ...graspCloneUrls];
 
-        if (graspCloneUrls.length > 0) {
+        if (otherCloneUrls.length > 0 && graspCloneUrls.length > 0) {
+          console.log(
+            `✅ [File Fetch] Preferring ${otherCloneUrls.length} non-GRASP clone URL(s) before ${graspCloneUrls.length} GRASP mirror(s)`
+          );
+        } else if (graspCloneUrls.length > 0) {
           console.log(
             `✅ [File Fetch] Prioritized ${graspCloneUrls.length} clone URLs from user's preferred GRASP servers`
           );
