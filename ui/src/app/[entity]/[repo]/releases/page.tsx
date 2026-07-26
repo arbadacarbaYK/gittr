@@ -14,6 +14,7 @@ import { useContributorMetadata } from "@/lib/nostr/useContributorMetadata";
 import useMetadata from "@/lib/nostr/useMetadata";
 import useSession from "@/lib/nostr/useSession";
 import { hasWriteAccess } from "@/lib/repo-permissions";
+import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import {
   type RepoFileEntry,
   type StoredRepo,
@@ -27,6 +28,7 @@ import {
 } from "@/lib/utils/date-format";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import { syncGithubReleasesForRepo } from "@/lib/utils/sync-github-repo-releases";
 
 import { Package, Plus, Upload, X } from "lucide-react";
 import Link from "next/link";
@@ -79,9 +81,11 @@ export default function RepoReleasesPage({
   const [repoLogo, setRepoLogo] = useState<string | undefined>(undefined);
   const [tags, setTags] = useState<string[]>([]);
   const { name: userName, isLoggedIn, picture: userPicture } = useSession();
-  const { pubkey: currentUserPubkey, remoteSigner } = useNostrContext();
+  const { pubkey: currentUserPubkey, remoteSigner, subscribe, defaultRelays } =
+    useNostrContext();
   const userMetadata = useMetadata();
   const ownerSlug = useMemo(() => slugify(userName || ""), [userName]);
+  const [syncingReleases, setSyncingReleases] = useState(false);
 
   // Get metadata for release authors (Nostr pubkeys)
   const releaseAuthorPubkeys = useMemo(
@@ -198,6 +202,53 @@ export default function RepoReleasesPage({
   useEffect(() => {
     reloadRepoReleasesFromStorage();
   }, [reloadRepoReleasesFromStorage]);
+
+  // Soft-refresh releases from GitHub when upstream is known (like Issues/PRs).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setSyncingReleases(true);
+      try {
+        const repos = loadStoredRepos();
+        const rec = findRepoByEntityAndName<StoredRepo>(
+          repos,
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        const { sourceUrl: resolved } = await hydrateRepoFromGithub(
+          resolvedParams.entity,
+          resolvedParams.repo,
+          {
+            repoRecord: rec,
+            subscribe,
+            defaultRelays,
+          }
+        );
+        const url = resolved || rec?.sourceUrl || "";
+        if (url && url.includes("github.com") && !cancelled) {
+          await syncGithubReleasesForRepo(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            url
+          );
+          if (!cancelled) reloadRepoReleasesFromStorage();
+        }
+      } catch (e) {
+        console.warn("[Releases] upstream sync failed:", e);
+      } finally {
+        if (!cancelled) setSyncingReleases(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    resolvedParams.entity,
+    resolvedParams.repo,
+    subscribe,
+    defaultRelays,
+    reloadRepoReleasesFromStorage,
+  ]);
 
   useEffect(() => {
     window.addEventListener(
@@ -370,7 +421,12 @@ export default function RepoReleasesPage({
   return (
     <section className="mt-4">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold">Releases</h2>
+        <div>
+          <h2 className="text-xl font-semibold">Releases</h2>
+          {syncingReleases && (
+            <p className="text-xs text-gray-400">Refreshing from GitHub…</p>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           {hasWrite && (
             <Button

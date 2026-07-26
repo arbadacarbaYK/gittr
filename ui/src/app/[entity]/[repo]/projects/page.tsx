@@ -11,11 +11,15 @@ import {
   resolveSigningCredentials,
 } from "@/lib/nostr/signer";
 import { hasWriteAccess } from "@/lib/repo-permissions";
+import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { formatDate24h, formatDateTime24h } from "@/lib/utils/date-format";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { MarkdownAnchor } from "@/lib/utils/markdown-anchor";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
+import {
+  syncGithubProjectsForRepo,
+} from "@/lib/utils/sync-github-repo-projects";
 
 import {
   Calendar,
@@ -45,6 +49,8 @@ interface Project {
   items: ProjectItem[];
   createdAt: number;
   view: "kanban" | "roadmap"; // View mode
+  source?: "github" | "local";
+  githubProjectId?: string;
 }
 
 interface ProjectItem {
@@ -59,13 +65,24 @@ interface ProjectItem {
   dueDate?: number;
   estimatedDays?: number; // For roadmap planning
   priority?: "low" | "medium" | "high";
+  source?: "github" | "local";
+  githubItemId?: string;
+}
+
+function normalizeProjects(stored: Project[]): Project[] {
+  return stored.map((p) => ({
+    ...p,
+    view: p.view || "kanban",
+    items: p.items || [],
+  }));
 }
 
 export default function ProjectsPage() {
   const params = useParams();
   const entity = params?.entity as string;
   const repo = params?.repo as string;
-  const { pubkey: currentUserPubkey, remoteSigner } = useNostrContext();
+  const { pubkey: currentUserPubkey, remoteSigner, subscribe, defaultRelays } =
+    useNostrContext();
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [hasWrite, setHasWrite] = useState(false); // Write access (owner or maintainer)
@@ -83,25 +100,88 @@ export default function ProjectsPage() {
   const [editingProjectNameValue, setEditingProjectNameValue] = useState("");
   const [draggedItem, setDraggedItem] = useState<ProjectItem | null>(null);
   const [openIssues, setOpenIssues] = useState<any[]>([]);
+  const [syncingGithub, setSyncingGithub] = useState(false);
+  const [githubImportNote, setGithubImportNote] = useState<string | null>(null);
 
-  // Load projects
-  useEffect(() => {
+  const reloadProjects = useCallback(() => {
     try {
       const stored = JSON.parse(
         localStorage.getItem(`gittr_projects_${entity}_${repo}`) || "[]"
       ) as Project[];
-      // Ensure all projects have view property and items array
-      const normalized: Project[] = stored.map((p) => ({
-        ...p,
-        view: p.view || "kanban",
-        items: p.items || [], // Ensure items array exists
-      }));
+      const normalized = normalizeProjects(stored);
       setProjects(normalized);
-      if (normalized.length > 0 && !selectedProject && normalized[0]) {
-        setSelectedProject(normalized[0].id);
+      setSelectedProject((prev) => {
+        if (prev && normalized.some((p) => p.id === prev)) return prev;
+        return normalized[0]?.id ?? null;
+      });
+    } catch {
+      /* ignore */
+    }
+  }, [entity, repo]);
+
+  // Load projects
+  useEffect(() => {
+    reloadProjects();
+  }, [reloadProjects]);
+
+  // Import GitHub Projects V2 when tab opens (read-only from source; local boards kept).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setSyncingGithub(true);
+      setGithubImportNote(null);
+      try {
+        const repos = loadStoredRepos();
+        const rec = findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
+        const { sourceUrl } = await hydrateRepoFromGithub(entity, repo, {
+          repoRecord: rec,
+          subscribe,
+          defaultRelays,
+        });
+        const url = sourceUrl || rec?.sourceUrl || "";
+        if (!url || !url.includes("github.com")) {
+          if (!cancelled) {
+            setGithubImportNote(
+              "No GitHub upstream — ToDo boards stay local-only."
+            );
+          }
+          return;
+        }
+        const result = await syncGithubProjectsForRepo(entity, repo, url);
+        if (cancelled) return;
+        if (result.ok) {
+          reloadProjects();
+          setGithubImportNote(
+            result.imported > 0
+              ? `Synced ${result.imported} GitHub Project${
+                  result.imported === 1 ? "" : "s"
+                } (read-only from source). Local boards kept.`
+              : "No GitHub Projects on this repo (or none visible to the token)."
+          );
+        } else if (result.error && result.error !== "not-github") {
+          setGithubImportNote(
+            "GitHub Projects sync failed — showing local boards. Public ProjectV2 may need token access."
+          );
+        }
+      } catch (e) {
+        console.warn("[Projects] GitHub import failed:", e);
+        if (!cancelled) {
+          setGithubImportNote("GitHub Projects sync failed — showing local.");
+        }
+      } finally {
+        if (!cancelled) setSyncingGithub(false);
       }
-    } catch {}
-  }, [entity, repo, selectedProject]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [entity, repo, subscribe, defaultRelays, reloadProjects]);
+
+  useEffect(() => {
+    const onUpdated = () => reloadProjects();
+    window.addEventListener("gittr:project-updated", onUpdated);
+    return () => window.removeEventListener("gittr:project-updated", onUpdated);
+  }, [reloadProjects]);
 
   // Load open issues for auto-linking
   useEffect(() => {
@@ -135,6 +215,11 @@ export default function ProjectsPage() {
   }, [entity, repo, currentUserPubkey]);
 
   const project = projects.find((p) => p.id === selectedProject);
+  const isGithubBoard =
+    !!project &&
+    (project.source === "github" || project.id.startsWith("gh-project-"));
+  /** Local boards are editable; GitHub Projects are read-only mirrors (re-synced on tab open). */
+  const canEditBoard = hasWrite && !isGithubBoard;
 
   const saveProjects = useCallback(
     (updated: Project[]) => {
@@ -302,6 +387,17 @@ export default function ProjectsPage() {
       return;
     }
 
+    const target = projects.find((p) => p.id === projectId);
+    if (
+      target?.source === "github" ||
+      target?.id.startsWith("gh-project-")
+    ) {
+      alert(
+        "GitHub Projects are read-only mirrors. They refresh from GitHub when you open this tab."
+      );
+      return;
+    }
+
     // Get private key for signing (required for project deletion)
     const signingCreds = await resolveSigningCredentials({ remoteSigner });
     if (!signingCreds) {
@@ -372,6 +468,13 @@ export default function ProjectsPage() {
       return;
     }
 
+    if (isGithubBoard) {
+      alert(
+        "GitHub Projects are read-only mirrors. Create a local project to edit cards."
+      );
+      return;
+    }
+
     // Get private key for signing (required for project edits)
     const signingCreds = await resolveSigningCredentials({ remoteSigner });
     if (!signingCreds) {
@@ -439,6 +542,17 @@ export default function ProjectsPage() {
 
     if (!hasWrite) {
       alert("Only owners and maintainers can edit project names");
+      setEditingProjectName(null);
+      setEditingProjectNameValue("");
+      return;
+    }
+
+    const target = projects.find((p) => p.id === projectId);
+    if (
+      target?.source === "github" ||
+      target?.id.startsWith("gh-project-")
+    ) {
+      alert("GitHub Project titles are read-only here.");
       setEditingProjectName(null);
       setEditingProjectNameValue("");
       return;
@@ -1206,10 +1320,25 @@ export default function ProjectsPage() {
   return (
     <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Folder className="h-6 w-6" />
-          Projects
-        </h1>
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Folder className="h-6 w-6" />
+            Projects
+          </h1>
+          {(syncingGithub || githubImportNote) && (
+            <p className="mt-1 text-xs text-gray-400">
+              {syncingGithub
+                ? "Syncing GitHub Projects…"
+                : githubImportNote}
+            </p>
+          )}
+          {isGithubBoard && (
+            <p className="mt-1 text-xs text-amber-400/90">
+              Viewing a GitHub Project (read-only). Edits stay on GitHub; local
+              boards below remain editable.
+            </p>
+          )}
+        </div>
         <div className="flex gap-2">
           {project && (
             <Button variant="outline" onClick={handleToggleView}>

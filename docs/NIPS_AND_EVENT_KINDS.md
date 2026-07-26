@@ -160,6 +160,12 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 - **Legacy**: older clients put `i` tags on kind **0**; gittr still **reads** those as fallback but **publishes** new claims as kind **10011**
 - **UI**: Settings → Profile → Verified Identities; GitHub OAuth on Settings → SSH Keys can prefill a github claim before you save Profile
 
+### Projects / Kanban (no finalized NIP yet)
+
+- **gittr ToDo tab** (`/{entity}/{repo}/projects`): local boards in `localStorage`, plus **read-only import of GitHub Projects V2** when a GitHub `sourceUrl` exists (GraphQL via `/api/github/graphql`).
+- **Policy**: mirror source like Issues — refresh on tab open; do **not** write column moves back to GitHub; keep local-only boards editable beside GH mirrors.
+- **Nostr**: drafts exist ([nips#1665](https://github.com/nostr-protocol/nips/pull/1665), [nips#1804](https://github.com/nostr-protocol/nips/pull/1804), Headway provisional 30619/30620) but nothing is merged. Do not invent a permanent gittr kind until one draft settles; cards remain NIP-34 issues/PRs (1621/1618).
+
 ### Kind 1337: Code Snippets (NIP-C0)
 
 - **Purpose**: Share code snippets
