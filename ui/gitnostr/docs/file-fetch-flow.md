@@ -27,7 +27,7 @@ Implementation: `ui/src/lib/utils/git-source-fetcher.ts`, `ui/src/components/rep
 ## 3. Shared branch, Commits, Issues, PRs
 
 - **One `?branch=`** across Code, Commits, Issues, PRs (`resolveSharedRepoBranch` in `ui/src/lib/repos/repo-file-tree-branch.ts`).
-- **Commits tab:** resolve npub/hex owner → **`/api/nostr/repo/commits`** on the bare mirror; if empty, mirror from `clone[]` / known GRASP hosts then retry; then GitHub REST via `resolveGithubUpstreamForTabs` (works for npub routes with a known upstream).
+- **Commits tab:** resolve npub/hex owner → soft-refresh every visit (localStorage is optimistic only, not authoritative) → **`/api/nostr/repo/commits`** / mirror from `clone[]` / GRASP → GitHub via `resolveGithubUpstreamForTabs`; keep the richest list so a 1-commit GRASP tip cannot wipe fuller history.
 - **Issues / PRs:** Nostr events on relays; file bytes use the Code-tab paths when needed.
 - **Push to Nostr:** `git push` updates the bare repo; the UI publishes **30617 / 30618** to relays.
 

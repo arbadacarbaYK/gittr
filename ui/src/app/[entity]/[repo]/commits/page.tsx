@@ -251,67 +251,89 @@ export default function CommitsPage({
     setLoading(true);
     try {
       const commitsKey = getRepoStorageKey("gittr_commits", entity, repo);
-      let allCommits = JSON.parse(
-        localStorage.getItem(commitsKey) || "[]"
-      ) as Commit[];
+      const cached = (() => {
+        try {
+          const raw = JSON.parse(
+            localStorage.getItem(commitsKey) || "[]"
+          ) as Commit[];
+          return Array.isArray(raw) ? raw : [];
+        } catch {
+          return [] as Commit[];
+        }
+      })();
 
       const repos = loadStoredRepos();
       const rec =
         storedRepo ?? findRepoByEntityAndName<StoredRepo>(repos, entity, repo);
 
-      if (!Array.isArray(allCommits) || allCommits.length === 0) {
-        let ownerPk =
-          (rec ? getRepoOwnerPubkey(rec, entity) : null) ||
-          resolveEntityToPubkey(entity, rec ?? undefined);
-        if (!ownerPk) {
-          ownerPk = await resolveEntityToPubkeyAsync(
-            entity,
-            rec ?? undefined
-          );
-        }
-        // Bridge API also accepts npub directly
-        const ownerParam =
-          (ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk) && ownerPk) ||
-          (entity.startsWith("npub") ? entity : null) ||
-          ownerPk;
-        const repoName =
-          (rec as StoredRepo & { repositoryName?: string })?.repositoryName ||
-          rec?.repo ||
-          rec?.name ||
-          repo;
+      // Optimistic paint from cache, then always soft-refresh from network.
+      // Skipping fetch when cache was non-empty made Firefox/Brave diverge forever.
+      if (cached.length > 0) {
+        setCommits(
+          [...cached].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+        );
+      }
 
-        if (ownerParam && repoName) {
-          allCommits = await fetchBridgeCommits(ownerParam, repoName, branch);
-          if (!allCommits.length) {
-            const clones = candidateCloneUrls(
-              entity,
-              repoName,
-              ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk) ? ownerPk : null,
-              rec
-            );
-            if (clones.length > 0) {
-              allCommits = await mirrorThenFetchCommits(
-                ownerParam,
-                repoName,
-                branch,
-                clones
-              );
-            }
-          }
-          if (allCommits.length > 0) {
-            localStorage.setItem(commitsKey, JSON.stringify(allCommits));
-          }
-        }
-        if (!allCommits.length) {
-          allCommits = await fetchGithubCommitsForBranch(
+      let ownerPk =
+        (rec ? getRepoOwnerPubkey(rec, entity) : null) ||
+        resolveEntityToPubkey(entity, rec ?? undefined);
+      if (!ownerPk) {
+        ownerPk = await resolveEntityToPubkeyAsync(entity, rec ?? undefined);
+      }
+      const ownerParam =
+        (ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk) && ownerPk) ||
+        (entity.startsWith("npub") ? entity : null) ||
+        ownerPk;
+      const repoName =
+        (rec as StoredRepo & { repositoryName?: string })?.repositoryName ||
+        rec?.repo ||
+        rec?.name ||
+        repo;
+
+      let bridgeCommits: Commit[] = [];
+      if (ownerParam && repoName) {
+        bridgeCommits = await fetchBridgeCommits(ownerParam, repoName, branch);
+        if (!bridgeCommits.length) {
+          const clones = candidateCloneUrls(
             entity,
-            repo,
-            branch,
+            repoName,
+            ownerPk && /^[0-9a-f]{64}$/i.test(ownerPk) ? ownerPk : null,
             rec
           );
-          if (allCommits.length > 0) {
-            localStorage.setItem(commitsKey, JSON.stringify(allCommits));
+          if (clones.length > 0) {
+            bridgeCommits = await mirrorThenFetchCommits(
+              ownerParam,
+              repoName,
+              branch,
+              clones
+            );
           }
+        }
+      }
+
+      const ghCommits = await fetchGithubCommitsForBranch(
+        entity,
+        repo,
+        branch,
+        rec
+      );
+
+      // Prefer the richest source so a 1-commit GRASP tip does not wipe a fuller
+      // GitHub/cache list (and browsers with different caches converge upward).
+      const ranked = [ghCommits, bridgeCommits, cached]
+        .filter((list) => list.length > 0)
+        .sort((a, b) => b.length - a.length);
+      const allCommits: Commit[] = ranked[0] || [];
+
+      if (
+        allCommits.length > 0 &&
+        JSON.stringify(allCommits.map((c) => c.id)) !==
+          JSON.stringify(cached.map((c) => c.id))
+      ) {
+        try {
+          localStorage.setItem(commitsKey, JSON.stringify(allCommits));
+        } catch {
+          /* ignore quota */
         }
       }
 
@@ -327,19 +349,6 @@ export default function CommitsPage({
       // Refetch from GitHub stores commits with defaultBranch (often master); UI may show main.
       if (branchCommits.length === 0 && allCommits.length > 0) {
         branchCommits = allCommits;
-      }
-      if (branchCommits.length === 0) {
-        const ghCommits = await fetchGithubCommitsForBranch(
-          entity,
-          repo,
-          branch,
-          rec
-        );
-        if (ghCommits.length > 0) {
-          allCommits = ghCommits;
-          branchCommits = ghCommits;
-          localStorage.setItem(commitsKey, JSON.stringify(allCommits));
-        }
       }
 
       if (fileFilter) {
