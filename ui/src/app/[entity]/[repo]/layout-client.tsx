@@ -1654,7 +1654,13 @@ export default function RepoLayoutClient({
         }
       />
 
-      <section className="max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] mx-auto px-4 md:px-6 py-6">
+      <section
+        className={
+          pathname.includes("/projects")
+            ? "mx-auto w-full max-w-[1600px] px-4 py-6 md:px-6"
+            : "mx-auto max-w-[95%] px-4 py-6 md:px-6 xl:max-w-[90%] 2xl:max-w-[85%]"
+        }
+      >
         <div className="justify-between flex flex-col lg:flex-row overflow-visible gap-3">
           <div className="mb-2 flex items-start gap-3 min-w-0">
             <div className="relative z-[2] -mt-10 h-[76px] w-[76px] flex-shrink-0 rounded-full overflow-hidden border-[3px] border-[var(--color-bg-primary)] bg-[var(--color-bg-secondary)] shadow-md">
