@@ -5,16 +5,15 @@ import { use, useEffect, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  formatDate24h,
-  formatDateTime24h,
-  formatTime24h,
-} from "@/lib/utils/date-format";
+import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
+import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
+import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
+import { formatDateTime24h } from "@/lib/utils/date-format";
 import { getRepoStorageKey } from "@/lib/utils/entity-normalizer";
+import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 import { Calendar, FileDiff, GitBranch, GitCommit, User } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
 
 interface Commit {
   id: string;
@@ -44,6 +43,54 @@ interface FileDiff {
   after?: string;
 }
 
+function mapGithubFileStatus(
+  status: string | undefined
+): "added" | "modified" | "deleted" {
+  const s = (status || "").toLowerCase();
+  if (s === "added" || s === "copied") return "added";
+  if (s === "removed") return "deleted";
+  return "modified";
+}
+
+async function fetchGithubCommitFiles(
+  entity: string,
+  repo: string,
+  sha: string
+): Promise<FileDiff[]> {
+  const rec =
+    findRepoByEntityAndName<StoredRepo>(loadStoredRepos(), entity, repo) ??
+    null;
+  const sourceUrl = resolveGithubUpstreamForTabs(entity, repo, rec);
+  const spec = sourceUrl ? parseGitHubRepoSpec(sourceUrl) : null;
+  if (!spec) return [];
+
+  const endpoint = `/repos/${spec.owner}/${
+    spec.repo
+  }/commits/${encodeURIComponent(sha)}`;
+  const res = await fetch(
+    `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`
+  );
+  if (!res.ok) return [];
+  const data = (await res.json()) as {
+    files?: Array<{
+      filename?: string;
+      status?: string;
+      additions?: number;
+      deletions?: number;
+      patch?: string;
+    }>;
+  };
+  return (data.files || [])
+    .filter((f) => f.filename)
+    .map((f) => ({
+      path: f.filename!,
+      status: mapGithubFileStatus(f.status),
+      additions: f.additions,
+      deletions: f.deletions,
+      after: f.patch,
+    }));
+}
+
 export default function CommitDetailPage({
   params,
 }: {
@@ -53,50 +100,57 @@ export default function CommitDetailPage({
   const [commit, setCommit] = useState<Commit | null>(null);
   const [loading, setLoading] = useState(true);
   const [fileDiffs, setFileDiffs] = useState<FileDiff[]>([]);
+  const [loadingDiffs, setLoadingDiffs] = useState(false);
 
   useEffect(() => {
-    try {
-      const commitsKey = getRepoStorageKey(
-        "gittr_commits",
-        resolvedParams.entity,
-        resolvedParams.repo
-      );
-      const commits = JSON.parse(
-        localStorage.getItem(commitsKey) || "[]"
-      ) as Commit[];
-      const commitData = commits.find(
-        (c) => c.id === resolvedParams.id || c.id.startsWith(resolvedParams.id)
-      );
+    let cancelled = false;
 
-      if (commitData) {
-        setCommit(commitData);
+    const load = async () => {
+      setLoading(true);
+      try {
+        const commitsKey = getRepoStorageKey(
+          "gittr_commits",
+          resolvedParams.entity,
+          resolvedParams.repo
+        );
+        const commits = JSON.parse(
+          localStorage.getItem(commitsKey) || "[]"
+        ) as Commit[];
+        let commitData =
+          commits.find(
+            (c) =>
+              c.id === resolvedParams.id || c.id.startsWith(resolvedParams.id)
+          ) || null;
 
-        // Load file diffs - try changedFiles first, then PR if available
+        if (!commitData) {
+          commitData = {
+            id: resolvedParams.id,
+            message: resolvedParams.id,
+            author: "",
+            timestamp: 0,
+          };
+        }
+
+        if (!cancelled) setCommit(commitData);
+
         let diffs: FileDiff[] = [];
 
         if (commitData.changedFiles && commitData.changedFiles.length > 0) {
-          // Commit has changedFiles directly (from merge)
           diffs = commitData.changedFiles.map((file: any) => {
-            // Try to load before/after from PR if available
             let before: string | undefined;
             let after: string | undefined;
 
-            if (commitData.prId) {
+            if (commitData!.prId) {
               try {
                 const prsKey = getRepoStorageKey(
                   "gittr_prs",
                   resolvedParams.entity,
                   resolvedParams.repo
                 );
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
                 const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-                const pr = prs.find((p: any) => p.id === commitData.prId);
+                const pr = prs.find((p: any) => p.id === commitData!.prId);
                 if (pr) {
-                  // Support both multi-file (changedFiles) and legacy single-file (path/before/after)
-                  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
                   if (pr.changedFiles && pr.changedFiles.length > 0) {
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
                     const fileChange = pr.changedFiles.find(
                       (f: any) => f.path === file.path
                     );
@@ -105,7 +159,6 @@ export default function CommitDetailPage({
                       after = fileChange.after;
                     }
                   } else if (pr.path === file.path) {
-                    // Legacy single-file PR
                     before = pr.before;
                     after = pr.after;
                   }
@@ -121,7 +174,6 @@ export default function CommitDetailPage({
             };
           });
         } else if (commitData.prId) {
-          // Commit doesn't have changedFiles, but has prId - load from PR
           try {
             const prsKey = getRepoStorageKey(
               "gittr_prs",
@@ -129,7 +181,7 @@ export default function CommitDetailPage({
               resolvedParams.repo
             );
             const prs = JSON.parse(localStorage.getItem(prsKey) || "[]");
-            const pr = prs.find((p: any) => p.id === commitData.prId);
+            const pr = prs.find((p: any) => p.id === commitData!.prId);
             if (pr) {
               if (pr.changedFiles && pr.changedFiles.length > 0) {
                 diffs = pr.changedFiles.map((f: any) => ({
@@ -139,7 +191,6 @@ export default function CommitDetailPage({
                   after: f.after,
                 }));
               } else if (pr.path) {
-                // Legacy single-file PR
                 diffs = [
                   {
                     path: pr.path,
@@ -153,13 +204,51 @@ export default function CommitDetailPage({
           } catch {}
         }
 
-        setFileDiffs(diffs);
+        if (!cancelled) {
+          setFileDiffs(diffs);
+          setLoading(false);
+        }
+
+        // Soft-fetch file list from GitHub when list/cache had no diffs
+        if (diffs.length === 0) {
+          if (!cancelled) setLoadingDiffs(true);
+          try {
+            const ghDiffs = await fetchGithubCommitFiles(
+              resolvedParams.entity,
+              resolvedParams.repo,
+              resolvedParams.id
+            );
+            if (!cancelled && ghDiffs.length > 0) {
+              setFileDiffs(ghDiffs);
+              setCommit((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      filesChanged: ghDiffs.length,
+                      changedFiles: ghDiffs.map((d) => ({
+                        path: d.path,
+                        status: d.status,
+                      })),
+                    }
+                  : prev
+              );
+            }
+          } catch (e) {
+            console.warn("[Commit] GitHub file list fetch failed:", e);
+          } finally {
+            if (!cancelled) setLoadingDiffs(false);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load commit:", error);
+        if (!cancelled) setLoading(false);
       }
-    } catch (error) {
-      console.error("Failed to load commit:", error);
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
   }, [resolvedParams.entity, resolvedParams.repo, resolvedParams.id]);
 
   if (loading) {
@@ -263,8 +352,11 @@ export default function CommitDetailPage({
               <div className="flex items-center gap-2">
                 <FileDiff className="h-4 w-4" />
                 <span>
-                  {commit.filesChanged || 0} file
-                  {(commit.filesChanged || 0) !== 1 ? "s" : ""} changed
+                  {commit.filesChanged || fileDiffs.length || 0} file
+                  {(commit.filesChanged || fileDiffs.length || 0) !== 1
+                    ? "s"
+                    : ""}{" "}
+                  changed
                   {commit.insertions !== undefined && commit.insertions > 0 && (
                     <span className="ml-2 text-green-400">
                       +{commit.insertions}
@@ -353,7 +445,7 @@ export default function CommitDetailPage({
                   {diff.after && (
                     <div>
                       <div className="p-2 bg-[#0E1116] text-xs text-gray-400 font-semibold">
-                        After
+                        {diff.before ? "After" : "Patch"}
                       </div>
                       <pre className="bg-[#0E1116] p-4 overflow-auto text-sm font-mono whitespace-pre-wrap text-gray-100 max-h-[40vh]">
                         {diff.after}
@@ -369,7 +461,9 @@ export default function CommitDetailPage({
 
       {fileDiffs.length === 0 && (
         <div className="border border-gray-700 rounded p-8 text-center text-gray-400">
-          No file changes available for this commit.
+          {loadingDiffs
+            ? "Loading file changes from GitHub…"
+            : "No file changes available for this commit."}
         </div>
       )}
     </div>
