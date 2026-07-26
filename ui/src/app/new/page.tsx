@@ -5,7 +5,10 @@ import { Suspense, useEffect, useState } from "react";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import useSession from "@/lib/nostr/useSession";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
-import { normalizeGithubSourceUrl } from "@/lib/utils/normalize-github-source-url";
+import {
+  detectGitForge,
+  normalizeGitCloneUrl,
+} from "@/lib/utils/detect-git-forge";
 import { validateRepoForForkOrSign } from "@/lib/utils/repo-corruption-check";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
@@ -33,6 +36,7 @@ function NewRepoPageContent() {
   const [url, setUrl] = useState("");
   const [status, setStatus] = useState("");
   const [readme, setReadme] = useState("");
+  const [importing, setImporting] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const { name: userName, isLoggedIn } = useSession();
@@ -130,72 +134,62 @@ function NewRepoPageContent() {
       return;
     }
     if (url) {
-      // Normalize the URL - support GitHub name-only format (owner/repo)
-      let normalizedUrl = url.trim();
+      setImporting(true);
+      try {
+        // Normalize the URL - support GitHub name-only format (owner/repo)
+        let normalizedUrl = url.trim();
 
-      // Check if it's just "owner/repo" format (no protocol, no dots, has slash)
-      const githubNamePattern = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
-      if (
-        githubNamePattern.test(normalizedUrl) &&
-        !normalizedUrl.includes("://") &&
-        !normalizedUrl.includes("@")
-      ) {
-        // Convert to GitHub URL
-        normalizedUrl = `https://github.com/${normalizedUrl}`;
-        setUrl(normalizedUrl); // Update the input field
-      }
+        // Check if it's just "owner/repo" format (no protocol, no dots, has slash)
+        const githubNamePattern = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
+        if (
+          githubNamePattern.test(normalizedUrl) &&
+          !normalizedUrl.includes("://") &&
+          !normalizedUrl.includes("@")
+        ) {
+          normalizedUrl = `https://github.com/${normalizedUrl}`;
+          setUrl(normalizedUrl);
+        }
 
-      // Check if it's a GitHub URL or other known git host
-      const isGitHub = normalizedUrl.includes("github.com");
-      const isGitLab = normalizedUrl.includes("gitlab.com");
-      const isCodeberg = normalizedUrl.includes("codeberg.org");
+        normalizedUrl = normalizeGitCloneUrl(normalizedUrl);
+        const forge = detectGitForge(normalizedUrl);
 
-      let r: Response;
-      let d: any;
+        let r: Response;
+        let d: any;
 
-      if (isGitHub) {
-        // Use GitHub-specific import API (uses GitHub REST API, contributors, stars, etc.)
-        setStatus("Importing from GitHub...");
-        // Include GitHub token if available (for private repos)
-        const githubToken =
-          typeof window !== "undefined"
-            ? localStorage.getItem("gittr_github_token")
-            : null;
-        r = await fetch("/api/import", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sourceUrl: normalizedUrl,
-            ...(githubToken ? { githubToken } : {}),
-          }),
-        });
-        d = await r.json();
-      } else if (isGitLab || isCodeberg) {
-        // GitLab/Codeberg (and similar https git hosts) use the generic git import
-        // This clones the repo directly via `git clone`, which works across providers
-        setStatus(
-          isGitLab
-            ? "Importing from GitLab via git clone..."
-            : "Importing from Codeberg via git clone..."
-        );
-        r = await fetch("/api/import-git", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sourceUrl: normalizedUrl }),
-        });
-        d = await r.json();
-      } else {
-        // Custom / self-hosted git servers
-        setStatus("Importing from custom git server via git clone...");
-        r = await fetch("/api/import-git", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sourceUrl: normalizedUrl }),
-        });
-        d = await r.json();
-      }
+        if (forge.useGithubApi) {
+          setStatus("Importing from GitHub…");
+          const githubToken =
+            typeof window !== "undefined"
+              ? localStorage.getItem("gittr_github_token")
+              : null;
+          r = await fetch("/api/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sourceUrl: normalizedUrl,
+              ...(githubToken ? { githubToken } : {}),
+            }),
+          });
+        } else {
+          setStatus(`Importing from ${forge.label} via git clone…`);
+          r = await fetch("/api/import-git", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sourceUrl: normalizedUrl }),
+          });
+        }
 
-      if (d.status === "completed" || d.success) {
+        const rawText = await r.text();
+        try {
+          d = JSON.parse(rawText);
+        } catch {
+          setStatus(
+            `Import failed (HTTP ${r.status}): server returned a non-JSON response. ${rawText.slice(0, 180)}`
+          );
+          return;
+        }
+
+        if (d.status === "completed" || d.success) {
         // Slugify the imported repo name to ensure URL-safe format
         const importedRepoSlug = slugify(d.repo || d.slug);
         if (!importedRepoSlug) {
@@ -295,8 +289,8 @@ function NewRepoPageContent() {
             name: originalRepoName, // CRITICAL: Preserve original GitHub name (with dots) for display
             // Always set ownerPubkey for reliable ownership detection
             ownerPubkey: pubkey || undefined,
-            sourceUrl: normalizeGithubSourceUrl(normalizedUrl),
-            forkedFrom: normalizeGithubSourceUrl(normalizedUrl),
+            sourceUrl: d.sourceUrl || normalizedUrl,
+            forkedFrom: d.sourceUrl || normalizedUrl,
             readme: d.readme,
             fileCount: fileCount, // CRITICAL: Only store fileCount, not full files array (prevents quota exceeded)
             description: d.description,
@@ -359,7 +353,15 @@ function NewRepoPageContent() {
           window.dispatchEvent(new CustomEvent("gittr:repo-created"));
 
           // Local only — publish via Push to Nostr on the repo page.
-        } catch {}
+        } catch (storageErr: any) {
+          console.error("❌ [New Repo] Failed to save imported repo:", storageErr);
+          setStatus(
+            `Import partially failed while saving locally: ${
+              storageErr?.message || storageErr
+            }`
+          );
+          return;
+        }
         // Only redirect if repo was successfully created
         if (importedRepoSlug && entityInfo) {
           setTimeout(() => router.push("/repositories"), 600);
@@ -371,7 +373,17 @@ function NewRepoPageContent() {
           );
         }
       } else {
-        setStatus(`Import failed: ${d.message || d.status || "Unknown error"}`);
+        setStatus(
+          `Import failed: ${d.message || d.status || `HTTP ${r.status}`}`
+        );
+      }
+      } catch (importErr: any) {
+        console.error("❌ [New Repo] Import error:", importErr);
+        setStatus(
+          `Import failed: ${importErr?.message || String(importErr)}`
+        );
+      } finally {
+        setImporting(false);
       }
     } else {
       // Create new repo - slugify the name to ensure URL-safe format
@@ -675,12 +687,21 @@ function NewRepoPageContent() {
           </code>
         </p>
         <button
-          className="mt-3 border border-purple-500 bg-purple-600 hover:bg-purple-700 px-4 py-2 text-white rounded"
+          className="mt-3 border border-purple-500 bg-purple-600 hover:bg-purple-700 px-4 py-2 text-white rounded disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={submit}
-          disabled={!url.trim()}
+          disabled={!url.trim() || importing}
         >
-          {url.trim() ? "Import & Create" : "Enter URL to import"}
+          {importing
+            ? "Importing…"
+            : url.trim()
+              ? "Import & Create"
+              : "Enter URL to import"}
         </button>
+        {status && (
+          <div className="mt-3 text-sm text-[var(--color-text-secondary)] whitespace-pre-wrap">
+            {status}
+          </div>
+        )}
       </div>
 
       <div className="mb-6 p-4 bg-gray-800/50 border border-gray-700 rounded">
@@ -787,15 +808,10 @@ function NewRepoPageContent() {
           <div className="text-purple-400">{userName || "Anonymous"}</div>
         </div>
       )}
-      {status && (
-        <div className="mt-4">
-          <p>{status}</p>
-          {readme && (
-            <div className="mt-2 border p-2">
-              <h2 className="font-semibold mb-2">README.md</h2>
-              <pre className="whitespace-pre-wrap">{readme}</pre>
-            </div>
-          )}
+      {readme && (
+        <div className="mt-4 border p-2">
+          <h2 className="font-semibold mb-2">README.md</h2>
+          <pre className="whitespace-pre-wrap">{readme}</pre>
         </div>
       )}
     </div>

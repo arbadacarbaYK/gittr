@@ -272,6 +272,8 @@ curl -sI https://your.domain | head -1
 
 Import fails with “>4 MB”: Next API body limit — trim large binaries in the import. See README.
 
+**Non-GitHub import (`/new` Option 1):** GitLab / Codeberg / Gitea / self-hosted HTTPS or `git@` URLs go to **`POST /api/import-git`** (server `git clone --depth 1`). GitHub uses **`POST /api/import`**. The Import button shows an “Importing…” state and status under the control; web UI paths like `…/-/tree/main` are stripped before clone. Bulk **`/import`** remains GitHub-only.
+
 ---
 
 ## Troubleshooting

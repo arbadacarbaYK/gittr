@@ -1,5 +1,9 @@
 import { rateLimiters } from "@/app/api/middleware/rate-limit";
 import { handleOptionsRequest, setCorsHeaders } from "@/lib/api/cors";
+import {
+  normalizeGitCloneUrl,
+  parseOwnerRepoFromGitUrl,
+} from "@/lib/utils/detect-git-forge";
 
 import { exec } from "child_process";
 import * as fs from "fs";
@@ -9,6 +13,11 @@ import * as path from "path";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
+
+/** Vercel / long-running host — git clone can be slow */
+export const maxDuration = 300;
+
+const MAX_RESPONSE_BYTES = 3_500_000;
 
 type Data = {
   status?: string;
@@ -33,54 +42,8 @@ type Data = {
   }>;
   defaultBranch?: string;
   branches?: string[];
+  sourceUrl?: string;
 };
-
-/**
- * Parse git URL to extract owner and repo name
- */
-function parseGitUrl(
-  sourceUrl: string
-): { owner: string; repo: string; host: string } | null {
-  try {
-    // Normalize SSH URLs (git@host:owner/repo.git) to HTTPS
-    let normalizedUrl = sourceUrl;
-    if (sourceUrl.startsWith("git@")) {
-      const match = sourceUrl.match(/^git@([^:]+):(.+)$/);
-      if (match) {
-        const [, host, path] = match;
-        normalizedUrl = `https://${host}/${path}`;
-      }
-    } else if (sourceUrl.startsWith("git://")) {
-      normalizedUrl = sourceUrl.replace(/^git:\/\//, "https://");
-    }
-
-    const url = new URL(normalizedUrl);
-    const parts = url.pathname.split("/").filter(Boolean);
-
-    if (parts.length >= 2) {
-      const owner = parts[0];
-      const repo = parts[parts.length - 1];
-      if (!owner || !repo) return null;
-      return {
-        owner,
-        repo: repo.replace(/\.git$/, ""),
-        host: url.hostname,
-      };
-    } else if (parts.length === 1) {
-      // Single path segment (e.g., git://jb55.com/damus)
-      const repo = parts[0];
-      if (!repo) return null;
-      return {
-        owner: "",
-        repo: repo.replace(/\.git$/, ""),
-        host: url.hostname,
-      };
-    }
-  } catch (e) {
-    console.error("Failed to parse git URL:", e);
-  }
-  return null;
-}
 
 /** Many hosts require an explicit `.git` suffix; try it if the first clone fails. */
 function buildCloneAttemptUrls(cloneUrl: string): string[] {
@@ -96,50 +59,48 @@ function buildCloneAttemptUrls(cloneUrl: string): string[] {
   return out;
 }
 
+function cloneErrorMessage(err: unknown): string {
+  if (!err) return "Unknown clone error";
+  if (err instanceof Error) {
+    const anyErr = err as Error & { stderr?: string; stdout?: string };
+    const stderr = (anyErr.stderr || "").toString().trim();
+    if (stderr) return stderr.slice(0, 500);
+    return err.message;
+  }
+  return String(err);
+}
+
 /**
- * Clone repository to temporary directory and extract files
+ * Clone repository and extract metadata (paths + README).
+ * Does not embed per-file contents (same model as GitHub `/api/import`) —
+ * the UI fetches files later from sourceUrl.
  */
 async function cloneAndExtractFiles(sourceUrl: string): Promise<{
   files: Array<{
     type: string;
     path: string;
     size?: number;
-    content?: string;
     isBinary?: boolean;
   }>;
   readme?: string;
   defaultBranch?: string;
   branches?: string[];
-} | null> {
+  cloneUrlUsed: string;
+}> {
   const tempDir = path.join(
     tmpdir(),
     `gittr-import-${Date.now()}-${Math.random().toString(36).substring(7)}`
   );
 
+  const cloneUrl = normalizeGitCloneUrl(sourceUrl);
+  const attemptUrls = [...new Set(buildCloneAttemptUrls(cloneUrl))];
+  console.log(`🔍 [Import Git] Clone attempts: ${attemptUrls.join(" | ")}`);
+
+  let lastCloneError: unknown = null;
+  let cloneOk = false;
+  let cloneUrlUsed = cloneUrl;
+
   try {
-    // Normalize URL for git clone
-    let cloneUrl = sourceUrl;
-    if (sourceUrl.startsWith("git@")) {
-      // SSH format - use as-is for git clone
-      cloneUrl = sourceUrl;
-    } else if (sourceUrl.startsWith("git://")) {
-      // Convert git:// to https://
-      cloneUrl = sourceUrl.replace(/^git:\/\//, "https://");
-    } else if (
-      !sourceUrl.startsWith("http://") &&
-      !sourceUrl.startsWith("https://")
-    ) {
-      // Assume HTTPS if no protocol
-      cloneUrl = `https://${sourceUrl}`;
-    }
-
-    const attemptUrls = [...new Set(buildCloneAttemptUrls(cloneUrl))];
-    console.log(`🔍 [Import Git] Clone attempts: ${attemptUrls.join(" | ")}`);
-
-    let stderr = "";
-    let cloneOk = false;
-    let lastCloneError: unknown = null;
-
     for (const attempt of attemptUrls) {
       try {
         if (fs.existsSync(tempDir)) {
@@ -148,9 +109,9 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
         fs.mkdirSync(tempDir, { recursive: true });
         const result = await execAsync(
           `git clone --depth 1 "${attempt}" "${tempDir}"`,
-          { timeout: 60000 }
+          { timeout: 120000, maxBuffer: 10 * 1024 * 1024 }
         );
-        stderr = result.stderr || "";
+        const stderr = result.stderr || "";
         if (
           stderr &&
           !stderr.includes("Cloning into") &&
@@ -159,6 +120,7 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
           console.warn("Git clone stderr:", stderr);
         }
         cloneOk = true;
+        cloneUrlUsed = attempt;
         break;
       } catch (err) {
         lastCloneError = err;
@@ -167,17 +129,11 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
     }
 
     if (!cloneOk) {
-      console.error(
-        "❌ [Import Git] All clone attempts failed:",
-        attemptUrls,
-        lastCloneError
+      throw new Error(
+        `Failed to clone repository. ${cloneErrorMessage(lastCloneError)}`
       );
-      throw lastCloneError instanceof Error
-        ? lastCloneError
-        : new Error(String(lastCloneError));
     }
 
-    // Get default branch
     let defaultBranch = "main";
     try {
       const { stdout: branchOutput } = await execAsync(
@@ -186,10 +142,9 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
       );
       defaultBranch = branchOutput.trim() || "main";
     } catch {
-      // Default to main if branch detection fails
+      /* default main */
     }
 
-    // Get branches
     let branches: string[] = [defaultBranch];
     try {
       const { stdout: branchesOutput } = await execAsync(
@@ -200,28 +155,24 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
         .split("\n")
         .map((b) => b.trim().replace(/^origin\//, ""))
         .filter((b) => b && b !== "HEAD")
-        .slice(0, 50); // Limit to 50 branches
+        .slice(0, 50);
+      if (branches.length === 0) branches = [defaultBranch];
     } catch {
-      // Use default branch only
+      /* keep default */
     }
 
-    // Walk directory and collect files
     const files: Array<{
       type: string;
       path: string;
       size?: number;
-      content?: string;
       isBinary?: boolean;
     }> = [];
     let readme: string | undefined;
 
     function walkDir(dir: string, basePath = "") {
       const entries = fs.readdirSync(dir, { withFileTypes: true });
-
       for (const entry of entries) {
-        // Skip .git directory
         if (entry.name === ".git") continue;
-
         const fullPath = path.join(dir, entry.name);
         const relativePath = basePath
           ? `${basePath}/${entry.name}`
@@ -233,71 +184,47 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
         } else {
           const stats = fs.statSync(fullPath);
           const size = stats.size;
-
-          // Check if it's a README file
           if (
             entry.name.toLowerCase().match(/^readme(\.(md|txt|rst))?$/i) &&
-            !readme
+            !readme &&
+            size < 512 * 1024
           ) {
             try {
               readme = fs.readFileSync(fullPath, "utf-8");
             } catch {
-              // Skip if can't read
+              /* skip */
             }
           }
-
-          // Check if binary (heuristic: check for null bytes or large size)
-          let isBinary = false;
-          if (size > 1024 * 1024) {
-            // Files > 1MB are likely binary
-            isBinary = true;
-          } else {
-            // Check file extension
-            const ext = path.extname(entry.name).toLowerCase();
-            const binaryExts = [
-              ".png",
-              ".jpg",
-              ".jpeg",
-              ".gif",
-              ".webp",
-              ".svg",
-              ".ico",
-              ".pdf",
-              ".zip",
-              ".tar",
-              ".gz",
-              ".exe",
-              ".dll",
-              ".so",
-              ".dylib",
-            ];
-            isBinary = binaryExts.includes(ext);
-          }
-
-          let content: string | undefined;
-          if (!isBinary && size < 1024 * 100) {
-            // Read text files < 100KB
-            try {
-              content = fs.readFileSync(fullPath, "utf-8");
-            } catch {
-              // Skip if can't read
-            }
-          }
-
+          const ext = path.extname(entry.name).toLowerCase();
+          const binaryExts = [
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".webp",
+            ".svg",
+            ".ico",
+            ".pdf",
+            ".zip",
+            ".tar",
+            ".gz",
+            ".exe",
+            ".dll",
+            ".so",
+            ".dylib",
+            ".wasm",
+          ];
           files.push({
             type: "file",
             path: relativePath,
             size,
-            content,
-            isBinary,
+            isBinary: size > 1024 * 1024 || binaryExts.includes(ext),
           });
         }
       }
     }
 
     walkDir(tempDir);
-
-    // Clean up temp directory
     fs.rmSync(tempDir, { recursive: true, force: true });
 
     return {
@@ -305,16 +232,15 @@ async function cloneAndExtractFiles(sourceUrl: string): Promise<{
       readme,
       defaultBranch,
       branches,
+      cloneUrlUsed,
     };
-  } catch (error: any) {
-    console.error("Failed to clone and extract files:", error);
-    // Clean up on error
+  } catch (error) {
     try {
       fs.rmSync(tempDir, { recursive: true, force: true });
     } catch {
-      // Ignore cleanup errors
+      /* ignore */
     }
-    return null;
+    throw error;
   }
 }
 
@@ -322,16 +248,13 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<Data>
 ) {
-  // Handle OPTIONS request for CORS
   if (req.method === "OPTIONS") {
     handleOptionsRequest(res, req);
     return;
   }
 
-  // Set CORS headers
   setCorsHeaders(res, req);
 
-  // Rate limiting
   const rateLimitResult = await rateLimiters.api(req as any);
   if (rateLimitResult) {
     return res.status(429).json(JSON.parse(await rateLimitResult.text()));
@@ -349,30 +272,34 @@ export default async function handler(
       .json({ status: "invalid_url", message: "Source URL is required" });
   }
 
-  // Parse git URL
-  const parsed = parseGitUrl(sourceUrl);
+  if (
+    sourceUrl.includes("://") === false &&
+    !sourceUrl.startsWith("git@") &&
+    !sourceUrl.includes(".") &&
+    !sourceUrl.includes("/")
+  ) {
+    return res.status(400).json({
+      status: "invalid_url",
+      message:
+        "Local filesystem paths are not supported. Use an https:// or git@ URL.",
+    });
+  }
+
+  const parsed = parseOwnerRepoFromGitUrl(sourceUrl);
   if (!parsed) {
-    return res
-      .status(400)
-      .json({ status: "invalid_url", message: "Invalid git URL format" });
+    return res.status(400).json({
+      status: "invalid_url",
+      message:
+        "Invalid git URL. Use a full HTTPS or SSH URL (e.g. https://gitlab.com/group/repo).",
+    });
   }
 
   const { owner, repo, host } = parsed;
   const slug = repo;
 
   try {
-    // Clone and extract files
     const extracted = await cloneAndExtractFiles(sourceUrl);
-
-    if (!extracted) {
-      return res.status(500).json({
-        status: "clone_failed",
-        message:
-          "Failed to clone repository. Please check the URL and ensure it's publicly accessible.",
-      });
-    }
-
-    return res.status(200).json({
+    const payload: Data = {
       status: "completed",
       success: true,
       slug,
@@ -382,13 +309,31 @@ export default async function handler(
       description: `Imported from ${host}${owner ? `/${owner}` : ""}/${repo}`,
       defaultBranch: extracted.defaultBranch,
       branches: extracted.branches,
-      contributors: [], // Custom git servers don't provide contributor info
-    });
+      contributors: [],
+      sourceUrl: extracted.cloneUrlUsed || normalizeGitCloneUrl(sourceUrl),
+    };
+
+    const approx = Buffer.byteLength(JSON.stringify(payload), "utf8");
+    if (approx > MAX_RESPONSE_BYTES) {
+      // Drop file list paths beyond a safe subset; keep README + metadata
+      const capped = extracted.files.slice(0, 2000);
+      payload.files = capped;
+      payload.message =
+        "Repository is large — imported metadata and README; files will load from the source URL.";
+      const approx2 = Buffer.byteLength(JSON.stringify(payload), "utf8");
+      if (approx2 > MAX_RESPONSE_BYTES) {
+        payload.files = capped.slice(0, 200);
+      }
+    }
+
+    return res.status(200).json(payload);
   } catch (error: any) {
     console.error("Import git error:", error);
     return res.status(500).json({
-      status: "error",
-      message: error.message || "Failed to import repository",
+      status: "clone_failed",
+      message:
+        error?.message ||
+        "Failed to clone repository. Check that the URL is public and reachable from the server.",
     });
   }
 }

@@ -856,8 +856,13 @@ export default function HelpPage() {
                   your GitHub identity via NIP-39 in Profile settings)
                 </li>
                 <li>
-                  <strong>GitLab</strong> - Import from GitLab URLs (coming
-                  soon)
+                  <strong>GitLab, Codeberg, Gitea / Forgejo, self-hosted</strong>{" "}
+                  — paste a full HTTPS or{" "}
+                  <code className="bg-blue-900/50 px-1 rounded">git@…</code> URL
+                  on <strong>Create repository</strong> (Option 1). The server
+                  clones the public remote (same as{" "}
+                  <code className="bg-blue-900/50 px-1 rounded">git clone</code>
+                  ). Bulk import remains GitHub-only.
                 </li>
               </ul>
               <p className="mt-2 text-sm text-gray-400">
