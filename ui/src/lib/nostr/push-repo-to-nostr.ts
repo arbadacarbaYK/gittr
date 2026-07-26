@@ -14,13 +14,13 @@ import {
   resolveRepoStorageAlias,
   saveStoredRepos,
 } from "../repos/storage";
+import { isCloneableUpstreamSourceUrl } from "../utils/detect-git-forge";
 import {
   getGraspServers,
   isGraspDomainForPushing,
   mergeGraspHostsForPush,
   normalizeGraspHost,
 } from "../utils/grasp-servers";
-import { isCloneableUpstreamSourceUrl } from "../utils/detect-git-forge";
 import { normalizeGithubSourceUrl } from "../utils/normalize-github-source-url";
 import { setRepoStatus } from "../utils/repo-status";
 
@@ -524,24 +524,25 @@ export async function pushRepoToNostr(
           pubkey &&
           /^[0-9a-f]{64}$/i.test(pubkey)
         ) {
-          // NIP-34: Convert hex pubkey to npub format for GRASP clone URLs
+          // NIP-34 / ngit GRASP: HTTPS clone paths use /<npub>/<repo>.git
+          // On-disk bridge layout is hex; bridge creates npub→hex symlinks so
+          // these URLs work for other clients (gitworkshop, etc.).
           const { nip19 } = await import("nostr-tools");
-          let npub: string;
+          let ownerPathSegment: string;
           try {
-            npub = nip19.npubEncode(pubkey);
+            ownerPathSegment = nip19.npubEncode(pubkey);
           } catch (e) {
             console.warn(
               `⚠️ [Push Repo] Failed to encode pubkey to npub for GRASP clone URL, using hex as fallback:`,
               e
             );
-            npub = pubkey; // Fallback to hex if encoding fails (shouldn't happen)
+            ownerPathSegment = pubkey;
           }
 
-          // Add HTTPS URL (NIP-34 format: <grasp-path>/<valid-npub>/<string>.git)
-          const httpsCloneUrl = `https://${serverDomain}/${npub}/${actualRepositoryName}.git`;
+          const httpsCloneUrl = `https://${serverDomain}/${ownerPathSegment}/${actualRepositoryName}.git`;
           addCloneUrl(httpsCloneUrl);
           console.log(
-            `🔗 [Push Repo] Added primary GRASP server HTTPS clone URL (npub format): ${httpsCloneUrl}`
+            `🔗 [Push Repo] Added primary git server HTTPS clone URL (npub path): ${httpsCloneUrl}`
           );
 
           // SSH clone is shown in gittr UI (Code sidebar) via NEXT_PUBLIC_GIT_SSH_BASE — not in
@@ -556,7 +557,8 @@ export async function pushRepoToNostr(
             serverDomain.includes("gittr.space")
               ? gitSshBase
               : serverDomain;
-          const sshCloneUrl = `git@${sshHost}:${npub}/${actualRepositoryName}.git`;
+          // SSH authorized_keys / bare path layout uses hex; git-nostr-ssh also accepts npub.
+          const sshCloneUrl = `git@${sshHost}:${pubkey}/${actualRepositoryName}.git`;
           console.log(
             `ℹ️ [Push Repo] SSH clone URL for UI/CLI only (not in NIP-34 clone tag): ${sshCloneUrl}`
           );

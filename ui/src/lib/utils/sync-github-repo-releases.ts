@@ -1,6 +1,6 @@
 /**
- * Soft-refresh GitHub Releases into StoredRepo.releases (merge by tag_name).
- * Releases tab previously only showed the import-time snapshot.
+ * Soft-refresh GitHub Releases into gittr_releases__* (and StoredRepo when present).
+ * Releases tab previously only updated StoredRepo — visitors with no Code visit got nothing.
  */
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import {
@@ -8,6 +8,10 @@ import {
   loadStoredRepos,
   saveStoredRepos,
 } from "@/lib/repos/storage";
+import {
+  getRepoStorageKey,
+  readRepoReleasesFromLocalStorage,
+} from "@/lib/utils/entity-normalizer";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 
 export type SyncedGithubRelease = {
@@ -18,7 +22,7 @@ export type SyncedGithubRelease = {
   html_url?: string;
   author?: { login: string; avatar_url?: string };
   prerelease?: boolean;
-  source?: "github";
+  source?: "github" | "git-tag";
 };
 
 function mergeReleasesByTag(
@@ -36,11 +40,10 @@ function mergeReleasesByTag(
     if (!tag) continue;
     const key = tag.toLowerCase();
     const prev = byTag.get(key);
-    // Prefer GitHub row for mirrored tags; keep local-only releases (no GH match)
     byTag.set(key, {
       ...prev,
       ...r,
-      source: "github",
+      source: r.source || "github",
     });
   }
   return Array.from(byTag.values()).sort((a, b) => {
@@ -50,22 +53,52 @@ function mergeReleasesByTag(
   });
 }
 
+function persistMergedReleases(
+  entity: string,
+  repoSlug: string,
+  merged: SyncedGithubRelease[]
+): void {
+  const key = getRepoStorageKey("gittr_releases", entity, repoSlug);
+  try {
+    localStorage.setItem(key, JSON.stringify(merged));
+  } catch (e) {
+    console.warn("[Releases] Failed to write gittr_releases__*:", e);
+  }
+
+  const repos = loadStoredRepos();
+  const idx = repos.findIndex(
+    (r) => findRepoByEntityAndName([r], entity, repoSlug) !== undefined
+  );
+  if (idx >= 0 && repos[idx]) {
+    repos[idx] = {
+      ...repos[idx]!,
+      releases: merged,
+    } as StoredRepo;
+    saveStoredRepos(repos);
+  }
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("gittr:releases-updated"));
+    window.dispatchEvent(new Event("gittr:repo-updated"));
+  }
+}
+
 export async function syncGithubReleasesForRepo(
   entity: string,
   repoSlug: string,
   sourceUrl: string
-): Promise<boolean> {
+): Promise<SyncedGithubRelease[] | null> {
   const spec = parseGitHubRepoSpec(sourceUrl);
-  if (!spec) return false;
+  if (!spec) return null;
 
   try {
     const endpoint = `/repos/${spec.owner}/${spec.repo}/releases?per_page=50`;
     const res = await fetch(
       `/api/github/proxy?endpoint=${encodeURIComponent(endpoint)}`
     );
-    if (!res.ok) return false;
+    if (!res.ok) return null;
     const list = (await res.json()) as unknown[];
-    if (!Array.isArray(list)) return false;
+    if (!Array.isArray(list)) return null;
 
     const fromGithub: SyncedGithubRelease[] = list
       .map((item) => {
@@ -89,30 +122,17 @@ export async function syncGithubReleasesForRepo(
       })
       .filter((r) => r.tag_name);
 
-    if (fromGithub.length === 0) return false;
+    if (fromGithub.length === 0) return [];
 
-    const repos = loadStoredRepos();
-    const idx = repos.findIndex(
-      (r) => findRepoByEntityAndName([r], entity, repoSlug) !== undefined
-    );
-    if (idx < 0 || !repos[idx]) return false;
-
-    const prev = (repos[idx] as StoredRepo & { releases?: SyncedGithubRelease[] })
-      .releases;
-    const local = Array.isArray(prev) ? prev : [];
+    const local = readRepoReleasesFromLocalStorage(
+      entity,
+      repoSlug
+    ) as SyncedGithubRelease[];
     const merged = mergeReleasesByTag(local, fromGithub);
-
-    repos[idx] = {
-      ...repos[idx]!,
-      releases: merged,
-    } as StoredRepo;
-    saveStoredRepos(repos);
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new Event("gittr:repo-updated"));
-    }
-    return true;
+    persistMergedReleases(entity, repoSlug, merged);
+    return merged;
   } catch (e) {
     console.warn("[Releases] GitHub sync failed:", e);
-    return false;
+    return null;
   }
 }

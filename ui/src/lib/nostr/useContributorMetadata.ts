@@ -5,6 +5,7 @@ import { getAllRelays } from "./getAllRelays";
 import {
   KIND_NIP39_IDENTITIES,
   parseNip39ITags,
+  preferNip39Identities,
 } from "./nip39-identities";
 
 export type ClaimedIdentity = {
@@ -31,6 +32,14 @@ export type Metadata = {
 
 const METADATA_CACHE_KEY = "gittr_metadata_cache";
 
+/**
+ * Pubkeys we already tried to fetch this page session.
+ * Prevents infinite refetch for people with genuinely empty kind-0 names,
+ * while still allowing a one-shot refresh when cache only has identities /
+ * empty stubs (common Firefox poison after kind-10011-only events).
+ */
+const profileFetchAttempted = new Set<string>();
+
 /** Set `localStorage.gittr_verbose_contributor_meta = "1"` for noisy subscription / kind-0 logs. */
 function contributorMetaVerbose(): boolean {
   if (typeof window === "undefined") return false;
@@ -41,6 +50,100 @@ function contributorMetaVerbose(): boolean {
   } catch {
     return false;
   }
+}
+
+/** True when cache has a real display name — not just identities or empty stubs. */
+function hasUsableProfileName(meta?: Metadata | null): boolean {
+  if (!meta) return false;
+  const raw = String(meta.display_name || meta.name || "").trim();
+  if (!raw || raw === "Anonymous Nostrich") return false;
+  if (raw.startsWith("npub")) return false;
+  if (/^[0-9a-f]{8,64}$/i.test(raw)) return false;
+  return true;
+}
+
+/**
+ * Merge kind-0 / HTTP profile onto an existing entry.
+ * Incomplete stubs (kind 10011 identities-only) must always accept name/picture
+ * even when their stamped created_at is newer than kind 0 — that was poisoning
+ * Firefox so the UI kept showing the raw npub.
+ */
+function mergeKind0OntoExisting(
+  existing: Metadata | undefined,
+  incoming: Metadata,
+  incomingCreatedAt?: number
+): Metadata {
+  const incomingTime = incomingCreatedAt ?? incoming.created_at ?? 0;
+  const existingTime = existing?.created_at ?? 0;
+  const existingIncomplete = !hasUsableProfileName(existing);
+  const incomingHasName = hasUsableProfileName(incoming);
+
+  const preferIncoming =
+    !existing ||
+    existingIncomplete ||
+    (incomingHasName && incomingTime >= existingTime) ||
+    (!existingIncomplete && incomingTime > existingTime);
+
+  const base = preferIncoming
+    ? { ...existing, ...incoming }
+    : { ...incoming, ...existing };
+
+  const identities =
+    Array.isArray(existing?.identities) && existing!.identities!.length > 0
+      ? existing!.identities
+      : Array.isArray(incoming.identities) && incoming.identities.length > 0
+        ? incoming.identities
+        : undefined;
+
+  const created_at = Math.max(existingTime, incomingTime) || undefined;
+
+  const next: Metadata = {
+    ...base,
+    created_at,
+  };
+  if (identities) next.identities = identities;
+  else delete (next as { identities?: unknown }).identities;
+
+  // If we kept an incomplete existing as "newer", still fill missing name fields.
+  if (!hasUsableProfileName(next) && incomingHasName) {
+    if (incoming.name) next.name = incoming.name;
+    if (incoming.display_name) next.display_name = incoming.display_name;
+    if (incoming.picture) next.picture = incoming.picture;
+    if (incoming.banner) next.banner = incoming.banner;
+    if (incoming.about) next.about = incoming.about;
+    if (incoming.nip05) next.nip05 = incoming.nip05;
+    if (incoming.lud16) next.lud16 = incoming.lud16;
+    if (incoming.website) next.website = incoming.website;
+  }
+
+  return next;
+}
+
+async function fetchProfilesHttp(
+  pubkeys: string[]
+): Promise<Record<string, Metadata>> {
+  if (pubkeys.length === 0) return {};
+  const out: Record<string, Metadata> = {};
+  for (let i = 0; i < pubkeys.length; i += 80) {
+    const batch = pubkeys.slice(i, i + 80);
+    try {
+      const res = await fetch("/api/nostr/profiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pubkeys: batch }),
+      });
+      if (!res.ok) continue;
+      const data = (await res.json()) as {
+        profiles?: Record<string, Metadata>;
+      };
+      for (const [pk, meta] of Object.entries(data.profiles || {})) {
+        out[pk.toLowerCase()] = meta;
+      }
+    } catch {
+      /* ignore batch errors */
+    }
+  }
+  return out;
 }
 
 // Module-level cache to avoid loading from localStorage on every hook call
@@ -267,7 +370,11 @@ export function useContributorMetadata(pubkeys: string[]) {
 
     const missingFromCache = validPubkeys.filter((p) => {
       const normalized = p.toLowerCase();
-      return !metadataMap[normalized] && !currentCache[normalized];
+      const cached = metadataMap[normalized] || currentCache[normalized];
+      // Usable name → done. Incomplete stub (identities-only / empty) still needs fetch.
+      if (hasUsableProfileName(cached)) return false;
+      if (profileFetchAttempted.has(normalized)) return false;
+      return true;
     });
 
     // Warm cache: mark key handled and skip relay work (still merge cache above).
@@ -277,7 +384,7 @@ export function useContributorMetadata(pubkeys: string[]) {
       return;
     }
 
-    // Only fetch missing pubkeys when the list grows — never re-fetch everyone.
+    // Only fetch missing / incomplete pubkeys — never thrash usable ones.
     const pubkeysToSubscribe = missingFromCache;
 
     const now = Date.now();
@@ -294,6 +401,8 @@ export function useContributorMetadata(pubkeys: string[]) {
           `⏭️ [useContributorMetadata] Debouncing ${wait}ms then retry`
         );
       }
+      // Do NOT mark profileFetchAttempted here — that raced debounce and
+      // permanently skipped HTTP/kind-0 for this pubkey (Firefox npub bug).
       subscriptionTimeoutRef.current = setTimeout(() => {
         setSubscribeTick((t) => t + 1);
       }, wait);
@@ -301,6 +410,9 @@ export function useContributorMetadata(pubkeys: string[]) {
     }
 
     lastSubscriptionTimeRef.current = now;
+    for (const p of pubkeysToSubscribe) {
+      profileFetchAttempted.add(p.toLowerCase());
+    }
     // CRITICAL: remember this key so growth only fetches *new* missing pubkeys
     // and does not thrash (cancel) in-flight batches forever.
     pubkeysKeyRef.current = pubkeysKey;
@@ -317,39 +429,17 @@ export function useContributorMetadata(pubkeys: string[]) {
     const httpAbort = { cancelled: false };
     void (async () => {
       try {
-        const httpBatches: string[][] = [];
-        for (let i = 0; i < pubkeysToSubscribe.length; i += 80) {
-          httpBatches.push(pubkeysToSubscribe.slice(i, i + 80));
-        }
-        for (const batch of httpBatches) {
-          if (httpAbort.cancelled) return;
-          const res = await fetch("/api/nostr/profiles", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ pubkeys: batch }),
-          });
-          if (!res.ok) continue;
-          const data = (await res.json()) as {
-            profiles?: Record<string, Metadata>;
-          };
-          const profiles = data.profiles || {};
-          if (Object.keys(profiles).length === 0) continue;
-          setMetadataMap((prev) => {
-            const next = { ...prev };
-            for (const [pk, meta] of Object.entries(profiles)) {
-              const key = pk.toLowerCase();
-              const existing = next[key];
-              if (
-                !existing ||
-                (meta.created_at || 0) >= (existing.created_at || 0)
-              ) {
-                next[key] = { ...meta, created_at: meta.created_at };
-              }
-            }
-            saveMetadataCache(next);
-            return next;
-          });
-        }
+        const profiles = await fetchProfilesHttp(pubkeysToSubscribe);
+        if (httpAbort.cancelled || Object.keys(profiles).length === 0) return;
+        setMetadataMap((prev) => {
+          const next = { ...prev };
+          for (const [pk, meta] of Object.entries(profiles)) {
+            const key = pk.toLowerCase();
+            next[key] = mergeKind0OntoExisting(next[key], meta, meta.created_at);
+          }
+          saveMetadataCache(next);
+          return next;
+        });
       } catch (e) {
         if (contributorMetaVerbose()) {
           console.warn("[useContributorMetadata] HTTP profiles failed:", e);
@@ -401,16 +491,39 @@ export function useContributorMetadata(pubkeys: string[]) {
                 nip39PubkeysRef.current.add(normalizedPubkey);
                 setMetadataMap((prev) => {
                   const existing = prev[normalizedPubkey] || {};
-                  return {
+                  const next = {
                     ...prev,
                     [normalizedPubkey]: {
                       ...existing,
                       identities,
-                      // Keep a created_at so later kind-0 updates merge instead of wiping
-                      created_at:
-                        existing.created_at ?? event.created_at ?? undefined,
+                      // Never stamp created_at from 10011 — a newer identities
+                      // event was poisoning merges and blocking older kind-0 names.
+                      created_at: existing.created_at,
                     },
                   };
+                  // Identities-only stub: force HTTP kind-0 fill (Firefox often
+                  // never gets kind 0 over WS when damus/etc. fail).
+                  if (!hasUsableProfileName(existing)) {
+                    void fetchProfilesHttp([normalizedPubkey]).then(
+                      (profiles) => {
+                        const meta = profiles[normalizedPubkey];
+                        if (!meta) return;
+                        setMetadataMap((cur) => {
+                          const merged = {
+                            ...cur,
+                            [normalizedPubkey]: mergeKind0OntoExisting(
+                              cur[normalizedPubkey],
+                              meta,
+                              meta.created_at
+                            ),
+                          };
+                          saveMetadataCache(merged);
+                          return merged;
+                        });
+                      }
+                    );
+                  }
+                  return next;
                 });
                 if (contributorMetaVerbose() && isTargetPubkey) {
                   console.log(
@@ -474,161 +587,78 @@ export function useContributorMetadata(pubkeys: string[]) {
                     );
                   }
 
-                  // Legacy NIP-39: i tags on kind 0 (prefer kind 10011 when present)
+                  // Identities: union kind 10011 + legacy kind-0 `i` tags (never drop either layer).
+                  // Kind 0 still always supplies name/picture/about via mergeKind0OntoExisting.
                   const legacyIdentities = parseNip39ITags(event.tags);
-                  if (nip39PubkeysRef.current.has(normalizedPubkey)) {
-                    // Keep 10011 identities; do not apply kind-0 i tags
+                  if (
+                    data.identities != null &&
+                    !Array.isArray(data.identities)
+                  ) {
                     delete (data as { identities?: unknown }).identities;
-                  } else if (legacyIdentities.length > 0) {
-                    data.identities = legacyIdentities;
-                    if (contributorMetaVerbose() && batchIndex === 0) {
-                      console.log(
-                        `✅ [useContributorMetadata] Found ${legacyIdentities.length} legacy kind-0 identities:`,
-                        legacyIdentities.map(
-                          (i) => `${i.platform}:${i.identity}`
-                        )
-                      );
-                    }
-                  } else if (!Array.isArray(data.identities)) {
-                    delete (data as { identities?: unknown }).identities;
+                  }
+                  // Don't let content-JSON identities fight tag-based claims here
+                  delete (data as { identities?: unknown }).identities;
+
+                  if (
+                    contributorMetaVerbose() &&
+                    batchIndex === 0 &&
+                    legacyIdentities.length > 0
+                  ) {
+                    console.log(
+                      `✅ [useContributorMetadata] Found ${legacyIdentities.length} legacy kind-0 identities:`,
+                      legacyIdentities.map(
+                        (i) => `${i.platform}:${i.identity}`
+                      )
+                    );
                   }
 
                   // CRITICAL: Normalize pubkey to lowercase for consistent lookup (already defined above)
                   setMetadataMap((prev) => {
-                    // Always use the latest metadata (newer created_at wins)
                     const existing = prev[normalizedPubkey];
-                    const newTime = event.created_at;
+                    const merged = mergeKind0OntoExisting(
+                      existing,
+                      data,
+                      event.created_at
+                    );
+                    const saw10011 =
+                      nip39PubkeysRef.current.has(normalizedPubkey);
+                    const from10011 = saw10011
+                      ? existing?.identities
+                      : undefined;
+                    const fromKind0 = [
+                      ...(!saw10011 && Array.isArray(existing?.identities)
+                        ? existing.identities
+                        : []),
+                      ...legacyIdentities,
+                    ];
+                    const unioned = preferNip39Identities(
+                      from10011,
+                      fromKind0
+                    );
+                    if (unioned.length > 0) merged.identities = unioned;
+                    else delete (merged as { identities?: unknown }).identities;
 
-                    if (existing && existing.created_at) {
-                      // If we have existing metadata with timestamp, compare
-                      const existingTime = existing.created_at;
-                      if (newTime > existingTime) {
-                        // Newer metadata wins - but merge identities if new one doesn't have them
-                        const mergedData = { ...data, created_at: newTime };
-                        // If new event has identities, use them. Otherwise, keep existing ones if they exist
-                        if (
-                          !Array.isArray(mergedData.identities) ||
-                          mergedData.identities.length === 0
-                        ) {
-                          if (
-                            Array.isArray(existing.identities) &&
-                            existing.identities.length > 0
-                          ) {
-                            mergedData.identities = existing.identities;
-                            console.log(
-                              `🔄 [useContributorMetadata] Merged ${existing.identities.length} identities from older event (newer event has no identities)`
-                            );
-                          } else {
-                            delete (mergedData as { identities?: unknown })
-                              .identities;
-                          }
-                        } else {
-                          // New event HAS identities - log this for debugging
-                          if (contributorMetaVerbose()) {
-                            console.log(
-                              `✅ [useContributorMetadata] Newer event has ${mergedData.identities.length} identities, using them`
-                            );
-                          }
-                        }
-                        return {
-                          ...prev,
-                          [normalizedPubkey]: mergedData,
-                        };
-                      } else if (newTime === existingTime) {
-                        // Same timestamp - merge identities from both
-                        const mergedData = { ...data, created_at: newTime };
-                        const existingIdentities = Array.isArray(
-                          existing.identities
-                        )
-                          ? existing.identities
-                          : [];
-                        const newIdentities = Array.isArray(
-                          mergedData.identities
-                        )
-                          ? mergedData.identities
-                          : [];
-                        // Combine and deduplicate identities
-                        const combinedIdentities = [...existingIdentities];
-                        for (const newId of newIdentities) {
-                          const exists = combinedIdentities.some(
-                            (e: ClaimedIdentity) =>
-                              e.platform === newId.platform &&
-                              e.identity === newId.identity
-                          );
-                          if (!exists) {
-                            combinedIdentities.push(newId);
-                          }
-                        }
-                        if (combinedIdentities.length > 0) {
-                          mergedData.identities = combinedIdentities;
-                          if (contributorMetaVerbose()) {
-                            console.log(
-                              `🔄 [useContributorMetadata] Merged identities from events with same timestamp: ${combinedIdentities.length} total`
-                            );
-                          }
-                        }
-                        return {
-                          ...prev,
-                          [normalizedPubkey]: mergedData,
-                        };
-                      }
-                      // Older event - keep existing but merge identities if existing doesn't have them
-                      if (
-                        !Array.isArray(existing.identities) ||
-                        existing.identities.length === 0
-                      ) {
-                        if (
-                          Array.isArray(data.identities) &&
-                          data.identities.length > 0
-                        ) {
-                          const updatedExisting = {
-                            ...existing,
-                            identities: data.identities,
-                          };
-                          console.log(
-                            `🔄 [useContributorMetadata] Merged ${data.identities.length} identities from newer event into older cached metadata`
-                          );
-                          return {
-                            ...prev,
-                            [normalizedPubkey]: updatedExisting,
-                          };
-                        }
-                      }
-                      return prev; // Keep existing
-                    }
-                    // No existing metadata or no timestamp - use new one
-                    // Preserve 10011 identities if this kind-0 update intentionally omitted them
-                    const next: Metadata = {
-                      ...data,
-                      created_at: event.created_at,
-                    };
-                    if (
-                      nip39PubkeysRef.current.has(normalizedPubkey) &&
-                      (!Array.isArray(next.identities) ||
-                        next.identities.length === 0) &&
-                      Array.isArray(existing?.identities) &&
-                      existing.identities.length > 0
-                    ) {
-                      next.identities = existing.identities;
-                    }
-                    return {
+                    const next = {
                       ...prev,
-                      [normalizedPubkey]: next,
+                      [normalizedPubkey]: merged,
                     };
+                    saveMetadataCache(next);
+                    return next;
                   });
-                  // Only log for first batch to reduce console spam
-                  if (contributorMetaVerbose() && batchIndex === 0) {
-                    const idCount = Array.isArray(data.identities)
-                      ? data.identities.length
-                      : 0;
+                  if (
+                    contributorMetaVerbose() &&
+                    (batchIndex === 0 || isTargetPubkey)
+                  ) {
                     console.log(
-                      `✅ [useContributorMetadata] Received metadata for ${event.pubkey
-                        .toLowerCase()
-                        .slice(0, 8)} (stored as lowercase)${
-                        idCount > 0
-                          ? ` with ${idCount} claimed identities`
-                          : ""
-                      }`
+                      `✅ [useContributorMetadata] Received metadata for ${event.pubkey.slice(
+                        0,
+                        8
+                      )}`,
+                      {
+                        name: data.name,
+                        display_name: data.display_name,
+                        hasPicture: !!data.picture,
+                      }
                     );
                   }
                 } catch (e) {

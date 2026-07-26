@@ -41,6 +41,19 @@ function cacheKey(fromHex: string, toHex: string): string {
   return `${fromHex.toLowerCase()}:${toHex.toLowerCase()}`;
 }
 
+/** Drop oracle cache entries (all, or for one viewer) after a follow change. */
+export function clearWoTDistanceCache(viewerHex?: string | null): void {
+  const viewer = normalizeHexPubkey(viewerHex);
+  if (!viewer) {
+    distanceCache.clear();
+    return;
+  }
+  const prefix = `${viewer}:`;
+  for (const key of Array.from(distanceCache.keys())) {
+    if (key.startsWith(prefix)) distanceCache.delete(key);
+  }
+}
+
 export function normalizeHexPubkey(
   pubkey: string | null | undefined
 ): string | null {

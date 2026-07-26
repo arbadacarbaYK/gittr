@@ -232,6 +232,7 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 			if err == nil {
 				log.Printf("✅ [Bridge] Successfully cloned repository from source URL: %s\n", cloneUrl)
 				ensureUploadPackBrowserCaps(repoPath)
+				ensureRepoOwnedByGitNostr(repoPath)
 				return nil
 			}
 			log.Printf("⚠️ [Bridge] Failed to clone from source URL, will try clone URLs: %v\n", err)
@@ -257,6 +258,7 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 			if err == nil {
 				log.Printf("✅ [Bridge] Successfully cloned repository from clone URL: %s\n", httpsUrl)
 				ensureUploadPackBrowserCaps(repoPath)
+				ensureRepoOwnedByGitNostr(repoPath)
 				return nil
 			}
 			log.Printf("⚠️ [Bridge] Failed to clone from clone URL, will create empty repo: %v\n", err)
@@ -273,6 +275,7 @@ func handleRepositoryEvent(event nostr.Event, db *sql.DB, cfg bridge.Config) err
 		}
 
 		ensureUploadPackBrowserCaps(repoPath)
+		ensureRepoOwnedByGitNostr(repoPath)
 
 		// CRITICAL: Set HEAD to "main" branch so git clone works properly
 		// This ensures empty repos can be cloned and pushed to immediately
@@ -374,6 +377,21 @@ func ensureUploadPackBrowserCaps(repoPath string) {
 	_ = exec.Command("git", "--git-dir", repoPath, "config", "uploadpack.allowReachableSHA1InWant", "true").Run()
 }
 
+func ensureRepoOwnedByGitNostr(repoPath string) {
+	// Bridge may run as root (systemd) while SSH git runs as git-nostr — root-owned
+	// bare repos cause "detected dubious ownership" / exit 128 for clones.
+	chownCmd := exec.Command("chown", "-R", "git-nostr:git-nostr", repoPath)
+	if out, err := chownCmd.CombinedOutput(); err != nil {
+		chownCmd2 := exec.Command("sudo", "chown", "-R", "git-nostr:git-nostr", repoPath)
+		if out2, err2 := chownCmd2.CombinedOutput(); err2 != nil {
+			log.Printf("⚠️  [Bridge] Failed to chown %s to git-nostr: %v / %v (%s %s)", repoPath, err, err2, string(out), string(out2))
+		}
+	}
+	parent := filepath.Dir(repoPath)
+	_ = exec.Command("chown", "git-nostr:git-nostr", parent).Run()
+	_ = os.Chmod(parent, 0750)
+}
+
 func cloneRepository(cloneUrl, repoPath string) error {
 	// Normalize URL: convert git:// to https://, git@ to https://
 	normalizedUrl := cloneUrl
@@ -403,6 +421,7 @@ func cloneRepository(cloneUrl, repoPath string) error {
 		return fmt.Errorf("git clone failed: %w", err)
 	}
 
+	ensureRepoOwnedByGitNostr(repoPath)
 	return nil
 }
 

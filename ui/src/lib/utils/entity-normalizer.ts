@@ -297,3 +297,31 @@ export function readRepoPullsFromLocalStorage(
 
   return out;
 }
+
+/**
+ * Read per-repo releases from `gittr_releases__*` (canonical npub key).
+ */
+export function readRepoReleasesFromLocalStorage(
+  entity: string,
+  repo: string
+): unknown[] {
+  if (typeof window === "undefined") return [];
+  const canonicalKey = getRepoStorageKey("gittr_releases", entity, repo);
+  try {
+    const raw = localStorage.getItem(canonicalKey);
+    if (!raw) return [];
+    const list = JSON.parse(raw) as unknown[];
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((row) => {
+        if (!row || typeof row !== "object") return null;
+        const r = row as Record<string, unknown>;
+        const tag = String(r.tag_name || r.tag || "").trim();
+        if (!tag) return null;
+        return { ...r, tag_name: tag };
+      })
+      .filter(Boolean) as unknown[];
+  } catch {
+    return [];
+  }
+}

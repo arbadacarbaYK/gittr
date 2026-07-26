@@ -846,7 +846,10 @@ export default function ProfilePage() {
               </Label>
               <p className="text-sm text-zinc-500">
                 Claim your external identities (GitHub, X, etc.) to verify
-                ownership. These publish as NIP-39 kind 10011.
+                ownership. These publish as NIP-39 kind{" "}
+                <code className="text-xs">10011</code>. Your name, bio, and
+                avatar still publish as kind{" "}
+                <code className="text-xs">0</code> — both are saved together.
                 <br />
                 <span className="text-purple-400">Tip:</span> If you connected
                 GitHub on the{" "}

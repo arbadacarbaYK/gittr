@@ -295,11 +295,12 @@ export default function RepoLayoutClient({
     () =>
       !!(
         mounted &&
+        pubkey &&
         ownerPubkey &&
         /^[0-9a-f]{64}$/i.test(ownerPubkey) &&
         repoNostrEventId
       ),
-    [mounted, ownerPubkey, repoNostrEventId]
+    [mounted, pubkey, ownerPubkey, repoNostrEventId]
   );
 
   const githubUpstreamUrl = useMemo(
@@ -1055,7 +1056,15 @@ export default function RepoLayoutClient({
       { timeoutMs: 8000, repo }
     )
       .then((id) => {
-        if (!cancelled) setRelayRepoEventId(id);
+        if (cancelled) return;
+        if (id) {
+          setRelayRepoEventId(id);
+          cacheRepoAnnouncementEventId(
+            resolvedParams.entity,
+            resolvedParams.repo,
+            id
+          );
+        }
       })
       .finally(() => {
         if (!cancelled) setResolvingRepoEventId(false);

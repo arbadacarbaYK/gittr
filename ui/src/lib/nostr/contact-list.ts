@@ -9,6 +9,17 @@
 const BACKUP_PREFIX = "gittr_contact_list_backup_";
 const SESSION_PREFIX = "gittr_contact_list_session_";
 
+/**
+ * Fired after rememberContactList so TrustBadge / useWoTDistance can refresh
+ * without waiting for a re-fetched kind 3 (Follow button already has the list).
+ */
+export const CONTACT_LIST_CHANGED_EVENT = "gittr:contact-list-changed";
+
+export type ContactListChangedDetail = {
+  ownerPubkey: string;
+  pubkeys: string[];
+};
+
 /** Global queue so rapid Follow clicks cannot race two kind-3 publishes. */
 let followPublishChain: Promise<void> = Promise.resolve();
 
@@ -223,6 +234,20 @@ export function rememberContactList(
 ): void {
   saveContactListBackup(ownerPubkey, pubkeys, opts);
   saveContactListSession(ownerPubkey, pubkeys, opts);
+  if (typeof window === "undefined") return;
+  const hex = normalizeContactPubkey(ownerPubkey);
+  if (!hex) return;
+  const detail: ContactListChangedDetail = {
+    ownerPubkey: hex,
+    pubkeys: loadKnownContactList(hex),
+  };
+  try {
+    window.dispatchEvent(
+      new CustomEvent(CONTACT_LIST_CHANGED_EVENT, { detail })
+    );
+  } catch {
+    /* ignore */
+  }
 }
 
 /**

@@ -904,7 +904,7 @@ export default function ProjectsPage() {
 
     return (
       <div
-        className={`grid min-h-0 grid-cols-1 gap-3 md:gap-4 md:h-[min(640px,calc(100dvh-15rem))] ${gridCols}`}
+        className={`grid min-h-0 grid-cols-1 gap-3 md:gap-4 md:h-[min(1280px,calc(100dvh-10rem))] ${gridCols}`}
       >
         {visibleColumns.map((col) => {
           const items = project.items.filter(
@@ -913,7 +913,7 @@ export default function ProjectsPage() {
           return (
             <div
               key={col.status}
-              className="flex max-h-[70vh] min-h-[240px] min-w-0 flex-col overflow-hidden rounded-lg border border-[#383B42] bg-[#171B21] md:max-h-none md:min-h-0"
+              className="flex max-h-[85vh] min-h-[320px] min-w-0 flex-col overflow-hidden rounded-lg border border-[#383B42] bg-[#171B21] md:max-h-none md:min-h-0"
               onDragOver={(e) => handleDragOver(e, col.status)}
               onDrop={(e) => handleDrop(e, col.status)}
             >

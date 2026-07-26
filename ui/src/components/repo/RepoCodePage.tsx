@@ -53,14 +53,9 @@ import {
 import { syncReadmeTextIntoRepoFiles } from "@/lib/gittr-pages/sync-readme-to-files";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { fetchBridgeRead } from "@/lib/nostr/bridge-read";
+import { pickUserFacingCloneUrl } from "@/lib/nostr/clone-url-quality";
 import { KIND_REPOSITORY, KIND_REPOSITORY_NIP34 } from "@/lib/nostr/events";
 import { parseRepoLinksFromNip34Tags } from "@/lib/nostr/parse-nip34-repo-links";
-import {
-  enrichRepoLinks,
-  mergeAnnouncementLinksWithLocal,
-  removeAutoNostrPagesLinks,
-  removeStaleAutoLinks,
-} from "@/lib/repos/enrich-repo-links";
 import {
   formatPushRepoSuccessAlert,
   pushRepoToNostr,
@@ -78,6 +73,12 @@ import useSession from "@/lib/nostr/useSession";
 import { buildNsiteSiteUrl, slugToNsiteDTag } from "@/lib/nsite/nsite-url";
 import { ensurePushPaymentAuthorization } from "@/lib/payments/push-paywall";
 import { hasPrivateRepoAccess, hasWriteAccess } from "@/lib/repo-permissions";
+import {
+  enrichRepoLinks,
+  mergeAnnouncementLinksWithLocal,
+  removeAutoNostrPagesLinks,
+  removeStaleAutoLinks,
+} from "@/lib/repos/enrich-repo-links";
 import { sidebarAboutText } from "@/lib/repos/repo-about-text";
 import {
   type RepoBranchRoute,
@@ -152,13 +153,13 @@ import {
   isRefetchableUpstreamSourceUrl,
   parseGitSource,
 } from "@/lib/utils/git-source-fetcher";
+import { buildGraspHttpsCloneCandidates } from "@/lib/utils/grasp-list";
+import { KNOWN_GRASP_DOMAINS } from "@/lib/utils/grasp-servers";
 import {
   hasOnlyHashtreeCloneUrls,
   irisGitBrowseUrlFromHashtreeClone,
   isHashtreeCloneUrl,
 } from "@/lib/utils/hashtree-clone";
-import { buildGraspHttpsCloneCandidates } from "@/lib/utils/grasp-list";
-import { KNOWN_GRASP_DOMAINS } from "@/lib/utils/grasp-servers";
 import {
   mergeGithubIssuesAfterRefetch,
   mergeGithubPrsAfterRefetch,
@@ -944,7 +945,9 @@ export function RepoCodePage() {
       }
       saveStoredRepos(repos);
       setRepoData((prev) =>
-        prev ? ({ ...prev, links: next.length > 0 ? next : undefined } as any) : prev
+        prev
+          ? ({ ...prev, links: next.length > 0 ? next : undefined } as any)
+          : prev
       );
     } catch {
       /* ignore */
@@ -1564,8 +1567,7 @@ export function RepoCodePage() {
       nostrPagesUrl: pagesUrl,
       announcedAppId:
         (repoData as StoredRepo | null | undefined)?.announcedAppId || null,
-      siteOrigin:
-        typeof window !== "undefined" ? window.location.origin : null,
+      siteOrigin: typeof window !== "undefined" ? window.location.origin : null,
     }) as RepoLink[];
   }, [
     repoData?.links,
@@ -1583,9 +1585,8 @@ export function RepoCodePage() {
     if (!hasOnlyHashtreeCloneUrls(clones)) return null;
     const htree = clones.find((u) => isHashtreeCloneUrl(u)) || clones[0] || "";
     const fromWeb =
-      repoLinksList?.find((l) =>
-        String(l.url || "").includes("git.iris.to")
-      )?.url || null;
+      repoLinksList?.find((l) => String(l.url || "").includes("git.iris.to"))
+        ?.url || null;
     const browseUrl =
       fromWeb || irisGitBrowseUrlFromHashtreeClone(htree) || null;
     return { htree, browseUrl };
@@ -1864,27 +1865,10 @@ export function RepoCodePage() {
   }, [decodedRepo, resolvedParams.entity, resolvedOwnerPubkey]); // Only recompute when these change
   const ownerMetadata = useContributorMetadata(ownerPubkeysForMetadata);
 
-  // Keep ref in sync with ownerMetadata - update ref directly (refs don't cause re-renders)
-  const ownerMetadataKey = useMemo(() => {
-    if (Object.keys(ownerMetadata).length === 0) return "";
-    return Object.entries(ownerMetadata)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([pubkey, meta]) => `${pubkey}:${meta?.created_at ?? 0}`)
-      .join("|");
-  }, [ownerMetadata]);
-
-  const lastMetadataKeyRef = useRef<string>("");
-
-  useEffect(() => {
-    // Only update if content actually changed (using stable key comparison)
-    if (
-      ownerMetadataKey !== lastMetadataKeyRef.current &&
-      ownerMetadataKey !== ""
-    ) {
-      ownerMetadataRef.current = ownerMetadata; // Access ownerMetadata from closure - it's current when key changes
-      lastMetadataKeyRef.current = ownerMetadataKey;
-    }
-  }, [ownerMetadataKey]); // Only depend on key, not the object itself
+  // Keep ref in sync for non-UI helpers. Display paths must use `ownerMetadata`
+  // state (not the ref) so Firefox still re-paints when kind-0 / HTTP arrives —
+  // updating a ref in an effect never triggers another render by itself.
+  ownerMetadataRef.current = ownerMetadata;
 
   // Track mount state to prevent hydration mismatch
   useEffect(() => {
@@ -7203,7 +7187,11 @@ export function RepoCodePage() {
                             r.entity === resolvedParams.entity;
                           if (!(matchesRepo && matchesEntity)) return r;
                           changed = true;
-                          return { ...r, links: newLinks, syncedFromNostr: true };
+                          return {
+                            ...r,
+                            links: newLinks,
+                            syncedFromNostr: true,
+                          };
                         });
                         if (changed) saveStoredRepos(next);
                       } catch {
@@ -7590,14 +7578,12 @@ export function RepoCodePage() {
                         entity: resolvedParams.entity,
                         repo: resolvedParams.repo,
                         name:
-                          eventRepoData.repositoryName ||
-                          resolvedParams.repo,
+                          eventRepoData.repositoryName || resolvedParams.repo,
                         readme: "",
                         files: [],
                         description: eventRepoData.description || "",
                         contributors: [],
-                        defaultBranch:
-                          eventRepoData.defaultBranch || "main",
+                        defaultBranch: eventRepoData.defaultBranch || "main",
                         ownerPubkey:
                           latestEvent.event.pubkey || ownerPubkey || "",
                       } as StoredRepo);
@@ -12032,10 +12018,11 @@ export function RepoCodePage() {
               /^[0-9a-f]{64}$/i.test(resolvedParams.entity)
             ? resolvedParams.entity
             : undefined;
-        // CRITICAL: Only use full pubkey for metadata, not 8-char prefix
-        // Use ref to access latest metadata without causing dependency loop
+        // CRITICAL: Only use full pubkey for metadata, not 8-char prefix.
+        // Prefer ownerMetadata state so late HTTP profiles can update the logo.
         const metadata = ownerPubkey
-          ? ownerMetadataRef.current[ownerPubkey]
+          ? ownerMetadata[ownerPubkey.toLowerCase()] ||
+            ownerMetadata[ownerPubkey]
           : undefined;
         if (
           metadata?.picture &&
@@ -12071,6 +12058,12 @@ export function RepoCodePage() {
     resolvedParams.entity,
     resolvedParams.repo,
     ownerPubkeysForMetadata.length,
+    // Picture URL only — avoid re-running on every metadataMap identity change
+    ownerPubkeysForMetadata[0]
+      ? ownerMetadata[ownerPubkeysForMetadata[0].toLowerCase()]?.picture ||
+        ownerMetadata[ownerPubkeysForMetadata[0]]?.picture ||
+        ""
+      : "",
   ]); // Narrow deps — full `repoData` re-ran logo resolution on every file-tree update
 
   const pathParts = useMemo(
@@ -15502,87 +15495,34 @@ export function RepoCodePage() {
                         const { showToast } = await import(
                           "@/components/ui/toast"
                         );
-                        // CRITICAL: Use NIP-34 clone URLs from event first, then fallback to sourceUrl or localhost
                         const cloneUrls = (repoData as any)?.clone || [];
-                        let cloneUrl: string | null = null;
+                        const gitSshBase =
+                          process.env.NEXT_PUBLIC_GIT_SSH_BASE ||
+                          "git.gittr.space";
+                        const ownerHex =
+                          ownerPubkeyForLink &&
+                          /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink)
+                            ? ownerPubkeyForLink
+                            : null;
+                        const source =
+                          resolveUpstreamSourceUrl(
+                            (repoData as any)?.sourceUrl,
+                            (repoData as any)?.forkedFrom,
+                            ...(Array.isArray(cloneUrls) ? cloneUrls : [])
+                          ) ||
+                          (typeof (repoData as any)?.sourceUrl === "string"
+                            ? (repoData as any).sourceUrl
+                            : null);
 
-                        // Priority 1: Use first NIP-34 clone URL (from event tags)
-                        if (cloneUrls.length > 0) {
-                          // Filter out localhost and nostr:// URLs for HTTP clone
-                          const httpCloneUrl = cloneUrls.find(
-                            (url: string) =>
-                              (url.startsWith("http://") ||
-                                url.startsWith("https://")) &&
-                              !url.includes("localhost") &&
-                              !url.includes("127.0.0.1")
-                          );
-                          if (
-                            httpCloneUrl &&
-                            typeof httpCloneUrl === "string"
-                          ) {
-                            cloneUrl = httpCloneUrl;
-                            // CRITICAL: Check if this is a base URL that needs the full path constructed
-                            // GRASP servers need: https://relay.ngit.dev/{ownerPubkey}/{repoName}.git
-                            // If URL doesn't have a path after the domain, it's a base URL
-                            try {
-                              const urlObj = new URL(cloneUrl);
-                              const hasPath =
-                                urlObj.pathname &&
-                                urlObj.pathname !== "/" &&
-                                urlObj.pathname.length > 1;
+                        let cloneUrl = pickUserFacingCloneUrl({
+                          cloneUrls,
+                          sourceUrl: source,
+                          ownerHexPubkey: ownerHex,
+                          repoName: resolvedParams.repo,
+                          gitSshBase,
+                          originFallback: `${window.location.origin}/${resolvedParams.entity}/${resolvedParams.repo}.git`,
+                        });
 
-                              if (
-                                !hasPath &&
-                                ownerPubkeyForLink &&
-                                /^[0-9a-f]{64}$/i.test(ownerPubkeyForLink)
-                              ) {
-                                // Base URL - check if it's a GRASP server and construct full path
-                                const {
-                                  isGraspServer,
-                                } = require("@/lib/utils/grasp-servers");
-                                if (isGraspServer(cloneUrl)) {
-                                  cloneUrl = `${cloneUrl}/${ownerPubkeyForLink}/${resolvedParams.repo}.git`;
-                                } else {
-                                  // Not a GRASP server, just add .git if missing
-                                  if (!cloneUrl.endsWith(".git")) {
-                                    cloneUrl = `${cloneUrl}.git`;
-                                  }
-                                }
-                              } else if (
-                                hasPath &&
-                                !cloneUrl.endsWith(".git") &&
-                                !cloneUrl.endsWith("/")
-                              ) {
-                                // Has path but missing .git suffix
-                                cloneUrl = `${cloneUrl}.git`;
-                              }
-                            } catch (e) {
-                              console.error("Failed to parse clone URL:", e);
-                            }
-                          } else {
-                            // If only nostr:// URLs, use the first one
-                            if (
-                              cloneUrls.length > 0 &&
-                              typeof cloneUrls[0] === "string"
-                            ) {
-                              cloneUrl = cloneUrls[0];
-                            }
-                          }
-                        }
-
-                        // Priority 2: Use sourceUrl if no clone URLs
-                        if (
-                          !cloneUrl &&
-                          repoData?.sourceUrl &&
-                          typeof repoData.sourceUrl === "string"
-                        ) {
-                          cloneUrl = repoData.sourceUrl;
-                          if (!cloneUrl.endsWith(".git")) {
-                            cloneUrl = `${cloneUrl}.git`;
-                          }
-                        }
-
-                        // Priority 3: Fallback to localhost (for local development)
                         if (!cloneUrl) {
                           cloneUrl = `${window.location.origin}/${resolvedParams.entity}/${resolvedParams.repo}.git`;
                         }
@@ -15894,8 +15834,9 @@ export function RepoCodePage() {
                           ? ownerPubkeyForLink
                           : ownerPubkeysForMetadata[0];
 
-                      // CRITICAL: Use ref to access metadata without causing re-renders that block clicks
-                      const currentMetadata = ownerMetadataRef.current;
+                      // CRITICAL: Use ownerMetadata state (not ref) so React re-renders
+                      // when HTTP / kind-0 metadata arrives (Firefox often has no extra paints).
+                      const currentMetadata = ownerMetadata;
 
                       // Use getEntityDisplayName for consistent username resolution
                       return getEntityDisplayName(
@@ -15985,8 +15926,8 @@ export function RepoCodePage() {
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2 text-gray-300 min-w-0 flex-1">
                   {(() => {
-                    // CRITICAL: Use ref to access metadata without causing re-renders that block clicks
-                    const currentMetadata = ownerMetadataRef.current;
+                    // CRITICAL: Use ownerMetadata state so name/avatar update when profiles load
+                    const currentMetadata = ownerMetadata;
                     // Get owner picture from metadata - CRITICAL: Only use full pubkey, not 8-char prefix
                     const ownerMeta =
                       ownerPubkeyForLink && ownerPubkeyForLink.length === 64
@@ -16113,15 +16054,9 @@ export function RepoCodePage() {
                               ? `${resolvedParams.entity.substring(0, 16)}...`
                               : resolvedParams.entity || "U";
                           }
-                          const currentMetadata = ownerMetadataRef.current;
-                          const ownerMeta =
-                            ownerPubkeyForLink &&
-                            ownerPubkeyForLink.length === 64
-                              ? currentMetadata[ownerPubkeyForLink]
-                              : undefined;
-                          return (
-                            ownerMeta?.display_name ||
-                            ownerMeta?.name ||
+                          return getEntityDisplayName(
+                            ownerPubkeyForLink,
+                            ownerMetadata,
                             resolvedParams.entity
                           );
                         })()}
@@ -16173,7 +16108,7 @@ export function RepoCodePage() {
                           }
                           return getEntityDisplayName(
                             ownerPubkeyForLink,
-                            ownerMetadataRef.current,
+                            ownerMetadata,
                             resolvedParams.entity
                           );
                         })()}
@@ -16675,10 +16610,10 @@ export function RepoCodePage() {
               items.length === 0 &&
               repoData &&
               !hashtreeOnlyEmpty && (
-              <div className="border p-4 text-center text-gray-400">
-                No files found
-              </div>
-            )}
+                <div className="border p-4 text-center text-gray-400">
+                  No files found
+                </div>
+              )}
             {mounted &&
               !selectedFile &&
               !fileContent &&
@@ -18505,7 +18440,7 @@ export function RepoCodePage() {
                                         existing: existingRepo.links || [],
                                         homepage:
                                           typeof importData.homepage ===
-                                            "string"
+                                          "string"
                                             ? importData.homepage
                                             : null,
                                         sourceUrl:
@@ -19734,10 +19669,11 @@ export function RepoCodePage() {
                                           )
                                             ? eventRepoData.relays
                                             : [],
-                                          links: mergeAnnouncementLinksWithLocal(
-                                            [],
-                                            eventRepoData.links
-                                          ),
+                                          links:
+                                            mergeAnnouncementLinksWithLocal(
+                                              [],
+                                              eventRepoData.links
+                                            ),
                                           // CRITICAL: Preserve privacy status from NIP-34 tags
                                           publicRead:
                                             eventRepoData.publicRead !==
@@ -20847,9 +20783,7 @@ export function RepoCodePage() {
                                 /* ignore */
                               }
                               setRepoData((prev: any) =>
-                                prev
-                                  ? { ...prev, announcedAppId }
-                                  : prev
+                                prev ? { ...prev, announcedAppId } : prev
                               );
                             }}
                           />
@@ -21113,7 +21047,8 @@ export function RepoCodePage() {
                       const sshUrl =
                         sshCloneUrls[0] ||
                         `git@${
-                          process.env.NEXT_PUBLIC_GIT_SSH_BASE || "git.gittr.space"
+                          process.env.NEXT_PUBLIC_GIT_SSH_BASE ||
+                          "git.gittr.space"
                         }:${resolvedParams.entity}/${resolvedParams.repo}.git`;
                       setSshGitHelpData({
                         entity: resolvedParams.entity,

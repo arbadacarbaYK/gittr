@@ -232,7 +232,7 @@ func main() {
 		}
 	}
 
-	c := exec.Command("git", "shell", "-c", verb+" '"+repoPath+"'")
+	c := exec.Command("git", "-c", "safe.directory=*", "shell", "-c", verb+" '"+repoPath+"'")
 	c.Stdout = os.Stdout
 	c.Stdin = os.Stdin
 	c.Stderr = os.Stderr

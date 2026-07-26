@@ -4,6 +4,55 @@ Git hosting and forge UI on [Nostr](https://github.com/nostr-protocol/nips): NIP
 
 Live: [gittr.space](https://gittr.space) · [Apps](https://gittr.space/apps) · [Pages](https://pages.gittr.space) · [Legal](https://gittr.space/legal) · [Nostr schemata (NIPs)](https://gittr.space/npub1zafcms4xya5ap9zr7xxr0jlrtrattwlesytn2s42030lzu0dwlzqpd26k5/schemata?file=README.md)
 
+## Where this sits (platform map)
+
+Super-high-level — who talks to whom. Detailed bridge diagrams live in [gitnostr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?branch=main).
+
+```mermaid
+flowchart TB
+  subgraph people["People / agents"]
+    Human["Human in browser"]
+    Agent["AI agent via MCP"]
+    CLI["CLI: gn / git / ngit"]
+  end
+
+  subgraph gittr_stack["gittr platform"]
+    UI["gittr Client + workflows<br/>this repo · web forge"]
+    Pages["Pages / nsite<br/>pages.gittr.space"]
+    Bridge["gitnostr Bridge<br/>git.gittr.space · SSH/HTTPS git"]
+    MCP["gittr-mcp<br/>tools for agents"]
+  end
+
+  subgraph nostr_world["Nostr + remotes"]
+    Relays["Nostr relays<br/>NIP-34 events"]
+    RemoteNostr["git remote nostr<br/>nostr:// · ngit ecosystem"]
+  end
+
+  Human --> UI
+  Agent --> MCP
+  CLI --> Bridge
+  CLI --> RemoteNostr
+  UI --> Relays
+  UI --> Bridge
+  MCP --> Relays
+  MCP --> Bridge
+  MCP --> UI
+  Pages --> Relays
+  Bridge --> Relays
+  RemoteNostr --> Relays
+  RemoteNostr -.->|same events| Bridge
+```
+
+| Piece | Repo on gittr | Job in one line |
+| --- | --- | --- |
+| **gittr Client** | [arbadacarbaYK/gittr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gittr?branch=main) | Web forge: Code, Issues/PRs, Push, import, ToDo, Apps |
+| **gitnostr Bridge** | [arbadacarbaYK/gitnostr](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/gitnostr?branch=main) (`ui/gitnostr/` here) | Real git over SSH/HTTPS; watches relays; kind 52 keys |
+| **Pages / nsite** | [arbadacarbaYK/nsite-gateway](https://gittr.space/npub1n2ph08n4pqz4d3jk6n2p35p2f4ldhc5g5tu7dhftfpueajf4rpxqfjhzmc/nsite-gateway) | Static sites from Nostr (gittr Pages) |
+| **gittr-mcp** | [GitHub arbada…/gittr-mcp](https://github.com/arbadacarbaYK/gittr-mcp) | Same forge for AI agents (HTTP + Nostr, not SSH) |
+| **git remote nostr** | [ngit / git-remote-nostr](https://github.com/DanConwayDev/ngit-cli) | `nostr://` remotes — other stack, same NIP-34 events |
+
+**Addressing:** repos are Nostr identities (`npub` / hex) + repo name on relays; git blobs live on the bridge (or another `clone` host). Agents resolve via MCP; humans via the UI or `git clone` / `nostr://`.
+
 Import from GitHub, GitLab, Codeberg, or your own git remote when you want a Nostr mirror or a path off a centralized host—not a skin on top of another forge’s login.
 
 ## Use it for

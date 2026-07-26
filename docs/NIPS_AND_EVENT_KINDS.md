@@ -157,7 +157,12 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 - **Purpose**: Link a Nostr profile to GitHub, X/Twitter, Mastodon, Telegram, etc.
 - **Tags**: `i` — `["i", "platform:identity", "<proof>"]` (proof optional but recommended)
 - **Replaceable**: one latest kind **10011** per pubkey
-- **Legacy**: older clients put `i` tags on kind **0**; gittr still **reads** those as fallback but **publishes** new claims as kind **10011**
+- **Dual-layer with kind 0 (important)**:
+  - Kind **0** = profile card (name, display_name, picture, banner, about, nip05, lud16, …)
+  - Kind **10011** = external identity claims only
+  - gittr **always reads and merges both**. A 10011 event must never wipe or block kind-0 name/avatar.
+  - Legacy clients that put `i` on kind **0** are still read; claims are **unioned** with 10011 (same `platform:identity` prefers 10011 / proof).
+- **Writes (Settings → Profile)**: save publishes **kind 0** (metadata) **and** **kind 10011** (identities) together — not one instead of the other.
 - **UI**: Settings → Profile → Verified Identities; GitHub OAuth on Settings → SSH Keys can prefill a github claim before you save Profile
 
 ### Projects / Kanban (no finalized NIP yet)
@@ -166,6 +171,14 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 - **Policy**: mirror source like Issues — refresh on tab open; do **not** write column moves back to GitHub; keep local-only boards editable beside GH mirrors.
 - **Nostr**: drafts exist ([nips#1665](https://github.com/nostr-protocol/nips/pull/1665), [nips#1804](https://github.com/nostr-protocol/nips/pull/1804), Headway provisional 30619/30620) but nothing is merged. Do not invent a permanent gittr kind until one draft settles; cards remain NIP-34 issues/PRs (1621/1618).
 - **Future GitHub write-back**: optional **user GitHub OAuth** (not a new kind) when NIP-39 / upstream identity matches — see helper-tools `snippets/github-oauth-writeback/`. Keep Nostr as collaboration truth; OAuth is a forge bridge.
+- **Helper write-up for a future NIP**: `gittr-helper-tools/snippets/todos-discussions-kanban/` (surfaces, rules, suggested event shape).
+
+### Kind 30617 clone URLs (`git.gittr.space`)
+
+- **Announce / other clients (NIP-34):** HTTPS `clone` tags use **`/<npub>/<repo>.git`** — same shape as ngit GRASP.
+- **On disk (gitnostr):** bare repos live under **`/<hex-pubkey>/`**. The bridge creates **`npub → hex` symlinks** so npub HTTPS works. Missing symlink → 404 (not “spec wants hex”).
+- **SSH:** `git@git.gittr.space:<hex|/npub>/repo.git` (ssh helper resolves npub → hex).
+- UI “Copy clone URL” prefers GitHub/GitLab/Codeberg when present, else the announced HTTPS clone.
 
 ### Kind 1337: Code Snippets (NIP-C0)
 
@@ -203,6 +216,7 @@ To keep event behavior consistent with other major NIP-34 clients (including ngi
 
 - **Replaceable**: publishing a new kind **3** replaces the previous list for that pubkey.
 - **gittr Follow safety**: never publish when the current list could not be loaded (`uncertainEmpty`). Always **union all kind-3 events** seen during the fetch (not newest-only) + localStorage backup + sessionStorage + in-memory before signing — a tiny newer wipe on one relay must not discard a larger older list. Follows are **serialized** (one publish at a time) and wait for relay confirmation. Refuse publishes that would shrink a large known list (`wouldWipeFollowList`). Backup/`rememberContactList` never shrinks from a smaller fetch. Helpers: `ui/src/lib/nostr/contact-list.ts`. Standalone restore (outside gittr UI): `/home/…/restore-nostr-follows/`.
+- **WoT badge**: TrustBadge / `useWoTDistance` must use the **same** backup + multi-event kind-3 fetch (not `limit: 1` overwrite). `rememberContactList` fires `gittr:contact-list-changed` so a successful Follow immediately flips the badge to **In your network** without waiting on the WoT oracle.
 
 ### Kind 30618: Repository State (NIP-34)
 

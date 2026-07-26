@@ -20,6 +20,7 @@ import {
   syncGithubIssuesForRepo,
   syncGithubPullsForRepo,
 } from "@/lib/utils/sync-github-repo-issues-prs";
+import { syncGithubReleasesForRepo } from "@/lib/utils/sync-github-repo-releases";
 
 import { nip19 } from "nostr-tools";
 
@@ -301,6 +302,8 @@ export async function hydrateRepoFromGithub(
     syncGithubIssuesForRepo(entity, repoSlug, sourceUrl),
     syncGithubPullsForRepo(entity, repoSlug, sourceUrl),
   ]);
+  // Warm releases bucket (same soft-sync as Releases tab; safe if unused)
+  void syncGithubReleasesForRepo(entity, repoSlug, sourceUrl);
 
   const meta = await fetchGithubRepoMeta(sourceUrl);
   if (meta?.pushedAtMs) {

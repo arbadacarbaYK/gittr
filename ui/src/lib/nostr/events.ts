@@ -297,8 +297,9 @@ export function buildUnsignedRepositoryEvent(
   }
 
   // NIP-34: one "clone" tag with multiple git URLs (values at indices 1..n).
-  // Never publish host-only values like https://git.gittr.space — expand to
-  // https://git.gittr.space/<npub>/<repo>.git (gitworkshop fails otherwise).
+  // Never publish host-only values like https://git.gittr.space — expand to a
+  // full path with **npub** (NIP-34 / other clients). On disk the bridge stores
+  // hex and exposes npub→hex symlinks for HTTPS.
   let ownerNpub = pubkey;
   try {
     ownerNpub = nip19.npubEncode(pubkey);
@@ -312,6 +313,7 @@ export function buildUnsignedRepositoryEvent(
   const cleanedClone = normalizeCloneUrlsForNip34Announcement({
     cloneUrls: repo.clone,
     ownerNpub,
+    ownerHex: pubkey,
     repoName: repo.repositoryName,
     fallbackGitServerUrl,
   }).slice(0, 12);

@@ -2,12 +2,19 @@
 
 import { useEffect, useState } from "react";
 
+import {
+  CONTACT_LIST_CHANGED_EVENT,
+  type ContactListChangedDetail,
+  loadKnownContactList,
+  mergeContactLists,
+  parseContactListPubkeys as parseContactListEvent,
+} from "@/lib/nostr/contact-list";
 import { useNostrContext } from "@/lib/nostr/NostrContext";
 import { getAllRelays } from "@/lib/nostr/getAllRelays";
 import {
   KIND_CONTACT_LIST,
+  clearWoTDistanceCache,
   normalizeHexPubkey,
-  parseContactListPubkeys,
   resolveWoTDistance,
 } from "@/lib/nostr/wot";
 
@@ -25,7 +32,7 @@ const FOLLOWS_WAIT_MS = 8500;
 
 /**
  * Viewer-relative hop distance to `targetPubkey` (hex or npub).
- * Priority: direct follow (kind 3) → WoT extension → oracle API.
+ * Priority: direct follow (kind 3 + local backup) → WoT extension → oracle API.
  */
 export function useWoTDistance(
   targetPubkey: string | null | undefined
@@ -45,13 +52,50 @@ export function useWoTDistance(
     if (!subscribe) return;
 
     let cancelled = false;
+    // Same backup the Follow button writes — so a fresh follow shows
+    // "In your network" even if relays return a stale limit:1 kind 3.
+    // If backup is empty, keep `follows` null until a relay event or timeout
+    // so we don't flash "Outside" before kind 3 arrives.
+    const known = loadKnownContactList(viewerHex);
+    if (known.length > 0) {
+      setFollows(new Set(known));
+    } else {
+      setFollows(null);
+    }
+
+    const applyUnion = (pubkeys: string[]) => {
+      if (cancelled || pubkeys.length === 0) return;
+      setFollows((prev) => {
+        const merged = mergeContactLists(
+          prev ? Array.from(prev) : [],
+          pubkeys
+        );
+        return new Set(merged);
+      });
+    };
+
+    const onLocalChange = (ev: Event) => {
+      const detail = (ev as CustomEvent<ContactListChangedDetail>).detail;
+      if (!detail?.ownerPubkey || detail.ownerPubkey !== viewerHex) return;
+      clearWoTDistanceCache(viewerHex);
+      setFollows(new Set(detail.pubkeys));
+    };
+    window.addEventListener(CONTACT_LIST_CHANGED_EVENT, onLocalChange);
+
     const relays = getAllRelays(defaultRelays);
     const unsub = subscribe(
-      [{ kinds: [KIND_CONTACT_LIST], authors: [viewerHex], limit: 1 }],
+      [
+        {
+          kinds: [KIND_CONTACT_LIST],
+          authors: [viewerHex],
+          limit: 20,
+          noCache: true,
+        },
+      ],
       relays,
       (event) => {
         if (cancelled || event.kind !== KIND_CONTACT_LIST) return;
-        setFollows(parseContactListPubkeys(event.tags ?? []));
+        applyUnion(parseContactListEvent(event));
       },
       8000
     );
@@ -59,13 +103,14 @@ export function useWoTDistance(
     // If kind-3 never arrives, stop waiting so oracle/Outside can resolve.
     const timeout = window.setTimeout(() => {
       if (!cancelled) {
-        setFollows((prev) => prev ?? new Set());
+        setFollows((prev) => prev ?? new Set(loadKnownContactList(viewerHex)));
       }
     }, FOLLOWS_WAIT_MS);
 
     return () => {
       cancelled = true;
       window.clearTimeout(timeout);
+      window.removeEventListener(CONTACT_LIST_CHANGED_EVENT, onLocalChange);
       try {
         unsub?.();
       } catch {

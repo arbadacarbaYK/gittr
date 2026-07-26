@@ -64,6 +64,13 @@ export const GRASP_SERVERS_FOR_PUSHING = [
   "git.gittr.space",
 ] as const;
 
+/**
+ * Hosts whose **on-disk** bare repos live under `/<hex-pubkey>/…` (gitnostr layout).
+ * HTTPS clone tags still use **npub** paths (NIP-34); the bridge creates `npub → hex`
+ * symlinks so other clients can clone. Prefer publishing npub; hex is storage + SSH fallback.
+ */
+export const HEX_PATH_GIT_HOSTS = ["git.gittr.space"] as const;
+
 /** Normalize a relay/git URL or bare host to lowercase hostname. */
 export function normalizeGraspHost(hostOrUrl: string): string {
   if (!hostOrUrl) return "";
@@ -126,6 +133,15 @@ export function mergeGraspHostsForPush(
   for (const u of userGraspWssOrHosts) consider(u, true);
   for (const u of defaultGraspWssOrHosts) consider(u, false);
   return out;
+}
+
+/** True when bare repos on disk are keyed by hex (gitnostr). Not “publish hex in clone tags”. */
+export function isHexPathGitHost(hostOrUrl: string): boolean {
+  const domain = normalizeGraspHost(hostOrUrl);
+  if (!domain) return false;
+  return HEX_PATH_GIT_HOSTS.some(
+    (h) => domain === h || domain.endsWith(`.${h}`)
+  );
 }
 
 /**

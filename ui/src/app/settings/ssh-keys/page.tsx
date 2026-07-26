@@ -35,11 +35,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import {
-  type Event as NostrEvent,
-  getEventHash,
-  signEvent,
-} from "nostr-tools";
+import { type Event as NostrEvent, getEventHash, signEvent } from "nostr-tools";
 
 interface SSHKey {
   id: string;
@@ -65,29 +61,68 @@ function sshKeyFromEvent(
     created_at?: number;
     kind?: number;
     pubkey?: string;
+    tags?: string[][];
   },
   fingerprintFn: (k: string) => string
 ): SSHKey | null {
-  const content = (event.content || "").trim();
-  const parts = content.split(/\s+/);
-  if (parts.length < 2) return null;
-  const keyType = parts[0] || "";
-  const validKeyTypes = [
-    "ssh-rsa",
-    "ssh-ed25519",
-    "ecdsa-sha2-nistp256",
-    "ecdsa-sha2-nistp384",
-    "ecdsa-sha2-nistp521",
-  ];
-  if (!keyType || !validKeyTypes.includes(keyType)) return null;
-  return {
-    id: event.id,
-    title: parts.slice(2).join(" ") || `key-${event.id.slice(0, 8)}`,
-    keyType,
-    publicKey: content,
-    fingerprint: fingerprintFn(content),
-    createdAt: (event.created_at || 0) * 1000,
+  const tryParseLine = (line: string): SSHKey | null => {
+    const content = line.trim();
+    const parts = content.split(/\s+/);
+    if (parts.length < 2) return null;
+    const keyType = parts[0] || "";
+    const validKeyTypes = [
+      "ssh-rsa",
+      "ssh-ed25519",
+      "ecdsa-sha2-nistp256",
+      "ecdsa-sha2-nistp384",
+      "ecdsa-sha2-nistp521",
+    ];
+    if (!keyType || !validKeyTypes.includes(keyType)) return null;
+    return {
+      id: event.id,
+      title: parts.slice(2).join(" ") || `key-${event.id.slice(0, 8)}`,
+      keyType,
+      publicKey: content,
+      fingerprint: fingerprintFn(content),
+      createdAt: (event.created_at || 0) * 1000,
+    };
   };
+
+  const fromContent = tryParseLine(event.content || "");
+  if (fromContent) return fromContent;
+
+  // Some clients put the OpenSSH line in a tag instead of content
+  if (Array.isArray(event.tags)) {
+    for (const tag of event.tags) {
+      if (!Array.isArray(tag) || tag.length < 2) continue;
+      const joined = tag.slice(1).join(" ");
+      const parsed = tryParseLine(joined) || tryParseLine(tag[1] || "");
+      if (parsed) {
+        if (tag.length >= 3 && tag[2]) parsed.title = tag[2];
+        return parsed;
+      }
+    }
+  }
+
+  // JSON content fallback
+  const raw = (event.content || "").trim();
+  if (raw.startsWith("{")) {
+    try {
+      const obj = JSON.parse(raw) as {
+        publicKey?: string;
+        key?: string;
+        sshKey?: string;
+        title?: string;
+      };
+      const line = obj.publicKey || obj.key || obj.sshKey || "";
+      const parsed = tryParseLine(line);
+      if (parsed && obj.title) parsed.title = String(obj.title);
+      return parsed;
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
 }
 
 function mergeSshKeys(local: SSHKey[], fromRelays: SSHKey[]): SSHKey[] {
@@ -164,12 +199,16 @@ export default function SSHKeysPage() {
       const collected = new Map<string, SSHKey>();
       await new Promise<void>((resolve) => {
         let settled = false;
+        let eoseCount = 0;
+        const expectedEose = Math.max(relays.length, 1);
+        // First empty relay must not abort — wait for a small quorum or timeout
+        const eoseQuorum = Math.min(3, expectedEose);
         const finish = () => {
           if (settled) return;
           settled = true;
           resolve();
         };
-        const timeout = setTimeout(finish, 4500);
+        const timeout = setTimeout(finish, 6000);
         try {
           subscribe(
             [{ kinds: [KIND_SSH_KEY], authors: [pubkey], limit: 50 }],
@@ -182,8 +221,15 @@ export default function SSHKeysPage() {
             },
             undefined,
             () => {
-              clearTimeout(timeout);
-              finish();
+              eoseCount += 1;
+              // Early exit only once we have keys + quorum, or every relay EOSEd
+              if (
+                eoseCount >= expectedEose ||
+                (collected.size > 0 && eoseCount >= eoseQuorum)
+              ) {
+                clearTimeout(timeout);
+                finish();
+              }
             },
             {}
           );

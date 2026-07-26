@@ -5,6 +5,7 @@ import { use, useEffect, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FileDiffViewer } from "@/components/ui/file-diff-viewer";
 import { parseGitHubRepoSpec } from "@/lib/nostr/nip82-repository-links";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
 import { resolveGithubUpstreamForTabs } from "@/lib/repos/upstream-precedence";
@@ -395,70 +396,24 @@ export default function CommitDetailPage({
         <div className="space-y-4">
           <h2 className="text-xl font-semibold">Files changed</h2>
           {fileDiffs.map((diff, idx) => (
-            <div key={idx} className="border border-gray-700 rounded">
-              <div className="p-4 bg-gray-800 border-b border-gray-700">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      className={
-                        diff.status === "added"
-                          ? "bg-green-600"
-                          : diff.status === "deleted"
-                          ? "bg-red-600"
-                          : "bg-yellow-600"
-                      }
-                    >
-                      {diff.status}
-                    </Badge>
-                    <Link
-                      href={`/${resolvedParams.entity}/${resolvedParams.repo}?file=${diff.path}`}
-                      className="text-purple-400 hover:text-purple-300 font-mono text-sm"
-                    >
-                      {diff.path}
-                    </Link>
+            <div key={idx} className="space-y-1">
+              {diff.additions !== undefined &&
+                diff.deletions !== undefined && (
+                  <div className="flex justify-end text-sm text-gray-400 px-1">
+                    <span className="text-green-400">+{diff.additions}</span>{" "}
+                    <span className="text-red-400">-{diff.deletions}</span>
                   </div>
-                  {diff.additions !== undefined &&
-                    diff.deletions !== undefined && (
-                      <div className="text-sm text-gray-400">
-                        <span className="text-green-400">
-                          +{diff.additions}
-                        </span>{" "}
-                        <span className="text-red-400">-{diff.deletions}</span>
-                      </div>
-                    )}
-                </div>
-              </div>
-
-              {/* Diff Content */}
-              {(diff.before || diff.after) && (
-                <div className="grid grid-cols-2 gap-0">
-                  {diff.before && (
-                    <div>
-                      <div className="p-2 bg-[#0E1116] border-r border-gray-700 text-xs text-gray-400 font-semibold">
-                        Before
-                      </div>
-                      <pre className="bg-[#0E1116] p-4 overflow-auto text-sm font-mono whitespace-pre-wrap text-gray-300 border-r border-gray-700 max-h-[40vh]">
-                        {diff.before}
-                      </pre>
-                    </div>
-                  )}
-                  {diff.after && (
-                    <div>
-                      <div className="p-2 bg-[#0E1116] text-xs text-gray-400 font-semibold">
-                        {diff.before ? "After" : "Patch"}
-                      </div>
-                      <pre className="bg-[#0E1116] p-4 overflow-auto text-sm font-mono whitespace-pre-wrap text-gray-100 max-h-[40vh]">
-                        {diff.after}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
+              <FileDiffViewer
+                path={diff.path}
+                status={diff.status}
+                before={diff.before}
+                after={diff.after}
+              />
             </div>
           ))}
         </div>
       )}
-
       {fileDiffs.length === 0 && (
         <div className="border border-gray-700 rounded p-8 text-center text-gray-400">
           {loadingDiffs

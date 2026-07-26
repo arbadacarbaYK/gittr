@@ -8,6 +8,9 @@
 
 /** @type {import("next").NextConfig} */
 const config = {
+  // Optional: set GITTR_DIST_DIR for experimental side-builds. Production deploy
+  // builds in place and only restarts after BUILD_ID exists (see upload_to_hetzner.sh).
+  distDir: process.env.GITTR_DIST_DIR || ".next",
   reactStrictMode: true,
   images: {
     domains: ["void.cat"],

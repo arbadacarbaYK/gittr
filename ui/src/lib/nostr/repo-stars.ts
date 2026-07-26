@@ -186,6 +186,9 @@ export async function queryRepoAnnouncementEventId(
 
   return new Promise((resolve) => {
     let finished = false;
+    let eoseCount = 0;
+    const expectedEose = Math.max(relays.length, 1);
+    const eoseQuorum = Math.min(3, expectedEose);
     const finish = (unsub?: () => void) => {
       if (finished) return;
       finished = true;
@@ -206,10 +209,21 @@ export async function queryRepoAnnouncementEventId(
         if (!eventMatchesRepoAnnouncement(event, author, dCandidates)) return;
         if (!latest || (event.created_at || 0) >= (latest.created_at || 0)) {
           latest = event;
+          // Found a matching announce — no need to wait for slow/empty relays
+          finish(unsub as () => void);
         }
       },
       undefined,
-      () => finish(unsub as () => void),
+      () => {
+        eoseCount += 1;
+        // First empty relay must not abort — wait for quorum/all/timeout
+        if (
+          eoseCount >= expectedEose ||
+          (latest && eoseCount >= eoseQuorum)
+        ) {
+          finish(unsub as () => void);
+        }
+      },
       {}
     );
 

@@ -64,13 +64,24 @@ describe("buildNip39ITags / preferNip39Identities", () => {
     ]);
   });
 
-  it("prefers kind 10011 over kind 0", () => {
-    expect(
-      preferNip39Identities(
-        [{ platform: "github", identity: "new" }],
-        [{ platform: "github", identity: "legacy" }]
-      )
-    ).toEqual([{ platform: "github", identity: "new" }]);
+  it("unions 10011 and kind 0; same key prefers 10011 proof", () => {
+    const merged = preferNip39Identities(
+      [{ platform: "github", identity: "new", proof: "p" }],
+      [
+        { platform: "github", identity: "legacy" },
+        { platform: "github", identity: "new" },
+      ]
+    );
+    expect(merged).toHaveLength(2);
+    expect(merged).toContainEqual({
+      platform: "github",
+      identity: "legacy",
+    });
+    expect(merged.find((i) => i.identity === "new")).toMatchObject({
+      platform: "github",
+      identity: "new",
+      proof: "p",
+    });
   });
 
   it("falls back to kind 0 when 10011 empty", () => {

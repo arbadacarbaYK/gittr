@@ -96,7 +96,7 @@ export function FileDiffViewer({
     const afterLines = (afterText || "").split("\n");
     const diff: Array<{
       line: string;
-      type: "removed" | "added" | "unchanged";
+      type: "removed" | "added" | "unchanged" | "hunk";
       lineNumber?: number;
     }> = [];
 
@@ -183,11 +183,93 @@ export function FileDiffViewer({
     return diff;
   };
 
-  const diffLines =
-    before !== undefined && after !== undefined
-      ? calculateDiff(before, after)
-      : [];
+  /** GitHub / git unified patch (`@@`, `+`, `-`, ` `). */
+  const parseUnifiedPatch = (patch: string) => {
+    const diff: Array<{
+      line: string;
+      type: "removed" | "added" | "unchanged" | "hunk";
+      lineNumber?: number;
+    }> = [];
+    let oldNo = 0;
+    let newNo = 0;
+    for (const raw of patch.split("\n")) {
+      if (raw.startsWith("@@")) {
+        const m = raw.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+        if (m) {
+          oldNo = parseInt(m[1]!, 10);
+          newNo = parseInt(m[2]!, 10);
+        }
+        diff.push({ line: raw, type: "hunk" });
+        continue;
+      }
+      if (raw.startsWith("+++ ") || raw.startsWith("--- ") || raw.startsWith("diff ")) {
+        diff.push({ line: raw, type: "hunk" });
+        continue;
+      }
+      if (raw.startsWith("+")) {
+        diff.push({
+          line: raw.slice(1),
+          type: "added",
+          lineNumber: newNo++,
+        });
+        continue;
+      }
+      if (raw.startsWith("-")) {
+        diff.push({
+          line: raw.slice(1),
+          type: "removed",
+          lineNumber: oldNo++,
+        });
+        continue;
+      }
+      if (raw.startsWith("\\")) {
+        diff.push({ line: raw, type: "hunk" });
+        continue;
+      }
+      // context (leading space) or bare
+      const content = raw.startsWith(" ") ? raw.slice(1) : raw;
+      diff.push({
+        line: content,
+        type: "unchanged",
+        lineNumber: oldNo,
+      });
+      oldNo++;
+      newNo++;
+    }
+    return diff;
+  };
 
+  const looksLikeUnifiedPatch = (text: string) => {
+    const t = text.trimStart();
+    if (t.startsWith("@@") || t.startsWith("diff --git")) return true;
+    // GitHub commit API patches often start with a context/hunk line
+    const sample = text.split("\n").slice(0, 8);
+    return sample.some((l) => l.startsWith("@@ "));
+  };
+
+  const diffLines = (() => {
+    if (before !== undefined && after !== undefined) {
+      return calculateDiff(before, after);
+    }
+    if (after !== undefined && before === undefined && looksLikeUnifiedPatch(after)) {
+      return parseUnifiedPatch(after);
+    }
+    if (after !== undefined && before === undefined && status === "added") {
+      return after.split("\n").map((line, i) => ({
+        line,
+        type: "added" as const,
+        lineNumber: i + 1,
+      }));
+    }
+    if (before !== undefined && after === undefined && status === "deleted") {
+      return before.split("\n").map((line, i) => ({
+        line,
+        type: "removed" as const,
+        lineNumber: i + 1,
+      }));
+    }
+    return [];
+  })();
   return (
     <div className="border border-gray-700 rounded">
       {/* File Header */}
@@ -314,6 +396,8 @@ export function FileDiffViewer({
                           ? "bg-green-900/20"
                           : line.type === "removed"
                           ? "bg-red-900/20"
+                          : line.type === "hunk"
+                          ? "bg-blue-950/40"
                           : "bg-transparent hover:bg-gray-800/30"
                       }`}
                     >
@@ -338,22 +422,25 @@ export function FileDiffViewer({
                               ? "text-green-300"
                               : line.type === "removed"
                               ? "text-red-300 line-through"
+                              : line.type === "hunk"
+                              ? "text-blue-300/80"
                               : "text-gray-300"
                           }
                         >
                           {line.type === "removed" || line.type === "added" ? (
-                            <>
-                              <span className="inline-block w-2 mr-2">
-                                {line.type === "added" ? "+" : "-"}
-                              </span>
-                            </>
-                          ) : null}
+                            <span className="inline-block w-3 mr-2 select-none opacity-90">
+                              {line.type === "added" ? "+" : "-"}
+                            </span>
+                          ) : line.type === "hunk" ? null : (
+                            <span className="inline-block w-3 mr-2 select-none text-gray-600">
+                              {" "}
+                            </span>
+                          )}
                           {line.line}
                         </span>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
+                  ))}                </tbody>
               </table>
             </div>
           ) : (

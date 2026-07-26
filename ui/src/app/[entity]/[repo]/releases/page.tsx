@@ -26,6 +26,10 @@ import {
   formatDateTime24h,
   formatTime24h,
 } from "@/lib/utils/date-format";
+import {
+  getRepoStorageKey,
+  readRepoReleasesFromLocalStorage,
+} from "@/lib/utils/entity-normalizer";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import { syncGithubReleasesForRepo } from "@/lib/utils/sync-github-repo-releases";
@@ -81,8 +85,12 @@ export default function RepoReleasesPage({
   const [repoLogo, setRepoLogo] = useState<string | undefined>(undefined);
   const [tags, setTags] = useState<string[]>([]);
   const { name: userName, isLoggedIn, picture: userPicture } = useSession();
-  const { pubkey: currentUserPubkey, remoteSigner, subscribe, defaultRelays } =
-    useNostrContext();
+  const {
+    pubkey: currentUserPubkey,
+    remoteSigner,
+    subscribe,
+    defaultRelays,
+  } = useNostrContext();
   const userMetadata = useMetadata();
   const ownerSlug = useMemo(() => slugify(userName || ""), [userName]);
   const [syncingReleases, setSyncingReleases] = useState(false);
@@ -141,25 +149,38 @@ export default function RepoReleasesPage({
 
   const reloadRepoReleasesFromStorage = useCallback(() => {
     try {
+      const fromBucket = readRepoReleasesFromLocalStorage(
+        resolvedParams.entity,
+        resolvedParams.repo
+      ) as Release[];
+
       const repos = loadStoredRepos();
       const rec = findRepoByEntityAndName<StoredRepo>(
         repos,
         resolvedParams.entity,
         resolvedParams.repo
       );
+
+      const fromRepo =
+        rec &&
+        Array.isArray((rec as StoredRepo & { releases?: Release[] }).releases)
+          ? ((rec as StoredRepo & { releases?: Release[] })
+              .releases as Release[])
+          : [];
+
+      const byTag = new Map<string, Release>();
+      for (const r of [...fromRepo, ...fromBucket]) {
+        const tag =
+          (r.tag_name && String(r.tag_name)) ||
+          (typeof (r as Release & { tag?: string }).tag === "string"
+            ? (r as Release & { tag?: string }).tag!
+            : "");
+        if (!tag) continue;
+        byTag.set(tag.toLowerCase(), { ...r, tag_name: tag });
+      }
+      setReleases(Array.from(byTag.values()));
+
       if (rec) {
-        const repoWithReleases = rec as StoredRepo & { releases?: Release[] };
-        const raw = repoWithReleases.releases || [];
-        // NIP-34 events use `tag`; GitHub import uses `tag_name` — normalize for this UI.
-        setReleases(
-          raw.map((r: Release & { tag?: string }) => ({
-            ...r,
-            tag_name:
-              (r.tag_name && String(r.tag_name)) ||
-              (typeof r.tag === "string" ? r.tag : "") ||
-              "",
-          }))
-        );
         setTags(
           rec.tags
             ?.map((t: string | { name: string }) =>
@@ -226,12 +247,24 @@ export default function RepoReleasesPage({
         );
         const url = resolved || rec?.sourceUrl || "";
         if (url && url.includes("github.com") && !cancelled) {
-          await syncGithubReleasesForRepo(
+          const merged = await syncGithubReleasesForRepo(
             resolvedParams.entity,
             resolvedParams.repo,
             url
           );
-          if (!cancelled) reloadRepoReleasesFromStorage();
+          if (!cancelled) {
+            if (merged && merged.length > 0) {
+              setReleases(
+                merged.map((r) => ({
+                  ...r,
+                  tag_name: r.tag_name,
+                }))
+              );
+              setSourceUrl(url);
+            } else {
+              reloadRepoReleasesFromStorage();
+            }
+          }
         }
       } catch (e) {
         console.warn("[Releases] upstream sync failed:", e);
@@ -255,11 +288,20 @@ export default function RepoReleasesPage({
       "gittr:repo-updated",
       reloadRepoReleasesFromStorage
     );
-    return () =>
+    window.addEventListener(
+      "gittr:releases-updated",
+      reloadRepoReleasesFromStorage
+    );
+    return () => {
       window.removeEventListener(
         "gittr:repo-updated",
         reloadRepoReleasesFromStorage
       );
+      window.removeEventListener(
+        "gittr:releases-updated",
+        reloadRepoReleasesFromStorage
+      );
+    };
   }, [reloadRepoReleasesFromStorage]);
 
   const onCreateRelease = useCallback(() => {
@@ -375,6 +417,18 @@ export default function RepoReleasesPage({
       // StoredRepo.tags is string[], not { name: string }[]
       repos[idx].tags = Array.from(tagSet);
       saveStoredRepos(repos);
+      try {
+        localStorage.setItem(
+          getRepoStorageKey(
+            "gittr_releases",
+            resolvedParams.entity,
+            resolvedParams.repo
+          ),
+          JSON.stringify(nextReleases)
+        );
+      } catch {
+        /* quota */
+      }
       setReleases(nextReleases);
       setTags(Array.from(tagSet));
       setShowForm(false);
