@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,21 +13,18 @@ import {
 import { hasWriteAccess } from "@/lib/repo-permissions";
 import { hydrateRepoFromGithub } from "@/lib/repos/repo-github-hub";
 import { type StoredRepo, loadStoredRepos } from "@/lib/repos/storage";
-import { formatDate24h, formatDateTime24h } from "@/lib/utils/date-format";
+import { formatDate24h } from "@/lib/utils/date-format";
 import { getRepoOwnerPubkey } from "@/lib/utils/entity-resolver";
-import { MarkdownAnchor } from "@/lib/utils/markdown-anchor";
 import { findRepoByEntityAndName } from "@/lib/utils/repo-finder";
 import {
   syncGithubProjectsForRepo,
 } from "@/lib/utils/sync-github-repo-projects";
 
 import {
-  Calendar,
   CheckCircle2,
   Circle,
   Clock,
   Edit2,
-  FileText,
   Folder,
   Plus,
   Save,
@@ -37,9 +34,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
-import remarkGfm from "remark-gfm";
 
 interface Project {
   id: string;
@@ -73,8 +67,48 @@ function normalizeProjects(stored: Project[]): Project[] {
   return stored.map((p) => ({
     ...p,
     view: p.view || "kanban",
-    items: p.items || [],
+    items: (p.items || []).map((item) => {
+      // Legacy sync stored full GitHub issue bodies — clamp so old caches recover.
+      const isGh =
+        item.source === "github" ||
+        item.id.startsWith("gh-item-") ||
+        p.source === "github" ||
+        p.id.startsWith("gh-project-");
+      if (
+        isGh &&
+        item.content &&
+        item.content.length > 280
+      ) {
+        return {
+          ...item,
+          content: `${item.content.slice(0, 280).trimEnd()}…`,
+        };
+      }
+      return item;
+    }),
   }));
+}
+
+/** Plain one-liner preview — full markdown bodies must never inflate kanban cards. */
+function plainTextExcerpt(
+  markdown: string | undefined,
+  maxLen = 140
+): string {
+  if (!markdown) return "";
+  const plain = markdown
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`[^`]*`/g, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^>\s?/gm, "")
+    .replace(/^[-*+]\s+/gm, "")
+    .replace(/^\d+\.\s+/gm, "")
+    .replace(/[*_~]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (plain.length <= maxLen) return plain;
+  return `${plain.slice(0, maxLen).trimEnd()}…`;
 }
 
 export default function ProjectsPage() {
@@ -114,6 +148,15 @@ export default function ProjectsPage() {
         if (prev && normalized.some((p) => p.id === prev)) return prev;
         return normalized[0]?.id ?? null;
       });
+      // Persist clamp of legacy full GH bodies so refresh stays compact.
+      try {
+        localStorage.setItem(
+          `gittr_projects_${entity}_${repo}`,
+          JSON.stringify(normalized)
+        );
+      } catch {
+        /* ignore quota */
+      }
     } catch {
       /* ignore */
     }
@@ -604,9 +647,15 @@ export default function ProjectsPage() {
   };
 
   const renderItem = (item: ProjectItem) => {
-    if (editingItem === item.id) {
+    const readOnlyItem =
+      isGithubBoard ||
+      item.source === "github" ||
+      item.id.startsWith("gh-item-");
+    const preview = plainTextExcerpt(item.content, 140);
+
+    if (editingItem === item.id && !readOnlyItem) {
       return (
-        <div className="border border-purple-500 rounded p-3 bg-gray-900 space-y-2">
+        <div className="border border-purple-500 rounded-lg p-3 bg-gray-900 space-y-2">
           <Input
             value={editingTitle}
             onChange={(e) => setEditingTitle(e.target.value)}
@@ -686,83 +735,105 @@ export default function ProjectsPage() {
 
     return (
       <div
-        draggable={editingItem !== item.id}
-        onDragStart={() => editingItem !== item.id && handleDragStart(item)}
+        draggable={!readOnlyItem && editingItem !== item.id}
+        onDragStart={() =>
+          !readOnlyItem && editingItem !== item.id && handleDragStart(item)
+        }
         onClick={() => {
-          // Click to edit (but allow drag if not editing)
-          if (editingItem !== item.id) {
-            setEditingItem(item.id);
-            setEditingTitle(item.title);
-            setEditingContent(item.content || "");
-            setEditingEstimatedDays(item.estimatedDays);
-            setEditingDueDate(
-              item.dueDate
-                ? new Date(item.dueDate).toISOString().split("T")[0] || ""
-                : ""
-            );
-          }
+          if (readOnlyItem || editingItem === item.id) return;
+          setEditingItem(item.id);
+          setEditingTitle(item.title);
+          setEditingContent(item.content || "");
+          setEditingEstimatedDays(item.estimatedDays);
+          setEditingDueDate(
+            item.dueDate
+              ? new Date(item.dueDate).toISOString().split("T")[0] || ""
+              : ""
+          );
         }}
-        className="border border-gray-700 rounded p-3 bg-gray-900 hover:bg-gray-800 cursor-pointer group"
+        className={`rounded-lg border border-gray-700/80 bg-[#0E1116] p-2.5 transition-colors min-w-0 ${
+          readOnlyItem
+            ? "cursor-default"
+            : "cursor-pointer hover:border-gray-500 hover:bg-gray-900/80 group"
+        }`}
       >
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <div className="flex-1">
-            <div className="text-sm font-medium mb-1">{item.title}</div>
-            {item.content && (
-              <div className="text-xs text-gray-400 prose prose-invert max-w-none prose-p:text-xs prose-a:text-purple-400 prose-a:no-underline hover:prose-a:underline">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeRaw]}
-                  components={{
-                    a: MarkdownAnchor,
-                  }}
-                >
-                  {item.content}
-                </ReactMarkdown>
-              </div>
-            )}
+        <div className="flex items-start gap-2 min-w-0">
+          <div className="flex-1 min-w-0">
+            <div className="mb-1 flex flex-wrap items-center gap-1">
+              {item.type === "issue" && (
+                <span className="rounded bg-blue-900/40 px-1.5 py-0.5 text-[10px] font-medium text-blue-300">
+                  Issue
+                </span>
+              )}
+              {item.type === "pr" && (
+                <span className="rounded bg-green-900/40 px-1.5 py-0.5 text-[10px] font-medium text-green-300">
+                  PR
+                </span>
+              )}
+              {item.type === "note" && (
+                <span className="rounded bg-purple-900/40 px-1.5 py-0.5 text-[10px] font-medium text-purple-300">
+                  Note
+                </span>
+              )}
+              {item.priority === "high" && (
+                <span className="rounded bg-red-900/40 px-1.5 py-0.5 text-[10px] font-medium text-red-300">
+                  High
+                </span>
+              )}
+            </div>
+            <div className="text-sm font-medium leading-snug text-gray-100 line-clamp-2 break-words">
+              {item.title}
+            </div>
+            {preview ? (
+              <p className="mt-1 text-xs leading-relaxed text-gray-500 line-clamp-3 break-words">
+                {preview}
+              </p>
+            ) : null}
             {item.type === "issue" && item.issueId && (
               <Link
                 href={`/${entity}/${repo}/issues/${item.issueId}`}
-                className="text-xs text-purple-400 hover:underline mt-1 block"
+                className="mt-1.5 inline-block text-xs text-purple-400 hover:underline"
                 onClick={(e) => e.stopPropagation()}
               >
-                View Issue →
+                View issue →
               </Link>
             )}
             {item.type === "pr" && item.prId && (
               <Link
                 href={`/${entity}/${repo}/pulls/${item.prId}`}
-                className="text-xs text-purple-400 hover:underline mt-1 block"
+                className="mt-1.5 inline-block text-xs text-purple-400 hover:underline"
                 onClick={(e) => e.stopPropagation()}
               >
                 View PR →
               </Link>
             )}
           </div>
-          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setEditingItem(item.id);
-                setEditingTitle(item.title);
-                setEditingContent(item.content || "");
-              }}
-              className="p-1 hover:bg-gray-700 rounded"
-              title="Edit"
-            >
-              <Edit2 className="h-3 w-3" />
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDeleteItem(item.id);
-              }}
-              className="p-1 hover:bg-red-900/50 rounded"
-              title="Delete item permanently"
-            >
-              <Trash2 className="h-3 w-3 text-red-400" />
-            </button>
-          </div>
+          {!readOnlyItem && (
+            <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingItem(item.id);
+                  setEditingTitle(item.title);
+                  setEditingContent(item.content || "");
+                }}
+                className="rounded p-1 hover:bg-gray-700"
+                title="Edit"
+              >
+                <Edit2 className="h-3 w-3" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteItem(item.id);
+                }}
+                className="rounded p-1 hover:bg-red-900/50"
+                title="Delete item permanently"
+              >
+                <Trash2 className="h-3 w-3 text-red-400" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -775,118 +846,74 @@ export default function ProjectsPage() {
         item.prId || ""
       }-${index}`;
 
+    const columns: Array<{
+      status: ProjectItem["status"];
+      title: string;
+      icon: ReactNode;
+    }> = [
+      {
+        status: "todo",
+        title: "To Do",
+        icon: <Circle className="h-4 w-4 shrink-0" />,
+      },
+      {
+        status: "in_progress",
+        title: "In Progress",
+        icon: <Clock className="h-4 w-4 shrink-0" />,
+      },
+      {
+        status: "done",
+        title: "Done",
+        icon: <CheckCircle2 className="h-4 w-4 shrink-0" />,
+      },
+    ];
+
     return (
-      <div className="grid grid-cols-3 gap-4">
-        {/* To Do */}
-        <div
-          className="border border-[#383B42] rounded p-4 bg-[#171B21] min-h-[400px]"
-          onDragOver={(e) => handleDragOver(e, "todo")}
-          onDrop={(e) => handleDrop(e, "todo")}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold flex items-center gap-2">
-              <Circle className="h-4 w-4" />
-              To Do
-            </h3>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => handleAddItem("note")}
-              title="Add note"
+      <div className="grid min-h-0 grid-cols-1 gap-3 md:h-[calc(100dvh-13rem)] md:grid-cols-3 md:gap-4">
+        {columns.map((col) => {
+          const items = project.items.filter((item) => item.status === col.status);
+          return (
+            <div
+              key={col.status}
+              className="flex min-h-[220px] min-w-0 flex-col overflow-hidden rounded-lg border border-[#383B42] bg-[#171B21] md:min-h-0"
+              onDragOver={(e) => handleDragOver(e, col.status)}
+              onDrop={(e) => handleDrop(e, col.status)}
             >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="space-y-2">
-            {project.items
-              .filter((item) => item.status === "todo")
-              .map((item, index) => (
-                <div key={getProjectItemKey(item, index)}>
-                  {renderItem(item)}
-                </div>
-              ))}
-            {project.items.filter((item) => item.status === "todo").length ===
-              0 && (
-              <div className="text-center text-gray-500 text-sm py-8 border border-dashed border-gray-700 rounded">
-                Drop items here
+              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[#383B42] px-3 py-2.5">
+                <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold">
+                  {col.icon}
+                  <span className="truncate">{col.title}</span>
+                  <span className="rounded-full bg-gray-800 px-1.5 py-0.5 text-[10px] font-medium text-gray-400">
+                    {items.length}
+                  </span>
+                </h3>
+                {!isGithubBoard && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 shrink-0 p-0"
+                    onClick={() => handleAddItem("note")}
+                    title="Add note"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* In Progress */}
-        <div
-          className="border border-[#383B42] rounded p-4 bg-[#171B21] min-h-[400px]"
-          onDragOver={(e) => handleDragOver(e, "in_progress")}
-          onDrop={(e) => handleDrop(e, "in_progress")}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              In Progress
-            </h3>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => handleAddItem("note")}
-              title="Add note"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="space-y-2">
-            {project.items
-              .filter((item) => item.status === "in_progress")
-              .map((item, index) => (
-                <div key={getProjectItemKey(item, index)}>
-                  {renderItem(item)}
-                </div>
-              ))}
-            {project.items.filter((item) => item.status === "in_progress")
-              .length === 0 && (
-              <div className="text-center text-gray-500 text-sm py-8 border border-dashed border-gray-700 rounded">
-                Drop items here
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden p-2">
+                {items.map((item, index) => (
+                  <div key={getProjectItemKey(item, index)}>
+                    {renderItem(item)}
+                  </div>
+                ))}
+                {items.length === 0 && (
+                  <div className="rounded border border-dashed border-gray-700 px-3 py-8 text-center text-sm text-gray-500">
+                    Drop items here
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Done */}
-        <div
-          className="border border-[#383B42] rounded p-4 bg-[#171B21] min-h-[400px]"
-          onDragOver={(e) => handleDragOver(e, "done")}
-          onDrop={(e) => handleDrop(e, "done")}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4" />
-              Done
-            </h3>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => handleAddItem("note")}
-              title="Add note"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="space-y-2">
-            {project.items
-              .filter((item) => item.status === "done")
-              .map((item, index) => (
-                <div key={getProjectItemKey(item, index)}>
-                  {renderItem(item)}
-                </div>
-              ))}
-            {project.items.filter((item) => item.status === "done").length ===
-              0 && (
-              <div className="text-center text-gray-500 text-sm py-8 border border-dashed border-gray-700 rounded">
-                Drop items here
-              </div>
-            )}
-          </div>
-        </div>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -1084,19 +1111,9 @@ export default function ProjectsPage() {
                       )}
                     </div>
                     {item.content && (
-                      <div className="mt-2 text-xs text-gray-400 line-clamp-2 prose prose-invert prose-a:text-purple-400 prose-a:no-underline hover:prose-a:underline max-w-none">
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          rehypePlugins={[rehypeRaw]}
-                          components={{
-                            a: MarkdownAnchor,
-                          }}
-                        >
-                          {item.content.length > 150
-                            ? `${item.content.substring(0, 150)}...`
-                            : item.content}
-                        </ReactMarkdown>
-                      </div>
+                      <p className="mt-2 text-xs text-gray-400 line-clamp-2">
+                        {plainTextExcerpt(item.content, 160)}
+                      </p>
                     )}
                     {/* Editable estimatedDays and dueDate in roadmap */}
                     {editingItem === item.id && (
@@ -1318,11 +1335,11 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div className="container mx-auto max-w-[95%] xl:max-w-[90%] 2xl:max-w-[85%] p-6">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Folder className="h-6 w-6" />
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-4 sm:px-6">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="flex items-center gap-2 text-xl font-bold sm:text-2xl">
+            <Folder className="h-5 w-5 shrink-0 sm:h-6 sm:w-6" />
             Projects
           </h1>
           {(syncingGithub || githubImportNote) && (
@@ -1339,7 +1356,7 @@ export default function ProjectsPage() {
             </p>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex shrink-0 gap-2">
           {project && (
             <Button variant="outline" onClick={handleToggleView}>
               {project.view === "kanban" ? (
@@ -1362,32 +1379,32 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Projects List */}
-        <div className="lg:col-span-1">
-          <h2 className="font-semibold mb-3">Projects</h2>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+        {/* Projects List — compact so the board uses the page width */}
+        <div className="w-full shrink-0 lg:w-56 xl:w-64">
+          <h2 className="mb-2 text-sm font-semibold text-gray-300">Projects</h2>
           {projects.length === 0 ? (
-            <div className="border border-[#383B42] rounded p-6 text-center bg-[#171B21]">
-              <Folder className="h-8 w-8 mx-auto mb-2 text-gray-500" />
-              <p className="text-sm text-gray-400 mb-4">No projects yet</p>
+            <div className="rounded-lg border border-[#383B42] bg-[#171B21] p-4 text-center">
+              <Folder className="mx-auto mb-2 h-8 w-8 text-gray-500" />
+              <p className="mb-3 text-sm text-gray-400">No projects yet</p>
               <Button size="sm" onClick={handleCreateProject}>
                 <Plus className="mr-2 h-4 w-4" />
                 Create Project
               </Button>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:space-y-2 lg:pb-0 lg:gap-0">
               {projects.map((p) => (
                 <div
                   key={p.id}
-                  className={`group relative w-full border rounded ${
+                  className={`group relative min-w-[200px] shrink-0 rounded-lg border lg:min-w-0 lg:w-full ${
                     selectedProject === p.id
                       ? "border-purple-500 bg-purple-900/20"
                       : "border-[#383B42]"
                   }`}
                 >
                   {editingProjectName === p.id ? (
-                    <div className="p-3 space-y-2">
+                    <div className="space-y-2 p-3">
                       <Input
                         value={editingProjectNameValue}
                         onChange={(e) =>
@@ -1409,7 +1426,7 @@ export default function ProjectsPage() {
                           onClick={() => handleSaveProjectName(p.id)}
                           className="flex-1"
                         >
-                          <Save className="h-3 w-3 mr-1" />
+                          <Save className="mr-1 h-3 w-3" />
                           Save
                         </Button>
                         <Button
@@ -1429,35 +1446,37 @@ export default function ProjectsPage() {
                           e.stopPropagation();
                           handleStartEditProjectName(p.id);
                         }}
-                        className="w-full text-left p-3 hover:bg-white/5"
+                        className="w-full p-3 text-left hover:bg-white/5"
                         title="Double-click to edit name"
                       >
-                        <div className="font-semibold">{p.name}</div>
-                        <div className="text-xs text-gray-400 mt-1">
+                        <div className="line-clamp-2 text-sm font-semibold leading-snug">
+                          {p.name}
+                        </div>
+                        <div className="mt-1 text-xs text-gray-400">
                           {(p.items || []).length} items •{" "}
                           {p.view === "kanban" ? "Kanban" : "Roadmap"}
                         </div>
                       </button>
-                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleStartEditProjectName(p.id);
                           }}
-                          className="p-1.5 hover:bg-purple-900/50 rounded text-purple-400 hover:text-purple-300"
+                          className="rounded p-1.5 text-purple-400 hover:bg-purple-900/50 hover:text-purple-300"
                           title="Edit project name"
                         >
-                          <Edit2 className="h-4 w-4" />
+                          <Edit2 className="h-3.5 w-3.5" />
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDeleteProject(p.id);
                           }}
-                          className="p-1.5 hover:bg-red-900/50 rounded text-red-400 hover:text-red-300"
+                          className="rounded p-1.5 text-red-400 hover:bg-red-900/50 hover:text-red-300"
                           title="Delete project"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </>
@@ -1468,45 +1487,45 @@ export default function ProjectsPage() {
           )}
         </div>
 
-        {/* Project Board/Roadmap */}
-        <div className="lg:col-span-3">
+        {/* Project Board — takes remaining width */}
+        <div className="min-w-0 flex-1">
           {project ? (
-            <div>
-              <div className="mb-4">
+            <div className="min-w-0">
+              <div className="mb-3">
                 <input
                   type="text"
                   value={project.name}
+                  readOnly={isGithubBoard}
                   onChange={(e) => {
+                    if (isGithubBoard) return;
                     const updated = projects.map((p) =>
                       p.id === project.id ? { ...p, name: e.target.value } : p
                     );
                     saveProjects(updated);
                   }}
-                  className="text-2xl font-bold bg-transparent border-none outline-none focus:border-b border-purple-500"
+                  className="w-full truncate border-none bg-transparent text-xl font-bold outline-none focus:border-b focus:border-purple-500 sm:text-2xl"
                 />
                 {project.description && (
-                  <p className="text-gray-400 mt-2">{project.description}</p>
+                  <p className="mt-1 line-clamp-2 text-sm text-gray-400">
+                    {project.description}
+                  </p>
                 )}
               </div>
 
               {project.view === "kanban" ? renderKanban() : renderRoadmap()}
 
-              <div className="mt-4 text-sm text-gray-400 space-y-1">
-                <p>💡 Drag items between columns to update status</p>
-                <p>
-                  💡 Click items to edit title and notes (markdown & links
-                  supported)
-                </p>
-                <p>💡 Add notes for planning, links to docs, or task details</p>
-              </div>
+              {!isGithubBoard && (
+                <div className="mt-3 space-y-0.5 text-xs text-gray-500">
+                  <p>Drag items between columns to update status</p>
+                  <p>Click items to edit title and notes</p>
+                </div>
+              )}
             </div>
           ) : (
-            <div className="border border-[#383B42] rounded p-12 text-center bg-[#171B21]">
-              <Folder className="h-12 w-12 mx-auto mb-4 text-gray-500" />
-              <h3 className="text-xl font-semibold mb-2">
-                No project selected
-              </h3>
-              <p className="text-gray-400 mb-4">
+            <div className="rounded-lg border border-[#383B42] bg-[#171B21] p-12 text-center">
+              <Folder className="mx-auto mb-4 h-12 w-12 text-gray-500" />
+              <h3 className="mb-2 text-xl font-semibold">No project selected</h3>
+              <p className="mb-4 text-gray-400">
                 Create a new project to start organizing your work
               </p>
               <Button onClick={handleCreateProject}>

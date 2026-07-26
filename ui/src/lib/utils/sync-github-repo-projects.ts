@@ -88,6 +88,18 @@ query RepoProjects($owner: String!, $name: String!) {
 }
 `;
 
+/** Kanban only needs a preview; full GitHub issue bodies are opened via Issues. */
+function truncateProjectBody(
+  body: string | undefined | null,
+  max = 280
+): string | undefined {
+  if (!body) return undefined;
+  const t = body.trim();
+  if (!t) return undefined;
+  if (t.length <= max) return t;
+  return `${t.slice(0, max).trimEnd()}…`;
+}
+
 function mapStatusName(raw: string | undefined, closed?: boolean): KanbanStatus {
   if (closed) return "done";
   const n = (raw || "").toLowerCase();
@@ -210,11 +222,14 @@ export async function syncGithubProjectsForRepo(
               (content?.state || "").toUpperCase() === "MERGED";
             const status = mapStatusName(statusField?.name, closed);
             const number = content?.number;
+            // Keep a short body excerpt only — full issue/PR markdown blows up
+            // kanban cards and localStorage (e.g. cargo-limit research dumps).
+            const bodyExcerpt = truncateProjectBody(content?.body);
             if (typename === "Issue" && number != null) {
               return {
                 id: `gh-item-${it.id}`,
                 title: String(content?.title || `Issue #${number}`),
-                content: content?.body || undefined,
+                content: bodyExcerpt,
                 type: "issue" as const,
                 status,
                 issueId: `issue-${number}`,
@@ -226,7 +241,7 @@ export async function syncGithubProjectsForRepo(
               return {
                 id: `gh-item-${it.id}`,
                 title: String(content?.title || `PR #${number}`),
-                content: content?.body || undefined,
+                content: bodyExcerpt,
                 type: "pr" as const,
                 status,
                 prId: `pr-${number}`,
@@ -237,7 +252,7 @@ export async function syncGithubProjectsForRepo(
             return {
               id: `gh-item-${it.id}`,
               title: String(content?.title || "Draft"),
-              content: content?.body || undefined,
+              content: bodyExcerpt,
               type: "note" as const,
               status,
               source: "github" as const,
