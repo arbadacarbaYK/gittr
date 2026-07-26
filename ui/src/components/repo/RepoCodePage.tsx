@@ -17693,7 +17693,7 @@ export function RepoCodePage() {
             )}
           </div>
           <div
-            className="pb-2 prose prose-invert max-w-none prose-p:text-sm prose-p:text-gray-300 prose-a:text-purple-400 prose-a:no-underline hover:prose-a:underline"
+            className="pb-2 prose prose-invert max-w-none prose-p:text-sm prose-p:text-[var(--color-text-secondary)] prose-headings:text-sm prose-headings:font-semibold prose-headings:my-2 prose-headings:text-[var(--color-text-primary)] prose-a:text-[var(--color-accent-primary)] prose-a:no-underline hover:prose-a:underline"
             suppressHydrationWarning
           >
             {mounted &&
